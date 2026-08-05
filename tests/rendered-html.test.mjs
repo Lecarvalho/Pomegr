@@ -45,6 +45,11 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /\$\{agent\.status\}Agent/);
   assert.match(styles, /\.agentRow\.idleAgent/);
   assert.match(styles, /\.agentRow\.finishedAgent/);
+  assert.match(dashboard, /gitPathParts/);
+  assert.match(styles, /\.gitPathName/);
+  assert.match(styles, /min\(var\(--agent-indent\), 40px\)/);
+  assert.match(styles, /\.agentRow time \{ display: block/);
+  assert.doesNotMatch(styles, /\.agentRow time \{ display: none/);
   assert.match(dashboard, /60_000/);
   assert.match(dashboard, /refresh\(true\)/);
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);

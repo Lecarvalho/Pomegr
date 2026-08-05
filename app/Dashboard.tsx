@@ -227,6 +227,13 @@ function gitStatusLabel(status: string) {
   return "MOD";
 }
 
+function gitPathParts(filePath: string) {
+  const separator = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  return separator < 0
+    ? { directory: "", filename: filePath }
+    : { directory: filePath.slice(0, separator + 1), filename: filePath.slice(separator + 1) };
+}
+
 function resetCountdown(value: string | null) {
   if (!value) return "Reset unavailable";
   const milliseconds = new Date(value).getTime() - Date.now();
@@ -546,12 +553,15 @@ export function Dashboard() {
           </div>
           {!data.session.repository.historical && data.session.repository.files.length > 0 && (
             <div className="gitFiles">
-              {data.session.repository.files.map((file) => (
-                <div className="gitFile" key={`${file.status}-${file.path}`}>
-                  <span className={`gitStatus ${gitStatusLabel(file.status).toLowerCase()}`}>{gitStatusLabel(file.status)}</span>
-                  <code>{file.path}</code>
-                </div>
-              ))}
+              {data.session.repository.files.map((file) => {
+                const pathParts = gitPathParts(file.path);
+                return (
+                  <div className="gitFile" key={`${file.status}-${file.path}`}>
+                    <span className={`gitStatus ${gitStatusLabel(file.status).toLowerCase()}`}>{gitStatusLabel(file.status)}</span>
+                    <code title={file.path}><span className="gitPathDirectory">{pathParts.directory}</span><strong className="gitPathName">{pathParts.filename}</strong></code>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
