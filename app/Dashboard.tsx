@@ -725,7 +725,11 @@ export function Dashboard() {
                 <div className="treeRail"><span className={agent.id === "primary" ? "primaryNode" : "agentNode"} /></div>
                 <div className="agentIdentity">
                   <strong>{agent.label}</strong>
-                  <span>{agent.kind} · {agent.model} · {agent.effort} effort · {agent.toolCalls} tools</span>
+                  <div className="agentMeta">
+                    <span className="agentMetaKind">{agent.kind}</span>
+                    <span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span>
+                    <span className="agentMetaTools">{agent.toolCalls} tools</span>
+                  </div>
                 </div>
                 <div className="agentTokens">
                   <strong>{compactNumber(agent.tokens.total)}</strong>

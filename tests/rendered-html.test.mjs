@@ -50,6 +50,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /min\(var\(--agent-indent\), 40px\)/);
   assert.match(styles, /\.agentRow time \{ display: block/);
   assert.doesNotMatch(styles, /\.agentRow time \{ display: none/);
+  assert.match(dashboard, /agentMetaRuntime/);
+  assert.match(styles, /grid-template-areas: "kind tools" "runtime runtime"/);
   assert.match(dashboard, /60_000/);
   assert.match(dashboard, /refresh\(true\)/);
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);
