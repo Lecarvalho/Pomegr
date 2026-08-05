@@ -38,6 +38,15 @@ type Insight = {
   detail: string;
 };
 
+type LoopPattern = {
+  id: string;
+  agent: string;
+  tool: string;
+  detail: string;
+  calls: number;
+  repeats: number;
+};
+
 type MonitorState = {
   connected: boolean;
   source: string;
@@ -73,6 +82,7 @@ type MonitorState = {
     };
   };
   agents: Agent[];
+  loops: LoopPattern[];
   activity: Activity[];
   insights: Insight[];
   usageLimits: {
@@ -105,6 +115,7 @@ const EMPTY: MonitorState = {
     tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
   },
   agents: [],
+  loops: [],
   activity: [],
   insights: [],
   usageLimits: { available: false, fetchedAt: null, limits: [] },
@@ -199,8 +210,10 @@ export function Dashboard() {
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [loopsOpen, setLoopsOpen] = useState(false);
   const pageLoadedAt = useRef<number | null>(null);
   const usageRequested = useRef(false);
+  const loopMetricRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async (refreshUsage = false) => {
     try {
@@ -232,6 +245,22 @@ export function Dashboard() {
   }, [paused, refresh]);
 
   useEffect(() => {
+    if (!loopsOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!loopMetricRef.current?.contains(event.target as Node)) setLoopsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLoopsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [loopsOpen]);
+
+  useEffect(() => {
     pageLoadedAt.current ??= Date.now();
     const requestUsage = () => {
       if (paused || usageRequested.current) return;
@@ -248,6 +277,7 @@ export function Dashboard() {
     background: `conic-gradient(var(--green) ${data.score * 3.6}deg, var(--line) 0deg)`,
   };
   const agentRows = agentTreeRows(data.agents);
+  const loopPatterns = data.loops || [];
 
   return (
     <main className="shell">
@@ -351,10 +381,36 @@ export function Dashboard() {
           <div><span className="label">TOOL CALLS</span><strong>{data.metrics.toolCalls}</strong></div>
           <p>in this session</p>
         </article>
-        <article className="metric panel">
+        <article className="metric panel loopMetric" ref={loopMetricRef}>
           <span className={`metricIcon ${data.metrics.repeatedCalls ? "warnIcon" : "clearIcon"}`}>↻</span>
-          <div><span className="label">REPEATS</span><strong>{data.metrics.repeatedCalls}</strong></div>
-          <p>possible loops</p>
+          <div><span className="label">REPEATED CALLS</span><strong>{data.metrics.repeatedCalls}</strong></div>
+          <div className="metricFooter">
+            <span>across {loopPatterns.length} loop {loopPatterns.length === 1 ? "pattern" : "patterns"}</span>
+            <button
+              type="button"
+              onClick={() => setLoopsOpen((open) => !open)}
+              disabled={loopPatterns.length === 0}
+              aria-expanded={loopsOpen}
+              aria-controls="loop-patterns-popover"
+            >View list</button>
+          </div>
+          {loopsOpen && (
+            <div className="loopPopover" id="loop-patterns-popover" role="dialog" aria-label="Repeated call patterns">
+              <div className="loopPopoverHeader">
+                <div><span className="label">LOOP PATTERNS</span><strong>{loopPatterns.length} grouped patterns</strong></div>
+                <button type="button" onClick={() => setLoopsOpen(false)} aria-label="Close loop patterns">×</button>
+              </div>
+              <p>{data.metrics.repeatedCalls} calls beyond the first occurrence of each pattern.</p>
+              <div className="loopList">
+                {loopPatterns.map((loop) => (
+                  <div className="loopRow" key={loop.id}>
+                    <div><strong>{loop.agent}</strong><span>{loop.tool}{loop.detail ? ` · ${loop.detail}` : ""}</span></div>
+                    <div><strong>{loop.calls}</strong><span>{loop.repeats} repeated</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </article>
       </section>
 

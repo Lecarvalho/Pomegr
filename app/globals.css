@@ -80,6 +80,14 @@ button { color: inherit; }
 .metricIcon { position: absolute; top: 17px; right: 17px; width: 27px; height: 27px; border-radius: 7px; display: grid; place-items: center; background: #ebeae4; color: var(--muted); font-weight: 700; }
 .clearIcon { background: var(--green-soft); color: var(--green); }.warnIcon { background: var(--amber-soft); color: var(--amber); }
 .metric strong { display: block; font: 400 34px/1 Georgia, serif; margin-top: 5px; }.metric strong small { font-size: 14px; color: var(--muted); }.metric p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.loopMetric { z-index: 5; }
+.metricFooter { margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+.metricFooter button { border: 0; padding: 0; background: none; color: var(--amber); font-size: 10px; font-weight: 700; cursor: pointer; }.metricFooter button:disabled { color: var(--muted); opacity: .55; cursor: default; }
+.loopPopover { position: absolute; top: calc(100% + 8px); right: 0; width: min(430px, calc(100vw - 32px)); max-height: 390px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 50px rgba(25,32,29,.18); text-align: left; }
+.loopPopoverHeader { min-height: 62px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }.loopPopoverHeader div > strong { margin-top: 4px; font: 400 17px/1.1 Georgia, serif; }.loopPopoverHeader > button { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.loopPopover > p { margin: 0; padding: 10px 16px; border-bottom: 1px solid #eceae4; font-size: 10px; }
+.loopList { max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
+.loopRow { min-height: 54px; padding: 10px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; border-bottom: 1px solid #eceae4; }.loopRow:last-child { border-bottom: 0; }.loopRow > div:first-child { min-width: 0; }.loopRow > div:first-child strong, .loopRow > div:first-child span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.loopRow strong, .loopRow span { display: block; }.loopRow > div:first-child strong { margin: 0 0 4px; font: 700 11px/1.2 Arial, sans-serif; }.loopRow span { color: var(--muted); font-size: 9px; }.loopRow > div:last-child { text-align: right; }.loopRow > div:last-child strong { margin: 0 0 3px; font: 400 17px/1 Georgia, serif; }
 
 .tokenPanel { margin-bottom: 12px; min-height: 112px; display: grid; grid-template-columns: 1.55fr .8fr; align-items: stretch; overflow: hidden; }
 .tokenLead { display: flex; align-items: center; gap: 17px; padding: 20px 22px; border-right: 1px solid var(--line); }

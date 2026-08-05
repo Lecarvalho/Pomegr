@@ -39,7 +39,7 @@ Elapsed wall time is the difference between the earliest and latest recorded tim
 
 ## Repetition
 
-A signature combines agent, tool name, and important target. Three or more identical signatures produce a repetition insight. `repeatedCalls` counts calls beyond the first occurrence.
+A signature combines agent, tool name, and important target. Three or more identical signatures produce a repetition insight. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. The dashboard popover lists every grouped pattern with sanitized agent, tool, target, total-call, and repeated-call metadata.
 
 ## Agent overlap
 

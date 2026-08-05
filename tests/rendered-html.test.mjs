@@ -47,6 +47,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);
   assert.match(dashboard, /CACHE DETAILS/);
   assert.match(dashboard, /running now/);
+  assert.match(dashboard, /LOOP PATTERNS/);
+  assert.match(dashboard, /role="dialog"/);
   assert.match(stateRoute, /refreshUsage=1/);
   assert.match(monitor, /refreshUsage \? await usageLimits\(\) : cachedUsageLimits\(\)/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));

@@ -203,7 +203,7 @@ async function analyze(refreshUsage = false) {
       repeatedCalls: 0,
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
-    agents: [], activity: [], insights: [],
+    agents: [], loops: [], activity: [], insights: [],
     usageLimits: refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
@@ -292,7 +292,9 @@ async function analyze(refreshUsage = false) {
   }
   applyWaitingStatus(agents);
 
-  const loops = [...signatureMap.values()].filter((item) => item.count >= 3);
+  const loops = [...signatureMap.values()]
+    .filter((item) => item.count >= 3)
+    .sort((a, b) => b.count - a.count);
   const overlaps = [...targetActors.values()].filter((item) => item.actors.size >= 2 && item.calls >= 3);
   const insights = [];
   for (const loop of loops.slice(0, 3)) insights.push({
@@ -315,6 +317,14 @@ async function analyze(refreshUsage = false) {
   });
 
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
+  const loopPatterns = loops.map((loop) => ({
+    id: crypto.createHash("sha1").update(`${loop.actor.id}|${loop.tool}|${loop.detail}`).digest("hex").slice(0, 12),
+    agent: loop.actor.label,
+    tool: loop.tool,
+    detail: loop.detail,
+    calls: loop.count,
+    repeats: loop.count - 1,
+  }));
   const activeAgents = agents.filter(isRunningAgent).length;
   const tokensByAgent = new Map(agents.map((agent) => [agent.id, { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 }]));
   const latestByAgent = new Map();
@@ -387,6 +397,7 @@ async function analyze(refreshUsage = false) {
     score,
     metrics: { agents: agents.length, activeAgents, toolCalls: allEvents.length, repeatedCalls, tokens: tokenUsage },
     agents,
+    loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
     insights,
     usageLimits: currentUsageLimits,
@@ -427,7 +438,7 @@ function analyzeEmpty() {
       repeatedCalls: 0,
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
-    agents: [], activity: [], insights: [], usageLimits: emptyUsageLimits(),
+    agents: [], loops: [], activity: [], insights: [], usageLimits: emptyUsageLimits(),
   };
 }
 
