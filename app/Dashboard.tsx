@@ -33,12 +33,16 @@ type Activity = {
   detail: string;
 };
 
-type SessionTask = {
+type ExecutionTask = {
   id: string;
-  subject: string;
-  status: "pending" | "in_progress" | "completed";
-  blocks: string[];
-  blockedBy: string[];
+  label: string;
+  kind: "shell";
+  status: "running" | "completed" | "failed" | "stopped";
+  background: boolean;
+  backgroundId: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  exitCode: number | null;
 };
 
 type ContextGrowthBucket = {
@@ -124,7 +128,7 @@ type MonitorState = {
   toolPatterns: ToolPattern[];
   loops: LoopPattern[];
   activity: Activity[];
-  tasks: SessionTask[];
+  executionTasks: ExecutionTask[];
   insights: Insight[];
   usageLimits: {
     available: boolean;
@@ -160,7 +164,7 @@ const EMPTY: MonitorState = {
   toolPatterns: [],
   loops: [],
   activity: [],
-  tasks: [],
+  executionTasks: [],
   insights: [],
   usageLimits: { available: false, fetchedAt: null, limits: [] },
 };
@@ -245,6 +249,18 @@ function formatAgentDuration(agent: Agent) {
   const isRunning = agent.status === "active" || agent.status === "waiting";
   const liveDuration = isRunning && Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
   const totalSeconds = Math.max(0, Math.floor(Math.max(agent.durationMs, liveDuration) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function formatExecutionTaskDuration(task: ExecutionTask) {
+  const startedAt = new Date(task.startedAt).getTime();
+  const finishedAt = task.finishedAt ? new Date(task.finishedAt).getTime() : Date.now();
+  const totalSeconds = Math.max(0, Math.floor((finishedAt - startedAt) / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
@@ -409,12 +425,12 @@ export function Dashboard() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
-  const [tasksOpen, setTasksOpen] = useState(false);
+  const [executionTasksOpen, setExecutionTasksOpen] = useState(false);
   const pageLoadedAt = useRef<number | null>(null);
   const usageRequested = useRef(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
   const loopMetricRef = useRef<HTMLElement | null>(null);
-  const taskPopoverRef = useRef<HTMLDivElement | null>(null);
+  const executionTaskPopoverRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
@@ -493,12 +509,12 @@ export function Dashboard() {
   }, [sidebarOpen]);
 
   useEffect(() => {
-    if (!tasksOpen) return;
+    if (!executionTasksOpen) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!taskPopoverRef.current?.contains(event.target as Node)) setTasksOpen(false);
+      if (!executionTaskPopoverRef.current?.contains(event.target as Node)) setExecutionTasksOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setTasksOpen(false);
+      if (event.key === "Escape") setExecutionTasksOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -506,7 +522,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [tasksOpen]);
+  }, [executionTasksOpen]);
 
   useEffect(() => {
     if (selectedIsHistorical) return;
@@ -532,10 +548,9 @@ export function Dashboard() {
   const liveSessions = sessions.filter((session) => session.isLive);
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
-  const sessionTasks = data.tasks || [];
-  const completedTasks = sessionTasks.filter((task) => task.status === "completed").length;
-  const activeTasks = sessionTasks.filter((task) => task.status === "in_progress").length;
-  const openTasks = sessionTasks.length - completedTasks - activeTasks;
+  const executionTasks = data.executionTasks || [];
+  const runningExecutionTasks = executionTasks.filter((task) => task.status === "running");
+  const finishedExecutionTasks = executionTasks.filter((task) => task.status !== "running");
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -851,7 +866,7 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${tasksOpen && agent.id === "primary" ? "tasksOpen" : ""}`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${executionTasksOpen && agent.id === "primary" ? "executionTasksOpen" : ""}`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
@@ -859,32 +874,48 @@ export function Dashboard() {
                 <div className="agentIdentity">
                   <div className="agentTitleLine">
                     <strong>{agent.label}</strong>
-                    {agent.id === "primary" && sessionTasks.length > 0 && (
-                      <div className="agentTaskAnchor" ref={taskPopoverRef}>
+                    {agent.id === "primary" && executionTasks.length > 0 && (
+                      <div className="executionTaskAnchor" ref={executionTaskPopoverRef}>
                         <button
-                          className="agentTaskTrigger"
+                          className="executionTaskTrigger"
                           type="button"
-                          onClick={() => setTasksOpen((open) => !open)}
-                          aria-expanded={tasksOpen}
-                          aria-controls="primary-agent-tasks"
-                        >{sessionTasks.length} tasks</button>
-                        {tasksOpen && (
-                          <div className="agentTaskPopover" id="primary-agent-tasks" role="dialog" aria-label="Session task list">
-                            <div className="agentTaskPopoverHeader">
-                              <div><span className="label">PRIMARY ORCHESTRATION</span><strong>{sessionTasks.length} tasks</strong></div>
-                              <button type="button" onClick={() => setTasksOpen(false)} aria-label="Close task list">×</button>
+                          onClick={() => setExecutionTasksOpen((open) => !open)}
+                          aria-expanded={executionTasksOpen}
+                          aria-controls="primary-agent-execution-tasks"
+                        >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</button>
+                        {executionTasksOpen && (
+                          <div className="executionTaskPopover" id="primary-agent-execution-tasks" role="dialog" aria-label="Background tasks">
+                            <div className="executionTaskPopoverHeader">
+                              <div><span className="label">EXECUTION TASKS</span><strong>Background tasks</strong></div>
+                              <button type="button" onClick={() => setExecutionTasksOpen(false)} aria-label="Close execution tasks">×</button>
                             </div>
-                            <p>{completedTasks} done · {activeTasks} in progress · {openTasks} open</p>
-                            <div className="agentTaskList">
-                              {sessionTasks.map((task) => (
-                                <div className={`agentTaskRow ${task.status}`} key={task.id}>
-                                  <span className="agentTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "in_progress" ? "■" : "□"}</span>
-                                  <div>
-                                    <strong>{task.subject}</strong>
-                                    {task.blockedBy.length > 0 && <small>Blocked by {task.blockedBy.join(", ")}</small>}
-                                  </div>
-                                </div>
-                              ))}
+                            <p>{runningExecutionTasks.length} running · {finishedExecutionTasks.length} recently finished</p>
+                            <div className="executionTaskList">
+                              {runningExecutionTasks.length > 0 && (
+                                <section className="executionTaskSection" aria-label="Running execution tasks">
+                                  <h3>Running</h3>
+                                  {runningExecutionTasks.map((task) => (
+                                    <div className="executionTaskRow running" key={task.id}>
+                                      <span className="executionTaskState" aria-hidden="true">◷</span>
+                                      <div><strong>{task.label}</strong><small>Shell · {task.background ? "background · " : ""}{formatExecutionTaskDuration(task)}</small></div>
+                                    </div>
+                                  ))}
+                                </section>
+                              )}
+                              {finishedExecutionTasks.length > 0 && (
+                                <section className="executionTaskSection" aria-label="Finished execution tasks">
+                                  <h3>Recent finished {finishedExecutionTasks.length}</h3>
+                                  {finishedExecutionTasks.map((task) => (
+                                    <div className={`executionTaskRow ${task.status}`} key={task.id}>
+                                      <span className="executionTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "failed" ? "!" : "×"}</span>
+                                      <div>
+                                        <strong>{task.label}</strong>
+                                        <small>Shell · {formatExecutionTaskDuration(task)}{task.exitCode !== null ? ` · exit ${task.exitCode}` : ""}</small>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </section>
+                              )}
                             </div>
                           </div>
                         )}

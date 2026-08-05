@@ -6,13 +6,12 @@ import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
+import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
-import { readSessionTasks } from "./session-tasks.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
 const EXPLICIT_SESSION = process.env.CLAUDE_SESSION_FILE;
-const TASKS_ROOT = path.join(os.homedir(), ".claude", "tasks");
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
@@ -264,7 +263,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       repeatedCalls: 0,
       tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], tasks: [], insights: [],
+    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], insights: [],
     usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
@@ -465,7 +464,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     toolPatterns,
     loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
-    tasks: readSessionTasks(TASKS_ROOT, sessionId),
+    executionTasks: buildExecutionTasks(mainRecords, { historical, sessionUpdatedAt: updatedAt }),
     insights,
     usageLimits: currentUsageLimits,
   };
@@ -517,7 +516,7 @@ function analyzeEmpty() {
       repeatedCalls: 0,
       tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], tasks: [], insights: [], usageLimits: emptyUsageLimits(),
+    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], insights: [], usageLimits: emptyUsageLimits(),
   };
 }
 

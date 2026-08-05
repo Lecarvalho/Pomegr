@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         toolPatterns: [],
         loops: [],
         activity: [],
-        tasks: [],
+        executionTasks: [],
         insights: [],
         usageLimits: { available: false, fetchedAt: null, limits: [], error: "Usage limits are unavailable." },
         error: "The local session monitor is unavailable.",

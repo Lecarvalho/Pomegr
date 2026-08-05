@@ -21,7 +21,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 ## Security and privacy invariants
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or credential-file contents to the browser.
-- Session task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text.
+- Execution-task metadata may expose only normalized tool/background IDs, the Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Never expose commands, stdout, stderr, or task-notification output.
 - Keep the monitor bound to loopback.
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.

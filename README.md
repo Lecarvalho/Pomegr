@@ -10,7 +10,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects
 - All-agent current context usage and its latest-snapshot composition
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
-- Primary-agent task popover with structured task subjects, statuses, and dependencies
+- Primary-agent execution popover with running background shell jobs and recent completions
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses

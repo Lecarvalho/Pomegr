@@ -28,11 +28,11 @@ Bucket sizes are selected from fixed, human-readable intervals to target roughly
 
 This is a change in observed context snapshots, not throughput, billing, or token spend. The normalized API names it `contextGrowthTimeline`; generated reports intentionally omit it.
 
-## Session tasks
+## Execution tasks
 
-Threadlight reads the provider's structured task files for the selected session and attaches them to the primary orchestration agent. Current task storage does not include agent ownership, so tasks are never guessed onto subagents. The popover shows normalized task ID, subject, status, and dependency IDs only. Long-form descriptions and active-form text are excluded from the browser API and generated reports.
+The primary-agent popover is derived from Bash execution lifecycle records in the selected session transcript, not the provider's agent-maintained planning checklist. A Bash tool call creates an execution task from its short description. A returned background-task ID keeps it running until a trusted task notification records completion, failure, cancellation, or interruption. Foreground shell calls finish when their matching tool result arrives. In historical sessions, unmatched executions are marked stopped at the recorded session end.
 
-Task status is presented as `pending`, `in_progress`, or `completed`. Unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. This is a read-only view and does not update provider tasks.
+The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Commands, stdout, stderr, tool-result content, and notification output are excluded. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
 
 ## Agent state
 
