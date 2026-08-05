@@ -22,7 +22,7 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 
 `monitor/server.mjs` currently:
 
-1. Finds the latest primary session or uses `CLAUDE_SESSION_FILE`.
+1. Finds the session tree with the latest primary or subagent activity, or uses `CLAUDE_SESSION_FILE`.
 2. Reads primary and subagent JSONL files.
 3. Normalizes agents, activity, context snapshots, session metadata, and insights.
 4. Inspects the session repository with read-only Git commands.

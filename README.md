@@ -42,7 +42,7 @@ The web server proxies `/api/state` to the loopback-only monitor, so private cre
 
 ## Configuration
 
-The monitor automatically selects the most recently modified primary session under `%USERPROFILE%\.claude\projects`.
+The monitor automatically selects the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`, including activity from a running subagent while its primary transcript is waiting.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |

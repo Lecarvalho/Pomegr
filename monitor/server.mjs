@@ -5,6 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { buildAgentMetadata, fallbackAgentMetadata } from "./agent-metadata.mjs";
+import { findLatestSession, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -68,30 +69,6 @@ async function usageLimits() {
     }
   })();
   return usageCache.pending;
-}
-
-function walkJsonl(root, maxDepth = 4, depth = 0) {
-  if (!root || !fs.existsSync(root) || depth > maxDepth) return [];
-  const results = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    const full = path.join(root, entry.name);
-    if (entry.isDirectory()) results.push(...walkJsonl(full, maxDepth, depth + 1));
-    else if (entry.isFile() && entry.name.endsWith(".jsonl")) results.push(full);
-  }
-  return results;
-}
-
-function statSafe(file) {
-  try { return fs.statSync(file); } catch { return null; }
-}
-
-function findLatestSession() {
-  if (EXPLICIT_SESSION && fs.existsSync(EXPLICIT_SESSION)) return EXPLICIT_SESSION;
-  const files = walkJsonl(CLAUDE_PROJECTS).filter((file) => !file.includes(`${path.sep}subagents${path.sep}`));
-  return files
-    .map((file) => ({ file, stat: statSafe(file) }))
-    .filter((item) => item.stat)
-    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)[0]?.file || null;
 }
 
 function readJsonlTail(file) {
@@ -209,7 +186,7 @@ function runtimeMetadata(records) {
 }
 
 async function analyze() {
-  const mainFile = findLatestSession();
+  const mainFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
   if (!mainFile) return {
     connected: true,
     source: "Claude Code",
