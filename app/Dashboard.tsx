@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 
 type Agent = {
   id: string;
@@ -235,6 +236,7 @@ export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
   const pageLoadedAt = useRef<number | null>(null);
@@ -308,6 +310,39 @@ export function Dashboard() {
   const toolPatterns = data.toolPatterns || [];
   const loopPatterns = data.loops || [];
 
+  const generateReport = async () => {
+    if (!data.session || reportGenerating) return;
+    setReportGenerating(true);
+    let reportState = data;
+    try {
+      try {
+        const response = await fetch("/api/state", { cache: "no-store" });
+        if (response.ok) {
+          const latestState = await response.json() as MonitorState;
+          if (latestState.session) {
+            reportState = latestState;
+            setData(latestState);
+            setLastRefresh(new Date());
+          }
+        }
+      } catch {
+        // The visible snapshot remains sufficient when the local refresh is unavailable.
+      }
+      const generatedAt = new Date();
+      const blob = new Blob([buildSessionReport(reportState, generatedAt)], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = sessionReportFilename(reportState, generatedAt);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -319,6 +354,9 @@ export function Dashboard() {
           <span className={`connection ${data.connected ? "online" : "offline"}`}>
             <i /> {data.connected ? "Monitor connected" : "Monitor offline"}
           </span>
+          <button className="ghostButton reportButton" onClick={generateReport} disabled={!data.session || reportGenerating}>
+            {reportGenerating ? "Generating…" : "Generate report"}
+          </button>
           <button className="ghostButton" onClick={() => setPaused((value) => !value)}>
             {paused ? "Resume" : "Pause"}
           </button>

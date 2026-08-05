@@ -34,6 +34,8 @@ It listens only on `127.0.0.1`.
 
 The React dashboard polls `/api/state` approximately every 1.8 seconds for local session data. Plan usage is requested separately once, one minute after page load. The server route proxies to the private monitor so remote browsers never receive credentials or raw transcripts.
 
+Markdown retrospective reports are assembled and downloaded in the browser from the same normalized state. Report generation performs one fresh local-state read, does not call a model, and does not request the provider usage endpoint.
+
 ### Development orchestrator
 
 `scripts/dev.mjs` starts both long-running processes. The web process binds to `0.0.0.0:3003` for local-network viewing.

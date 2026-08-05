@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildSessionReport, sessionReportFilename } from "../app/session-report.mjs";
+
+const generatedAt = new Date("2026-08-05T18:00:00.000Z");
+const state = {
+  source: "Claude Code",
+  score: 84,
+  session: {
+    title: "Repair the parser",
+    project: "threadlight",
+    cwd: "C:\\Users\\private-machine\\threadlight",
+    startedAt: "2026-08-05T17:00:00.000Z",
+    updatedAt: "2026-08-05T17:30:00.000Z",
+    durationMs: 1_800_000,
+    repository: { available: true, branch: "main", files: [{ status: " M", path: "monitor/server.mjs" }] },
+  },
+  metrics: {
+    agents: 2,
+    activeAgents: 1,
+    toolCalls: 9,
+    repeatedCalls: 3,
+    tokens: { total: 1_000, allAgents: 2_500, cumulative: 8_000 },
+  },
+  agents: [{
+    id: "primary",
+    parentId: null,
+    label: "Primary agent",
+    kind: "orchestrator",
+    model: "test-model",
+    effort: "medium",
+    status: "idle",
+    startedAt: "2026-08-05T17:00:00.000Z",
+    durationMs: 1_800_000,
+    toolCalls: 9,
+    tokens: { total: 1_000, cumulative: 8_000 },
+  }],
+  toolPatterns: [{ agent: "Primary agent", tool: "Read", calls: 9 }],
+  loops: [{ agent: "Primary agent", tool: "Read", detail: "server.mjs", calls: 4, repeats: 3 }],
+  insights: [{ title: "Primary agent repeated Read 4 times", detail: "The same target keeps recurring." }],
+  activity: [{ detail: "RAW PROMPT MUST NOT APPEAR" }],
+  usageLimits: { available: true, limits: [{ window: "5 hours", label: "Current session", percent: 40, resetsAt: "2026-08-05T20:00:00.000Z" }] },
+};
+
+test("builds a deterministic retrospective without private raw state", () => {
+  const report = buildSessionReport(state, generatedAt);
+
+  assert.match(report, /^# Threadlight Session Report/m);
+  assert.match(report, /Repair the parser/);
+  assert.match(report, /Primary agent.*30m 0s/);
+  assert.match(report, /Cumulative model work.*8,000 tokens/);
+  assert.match(report, /Read · server\.mjs/);
+  assert.match(report, /Retrospective questions/);
+  assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR/);
+  assert.equal(sessionReportFilename(state, generatedAt), "threadlight-repair-the-parser-2026-08-05.md");
+});

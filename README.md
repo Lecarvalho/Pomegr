@@ -13,8 +13,11 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses
 - Deterministic loop and agent-overlap warnings
+- Local Markdown retrospective reports for discussion with the main agent
 
 Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
+
+The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and model work, repeated calls, tool distribution, Git state, plan usage, and retrospective questions. They never include raw prompts or responses.
 
 ## Run locally
 

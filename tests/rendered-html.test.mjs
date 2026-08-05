@@ -23,6 +23,7 @@ test("server-renders Threadlight", async () => {
   assert.match(html, /LIVE SESSION OBSERVER/);
   assert.match(html, /LIVE CONTEXT USE/);
   assert.match(html, /Usage limits/);
+  assert.match(html, /Generate report/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -48,6 +49,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /CACHE DETAILS/);
   assert.match(dashboard, /running now/);
   assert.match(dashboard, /wall time/);
+  assert.match(dashboard, /buildSessionReport/);
   assert.match(dashboard, /TOOL CALL BREAKDOWN/);
   assert.match(dashboard, /toolPatterns/);
   assert.match(dashboard, /LOOP PATTERNS/);
