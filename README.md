@@ -8,8 +8,9 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 - Session title, project, elapsed wall time, and last activity
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects
-- Primary-agent and all-agent current context usage
+- All-agent current context usage and its latest-snapshot composition
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
+- Primary-agent task popover with structured task subjects, statuses, and dependencies
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses
@@ -18,7 +19,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
 
-The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and model work, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
+The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and context snapshots, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
 
@@ -67,13 +68,12 @@ npm run dev
 
 ## Metrics
 
-The prominent context numbers use the same latest-snapshot concept shown by the provider UI:
+Every displayed or reported token number uses the same latest-snapshot concept shown by the provider UI:
 
 - **Agent context:** latest non-zero usage snapshot for that agent
-- **Primary context:** current context of the primary agent
 - **All-agent context:** sum of the latest context snapshot for every visible agent
 
-Historical cache reads are not shown as the headline metric. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
+Threadlight does not present cumulative transcript-throughput or token-spend session totals. Its timeline shows positive changes between all-agent context snapshots at consecutive bucket boundaries; repeated snapshots contribute zero and the result is never labeled as token spend. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
 
 ## Privacy and security
 

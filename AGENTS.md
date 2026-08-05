@@ -21,6 +21,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 ## Security and privacy invariants
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or credential-file contents to the browser.
+- Session task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text.
 - Keep the monitor bound to loopback.
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.
@@ -32,6 +33,8 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 
 - “Context” means the latest non-zero usage snapshot, not historical throughput.
 - “All-agent context” is the sum of each visible agent's latest context snapshot.
+- Present only latest context snapshots or sums derived from them. Never present cumulative transcript throughput, token-spend totals, or recent token rates in the dashboard, API, or generated reports.
+- Context-growth timelines must carry each agent's latest snapshot to each bucket boundary and plot only the positive change from the preceding boundary. Repeated snapshots contribute zero; never sum full usage snapshots or label the result as token spend.
 - Label elapsed duration as wall time because it includes idle gaps.
 - Document heuristic changes in `docs/METRICS.md`.
 - Rule-generated recommendations must trace to concrete events.

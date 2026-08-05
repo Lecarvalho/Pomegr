@@ -10,7 +10,7 @@ type Agent = {
   kind: string;
   model: string;
   effort: string;
-  status: "active" | "waiting" | "warm" | "finished" | "idle";
+  status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
   toolCalls: number;
   lastSeen: string;
   startedAt: string;
@@ -18,12 +18,10 @@ type Agent = {
   durationMs: number;
   tokens: {
     total: number;
-    cumulative: number;
     input: number;
     output: number;
     cacheWrite: number;
     cacheRead: number;
-    lastMinute: number;
   };
 };
 
@@ -33,6 +31,24 @@ type Activity = {
   actor: string;
   tool: string;
   detail: string;
+};
+
+type SessionTask = {
+  id: string;
+  subject: string;
+  status: "pending" | "in_progress" | "completed";
+  blocks: string[];
+  blockedBy: string[];
+};
+
+type ContextGrowthBucket = {
+  start: string;
+  end: string;
+  total: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
 };
 
 type Insight = {
@@ -93,20 +109,22 @@ type MonitorState = {
     toolCalls: number;
     repeatedCalls: number;
     tokens: {
-      total: number;
-      cumulative: number;
       allAgents: number;
       input: number;
       output: number;
       cacheWrite: number;
       cacheRead: number;
-      lastMinute: number;
+      contextGrowthTimeline: {
+        bucketMs: number;
+        buckets: ContextGrowthBucket[];
+      };
     };
   };
   agents: Agent[];
   toolPatterns: ToolPattern[];
   loops: LoopPattern[];
   activity: Activity[];
+  tasks: SessionTask[];
   insights: Insight[];
   usageLimits: {
     available: boolean;
@@ -136,12 +154,13 @@ const EMPTY: MonitorState = {
     activeAgents: 0,
     toolCalls: 0,
     repeatedCalls: 0,
-    tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
+    tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
   },
   agents: [],
   toolPatterns: [],
   loops: [],
   activity: [],
+  tasks: [],
   insights: [],
   usageLimits: { available: false, fetchedAt: null, limits: [] },
 };
@@ -203,6 +222,22 @@ function formatDuration(milliseconds: number) {
   const minutes = totalMinutes % 60;
   if (hours === 0) return `${minutes}m`;
   return `${hours}h ${minutes}m`;
+}
+
+function formatBucketDuration(milliseconds: number) {
+  const seconds = milliseconds / 1000;
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${minutes}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${hours}h`;
+  return `${hours / 24}d`;
+}
+
+function timelineTime(value: string, includeDate = false) {
+  return new Intl.DateTimeFormat(undefined, includeDate
+    ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+    : { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatAgentDuration(agent: Agent) {
@@ -277,6 +312,92 @@ function agentTreeRows(agents: Agent[]) {
   return rows;
 }
 
+function ContextGrowthTimeline({ timeline, currentContext, historical }: {
+  timeline: MonitorState["metrics"]["tokens"]["contextGrowthTimeline"];
+  currentContext: number;
+  historical: boolean;
+}) {
+  const buckets = timeline?.buckets || [];
+  const maximum = Math.max(0, ...buckets.map((bucket) => bucket.total));
+  const spansMultipleDays = buckets.length > 0
+    && new Date(buckets.at(-1)?.end || 0).getTime() - new Date(buckets[0].start).getTime() >= 24 * 60 * 60_000;
+  const middle = buckets[Math.floor((buckets.length - 1) / 2)];
+
+  return (
+    <section className={`panel tokenHistogramPanel ${historical ? "historical" : ""}`} aria-label="All-agent context growth timeline">
+      <div className="panelHeader tokenHistogramHeader">
+        <div className="tokenHistogramTitle">
+          <div className="pulseBars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+          <div><span className="label">CONTEXT GROWTH</span><h2>Context added over time</h2></div>
+        </div>
+        <div className="histogramSummary">
+          <strong>{compactNumber(currentContext)}</strong>
+          <span>{historical ? "recorded context" : "current context"}</span>
+        </div>
+      </div>
+      {buckets.length === 0 ? (
+        <Empty text="Context growth will appear here after the first model response." />
+      ) : (
+        <div className="histogramContent">
+          <div className="histogramScale" aria-hidden="true">
+            <span>{compactNumber(maximum)}</span>
+            <span>{compactNumber(Math.round(maximum / 2))}</span>
+            <span>0</span>
+          </div>
+          <div className="histogramChart">
+            <div className="histogramGrid" aria-hidden="true"><i /><i /><i /></div>
+            <div className="activityBars" role="list" aria-label={`${buckets.length} chronological context-growth buckets`}>
+              {buckets.map((bucket) => {
+                const height = maximum > 0 ? (bucket.total / maximum) * 100 : 0;
+                const segmentSize = (value: number) => bucket.total > 0 ? `${(value / bucket.total) * 100}%` : "0%";
+                const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${bucket.total.toLocaleString()} net context added; ${bucket.input.toLocaleString()} attributed to uncached input, ${bucket.cacheWrite.toLocaleString()} to cache write, ${bucket.cacheRead.toLocaleString()} to cache read, ${bucket.output.toLocaleString()} to generated output`;
+                return (
+                  <div
+                    className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`}
+                    key={bucket.start}
+                    role="listitem"
+                    tabIndex={0}
+                    aria-label={label}
+                    style={{ "--bar-height": `${height}%` } as CSSProperties}
+                  >
+                    <i className="activityStack" aria-hidden="true">
+                      <b className="activitySegment inputSegment" style={{ "--segment-size": segmentSize(bucket.input) } as CSSProperties} />
+                      <b className="activitySegment cacheWriteSegment" style={{ "--segment-size": segmentSize(bucket.cacheWrite) } as CSSProperties} />
+                      <b className="activitySegment cacheReadSegment" style={{ "--segment-size": segmentSize(bucket.cacheRead) } as CSSProperties} />
+                      <b className="activitySegment outputSegment" style={{ "--segment-size": segmentSize(bucket.output) } as CSSProperties} />
+                    </i>
+                    <span className="histogramTooltip">
+                      <strong>{compactNumber(bucket.total)} context added</strong>
+                      <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>
+                      <em>{compactNumber(bucket.input)} input · {compactNumber(bucket.cacheWrite)} write · {compactNumber(bucket.cacheRead)} read · {compactNumber(bucket.output)} output</em>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="histogramAxis" aria-hidden="true">
+              <span>{timelineTime(buckets[0].start, spansMultipleDays)}</span>
+              <span>{middle ? timelineTime(middle.start, spansMultipleDays) : ""}</span>
+              <span>{timelineTime(buckets.at(-1)?.end || buckets[0].end, spansMultipleDays)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {buckets.length > 0 && (
+        <div className="histogramFooter">
+          <div className="histogramLegend" aria-label="Context growth composition legend">
+            <span><i className="inputSwatch" />Uncached input</span>
+            <span><i className="cacheWriteSwatch" />Cache write</span>
+            <span><i className="cacheReadSwatch" />Cache read</span>
+            <span><i className="outputSwatch" />Generated output</span>
+          </div>
+          <span>{formatBucketDuration(timeline.bucketMs)} per bar · positive change in latest snapshots</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -288,10 +409,12 @@ export function Dashboard() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const pageLoadedAt = useRef<number | null>(null);
   const usageRequested = useRef(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
   const loopMetricRef = useRef<HTMLElement | null>(null);
+  const taskPopoverRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
@@ -370,6 +493,22 @@ export function Dashboard() {
   }, [sidebarOpen]);
 
   useEffect(() => {
+    if (!tasksOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!taskPopoverRef.current?.contains(event.target as Node)) setTasksOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTasksOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tasksOpen]);
+
+  useEffect(() => {
     if (selectedIsHistorical) return;
     pageLoadedAt.current ??= Date.now();
     const requestUsage = () => {
@@ -393,6 +532,10 @@ export function Dashboard() {
   const liveSessions = sessions.filter((session) => session.isLive);
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
+  const sessionTasks = data.tasks || [];
+  const completedTasks = sessionTasks.filter((task) => task.status === "completed").length;
+  const activeTasks = sessionTasks.filter((task) => task.status === "in_progress").length;
+  const openTasks = sessionTasks.length - completedTasks - activeTasks;
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -668,27 +811,17 @@ export function Dashboard() {
         </article>
       </section>
 
-      <section className={`panel tokenPanel ${viewingHistory ? "historical" : ""}`} aria-label={viewingHistory ? "Recorded token consumption" : "Live token consumption"}>
-        <div className="tokenLead">
-          <div className="pulseBars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-          <div>
-            <span className="label">{viewingHistory ? "RECORDED CONTEXT" : "LIVE CONTEXT USE"}</span>
-            <strong>{compactNumber(data.metrics.tokens.total)}</strong>
-            <p>{viewingHistory ? "latest recorded primary-agent snapshot" : <>latest primary-agent snapshot · +{compactNumber(data.metrics.tokens.lastMinute)} in the last 60 sec</>}</p>
-          </div>
-        </div>
-        <div className="tokenRate">
-          <span>ALL-AGENT CONTEXT</span>
-          <strong>{compactNumber(data.metrics.tokens.allAgents)}</strong>
-          <small>sum of latest agent snapshots</small>
-        </div>
-      </section>
+      <ContextGrowthTimeline
+        timeline={data.metrics.tokens.contextGrowthTimeline}
+        currentContext={data.metrics.tokens.allAgents}
+        historical={viewingHistory}
+      />
 
-      <section className="panel cachePanel" aria-label="Cache details">
+      <section className="panel cachePanel" aria-label="All-agent context composition">
         <div className="cacheLead">
-          <span className="label">CACHE DETAILS</span>
-          <h2>Latest primary-agent call</h2>
-          <p>How the current context snapshot was composed.</p>
+          <span className="label">CONTEXT COMPOSITION</span>
+          <h2>All-agent latest snapshots</h2>
+          <p>How the all-agent context total is composed.</p>
         </div>
         <div className="tokenStat">
           <span>Uncached input</span>
@@ -718,13 +851,46 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${tasksOpen && agent.id === "primary" ? "tasksOpen" : ""}`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
                 <div className="treeRail"><span className={agent.id === "primary" ? "primaryNode" : "agentNode"} /></div>
                 <div className="agentIdentity">
-                  <strong>{agent.label}</strong>
+                  <div className="agentTitleLine">
+                    <strong>{agent.label}</strong>
+                    {agent.id === "primary" && sessionTasks.length > 0 && (
+                      <div className="agentTaskAnchor" ref={taskPopoverRef}>
+                        <button
+                          className="agentTaskTrigger"
+                          type="button"
+                          onClick={() => setTasksOpen((open) => !open)}
+                          aria-expanded={tasksOpen}
+                          aria-controls="primary-agent-tasks"
+                        >{sessionTasks.length} tasks</button>
+                        {tasksOpen && (
+                          <div className="agentTaskPopover" id="primary-agent-tasks" role="dialog" aria-label="Session task list">
+                            <div className="agentTaskPopoverHeader">
+                              <div><span className="label">PRIMARY ORCHESTRATION</span><strong>{sessionTasks.length} tasks</strong></div>
+                              <button type="button" onClick={() => setTasksOpen(false)} aria-label="Close task list">×</button>
+                            </div>
+                            <p>{completedTasks} done · {activeTasks} in progress · {openTasks} open</p>
+                            <div className="agentTaskList">
+                              {sessionTasks.map((task) => (
+                                <div className={`agentTaskRow ${task.status}`} key={task.id}>
+                                  <span className="agentTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "in_progress" ? "■" : "□"}</span>
+                                  <div>
+                                    <strong>{task.subject}</strong>
+                                    {task.blockedBy.length > 0 && <small>Blocked by {task.blockedBy.join(", ")}</small>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="agentMeta">
                     <span className="agentMetaKind">{agent.kind}</span>
                     <span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span>
@@ -739,7 +905,7 @@ export function Dashboard() {
                   <strong>{formatAgentDuration(agent)}</strong>
                   <span>wall time</span>
                 </div>
-                <span className={`statusPill ${agent.status}`}><i />{agent.status}</span>
+                <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
                 <time>{relativeTime(agent.lastSeen)}</time>
               </div>
             ))}

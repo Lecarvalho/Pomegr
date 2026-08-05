@@ -15,26 +15,44 @@ input_tokens
 
 Zero-valued synthetic messages are ignored.
 
-- **Primary context** — latest snapshot for the primary agent
 - **Agent context** — latest snapshot for that agent
 - **All-agent context** — sum of every visible agent's latest snapshot
-- **Last 60 seconds** — unique-message usage recorded in the preceding minute
 
-All-agent context is not historical throughput. Earlier repeated cache reads are not accumulated into the headline total.
+All-agent context is the only context total Threadlight presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
+
+## Context-growth timeline
+
+The context-growth timeline derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Threadlight carries forward each agent's latest non-zero snapshot, sums those snapshots, and compares that sum with the preceding boundary. A bar shows only a positive net increase. Repeated snapshots contribute zero, and context reductions caused by compaction or agent resets are not presented as new context.
+
+Bucket sizes are selected from fixed, human-readable intervals to target roughly 28 bars across the recorded session wall time. Each bar is attributed across uncached input, cache write, cache read, and generated output. Because components can move between cache categories, positive component changes are scaled to the net context increase so their stack can never exceed the bar total. Hovering or focusing a bar shows the exact time range and attributed composition.
+
+This is a change in observed context snapshots, not throughput, billing, or token spend. The normalized API names it `contextGrowthTimeline`; generated reports intentionally omit it.
+
+## Session tasks
+
+Threadlight reads the provider's structured task files for the selected session and attaches them to the primary orchestration agent. Current task storage does not include agent ownership, so tasks are never guessed onto subagents. The popover shows normalized task ID, subject, status, and dependency IDs only. Long-form descriptions and active-form text are excluded from the browser API and generated reports.
+
+Task status is presented as `pending`, `in_progress`, or `completed`. Unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. This is a read-only view and does not update provider tasks.
 
 ## Agent state
 
 - `active` — updated within 45 seconds
 - `waiting` — has an active descendant and is waiting for that work to return
+- `needs_input` — issued a user-input request that has not received its matching result
+- `stopped` — a parent agent received a successful `TaskStop` result for that subagent
 - `finished` — a subagent transcript ends with `end_turn` or `stop_sequence`
 - `warm` — updated within 5 minutes
 - `idle` — older than 5 minutes
 
 Finished subagents are detected directly from their final assistant record and turn gray on the next poll. If a finished subagent is resumed and receives a new record, it returns to an activity-based state. Waiting status propagates through the recorded parent-child hierarchy. Primary agents and older transcript formats without a terminal marker continue to use modification-time state as a fallback.
 
+Needs-input state is detected by matching a provider user-input tool request to its result ID. It appears only while that result is absent and clears on the next poll after the user answers. The question, choices, and answer are never returned to the browser. A needs-input agent is not counted as running, and its explicit state is preserved even if it also has an active descendant.
+
+Externally stopped subagents are detected from the parent transcript by matching a `TaskStop` request to its successful tool result. A later assistant record in that subagent transcript clears the stopped state, allowing resumed work to return to activity-based status. The stop event timestamp is shown as the agent's last-seen time.
+
 The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
 
-Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
+Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
 
 ## Session state
 

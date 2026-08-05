@@ -34,6 +34,10 @@ function agentWallTime(agent, generatedAt) {
   return wallTime(Math.max(Number(agent.durationMs || 0), liveDuration));
 }
 
+function agentStatus(status) {
+  return status === "needs_input" ? "needs input" : status;
+}
+
 function toolDistribution(patterns) {
   const groups = new Map();
   for (const pattern of patterns || []) {
@@ -79,23 +83,21 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `| Agents running now | ${number(state.metrics.activeAgents)} / ${number(state.metrics.agents)} |`,
     `| Tool calls | ${number(state.metrics.toolCalls)} |`,
     `| Repeated calls | ${number(state.metrics.repeatedCalls)} |`,
-    `| Primary current context | ${number(state.metrics.tokens.total)} tokens |`,
-    `| All-agent current context | ${number(state.metrics.tokens.allAgents)} tokens |`,
-    `| Cumulative model work | ${number(state.metrics.tokens.cumulative)} tokens |`,
+    `| All-agent context | ${number(state.metrics.tokens.allAgents)} tokens |`,
     "",
     "## Agent activity",
     "",
-    "| Agent | Parent | Role | Model | Effort | Status | Wall time | Current context | Cumulative model work | Tool calls |",
-    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+    "| Agent | Parent | Role | Model | Effort | Status | Wall time | Context snapshot | Tool calls |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
   ];
 
   if (agents.length) {
     for (const agent of agents) {
       const parent = agent.parentId ? labelsById.get(agent.parentId) || agent.parentId : "—";
-      lines.push(`| ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.kind)} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agent.status)} | ${agentWallTime(agent, generatedAt)} | ${number(agent.tokens?.total)} | ${number(agent.tokens?.cumulative)} | ${number(agent.toolCalls)} |`);
+      lines.push(`| ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.kind)} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agentStatus(agent.status))} | ${agentWallTime(agent, generatedAt)} | ${number(agent.tokens?.total)} | ${number(agent.toolCalls)} |`);
     }
   } else {
-    lines.push("| No agents observed | — | — | — | — | — | — | — | — | — |");
+    lines.push("| No agents observed | — | — | — | — | — | — | — | — |");
   }
 
   lines.push("", "## Repeated call patterns", "");
@@ -156,7 +158,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     "",
     "1. Which repeated call patterns were necessary, and which could have been batched or stopped earlier?",
     "2. Did agent responsibilities overlap, or were boundaries clear?",
-    "3. Which agents consumed the most wall time and model work relative to their result?",
+    "3. Which agents used the most wall time or had the largest context snapshots relative to their result?",
     "4. What context, tools, or instructions would reduce retries in the next session?",
     "5. Which successful workflow should be preserved?",
     "",

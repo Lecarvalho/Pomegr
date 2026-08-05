@@ -21,7 +21,7 @@ const state = {
     activeAgents: 1,
     toolCalls: 9,
     repeatedCalls: 3,
-    tokens: { total: 1_000, allAgents: 2_500, cumulative: 8_000 },
+    tokens: { allAgents: 2_500 },
   },
   agents: [{
     id: "primary",
@@ -34,12 +34,13 @@ const state = {
     startedAt: "2026-08-05T17:00:00.000Z",
     durationMs: 1_800_000,
     toolCalls: 9,
-    tokens: { total: 1_000, cumulative: 8_000 },
+    tokens: { total: 1_000 },
   }],
   toolPatterns: [{ agent: "Primary agent", tool: "Read", calls: 9 }],
   loops: [{ agent: "Primary agent", tool: "Read", detail: "server.mjs", calls: 4, repeats: 3 }],
   insights: [{ title: "Primary agent repeated Read 4 times", detail: "The same target keeps recurring." }],
   activity: [{ detail: "RAW PROMPT MUST NOT APPEAR" }],
+  tasks: [{ id: "1", subject: "PRIVATE TASK SUBJECT MUST NOT APPEAR", status: "pending", blocks: [], blockedBy: [] }],
   usageLimits: { available: true, limits: [{ window: "5 hours", label: "Current session", percent: 40, resetsAt: "2026-08-05T20:00:00.000Z" }] },
 };
 
@@ -49,10 +50,12 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /^# Threadlight Session Report/m);
   assert.match(report, /Repair the parser/);
   assert.match(report, /Primary agent.*30m 0s/);
-  assert.match(report, /Cumulative model work.*8,000 tokens/);
+  assert.match(report, /All-agent context.*2,500 tokens/);
+  assert.match(report, /Primary agent.*1,000/);
   assert.match(report, /Read · server\.mjs/);
   assert.match(report, /Retrospective questions/);
-  assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR/);
+  assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE TASK SUBJECT MUST NOT APPEAR/);
+  assert.doesNotMatch(report, /Cumulative|Primary current context|token spend/i);
   assert.equal(sessionReportFilename(state, generatedAt), "threadlight-repair-the-parser-2026-08-05.md");
 });
 
@@ -65,4 +68,14 @@ test("omits live-only data from historical reports", () => {
   assert.match(report, /Recorded branch.*feature\/history/);
   assert.match(report, /Historical uncommitted-file state was not recorded/);
   assert.doesNotMatch(report, /Plan usage|Current session|5 hours/);
+});
+
+test("renders needs-input status as a human-readable report label", () => {
+  const needsInput = structuredClone(state);
+  needsInput.agents[0].status = "needs_input";
+
+  const report = buildSessionReport(needsInput, generatedAt);
+
+  assert.match(report, /Primary agent.*needs input/);
+  assert.doesNotMatch(report, /needs_input/);
 });

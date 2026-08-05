@@ -12,7 +12,7 @@
     "monitor": "node monitor/server.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-report.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-report.test.mjs tests/session-tasks.test.mjs tests/context-growth-timeline.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

@@ -4,12 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isAgentTranscriptFinished, isRunningAgent } from "./agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "./agent-metadata.mjs";
+import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { readSessionTasks } from "./session-tasks.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
 const EXPLICIT_SESSION = process.env.CLAUDE_SESSION_FILE;
+const TASKS_ROOT = path.join(os.homedir(), ".claude", "tasks");
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
@@ -259,9 +262,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       activeAgents: 0,
       toolCalls: 0,
       repeatedCalls: 0,
-      tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
+      tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], insights: [],
+    agents: [], toolPatterns: [], loops: [], activity: [], tasks: [], insights: [],
     usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
@@ -272,9 +275,14 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
   const agentMetadata = new Map();
+  const stoppedAtByAgent = new Map();
   for (const [file, records] of recordsByFile) {
     const parentId = file === mainFile ? "primary" : path.basename(file, ".jsonl");
     for (const [agentId, metadata] of buildAgentMetadata(records, parentId)) agentMetadata.set(agentId, metadata);
+    for (const [agentId, stoppedAt] of externallyStoppedAgentTimes(records)) {
+      const previous = stoppedAtByAgent.get(agentId);
+      if (!previous || new Date(stoppedAt) > new Date(previous)) stoppedAtByAgent.set(agentId, stoppedAt);
+    }
   }
   for (const [file, records] of recordsByFile) {
     if (file === mainFile) continue;
@@ -338,6 +346,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     const runtime = runtimeMetadata(records);
     const timing = agentTiming(records, stat.mtime.toISOString());
     const finished = file !== mainFile && isAgentTranscriptFinished(records);
+    const externallyStoppedAt = file === mainFile ? null : stoppedAtByAgent.get(actor.id.replace(/^agent-/, ""));
+    const externallyStopped = externallyStoppedAt && isExternalStopCurrent(records, externallyStoppedAt);
+    const needsInputAt = pendingUserInputAt(records);
     agents.push({
       id: actor.id,
       label: actor.label,
@@ -345,9 +356,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       parentId: actor.parentId,
       model: runtime.model,
       effort: runtime.effort,
-      status: historical ? "idle" : finished ? "finished" : statusFor(stat.mtimeMs),
+      status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : statusFor(stat.mtimeMs),
       toolCalls: calls,
-      lastSeen: stat.mtime.toISOString(),
+      lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || stat.mtime.toISOString(),
       ...timing,
     });
   }
@@ -357,6 +368,12 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const loops = groupedTools.filter((item) => item.count >= 3);
   const overlaps = [...targetActors.values()].filter((item) => item.actors.size >= 2 && item.calls >= 3);
   const insights = [];
+  for (const agent of agents.filter((item) => item.status === "needs_input")) insights.push({
+    id: `needs-input-${agent.id}`,
+    level: "warning",
+    title: `${agent.label} needs your input`,
+    detail: "A user-input request is waiting for a response.",
+  });
   for (const loop of loops.slice(0, 3)) insights.push({
     id: `loop-${loop.actor.id}-${loop.tool}-${loop.detail}`,
     level: "warning",
@@ -393,33 +410,16 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     repeats: loop.count - 1,
   }));
   const activeAgents = agents.filter(isRunningAgent).length;
-  const tokensByAgent = new Map(agents.map((agent) => [agent.id, { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 }]));
   const latestByAgent = new Map();
-  const cumulativeUsage = [...usageByMessage.values()].reduce((total, usage) => {
+  for (const usage of usageByMessage.values()) {
     const usageTime = new Date(usage.timestamp).getTime();
     const previous = latestByAgent.get(usage.actorId);
     const snapshotTotal = usage.input + usage.output + usage.cacheWrite + usage.cacheRead;
-    if (snapshotTotal > 0 && (!previous || usageTime > new Date(previous.timestamp).getTime())) {
+    if (snapshotTotal > 0 && (!previous || usageTime >= new Date(previous.timestamp).getTime())) {
       latestByAgent.set(usage.actorId, usage);
     }
-    const agentTotal = tokensByAgent.get(usage.actorId);
-    if (agentTotal) {
-      agentTotal.input += usage.input;
-      agentTotal.output += usage.output;
-      agentTotal.cacheWrite += usage.cacheWrite;
-      agentTotal.cacheRead += usage.cacheRead;
-      if (Date.now() - new Date(usage.timestamp).getTime() <= 60_000) {
-        agentTotal.lastMinute += usage.input + usage.output + usage.cacheWrite + usage.cacheRead;
-      }
-    }
-    total.cumulative += usage.input + usage.output + usage.cacheWrite + usage.cacheRead;
-    if (Date.now() - usageTime <= 60_000) {
-      total.lastMinute += usage.input + usage.output + usage.cacheWrite + usage.cacheRead;
-    }
-    return total;
-  }, { cumulative: 0, lastMinute: 0 });
+  }
   for (const agent of agents) {
-    const cumulative = tokensByAgent.get(agent.id);
     const latest = latestByAgent.get(agent.id) || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
     agent.tokens = {
       input: latest.input,
@@ -427,19 +427,16 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       cacheWrite: latest.cacheWrite,
       cacheRead: latest.cacheRead,
       total: latest.input + latest.output + latest.cacheWrite + latest.cacheRead,
-      cumulative: cumulative.input + cumulative.output + cumulative.cacheWrite + cumulative.cacheRead,
-      lastMinute: cumulative.lastMinute,
     };
   }
-  const primaryTokens = agents.find((agent) => agent.id === "primary")?.tokens || {
-    total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0,
-  };
   const allAgents = agents.reduce((total, agent) => total + agent.tokens.total, 0);
   const tokenUsage = {
-    ...primaryTokens,
     allAgents,
-    cumulative: cumulativeUsage.cumulative,
-    lastMinute: cumulativeUsage.lastMinute,
+    input: agents.reduce((total, agent) => total + agent.tokens.input, 0),
+    output: agents.reduce((total, agent) => total + agent.tokens.output, 0),
+    cacheWrite: agents.reduce((total, agent) => total + agent.tokens.cacheWrite, 0),
+    cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
+    contextGrowthTimeline: buildContextGrowthTimeline([...usageByMessage.values()], { startedAt, updatedAt }),
   };
   const cwd = projectCwd(mainRecords);
   const repository = historical ? recordedGitState(mainRecords) : { ...gitState(cwd), historical: false };
@@ -468,6 +465,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     toolPatterns,
     loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
+    tasks: readSessionTasks(TASKS_ROOT, sessionId),
     insights,
     usageLimits: currentUsageLimits,
   };
@@ -517,9 +515,9 @@ function analyzeEmpty() {
       activeAgents: 0,
       toolCalls: 0,
       repeatedCalls: 0,
-      tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
+      tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], insights: [], usageLimits: emptyUsageLimits(),
+    agents: [], toolPatterns: [], loops: [], activity: [], tasks: [], insights: [], usageLimits: emptyUsageLimits(),
   };
 }
 
