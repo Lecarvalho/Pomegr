@@ -66,8 +66,8 @@ The score is a heuristic attention signal, not a quality assessment.
 
 ## Plan usage
 
-Plan utilization is retrieved from the provider's authenticated endpoint once, one minute after page load, then cached by the monitor to deduplicate simultaneous tabs. Normal session polling and manual refreshes use the cached value and never invoke the provider endpoint. Retrieval does not invoke a model.
+Plan utilization is retrieved for the live view from the provider's authenticated endpoint once, one minute after page load, then cached by the monitor to deduplicate simultaneous tabs. Normal session polling, historical views, report generation, and manual refreshes never invoke the provider endpoint. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports.
 
 ## Git state
 
-Branch and uncommitted files come from read-only Git commands against the primary session's working directory.
+Live branch and uncommitted files come from read-only Git commands against the primary session's working directory. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current working tree for historical Git state.

@@ -25,14 +25,15 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 1. Finds the session tree with the latest primary or subagent activity, or uses `CLAUDE_SESSION_FILE`.
 2. Reads primary and subagent JSONL files.
 3. Normalizes agents, activity, context snapshots, session metadata, and insights.
-4. Inspects the session repository with read-only Git commands.
-5. Retrieves and caches provider plan usage.
+4. Builds a bounded, cached catalog of existing session transcripts for historical navigation.
+5. Inspects the live session repository with read-only Git commands.
+6. Retrieves and caches provider plan usage for the live view only.
 
 It listens only on `127.0.0.1`.
 
 ### Web application
 
-The React dashboard polls `/api/state` approximately every 1.8 seconds for local session data. Plan usage is requested separately once, one minute after page load. The server route proxies to the private monitor so remote browsers never receive credentials or raw transcripts.
+The React dashboard polls `/api/state` approximately every 1.8 seconds for live session data and loads `/api/sessions` for the history sidebar. A selected historical session is read once because its transcript is immutable for dashboard purposes. Plan usage is requested separately once, one minute after page load and only while viewing live data. The server routes proxy to the private monitor so remote browsers never receive credentials or raw transcripts.
 
 Markdown retrospective reports are assembled and downloaded in the browser from the same normalized state. Report generation performs one fresh local-state read, does not call a model, and does not request the provider usage endpoint.
 
@@ -43,6 +44,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 ## Normalized state
 
 - `session` — title, project, timestamps, repository
+- `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens
 - `activity` — sanitized tool events
@@ -69,5 +71,6 @@ Each provider should implement session discovery, agent relationships, labels, c
 - No session: connected monitor with an explanatory empty state
 - Git failure: repository unavailable without failing the session
 - Usage failure: remaining dashboard stays available
+- Missing historical transcript: selected view explains that the session is no longer available
 - Malformed JSONL: skip the individual line
 - Synthetic or zero usage: exclude from latest-context selection

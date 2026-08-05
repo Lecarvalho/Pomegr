@@ -28,13 +28,14 @@ test("server-renders Threadlight", async () => {
 });
 
 test("uses one provider-neutral identity and no starter preview", async () => {
-  const [page, layout, packageJson, dashboard, styles, stateRoute, monitor] = await Promise.all([
+  const [page, layout, packageJson, dashboard, styles, stateRoute, sessionsRoute, monitor] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/sessions/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../monitor/server.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(packageJson, /"name": "threadlight"/);
@@ -50,11 +51,17 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /running now/);
   assert.match(dashboard, /wall time/);
   assert.match(dashboard, /buildSessionReport/);
+  assert.match(dashboard, /HISTORICAL SESSION/);
+  assert.match(dashboard, /historySessions/);
+  assert.match(styles, /\.sessionSidebar/);
   assert.match(dashboard, /TOOL CALL BREAKDOWN/);
   assert.match(dashboard, /toolPatterns/);
   assert.match(dashboard, /LOOP PATTERNS/);
   assert.match(dashboard, /role="dialog"/);
-  assert.match(stateRoute, /refreshUsage=1/);
+  assert.match(stateRoute, /monitorParams\.set\("refreshUsage", "1"\)/);
+  assert.match(stateRoute, /sessionId/);
+  assert.match(sessionsRoute, /\/api\/sessions/);
+  assert.match(monitor, /historical \? emptyUsageLimits\(\)/);
   assert.match(monitor, /refreshUsage \? await usageLimits\(\) : cachedUsageLimits\(\)/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findLatestSession } from "../monitor/session-discovery.mjs";
+import { findLatestSession, findSessionById, listSessionFiles } from "../monitor/session-discovery.mjs";
 
 test("keeps a session selected while one of its subagents is newest", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-session-"));
@@ -26,6 +26,9 @@ test("keeps a session selected while one of its subagents is newest", async (con
   await utimes(child, activeChild, activeChild);
 
   assert.equal(findLatestSession(root), first);
+  assert.deepEqual(listSessionFiles(root).map(({ file }) => file), [first, second]);
+  assert.equal(findSessionById(root, "first"), first);
+  assert.equal(findSessionById(root, "../first"), null);
 });
 
 test("respects an explicitly selected session", async (context) => {

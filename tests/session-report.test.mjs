@@ -5,6 +5,7 @@ import { buildSessionReport, sessionReportFilename } from "../app/session-report
 const generatedAt = new Date("2026-08-05T18:00:00.000Z");
 const state = {
   source: "Claude Code",
+  view: "live",
   score: 84,
   session: {
     title: "Repair the parser",
@@ -13,7 +14,7 @@ const state = {
     startedAt: "2026-08-05T17:00:00.000Z",
     updatedAt: "2026-08-05T17:30:00.000Z",
     durationMs: 1_800_000,
-    repository: { available: true, branch: "main", files: [{ status: " M", path: "monitor/server.mjs" }] },
+    repository: { available: true, branch: "main", files: [{ status: " M", path: "monitor/server.mjs" }], historical: false },
   },
   metrics: {
     agents: 2,
@@ -53,4 +54,15 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Retrospective questions/);
   assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR/);
   assert.equal(sessionReportFilename(state, generatedAt), "threadlight-repair-the-parser-2026-08-05.md");
+});
+
+test("omits live-only data from historical reports", () => {
+  const historical = structuredClone(state);
+  historical.view = "history";
+  historical.session.repository = { available: true, branch: "feature/history", files: [], historical: true };
+  const report = buildSessionReport(historical, generatedAt);
+
+  assert.match(report, /Recorded branch.*feature\/history/);
+  assert.match(report, /Historical uncommitted-file state was not recorded/);
+  assert.doesNotMatch(report, /Plan usage|Current session|5 hours/);
 });

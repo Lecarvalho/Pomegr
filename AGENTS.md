@@ -12,9 +12,9 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 
 ## Architecture
 
-- `monitor/server.mjs` owns discovery, transcript parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.
+- `monitor/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.
 - `app/Dashboard.tsx` renders normalized state and must not access credentials or raw session files.
-- `app/api/state/route.ts` is the same-origin proxy to the loopback monitor.
+- `app/api/state/route.ts` and `app/api/sessions/route.ts` are same-origin proxies to the loopback monitor.
 - `scripts/dev.mjs` starts the monitor and web application together.
 - Keep provider transcript schemas out of React components.
 
@@ -26,6 +26,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.
 - Keep monitoring read-only. Future control actions require an explicit confirmation boundary.
 - Cache external usage requests and sanitize failures.
+- Historical views must never expose current plan limits or substitute the current Git working tree for recorded session state.
 
 ## Metric conventions
 

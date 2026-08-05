@@ -2,11 +2,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const refreshUsage = new URL(request.url).searchParams.get("refreshUsage") === "1";
-    const monitorUrl = `http://127.0.0.1:4317/api/state${refreshUsage ? "?refreshUsage=1" : ""}`;
+    const requestUrl = new URL(request.url);
+    const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
+    const sessionId = requestUrl.searchParams.get("sessionId") || "";
+    const monitorParams = new URLSearchParams();
+    if (refreshUsage && !sessionId) monitorParams.set("refreshUsage", "1");
+    if (sessionId) monitorParams.set("sessionId", sessionId);
+    const monitorUrl = `http://127.0.0.1:4317/api/state${monitorParams.size ? `?${monitorParams}` : ""}`;
     const response = await fetch(monitorUrl, {
       cache: "no-store",
-      signal: AbortSignal.timeout(refreshUsage ? 7500 : 1500),
+      signal: AbortSignal.timeout(sessionId ? 5000 : refreshUsage ? 7500 : 1500),
     });
 
     if (!response.ok) {
@@ -25,6 +30,7 @@ export async function GET(request: Request) {
       {
         connected: false,
         source: "Claude Code",
+        view: "live",
         session: null,
         score: 100,
         metrics: {

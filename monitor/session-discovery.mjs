@@ -19,8 +19,12 @@ export function statSafe(file) {
 export function findLatestSession(projectsRoot, explicitSession) {
   if (explicitSession && fs.existsSync(explicitSession)) return explicitSession;
 
+  return listSessionFiles(projectsRoot)[0]?.file || null;
+}
+
+export function listSessionFiles(projectsRoot) {
   const marker = `${path.sep}subagents${path.sep}`;
-  const primaryFiles = [];
+  const primaryFiles = new Set();
   const activityByPrimary = new Map();
 
   for (const file of walkJsonl(projectsRoot)) {
@@ -31,13 +35,20 @@ export function findLatestSession(projectsRoot, explicitSession) {
       ? `${file.slice(0, markerIndex)}.jsonl`
       : file;
 
-    if (markerIndex < 0) primaryFiles.push(file);
+    if (markerIndex < 0) primaryFiles.add(file);
     activityByPrimary.set(
       primaryFile,
       Math.max(activityByPrimary.get(primaryFile) || 0, stat.mtimeMs),
     );
   }
 
-  return primaryFiles
-    .sort((a, b) => (activityByPrimary.get(b) || 0) - (activityByPrimary.get(a) || 0))[0] || null;
+  return [...primaryFiles]
+    .map((file) => ({ file, activityMs: activityByPrimary.get(file) || 0 }))
+    .sort((a, b) => b.activityMs - a.activityMs);
+}
+
+export function findSessionById(projectsRoot, sessionId) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(sessionId || "")) return null;
+  return listSessionFiles(projectsRoot)
+    .find(({ file }) => path.basename(file, ".jsonl") === sessionId)?.file || null;
 }

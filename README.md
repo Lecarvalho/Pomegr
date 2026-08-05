@@ -7,6 +7,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
+- Left-side navigation between the live session and up to 49 previous sessions
 - Primary-agent and all-agent current context usage
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
 - Current Git branch and every uncommitted path
@@ -17,7 +18,9 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
 
-The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and model work, repeated calls, tool distribution, Git state, plan usage, and retrospective questions. They never include raw prompts or responses.
+The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and model work, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
+
+Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
 
 ## Run locally
 
@@ -106,6 +109,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and provider-
 
 - The monitor currently supports Claude Code session files only.
 - Session duration is elapsed wall time and includes idle periods.
+- History is limited to the 49 most recent non-live transcript sessions.
 - Agent state is inferred from transcript modification time.
 - Efficiency warnings are heuristics, not authoritative judgments.
 - Transcript parsing reads a bounded tail of each file.

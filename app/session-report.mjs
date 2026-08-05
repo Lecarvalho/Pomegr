@@ -126,8 +126,13 @@ export function buildSessionReport(state, generatedAt = new Date()) {
 
   lines.push("", "## Repository", "");
   if (repository.available) {
-    lines.push(`- **Branch:** ${code(repository.branch)}`, `- **Uncommitted files:** ${number(repository.files?.length)}`);
-    if (repository.files?.length) {
+    lines.push(`- **${repository.historical ? "Recorded branch" : "Branch"}:** ${code(repository.branch)}`);
+    if (repository.historical) {
+      lines.push("- Historical uncommitted-file state was not recorded.");
+    } else {
+      lines.push(`- **Uncommitted files:** ${number(repository.files?.length)}`);
+    }
+    if (!repository.historical && repository.files?.length) {
       lines.push("");
       for (const file of repository.files) lines.push(`- ${code(file.status)} ${code(file.path)}`);
     }
@@ -135,12 +140,14 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     lines.push("Repository metadata was unavailable.");
   }
 
-  lines.push("", "## Plan usage", "");
-  if (state.usageLimits?.available && limits.length) {
-    lines.push("| Window | Limit | Used | Reset |", "| --- | --- | ---: | --- |");
-    for (const limit of limits) lines.push(`| ${cell(limit.window)} | ${cell(limit.label)} | ${Math.round(Number(limit.percent || 0))}% | ${cell(localTime(limit.resetsAt))} |`);
-  } else {
-    lines.push("Plan usage was unavailable when the report was generated.");
+  if (state.view !== "history") {
+    lines.push("", "## Plan usage", "");
+    if (state.usageLimits?.available && limits.length) {
+      lines.push("| Window | Limit | Used | Reset |", "| --- | --- | ---: | --- |");
+      for (const limit of limits) lines.push(`| ${cell(limit.window)} | ${cell(limit.label)} | ${Math.round(Number(limit.percent || 0))}% | ${cell(localTime(limit.resetsAt))} |`);
+    } else {
+      lines.push("Plan usage was unavailable when the report was generated.");
+    }
   }
 
   lines.push(

@@ -59,9 +59,18 @@ type ToolPattern = {
   calls: number;
 };
 
+type SessionSummary = {
+  id: string;
+  title: string;
+  project: string;
+  updatedAt: string;
+  isLive: boolean;
+};
+
 type MonitorState = {
   connected: boolean;
   source: string;
+  view: "live" | "history";
   session: {
     id: string;
     title: string;
@@ -71,6 +80,7 @@ type MonitorState = {
       available: boolean;
       branch: string;
       files: Array<{ status: string; path: string }>;
+      historical: boolean;
     };
     startedAt: string | null;
     updatedAt: string | null;
@@ -118,6 +128,7 @@ type MonitorState = {
 const EMPTY: MonitorState = {
   connected: false,
   source: "Claude Code",
+  view: "live",
   session: null,
   score: 100,
   metrics: {
@@ -150,6 +161,22 @@ function shortTime(value: string) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+}
+
+function sessionListTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function stateEndpoint(sessionId: string | null, refreshUsage = false) {
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  if (refreshUsage && !sessionId) params.set("refreshUsage", "1");
+  return `/api/state${params.size ? `?${params}` : ""}`;
 }
 
 function compactNumber(value: number) {
@@ -234,6 +261,9 @@ function agentTreeRows(agents: Agent[]) {
 
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -246,8 +276,7 @@ export function Dashboard() {
 
   const refresh = useCallback(async (refreshUsage = false) => {
     try {
-      const stateUrl = `/api/state${refreshUsage ? "?refreshUsage=1" : ""}`;
-      const response = await fetch(stateUrl, { cache: "no-store" });
+      const response = await fetch(stateEndpoint(selectedSessionId, refreshUsage), { cache: "no-store" });
       if (!response.ok) throw new Error("Monitor unavailable");
       setData(await response.json());
       setLastRefresh(new Date());
@@ -260,18 +289,38 @@ export function Dashboard() {
     } finally {
       setLoading(false);
     }
+  }, [selectedSessionId]);
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/sessions", { cache: "no-store" });
+      if (!response.ok) return;
+      const catalog = await response.json() as { sessions?: SessionSummary[] };
+      setSessions(catalog.sessions || []);
+    } catch {
+      // Live monitoring remains available when the catalog cannot be refreshed.
+    }
   }, []);
 
   useEffect(() => {
     const initial = window.setTimeout(refresh, 0);
-    const interval = window.setInterval(() => {
+    const interval = selectedSessionId ? null : window.setInterval(() => {
       if (!paused) refresh();
     }, 1800);
     return () => {
       window.clearTimeout(initial);
+      if (interval) window.clearInterval(interval);
+    };
+  }, [paused, refresh, selectedSessionId]);
+
+  useEffect(() => {
+    const initial = window.setTimeout(refreshSessions, 0);
+    const interval = window.setInterval(refreshSessions, 30_000);
+    return () => {
+      window.clearTimeout(initial);
       window.clearInterval(interval);
     };
-  }, [paused, refresh]);
+  }, [refreshSessions]);
 
   useEffect(() => {
     if (!openMetric) return;
@@ -291,6 +340,16 @@ export function Dashboard() {
   }, [openMetric]);
 
   useEffect(() => {
+    if (!sidebarOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (selectedSessionId) return;
     pageLoadedAt.current ??= Date.now();
     const requestUsage = () => {
       if (paused || usageRequested.current) return;
@@ -300,7 +359,7 @@ export function Dashboard() {
     const remaining = Math.max(0, 60_000 - (Date.now() - pageLoadedAt.current));
     const timer = window.setTimeout(requestUsage, remaining);
     return () => window.clearTimeout(timer);
-  }, [paused, refresh]);
+  }, [paused, refresh, selectedSessionId]);
 
   const sessionLabel = data.session?.title || "Waiting for a session";
   const ringStyle = {
@@ -309,6 +368,9 @@ export function Dashboard() {
   const agentRows = agentTreeRows(data.agents);
   const toolPatterns = data.toolPatterns || [];
   const loopPatterns = data.loops || [];
+  const viewingHistory = Boolean(selectedSessionId) || data.view === "history";
+  const historySessions = sessions.filter((session) => !session.isLive);
+  const liveSession = sessions.find((session) => session.isLive);
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -316,7 +378,7 @@ export function Dashboard() {
     let reportState = data;
     try {
       try {
-        const response = await fetch("/api/state", { cache: "no-store" });
+        const response = await fetch(stateEndpoint(selectedSessionId), { cache: "no-store" });
         if (response.ok) {
           const latestState = await response.json() as MonitorState;
           if (latestState.session) {
@@ -344,56 +406,94 @@ export function Dashboard() {
   };
 
   return (
-    <main className="shell">
+    <div className="appFrame">
+      {sidebarOpen && <button className="sidebarBackdrop" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close session navigation" />}
+      <aside className={`sessionSidebar ${sidebarOpen ? "open" : ""}`} aria-label="Session navigation">
+        <div className="sidebarHeader">
+          <div><span className="label">THREADLIGHT</span><strong>Sessions</strong></div>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Close session navigation">×</button>
+        </div>
+        <nav className="sessionNav">
+          <button
+            type="button"
+            className={`liveSessionLink ${selectedSessionId ? "" : "selected"}`}
+            onClick={() => { setSelectedSessionId(null); setData({ ...EMPTY, view: "live" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
+            aria-current={selectedSessionId ? undefined : "page"}
+          >
+            <i />
+            <span><strong>Live session</strong><small>{liveSession?.title || "Auto-discovery"}</small></span>
+          </button>
+          <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
+          <div className="historyList">
+            {historySessions.length === 0 && <p>No previous sessions found.</p>}
+            {historySessions.map((session) => (
+              <button
+                type="button"
+                className={selectedSessionId === session.id ? "selected" : ""}
+                key={session.id}
+                onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "history" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
+                aria-current={selectedSessionId === session.id ? "page" : undefined}
+              >
+                <strong>{session.title}</strong>
+                <span>{session.project}</span>
+                <time>{sessionListTime(session.updatedAt)}</time>
+              </button>
+            ))}
+          </div>
+        </nav>
+      </aside>
+      <main className="shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Threadlight home">
           <span className="brandMark"><i /><i /><i /></span>
           <span>Threadlight</span>
         </a>
         <div className="topActions">
+          <button className="sessionMenuButton" type="button" onClick={() => setSidebarOpen(true)}>Sessions</button>
           <span className={`connection ${data.connected ? "online" : "offline"}`}>
-            <i /> {data.connected ? "Monitor connected" : "Monitor offline"}
+            <i /> {viewingHistory ? "Historical session" : data.connected ? "Monitor connected" : "Monitor offline"}
           </span>
           <button className="ghostButton reportButton" onClick={generateReport} disabled={!data.session || reportGenerating}>
             {reportGenerating ? "Generating…" : "Generate report"}
           </button>
-          <button className="ghostButton" onClick={() => setPaused((value) => !value)}>
-            {paused ? "Resume" : "Pause"}
-          </button>
+          {!viewingHistory && (
+            <button className="ghostButton" onClick={() => setPaused((value) => !value)}>
+              {paused ? "Resume" : "Pause"}
+            </button>
+          )}
         </div>
       </header>
 
       <section className="hero" id="top">
         <div>
-          <div className="eyebrow"><span /> LIVE SESSION OBSERVER {data.session ? `· ${data.session.project}` : ""}</div>
+          <div className="eyebrow"><span /> {viewingHistory ? "HISTORICAL SESSION" : "LIVE SESSION OBSERVER"} {data.session ? `· ${data.session.project}` : ""}</div>
           <h1>{sessionLabel}</h1>
-          <p>
-            Watching Claude Code quietly. Prompt and response text stay out of the dashboard;
-            only execution metadata is analyzed.
-          </p>
+          <p>{viewingHistory
+            ? "Reviewing recorded execution metadata. Current usage limits and live repository state are excluded."
+            : "Watching Claude Code quietly. Prompt and response text stay out of the dashboard; only execution metadata is analyzed."}</p>
         </div>
         <div className="sessionMeta">
-          <span>ELAPSED WALL TIME</span>
+          <span>{viewingHistory ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong>{data.session ? formatDuration(data.session.durationMs) : "—"}</strong>
-          <small>{data.session ? `Last event ${relativeTime(data.session.updatedAt)}` : "Auto-discovery enabled"}</small>
+          <small>{data.session ? viewingHistory ? `Ended ${sessionListTime(data.session.updatedAt || "")}` : `Last event ${relativeTime(data.session.updatedAt)}` : "Auto-discovery enabled"}</small>
         </div>
       </section>
 
       {data.error && <div className="notice"><span>!</span>{data.error}</div>}
 
       {data.session?.repository.available && (
-        <section className="panel gitPanel" aria-label="Git working tree">
+        <section className="panel gitPanel" aria-label={data.session.repository.historical ? "Recorded Git branch" : "Git working tree"}>
           <div className="gitSummary">
             <div>
-              <span className="label">GIT BRANCH</span>
+              <span className="label">{data.session.repository.historical ? "RECORDED BRANCH" : "GIT BRANCH"}</span>
               <h2>{data.session.repository.branch}</h2>
               <p title={data.session.cwd}>{data.session.project}</p>
             </div>
             <span className={`changeCount ${data.session.repository.files.length ? "dirty" : "clean"}`}>
-              {data.session.repository.files.length ? `${data.session.repository.files.length} uncommitted` : "Working tree clean"}
+              {data.session.repository.historical ? "File state not recorded" : data.session.repository.files.length ? `${data.session.repository.files.length} uncommitted` : "Working tree clean"}
             </span>
           </div>
-          {data.session.repository.files.length > 0 && (
+          {!data.session.repository.historical && data.session.repository.files.length > 0 && (
             <div className="gitFiles">
               {data.session.repository.files.map((file) => (
                 <div className="gitFile" key={`${file.status}-${file.path}`}>
@@ -406,7 +506,7 @@ export function Dashboard() {
         </section>
       )}
 
-      <section className="panel limitsPanel" aria-label="Claude usage limits">
+      {!viewingHistory && <section className="panel limitsPanel" aria-label="Claude usage limits">
         <div className="limitsHeader">
           <div><span className="label">CLAUDE PLAN</span><h2>Usage limits</h2></div>
           <span className="quiet">{data.usageLimits.fetchedAt ? `Checked ${relativeTime(data.usageLimits.fetchedAt)}` : "Connecting…"}</span>
@@ -424,7 +524,7 @@ export function Dashboard() {
             </article>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="summaryGrid" aria-label="Session summary">
         <article className="scoreCard panel">
@@ -440,8 +540,8 @@ export function Dashboard() {
 
         <article className="metric panel">
           <span className="metricIcon agentsIcon">⌁</span>
-          <div><span className="label">AGENTS</span><strong>{data.metrics.activeAgents}<small> / {data.metrics.agents}</small></strong></div>
-          <p>running now</p>
+          <div><span className="label">AGENTS</span><strong>{viewingHistory ? data.metrics.agents : data.metrics.activeAgents}{!viewingHistory && <small> / {data.metrics.agents}</small>}</strong></div>
+          <p>{viewingHistory ? "observed in session" : "running now"}</p>
         </article>
         <article className="metric panel toolMetric" ref={toolMetricRef}>
           <span className="metricIcon toolIcon">⌘</span>
@@ -507,13 +607,13 @@ export function Dashboard() {
         </article>
       </section>
 
-      <section className="panel tokenPanel" aria-label="Live token consumption">
+      <section className={`panel tokenPanel ${viewingHistory ? "historical" : ""}`} aria-label={viewingHistory ? "Recorded token consumption" : "Live token consumption"}>
         <div className="tokenLead">
           <div className="pulseBars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
           <div>
-            <span className="label">LIVE CONTEXT USE</span>
+            <span className="label">{viewingHistory ? "RECORDED CONTEXT" : "LIVE CONTEXT USE"}</span>
             <strong>{compactNumber(data.metrics.tokens.total)}</strong>
-            <p>latest primary-agent snapshot · +{compactNumber(data.metrics.tokens.lastMinute)} in the last 60 sec</p>
+            <p>{viewingHistory ? "latest recorded primary-agent snapshot" : <>latest primary-agent snapshot · +{compactNumber(data.metrics.tokens.lastMinute)} in the last 60 sec</>}</p>
           </div>
         </div>
         <div className="tokenRate">
@@ -568,7 +668,7 @@ export function Dashboard() {
                 </div>
                 <div className="agentTokens">
                   <strong>{compactNumber(agent.tokens.total)}</strong>
-                  <span>current context</span>
+                  <span>{viewingHistory ? "recorded context" : "current context"}</span>
                 </div>
                 <div className="agentDuration">
                   <strong>{formatAgentDuration(agent)}</strong>
@@ -600,7 +700,7 @@ export function Dashboard() {
 
       <section className="panel activityPanel">
         <div className="panelHeader">
-          <div><span className="label">EVENT STREAM</span><h2>Recent tool activity</h2></div>
+          <div><span className="label">EVENT STREAM</span><h2>{viewingHistory ? "Recorded tool activity" : "Recent tool activity"}</h2></div>
           <button className="textButton" onClick={() => refresh(false)} disabled={loading}>Refresh now</button>
         </div>
         <div className="activityTable">
@@ -618,10 +718,11 @@ export function Dashboard() {
       </section>
 
       <footer>
-        <span>Local-only observer · Read-only</span>
-        <span>{paused ? "Updates paused" : lastRefresh ? `Updated ${relativeTime(lastRefresh.toISOString())}` : "Connecting…"}</span>
+        <span>{viewingHistory ? "Historical transcript · Read-only" : "Local-only observer · Read-only"}</span>
+        <span>{viewingHistory ? "Archived session view" : paused ? "Updates paused" : lastRefresh ? `Updated ${relativeTime(lastRefresh.toISOString())}` : "Connecting…"}</span>
       </footer>
-    </main>
+      </main>
+    </div>
   );
 }
 

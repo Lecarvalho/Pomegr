@@ -26,6 +26,15 @@ body {
 button, a { font: inherit; }
 button { color: inherit; }
 
+.appFrame { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; }
+.sessionSidebar { position: sticky; top: 0; z-index: 20; height: 100vh; overflow: hidden; border-right: 1px solid var(--line); background: #eeece5; display: flex; flex-direction: column; }
+.sidebarHeader { min-height: 72px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }.sidebarHeader div > strong { display: block; margin-top: 4px; font: 400 20px/1 Georgia, serif; }.sidebarHeader > button { display: none; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; }
+.sessionNav { min-height: 0; display: flex; flex-direction: column; flex: 1; padding: 12px; }
+.sessionNav button { width: 100%; border: 0; text-align: left; cursor: pointer; }
+.liveSessionLink { min-height: 62px; padding: 11px 12px; border-radius: 9px; background: transparent; display: grid; grid-template-columns: 10px 1fr; align-items: center; gap: 10px; }.liveSessionLink > i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(39,120,90,.11); }.liveSessionLink span, .liveSessionLink strong, .liveSessionLink small { display: block; }.liveSessionLink strong { font-size: 12px; }.liveSessionLink small { max-width: 170px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 4px; color: var(--muted); font-size: 9px; }.liveSessionLink.selected, .historyList button.selected { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.historyHeading { padding: 21px 10px 8px; display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .12em; }.historyHeading small { font-size: 9px; }
+.historyList { min-height: 0; overflow-y: auto; scrollbar-width: thin; }.historyList > p { margin: 18px 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }.historyList button { min-height: 66px; padding: 10px 11px; border-radius: 8px; background: transparent; }.historyList button:hover { background: rgba(251,250,246,.65); }.historyList button strong, .historyList button span, .historyList button time { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.historyList button strong { font-size: 11px; }.historyList button span { margin-top: 4px; color: var(--muted); font-size: 9px; }.historyList button time { margin-top: 5px; color: #8a908c; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.sessionMenuButton { display: none; border: 0; background: transparent; color: var(--green); padding: 7px 4px; cursor: pointer; font-size: 11px; font-weight: 800; }.sidebarBackdrop { display: none; }
 .shell { width: min(1400px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; }
 .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
@@ -95,6 +104,7 @@ button { color: inherit; }
 .tokenLead strong { display: block; font: 400 31px/1 Georgia, serif; margin: 5px 0; }.tokenLead p { margin: 0; color: var(--muted); font-size: 10px; }
 .pulseBars { display: flex; align-items: flex-end; gap: 3px; width: 38px; height: 40px; }
 .pulseBars i { width: 4px; border-radius: 3px; background: var(--green); animation: pulse-wave 1.4s ease-in-out infinite; }
+.tokenPanel.historical .pulseBars i { animation: none; opacity: .45; }
 .pulseBars i:nth-child(1) { height: 12px; animation-delay: -.6s; }.pulseBars i:nth-child(2) { height: 27px; animation-delay: -.45s; }.pulseBars i:nth-child(3) { height: 38px; animation-delay: -.3s; }.pulseBars i:nth-child(4) { height: 21px; animation-delay: -.15s; }.pulseBars i:nth-child(5) { height: 9px; }
 @keyframes pulse-wave { 0%, 100% { opacity: .38; transform: scaleY(.7); } 50% { opacity: 1; transform: scaleY(1); } }
 .tokenStat { padding: 22px 14px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid var(--line); }
@@ -144,6 +154,9 @@ button { color: inherit; }
 .activityRow { min-height: 43px; border-bottom: 1px solid #e9e7e1; font-size: 11px; }.activityRow:last-child { border-bottom: 0; }.activityRow time { color: var(--muted); font-family: var(--font-geist-mono), monospace; }.activityRow strong { font-size: 11px; }.actor { display: flex; align-items: center; gap: 7px; }.actor i { width: 5px; height: 5px; background: var(--green); }.target { color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-geist-mono), monospace; }
 footer { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; }
 
+@media (max-width: 1100px) {
+  .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { transform: translateX(0); }.sidebarHeader > button { display: block; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }
+}
 @media (max-width: 980px) {
   .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(3, 1fr); }.scoreCard { grid-column: 1 / -1; }.tokenPanel { grid-template-columns: repeat(3, 1fr); }.tokenLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }.tokenRate { grid-column: span 2; }.contentGrid { grid-template-columns: 1fr; }
   .tokenPanel { grid-template-columns: 1.4fr .8fr; }.tokenLead { grid-column: auto; border-right: 1px solid var(--line); border-bottom: 0; }.tokenRate { grid-column: auto; }.cachePanel { grid-template-columns: repeat(4, 1fr); }.cacheLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }

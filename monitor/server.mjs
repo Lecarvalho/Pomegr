@@ -5,13 +5,15 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "./agent-metadata.mjs";
-import { findLatestSession, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { findLatestSession, findSessionById, listSessionFiles, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
 const EXPLICIT_SESSION = process.env.CLAUDE_SESSION_FILE;
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
+const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
+const sessionSummaryCache = new Map();
 let usageCache = { timestamp: 0, value: null, pending: null };
 
 function emptyUsageLimits(error = "") {
@@ -75,10 +77,10 @@ async function usageLimits() {
   return usageCache.pending;
 }
 
-function readJsonlTail(file) {
+function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
   if (!stat) return [];
-  const bytes = Math.min(stat.size, MAX_BYTES_PER_FILE);
+  const bytes = Math.min(stat.size, maxBytes);
   const buffer = Buffer.alloc(bytes);
   const fd = fs.openSync(file, "r");
   try { fs.readSync(fd, buffer, 0, bytes, Math.max(0, stat.size - bytes)); }
@@ -168,6 +170,14 @@ function gitState(cwd) {
   }
 }
 
+function recordedGitState(records) {
+  let branch = "";
+  for (const record of records) {
+    if (typeof record.gitBranch === "string") branch = record.gitBranch;
+  }
+  return { available: Boolean(branch), branch, files: [], historical: true };
+}
+
 function sessionTitle(records) {
   let aiTitle = "";
   let customTitle = "";
@@ -176,6 +186,32 @@ function sessionTitle(records) {
     if (record.type === "custom-title") customTitle = record.customTitle || record.title || record.name || customTitle;
   }
   return customTitle || aiTitle || "Untitled session";
+}
+
+function sessionCatalog() {
+  const liveFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
+  const files = listSessionFiles(CLAUDE_PROJECTS).slice(0, 50);
+  if (liveFile && !files.some(({ file }) => file === liveFile)) {
+    files.unshift({ file: liveFile, activityMs: statSafe(liveFile)?.mtimeMs || 0 });
+  }
+
+  return files.slice(0, 50).flatMap(({ file, activityMs }) => {
+    const stat = statSafe(file);
+    if (!stat) return [];
+    const cacheKey = `${stat.size}:${stat.mtimeMs}:${activityMs}`;
+    const cached = sessionSummaryCache.get(file);
+    if (cached?.key === cacheKey) return [{ ...cached.value, isLive: file === liveFile }];
+    const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
+    const value = {
+      id: path.basename(file, ".jsonl"),
+      title: sessionTitle(records),
+      project: projectName(file, records),
+      updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
+      isLive: file === liveFile,
+    };
+    sessionSummaryCache.set(file, { key: cacheKey, value });
+    return [value];
+  });
 }
 
 function runtimeMetadata(records) {
@@ -189,11 +225,19 @@ function runtimeMetadata(records) {
   return { model, effort };
 }
 
-async function analyze(refreshUsage = false) {
-  const mainFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
+async function analyze(refreshUsage = false, requestedSessionId = "") {
+  const liveFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
+  const explicitMatch = EXPLICIT_SESSION
+    && path.basename(EXPLICIT_SESSION, ".jsonl") === requestedSessionId
+    && fs.existsSync(EXPLICIT_SESSION)
+    ? EXPLICIT_SESSION
+    : null;
+  const mainFile = requestedSessionId ? explicitMatch || findSessionById(CLAUDE_PROJECTS, requestedSessionId) : liveFile;
+  const historical = Boolean(requestedSessionId);
   if (!mainFile) return {
     connected: true,
     source: "Claude Code",
+    view: historical ? "history" : "live",
     session: null,
     score: 100,
     metrics: {
@@ -204,8 +248,8 @@ async function analyze(refreshUsage = false) {
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
     agents: [], toolPatterns: [], loops: [], activity: [], insights: [],
-    usageLimits: refreshUsage ? await usageLimits() : cachedUsageLimits(),
-    error: `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
+    usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
+    error: requestedSessionId ? "The selected historical session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
 
   const sessionId = path.basename(mainFile, ".jsonl");
@@ -286,13 +330,13 @@ async function analyze(refreshUsage = false) {
       parentId: actor.parentId,
       model: runtime.model,
       effort: runtime.effort,
-      status: statusFor(stat.mtimeMs),
+      status: historical ? "idle" : statusFor(stat.mtimeMs),
       toolCalls: calls,
       lastSeen: stat.mtime.toISOString(),
       ...timing,
     });
   }
-  applyWaitingStatus(agents);
+  if (!historical) applyWaitingStatus(agents);
 
   const groupedTools = [...signatureMap.values()].sort((a, b) => b.count - a.count);
   const loops = groupedTools.filter((item) => item.count >= 3);
@@ -383,8 +427,8 @@ async function analyze(refreshUsage = false) {
     lastMinute: cumulativeUsage.lastMinute,
   };
   const cwd = projectCwd(mainRecords);
-  const repository = gitState(cwd);
-  const currentUsageLimits = refreshUsage ? await usageLimits() : cachedUsageLimits();
+  const repository = historical ? recordedGitState(mainRecords) : { ...gitState(cwd), historical: false };
+  const currentUsageLimits = historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits();
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   allEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
@@ -392,6 +436,7 @@ async function analyze(refreshUsage = false) {
   return {
     connected: true,
     source: "Claude Code",
+    view: historical ? "history" : "live",
     session: {
       id: sessionId,
       title: sessionTitle(mainRecords),
@@ -419,11 +464,22 @@ const server = http.createServer(async (request, response) => {
   response.setHeader("Cache-Control", "no-store");
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+  if (requestUrl.pathname === "/api/sessions") {
+    try {
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ sessions: sessionCatalog() }));
+    } catch (error) {
+      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ sessions: [], error: error instanceof Error ? error.message : "Session catalog error" }));
+    }
+    return;
+  }
   if (requestUrl.pathname === "/api/state") {
     try {
       const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
+      const sessionId = requestUrl.searchParams.get("sessionId") || "";
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(await analyze(refreshUsage)));
+      response.end(JSON.stringify(await analyze(refreshUsage && !sessionId, sessionId)));
     } catch (error) {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ ...analyzeEmpty(), error: error instanceof Error ? error.message : "Monitor error" }));
@@ -438,6 +494,7 @@ function analyzeEmpty() {
   return {
     connected: false,
     source: "Claude Code",
+    view: "live",
     session: null,
     score: 100,
     metrics: {
