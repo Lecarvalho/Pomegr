@@ -33,6 +33,8 @@ Waiting status propagates through the recorded parent-child hierarchy. The other
 
 The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
 
+Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
+
 ## Session duration
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.

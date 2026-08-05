@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "../monitor/agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "../monitor/agent-metadata.mjs";
 
 function launchRecords(toolId, agentId, description) {
   return [
@@ -43,6 +43,19 @@ test("records the transcript owner as the launched agent's parent", () => {
 test("leaves the parent unresolved when launch metadata is unavailable", () => {
   const fallback = fallbackAgentMetadata([{ type: "user", message: { content: "You are the security reviewer for this task." } }]);
   assert.equal(fallback.parentId, null);
+});
+
+test("measures an agent's recorded wall time from its own timestamps", () => {
+  const timing = agentTiming([
+    { timestamp: "2026-08-05T12:00:00.000Z" },
+    { message: { timestamp: "2026-08-05T12:03:05.000Z" } },
+  ], "2026-08-05T12:10:00.000Z");
+
+  assert.deepEqual(timing, {
+    startedAt: "2026-08-05T12:00:00.000Z",
+    updatedAt: "2026-08-05T12:03:05.000Z",
+    durationMs: 185_000,
+  });
 });
 
 test("propagates waiting status from an active descendant through its parents", () => {

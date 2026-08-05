@@ -38,6 +38,24 @@ export function fallbackAgentMetadata(records) {
   return { description, kind, parentId: null };
 }
 
+export function agentTiming(records, fallbackTimestamp) {
+  const timestamps = records
+    .map((record) => record.timestamp || record.message?.timestamp)
+    .map((timestamp) => new Date(timestamp).getTime())
+    .filter(Number.isFinite);
+  const fallback = new Date(fallbackTimestamp).getTime();
+  const startedAtMs = timestamps.length ? Math.min(...timestamps) : fallback;
+  const updatedAtMs = timestamps.length ? Math.max(...timestamps) : fallback;
+  const safeStartedAtMs = Number.isFinite(startedAtMs) ? startedAtMs : 0;
+  const safeUpdatedAtMs = Number.isFinite(updatedAtMs) ? updatedAtMs : safeStartedAtMs;
+
+  return {
+    startedAt: new Date(safeStartedAtMs).toISOString(),
+    updatedAt: new Date(safeUpdatedAtMs).toISOString(),
+    durationMs: Math.max(0, safeUpdatedAtMs - safeStartedAtMs),
+  };
+}
+
 export function applyWaitingStatus(agents) {
   const liveAgentIds = new Set(
     agents.filter((agent) => agent.status === "active").map((agent) => agent.id),

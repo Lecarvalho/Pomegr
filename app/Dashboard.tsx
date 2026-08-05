@@ -12,6 +12,9 @@ type Agent = {
   status: "active" | "waiting" | "warm" | "idle";
   toolCalls: number;
   lastSeen: string;
+  startedAt: string;
+  updatedAt: string;
+  durationMs: number;
   tokens: {
     total: number;
     cumulative: number;
@@ -161,6 +164,19 @@ function formatDuration(milliseconds: number) {
   const minutes = totalMinutes % 60;
   if (hours === 0) return `${minutes}m`;
   return `${hours}h ${minutes}m`;
+}
+
+function formatAgentDuration(agent: Agent) {
+  const startedAt = new Date(agent.startedAt).getTime();
+  const isRunning = agent.status === "active" || agent.status === "waiting";
+  const liveDuration = isRunning && Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
+  const totalSeconds = Math.max(0, Math.floor(Math.max(agent.durationMs, liveDuration) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function gitStatusLabel(status: string) {
@@ -515,6 +531,10 @@ export function Dashboard() {
                 <div className="agentTokens">
                   <strong>{compactNumber(agent.tokens.total)}</strong>
                   <span>current context</span>
+                </div>
+                <div className="agentDuration">
+                  <strong>{formatAgentDuration(agent)}</strong>
+                  <span>wall time</span>
                 </div>
                 <span className={`statusPill ${agent.status}`}><i />{agent.status}</span>
                 <time>{relativeTime(agent.lastSeen)}</time>
