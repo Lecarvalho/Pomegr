@@ -10,7 +10,7 @@ type Agent = {
   kind: string;
   model: string;
   effort: string;
-  status: "active" | "waiting" | "warm" | "idle";
+  status: "active" | "waiting" | "warm" | "finished" | "idle";
   toolCalls: number;
   lastSeen: string;
   startedAt: string;

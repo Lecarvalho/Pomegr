@@ -26,10 +26,11 @@ All-agent context is not historical throughput. Earlier repeated cache reads are
 
 - `active` — updated within 45 seconds
 - `waiting` — has an active descendant and is waiting for that work to return
+- `finished` — a subagent transcript ends with `end_turn` or `stop_sequence`
 - `warm` — updated within 5 minutes
 - `idle` — older than 5 minutes
 
-Waiting status propagates through the recorded parent-child hierarchy. The other states describe transcript activity, not guaranteed process state.
+Finished subagents are detected directly from their final assistant record and turn gray on the next poll. If a finished subagent is resumed and receives a new record, it returns to an activity-based state. Waiting status propagates through the recorded parent-child hierarchy. Primary agents and older transcript formats without a terminal marker continue to use modification-time state as a fallback.
 
 The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
 

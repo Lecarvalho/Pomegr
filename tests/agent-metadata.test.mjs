@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "../monitor/agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isAgentTranscriptFinished, isRunningAgent } from "../monitor/agent-metadata.mjs";
 
 function launchRecords(toolId, agentId, description) {
   return [
@@ -58,12 +58,32 @@ test("measures an agent's recorded wall time from its own timestamps", () => {
   });
 });
 
+test("detects a finished subagent from the final transcript stop reason", () => {
+  const final = { type: "assistant", message: { role: "assistant", stop_reason: "end_turn" } };
+  assert.equal(isAgentTranscriptFinished([final]), true);
+  assert.equal(isAgentTranscriptFinished([
+    { type: "assistant", message: { role: "assistant", stop_reason: "stop_sequence" } },
+    { type: "system", subtype: "turn_duration" },
+  ]), true);
+});
+
+test("does not keep a resumed or tool-using subagent marked finished", () => {
+  const final = { type: "assistant", message: { role: "assistant", stop_reason: "end_turn" } };
+  assert.equal(isAgentTranscriptFinished([
+    final,
+    { type: "user", message: { role: "user", content: "Continue" } },
+  ]), false);
+  assert.equal(isAgentTranscriptFinished([
+    { type: "assistant", message: { role: "assistant", stop_reason: "tool_use" } },
+  ]), false);
+});
+
 test("propagates waiting status from an active descendant through its parents", () => {
   const agents = [
     { id: "primary", parentId: null, status: "idle" },
     { id: "parent", parentId: "primary", status: "idle" },
     { id: "child", parentId: "parent", status: "active" },
-    { id: "finished", parentId: "primary", status: "idle" },
+    { id: "finished", parentId: "primary", status: "finished" },
   ];
 
   applyWaitingStatus(agents);
@@ -71,6 +91,6 @@ test("propagates waiting status from an active descendant through its parents", 
   assert.equal(agents[0].status, "waiting");
   assert.equal(agents[1].status, "waiting");
   assert.equal(agents[2].status, "active");
-  assert.equal(agents[3].status, "idle");
+  assert.equal(agents[3].status, "finished");
   assert.equal(agents.filter(isRunningAgent).length, 3);
 });

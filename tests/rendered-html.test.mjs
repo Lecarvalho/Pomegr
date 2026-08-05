@@ -44,6 +44,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(layout, /title: "Threadlight"/);
   assert.match(dashboard, /\$\{agent\.status\}Agent/);
   assert.match(styles, /\.agentRow\.idleAgent/);
+  assert.match(styles, /\.agentRow\.finishedAgent/);
   assert.match(dashboard, /60_000/);
   assert.match(dashboard, /refresh\(true\)/);
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);

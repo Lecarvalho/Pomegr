@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "./agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isAgentTranscriptFinished, isRunningAgent } from "./agent-metadata.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
@@ -337,6 +337,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     }
     const runtime = runtimeMetadata(records);
     const timing = agentTiming(records, stat.mtime.toISOString());
+    const finished = file !== mainFile && isAgentTranscriptFinished(records);
     agents.push({
       id: actor.id,
       label: actor.label,
@@ -344,7 +345,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       parentId: actor.parentId,
       model: runtime.model,
       effort: runtime.effort,
-      status: historical ? "idle" : statusFor(stat.mtimeMs),
+      status: historical ? "idle" : finished ? "finished" : statusFor(stat.mtimeMs),
       toolCalls: calls,
       lastSeen: stat.mtime.toISOString(),
       ...timing,

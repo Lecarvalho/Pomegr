@@ -112,7 +112,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and provider-
 - The monitor currently supports Claude Code session files only.
 - Session duration is elapsed wall time and includes idle periods.
 - History is limited to the 49 most recent non-live transcript sessions.
-- Agent state is inferred from transcript modification time.
+- Subagent completion uses transcript stop reasons, with modification time as a fallback.
 - Efficiency warnings are heuristics, not authoritative judgments.
 - Transcript parsing reads a bounded tail of each file.
 

@@ -4,6 +4,19 @@ function toolResultText(content) {
   return content.map((item) => typeof item === "string" ? item : item?.text || "").join(" ");
 }
 
+const FINISHED_STOP_REASONS = new Set(["end_turn", "stop_sequence"]);
+
+export function isAgentTranscriptFinished(records) {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    const role = record.message?.role;
+    if (record.type !== "assistant" && record.type !== "user" && role !== "assistant" && role !== "user") continue;
+    if (role === "user" || record.type === "user") return false;
+    return FINISHED_STOP_REASONS.has(record.message?.stop_reason);
+  }
+  return false;
+}
+
 export function buildAgentMetadata(records, parentId) {
   const launches = new Map();
   const agents = new Map();
