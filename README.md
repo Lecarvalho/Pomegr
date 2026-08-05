@@ -8,7 +8,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 - Session title, project, elapsed wall time, and last activity
 - Primary-agent and all-agent current context usage
-- Subagent descriptions, model IDs, effort levels, status, and tool counts
+- Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses

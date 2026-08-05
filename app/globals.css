@@ -97,10 +97,12 @@ button { color: inherit; }
 .agentsPanel, .insightPanel { min-height: 340px; }
 .panelHeader { padding: 20px 21px 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .panelHeader h2 { font-size: 21px; }.quiet { font-size: 11px; color: var(--muted); }
-.agentList { padding: 5px 21px 12px; }
-.agentRow { min-height: 64px; display: grid; grid-template-columns: 25px 1fr 124px auto 72px; align-items: center; border-bottom: 1px solid #e7e5df; }
+.agentList { padding: 5px 21px 12px; overflow-x: auto; }
+.agentRow { --agent-indent: 0px; min-height: 64px; display: grid; grid-template-columns: calc(25px + var(--agent-indent)) 1fr 124px auto 72px; align-items: center; border-bottom: 1px solid #e7e5df; }
 .agentRow:last-child { border-bottom: 0; }
-.treeRail { align-self: stretch; position: relative; border-left: 1px solid #d8d7d0; margin-left: 6px; display: flex; align-items: center; }
+.treeRail { align-self: stretch; position: relative; border-left: 1px solid #d8d7d0; margin-left: calc(6px + var(--agent-indent)); display: flex; align-items: center; }
+.childAgent .treeRail::before { content: ""; position: absolute; left: -20px; top: 0; bottom: 0; border-left: 1px solid #d8d7d0; }
+.childAgent .treeRail::after { content: ""; position: absolute; width: 20px; left: -20px; top: 50%; border-top: 1px solid #d8d7d0; }
 .treeRail span { width: 9px; height: 9px; margin-left: -5px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--green); background: var(--green); }
 .treeRail .agentNode { background: var(--panel); }
 .agentIdentity strong { display: block; font-size: 13px; }.agentIdentity span { color: var(--muted); font-size: 10px; }
@@ -125,5 +127,5 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
   .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(3, 1fr); }.scoreCard { grid-column: 1 / -1; }.tokenPanel { grid-template-columns: repeat(3, 1fr); }.tokenLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }.tokenRate { grid-column: span 2; }.contentGrid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
-  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.hero { padding: 44px 0 28px; display: block; }.hero h1 { font-size: 42px; }.sessionMeta { text-align: left; border-right: 0; border-left: 3px solid var(--green); padding: 0 0 0 13px; margin-top: 25px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.tokenPanel { grid-template-columns: repeat(2, 1fr); }.tokenLead { grid-column: 1 / -1; }.tokenStat { min-height: 82px; }.tokenRate { grid-column: 1 / -1; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.agentRow { grid-template-columns: 25px 1fr 70px auto; }.agentRow time { display: none; }.agentTokens { padding-right: 8px; } footer { gap: 10px; }
+  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.hero { padding: 44px 0 28px; display: block; }.hero h1 { font-size: 42px; }.sessionMeta { text-align: left; border-right: 0; border-left: 3px solid var(--green); padding: 0 0 0 13px; margin-top: 25px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.tokenPanel { grid-template-columns: repeat(2, 1fr); }.tokenLead { grid-column: 1 / -1; }.tokenStat { min-height: 82px; }.tokenRate { grid-column: 1 / -1; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.agentRow { grid-template-columns: calc(25px + var(--agent-indent)) 1fr 70px auto; }.agentRow time { display: none; }.agentTokens { padding-right: 8px; } footer { gap: 10px; }
 }

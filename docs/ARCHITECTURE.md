@@ -42,7 +42,7 @@ The React dashboard polls `/api/state` approximately every 1.8 seconds. The serv
 
 - `session` — title, project, timestamps, repository
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, runtime settings, state, tokens
+- `agents` — identity, parent relationship, runtime settings, state, tokens
 - `activity` — sanitized tool events
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets

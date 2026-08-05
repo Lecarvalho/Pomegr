@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { buildAgentMetadata, fallbackAgentMetadata } from "./agent-metadata.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -124,47 +125,8 @@ function signature(tool, input = {}) {
   return `${tool}:${String(important).replace(/\s+/g, " ").trim().toLowerCase()}`;
 }
 
-function toolResultText(content) {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((item) => typeof item === "string" ? item : item?.text || "").join(" ");
-}
-
-function buildAgentMetadata(records) {
-  const launches = new Map();
-  const agents = new Map();
-  for (const record of records) {
-    if (!Array.isArray(record.message?.content)) continue;
-    for (const content of record.message.content) {
-      if (record.type === "assistant" && content.type === "tool_use" && content.name === "Agent") {
-        launches.set(content.id, {
-          description: content.input?.description || "Subagent",
-          kind: content.input?.subagent_type || "subagent",
-        });
-      }
-      if (record.type === "user" && content.type === "tool_result") {
-        const match = toolResultText(content.content).match(/agentId:\s*([a-f0-9]+)/i);
-        const launch = launches.get(content.tool_use_id);
-        if (match && launch) agents.set(match[1], launch);
-      }
-    }
-  }
-  return agents;
-}
-
-function fallbackAgentMetadata(records) {
-  const prompt = records.find((record) => record.type === "user" && typeof record.message?.content === "string")?.message.content || "";
-  const match = prompt.match(/^You are\s+(?:the\s+)?(.{3,80}?)(?=\s+(?:of|for|on|tasked)\b|[.!:\n])/i);
-  const rawDescription = match?.[1]?.replace(/\s+/g, " ").trim();
-  const description = rawDescription
-    ? rawDescription.charAt(0).toUpperCase() + rawDescription.slice(1).toLowerCase()
-    : "Subagent";
-  const kind = records.find((record) => typeof record.attributionAgent === "string")?.attributionAgent || "subagent";
-  return { description, kind };
-}
-
 function actorFor(file, mainFile, metadata) {
-  if (file === mainFile) return { id: "primary", label: "Primary agent", kind: "orchestrator" };
+  if (file === mainFile) return { id: "primary", label: "Primary agent", kind: "orchestrator", parentId: null };
   const id = path.basename(file, ".jsonl");
   const agentId = id.replace(/^agent-/, "");
   const resolved = metadata.get(agentId);
@@ -172,6 +134,7 @@ function actorFor(file, mainFile, metadata) {
     id,
     label: resolved?.description || "Unnamed subagent",
     kind: resolved?.kind || "subagent",
+    parentId: resolved?.parentId || null,
   };
 }
 
@@ -270,8 +233,9 @@ async function analyze() {
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
   const agentMetadata = new Map();
-  for (const records of recordsByFile.values()) {
-    for (const [agentId, metadata] of buildAgentMetadata(records)) agentMetadata.set(agentId, metadata);
+  for (const [file, records] of recordsByFile) {
+    const parentId = file === mainFile ? "primary" : path.basename(file, ".jsonl");
+    for (const [agentId, metadata] of buildAgentMetadata(records, parentId)) agentMetadata.set(agentId, metadata);
   }
   for (const [file, records] of recordsByFile) {
     if (file === mainFile) continue;
@@ -337,6 +301,7 @@ async function analyze() {
       id: actor.id,
       label: actor.label,
       kind: actor.kind,
+      parentId: actor.parentId,
       model: runtime.model,
       effort: runtime.effort,
       status: statusFor(stat.mtimeMs),

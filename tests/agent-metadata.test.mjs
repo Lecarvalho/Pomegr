@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildAgentMetadata, fallbackAgentMetadata } from "../monitor/agent-metadata.mjs";
+
+function launchRecords(toolId, agentId, description) {
+  return [
+    {
+      type: "assistant",
+      message: { content: [{
+        type: "tool_use",
+        id: toolId,
+        name: "Agent",
+        input: { description, subagent_type: "general-purpose" },
+      }] },
+    },
+    {
+      type: "user",
+      message: { content: [{
+        type: "tool_result",
+        tool_use_id: toolId,
+        content: [{ type: "text", text: `Agent launched successfully. agentId: ${agentId}` }],
+      }] },
+    },
+  ];
+}
+
+test("records the transcript owner as the launched agent's parent", () => {
+  const primaryLaunch = buildAgentMetadata(launchRecords("tool-1", "parent123", "Red-team slice"), "primary");
+  const nestedLaunch = buildAgentMetadata(launchRecords("tool-2", "child456", "Security lens"), "agent-parent123");
+
+  assert.deepEqual(primaryLaunch.get("parent123"), {
+    description: "Red-team slice",
+    kind: "general-purpose",
+    parentId: "primary",
+  });
+  assert.deepEqual(nestedLaunch.get("child456"), {
+    description: "Security lens",
+    kind: "general-purpose",
+    parentId: "agent-parent123",
+  });
+});
+
+test("leaves the parent unresolved when launch metadata is unavailable", () => {
+  const fallback = fallbackAgentMetadata([{ type: "user", message: { content: "You are the security reviewer for this task." } }]);
+  assert.equal(fallback.parentId, null);
+});

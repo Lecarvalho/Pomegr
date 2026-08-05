@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 type Agent = {
   id: string;
+  parentId: string | null;
   label: string;
   kind: string;
   model: string;
@@ -163,6 +164,36 @@ function resetCountdown(value: string | null) {
   return `Resets in ${minutes}m`;
 }
 
+function agentTreeRows(agents: Agent[]) {
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  const children = new Map<string, Agent[]>();
+  const roots: Agent[] = [];
+
+  for (const agent of agents) {
+    if (agent.parentId && agent.parentId !== agent.id && byId.has(agent.parentId)) {
+      const siblings = children.get(agent.parentId) || [];
+      siblings.push(agent);
+      children.set(agent.parentId, siblings);
+    } else {
+      roots.push(agent);
+    }
+  }
+
+  roots.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : 0));
+  const rows: Array<{ agent: Agent; depth: number }> = [];
+  const visited = new Set<string>();
+  const visit = (agent: Agent, depth: number) => {
+    if (visited.has(agent.id)) return;
+    visited.add(agent.id);
+    rows.push({ agent, depth });
+    for (const child of children.get(agent.id) || []) visit(child, depth + 1);
+  };
+
+  for (const root of roots) visit(root, 0);
+  for (const agent of agents) visit(agent, 0);
+  return rows;
+}
+
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
   const [paused, setPaused] = useState(false);
@@ -201,6 +232,7 @@ export function Dashboard() {
   const ringStyle = {
     background: `conic-gradient(var(--green) ${data.score * 3.6}deg, var(--line) 0deg)`,
   };
+  const agentRows = agentTreeRows(data.agents);
 
   return (
     <main className="shell">
@@ -351,9 +383,13 @@ export function Dashboard() {
           </div>
           <div className="agentList">
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
-            {data.agents.map((agent, index) => (
-              <div className="agentRow" key={agent.id}>
-                <div className="treeRail"><span className={index === 0 ? "primaryNode" : "agentNode"} /></div>
+            {agentRows.map(({ agent, depth }) => (
+              <div
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"}`}
+                key={agent.id}
+                style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
+              >
+                <div className="treeRail"><span className={agent.id === "primary" ? "primaryNode" : "agentNode"} /></div>
                 <div className="agentIdentity">
                   <strong>{agent.label}</strong>
                   <span>{agent.kind} · {agent.model} · {agent.effort} effort · {agent.toolCalls} tools</span>
