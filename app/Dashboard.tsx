@@ -179,6 +179,17 @@ function stateEndpoint(sessionId: string | null, refreshUsage = false) {
   return `/api/state${params.size ? `?${params}` : ""}`;
 }
 
+function groupSessionsByProject(sessions: SessionSummary[]) {
+  const groups = new Map<string, SessionSummary[]>();
+  for (const session of sessions) {
+    const project = session.project || "Unknown project";
+    const projectSessions = groups.get(project) || [];
+    projectSessions.push(session);
+    groups.set(project, projectSessions);
+  }
+  return [...groups].map(([project, projectSessions]) => ({ project, sessions: projectSessions }));
+}
+
 function compactNumber(value: number) {
   return new Intl.NumberFormat(undefined, {
     notation: value >= 10_000 ? "compact" : "standard",
@@ -370,6 +381,7 @@ export function Dashboard() {
   const loopPatterns = data.loops || [];
   const viewingHistory = Boolean(selectedSessionId) || data.view === "history";
   const historySessions = sessions.filter((session) => !session.isLive);
+  const historyGroups = groupSessionsByProject(historySessions);
   const liveSession = sessions.find((session) => session.isLive);
 
   const generateReport = async () => {
@@ -426,18 +438,22 @@ export function Dashboard() {
           <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
           <div className="historyList">
             {historySessions.length === 0 && <p>No previous sessions found.</p>}
-            {historySessions.map((session) => (
-              <button
-                type="button"
-                className={selectedSessionId === session.id ? "selected" : ""}
-                key={session.id}
-                onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "history" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
-                aria-current={selectedSessionId === session.id ? "page" : undefined}
-              >
-                <strong>{session.title}</strong>
-                <span>{session.project}</span>
-                <time>{sessionListTime(session.updatedAt)}</time>
-              </button>
+            {historyGroups.map((group) => (
+              <section className="historyProject" key={group.project}>
+                <div className="historyProjectHeader"><strong title={group.project}>{group.project}</strong><small>{group.sessions.length}</small></div>
+                {group.sessions.map((session) => (
+                  <button
+                    type="button"
+                    className={selectedSessionId === session.id ? "selected" : ""}
+                    key={session.id}
+                    onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "history" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
+                    aria-current={selectedSessionId === session.id ? "page" : undefined}
+                  >
+                    <strong>{session.title}</strong>
+                    <time>{sessionListTime(session.updatedAt)}</time>
+                  </button>
+                ))}
+              </section>
             ))}
           </div>
         </nav>
