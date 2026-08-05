@@ -100,6 +100,13 @@ button { color: inherit; }
 .agentList { padding: 5px 21px 12px; overflow-x: auto; }
 .agentRow { --agent-indent: 0px; min-height: 64px; display: grid; grid-template-columns: calc(25px + var(--agent-indent)) 1fr 124px auto 72px; align-items: center; border-bottom: 1px solid #e7e5df; }
 .agentRow:last-child { border-bottom: 0; }
+.agentRow.idleAgent { color: #8a908c; background: rgba(111,120,115,.035); }
+.agentRow.idleAgent .agentIdentity span, .agentRow.idleAgent .agentTokens span, .agentRow.idleAgent time { color: #9ba09d; }
+.agentRow.idleAgent .treeRail { border-left-color: #cfd1cd; }
+.agentRow.idleAgent .treeRail::before, .agentRow.idleAgent .treeRail::after { border-color: #cfd1cd; }
+.agentRow.idleAgent .treeRail span { background: #a8ada9; box-shadow: 0 0 0 1px #a8ada9; }
+.agentRow.idleAgent .treeRail .agentNode { background: var(--panel); }
+.agentRow.idleAgent .statusPill i { background: #a8ada9; }
 .treeRail { align-self: stretch; position: relative; border-left: 1px solid #d8d7d0; margin-left: calc(6px + var(--agent-indent)); display: flex; align-items: center; }
 .childAgent .treeRail::before { content: ""; position: absolute; left: -20px; top: 0; bottom: 0; border-left: 1px solid #d8d7d0; }
 .childAgent .treeRail::after { content: ""; position: absolute; width: 20px; left: -20px; top: 50%; border-top: 1px solid #d8d7d0; }

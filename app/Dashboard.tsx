@@ -385,7 +385,7 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"}`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
