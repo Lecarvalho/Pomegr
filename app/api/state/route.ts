@@ -35,6 +35,7 @@ export async function GET(request: Request) {
           tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
         },
         agents: [],
+        toolPatterns: [],
         loops: [],
         activity: [],
         insights: [],

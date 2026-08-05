@@ -203,7 +203,7 @@ async function analyze(refreshUsage = false) {
       repeatedCalls: 0,
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
-    agents: [], loops: [], activity: [], insights: [],
+    agents: [], toolPatterns: [], loops: [], activity: [], insights: [],
     usageLimits: refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
@@ -292,9 +292,8 @@ async function analyze(refreshUsage = false) {
   }
   applyWaitingStatus(agents);
 
-  const loops = [...signatureMap.values()]
-    .filter((item) => item.count >= 3)
-    .sort((a, b) => b.count - a.count);
+  const groupedTools = [...signatureMap.values()].sort((a, b) => b.count - a.count);
+  const loops = groupedTools.filter((item) => item.count >= 3);
   const overlaps = [...targetActors.values()].filter((item) => item.actors.size >= 2 && item.calls >= 3);
   const insights = [];
   for (const loop of loops.slice(0, 3)) insights.push({
@@ -317,6 +316,13 @@ async function analyze(refreshUsage = false) {
   });
 
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
+  const toolPatterns = groupedTools.map((item) => ({
+    id: crypto.createHash("sha1").update(`${item.actor.id}|${item.tool}|${item.detail}`).digest("hex").slice(0, 12),
+    agent: item.actor.label,
+    tool: item.tool,
+    detail: item.detail,
+    calls: item.count,
+  }));
   const loopPatterns = loops.map((loop) => ({
     id: crypto.createHash("sha1").update(`${loop.actor.id}|${loop.tool}|${loop.detail}`).digest("hex").slice(0, 12),
     agent: loop.actor.label,
@@ -397,6 +403,7 @@ async function analyze(refreshUsage = false) {
     score,
     metrics: { agents: agents.length, activeAgents, toolCalls: allEvents.length, repeatedCalls, tokens: tokenUsage },
     agents,
+    toolPatterns,
     loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
     insights,
@@ -438,7 +445,7 @@ function analyzeEmpty() {
       repeatedCalls: 0,
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
-    agents: [], loops: [], activity: [], insights: [], usageLimits: emptyUsageLimits(),
+    agents: [], toolPatterns: [], loops: [], activity: [], insights: [], usageLimits: emptyUsageLimits(),
   };
 }
 

@@ -41,6 +41,10 @@ Elapsed wall time is the difference between the earliest and latest recorded tim
 
 A signature combines agent, tool name, and important target. Three or more identical signatures produce a repetition insight. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. The dashboard popover lists every grouped pattern with sanitized agent, tool, target, total-call, and repeated-call metadata.
 
+## Tool calls
+
+`toolCalls` counts every observed tool invocation in the session. Its dashboard popover groups those calls by agent, tool name, and sanitized target; the grouped call counts always sum to the headline total. Prompt text, response text, and full command contents are not exposed.
+
 ## Agent overlap
 
 An overlap insight appears when at least two agents access the same normalized path across at least three tool calls. This signals possible duplication, not necessarily waste.

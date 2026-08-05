@@ -47,6 +47,14 @@ type LoopPattern = {
   repeats: number;
 };
 
+type ToolPattern = {
+  id: string;
+  agent: string;
+  tool: string;
+  detail: string;
+  calls: number;
+};
+
 type MonitorState = {
   connected: boolean;
   source: string;
@@ -82,6 +90,7 @@ type MonitorState = {
     };
   };
   agents: Agent[];
+  toolPatterns: ToolPattern[];
   loops: LoopPattern[];
   activity: Activity[];
   insights: Insight[];
@@ -115,6 +124,7 @@ const EMPTY: MonitorState = {
     tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
   },
   agents: [],
+  toolPatterns: [],
   loops: [],
   activity: [],
   insights: [],
@@ -210,9 +220,10 @@ export function Dashboard() {
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [loopsOpen, setLoopsOpen] = useState(false);
+  const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
   const pageLoadedAt = useRef<number | null>(null);
   const usageRequested = useRef(false);
+  const toolMetricRef = useRef<HTMLElement | null>(null);
   const loopMetricRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async (refreshUsage = false) => {
@@ -245,12 +256,13 @@ export function Dashboard() {
   }, [paused, refresh]);
 
   useEffect(() => {
-    if (!loopsOpen) return;
+    if (!openMetric) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!loopMetricRef.current?.contains(event.target as Node)) setLoopsOpen(false);
+      const activeRef = openMetric === "tools" ? toolMetricRef : loopMetricRef;
+      if (!activeRef.current?.contains(event.target as Node)) setOpenMetric(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setLoopsOpen(false);
+      if (event.key === "Escape") setOpenMetric(null);
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -258,7 +270,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [loopsOpen]);
+  }, [openMetric]);
 
   useEffect(() => {
     pageLoadedAt.current ??= Date.now();
@@ -277,6 +289,7 @@ export function Dashboard() {
     background: `conic-gradient(var(--green) ${data.score * 3.6}deg, var(--line) 0deg)`,
   };
   const agentRows = agentTreeRows(data.agents);
+  const toolPatterns = data.toolPatterns || [];
   const loopPatterns = data.loops || [];
 
   return (
@@ -376,10 +389,36 @@ export function Dashboard() {
           <div><span className="label">AGENTS</span><strong>{data.metrics.activeAgents}<small> / {data.metrics.agents}</small></strong></div>
           <p>running now</p>
         </article>
-        <article className="metric panel">
+        <article className="metric panel toolMetric" ref={toolMetricRef}>
           <span className="metricIcon toolIcon">⌘</span>
           <div><span className="label">TOOL CALLS</span><strong>{data.metrics.toolCalls}</strong></div>
-          <p>in this session</p>
+          <div className="metricFooter">
+            <span>across {toolPatterns.length} grouped {toolPatterns.length === 1 ? "pattern" : "patterns"}</span>
+            <button
+              type="button"
+              onClick={() => setOpenMetric((open) => open === "tools" ? null : "tools")}
+              disabled={toolPatterns.length === 0}
+              aria-expanded={openMetric === "tools"}
+              aria-controls="tool-calls-popover"
+            >View list</button>
+          </div>
+          {openMetric === "tools" && (
+            <div className="metricPopover" id="tool-calls-popover" role="dialog" aria-label="Tool call breakdown">
+              <div className="metricPopoverHeader">
+                <div><span className="label">TOOL CALL BREAKDOWN</span><strong>{toolPatterns.length} grouped patterns</strong></div>
+                <button type="button" onClick={() => setOpenMetric(null)} aria-label="Close tool call breakdown">×</button>
+              </div>
+              <p>{data.metrics.toolCalls} calls grouped by agent, tool, and sanitized target.</p>
+              <div className="metricPopoverList">
+                {toolPatterns.map((pattern) => (
+                  <div className="metricPopoverRow" key={pattern.id}>
+                    <div><strong>{pattern.agent}</strong><span>{pattern.tool}{pattern.detail ? ` · ${pattern.detail}` : ""}</span></div>
+                    <div><strong>{pattern.calls}</strong><span>{pattern.calls === 1 ? "call" : "calls"}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </article>
         <article className="metric panel loopMetric" ref={loopMetricRef}>
           <span className={`metricIcon ${data.metrics.repeatedCalls ? "warnIcon" : "clearIcon"}`}>↻</span>
@@ -388,22 +427,22 @@ export function Dashboard() {
             <span>across {loopPatterns.length} loop {loopPatterns.length === 1 ? "pattern" : "patterns"}</span>
             <button
               type="button"
-              onClick={() => setLoopsOpen((open) => !open)}
+              onClick={() => setOpenMetric((open) => open === "loops" ? null : "loops")}
               disabled={loopPatterns.length === 0}
-              aria-expanded={loopsOpen}
+              aria-expanded={openMetric === "loops"}
               aria-controls="loop-patterns-popover"
             >View list</button>
           </div>
-          {loopsOpen && (
-            <div className="loopPopover" id="loop-patterns-popover" role="dialog" aria-label="Repeated call patterns">
-              <div className="loopPopoverHeader">
+          {openMetric === "loops" && (
+            <div className="metricPopover" id="loop-patterns-popover" role="dialog" aria-label="Repeated call patterns">
+              <div className="metricPopoverHeader">
                 <div><span className="label">LOOP PATTERNS</span><strong>{loopPatterns.length} grouped patterns</strong></div>
-                <button type="button" onClick={() => setLoopsOpen(false)} aria-label="Close loop patterns">×</button>
+                <button type="button" onClick={() => setOpenMetric(null)} aria-label="Close loop patterns">×</button>
               </div>
               <p>{data.metrics.repeatedCalls} calls beyond the first occurrence of each pattern.</p>
-              <div className="loopList">
+              <div className="metricPopoverList">
                 {loopPatterns.map((loop) => (
-                  <div className="loopRow" key={loop.id}>
+                  <div className="metricPopoverRow" key={loop.id}>
                     <div><strong>{loop.agent}</strong><span>{loop.tool}{loop.detail ? ` · ${loop.detail}` : ""}</span></div>
                     <div><strong>{loop.calls}</strong><span>{loop.repeats} repeated</span></div>
                   </div>
