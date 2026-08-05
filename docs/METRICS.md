@@ -25,10 +25,11 @@ All-agent context is not historical throughput. Earlier repeated cache reads are
 ## Agent state
 
 - `active` — updated within 45 seconds
+- `waiting` — has an active descendant and is waiting for that work to return
 - `warm` — updated within 5 minutes
 - `idle` — older than 5 minutes
 
-This describes transcript activity, not guaranteed process state.
+Waiting status propagates through the recorded parent-child hierarchy. The other states describe transcript activity, not guaranteed process state.
 
 ## Session duration
 

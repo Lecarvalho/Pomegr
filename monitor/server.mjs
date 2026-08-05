@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { buildAgentMetadata, fallbackAgentMetadata } from "./agent-metadata.mjs";
+import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata } from "./agent-metadata.mjs";
 import { findLatestSession, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
@@ -286,6 +286,7 @@ async function analyze() {
       lastSeen: stat.mtime.toISOString(),
     });
   }
+  applyWaitingStatus(agents);
 
   const loops = [...signatureMap.values()].filter((item) => item.count >= 3);
   const overlaps = [...targetActors.values()].filter((item) => item.actors.size >= 2 && item.calls >= 3);

@@ -115,7 +115,7 @@ button { color: inherit; }
 .agentIdentity strong { display: block; font-size: 13px; }.agentIdentity span { color: var(--muted); font-size: 10px; }
 .agentTokens { text-align: right; padding-right: 14px; }.agentTokens strong { display: block; font: 400 16px/1 Georgia, serif; }.agentTokens span { display: block; color: var(--muted); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; margin-top: 4px; }
 .statusPill { display: flex; align-items: center; gap: 6px; text-transform: uppercase; font-size: 9px; letter-spacing: .08em; font-weight: 800; color: var(--muted); }
-.statusPill.active { color: var(--green); }.statusPill.active i { background: var(--green); }.statusPill.warm { color: var(--amber); }.statusPill.warm i { background: var(--amber); }
+.statusPill.active { color: var(--green); }.statusPill.active i { background: var(--green); }.statusPill.waiting { color: var(--green); }.statusPill.waiting i { background: transparent; border: 1px solid var(--green); }.statusPill.warm { color: var(--amber); }.statusPill.warm i { background: var(--amber); }
 .agentRow time { text-align: right; color: var(--muted); font-size: 10px; }
 .insightList { padding: 12px; display: grid; gap: 8px; }
 .insight { display: grid; grid-template-columns: 29px 1fr; gap: 10px; padding: 14px; border-radius: 8px; background: #eeefe9; }

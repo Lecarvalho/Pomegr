@@ -9,7 +9,7 @@ type Agent = {
   kind: string;
   model: string;
   effort: string;
-  status: "active" | "warm" | "idle";
+  status: "active" | "waiting" | "warm" | "idle";
   toolCalls: number;
   lastSeen: string;
   tokens: {

@@ -37,3 +37,26 @@ export function fallbackAgentMetadata(records) {
   const kind = records.find((record) => typeof record.attributionAgent === "string")?.attributionAgent || "subagent";
   return { description, kind, parentId: null };
 }
+
+export function applyWaitingStatus(agents) {
+  const liveAgentIds = new Set(
+    agents.filter((agent) => agent.status === "active").map((agent) => agent.id),
+  );
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const agent of agents) {
+      if (liveAgentIds.has(agent.id)) continue;
+      const hasLiveChild = agents.some(
+        (child) => child.parentId === agent.id && liveAgentIds.has(child.id),
+      );
+      if (!hasLiveChild) continue;
+      agent.status = "waiting";
+      liveAgentIds.add(agent.id);
+      changed = true;
+    }
+  }
+
+  return agents;
+}

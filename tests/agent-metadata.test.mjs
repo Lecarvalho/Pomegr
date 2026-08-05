@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAgentMetadata, fallbackAgentMetadata } from "../monitor/agent-metadata.mjs";
+import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata } from "../monitor/agent-metadata.mjs";
 
 function launchRecords(toolId, agentId, description) {
   return [
@@ -43,4 +43,20 @@ test("records the transcript owner as the launched agent's parent", () => {
 test("leaves the parent unresolved when launch metadata is unavailable", () => {
   const fallback = fallbackAgentMetadata([{ type: "user", message: { content: "You are the security reviewer for this task." } }]);
   assert.equal(fallback.parentId, null);
+});
+
+test("propagates waiting status from an active descendant through its parents", () => {
+  const agents = [
+    { id: "primary", parentId: null, status: "idle" },
+    { id: "parent", parentId: "primary", status: "idle" },
+    { id: "child", parentId: "parent", status: "active" },
+    { id: "finished", parentId: "primary", status: "idle" },
+  ];
+
+  applyWaitingStatus(agents);
+
+  assert.equal(agents[0].status, "waiting");
+  assert.equal(agents[1].status, "waiting");
+  assert.equal(agents[2].status, "active");
+  assert.equal(agents[3].status, "idle");
 });
