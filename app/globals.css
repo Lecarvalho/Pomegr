@@ -82,8 +82,8 @@ button { color: inherit; }
 .summaryGrid { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
 .scoreCard { padding: 22px; display: flex; align-items: center; gap: 19px; }
 .scoreRing { width: 78px; height: 78px; border-radius: 50%; padding: 6px; flex: 0 0 auto; }
-.scoreRing > div { height: 100%; width: 100%; border-radius: 50%; background: var(--panel); display: flex; align-items: baseline; justify-content: center; padding-top: 20px; }
-.scoreRing strong { font-family: Georgia, serif; font-size: 27px; font-weight: 400; }.scoreRing span { color: var(--muted); font-size: 9px; margin-left: 2px; }
+.scoreRing > div { height: 100%; width: 100%; border-radius: 50%; background: var(--panel); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.scoreRing strong { font-family: Georgia, serif; font-size: 25px; line-height: .9; font-weight: 400; white-space: nowrap; }.scoreRing span { color: var(--muted); font-size: 8px; line-height: 1; margin-top: 5px; white-space: nowrap; }
 .scoreCard h2, .panelHeader h2 { margin: 5px 0 3px; font-family: Georgia, serif; font-weight: 400; letter-spacing: -.02em; }
 .scoreCard h2 { font-size: 20px; }.scoreCard p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .metric { padding: 20px; min-height: 130px; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }

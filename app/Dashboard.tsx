@@ -529,7 +529,7 @@ export function Dashboard() {
       <section className="summaryGrid" aria-label="Session summary">
         <article className="scoreCard panel">
           <div className="scoreRing" style={ringStyle}>
-            <div><strong>{data.score}</strong><span>/ 100</span></div>
+            <div><strong>{data.score}</strong><span>/100</span></div>
           </div>
           <div>
             <span className="label">FLOW SCORE</span>

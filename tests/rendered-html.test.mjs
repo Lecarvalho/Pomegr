@@ -54,6 +54,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /HISTORICAL SESSION/);
   assert.match(dashboard, /historySessions/);
   assert.match(styles, /\.sessionSidebar/);
+  assert.match(styles, /\.scoreRing > div[^}]*flex-direction: column/);
   assert.match(dashboard, /TOOL CALL BREAKDOWN/);
   assert.match(dashboard, /toolPatterns/);
   assert.match(dashboard, /LOOP PATTERNS/);
