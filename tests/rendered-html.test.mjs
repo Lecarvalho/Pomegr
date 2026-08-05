@@ -56,6 +56,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /groupSessionsByProject/);
   assert.match(styles, /\.sessionSidebar/);
   assert.match(styles, /\.historyProjectHeader/);
+  assert.match(dashboard, /aria-expanded=\{!collapsed\}/);
+  assert.match(styles, /\.historyProject\.collapsed/);
   assert.match(styles, /\.scoreRing > div[^}]*flex-direction: column/);
   assert.match(dashboard, /TOOL CALL BREAKDOWN/);
   assert.match(dashboard, /toolPatterns/);

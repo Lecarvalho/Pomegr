@@ -3,7 +3,18 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findLatestSession, findSessionById, listSessionFiles } from "../monitor/session-discovery.mjs";
+import { findLatestSession, findSessionById, listSessionFiles, repositoryProjectName } from "../monitor/session-discovery.mjs";
+
+test("uses the repository root instead of a working subdirectory as the project", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-project-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const repository = path.join(root, "Clapline");
+  const frontend = path.join(repository, "frontend");
+  await mkdir(path.join(repository, ".git"), { recursive: true });
+  await mkdir(frontend, { recursive: true });
+
+  assert.equal(repositoryProjectName(frontend), "Clapline");
+});
 
 test("keeps a session selected while one of its subagents is newest", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-session-"));

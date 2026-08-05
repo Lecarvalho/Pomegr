@@ -25,7 +25,7 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 1. Finds the session tree with the latest primary or subagent activity, or uses `CLAUDE_SESSION_FILE`.
 2. Reads primary and subagent JSONL files.
 3. Normalizes agents, activity, context snapshots, session metadata, and insights.
-4. Builds a bounded, cached catalog of existing session transcripts for historical navigation.
+4. Builds a bounded, cached catalog of existing session transcripts for historical navigation, grouping nested working directories by repository root.
 5. Inspects the live session repository with read-only Git commands.
 6. Retrieves and caches provider plan usage for the live view only.
 

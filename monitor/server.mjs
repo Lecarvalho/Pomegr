@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "./agent-metadata.mjs";
-import { findLatestSession, findSessionById, listSessionFiles, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { findLatestSession, findSessionById, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -134,7 +134,7 @@ function projectCwd(records) {
 
 function projectName(mainFile, records) {
   const cwd = projectCwd(records);
-  if (cwd) return path.basename(cwd);
+  if (cwd) return repositoryProjectName(cwd);
   return path.basename(path.dirname(mainFile)).replace(/^[A-Z]--/, "").replaceAll("-", " ");
 }
 

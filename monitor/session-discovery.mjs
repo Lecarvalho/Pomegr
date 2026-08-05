@@ -16,6 +16,18 @@ export function statSafe(file) {
   try { return fs.statSync(file); } catch { return null; }
 }
 
+export function repositoryProjectName(cwd) {
+  if (!cwd) return "";
+  let current = path.resolve(cwd);
+  while (true) {
+    if (fs.existsSync(path.join(current, ".git"))) return path.basename(current);
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return path.basename(path.resolve(cwd));
+}
+
 export function findLatestSession(projectsRoot, explicitSession) {
   if (explicitSession && fs.existsSync(explicitSession)) return explicitSession;
 

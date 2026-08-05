@@ -274,6 +274,7 @@ export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -438,23 +439,43 @@ export function Dashboard() {
           <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
           <div className="historyList">
             {historySessions.length === 0 && <p>No previous sessions found.</p>}
-            {historyGroups.map((group) => (
-              <section className="historyProject" key={group.project}>
-                <div className="historyProjectHeader"><strong title={group.project}>{group.project}</strong><small>{group.sessions.length}</small></div>
-                {group.sessions.map((session) => (
+            {historyGroups.map((group) => {
+              const collapsed = collapsedProjects.has(group.project);
+              const groupId = `history-project-${encodeURIComponent(group.project)}`;
+              return (
+                <section className={`historyProject ${collapsed ? "collapsed" : ""}`} key={group.project}>
                   <button
+                    className="historyProjectHeader"
                     type="button"
-                    className={selectedSessionId === session.id ? "selected" : ""}
-                    key={session.id}
-                    onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "history" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
-                    aria-current={selectedSessionId === session.id ? "page" : undefined}
+                    onClick={() => setCollapsedProjects((current) => {
+                      const next = new Set(current);
+                      if (next.has(group.project)) next.delete(group.project);
+                      else next.add(group.project);
+                      return next;
+                    })}
+                    aria-expanded={!collapsed}
+                    aria-controls={groupId}
                   >
-                    <strong>{session.title}</strong>
-                    <time>{sessionListTime(session.updatedAt)}</time>
+                    <span><i aria-hidden="true">▾</i><strong title={group.project}>{group.project}</strong></span>
+                    <small>{group.sessions.length}</small>
                   </button>
-                ))}
-              </section>
-            ))}
+                  {!collapsed && <div className="historyProjectSessions" id={groupId}>
+                    {group.sessions.map((session) => (
+                      <button
+                        type="button"
+                        className={selectedSessionId === session.id ? "selected" : ""}
+                        key={session.id}
+                        onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "history" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
+                        aria-current={selectedSessionId === session.id ? "page" : undefined}
+                      >
+                        <strong>{session.title}</strong>
+                        <time>{sessionListTime(session.updatedAt)}</time>
+                      </button>
+                    ))}
+                  </div>}
+                </section>
+              );
+            })}
           </div>
         </nav>
       </aside>

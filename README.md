@@ -7,7 +7,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
-- Left-side navigation between the live session and up to 49 previous sessions, grouped by project
+- Left-side navigation between the live session and up to 49 previous sessions, grouped into collapsible projects
 - Primary-agent and all-agent current context usage
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
 - Current Git branch and every uncommitted path
