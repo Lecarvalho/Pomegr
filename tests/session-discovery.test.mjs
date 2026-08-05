@@ -3,7 +3,14 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findLatestSession, findSessionById, listSessionFiles, repositoryProjectName } from "../monitor/session-discovery.mjs";
+import { findLatestSession, findSessionById, isLiveSessionActivity, listSessionFiles, repositoryProjectName, SESSION_LIVE_WINDOW_MS } from "../monitor/session-discovery.mjs";
+
+test("classifies concurrent sessions using the documented activity window", () => {
+  const now = new Date("2026-08-05T12:00:00Z").getTime();
+  assert.equal(isLiveSessionActivity(now - SESSION_LIVE_WINDOW_MS, now), true);
+  assert.equal(isLiveSessionActivity(now - SESSION_LIVE_WINDOW_MS - 1, now), false);
+  assert.equal(isLiveSessionActivity(0, now), false);
+});
 
 test("uses the repository root instead of a working subdirectory as the project", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-project-"));

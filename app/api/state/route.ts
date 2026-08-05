@@ -6,12 +6,12 @@ export async function GET(request: Request) {
     const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
     const sessionId = requestUrl.searchParams.get("sessionId") || "";
     const monitorParams = new URLSearchParams();
-    if (refreshUsage && !sessionId) monitorParams.set("refreshUsage", "1");
+    if (refreshUsage) monitorParams.set("refreshUsage", "1");
     if (sessionId) monitorParams.set("sessionId", sessionId);
     const monitorUrl = `http://127.0.0.1:4317/api/state${monitorParams.size ? `?${monitorParams}` : ""}`;
     const response = await fetch(monitorUrl, {
       cache: "no-store",
-      signal: AbortSignal.timeout(sessionId ? 5000 : refreshUsage ? 7500 : 1500),
+      signal: AbortSignal.timeout(refreshUsage ? 7500 : sessionId ? 5000 : 1500),
     });
 
     if (!response.ok) {

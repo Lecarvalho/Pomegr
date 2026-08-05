@@ -35,6 +35,12 @@ The dashboard's running-agent count includes both `active` agents and parents ma
 
 Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
 
+## Session state
+
+Every primary session whose own transcript or subagent tree changed within the last five minutes appears in the live-session list. If no session is recent, the most recently active session remains the live auto-discovery target. This deterministic activity heuristic supports concurrent sessions but does not claim to detect operating-system process state.
+
+Selecting any live session keeps its state polling. When a selected session ages out of the live window, it moves into history and polling stops until it becomes active again.
+
 ## Session duration
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.

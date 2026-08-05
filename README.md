@@ -7,7 +7,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
-- Left-side navigation between the live session and up to 49 previous sessions, grouped into collapsible projects
+- Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects
 - Primary-agent and all-agent current context usage
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
 - Current Git branch and every uncommitted path
@@ -21,6 +21,8 @@ Threadlight does not currently call an AI model. Its analysis and recommendation
 The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and model work, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
+
+Because provider transcripts do not expose a reliable process-lifecycle signal, Threadlight classifies every session with activity in the last five minutes as live. If nothing is recent, the most recently active session remains available as the live auto-discovery target.
 
 ## Run locally
 

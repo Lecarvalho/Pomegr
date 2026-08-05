@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "./agent-metadata.mjs";
-import { findLatestSession, findSessionById, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -188,29 +188,40 @@ function sessionTitle(records) {
   return customTitle || aiTitle || "Untitled session";
 }
 
-function sessionCatalog() {
-  const liveFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
-  const files = listSessionFiles(CLAUDE_PROJECTS).slice(0, 50);
-  if (liveFile && !files.some(({ file }) => file === liveFile)) {
-    files.unshift({ file: liveFile, activityMs: statSafe(liveFile)?.mtimeMs || 0 });
+function discoveredSessions() {
+  const files = listSessionFiles(CLAUDE_PROJECTS);
+  const explicitFile = EXPLICIT_SESSION && fs.existsSync(EXPLICIT_SESSION) ? EXPLICIT_SESSION : null;
+  if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
+    files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
   }
+  const liveFile = explicitFile || files[0]?.file || null;
+  const liveFiles = new Set(
+    explicitFile
+      ? [explicitFile]
+      : files.filter(({ activityMs }) => isLiveSessionActivity(activityMs)).map(({ file }) => file),
+  );
+  if (liveFile && liveFiles.size === 0) liveFiles.add(liveFile);
+  return { files, liveFile, liveFiles };
+}
+
+function sessionCatalog() {
+  const { files, liveFiles } = discoveredSessions();
 
   return files.slice(0, 50).flatMap(({ file, activityMs }) => {
     const stat = statSafe(file);
     if (!stat) return [];
     const cacheKey = `${stat.size}:${stat.mtimeMs}:${activityMs}`;
     const cached = sessionSummaryCache.get(file);
-    if (cached?.key === cacheKey) return [{ ...cached.value, isLive: file === liveFile }];
+    if (cached?.key === cacheKey) return [{ ...cached.value, isLive: liveFiles.has(file) }];
     const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
     const value = {
       id: path.basename(file, ".jsonl"),
       title: sessionTitle(records),
       project: projectName(file, records),
       updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
-      isLive: file === liveFile,
     };
     sessionSummaryCache.set(file, { key: cacheKey, value });
-    return [value];
+    return [{ ...value, isLive: liveFiles.has(file) }];
   });
 }
 
@@ -226,14 +237,17 @@ function runtimeMetadata(records) {
 }
 
 async function analyze(refreshUsage = false, requestedSessionId = "") {
-  const liveFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
+  const { files: sessionFiles, liveFile, liveFiles } = discoveredSessions();
   const explicitMatch = EXPLICIT_SESSION
     && path.basename(EXPLICIT_SESSION, ".jsonl") === requestedSessionId
     && fs.existsSync(EXPLICIT_SESSION)
     ? EXPLICIT_SESSION
     : null;
-  const mainFile = requestedSessionId ? explicitMatch || findSessionById(CLAUDE_PROJECTS, requestedSessionId) : liveFile;
-  const historical = Boolean(requestedSessionId);
+  const selectedMatch = /^[a-zA-Z0-9_-]+$/.test(requestedSessionId || "")
+    ? sessionFiles.find(({ file }) => path.basename(file, ".jsonl") === requestedSessionId)?.file || null
+    : null;
+  const mainFile = requestedSessionId ? explicitMatch || selectedMatch : liveFile;
+  const historical = mainFile ? !liveFiles.has(mainFile) : Boolean(requestedSessionId);
   if (!mainFile) return {
     connected: true,
     source: "Claude Code",
@@ -249,7 +263,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     },
     agents: [], toolPatterns: [], loops: [], activity: [], insights: [],
     usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
-    error: requestedSessionId ? "The selected historical session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
+    error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
 
   const sessionId = path.basename(mainFile, ".jsonl");
@@ -479,7 +493,7 @@ const server = http.createServer(async (request, response) => {
       const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(await analyze(refreshUsage && !sessionId, sessionId)));
+      response.end(JSON.stringify(await analyze(refreshUsage, sessionId)));
     } catch (error) {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ ...analyzeEmpty(), error: error instanceof Error ? error.message : "Monitor error" }));

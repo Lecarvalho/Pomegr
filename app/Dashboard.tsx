@@ -175,7 +175,7 @@ function sessionListTime(value: string) {
 function stateEndpoint(sessionId: string | null, refreshUsage = false) {
   const params = new URLSearchParams();
   if (sessionId) params.set("sessionId", sessionId);
-  if (refreshUsage && !sessionId) params.set("refreshUsage", "1");
+  if (refreshUsage) params.set("refreshUsage", "1");
   return `/api/state${params.size ? `?${params}` : ""}`;
 }
 
@@ -285,6 +285,8 @@ export function Dashboard() {
   const usageRequested = useRef(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
   const loopMetricRef = useRef<HTMLElement | null>(null);
+  const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
+  const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
   const refresh = useCallback(async (refreshUsage = false) => {
     try {
@@ -316,18 +318,18 @@ export function Dashboard() {
 
   useEffect(() => {
     const initial = window.setTimeout(refresh, 0);
-    const interval = selectedSessionId ? null : window.setInterval(() => {
+    const interval = selectedIsHistorical ? null : window.setInterval(() => {
       if (!paused) refresh();
     }, 1800);
     return () => {
       window.clearTimeout(initial);
       if (interval) window.clearInterval(interval);
     };
-  }, [paused, refresh, selectedSessionId]);
+  }, [paused, refresh, selectedIsHistorical]);
 
   useEffect(() => {
     const initial = window.setTimeout(refreshSessions, 0);
-    const interval = window.setInterval(refreshSessions, 30_000);
+    const interval = window.setInterval(refreshSessions, 5_000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(interval);
@@ -361,7 +363,7 @@ export function Dashboard() {
   }, [sidebarOpen]);
 
   useEffect(() => {
-    if (selectedSessionId) return;
+    if (selectedIsHistorical) return;
     pageLoadedAt.current ??= Date.now();
     const requestUsage = () => {
       if (paused || usageRequested.current) return;
@@ -371,7 +373,7 @@ export function Dashboard() {
     const remaining = Math.max(0, 60_000 - (Date.now() - pageLoadedAt.current));
     const timer = window.setTimeout(requestUsage, remaining);
     return () => window.clearTimeout(timer);
-  }, [paused, refresh, selectedSessionId]);
+  }, [paused, refresh, selectedIsHistorical]);
 
   const sessionLabel = data.session?.title || "Waiting for a session";
   const ringStyle = {
@@ -380,10 +382,10 @@ export function Dashboard() {
   const agentRows = agentTreeRows(data.agents);
   const toolPatterns = data.toolPatterns || [];
   const loopPatterns = data.loops || [];
-  const viewingHistory = Boolean(selectedSessionId) || data.view === "history";
+  const viewingHistory = data.view === "history";
+  const liveSessions = sessions.filter((session) => session.isLive);
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
-  const liveSession = sessions.find((session) => session.isLive);
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -427,15 +429,27 @@ export function Dashboard() {
           <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Close session navigation">×</button>
         </div>
         <nav className="sessionNav">
-          <button
-            type="button"
-            className={`liveSessionLink ${selectedSessionId ? "" : "selected"}`}
-            onClick={() => { setSelectedSessionId(null); setData({ ...EMPTY, view: "live" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
-            aria-current={selectedSessionId ? undefined : "page"}
-          >
-            <i />
-            <span><strong>Live session</strong><small>{liveSession?.title || "Auto-discovery"}</small></span>
-          </button>
+          <div className="liveHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
+          <div className="liveSessionList">
+            {liveSessions.map((session) => {
+              const selected = selectedSessionId ? selectedSessionId === session.id : data.session?.id === session.id && !viewingHistory;
+              return (
+                <button
+                  type="button"
+                  className={`liveSessionLink ${selected ? "selected" : ""}`}
+                  key={session.id}
+                  onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "live" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
+                  aria-current={selected ? "page" : undefined}
+                >
+                  <i />
+                  <span><strong>{session.title}</strong><small>{session.project} · {relativeTime(session.updatedAt)}</small></span>
+                </button>
+              );
+            })}
+            {liveSessions.length === 0 && (
+              <div className="liveSessionEmpty"><i /><span><strong>Waiting for a session</strong><small>Auto-discovery enabled</small></span></div>
+            )}
+          </div>
           <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
           <div className="historyList">
             {historySessions.length === 0 && <p>No previous sessions found.</p>}

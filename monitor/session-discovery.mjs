@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export const SESSION_LIVE_WINDOW_MS = 5 * 60_000;
+
 export function walkJsonl(root, maxDepth = 6, depth = 0) {
   if (!root || !fs.existsSync(root) || depth > maxDepth) return [];
   const results = [];
@@ -14,6 +16,12 @@ export function walkJsonl(root, maxDepth = 6, depth = 0) {
 
 export function statSafe(file) {
   try { return fs.statSync(file); } catch { return null; }
+}
+
+export function isLiveSessionActivity(activityMs, nowMs = Date.now()) {
+  return Number.isFinite(activityMs)
+    && activityMs > 0
+    && nowMs - activityMs <= SESSION_LIVE_WINDOW_MS;
 }
 
 export function repositoryProjectName(cwd) {
