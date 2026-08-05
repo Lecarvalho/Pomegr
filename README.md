@@ -75,7 +75,7 @@ Historical cache reads are not shown as the headline metric. See [docs/METRICS.m
 - Git commands use argument arrays rather than shell interpolation.
 - OAuth credentials remain in the monitor process.
 - Credentials are sent only to the provider's own usage endpoint and never enter browser state.
-- Usage polling is cached for 60 seconds.
+- Plan usage is requested once, one minute after the page opens. Normal live polling and manual refreshes never call the provider usage endpoint; server caching deduplicates simultaneous tabs.
 
 Anyone who can reach port 3003 on the local network can view dashboard metadata. The development server accepts any hostname so it can be reached by IP; bind the web server to localhost if that is inappropriate for your network. Your firewall may prompt you to allow Node.js on private networks.
 

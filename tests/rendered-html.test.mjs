@@ -27,12 +27,14 @@ test("server-renders Threadlight", async () => {
 });
 
 test("uses one provider-neutral identity and no starter preview", async () => {
-  const [page, layout, packageJson, dashboard, styles] = await Promise.all([
+  const [page, layout, packageJson, dashboard, styles, stateRoute, monitor] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../monitor/server.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(packageJson, /"name": "threadlight"/);
   assert.doesNotMatch(packageJson, /claude-session-coach|session-pulse|react-loading-skeleton/);
@@ -40,5 +42,10 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(layout, /title: "Threadlight"/);
   assert.match(dashboard, /\$\{agent\.status\}Agent/);
   assert.match(styles, /\.agentRow\.idleAgent/);
+  assert.match(dashboard, /60_000/);
+  assert.match(dashboard, /refresh\(true\)/);
+  assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);
+  assert.match(stateRoute, /refreshUsage=1/);
+  assert.match(monitor, /refreshUsage \? await usageLimits\(\) : cachedUsageLimits\(\)/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });

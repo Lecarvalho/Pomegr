@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 type Agent = {
   id: string;
@@ -199,10 +199,13 @@ export function Dashboard() {
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const pageLoadedAt = useRef<number | null>(null);
+  const usageRequested = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (refreshUsage = false) => {
     try {
-      const response = await fetch("/api/state", { cache: "no-store" });
+      const stateUrl = `/api/state${refreshUsage ? "?refreshUsage=1" : ""}`;
+      const response = await fetch(stateUrl, { cache: "no-store" });
       if (!response.ok) throw new Error("Monitor unavailable");
       setData(await response.json());
       setLastRefresh(new Date());
@@ -226,6 +229,18 @@ export function Dashboard() {
       window.clearTimeout(initial);
       window.clearInterval(interval);
     };
+  }, [paused, refresh]);
+
+  useEffect(() => {
+    pageLoadedAt.current ??= Date.now();
+    const requestUsage = () => {
+      if (paused || usageRequested.current) return;
+      usageRequested.current = true;
+      refresh(true);
+    };
+    const remaining = Math.max(0, 60_000 - (Date.now() - pageLoadedAt.current));
+    const timer = window.setTimeout(requestUsage, remaining);
+    return () => window.clearTimeout(timer);
   }, [paused, refresh]);
 
   const sessionLabel = data.session?.title || "Waiting for a session";
@@ -425,7 +440,7 @@ export function Dashboard() {
       <section className="panel activityPanel">
         <div className="panelHeader">
           <div><span className="label">EVENT STREAM</span><h2>Recent tool activity</h2></div>
-          <button className="textButton" onClick={refresh} disabled={loading}>Refresh now</button>
+          <button className="textButton" onClick={() => refresh(false)} disabled={loading}>Refresh now</button>
         </div>
         <div className="activityTable">
           <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span></div>

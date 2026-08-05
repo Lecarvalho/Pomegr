@@ -32,7 +32,7 @@ It listens only on `127.0.0.1`.
 
 ### Web application
 
-The React dashboard polls `/api/state` approximately every 1.8 seconds. The server route proxies to the private monitor so remote browsers never receive credentials or raw transcripts.
+The React dashboard polls `/api/state` approximately every 1.8 seconds for local session data. Plan usage is requested separately once, one minute after page load. The server route proxies to the private monitor so remote browsers never receive credentials or raw transcripts.
 
 ### Development orchestrator
 

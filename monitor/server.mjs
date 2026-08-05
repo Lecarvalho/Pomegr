@@ -18,6 +18,10 @@ function emptyUsageLimits(error = "") {
   return { available: false, fetchedAt: null, limits: [], error };
 }
 
+function cachedUsageLimits() {
+  return usageCache.value || emptyUsageLimits("Plan usage loads one minute after the page opens.");
+}
+
 async function usageLimits() {
   if (usageCache.value && Date.now() - usageCache.timestamp < 60_000) return usageCache.value;
   if (usageCache.pending) return usageCache.pending;
@@ -185,7 +189,7 @@ function runtimeMetadata(records) {
   return { model, effort };
 }
 
-async function analyze() {
+async function analyze(refreshUsage = false) {
   const mainFile = findLatestSession(CLAUDE_PROJECTS, EXPLICIT_SESSION);
   if (!mainFile) return {
     connected: true,
@@ -200,7 +204,7 @@ async function analyze() {
       tokens: { total: 0, cumulative: 0, allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 },
     },
     agents: [], activity: [], insights: [],
-    usageLimits: await usageLimits(),
+    usageLimits: refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
 
@@ -362,7 +366,7 @@ async function analyze() {
   };
   const cwd = projectCwd(mainRecords);
   const repository = gitState(cwd);
-  const currentUsageLimits = await usageLimits();
+  const currentUsageLimits = refreshUsage ? await usageLimits() : cachedUsageLimits();
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   allEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
@@ -394,17 +398,19 @@ const server = http.createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Cache-Control", "no-store");
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
-  if (request.url === "/api/state") {
+  const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+  if (requestUrl.pathname === "/api/state") {
     try {
+      const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(await analyze()));
+      response.end(JSON.stringify(await analyze(refreshUsage)));
     } catch (error) {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ ...analyzeEmpty(), error: error instanceof Error ? error.message : "Monitor error" }));
     }
     return;
   }
-  if (request.url === "/health") { response.writeHead(204); response.end(); return; }
+  if (requestUrl.pathname === "/health") { response.writeHead(204); response.end(); return; }
   response.writeHead(404); response.end("Not found");
 });
 

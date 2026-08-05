@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await fetch("http://127.0.0.1:4317/api/state", {
+    const refreshUsage = new URL(request.url).searchParams.get("refreshUsage") === "1";
+    const monitorUrl = `http://127.0.0.1:4317/api/state${refreshUsage ? "?refreshUsage=1" : ""}`;
+    const response = await fetch(monitorUrl, {
       cache: "no-store",
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(refreshUsage ? 7500 : 1500),
     });
 
     if (!response.ok) {

@@ -58,7 +58,7 @@ The score is a heuristic attention signal, not a quality assessment.
 
 ## Plan usage
 
-Plan utilization is retrieved from the provider's authenticated endpoint, cached for 60 seconds, and normalized into the current session, all-model, and model-scoped windows. Retrieval does not invoke a model.
+Plan utilization is retrieved from the provider's authenticated endpoint once, one minute after page load, then cached by the monitor to deduplicate simultaneous tabs. Normal session polling and manual refreshes use the cached value and never invoke the provider endpoint. Retrieval does not invoke a model.
 
 ## Git state
 
