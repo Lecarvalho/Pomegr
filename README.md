@@ -118,5 +118,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and provider-
 
 ## License
 
-No license has been selected. The source repository is publicly viewable, but
-that does not grant permission to copy, modify, or redistribute the code.
+Threadlight is available under the [MIT License](LICENSE).
