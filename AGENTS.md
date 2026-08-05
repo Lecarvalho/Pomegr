@@ -52,7 +52,7 @@ npm test
 npm run lint
 ```
 
-The dashboard is expected at `http://xhi:3003`; the private monitor listens on `127.0.0.1:4317`.
+The dashboard binds to `0.0.0.0:3003` and is reachable at `http://<LAN-IP>:3003`; the private monitor listens on `127.0.0.1:4317`.
 
 ## Change checklist
 

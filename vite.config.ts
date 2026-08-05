@@ -45,7 +45,8 @@ export default defineConfig(async () => {
 
   return {
     server: {
-      allowedHosts: ["xhi"],
+      // The dashboard is intentionally reachable through this machine's LAN IP.
+      allowedHosts: true,
       ...(isCodexSeatbeltSandbox
         ? { watch: { useFsEvents: false, usePolling: true } }
         : {}),

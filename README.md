@@ -29,7 +29,9 @@ npm ci
 npm run dev
 ```
 
-Open [http://xhi:3003](http://xhi:3003), or replace `xhi` with the host computer's network name.
+Open `http://<YOUR-LAN-IP>:3003` from another device on the same network. For
+example, if this computer's IPv4 address is `192.168.1.25`, open
+`http://192.168.1.25:3003` on your phone.
 
 The development command starts:
 
@@ -75,7 +77,7 @@ Historical cache reads are not shown as the headline metric. See [docs/METRICS.m
 - Credentials are sent only to the provider's own usage endpoint and never enter browser state.
 - Usage polling is cached for 60 seconds.
 
-Anyone who can reach port 3003 on the local network can view dashboard metadata. Bind the web server to localhost if that is inappropriate for your network.
+Anyone who can reach port 3003 on the local network can view dashboard metadata. The development server accepts any hostname so it can be reached by IP; bind the web server to localhost if that is inappropriate for your network. Your firewall may prompt you to allow Node.js on private networks.
 
 ## Development
 
@@ -107,4 +109,5 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and provider-
 
 ## License
 
-No license has been selected. The initial GitHub repository is private.
+No license has been selected. The source repository is publicly viewable, but
+that does not grant permission to copy, modify, or redistribute the code.
