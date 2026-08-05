@@ -344,7 +344,7 @@ export function Dashboard() {
         <article className="metric panel">
           <span className="metricIcon agentsIcon">⌁</span>
           <div><span className="label">AGENTS</span><strong>{data.metrics.activeAgents}<small> / {data.metrics.agents}</small></strong></div>
-          <p>active now</p>
+          <p>running now</p>
         </article>
         <article className="metric panel">
           <span className="metricIcon toolIcon">⌘</span>
@@ -367,26 +367,34 @@ export function Dashboard() {
             <p>latest primary-agent snapshot · +{compactNumber(data.metrics.tokens.lastMinute)} in the last 60 sec</p>
           </div>
         </div>
-        <div className="tokenStat">
-          <span>Current input</span>
-          <strong>{compactNumber(data.metrics.tokens.input)}</strong>
-        </div>
-        <div className="tokenStat">
-          <span>Current cache write</span>
-          <strong>{compactNumber(data.metrics.tokens.cacheWrite)}</strong>
-        </div>
-        <div className="tokenStat">
-          <span>Current cache read</span>
-          <strong>{compactNumber(data.metrics.tokens.cacheRead)}</strong>
-        </div>
-        <div className="tokenStat outputTokens">
-          <span>Current output</span>
-          <strong>{compactNumber(data.metrics.tokens.output)}</strong>
-        </div>
         <div className="tokenRate">
           <span>ALL-AGENT CONTEXT</span>
           <strong>{compactNumber(data.metrics.tokens.allAgents)}</strong>
           <small>sum of latest agent snapshots</small>
+        </div>
+      </section>
+
+      <section className="panel cachePanel" aria-label="Cache details">
+        <div className="cacheLead">
+          <span className="label">CACHE DETAILS</span>
+          <h2>Latest primary-agent call</h2>
+          <p>How the current context snapshot was composed.</p>
+        </div>
+        <div className="tokenStat">
+          <span>Uncached input</span>
+          <strong>{compactNumber(data.metrics.tokens.input)}</strong>
+        </div>
+        <div className="tokenStat">
+          <span>Cache write</span>
+          <strong>{compactNumber(data.metrics.tokens.cacheWrite)}</strong>
+        </div>
+        <div className="tokenStat">
+          <span>Cache read</span>
+          <strong>{compactNumber(data.metrics.tokens.cacheRead)}</strong>
+        </div>
+        <div className="tokenStat outputTokens">
+          <span>Generated output</span>
+          <strong>{compactNumber(data.metrics.tokens.output)}</strong>
         </div>
       </section>
 

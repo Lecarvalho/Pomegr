@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata } from "../monitor/agent-metadata.mjs";
+import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "../monitor/agent-metadata.mjs";
 
 function launchRecords(toolId, agentId, description) {
   return [
@@ -59,4 +59,5 @@ test("propagates waiting status from an active descendant through its parents", 
   assert.equal(agents[1].status, "waiting");
   assert.equal(agents[2].status, "active");
   assert.equal(agents[3].status, "idle");
+  assert.equal(agents.filter(isRunningAgent).length, 3);
 });

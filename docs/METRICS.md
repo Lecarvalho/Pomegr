@@ -31,6 +31,8 @@ All-agent context is not historical throughput. Earlier repeated cache reads are
 
 Waiting status propagates through the recorded parent-child hierarchy. The other states describe transcript activity, not guaranteed process state.
 
+The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
+
 ## Session duration
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.

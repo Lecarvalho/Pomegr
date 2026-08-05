@@ -81,7 +81,7 @@ button { color: inherit; }
 .clearIcon { background: var(--green-soft); color: var(--green); }.warnIcon { background: var(--amber-soft); color: var(--amber); }
 .metric strong { display: block; font: 400 34px/1 Georgia, serif; margin-top: 5px; }.metric strong small { font-size: 14px; color: var(--muted); }.metric p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 
-.tokenPanel { margin-bottom: 12px; min-height: 112px; display: grid; grid-template-columns: 1.55fr repeat(4, .72fr) .8fr; align-items: stretch; overflow: hidden; }
+.tokenPanel { margin-bottom: 12px; min-height: 112px; display: grid; grid-template-columns: 1.55fr .8fr; align-items: stretch; overflow: hidden; }
 .tokenLead { display: flex; align-items: center; gap: 17px; padding: 20px 22px; border-right: 1px solid var(--line); }
 .tokenLead strong { display: block; font: 400 31px/1 Georgia, serif; margin: 5px 0; }.tokenLead p { margin: 0; color: var(--muted); font-size: 10px; }
 .pulseBars { display: flex; align-items: flex-end; gap: 3px; width: 38px; height: 40px; }
@@ -92,6 +92,10 @@ button { color: inherit; }
 .tokenStat span { color: var(--muted); font-size: 10px; margin-bottom: 8px; }.tokenStat strong { font: 400 21px/1 Georgia, serif; }.outputTokens strong { color: var(--green); }
 .tokenRate { padding: 20px 16px; background: var(--green-soft); display: flex; flex-direction: column; justify-content: center; }
 .tokenRate span { color: var(--green); font-size: 8px; letter-spacing: .12em; font-weight: 800; }.tokenRate strong { font: 400 24px/1 Georgia, serif; margin: 7px 0 2px; }.tokenRate small { color: var(--green); font-size: 9px; }
+.cachePanel { margin-bottom: 12px; min-height: 96px; display: grid; grid-template-columns: 1.25fr repeat(4, .72fr); overflow: hidden; }
+.cacheLead { padding: 18px 21px; border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; }
+.cacheLead h2 { margin: 5px 0 4px; font: 400 18px/1.1 Georgia, serif; }.cacheLead p { margin: 0; color: var(--muted); font-size: 9px; }
+.cachePanel .tokenStat:last-child { border-right: 0; }
 
 .contentGrid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 12px; margin-bottom: 12px; }
 .agentsPanel, .insightPanel { min-height: 340px; }
@@ -132,7 +136,9 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
 
 @media (max-width: 980px) {
   .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(3, 1fr); }.scoreCard { grid-column: 1 / -1; }.tokenPanel { grid-template-columns: repeat(3, 1fr); }.tokenLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }.tokenRate { grid-column: span 2; }.contentGrid { grid-template-columns: 1fr; }
+  .tokenPanel { grid-template-columns: 1.4fr .8fr; }.tokenLead { grid-column: auto; border-right: 1px solid var(--line); border-bottom: 0; }.tokenRate { grid-column: auto; }.cachePanel { grid-template-columns: repeat(4, 1fr); }.cacheLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }
 }
 @media (max-width: 640px) {
   .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.hero { padding: 44px 0 28px; display: block; }.hero h1 { font-size: 42px; }.sessionMeta { text-align: left; border-right: 0; border-left: 3px solid var(--green); padding: 0 0 0 13px; margin-top: 25px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.tokenPanel { grid-template-columns: repeat(2, 1fr); }.tokenLead { grid-column: 1 / -1; }.tokenStat { min-height: 82px; }.tokenRate { grid-column: 1 / -1; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.agentRow { grid-template-columns: calc(25px + var(--agent-indent)) 1fr 70px auto; }.agentRow time { display: none; }.agentTokens { padding-right: 8px; } footer { gap: 10px; }
+  .tokenPanel { grid-template-columns: 1fr; }.tokenLead { grid-column: auto; border-right: 0; border-bottom: 1px solid var(--line); }.tokenRate { grid-column: auto; }.cachePanel { grid-template-columns: repeat(2, 1fr); }.cacheLead { grid-column: 1 / -1; }.cachePanel .tokenStat:nth-child(odd) { border-right: 0; }
 }

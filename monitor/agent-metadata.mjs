@@ -60,3 +60,7 @@ export function applyWaitingStatus(agents) {
 
   return agents;
 }
+
+export function isRunningAgent(agent) {
+  return agent.status === "active" || agent.status === "waiting";
+}

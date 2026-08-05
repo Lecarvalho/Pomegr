@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata } from "./agent-metadata.mjs";
+import { applyWaitingStatus, buildAgentMetadata, fallbackAgentMetadata, isRunningAgent } from "./agent-metadata.mjs";
 import { findLatestSession, statSafe, walkJsonl } from "./session-discovery.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
@@ -315,7 +315,7 @@ async function analyze(refreshUsage = false) {
   });
 
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
-  const activeAgents = agents.filter((agent) => agent.status === "active").length;
+  const activeAgents = agents.filter(isRunningAgent).length;
   const tokensByAgent = new Map(agents.map((agent) => [agent.id, { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, lastMinute: 0 }]));
   const latestByAgent = new Map();
   const cumulativeUsage = [...usageByMessage.values()].reduce((total, usage) => {
