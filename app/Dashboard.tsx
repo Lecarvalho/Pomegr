@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
+import { usageRefreshDelay } from "./usage-refresh.mjs";
 
 type Agent = {
   id: string;
@@ -430,7 +431,7 @@ export function Dashboard() {
   const [data, setData] = useState<MonitorState>(EMPTY);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
+  const [expandedHistoryProjects, setExpandedHistoryProjects] = useState<Set<string>>(() => new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -552,11 +553,11 @@ export function Dashboard() {
 
   useEffect(() => {
     if (selectedIsHistorical || paused) return;
-    const interval = window.setInterval(() => {
+    const timeout = window.setTimeout(() => {
       void refresh(true);
-    }, 60_000);
-    return () => window.clearInterval(interval);
-  }, [paused, refresh, selectedIsHistorical]);
+    }, usageRefreshDelay(data.usageLimits.attemptedAt));
+    return () => window.clearTimeout(timeout);
+  }, [data.usageLimits.attemptedAt, paused, refresh, selectedIsHistorical]);
 
   const sessionLabel = data.session?.title || "Waiting for a session";
   const ringStyle = {
@@ -645,14 +646,14 @@ export function Dashboard() {
           <div className="historyList">
             {historySessions.length === 0 && <p>No previous sessions found.</p>}
             {historyGroups.map((group) => {
-              const collapsed = collapsedProjects.has(group.project);
+              const collapsed = !expandedHistoryProjects.has(group.project);
               const groupId = `history-project-${encodeURIComponent(group.project)}`;
               return (
                 <section className={`historyProject ${collapsed ? "collapsed" : ""}`} key={group.project}>
                   <button
                     className="historyProjectHeader"
                     type="button"
-                    onClick={() => setCollapsedProjects((current) => {
+                    onClick={() => setExpandedHistoryProjects((current) => {
                       const next = new Set(current);
                       if (next.has(group.project)) next.delete(group.project);
                       else next.add(group.project);
@@ -774,7 +775,7 @@ export function Dashboard() {
           </span>
         </div>
         <div className="limitCards">
-          {!data.usageLimits.available && <Empty text={data.usageLimits.error || "Plan usage loads one minute after the page opens."} />}
+          {!data.usageLimits.available && <Empty text={data.usageLimits.error || "Plan usage is connecting."} />}
           {data.usageLimits.limits.map((limit) => (
             <article className={`limitCard ${limit.severity}`} key={limit.id}>
               <div className="limitTop">

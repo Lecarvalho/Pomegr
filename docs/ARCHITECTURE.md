@@ -33,7 +33,7 @@ It listens only on `127.0.0.1`.
 
 ### Web application
 
-The React dashboard polls `/api/state` approximately every 1.8 seconds for live session data and loads `/api/sessions` for the history sidebar. A selected historical session is read once because its transcript is immutable for dashboard purposes. Plan usage is requested separately once, one minute after page load and only while viewing live data. The server routes proxy to the private monitor so remote browsers never receive credentials or raw transcripts.
+The React dashboard polls `/api/state` approximately every 1.8 seconds for live session data and loads `/api/sessions` for the history sidebar. A selected historical session is read once because its transcript is immutable for dashboard purposes. On entry to a live view, the dashboard immediately requests a cache-aware plan-usage refresh. The monitor serves an attempt made within the last minute from its cache; the dashboard waits out any remaining cooldown before requesting again. The server routes proxy to the private monitor so remote browsers never receive credentials or raw transcripts.
 
 Markdown retrospective reports are assembled and downloaded in the browser from the same normalized state. Report generation performs one fresh local-state read, does not call a model, and does not request the provider usage endpoint.
 

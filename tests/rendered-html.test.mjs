@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { USAGE_REFRESH_INTERVAL_MS, usageRefreshDelay } from "../app/usage-refresh.mjs";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -68,10 +69,9 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /display: grid; grid-template-areas: "kind tools" "runtime runtime"/);
   assert.match(styles, /grid-template-rows: auto auto auto/);
   assert.match(styles, /\.agentTitleLine > strong \{ overflow: visible; white-space: normal/);
-  assert.match(dashboard, /60_000/);
+  assert.match(dashboard, /usageRefreshDelay\(data\.usageLimits\.attemptedAt\)/);
   assert.match(dashboard, /refresh\(true\)/);
-  assert.match(dashboard, /setInterval\(\(\) =>/);
-  assert.match(dashboard, /clearInterval\(interval\)/);
+  assert.match(dashboard, /clearTimeout\(timeout\)/);
   assert.match(dashboard, /retry failed/);
   assert.match(dashboard, /attemptedAt/);
   assert.doesNotMatch(dashboard, /usageRequested|pageLoadedAt/);
@@ -121,6 +121,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /groupSessionsByProject/);
   assert.match(styles, /\.sessionSidebar/);
   assert.match(styles, /\.historyProjectHeader/);
+  assert.match(dashboard, /const collapsed = !expandedHistoryProjects\.has\(group\.project\)/);
   assert.match(dashboard, /aria-expanded=\{!collapsed\}/);
   assert.match(styles, /\.historyProject\.collapsed/);
   assert.match(styles, /\.scoreRing > div[^}]*flex-direction: column/);
@@ -138,4 +139,13 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(monitor, /\.\.\.usageCache\.value, attemptedAt:/);
   assert.match(monitor, /error: errorMessage/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
+});
+
+test("refreshes stale usage immediately and waits out a recent attempt", () => {
+  const now = Date.parse("2026-08-06T14:00:00.000Z");
+  assert.equal(usageRefreshDelay(null, now), 0);
+  assert.equal(usageRefreshDelay("invalid", now), 0);
+  assert.equal(usageRefreshDelay("2026-08-06T13:58:59.999Z", now), 0);
+  assert.equal(usageRefreshDelay("2026-08-06T13:59:20.000Z", now), 20_100);
+  assert.equal(usageRefreshDelay("2026-08-06T14:00:10.000Z", now), USAGE_REFRESH_INTERVAL_MS);
 });

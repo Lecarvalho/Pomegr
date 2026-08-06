@@ -103,7 +103,7 @@ The score is a heuristic attention signal, not a quality assessment.
 
 ## Plan usage
 
-Plan utilization is retrieved for an unpaused live view every 60 seconds, beginning one minute after the view opens. The monitor caches each attempt for 60 seconds to deduplicate simultaneous tabs. Normal session polling, historical views, report generation, and manual refreshes never invoke the provider endpoint. Failed refreshes retain the last successful values, expose only a sanitized error and safe attempt timestamp, and retry on the next interval. The dashboard distinguishes the last successful `fetchedAt` time from the latest `attemptedAt` retry. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports.
+Plan utilization is refreshed when an unpaused live view opens if the last attempt is at least 60 seconds old. If it is newer, the dashboard waits for the remainder of that minute before refreshing, then continues at 60-second intervals. The monitor also caches each attempt for 60 seconds to deduplicate simultaneous tabs and enforce the cooldown server-side. Normal session polling, historical views, report generation, and manual refreshes never invoke the provider endpoint. Failed refreshes retain the last successful values, expose only a sanitized error and safe attempt timestamp, and retry after the same cooldown. The dashboard distinguishes the last successful `fetchedAt` time from the latest `attemptedAt` retry. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports.
 
 ## Git state
 
