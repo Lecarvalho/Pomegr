@@ -93,6 +93,7 @@ type SessionSummary = {
   project: string;
   updatedAt: string;
   isLive: boolean;
+  needsInput: boolean;
 };
 
 type MonitorState = {
@@ -568,6 +569,7 @@ export function Dashboard() {
   const loopPatterns = data.loops || [];
   const viewingHistory = data.view === "history";
   const liveSessions = sessions.filter((session) => session.isLive);
+  const attentionSessions = liveSessions.filter((session) => session.needsInput);
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
   const executionTasks = data.executionTasks || [];
@@ -628,12 +630,13 @@ export function Dashboard() {
                 <button
                   type="button"
                   className={`liveSessionLink ${selected ? "selected" : ""}`}
+                  data-needs-input={session.needsInput || undefined}
                   key={session.id}
                   onClick={() => { setSelectedSessionId(session.id); setData({ ...EMPTY, view: "live" }); setOpenMetric(null); setSidebarOpen(false); setLoading(true); }}
                   aria-current={selected ? "page" : undefined}
                 >
                   <i />
-                  <span><strong>{session.title}</strong><small>{session.project} · {relativeTime(session.updatedAt)}</small></span>
+                  <span><strong>{session.title}</strong><small>{session.project} · {session.needsInput ? <em>Needs input</em> : relativeTime(session.updatedAt)}</small></span>
                 </button>
               );
             })}
@@ -720,6 +723,16 @@ export function Dashboard() {
           <small>{data.session ? viewingHistory ? `Ended ${sessionListTime(data.session.updatedAt || "")}` : `Last event ${relativeTime(data.session.updatedAt)}` : "Auto-discovery enabled"}</small>
         </div>
       </section>
+
+      {attentionSessions.length > 0 && (
+        <div
+          className="attentionNotice"
+          role="status"
+        >
+          <span className="attentionGlyph" aria-hidden="true">!</span>
+          <span><strong>Claude Code needs your input</strong><small>{attentionSessions.length === 1 ? attentionSessions[0].title : `${attentionSessions.length} live sessions are waiting for you`}</small></span>
+        </div>
+      )}
 
       {data.error && <div className="notice"><span>!</span>{data.error}</div>}
 

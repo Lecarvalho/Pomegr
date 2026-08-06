@@ -52,6 +52,12 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /\.statusPill\.stopped/);
   assert.match(styles, /\.statusPill\.needs_input/);
   assert.match(dashboard, /needs input/);
+  assert.match(dashboard, /attentionSessions/);
+  assert.match(dashboard, /Claude Code needs your input/);
+  assert.doesNotMatch(dashboard, /Open session/);
+  assert.match(dashboard, /className="attentionNotice"\s+role="status"/);
+  assert.match(styles, /\.attentionNotice/);
+  assert.match(dashboard, /data-needs-input/);
   assert.match(dashboard, /gitPathParts/);
   assert.match(styles, /\.gitPathName/);
   assert.match(styles, /\.gitPathName \{ display: block; max-width: none; overflow: visible; white-space: normal/);
@@ -126,6 +132,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(monitor, /historical \? emptyUsageLimits\(\)/);
   assert.match(monitor, /refreshUsage \? await usageLimits\(\) : cachedUsageLimits\(\)/);
   assert.match(monitor, /sanitizedUsageError/);
+  assert.match(monitor, /readSessionRegistry/);
+  assert.match(monitor, /sessionRegistryEntry\?\.needsInput/);
   assert.match(monitor, /\.\.\.usageCache\.value, attemptedAt:/);
   assert.match(monitor, /error: errorMessage/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));

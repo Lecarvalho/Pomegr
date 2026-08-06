@@ -7,7 +7,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
-- Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects
+- Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
@@ -23,7 +23,7 @@ The **Generate report** button refreshes local session data and downloads a dete
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
 
-Because provider transcripts do not expose a reliable process-lifecycle signal, Threadlight classifies every session with activity in the last five minutes as live. If nothing is recent, the most recently active session remains available as the live auto-discovery target.
+Threadlight combines provider session-registry lifecycle state with transcript activity. A registered interactive session remains live while its process is present, and explicit user-input waits take priority as the live auto-discovery target. Transcript activity in the last five minutes remains the fallback when registry state is unavailable.
 
 ## Run locally
 
@@ -51,7 +51,7 @@ The web server proxies `/api/state` to the loopback-only monitor, so private cre
 
 ## Configuration
 
-The monitor automatically selects the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`, including activity from a running subagent while its primary transcript is waiting.
+The monitor automatically selects a registered session that needs user input first, then an active registered session, then the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |

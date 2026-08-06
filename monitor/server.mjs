@@ -8,12 +8,14 @@ import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedA
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
 const EXPLICIT_SESSION = process.env.CLAUDE_SESSION_FILE;
 const TASKS_ROOT = path.join(os.homedir(), ".claude", "tasks");
+const SESSION_REGISTRY_ROOT = path.join(os.homedir(), ".claude", "sessions");
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
@@ -143,6 +145,18 @@ function statusFor(mtimeMs) {
   return "idle";
 }
 
+function registryStatus(entry, fallback) {
+  if (!entry) return fallback;
+  if (entry.status === "active") return "active";
+  if (entry.status === "waiting") return "waiting";
+  if (entry.status === "idle") return "idle";
+  return fallback;
+}
+
+function registryTimestamp(entry) {
+  return entry?.updatedAt ? new Date(entry.updatedAt).toISOString() : null;
+}
+
 function projectCwd(records) {
   return records.find((record) => typeof record.cwd === "string")?.cwd || "";
 }
@@ -205,29 +219,39 @@ function sessionTitle(records) {
 
 function discoveredSessions() {
   const files = listSessionFiles(CLAUDE_PROJECTS);
+  const registry = readSessionRegistry(SESSION_REGISTRY_ROOT);
   const explicitFile = EXPLICIT_SESSION && fs.existsSync(EXPLICIT_SESSION) ? EXPLICIT_SESSION : null;
   if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
     files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
   }
-  const liveFile = explicitFile || files[0]?.file || null;
+  const filesBySessionId = new Map(files.map(({ file }) => [path.basename(file, ".jsonl"), file]));
+  const preferredRegisteredId = preferredRegisteredSessionId(registry, [...filesBySessionId.keys()]);
+  const liveFile = explicitFile
+    || filesBySessionId.get(preferredRegisteredId)
+    || files[0]?.file
+    || null;
   const liveFiles = new Set(
     explicitFile
       ? [explicitFile]
-      : files.filter(({ activityMs }) => isLiveSessionActivity(activityMs)).map(({ file }) => file),
+      : files.filter(({ file, activityMs }) => (
+        registry.has(path.basename(file, ".jsonl")) || isLiveSessionActivity(activityMs)
+      )).map(({ file }) => file),
   );
   if (liveFile && liveFiles.size === 0) liveFiles.add(liveFile);
-  return { files, liveFile, liveFiles };
+  return { files, liveFile, liveFiles, registry };
 }
 
 function sessionCatalog() {
-  const { files, liveFiles } = discoveredSessions();
+  const { files, liveFiles, registry } = discoveredSessions();
 
   return files.slice(0, 50).flatMap(({ file, activityMs }) => {
     const stat = statSafe(file);
     if (!stat) return [];
     const cacheKey = `${stat.size}:${stat.mtimeMs}:${activityMs}`;
     const cached = sessionSummaryCache.get(file);
-    if (cached?.key === cacheKey) return [{ ...cached.value, isLive: liveFiles.has(file) }];
+    const registryEntry = registry.get(path.basename(file, ".jsonl"));
+    const liveState = { isLive: liveFiles.has(file), needsInput: Boolean(registryEntry?.needsInput) };
+    if (cached?.key === cacheKey) return [{ ...cached.value, ...liveState }];
     const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
     const value = {
       id: path.basename(file, ".jsonl"),
@@ -236,7 +260,7 @@ function sessionCatalog() {
       updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
     };
     sessionSummaryCache.set(file, { key: cacheKey, value });
-    return [{ ...value, isLive: liveFiles.has(file) }];
+    return [{ ...value, ...liveState }];
   });
 }
 
@@ -252,7 +276,7 @@ function runtimeMetadata(records) {
 }
 
 async function analyze(refreshUsage = false, requestedSessionId = "") {
-  const { files: sessionFiles, liveFile, liveFiles } = discoveredSessions();
+  const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
   const explicitMatch = EXPLICIT_SESSION
     && path.basename(EXPLICIT_SESSION, ".jsonl") === requestedSessionId
     && fs.existsSync(EXPLICIT_SESSION)
@@ -282,6 +306,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   };
 
   const sessionId = path.basename(mainFile, ".jsonl");
+  const sessionRegistryEntry = registry.get(sessionId);
   const agentDir = path.join(path.dirname(mainFile), sessionId, "subagents");
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
@@ -360,7 +385,14 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     const finished = file !== mainFile && isAgentTranscriptFinished(records);
     const externallyStoppedAt = file === mainFile ? null : stoppedAtByAgent.get(actor.id.replace(/^agent-/, ""));
     const externallyStopped = externallyStoppedAt && isExternalStopCurrent(records, externallyStoppedAt);
-    const needsInputAt = pendingUserInputAt(records);
+    const transcriptNeedsInputAt = pendingUserInputAt(records);
+    const registryNeedsInputAt = file === mainFile && sessionRegistryEntry?.needsInput
+      ? registryTimestamp(sessionRegistryEntry)
+      : null;
+    const needsInputAt = registryNeedsInputAt || transcriptNeedsInputAt;
+    const observedStatus = file === mainFile
+      ? registryStatus(sessionRegistryEntry, statusFor(stat.mtimeMs))
+      : statusFor(stat.mtimeMs);
     agents.push({
       id: actor.id,
       label: actor.label,
@@ -368,9 +400,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       parentId: actor.parentId,
       model: runtime.model,
       effort: runtime.effort,
-      status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : statusFor(stat.mtimeMs),
+      status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
       toolCalls: calls,
-      lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || stat.mtime.toISOString(),
+      lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || (file === mainFile ? registryTimestamp(sessionRegistryEntry) : null) || stat.mtime.toISOString(),
       ...timing,
     });
   }

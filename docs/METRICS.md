@@ -66,6 +66,10 @@ Every primary session whose own transcript or subagent tree changed within the l
 
 Selecting any live session keeps its state polling. When a selected session ages out of the live window, it moves into history and polling stops until it becomes active again.
 
+## User attention
+
+For the Claude Code adapter, Threadlight reads the provider's local session registry and treats a `waiting` session whose safe wait category indicates input, approval, permission, or a question as needing user input. The raw wait value and question content are never sent to the browser. Transcript `AskUserQuestion` calls remain a fallback for sessions without registry state. A registered input wait remains live and takes priority for automatic live-session selection until the provider clears it.
+
 ## Session duration
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.
