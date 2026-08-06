@@ -1010,12 +1010,12 @@ export function Dashboard() {
 
       <section className="panel activityPanel">
         <div className="panelHeader">
-          <div><span className="label">EVENT STREAM</span><h2>{viewingHistory ? "Recorded tool activity" : "Recent tool activity"}</h2></div>
+          <div><span className="label">EVENT STREAM</span><h2>{viewingHistory ? "Recorded activity" : "Recent activity"}</h2></div>
           <button className="textButton" onClick={() => refresh(false)} disabled={loading}>Refresh now</button>
         </div>
         <div className="activityTable">
           <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span></div>
-          {data.activity.length === 0 && <Empty text="Tool activity will appear here as it happens." />}
+          {data.activity.length === 0 && <Empty text="Tool and user activity will appear here as it happens." />}
           {data.activity.slice(0, 12).map((event) => (
             <div className="activityRow" key={event.id}>
               <time>{shortTime(event.timestamp)}</time>

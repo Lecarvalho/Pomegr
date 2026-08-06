@@ -86,6 +86,12 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /contextGrowthTimeline/);
   assert.match(dashboard, /Context growth composition legend/);
   assert.match(dashboard, /positive change in latest snapshots/);
+  assert.match(dashboard, /Recent activity/);
+  assert.match(dashboard, /Tool and user activity will appear here/);
+  assert.match(monitor, /userInputContentType\(record, requestedInputIds\)/);
+  assert.match(monitor, /actor: "User"/);
+  assert.match(monitor, /tool: "User input"/);
+  assert.match(monitor, /detail: userInputType/);
   assert.doesNotMatch(dashboard, /Recorded token activity|TOKEN ACTIVITY|not billed spend/);
   assert.doesNotMatch(dashboard, /contextStepArea|stepHitArea/);
   assert.doesNotMatch(dashboard, /data\.metrics\.tokens\.(?:total|cumulative|lastMinute)/);

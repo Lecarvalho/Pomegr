@@ -47,7 +47,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens
-- `activity` — sanitized tool events
+- `activity` — sanitized tool and user-input events
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 

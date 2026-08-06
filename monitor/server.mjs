@@ -5,6 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "./agent-metadata.mjs";
+import { userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
@@ -332,12 +333,23 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     if (!stat) continue;
     const actor = actorFor(file, mainFile, agentMetadata);
     const records = recordsByFile.get(file) || [];
+    const requestedInputIds = new Set();
     let calls = 0;
     for (const record of records) {
       const timestamp = record.timestamp || record.message?.timestamp;
       if (timestamp) {
         if (!startedAt || new Date(timestamp) < new Date(startedAt)) startedAt = timestamp;
         if (!updatedAt || new Date(timestamp) > new Date(updatedAt)) updatedAt = timestamp;
+      }
+      const userInputType = file === mainFile ? userInputContentType(record, requestedInputIds) : null;
+      if (userInputType) {
+        allEvents.push({
+          id: record.uuid || crypto.createHash("sha1").update(`${file}:${timestamp}:user-input`).digest("hex").slice(0, 12),
+          timestamp: timestamp || stat.mtime.toISOString(),
+          actor: "User",
+          tool: "User input",
+          detail: userInputType,
+        });
       }
       if (record.type === "assistant" && record.message?.usage) {
         const usage = record.message.usage;
@@ -356,6 +368,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
         if (content.type !== "tool_use") continue;
         calls += 1;
         const tool = content.name || "Tool";
+        if (tool === "AskUserQuestion" && content.id) requestedInputIds.add(content.id);
         const input = content.input || {};
         const sig = repetitionSignature(tool, input);
         const detail = safeDetail(input);

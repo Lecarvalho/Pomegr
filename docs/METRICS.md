@@ -84,6 +84,10 @@ A repetition signature combines the agent and tool name with a monitor-side dige
 
 `toolCalls` counts every observed tool invocation in the session. Its dashboard popover groups those calls by agent, tool name, and sanitized target; the grouped call counts always sum to the headline total. Prompt text, response text, and full command contents are not exposed.
 
+## Activity events
+
+Recent activity includes tool invocations and timestamps for direct user messages or answers to an agent's structured question. A user-input event's target lists only its content categories (`Text`, `Document`, and `Image`, including combinations); prompt text, answers, filenames, tool results, and synthetic subagent prompts are never returned to the browser. User-input events do not contribute to `toolCalls`, repetition signals, or the flow score.
+
 ## Agent overlap
 
 An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.
