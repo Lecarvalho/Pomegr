@@ -4,6 +4,10 @@ Threadlight is a lightweight, local-first dashboard for observing live coding-ag
 
 The current adapter supports Claude Code. Codex is the next planned integration; the product and normalized data model remain provider-neutral.
 
+<p align="center">
+  <img src="docs/assets/threadlight-introduction.png" alt="Threadlight overview: a local view of coding-agent sessions" width="560">
+</p>
+
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
