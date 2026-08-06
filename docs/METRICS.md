@@ -34,6 +34,12 @@ The primary-agent popover is derived from Bash execution lifecycle records in th
 
 The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Commands, stdout, stderr, tool-result content, and notification output are excluded. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
 
+## Plan checklist
+
+Threadlight also reads the provider's structured task files for the selected session and exposes them separately as `planTasks`. The Plan items badge and checkbox popover are intentionally distinct from Execution tasks: this checklist is an agent-maintained planning snapshot, not observed runtime state. The popover always ends with a warning that it remains static until Claude updates it and Claude may forget to do so.
+
+Only normalized task ID, subject, status, and dependency IDs enter the browser API. Long-form descriptions and active-form text are excluded. Unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. Generated reports omit the plan checklist.
+
 ## Agent state
 
 - `active` — updated within 45 seconds
@@ -91,7 +97,7 @@ The score is a heuristic attention signal, not a quality assessment.
 
 ## Plan usage
 
-Plan utilization is retrieved for the live view from the provider's authenticated endpoint once, one minute after page load, then cached by the monitor to deduplicate simultaneous tabs. Normal session polling, historical views, report generation, and manual refreshes never invoke the provider endpoint. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports.
+Plan utilization is retrieved for an unpaused live view every 60 seconds, beginning one minute after the view opens. The monitor caches each attempt for 60 seconds to deduplicate simultaneous tabs. Normal session polling, historical views, report generation, and manual refreshes never invoke the provider endpoint. Failed refreshes retain the last successful values, expose only a sanitized error and safe attempt timestamp, and retry on the next interval. The dashboard distinguishes the last successful `fetchedAt` time from the latest `attemptedAt` retry. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports.
 
 ## Git state
 

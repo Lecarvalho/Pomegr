@@ -45,6 +45,14 @@ type ExecutionTask = {
   exitCode: number | null;
 };
 
+type PlanTask = {
+  id: string;
+  subject: string;
+  status: "pending" | "in_progress" | "completed";
+  blocks: string[];
+  blockedBy: string[];
+};
+
 type ContextGrowthBucket = {
   start: string;
   end: string;
@@ -129,10 +137,12 @@ type MonitorState = {
   loops: LoopPattern[];
   activity: Activity[];
   executionTasks: ExecutionTask[];
+  planTasks: PlanTask[];
   insights: Insight[];
   usageLimits: {
     available: boolean;
     fetchedAt: string | null;
+    attemptedAt: string | null;
     error?: string;
     limits: Array<{
       id: string;
@@ -165,8 +175,9 @@ const EMPTY: MonitorState = {
   loops: [],
   activity: [],
   executionTasks: [],
+  planTasks: [],
   insights: [],
-  usageLimits: { available: false, fetchedAt: null, limits: [] },
+  usageLimits: { available: false, fetchedAt: null, attemptedAt: null, limits: [] },
 };
 
 function relativeTime(value: string | null) {
@@ -426,11 +437,11 @@ export function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
   const [executionTasksOpen, setExecutionTasksOpen] = useState(false);
-  const pageLoadedAt = useRef<number | null>(null);
-  const usageRequested = useRef(false);
+  const [planTasksOpen, setPlanTasksOpen] = useState(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
   const loopMetricRef = useRef<HTMLElement | null>(null);
   const executionTaskPopoverRef = useRef<HTMLDivElement | null>(null);
+  const planTaskPopoverRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
@@ -525,16 +536,27 @@ export function Dashboard() {
   }, [executionTasksOpen]);
 
   useEffect(() => {
-    if (selectedIsHistorical) return;
-    pageLoadedAt.current ??= Date.now();
-    const requestUsage = () => {
-      if (paused || usageRequested.current) return;
-      usageRequested.current = true;
-      refresh(true);
+    if (!planTasksOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!planTaskPopoverRef.current?.contains(event.target as Node)) setPlanTasksOpen(false);
     };
-    const remaining = Math.max(0, 60_000 - (Date.now() - pageLoadedAt.current));
-    const timer = window.setTimeout(requestUsage, remaining);
-    return () => window.clearTimeout(timer);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPlanTasksOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [planTasksOpen]);
+
+  useEffect(() => {
+    if (selectedIsHistorical || paused) return;
+    const interval = window.setInterval(() => {
+      void refresh(true);
+    }, 60_000);
+    return () => window.clearInterval(interval);
   }, [paused, refresh, selectedIsHistorical]);
 
   const sessionLabel = data.session?.title || "Waiting for a session";
@@ -551,6 +573,10 @@ export function Dashboard() {
   const executionTasks = data.executionTasks || [];
   const runningExecutionTasks = executionTasks.filter((task) => task.status === "running");
   const finishedExecutionTasks = executionTasks.filter((task) => task.status !== "running");
+  const planTasks = data.planTasks || [];
+  const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
+  const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
+  const openPlanTasks = planTasks.length - completedPlanTasks - activePlanTasks;
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -728,10 +754,16 @@ export function Dashboard() {
       {!viewingHistory && <section className="panel limitsPanel" aria-label="Claude usage limits">
         <div className="limitsHeader">
           <div><span className="label">CLAUDE PLAN</span><h2>Usage limits</h2></div>
-          <span className="quiet">{data.usageLimits.fetchedAt ? `Checked ${relativeTime(data.usageLimits.fetchedAt)}` : "Connecting…"}</span>
+          <span className={`quiet usageCheck ${data.usageLimits.error ? "stale" : ""}`} title={data.usageLimits.error || undefined}>
+            {data.usageLimits.error
+              ? data.usageLimits.fetchedAt
+                ? `Checked ${relativeTime(data.usageLimits.fetchedAt)} · retry failed ${relativeTime(data.usageLimits.attemptedAt)}`
+                : `Refresh failed ${relativeTime(data.usageLimits.attemptedAt)} · retrying`
+              : data.usageLimits.fetchedAt ? `Checked ${relativeTime(data.usageLimits.fetchedAt)}` : "Connecting…"}
+          </span>
         </div>
         <div className="limitCards">
-          {!data.usageLimits.available && <Empty text={data.usageLimits.error || "Usage limits are unavailable."} />}
+          {!data.usageLimits.available && <Empty text={data.usageLimits.error || "Plan usage loads one minute after the page opens."} />}
           {data.usageLimits.limits.map((limit) => (
             <article className={`limitCard ${limit.severity}`} key={limit.id}>
               <div className="limitTop">
@@ -866,7 +898,7 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${executionTasksOpen && agent.id === "primary" ? "executionTasksOpen" : ""}`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${(executionTasksOpen || planTasksOpen) && agent.id === "primary" ? "agentPopoverOpen" : ""}`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
@@ -879,7 +911,7 @@ export function Dashboard() {
                         <button
                           className="executionTaskTrigger"
                           type="button"
-                          onClick={() => setExecutionTasksOpen((open) => !open)}
+                          onClick={() => { setPlanTasksOpen(false); setExecutionTasksOpen((open) => !open); }}
                           aria-expanded={executionTasksOpen}
                           aria-controls="primary-agent-execution-tasks"
                         >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</button>
@@ -916,6 +948,41 @@ export function Dashboard() {
                                   ))}
                                 </section>
                               )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {agent.id === "primary" && planTasks.length > 0 && (
+                      <div className="planTaskAnchor" ref={planTaskPopoverRef}>
+                        <button
+                          className="planTaskTrigger"
+                          type="button"
+                          onClick={() => { setExecutionTasksOpen(false); setPlanTasksOpen((open) => !open); }}
+                          aria-expanded={planTasksOpen}
+                          aria-controls="primary-agent-plan-tasks"
+                        >{planTasks.length} plan items</button>
+                        {planTasksOpen && (
+                          <div className="planTaskPopover" id="primary-agent-plan-tasks" role="dialog" aria-label="Claude plan checklist">
+                            <div className="planTaskPopoverHeader">
+                              <div><span className="label">CLAUDE PLAN</span><strong>Plan checklist</strong></div>
+                              <button type="button" onClick={() => setPlanTasksOpen(false)} aria-label="Close plan checklist">×</button>
+                            </div>
+                            <p>{completedPlanTasks} done · {activePlanTasks} in progress · {openPlanTasks} open</p>
+                            <div className="planTaskList">
+                              {planTasks.map((task) => (
+                                <div className={`planTaskRow ${task.status}`} key={task.id}>
+                                  <span className="planTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "in_progress" ? "■" : "□"}</span>
+                                  <div>
+                                    <strong>{task.subject}</strong>
+                                    {task.blockedBy.length > 0 && <small>Blocked by {task.blockedBy.join(", ")}</small>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="planTaskCaution">
+                              <strong>Agent-maintained checklist</strong>
+                              <span>Static until Claude updates it. Claude may forget, so do not treat this as live execution truth.</span>
                             </div>
                           </div>
                         )}

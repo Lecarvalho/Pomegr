@@ -64,6 +64,11 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /\.agentTitleLine > strong \{ overflow: visible; white-space: normal/);
   assert.match(dashboard, /60_000/);
   assert.match(dashboard, /refresh\(true\)/);
+  assert.match(dashboard, /setInterval\(\(\) =>/);
+  assert.match(dashboard, /clearInterval\(interval\)/);
+  assert.match(dashboard, /retry failed/);
+  assert.match(dashboard, /attemptedAt/);
+  assert.doesNotMatch(dashboard, /usageRequested|pageLoadedAt/);
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);
   assert.match(dashboard, /CONTEXT COMPOSITION/);
   assert.match(dashboard, /tokenHistogramTitle/);
@@ -90,6 +95,14 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /\.executionTaskPopover/);
   assert.match(styles, /\.executionTaskRow\.running/);
   assert.match(monitor, /buildExecutionTasks\(mainRecords/);
+  assert.match(dashboard, /planTaskTrigger/);
+  assert.match(dashboard, /planTaskPopover/);
+  assert.match(dashboard, /CLAUDE PLAN/);
+  assert.match(dashboard, /Agent-maintained checklist/);
+  assert.match(dashboard, /Claude may forget/);
+  assert.match(styles, /\.planTaskPopover/);
+  assert.match(styles, /\.planTaskCaution/);
+  assert.match(monitor, /planTasks: readSessionTasks\(TASKS_ROOT, sessionId\)/);
   assert.match(monitor, /buildContextGrowthTimeline/);
   assert.match(dashboard, /buildSessionReport/);
   assert.match(dashboard, /HISTORICAL SESSION/);
@@ -112,5 +125,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(sessionsRoute, /\/api\/sessions/);
   assert.match(monitor, /historical \? emptyUsageLimits\(\)/);
   assert.match(monitor, /refreshUsage \? await usageLimits\(\) : cachedUsageLimits\(\)/);
+  assert.match(monitor, /sanitizedUsageError/);
+  assert.match(monitor, /\.\.\.usageCache\.value, attemptedAt:/);
+  assert.match(monitor, /error: errorMessage/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });

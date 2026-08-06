@@ -41,6 +41,7 @@ const state = {
   insights: [{ title: "Primary agent repeated Read 4 times", detail: "The same target keeps recurring." }],
   activity: [{ detail: "RAW PROMPT MUST NOT APPEAR" }],
   executionTasks: [{ id: "toolu_1", label: "PRIVATE EXECUTION LABEL MUST NOT APPEAR", status: "running", command: "PRIVATE COMMAND", output: "PRIVATE OUTPUT" }],
+  planTasks: [{ id: "1", subject: "PRIVATE PLAN SUBJECT MUST NOT APPEAR", status: "pending", blocks: [], blockedBy: [] }],
   usageLimits: { available: true, limits: [{ window: "5 hours", label: "Current session", percent: 40, resetsAt: "2026-08-05T20:00:00.000Z" }] },
 };
 
@@ -54,7 +55,7 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Primary agent.*1,000/);
   assert.match(report, /Read · server\.mjs/);
   assert.match(report, /Retrospective questions/);
-  assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
+  assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE PLAN SUBJECT MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
   assert.doesNotMatch(report, /Cumulative|Primary current context|token spend/i);
   assert.equal(sessionReportFilename(state, generatedAt), "threadlight-repair-the-parser-2026-08-05.md");
 });

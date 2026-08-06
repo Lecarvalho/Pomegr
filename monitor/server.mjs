@@ -8,10 +8,12 @@ import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedA
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { readSessionTasks } from "./session-tasks.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
 const EXPLICIT_SESSION = process.env.CLAUDE_SESSION_FILE;
+const TASKS_ROOT = path.join(os.homedir(), ".claude", "tasks");
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
@@ -19,11 +21,18 @@ const sessionSummaryCache = new Map();
 let usageCache = { timestamp: 0, value: null, pending: null };
 
 function emptyUsageLimits(error = "") {
-  return { available: false, fetchedAt: null, limits: [], error };
+  return { available: false, fetchedAt: null, attemptedAt: null, limits: [], error };
 }
 
 function cachedUsageLimits() {
-  return usageCache.value || emptyUsageLimits("Plan usage loads one minute after the page opens.");
+  return usageCache.value || emptyUsageLimits();
+}
+
+function sanitizedUsageError(error) {
+  const message = error instanceof Error ? error.message : "";
+  if (/credentials|oauth|enoent/i.test(message)) return "Claude usage credentials are unavailable.";
+  if (/returned \d+/i.test(message)) return message.slice(0, 120);
+  return "Claude usage refresh failed.";
 }
 
 async function usageLimits() {
@@ -67,11 +76,15 @@ async function usageLimits() {
       });
       const wanted = ["current-session", "all-models", "model-fable"];
       const limits = wanted.map((id) => normalized.find((limit) => limit.id === id)).filter(Boolean);
-      const value = { available: limits.length > 0, fetchedAt: new Date().toISOString(), limits, error: "" };
+      const checkedAt = new Date().toISOString();
+      const value = { available: limits.length > 0, fetchedAt: checkedAt, attemptedAt: checkedAt, limits, error: "" };
       usageCache = { timestamp: Date.now(), value, pending: null };
       return value;
     } catch (error) {
-      const value = usageCache.value || emptyUsageLimits(error instanceof Error ? error.message : "Usage unavailable");
+      const errorMessage = sanitizedUsageError(error);
+      const value = usageCache.value
+        ? { ...usageCache.value, attemptedAt: new Date().toISOString(), error: errorMessage }
+        : { ...emptyUsageLimits(errorMessage), attemptedAt: new Date().toISOString() };
       usageCache = { timestamp: Date.now(), value, pending: null };
       return value;
     }
@@ -263,7 +276,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       repeatedCalls: 0,
       tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], insights: [],
+    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], planTasks: [], insights: [],
     usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   };
@@ -465,6 +478,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
     executionTasks: buildExecutionTasks(mainRecords, { historical, sessionUpdatedAt: updatedAt }),
+    planTasks: readSessionTasks(TASKS_ROOT, sessionId),
     insights,
     usageLimits: currentUsageLimits,
   };
@@ -516,7 +530,7 @@ function analyzeEmpty() {
       repeatedCalls: 0,
       tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
-    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], insights: [], usageLimits: emptyUsageLimits(),
+    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], planTasks: [], insights: [], usageLimits: emptyUsageLimits(),
   };
 }
 

@@ -10,7 +10,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects
 - All-agent current context usage and its latest-snapshot composition
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
-- Primary-agent execution popover with running background shell jobs and recent completions
+- Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses
@@ -83,7 +83,7 @@ Threadlight does not present cumulative transcript-throughput or token-spend ses
 - Git commands use argument arrays rather than shell interpolation.
 - OAuth credentials remain in the monitor process.
 - Credentials are sent only to the provider's own usage endpoint and never enter browser state.
-- Plan usage is requested once, one minute after the page opens. Normal live polling and manual refreshes never call the provider usage endpoint; server caching deduplicates simultaneous tabs.
+- Plan usage is refreshed every 60 seconds while a live view is unpaused. Normal session polling and manual refreshes never call the provider usage endpoint; server caching deduplicates simultaneous tabs.
 
 Anyone who can reach port 3003 on the local network can view dashboard metadata. The development server accepts any hostname so it can be reached by IP; bind the web server to localhost if that is inappropriate for your network. Your firewall may prompt you to allow Node.js on private networks.
 
