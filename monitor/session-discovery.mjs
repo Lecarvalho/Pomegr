@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const SESSION_LIVE_WINDOW_MS = 5 * 60_000;
+export const SESSION_REGISTRY_GRACE_MS = 15_000;
 
 export function walkJsonl(root, maxDepth = 6, depth = 0) {
   if (!root || !fs.existsSync(root) || depth > maxDepth) return [];
@@ -18,10 +19,25 @@ export function statSafe(file) {
   try { return fs.statSync(file); } catch { return null; }
 }
 
-export function isLiveSessionActivity(activityMs, nowMs = Date.now()) {
+export function isLiveSessionActivity(activityMs, nowMs = Date.now(), windowMs = SESSION_LIVE_WINDOW_MS) {
   return Number.isFinite(activityMs)
     && activityMs > 0
-    && nowMs - activityMs <= SESSION_LIVE_WINDOW_MS;
+    && nowMs - activityMs <= windowMs;
+}
+
+export function liveSessionFiles(files, registrySessionIds, {
+  explicitFile = null,
+  registryAvailable = false,
+  nowMs = Date.now(),
+} = {}) {
+  if (explicitFile) return new Set([explicitFile]);
+  const registered = new Set(registrySessionIds || []);
+  return new Set(files.filter(({ file, activityMs }) => {
+    if (!registryAvailable) return isLiveSessionActivity(activityMs, nowMs);
+    const sessionId = path.basename(file, ".jsonl");
+    return registered.has(sessionId)
+      || isLiveSessionActivity(activityMs, nowMs, SESSION_REGISTRY_GRACE_MS);
+  }).map(({ file }) => file));
 }
 
 export function repositoryProjectName(cwd) {

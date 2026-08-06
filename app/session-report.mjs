@@ -56,7 +56,6 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   const repository = session.repository || { available: false, branch: "", files: [] };
   const agents = state.agents || [];
   const labelsById = new Map(agents.map((agent) => [agent.id, agent.label]));
-  const loops = state.loops || [];
   const tools = toolDistribution(state.toolPatterns);
   const insights = state.insights || [];
   const limits = state.usageLimits?.limits || [];
@@ -83,7 +82,6 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     "| --- | ---: |",
     `| Agents running now | ${number(state.metrics.activeAgents)} / ${number(state.metrics.agents)} |`,
     `| Tool calls | ${number(state.metrics.toolCalls)} |`,
-    `| Repeated calls | ${number(state.metrics.repeatedCalls)} |`,
     `| All-agent context | ${number(state.metrics.tokens.allAgents)} tokens |`,
     "",
     "## Agent activity",
@@ -99,17 +97,6 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     }
   } else {
     lines.push("| No agents observed | — | — | — | — | — | — | — | — |");
-  }
-
-  lines.push("", "## Repeated call patterns", "");
-  if (loops.length) {
-    lines.push("| Agent | Tool and sanitized target | Calls | Repeated |", "| --- | --- | ---: | ---: |");
-    for (const loop of loops) {
-      const target = loop.detail ? `${loop.tool} · ${loop.detail}` : loop.tool;
-      lines.push(`| ${cell(loop.agent)} | ${cell(target)} | ${number(loop.calls)} | ${number(loop.repeats)} |`);
-    }
-  } else {
-    lines.push("No repeated call patterns crossed the deterministic threshold.");
   }
 
   lines.push("", "## Tool-call distribution", "");
@@ -157,7 +144,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     "",
     "## Retrospective questions",
     "",
-    "1. Which repeated call patterns were necessary, and which could have been batched or stopped earlier?",
+    "1. Which tool calls could have been batched or stopped earlier?",
     "2. Did agent responsibilities overlap, or were boundaries clear?",
     "3. Which agents used the most wall time or had the largest context snapshots relative to their result?",
     "4. What context, tools, or instructions would reduce retries in the next session?",

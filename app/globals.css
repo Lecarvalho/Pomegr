@@ -85,7 +85,7 @@ button { color: inherit; }
 .limitBottom { min-height: 15px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 9px; }.limitBottom em { color: var(--red); font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 
 .panel { min-width: 0; max-width: 100%; border: 1px solid var(--line); background: rgba(251,250,246,.88); border-radius: 12px; }
-.summaryGrid { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.summaryGrid { display: grid; grid-template-columns: 2fr repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
 .scoreCard { padding: 22px; display: flex; align-items: center; gap: 19px; }
 .scoreRing { width: 78px; height: 78px; border-radius: 50%; padding: 6px; flex: 0 0 auto; }
 .scoreRing > div { height: 100%; width: 100%; border-radius: 50%; background: var(--panel); display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -94,9 +94,8 @@ button { color: inherit; }
 .scoreCard h2 { font-size: 20px; }.scoreCard p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .metric { padding: 20px; min-height: 130px; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
 .metricIcon { position: absolute; top: 17px; right: 17px; width: 27px; height: 27px; border-radius: 7px; display: grid; place-items: center; background: #ebeae4; color: var(--muted); font-weight: 700; }
-.clearIcon { background: var(--green-soft); color: var(--green); }.warnIcon { background: var(--amber-soft); color: var(--amber); }
 .metric strong { display: block; font: 400 34px/1 Georgia, serif; margin-top: 5px; }.metric strong small { font-size: 14px; color: var(--muted); }.metric p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
-.toolMetric, .loopMetric { z-index: 5; }
+.toolMetric { z-index: 5; }
 .metricFooter { margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
 .metricFooter button { border: 0; padding: 0; background: none; color: var(--amber); font-size: 10px; font-weight: 700; cursor: pointer; }.metricFooter button:disabled { color: var(--muted); opacity: .55; cursor: default; }
 .metricPopover { position: absolute; top: calc(100% + 8px); right: 0; width: min(430px, calc(100vw - 32px)); max-height: 390px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 18px 50px rgba(25,32,29,.18); text-align: left; }
@@ -188,7 +187,7 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
   .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { transform: translateX(0); }.sidebarHeader > button { display: block; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }
 }
 @media (max-width: 980px) {
-  .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(3, 1fr); }.scoreCard { grid-column: 1 / -1; }.contentGrid { grid-template-columns: 1fr; }
+  .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(2, 1fr); }.scoreCard { grid-column: 1 / -1; }.contentGrid { grid-template-columns: 1fr; }
   .cachePanel { grid-template-columns: repeat(4, 1fr); }.cacheLead { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line); }
 }
 @media (max-width: 640px) {

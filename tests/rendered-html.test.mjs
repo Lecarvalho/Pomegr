@@ -111,6 +111,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(monitor, /planTasks: readSessionTasks\(TASKS_ROOT, sessionId\)/);
   assert.match(monitor, /buildContextGrowthTimeline/);
   assert.match(dashboard, /buildSessionReport/);
+  assert.doesNotMatch(dashboard, /REPEATED CALLS|loopMetric|loop-patterns-popover/);
   assert.match(dashboard, /SESSION ID/);
   assert.match(dashboard, /HISTORICAL SESSION/);
   assert.match(dashboard, /historySessions/);
@@ -125,7 +126,6 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /\.scoreRing > div[^}]*flex-direction: column/);
   assert.match(dashboard, /TOOL CALL BREAKDOWN/);
   assert.match(dashboard, /toolPatterns/);
-  assert.match(dashboard, /LOOP PATTERNS/);
   assert.match(dashboard, /role="dialog"/);
   assert.match(stateRoute, /monitorParams\.set\("refreshUsage", "1"\)/);
   assert.match(stateRoute, /sessionId/);

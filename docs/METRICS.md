@@ -62,9 +62,11 @@ Each agent's wall time is measured from its earliest to latest recorded transcri
 
 ## Session state
 
-Every primary session whose own transcript or subagent tree changed within the last five minutes appears in the live-session list. If no session is recent, the most recently active session remains the live auto-discovery target. This deterministic activity heuristic supports concurrent sessions but does not claim to detect operating-system process state.
+When Claude's local session registry is available, its entries are the primary liveness signal. A registered session remains live even while idle. An unregistered transcript receives a 15-second grace window for startup ordering and final exit-time writes, then moves to history. The browser refreshes the local session catalog every two seconds, so registry-backed exits normally appear within a few seconds after that grace expires. No external API is called.
 
-Selecting any live session keeps its state polling. When a selected session ages out of the live window, it moves into history and polling stops until it becomes active again.
+When the provider registry is unavailable, Threadlight falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
+
+Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
 ## User attention
 
@@ -76,7 +78,7 @@ Elapsed wall time is the difference between the earliest and latest recorded tim
 
 ## Repetition
 
-A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. The dashboard popover continues to group all calls by sanitized agent, tool, and target so its grouped call counts sum to the headline total.
+A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights and the flow score, but is not shown as a persistent summary card or report section.
 
 ## Tool calls
 

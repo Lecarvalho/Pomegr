@@ -3,13 +3,35 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findLatestSession, findSessionById, isLiveSessionActivity, listSessionFiles, repositoryProjectName, SESSION_LIVE_WINDOW_MS } from "../monitor/session-discovery.mjs";
+import { findLatestSession, findSessionById, isLiveSessionActivity, listSessionFiles, liveSessionFiles, repositoryProjectName, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS } from "../monitor/session-discovery.mjs";
 
 test("classifies concurrent sessions using the documented activity window", () => {
   const now = new Date("2026-08-05T12:00:00Z").getTime();
   assert.equal(isLiveSessionActivity(now - SESSION_LIVE_WINDOW_MS, now), true);
   assert.equal(isLiveSessionActivity(now - SESSION_LIVE_WINDOW_MS - 1, now), false);
   assert.equal(isLiveSessionActivity(0, now), false);
+});
+
+test("uses the local registry to retire exited sessions promptly", () => {
+  const now = new Date("2026-08-05T12:00:00Z").getTime();
+  const registered = { file: path.join("sessions", "registered.jsonl"), activityMs: now - SESSION_LIVE_WINDOW_MS - 1 };
+  const starting = { file: path.join("sessions", "starting.jsonl"), activityMs: now - SESSION_REGISTRY_GRACE_MS };
+  const exited = { file: path.join("sessions", "exited.jsonl"), activityMs: now - SESSION_REGISTRY_GRACE_MS - 1 };
+
+  const live = liveSessionFiles([registered, starting, exited], ["registered"], {
+    registryAvailable: true,
+    nowMs: now,
+  });
+
+  assert.deepEqual([...live], [registered.file, starting.file]);
+});
+
+test("keeps the activity fallback when the provider registry is unavailable", () => {
+  const now = new Date("2026-08-05T12:00:00Z").getTime();
+  const recent = { file: path.join("sessions", "recent.jsonl"), activityMs: now - SESSION_LIVE_WINDOW_MS };
+  const old = { file: path.join("sessions", "old.jsonl"), activityMs: now - SESSION_LIVE_WINDOW_MS - 1 };
+
+  assert.deepEqual([...liveSessionFiles([recent, old], [], { nowMs: now })], [recent.file]);
 });
 
 test("uses the repository root instead of a working subdirectory as the project", async (context) => {

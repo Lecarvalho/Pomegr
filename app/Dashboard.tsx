@@ -436,11 +436,10 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [openMetric, setOpenMetric] = useState<"tools" | "loops" | null>(null);
+  const [openMetric, setOpenMetric] = useState<"tools" | null>(null);
   const [executionTasksOpen, setExecutionTasksOpen] = useState(false);
   const [planTasksOpen, setPlanTasksOpen] = useState(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
-  const loopMetricRef = useRef<HTMLElement | null>(null);
   const executionTaskPopoverRef = useRef<HTMLDivElement | null>(null);
   const planTaskPopoverRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
@@ -487,7 +486,7 @@ export function Dashboard() {
 
   useEffect(() => {
     const initial = window.setTimeout(refreshSessions, 0);
-    const interval = window.setInterval(refreshSessions, 5_000);
+    const interval = window.setInterval(refreshSessions, 2_000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(interval);
@@ -497,8 +496,7 @@ export function Dashboard() {
   useEffect(() => {
     if (!openMetric) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      const activeRef = openMetric === "tools" ? toolMetricRef : loopMetricRef;
-      if (!activeRef.current?.contains(event.target as Node)) setOpenMetric(null);
+      if (!toolMetricRef.current?.contains(event.target as Node)) setOpenMetric(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpenMetric(null);
@@ -566,7 +564,6 @@ export function Dashboard() {
   };
   const agentRows = agentTreeRows(data.agents);
   const toolPatterns = data.toolPatterns || [];
-  const loopPatterns = data.loops || [];
   const viewingHistory = data.view === "history";
   const liveSessions = sessions.filter((session) => session.isLive);
   const attentionSessions = liveSessions.filter((session) => session.needsInput);
@@ -833,37 +830,6 @@ export function Dashboard() {
                   <div className="metricPopoverRow" key={pattern.id}>
                     <div><strong>{pattern.agent}</strong><span>{pattern.tool}{pattern.detail ? ` · ${pattern.detail}` : ""}</span></div>
                     <div><strong>{pattern.calls}</strong><span>{pattern.calls === 1 ? "call" : "calls"}</span></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </article>
-        <article className="metric panel loopMetric" ref={loopMetricRef}>
-          <span className={`metricIcon ${data.metrics.repeatedCalls ? "warnIcon" : "clearIcon"}`}>↻</span>
-          <div><span className="label">REPEATED CALLS</span><strong>{data.metrics.repeatedCalls}</strong></div>
-          <div className="metricFooter">
-            <span>across {loopPatterns.length} loop {loopPatterns.length === 1 ? "pattern" : "patterns"}</span>
-            <button
-              type="button"
-              onClick={() => setOpenMetric((open) => open === "loops" ? null : "loops")}
-              disabled={loopPatterns.length === 0}
-              aria-expanded={openMetric === "loops"}
-              aria-controls="loop-patterns-popover"
-            >View list</button>
-          </div>
-          {openMetric === "loops" && (
-            <div className="metricPopover" id="loop-patterns-popover" role="dialog" aria-label="Repeated call patterns">
-              <div className="metricPopoverHeader">
-                <div><span className="label">LOOP PATTERNS</span><strong>{loopPatterns.length} grouped patterns</strong></div>
-                <button type="button" onClick={() => setOpenMetric(null)} aria-label="Close loop patterns">×</button>
-              </div>
-              <p>{data.metrics.repeatedCalls} calls beyond the first occurrence of each pattern.</p>
-              <div className="metricPopoverList">
-                {loopPatterns.map((loop) => (
-                  <div className="metricPopoverRow" key={loop.id}>
-                    <div><strong>{loop.agent}</strong><span>{loop.tool}{loop.detail ? ` · ${loop.detail}` : ""}</span></div>
-                    <div><strong>{loop.calls}</strong><span>{loop.repeats} repeated</span></div>
                   </div>
                 ))}
               </div>

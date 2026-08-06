@@ -55,7 +55,7 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Primary agent.*30m 0s/);
   assert.match(report, /All-agent context.*2,500 tokens/);
   assert.match(report, /Primary agent.*1,000/);
-  assert.match(report, /Read · server\.mjs/);
+  assert.doesNotMatch(report, /Repeated calls|Repeated call patterns/);
   assert.match(report, /Retrospective questions/);
   assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE PLAN SUBJECT MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
   assert.doesNotMatch(report, /Cumulative|Primary current context|token spend/i);

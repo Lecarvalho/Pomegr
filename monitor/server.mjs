@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
-import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
+import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
@@ -226,14 +226,10 @@ function discoveredSessions() {
     || filesBySessionId.get(preferredRegisteredId)
     || files[0]?.file
     || null;
-  const liveFiles = new Set(
-    explicitFile
-      ? [explicitFile]
-      : files.filter(({ file, activityMs }) => (
-        registry.has(path.basename(file, ".jsonl")) || isLiveSessionActivity(activityMs)
-      )).map(({ file }) => file),
-  );
-  if (liveFile && liveFiles.size === 0) liveFiles.add(liveFile);
+  const liveFiles = liveSessionFiles(files, registry.keys(), {
+    explicitFile,
+    registryAvailable: fs.existsSync(SESSION_REGISTRY_ROOT),
+  });
   return { files, liveFile, liveFiles, registry };
 }
 
