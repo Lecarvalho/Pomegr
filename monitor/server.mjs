@@ -10,6 +10,7 @@ import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { isLiveSessionActivity, listSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
+import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -118,11 +119,6 @@ function safeDetail(input = {}) {
   if (typeof input.taskId === "string") return `task ${input.taskId}`;
   if (typeof input.delaySeconds === "number") return `${input.delaySeconds}s`;
   return "";
-}
-
-function signature(tool, input = {}) {
-  const important = input.file_path || input.path || input.pattern || input.command || input.taskId || input.delaySeconds || input.description || "";
-  return `${tool}:${String(important).replace(/\s+/g, " ").trim().toLowerCase()}`;
 }
 
 function actorFor(file, mainFile, metadata) {
@@ -328,8 +324,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   }
   const allEvents = [];
   const agents = [];
-  const signatureMap = new Map();
-  const targetActors = new Map();
+  const repetitionMap = new Map();
+  const patternMap = new Map();
+  const mutationEvents = [];
   const usageByMessage = new Map();
   let startedAt = null;
   let updatedAt = null;
@@ -364,19 +361,25 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
         calls += 1;
         const tool = content.name || "Tool";
         const input = content.input || {};
-        const sig = signature(tool, input);
-        const key = `${actor.id}|${sig}`;
-        signatureMap.set(key, { count: (signatureMap.get(key)?.count || 0) + 1, actor, tool, detail: safeDetail(input) });
+        const sig = repetitionSignature(tool, input);
+        const detail = safeDetail(input);
+        const repetitionKey = `${actor.id}|${sig}`;
+        repetitionMap.set(repetitionKey, { count: (repetitionMap.get(repetitionKey)?.count || 0) + 1, actor, tool, detail, sig });
+        const patternKey = `${actor.id}|${tool}|${detail}`;
+        patternMap.set(patternKey, { count: (patternMap.get(patternKey)?.count || 0) + 1, actor, tool, detail });
         const target = input.file_path || input.path;
         if (typeof target === "string") {
-          const normalized = path.normalize(target).toLowerCase();
-          if (!targetActors.has(normalized)) targetActors.set(normalized, { display: path.basename(target), actors: new Set(), calls: 0 });
-          targetActors.get(normalized).actors.add(actor.id);
-          targetActors.get(normalized).calls += 1;
+          const scopes = mutationScopes(tool, input);
+          if (scopes.length) mutationEvents.push({
+            actorId: actor.id,
+            timestamp: timestamp || stat.mtime.toISOString(),
+            display: path.basename(target),
+            scopes,
+          });
         }
         allEvents.push({
           id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),
-          timestamp: timestamp || stat.mtime.toISOString(), actor: actor.label, tool, detail: safeDetail(input), sig,
+          timestamp: timestamp || stat.mtime.toISOString(), actor: actor.label, tool, detail, sig,
         });
       }
     }
@@ -408,9 +411,9 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   }
   if (!historical) applyWaitingStatus(agents);
 
-  const groupedTools = [...signatureMap.values()].sort((a, b) => b.count - a.count);
-  const loops = groupedTools.filter((item) => item.count >= 3);
-  const overlaps = [...targetActors.values()].filter((item) => item.actors.size >= 2 && item.calls >= 3);
+  const groupedTools = [...patternMap.values()].sort((a, b) => b.count - a.count);
+  const loops = [...repetitionMap.values()].filter((item) => item.count >= 3).sort((a, b) => b.count - a.count);
+  const overlaps = concurrentMutationOverlaps(mutationEvents);
   const insights = [];
   for (const agent of agents.filter((item) => item.status === "needs_input")) insights.push({
     id: `needs-input-${agent.id}`,
@@ -418,17 +421,17 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     title: `${agent.label} needs your input`,
     detail: "A user-input request is waiting for a response.",
   });
-  for (const loop of loops.slice(0, 3)) insights.push({
-    id: `loop-${loop.actor.id}-${loop.tool}-${loop.detail}`,
+  for (const [loopIndex, loop] of loops.slice(0, 3).entries()) insights.push({
+    id: `loop-${loop.actor.id}-${loopIndex}`,
     level: "warning",
     title: `${loop.actor.label} repeated ${loop.tool} ${loop.count} times`,
-    detail: loop.detail ? `The same target (${loop.detail}) keeps recurring. Check whether new evidence is being produced.` : "The same action keeps recurring. Check whether it is making progress.",
+    detail: loop.detail ? `The same scoped call (${loop.detail}) recurred with unchanged inputs. Check whether it produced new evidence.` : "The same call recurred with unchanged inputs. Check whether it is making progress.",
   });
   for (const overlap of overlaps.slice(0, 2)) insights.push({
     id: `overlap-${overlap.display}`,
     level: "warning",
-    title: `Multiple agents touched ${overlap.display}`,
-    detail: `${overlap.actors.size} agents inspected the same target across ${overlap.calls} calls. Their work may overlap.`,
+    title: `Concurrent edits may conflict in ${overlap.display}`,
+    detail: `${overlap.actors.size} agents modified the same region within 30 seconds across ${overlap.calls} calls.`,
   });
   if (!insights.length) insights.push({
     id: "healthy-flow",
@@ -445,8 +448,8 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     detail: item.detail,
     calls: item.count,
   }));
-  const loopPatterns = loops.map((loop) => ({
-    id: crypto.createHash("sha1").update(`${loop.actor.id}|${loop.tool}|${loop.detail}`).digest("hex").slice(0, 12),
+  const loopPatterns = loops.map((loop, loopIndex) => ({
+    id: `loop-${loop.actor.id}-${loopIndex}`,
     agent: loop.actor.label,
     tool: loop.tool,
     detail: loop.detail,

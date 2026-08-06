@@ -111,6 +111,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(monitor, /planTasks: readSessionTasks\(TASKS_ROOT, sessionId\)/);
   assert.match(monitor, /buildContextGrowthTimeline/);
   assert.match(dashboard, /buildSessionReport/);
+  assert.match(dashboard, /SESSION ID/);
   assert.match(dashboard, /HISTORICAL SESSION/);
   assert.match(dashboard, /historySessions/);
   assert.match(dashboard, /liveSessions\.map/);

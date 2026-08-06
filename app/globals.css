@@ -56,6 +56,9 @@ button { color: inherit; }
 .eyebrow, .label { font-size: 10px; font-weight: 800; letter-spacing: .15em; color: var(--muted); }
 .eyebrow { display: flex; align-items: center; gap: 9px; margin-bottom: 15px; }
 .eyebrow span { width: 18px; height: 1px; background: var(--green); }
+.sessionId { display: flex; align-items: baseline; gap: 8px; margin: -7px 0 15px 27px; color: var(--muted); font-size: 9px; letter-spacing: .08em; }
+.sessionId span { font-weight: 800; }
+.sessionId code { overflow-wrap: anywhere; color: var(--ink); font-size: 10px; letter-spacing: 0; }
 .hero h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: clamp(40px, 5vw, 66px); letter-spacing: -.045em; line-height: 1; margin: 0 0 17px; }
 .hero p { margin: 0; color: var(--muted); max-width: 660px; line-height: 1.55; font-size: 14px; }
 .sessionMeta { text-align: right; border-right: 3px solid var(--green); padding-right: 16px; min-width: 170px; }

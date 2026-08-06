@@ -8,6 +8,7 @@ const state = {
   view: "live",
   score: 84,
   session: {
+    id: "session-1234-abcd",
     title: "Repair the parser",
     project: "threadlight",
     cwd: "C:\\Users\\private-machine\\threadlight",
@@ -49,6 +50,7 @@ test("builds a deterministic retrospective without private raw state", () => {
   const report = buildSessionReport(state, generatedAt);
 
   assert.match(report, /^# Threadlight Session Report/m);
+  assert.match(report, /Session ID:\*\* `session-1234-abcd`/);
   assert.match(report, /Repair the parser/);
   assert.match(report, /Primary agent.*30m 0s/);
   assert.match(report, /All-agent context.*2,500 tokens/);

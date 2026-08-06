@@ -67,6 +67,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     "",
     "## Session",
     "",
+    `- **Session ID:** ${code(session.id)}`,
     `- **Name:** ${cell(session.title)}`,
     `- **Project:** ${cell(session.project)}`,
     `- **Source:** ${cell(state.source)}`,

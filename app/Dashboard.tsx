@@ -712,6 +712,7 @@ export function Dashboard() {
       <section className="hero" id="top">
         <div>
           <div className="eyebrow"><span /> {viewingHistory ? "HISTORICAL SESSION" : "LIVE SESSION OBSERVER"} {data.session ? `· ${data.session.project}` : ""}</div>
+          {data.session && <div className="sessionId"><span>SESSION ID</span><code>{data.session.id}</code></div>}
           <h1>{sessionLabel}</h1>
           <p>{viewingHistory
             ? "Reviewing recorded execution metadata. Current usage limits and live repository state are excluded."

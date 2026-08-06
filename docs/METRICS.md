@@ -76,7 +76,7 @@ Elapsed wall time is the difference between the earliest and latest recorded tim
 
 ## Repetition
 
-A signature combines agent, tool name, and important target. Three or more identical signatures produce a repetition insight. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. The dashboard popover lists every grouped pattern with sanitized agent, tool, target, total-call, and repeated-call metadata.
+A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. The dashboard popover continues to group all calls by sanitized agent, tool, and target so its grouped call counts sum to the headline total.
 
 ## Tool calls
 
@@ -84,7 +84,7 @@ A signature combines agent, tool name, and important target. Three or more ident
 
 ## Agent overlap
 
-An overlap insight appears when at least two agents access the same normalized path across at least three tool calls. This signals possible duplication, not necessarily waste.
+An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.
 
 ## Flow score
 
