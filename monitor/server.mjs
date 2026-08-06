@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "./agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, externallyStoppedAgentTimes, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt, resolveAgentMetadata } from "./agent-metadata.mjs";
 import { userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
@@ -304,20 +304,17 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
-  const agentMetadata = new Map();
+  const agentMetadata = resolveAgentMetadata([...recordsByFile].map(([file, records]) => ({
+    id: file === mainFile ? "primary" : path.basename(file, ".jsonl"),
+    agentId: file === mainFile ? null : path.basename(file, ".jsonl").replace(/^agent-/, ""),
+    records,
+  })));
   const stoppedAtByAgent = new Map();
-  for (const [file, records] of recordsByFile) {
-    const parentId = file === mainFile ? "primary" : path.basename(file, ".jsonl");
-    for (const [agentId, metadata] of buildAgentMetadata(records, parentId)) agentMetadata.set(agentId, metadata);
+  for (const records of recordsByFile.values()) {
     for (const [agentId, stoppedAt] of externallyStoppedAgentTimes(records)) {
       const previous = stoppedAtByAgent.get(agentId);
       if (!previous || new Date(stoppedAt) > new Date(previous)) stoppedAtByAgent.set(agentId, stoppedAt);
     }
-  }
-  for (const [file, records] of recordsByFile) {
-    if (file === mainFile) continue;
-    const agentId = path.basename(file, ".jsonl").replace(/^agent-/, "");
-    if (!agentMetadata.has(agentId)) agentMetadata.set(agentId, fallbackAgentMetadata(records));
   }
   const allEvents = [];
   const agents = [];

@@ -95,7 +95,7 @@ export function buildAgentMetadata(records, parentId) {
     for (const content of record.message.content) {
       if (record.type === "assistant" && content.type === "tool_use" && content.name === "Agent") {
         launches.set(content.id, {
-          description: content.input?.description || "Subagent",
+          description: content.input?.description || content.input?.name || "Subagent",
           kind: content.input?.subagent_type || "subagent",
           parentId,
         });
@@ -108,6 +108,106 @@ export function buildAgentMetadata(records, parentId) {
     }
   }
   return agents;
+}
+
+function agentLaunches(records, parentId) {
+  const launches = new Map();
+  for (const record of records) {
+    if (record.type !== "assistant" || !Array.isArray(record.message?.content)) continue;
+    for (const content of record.message.content) {
+      if (content.type !== "tool_use" || content.name !== "Agent" || typeof content.id !== "string") continue;
+      launches.set(content.id, {
+        description: content.input?.description || content.input?.name || "Subagent",
+        kind: content.input?.subagent_type || "subagent",
+        parentId,
+        prompt: typeof content.input?.prompt === "string" ? content.input.prompt : null,
+        timestampMs: recordTimestampMs(record),
+      });
+    }
+  }
+  return launches;
+}
+
+function publicLaunchMetadata(launch, fallback) {
+  return {
+    description: launch.description,
+    kind: launch.kind === "subagent" ? fallback.kind : launch.kind,
+    parentId: launch.parentId,
+  };
+}
+
+function initialAgentPrompt(records) {
+  return records.find(
+    (record) => record.type === "user" && typeof record.message?.content === "string",
+  )?.message.content || null;
+}
+
+function closestPromptLaunch(launches, prompt, startedAtMs, usedLaunches) {
+  if (!prompt) return null;
+  return launches
+    .filter((launch) => !usedLaunches.has(launch) && launch.prompt === prompt)
+    .sort((left, right) => {
+      if (startedAtMs === null) return 0;
+      const leftDelta = left.timestampMs === null ? Number.MAX_SAFE_INTEGER : startedAtMs - left.timestampMs;
+      const rightDelta = right.timestampMs === null ? Number.MAX_SAFE_INTEGER : startedAtMs - right.timestampMs;
+      const leftScore = leftDelta >= -1_000 ? Math.abs(leftDelta) : Number.MAX_SAFE_INTEGER + Math.abs(leftDelta);
+      const rightScore = rightDelta >= -1_000 ? Math.abs(rightDelta) : Number.MAX_SAFE_INTEGER + Math.abs(rightDelta);
+      return leftScore - rightScore;
+    })[0] || null;
+}
+
+// Claude writes a foreground child's transcript before the Agent result containing
+// its ID. Resolve that live interval by matching the exact launch prompt in memory;
+// prompts remain internal and are never included in the returned metadata.
+export function resolveAgentMetadata(transcripts) {
+  const metadata = new Map();
+  const resolvedLaunches = new Map();
+  const launches = [];
+  const usedLaunches = new Set();
+
+  for (const transcript of transcripts) {
+    const transcriptLaunches = agentLaunches(transcript.records, transcript.id);
+    launches.push(...transcriptLaunches.values());
+
+    for (const record of transcript.records) {
+      if (record.type !== "user" || !Array.isArray(record.message?.content)) continue;
+      for (const content of record.message.content) {
+        if (content.type !== "tool_result") continue;
+        const match = toolResultText(content.content).match(/agentId:\s*([a-z0-9_-]+)/i);
+        const launch = transcriptLaunches.get(content.tool_use_id);
+        if (!match || !launch) continue;
+        resolvedLaunches.set(match[1].replace(/^agent-/, ""), launch);
+        usedLaunches.add(launch);
+      }
+    }
+  }
+
+  for (const transcript of transcripts) {
+    if (!transcript.agentId) continue;
+    const fallback = fallbackAgentMetadata(transcript.records);
+    let launch = resolvedLaunches.get(transcript.agentId);
+    if (!launch) {
+      const startedAtMs = transcript.records
+        .map(recordTimestampMs)
+        .find((timestamp) => timestamp !== null) ?? null;
+      launch = closestPromptLaunch(
+        launches,
+        initialAgentPrompt(transcript.records),
+        startedAtMs,
+        usedLaunches,
+      );
+      if (launch) {
+        resolvedLaunches.set(transcript.agentId, launch);
+        usedLaunches.add(launch);
+      }
+    }
+    metadata.set(
+      transcript.agentId,
+      launch ? publicLaunchMetadata(launch, fallback) : fallback,
+    );
+  }
+
+  return metadata;
 }
 
 export function fallbackAgentMetadata(records) {

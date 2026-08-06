@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt } from "../monitor/agent-metadata.mjs";
+import { agentTiming, applyWaitingStatus, buildAgentMetadata, externallyStoppedAgentTimes, fallbackAgentMetadata, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt, resolveAgentMetadata } from "../monitor/agent-metadata.mjs";
 
 function launchRecords(toolId, agentId, description) {
   return [
@@ -43,6 +43,86 @@ test("records the transcript owner as the launched agent's parent", () => {
 test("leaves the parent unresolved when launch metadata is unavailable", () => {
   const fallback = fallbackAgentMetadata([{ type: "user", message: { content: "You are the security reviewer for this task." } }]);
   assert.equal(fallback.parentId, null);
+});
+
+test("links and names a live child before its Agent result is recorded", () => {
+  const prompt = "Inspect the post-commit throw sites without changing files.";
+  const metadata = resolveAgentMetadata([
+    {
+      id: "primary",
+      agentId: null,
+      records: [{
+        type: "assistant",
+        timestamp: "2026-08-06T15:01:37.948Z",
+        message: { content: [{
+          type: "tool_use",
+          id: "tool-live",
+          name: "Agent",
+          input: {
+            description: "Scoped census: post-commit throw sites",
+            prompt,
+          },
+        }] },
+      }],
+    },
+    {
+      id: "agent-child123",
+      agentId: "child123",
+      records: [
+        {
+          type: "user",
+          timestamp: "2026-08-06T15:01:38.100Z",
+          message: { content: prompt },
+        },
+        { type: "assistant", attributionAgent: "general-purpose", message: { content: [] } },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(metadata.get("child123"), {
+    description: "Scoped census: post-commit throw sites",
+    kind: "general-purpose",
+    parentId: "primary",
+  });
+});
+
+test("uses prompt matching to preserve nested live-agent hierarchy", () => {
+  const prompt = "Review the focused security slice.";
+  const metadata = resolveAgentMetadata([
+    { id: "primary", agentId: null, records: [] },
+    {
+      id: "agent-parent123",
+      agentId: "parent123",
+      records: [
+        { type: "user", timestamp: "2026-08-06T15:00:00.000Z", message: { content: "Parent task" } },
+        {
+          type: "assistant",
+          timestamp: "2026-08-06T15:02:00.000Z",
+          message: { content: [{
+            type: "tool_use",
+            id: "tool-nested-live",
+            name: "Agent",
+            input: { description: "Security lens", subagent_type: "reviewer", prompt },
+          }] },
+        },
+      ],
+    },
+    {
+      id: "agent-child456",
+      agentId: "child456",
+      records: [{
+        type: "user",
+        timestamp: "2026-08-06T15:02:00.200Z",
+        message: { content: prompt },
+      }],
+    },
+  ]);
+
+  assert.deepEqual(metadata.get("child456"), {
+    description: "Security lens",
+    kind: "reviewer",
+    parentId: "agent-parent123",
+  });
 });
 
 test("measures an agent's recorded wall time from its own timestamps", () => {
