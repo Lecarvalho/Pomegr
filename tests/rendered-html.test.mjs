@@ -76,7 +76,7 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /attemptedAt/);
   assert.doesNotMatch(dashboard, /usageRequested|pageLoadedAt/);
   assert.match(dashboard, /onClick=\{\(\) => refresh\(false\)\}/);
-  assert.match(dashboard, /CONTEXT COMPOSITION/);
+  assert.match(dashboard, /FIRST REQUEST CONTEXT/);
   assert.match(dashboard, /First request input/);
   assert.match(dashboard, /Includes first prompt/);
   assert.match(dashboard, /firstRequestFootprint/);
@@ -100,6 +100,11 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /activitySegment outputSegment/);
   assert.match(dashboard, /contextGrowthTimeline/);
   assert.match(dashboard, /Context growth composition legend/);
+  assert.match(dashboard, /compactNumber\(currentTokens\.input\)/);
+  assert.match(dashboard, /compactNumber\(currentTokens\.cacheWrite\)/);
+  assert.match(dashboard, /compactNumber\(currentTokens\.cacheRead\)/);
+  assert.match(dashboard, /compactNumber\(currentTokens\.output\)/);
+  assert.doesNotMatch(dashboard, /className="tokenStat"/);
   assert.match(dashboard, /positive change in latest snapshots/);
   assert.match(dashboard, /Recent activity/);
   assert.match(dashboard, /Tool and user activity will appear here/);

@@ -367,9 +367,9 @@ function agentTreeRows(agents: Agent[]) {
   return rows;
 }
 
-function ContextGrowthTimeline({ timeline, currentContext, historical }: {
+function ContextGrowthTimeline({ timeline, currentTokens, historical }: {
   timeline: MonitorState["metrics"]["tokens"]["contextGrowthTimeline"];
-  currentContext: number;
+  currentTokens: MonitorState["metrics"]["tokens"];
   historical: boolean;
 }) {
   const buckets = timeline?.buckets || [];
@@ -386,7 +386,7 @@ function ContextGrowthTimeline({ timeline, currentContext, historical }: {
           <div><span className="label">CONTEXT GROWTH</span><h2>Context added over time</h2></div>
         </div>
         <div className="histogramSummary">
-          <strong>{compactNumber(currentContext)}</strong>
+          <strong>{compactNumber(currentTokens.allAgents)}</strong>
           <span>{historical ? "recorded context" : "current context"}</span>
         </div>
       </div>
@@ -441,12 +441,12 @@ function ContextGrowthTimeline({ timeline, currentContext, historical }: {
       {buckets.length > 0 && (
         <div className="histogramFooter">
           <div className="histogramLegend" aria-label="Context growth composition legend">
-            <span><i className="inputSwatch" />Uncached input</span>
-            <span><i className="cacheWriteSwatch" />Cache write</span>
-            <span><i className="cacheReadSwatch" />Cache read</span>
-            <span><i className="outputSwatch" />Generated output</span>
+            <div className="histogramLegendItem"><i className="inputSwatch" /><span><small>Uncached input</small><strong>{compactNumber(currentTokens.input)}</strong></span></div>
+            <div className="histogramLegendItem"><i className="cacheWriteSwatch" /><span><small>Cache write</small><strong>{compactNumber(currentTokens.cacheWrite)}</strong></span></div>
+            <div className="histogramLegendItem"><i className="cacheReadSwatch" /><span><small>Cache read</small><strong>{compactNumber(currentTokens.cacheRead)}</strong></span></div>
+            <div className="histogramLegendItem"><i className="outputSwatch" /><span><small>Generated output</small><strong>{compactNumber(currentTokens.output)}</strong></span></div>
           </div>
-          <span>{formatBucketDuration(timeline.bucketMs)} per bar · positive change in latest snapshots</span>
+          <span className="histogramMethod">{formatBucketDuration(timeline.bucketMs)} per bar · positive change in latest snapshots</span>
         </div>
       )}
     </section>
@@ -904,15 +904,15 @@ export function Dashboard() {
 
       <ContextGrowthTimeline
         timeline={data.metrics.tokens.contextGrowthTimeline}
-        currentContext={data.metrics.tokens.allAgents}
+        currentTokens={data.metrics.tokens}
         historical={viewingHistory}
       />
 
-      <section className={`panel cachePanel ${machineryPopoverOpen ? "machineryPopoverOpen" : ""}`} aria-label="All-agent context composition">
+      <section className={`panel cachePanel ${machineryPopoverOpen ? "machineryPopoverOpen" : ""}`} aria-label="Primary session first-request context">
         <div className="cacheLead">
-          <span className="label">CONTEXT COMPOSITION</span>
-          <h2>Current and first request</h2>
-          <p>Latest all-agent context, with the primary session&apos;s opening footprint.</p>
+          <span className="label">FIRST REQUEST CONTEXT</span>
+          <h2>Opening footprint</h2>
+          <p>The primary session&apos;s first provider-reported input snapshot.</p>
         </div>
         <div className="firstRequestStat" ref={machineryPopoverRef}>
           <span>First request input</span>
@@ -981,22 +981,6 @@ export function Dashboard() {
           ) : (
             <><strong>—</strong><small>Available after the first response</small></>
           )}
-        </div>
-        <div className="tokenStat">
-          <span>Uncached input</span>
-          <strong>{compactNumber(data.metrics.tokens.input)}</strong>
-        </div>
-        <div className="tokenStat">
-          <span>Cache write</span>
-          <strong>{compactNumber(data.metrics.tokens.cacheWrite)}</strong>
-        </div>
-        <div className="tokenStat">
-          <span>Cache read</span>
-          <strong>{compactNumber(data.metrics.tokens.cacheRead)}</strong>
-        </div>
-        <div className="tokenStat outputTokens">
-          <span>Generated output</span>
-          <strong>{compactNumber(data.metrics.tokens.output)}</strong>
         </div>
       </section>
 
