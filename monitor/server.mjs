@@ -7,10 +7,13 @@ import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, externallyStoppedAgentTimes, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt, resolveAgentMetadata } from "./agent-metadata.mjs";
 import { userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
+import { latestContextMachinery, readLatestContextMachinery } from "./context-machinery.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
+import { readFirstRequestFootprint } from "./first-request-footprint.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
+import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
@@ -22,6 +25,8 @@ const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
 const sessionSummaryCache = new Map();
+const firstRequestFootprintCache = new Map();
+const contextMachineryCache = new Map();
 let usageCache = { timestamp: 0, value: null, pending: null };
 
 function emptyUsageLimits(error = "") {
@@ -111,7 +116,9 @@ function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   });
 }
 
-function safeDetail(input = {}) {
+function safeDetail(tool, input = {}) {
+  const skill = tool === "Skill" ? normalizedSkillName(input) : "";
+  if (skill) return skill;
   const file = input.file_path || input.path;
   if (typeof file === "string") return path.basename(file);
   if (typeof input.pattern === "string") return input.pattern.slice(0, 54);
@@ -304,6 +311,21 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
+  let firstRequestFootprint = firstRequestFootprintCache.get(mainFile) || null;
+  if (!firstRequestFootprint) {
+    firstRequestFootprint = await readFirstRequestFootprint(mainFile);
+    if (firstRequestFootprint) firstRequestFootprintCache.set(mainFile, firstRequestFootprint);
+  }
+  let contextMachinery = contextMachineryCache.get(mainFile);
+  if (contextMachinery === undefined) {
+    contextMachinery = await readLatestContextMachinery(mainFile);
+    contextMachineryCache.set(mainFile, contextMachinery);
+  }
+  const tailContextMachinery = latestContextMachinery(mainRecords);
+  if (tailContextMachinery && (!contextMachinery?.observedAt || new Date(tailContextMachinery.observedAt) >= new Date(contextMachinery.observedAt))) {
+    contextMachinery = tailContextMachinery;
+    contextMachineryCache.set(mainFile, contextMachinery);
+  }
   const agentMetadata = resolveAgentMetadata([...recordsByFile].map(([file, records]) => ({
     id: file === mainFile ? "primary" : path.basename(file, ".jsonl"),
     agentId: file === mainFile ? null : path.basename(file, ".jsonl").replace(/^agent-/, ""),
@@ -368,7 +390,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
         if (tool === "AskUserQuestion" && content.id) requestedInputIds.add(content.id);
         const input = content.input || {};
         const sig = repetitionSignature(tool, input);
-        const detail = safeDetail(input);
+        const detail = safeDetail(tool, input);
         const repetitionKey = `${actor.id}|${sig}`;
         repetitionMap.set(repetitionKey, { count: (repetitionMap.get(repetitionKey)?.count || 0) + 1, actor, tool, detail, sig });
         const patternKey = `${actor.id}|${tool}|${detail}`;
@@ -411,6 +433,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       effort: runtime.effort,
       status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
       toolCalls: calls,
+      skills: buildSkillUsage(records),
       lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || (file === mainFile ? registryTimestamp(sessionRegistryEntry) : null) || stat.mtime.toISOString(),
       ...timing,
     });
@@ -511,6 +534,8 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       startedAt,
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
+      firstRequestFootprint,
+      contextMachinery,
     },
     score,
     metrics: { agents: agents.length, activeAgents, toolCalls: allEvents.length, repeatedCalls, tokens: tokenUsage },

@@ -13,7 +13,9 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Session title, project, elapsed wall time, and last activity
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
-- Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, and tool counts
+- Primary-session first-request input with cache composition, available after the first response
+- An opt-in machinery inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
+- Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
@@ -23,9 +25,11 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
 
-The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and context snapshots, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
+The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and context snapshots, skill usage, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
+
+Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Threadlight detects that snapshot automatically, parses its Markdown tables by their column headers, and shows whatever machinery groups the provider reported. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Threadlight never reconstructs the list from the current repository or configuration.
 
 Threadlight combines provider session-registry lifecycle state with transcript activity. A registered interactive session remains live while its process is present, and explicit user-input waits take priority as the live auto-discovery target. Transcript activity in the last five minutes remains the fallback when registry state is unavailable.
 

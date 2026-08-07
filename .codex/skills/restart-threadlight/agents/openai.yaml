@@ -1,0 +1,4 @@
+interface:
+  display_name: "Restart Threadlight"
+  short_description: "Restart Threadlight in a detached terminal"
+  default_prompt: "Use $restart-threadlight to safely restart the local Threadlight app in a standalone terminal."

@@ -13,6 +13,11 @@ type Agent = {
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
   toolCalls: number;
+  skills: Array<{
+    name: string;
+    calls: number;
+    lastUsed: string | null;
+  }>;
   lastSeen: string;
   startedAt: string;
   updatedAt: string;
@@ -62,6 +67,18 @@ type ContextGrowthBucket = {
   output: number;
   cacheWrite: number;
   cacheRead: number;
+};
+
+type ContextMachinery = {
+  observedAt: string | null;
+  model: string;
+  total: { used: string; limit: string; percentage: number } | null;
+  categories: Array<{ name: string; tokens: string; percentage: number }>;
+  groups: Array<{
+    id: string;
+    label: string;
+    items: Array<{ name: string; detail: string; tokens: string }>;
+  }>;
 };
 
 type Insight = {
@@ -115,6 +132,15 @@ type MonitorState = {
     startedAt: string | null;
     updatedAt: string | null;
     durationMs: number;
+    firstRequestFootprint: {
+      observedAt: string | null;
+      input: number;
+      uncachedInput: number;
+      cacheWrite: number;
+      cacheRead: number;
+      output: number;
+    } | null;
+    contextMachinery: ContextMachinery | null;
   } | null;
   score: number;
   metrics: {
@@ -440,9 +466,13 @@ export function Dashboard() {
   const [openMetric, setOpenMetric] = useState<"tools" | null>(null);
   const [executionTasksOpen, setExecutionTasksOpen] = useState(false);
   const [planTasksOpen, setPlanTasksOpen] = useState(false);
+  const [openSkillAgentId, setOpenSkillAgentId] = useState<string | null>(null);
+  const [machineryPopoverOpen, setMachineryPopoverOpen] = useState(false);
   const toolMetricRef = useRef<HTMLElement | null>(null);
   const executionTaskPopoverRef = useRef<HTMLDivElement | null>(null);
   const planTaskPopoverRef = useRef<HTMLDivElement | null>(null);
+  const skillPopoverRef = useRef<HTMLDivElement | null>(null);
+  const machineryPopoverRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
@@ -552,6 +582,38 @@ export function Dashboard() {
   }, [planTasksOpen]);
 
   useEffect(() => {
+    if (!openSkillAgentId) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!skillPopoverRef.current?.contains(event.target as Node)) setOpenSkillAgentId(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenSkillAgentId(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openSkillAgentId]);
+
+  useEffect(() => {
+    if (!machineryPopoverOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!machineryPopoverRef.current?.contains(event.target as Node)) setMachineryPopoverOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMachineryPopoverOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [machineryPopoverOpen]);
+
+  useEffect(() => {
     if (selectedIsHistorical || paused) return;
     const timeout = window.setTimeout(() => {
       void refresh(true);
@@ -566,6 +628,7 @@ export function Dashboard() {
   const agentRows = agentTreeRows(data.agents);
   const toolPatterns = data.toolPatterns || [];
   const viewingHistory = data.view === "history";
+  const contextMachinery = data.session?.contextMachinery;
   const liveSessions = sessions.filter((session) => session.isLive);
   const attentionSessions = liveSessions.filter((session) => session.needsInput);
   const historySessions = sessions.filter((session) => !session.isLive);
@@ -845,11 +908,79 @@ export function Dashboard() {
         historical={viewingHistory}
       />
 
-      <section className="panel cachePanel" aria-label="All-agent context composition">
+      <section className={`panel cachePanel ${machineryPopoverOpen ? "machineryPopoverOpen" : ""}`} aria-label="All-agent context composition">
         <div className="cacheLead">
           <span className="label">CONTEXT COMPOSITION</span>
-          <h2>All-agent latest snapshots</h2>
-          <p>How the all-agent context total is composed.</p>
+          <h2>Current and first request</h2>
+          <p>Latest all-agent context, with the primary session&apos;s opening footprint.</p>
+        </div>
+        <div className="firstRequestStat" ref={machineryPopoverRef}>
+          <span>First request input</span>
+          {data.session?.firstRequestFootprint ? (
+            <>
+              <strong title="The first provider-reported input includes Claude Code machinery, the first prompt, attachments, and any injected hook output. It is not per-item attribution or token spend.">{compactNumber(data.session.firstRequestFootprint.input)}</strong>
+              <small>
+                {compactNumber(data.session.firstRequestFootprint.uncachedInput)} uncached · {compactNumber(data.session.firstRequestFootprint.cacheWrite)} write · {compactNumber(data.session.firstRequestFootprint.cacheRead)} read
+              </small>
+              <em>Includes first prompt</em>
+              {contextMachinery ? (
+                <>
+                  <button
+                    className="machineryPopoverTrigger"
+                    type="button"
+                    onClick={() => setMachineryPopoverOpen((open) => !open)}
+                    aria-expanded={machineryPopoverOpen}
+                    aria-controls="loaded-machinery-popover"
+                  >View loaded machinery <span aria-hidden="true">▸</span></button>
+                  {machineryPopoverOpen && (
+                    <div className="metricPopover machineryPopover" id="loaded-machinery-popover" role="dialog" aria-label="Loaded context machinery">
+                      <div className="executionTaskPopoverHeader">
+                        <div><span className="label">SESSION MACHINERY</span><strong>Loaded machinery</strong></div>
+                        <button type="button" onClick={() => setMachineryPopoverOpen(false)} aria-label="Close loaded machinery">×</button>
+                      </div>
+                      <div className="machineryPopoverBody">
+                        <div className="machineryMeta">
+                          <span>Claude <code>/context</code> estimate</span>
+                          <strong>{contextMachinery.model}</strong>
+                        </div>
+                        <div className="machineryCategories" role="list" aria-label="Estimated machinery categories">
+                          {contextMachinery.categories.map((category) => (
+                            <div className="machineryCategory" role="listitem" key={category.name}>
+                              <span>{category.name}</span>
+                              <strong>{category.tokens}</strong>
+                              <small>{category.percentage}%</small>
+                            </div>
+                          ))}
+                        </div>
+                        {contextMachinery.groups.length > 0 && (
+                          <div className="machineryGroups">
+                            {contextMachinery.groups.map((group) => (
+                              <details className="machineryGroup" key={group.id}>
+                                <summary><strong>{group.label}</strong><span>{group.items.length} {group.items.length === 1 ? "item" : "items"}</span></summary>
+                                <div className="machineryItems">
+                                  {group.items.map((item, index) => (
+                                    <div className="machineryItem" key={`${item.name}-${item.detail}-${index}`}>
+                                      <div><strong>{item.name}</strong><span>{item.detail}</span></div>
+                                      <b>{item.tokens}</b>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        )}
+                        <p className="machineryCaution">Loaded from Claude Code&apos;s rendered <code>/context</code> output. Values are provider estimates; paths and fields are sanitized before entering the browser API.</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="machineryUnavailable">{viewingHistory ? "No machinery snapshot recorded" : "Run /context to load machinery"}</span>
+              )}
+            </>
+          ) : (
+            <><strong>—</strong><small>Available after the first response</small></>
+          )}
         </div>
         <div className="tokenStat">
           <span>Uncached input</span>
@@ -879,7 +1010,7 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${(executionTasksOpen || planTasksOpen) && agent.id === "primary" ? "agentPopoverOpen" : ""}`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${((executionTasksOpen || planTasksOpen) && agent.id === "primary") || openSkillAgentId === agent.id ? "agentPopoverOpen" : ""}`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
@@ -887,12 +1018,44 @@ export function Dashboard() {
                 <div className="agentIdentity">
                   <div className="agentTitleLine">
                     <strong>{agent.label}</strong>
+                    {(agent.skills || []).length > 0 && (
+                      <div className="skillPopoverAnchor" ref={openSkillAgentId === agent.id ? skillPopoverRef : undefined}>
+                        <button
+                          className="skillPopoverTrigger"
+                          type="button"
+                          onClick={() => {
+                            setExecutionTasksOpen(false);
+                            setPlanTasksOpen(false);
+                            setOpenSkillAgentId((open) => open === agent.id ? null : agent.id);
+                          }}
+                          aria-expanded={openSkillAgentId === agent.id}
+                          aria-controls={`agent-skills-${agent.id}`}
+                        >{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</button>
+                        {openSkillAgentId === agent.id && (
+                          <div className="skillPopover" id={`agent-skills-${agent.id}`} role="dialog" aria-label={`Skills used by ${agent.label}`}>
+                            <div className="skillPopoverHeader">
+                              <div><span className="label">SKILL USAGE</span><strong>{agent.label}</strong></div>
+                              <button type="button" onClick={() => setOpenSkillAgentId(null)} aria-label="Close skill usage">×</button>
+                            </div>
+                            <p>{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"} invoked · normalized metadata only</p>
+                            <div className="skillPopoverList">
+                              {agent.skills.map((skill) => (
+                                <div className="skillPopoverRow" key={skill.name}>
+                                  <div><strong>{skill.name}</strong><small>{skill.lastUsed ? `Last used ${relativeTime(skill.lastUsed)}` : "Use time unavailable"}</small></div>
+                                  <div><strong>{skill.calls}</strong><small>{skill.calls === 1 ? "use" : "uses"}</small></div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {agent.id === "primary" && executionTasks.length > 0 && (
                       <div className="executionTaskAnchor" ref={executionTaskPopoverRef}>
                         <button
                           className="executionTaskTrigger"
                           type="button"
-                          onClick={() => { setPlanTasksOpen(false); setExecutionTasksOpen((open) => !open); }}
+                          onClick={() => { setPlanTasksOpen(false); setOpenSkillAgentId(null); setExecutionTasksOpen((open) => !open); }}
                           aria-expanded={executionTasksOpen}
                           aria-controls="primary-agent-execution-tasks"
                         >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</button>
@@ -939,7 +1102,7 @@ export function Dashboard() {
                         <button
                           className="planTaskTrigger"
                           type="button"
-                          onClick={() => { setExecutionTasksOpen(false); setPlanTasksOpen((open) => !open); }}
+                          onClick={() => { setExecutionTasksOpen(false); setOpenSkillAgentId(null); setPlanTasksOpen((open) => !open); }}
                           aria-expanded={planTasksOpen}
                           aria-controls="primary-agent-plan-tasks"
                         >{planTasks.length} plan items</button>

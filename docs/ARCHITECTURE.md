@@ -24,7 +24,7 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 
 1. Finds the session tree with the latest primary or subagent activity, or uses `CLAUDE_SESSION_FILE`.
 2. Reads primary and subagent JSONL files.
-3. Normalizes agents, activity, context snapshots, session metadata, and insights.
+3. Normalizes agents, activity, context snapshots, opt-in context-machinery snapshots, session metadata, and insights.
 4. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
 5. Inspects the live session repository with read-only Git commands.
 6. Retrieves and caches provider plan usage for the live view only.
@@ -43,15 +43,17 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository
+- `session` — title, project, timestamps, repository, and the normalized first-request footprint when recorded
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, parent relationship, runtime settings, state, tokens
+- `agents` — identity, parent relationship, runtime settings, state, tokens, and explicitly invoked skill names/counts
 - `activity` — sanitized tool and user-input events
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 
 The UI depends on normalized shapes rather than raw provider records.
+
+When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated category and item tables. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 
 ## Adding Codex support
 

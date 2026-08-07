@@ -49,6 +49,15 @@ function toolDistribution(patterns) {
   return [...groups.values()].sort((a, b) => b.calls - a.calls || a.agent.localeCompare(b.agent) || a.tool.localeCompare(b.tool));
 }
 
+function skillDistribution(agents) {
+  return (agents || []).flatMap((agent) => (agent.skills || []).map((skill) => ({
+    agent: agent.label,
+    name: skill.name,
+    calls: skill.calls,
+    lastUsed: skill.lastUsed,
+  })));
+}
+
 export function buildSessionReport(state, generatedAt = new Date()) {
   if (!state?.session) throw new Error("A live session is required to generate a report.");
 
@@ -57,6 +66,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   const agents = state.agents || [];
   const labelsById = new Map(agents.map((agent) => [agent.id, agent.label]));
   const tools = toolDistribution(state.toolPatterns);
+  const skills = skillDistribution(agents);
   const insights = state.insights || [];
   const limits = state.usageLimits?.limits || [];
   const lines = [
@@ -97,6 +107,14 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     }
   } else {
     lines.push("| No agents observed | — | — | — | — | — | — | — | — |");
+  }
+
+  lines.push("", "## Skill usage", "");
+  if (skills.length) {
+    lines.push("| Agent | Skill | Invocations | Last used |", "| --- | --- | ---: | --- |");
+    for (const skill of skills) lines.push(`| ${cell(skill.agent)} | ${code(skill.name)} | ${number(skill.calls)} | ${cell(localTime(skill.lastUsed))} |`);
+  } else {
+    lines.push("No explicit skill invocations were observed.");
   }
 
   lines.push("", "## Tool-call distribution", "");

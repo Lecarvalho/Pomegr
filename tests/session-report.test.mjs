@@ -35,6 +35,7 @@ const state = {
     startedAt: "2026-08-05T17:00:00.000Z",
     durationMs: 1_800_000,
     toolCalls: 9,
+    skills: [{ name: "github:gh-fix-ci", calls: 2, lastUsed: "2026-08-05T17:25:00.000Z" }],
     tokens: { total: 1_000 },
   }],
   toolPatterns: [{ agent: "Primary agent", tool: "Read", calls: 9 }],
@@ -55,6 +56,8 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Primary agent.*30m 0s/);
   assert.match(report, /All-agent context.*2,500 tokens/);
   assert.match(report, /Primary agent.*1,000/);
+  assert.match(report, /## Skill usage/);
+  assert.match(report, /github:gh-fix-ci.*2/);
   assert.doesNotMatch(report, /Repeated calls|Repeated call patterns/);
   assert.match(report, /Retrospective questions/);
   assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE PLAN SUBJECT MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
