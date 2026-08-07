@@ -73,6 +73,7 @@ type ContextMachinery = {
   observedAt: string | null;
   model: string;
   total: { used: string; limit: string; percentage: number } | null;
+  machineryTokens: number;
   categories: Array<{ name: string; tokens: string; percentage: number }>;
   groups: Array<{
     id: string;
@@ -132,14 +133,6 @@ type MonitorState = {
     startedAt: string | null;
     updatedAt: string | null;
     durationMs: number;
-    firstRequestFootprint: {
-      observedAt: string | null;
-      input: number;
-      uncachedInput: number;
-      cacheWrite: number;
-      cacheRead: number;
-      output: number;
-    } | null;
     contextMachinery: ContextMachinery | null;
   } | null;
   score: number;
@@ -908,78 +901,69 @@ export function Dashboard() {
         historical={viewingHistory}
       />
 
-      <section className={`panel cachePanel ${machineryPopoverOpen ? "machineryPopoverOpen" : ""}`} aria-label="Primary session first-request context">
+      <section className={`panel cachePanel ${machineryPopoverOpen ? "machineryPopoverOpen" : ""}`} aria-label="Primary session machinery">
         <div className="cacheLead">
-          <span className="label">FIRST REQUEST CONTEXT</span>
-          <h2>Opening footprint</h2>
-          <p>The primary session&apos;s first provider-reported input snapshot.</p>
+          <span className="label">SESSION MACHINERY</span>
+          <h2>Loaded machinery</h2>
+          <p>Provider-estimated context used by tools, instructions, and other session machinery.</p>
         </div>
-        <div className="firstRequestStat" ref={machineryPopoverRef}>
-          <span>First request input</span>
-          {data.session?.firstRequestFootprint ? (
+        <div className="machineryStat" ref={machineryPopoverRef}>
+          <span>Machinery token load</span>
+          {contextMachinery ? (
             <>
-              <strong title="The first provider-reported input includes Claude Code machinery, the first prompt, attachments, and any injected hook output. It is not per-item attribution or token spend.">{compactNumber(data.session.firstRequestFootprint.input)}</strong>
-              <small>
-                {compactNumber(data.session.firstRequestFootprint.uncachedInput)} uncached · {compactNumber(data.session.firstRequestFootprint.cacheWrite)} write · {compactNumber(data.session.firstRequestFootprint.cacheRead)} read
-              </small>
-              <em>Includes first prompt</em>
-              {contextMachinery ? (
-                <>
-                  <button
-                    className="machineryPopoverTrigger"
-                    type="button"
-                    onClick={() => setMachineryPopoverOpen((open) => !open)}
-                    aria-expanded={machineryPopoverOpen}
-                    aria-controls="loaded-machinery-popover"
-                  >View loaded machinery <span aria-hidden="true">▸</span></button>
-                  {machineryPopoverOpen && (
-                    <div className="metricPopover machineryPopover" id="loaded-machinery-popover" role="dialog" aria-label="Loaded context machinery">
-                      <div className="executionTaskPopoverHeader">
-                        <div><span className="label">SESSION MACHINERY</span><strong>Loaded machinery</strong></div>
-                        <button type="button" onClick={() => setMachineryPopoverOpen(false)} aria-label="Close loaded machinery">×</button>
-                      </div>
-                      <div className="machineryPopoverBody">
-                        <div className="machineryMeta">
-                          <span>Claude <code>/context</code> estimate</span>
-                          <strong>{contextMachinery.model}</strong>
-                        </div>
-                        <div className="machineryCategories" role="list" aria-label="Estimated machinery categories">
-                          {contextMachinery.categories.map((category) => (
-                            <div className="machineryCategory" role="listitem" key={category.name}>
-                              <span>{category.name}</span>
-                              <strong>{category.tokens}</strong>
-                              <small>{category.percentage}%</small>
-                            </div>
-                          ))}
-                        </div>
-                        {contextMachinery.groups.length > 0 && (
-                          <div className="machineryGroups">
-                            {contextMachinery.groups.map((group) => (
-                              <details className="machineryGroup" key={group.id}>
-                                <summary><strong>{group.label}</strong><span>{group.items.length} {group.items.length === 1 ? "item" : "items"}</span></summary>
-                                <div className="machineryItems">
-                                  {group.items.map((item, index) => (
-                                    <div className="machineryItem" key={`${item.name}-${item.detail}-${index}`}>
-                                      <div><strong>{item.name}</strong><span>{item.detail}</span></div>
-                                      <b>{item.tokens}</b>
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
-                            ))}
-                          </div>
-                        )}
-                        <p className="machineryCaution">Loaded from Claude Code&apos;s rendered <code>/context</code> output. Values are provider estimates; paths and fields are sanitized before entering the browser API.</p>
-                      </div>
+              <strong title="Sum of the provider-estimated machinery categories in the latest /context snapshot. Messages and free space are excluded.">{compactNumber(contextMachinery.machineryTokens)}</strong>
+              <small>Estimated tokens across {contextMachinery.categories.length} {contextMachinery.categories.length === 1 ? "category" : "categories"}</small>
+              <button
+                className="machineryPopoverTrigger"
+                type="button"
+                onClick={() => setMachineryPopoverOpen((open) => !open)}
+                aria-expanded={machineryPopoverOpen}
+                aria-controls="loaded-machinery-popover"
+              >View loaded machinery <span aria-hidden="true">▸</span></button>
+              {machineryPopoverOpen && (
+                <div className="metricPopover machineryPopover" id="loaded-machinery-popover" role="dialog" aria-label="Loaded context machinery">
+                  <div className="executionTaskPopoverHeader">
+                    <div><span className="label">MACHINERY BREAKDOWN</span><strong>Token inventory</strong></div>
+                    <button type="button" onClick={() => setMachineryPopoverOpen(false)} aria-label="Close loaded machinery">×</button>
+                  </div>
+                  <div className="machineryPopoverBody">
+                    <div className="machineryMeta">
+                      <span>Claude <code>/context</code> estimate</span>
+                      <strong>{contextMachinery.model}</strong>
                     </div>
-                  )}
-                </>
-              ) : (
-                <span className="machineryUnavailable">{viewingHistory ? "No machinery snapshot recorded" : "Run /context to load machinery"}</span>
+                    <div className="machineryCategories" role="list" aria-label="Estimated machinery categories">
+                      {contextMachinery.categories.map((category) => (
+                        <div className="machineryCategory" role="listitem" key={category.name}>
+                          <span>{category.name}</span>
+                          <strong>{category.tokens}</strong>
+                          <small>{category.percentage}%</small>
+                        </div>
+                      ))}
+                    </div>
+                    {contextMachinery.groups.length > 0 && (
+                      <div className="machineryGroups">
+                        {contextMachinery.groups.map((group) => (
+                          <details className="machineryGroup" key={group.id}>
+                            <summary><strong>{group.label}</strong><span>{group.items.length} {group.items.length === 1 ? "item" : "items"}</span></summary>
+                            <div className="machineryItems">
+                              {group.items.map((item, index) => (
+                                <div className="machineryItem" key={`${item.name}-${item.detail}-${index}`}>
+                                  <div><strong>{item.name}</strong><span>{item.detail}</span></div>
+                                  <b>{item.tokens}</b>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ))}
+                      </div>
+                    )}
+                    <p className="machineryCaution">Loaded from Claude Code&apos;s rendered <code>/context</code> output. Values are provider estimates; paths and fields are sanitized before entering the browser API.</p>
+                  </div>
+                </div>
               )}
             </>
           ) : (
-            <><strong>—</strong><small>Available after the first response</small></>
+            <><strong>—</strong><small>{viewingHistory ? "No machinery snapshot recorded" : "Run /context to measure loaded machinery"}</small></>
           )}
         </div>
       </section>

@@ -20,6 +20,13 @@ function safeTokenLabel(value) {
   return /^(?:~|< )?\d+(?:\.\d+)?[kKmM]?$/.test(normalized) ? normalized : "";
 }
 
+function tokenCount(value) {
+  const match = value.match(/^(?:~|< )?(\d+(?:\.\d+)?)([kKmM]?)$/);
+  if (!match) return 0;
+  const multiplier = match[2].toLowerCase() === "m" ? 1_000_000 : match[2].toLowerCase() === "k" ? 1_000 : 1;
+  return Math.round(Number(match[1]) * multiplier);
+}
+
 function safePercentage(value) {
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^(\d+(?:\.\d+)?)%$/);
@@ -130,6 +137,7 @@ export function contextMachineryFromRecord(record) {
     observedAt: record.timestamp || null,
     model,
     total: totalMatch ? { used: totalMatch[1], limit: totalMatch[2], percentage: Number(totalMatch[3]) } : null,
+    machineryTokens: categories.reduce((sum, category) => sum + tokenCount(category.tokens), 0),
     categories,
     groups,
   };

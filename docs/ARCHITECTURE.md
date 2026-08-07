@@ -53,7 +53,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 The UI depends on normalized shapes rather than raw provider records.
 
-When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated category and item tables. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
+When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 
 ## Adding Codex support
 

@@ -50,6 +50,7 @@ test("parses context tables dynamically and sanitizes memory paths", () => {
 
   assert.equal(snapshot.model, "claude-test-1");
   assert.deepEqual(snapshot.total, { used: "12.5k", limit: "200k", percentage: 6 });
+  assert.equal(snapshot.machineryTokens, 3250);
   assert.deepEqual(snapshot.categories.map(({ name }) => name), ["System prompt", "Repository rules"]);
   assert.doesNotMatch(JSON.stringify(snapshot.categories), /Messages|Free space/);
   assert.deepEqual(snapshot.groups.map(({ label }) => label), ["Skills", "Memory Files", "Output Styles"]);

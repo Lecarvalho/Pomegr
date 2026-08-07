@@ -13,8 +13,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Session title, project, elapsed wall time, and last activity
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
-- Primary-session first-request input with cache composition, available after the first response
-- An opt-in machinery inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
+- An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path

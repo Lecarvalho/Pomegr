@@ -9,7 +9,6 @@ import { userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "./context-machinery.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
-import { readFirstRequestFootprint } from "./first-request-footprint.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
@@ -25,7 +24,6 @@ const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
 const sessionSummaryCache = new Map();
-const firstRequestFootprintCache = new Map();
 const contextMachineryCache = new Map();
 let usageCache = { timestamp: 0, value: null, pending: null };
 
@@ -311,11 +309,6 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
-  let firstRequestFootprint = firstRequestFootprintCache.get(mainFile) || null;
-  if (!firstRequestFootprint) {
-    firstRequestFootprint = await readFirstRequestFootprint(mainFile);
-    if (firstRequestFootprint) firstRequestFootprintCache.set(mainFile, firstRequestFootprint);
-  }
   let contextMachinery = contextMachineryCache.get(mainFile);
   if (contextMachinery === undefined) {
     contextMachinery = await readLatestContextMachinery(mainFile);
@@ -534,7 +527,6 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       startedAt,
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
-      firstRequestFootprint,
       contextMachinery,
     },
     score,

@@ -28,25 +28,13 @@ Bucket sizes are selected from fixed, human-readable intervals to target roughly
 
 This is a change in observed context snapshots, not throughput, billing, or token spend. The normalized API names it `contextGrowthTimeline`; generated reports intentionally omit it.
 
-## First-request footprint
-
-The primary session's first non-zero provider usage record supplies a separate first-request footprint. Its input value is:
-
-```text
-input_tokens
-+ cache_creation_input_tokens
-+ cache_read_input_tokens
-```
-
-This is an exact provider-reported input snapshot, but it is not a machinery-only total. It can include Claude Code's system prompt and tools, memory, skill and agent descriptions, MCP metadata, the first user prompt, attachments, and context returned by startup hooks. Threadlight therefore labels it **First request input**, keeps generated output separate, and never calls it token spend or per-item attribution. It becomes available after the first provider response.
-
-The monitor reads this record from the transcript head and retains only its timestamp and normalized token fields. Prompt, response, attachment, and hook-output content never enter the browser API. Historical views use the recorded footprint and never rebuild it from current configuration.
-
 ## Context machinery snapshot
 
 Claude Code records the rendered result of a user-invoked `/context` command in the session JSONL. Threadlight treats this as an opt-in point-in-time snapshot: if no valid result has been recorded, the dashboard asks the user to run `/context`; when one or more results exist, it shows the latest one.
 
 The parser is table-driven rather than repository-driven. It identifies the context category table by its column roles and treats other valid tables with a token column as machinery groups. Category names, group names, and items come from the captured output, so arbitrary repositories, MCP servers, agents, memory files, skills, and future provider-reported groups do not require a hard-coded catalog. Column order may vary. The provider's `Messages` and `Free space` summary rows are excluded because they are not machinery and overlap Threadlight's live context presentation.
+
+The **Machinery token load** is the sum of the remaining provider-estimated category values. Threadlight sums category rows rather than detailed group items because the groups expand portions of the category summary and would otherwise be counted twice. The total is present only when the session has a valid recorded `/context` snapshot; the expandable category and item inventory remains available beside it.
 
 Only bounded, validated labels and the provider's formatted token estimates enter normalized state. Memory paths are reduced to their basename. The raw local-command output, repository paths, prompts, and responses never enter the browser API. These values are provider estimates from the captured `/context` rendering, not Threadlight measurements, billing totals, or cumulative token spend. Historical views use only the recorded snapshot and never substitute current machinery.
 
