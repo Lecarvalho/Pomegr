@@ -122,7 +122,10 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /positive change in latest snapshots/);
   assert.match(dashboard, /Recent activity/);
   assert.match(dashboard, /Tool and user activity will appear here/);
+  assert.match(dashboard, /event\.status === "failed"/);
+  assert.match(styles, /\.activityRow\.failed/);
   assert.match(monitor, /userInputContentType\(record, requestedInputIds\)/);
+  assert.match(monitor, /shellFailureActivityEvents\(executionTasks, primaryActor\)/);
   assert.match(monitor, /actor: "User"/);
   assert.match(monitor, /tool: "User input"/);
   assert.match(monitor, /detail: userInputType/);

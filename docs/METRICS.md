@@ -96,7 +96,7 @@ A repetition signature combines the agent and tool name with a monitor-side dige
 
 ## Activity events
 
-Recent activity includes tool invocations and timestamps for direct user messages or answers to an agent's structured question. A user-input event's target lists only its content categories (`Text`, `Document`, and `Image`, including combinations); prompt text, answers, filenames, tool results, and synthetic subagent prompts are never returned to the browser. User-input events do not contribute to `toolCalls`, repetition signals, or the flow score.
+Recent activity includes tool invocations, failed shell completions, and timestamps for direct user messages or answers to an agent's structured question. A failed shell event is timestamped when execution finishes and exposes only the sanitized Bash description plus its exit code when available; commands, stdout, stderr, and tool-result content remain excluded. A user-input event's target lists only its content categories (`Text`, `Document`, and `Image`, including combinations); prompt text, answers, filenames, tool results, and synthetic subagent prompts are never returned to the browser. Outcome and user-input events do not contribute to `toolCalls`, repetition signals, or the flow score.
 
 ## Agent overlap
 

@@ -33,3 +33,19 @@ export function userInputContentType(record, requestedInputIds = new Set()) {
   const labels = INPUT_KIND_LABELS.flatMap(([kind, label]) => kinds.has(kind) ? [label] : []);
   return labels.length ? labels.join(" + ") : null;
 }
+
+export function shellFailureActivityEvents(executionTasks, actor = "Primary agent") {
+  if (!Array.isArray(executionTasks)) return [];
+  return executionTasks.flatMap((task) => {
+    if (task?.status !== "failed" || !task.id || !task.finishedAt) return [];
+    const exitDetail = Number.isInteger(task.exitCode) ? ` · exit ${task.exitCode}` : "";
+    return [{
+      id: `${task.id}-failed`,
+      timestamp: task.finishedAt,
+      actor,
+      tool: "Shell failed",
+      detail: `${task.label}${exitDetail}`,
+      status: "failed",
+    }];
+  });
+}

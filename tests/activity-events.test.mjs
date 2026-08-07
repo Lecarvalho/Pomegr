@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { userInputContentType } from "../monitor/activity-events.mjs";
+import { shellFailureActivityEvents, userInputContentType } from "../monitor/activity-events.mjs";
 
 test("classifies direct user input without exposing its content", () => {
   assert.equal(userInputContentType({ type: "user", message: { content: "PRIVATE PROMPT" } }), "Text");
@@ -28,4 +28,33 @@ test("uses a stable order for every content-type combination", () => {
   assert.equal(classify("document", "image"), "Document + Image");
   assert.equal(classify("text", "document", "image"), "Text + Document + Image");
   assert.equal(classify("text", "image"), "Text + Image");
+});
+
+test("creates sanitized activity events only for finished shell failures", () => {
+  const events = shellFailureActivityEvents([
+    { id: "toolu_failed", label: "Run tests", status: "failed", finishedAt: "2026-08-07T14:32:00.000Z", exitCode: 1, command: "PRIVATE COMMAND", output: "PRIVATE OUTPUT" },
+    { id: "toolu_unknown", label: "Check formatting", status: "failed", finishedAt: "2026-08-07T14:33:00.000Z", exitCode: null },
+    { id: "toolu_running", label: "Build app", status: "running", finishedAt: null, exitCode: null },
+    { id: "toolu_complete", label: "Lint app", status: "completed", finishedAt: "2026-08-07T14:34:00.000Z", exitCode: 0 },
+  ]);
+
+  assert.deepEqual(events, [
+    {
+      id: "toolu_failed-failed",
+      timestamp: "2026-08-07T14:32:00.000Z",
+      actor: "Primary agent",
+      tool: "Shell failed",
+      detail: "Run tests · exit 1",
+      status: "failed",
+    },
+    {
+      id: "toolu_unknown-failed",
+      timestamp: "2026-08-07T14:33:00.000Z",
+      actor: "Primary agent",
+      tool: "Shell failed",
+      detail: "Check formatting",
+      status: "failed",
+    },
+  ]);
+  assert.doesNotMatch(JSON.stringify(events), /PRIVATE|command|output/i);
 });

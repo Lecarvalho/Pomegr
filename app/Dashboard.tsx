@@ -45,6 +45,7 @@ type Activity = {
   actor: string;
   tool: string;
   detail: string;
+  status: "failed" | null;
 };
 
 type ExecutionTask = {
@@ -1216,7 +1217,7 @@ export function Dashboard() {
           <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span></div>
           {data.activity.length === 0 && <Empty text="Tool and user activity will appear here as it happens." />}
           {data.activity.slice(0, 12).map((event) => (
-            <div className="activityRow" key={event.id}>
+            <div className={`activityRow ${event.status === "failed" ? "failed" : ""}`} key={event.id}>
               <time>{shortTime(event.timestamp)}</time>
               <span className="actor"><i />{event.actor}</span>
               <strong>{event.tool}</strong>

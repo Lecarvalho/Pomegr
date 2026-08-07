@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, externallyStoppedAgentTimes, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt, resolveAgentMetadata } from "./agent-metadata.mjs";
-import { userInputContentType } from "./activity-events.mjs";
+import { shellFailureActivityEvents, userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "./context-machinery.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
@@ -532,6 +532,10 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
     contextGrowthTimeline: buildContextGrowthTimeline([...usageByMessage.values()], { startedAt, updatedAt }),
   };
+  const executionTasks = buildExecutionTasks(mainRecords, { historical, sessionUpdatedAt: updatedAt });
+  const primaryActor = agents.find((agent) => agent.id === "primary")?.label || "Primary agent";
+  allEvents.push(...shellFailureActivityEvents(executionTasks, primaryActor));
+
   const cwd = projectCwd(mainRecords);
   const repository = historical ? recordedGitState(mainRecords) : { ...gitState(cwd), historical: false };
   const currentUsageLimits = historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits();
@@ -556,11 +560,11 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       signal: sessionSignal,
     },
     score,
-    metrics: { agents: agents.length, activeAgents, toolCalls: allEvents.length, repeatedCalls, tokens: tokenUsage },
+    metrics: { agents: agents.length, activeAgents, toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0), repeatedCalls, tokens: tokenUsage },
     agents,
     toolPatterns,
     loops: loopPatterns,
-    activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
+    activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail, status }) => ({ id, timestamp, actor, tool, detail, status: status || null })),
     executionTasks: agents.find((agent) => agent.id === "primary")?.executionTasks || [],
     planTasks: readSessionTasks(TASKS_ROOT, sessionId),
     insights,
