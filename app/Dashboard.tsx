@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import { usageRefreshDelay } from "./usage-refresh.mjs";
 
@@ -12,6 +12,11 @@ type Agent = {
   model: string;
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
+  signal: {
+    label: string;
+    tone: "neutral" | "info" | "positive" | "warning" | "negative";
+    reportedAt: string | null;
+  } | null;
   toolCalls: number;
   skills: Array<{
     name: string;
@@ -358,6 +363,36 @@ function agentTreeRows(agents: Agent[]) {
   for (const root of roots) visit(root, 0);
   for (const agent of agents) visit(agent, 0);
   return rows;
+}
+
+function AgentChip({
+  as = "span",
+  children,
+  className = "",
+  title,
+  onClick,
+  expanded,
+  controls,
+}: {
+  as?: "span" | "button";
+  children: ReactNode;
+  className?: string;
+  title?: string;
+  onClick?: () => void;
+  expanded?: boolean;
+  controls?: string;
+}) {
+  const classes = `agentChip ${as === "button" ? "agentChipButton" : ""} ${className}`.trim();
+  if (as === "button") return (
+    <button
+      className={classes}
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-controls={controls}
+    >{children}</button>
+  );
+  return <span className={classes} title={title}>{children}</span>;
 }
 
 function ContextGrowthTimeline({ timeline, currentTokens, historical }: {
@@ -986,19 +1021,25 @@ export function Dashboard() {
                 <div className="agentIdentity">
                   <div className="agentTitleLine">
                     <strong>{agent.label}</strong>
+                    {agent.signal && (
+                      <AgentChip
+                        className={`agentSignal ${agent.signal.tone}`}
+                        title="Reported by this agent through the Threadlight MCP tool"
+                      >{agent.signal.label}</AgentChip>
+                    )}
                     {(agent.skills || []).length > 0 && (
                       <div className="skillPopoverAnchor" ref={openSkillAgentId === agent.id ? skillPopoverRef : undefined}>
-                        <button
+                        <AgentChip
+                          as="button"
                           className="skillPopoverTrigger"
-                          type="button"
                           onClick={() => {
                             setExecutionTasksOpen(false);
                             setPlanTasksOpen(false);
                             setOpenSkillAgentId((open) => open === agent.id ? null : agent.id);
                           }}
-                          aria-expanded={openSkillAgentId === agent.id}
-                          aria-controls={`agent-skills-${agent.id}`}
-                        >{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</button>
+                          expanded={openSkillAgentId === agent.id}
+                          controls={`agent-skills-${agent.id}`}
+                        >{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</AgentChip>
                         {openSkillAgentId === agent.id && (
                           <div className="skillPopover" id={`agent-skills-${agent.id}`} role="dialog" aria-label={`Skills used by ${agent.label}`}>
                             <div className="skillPopoverHeader">
@@ -1020,13 +1061,13 @@ export function Dashboard() {
                     )}
                     {agent.id === "primary" && executionTasks.length > 0 && (
                       <div className="executionTaskAnchor" ref={executionTaskPopoverRef}>
-                        <button
+                        <AgentChip
+                          as="button"
                           className="executionTaskTrigger"
-                          type="button"
                           onClick={() => { setPlanTasksOpen(false); setOpenSkillAgentId(null); setExecutionTasksOpen((open) => !open); }}
-                          aria-expanded={executionTasksOpen}
-                          aria-controls="primary-agent-execution-tasks"
-                        >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</button>
+                          expanded={executionTasksOpen}
+                          controls="primary-agent-execution-tasks"
+                        >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</AgentChip>
                         {executionTasksOpen && (
                           <div className="executionTaskPopover" id="primary-agent-execution-tasks" role="dialog" aria-label="Background tasks">
                             <div className="executionTaskPopoverHeader">
@@ -1067,13 +1108,13 @@ export function Dashboard() {
                     )}
                     {agent.id === "primary" && planTasks.length > 0 && (
                       <div className="planTaskAnchor" ref={planTaskPopoverRef}>
-                        <button
+                        <AgentChip
+                          as="button"
                           className="planTaskTrigger"
-                          type="button"
                           onClick={() => { setExecutionTasksOpen(false); setOpenSkillAgentId(null); setPlanTasksOpen((open) => !open); }}
-                          aria-expanded={planTasksOpen}
-                          aria-controls="primary-agent-plan-tasks"
-                        >{planTasks.length} plan items</button>
+                          expanded={planTasksOpen}
+                          controls="primary-agent-plan-tasks"
+                        >{planTasks.length} plan items</AgentChip>
                         {planTasksOpen && (
                           <div className="planTaskPopover" id="primary-agent-plan-tasks" role="dialog" aria-label="Claude plan checklist">
                             <div className="planTaskPopoverHeader">

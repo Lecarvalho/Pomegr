@@ -66,6 +66,15 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(styles, /\.agentRow time \{ display: block/);
   assert.doesNotMatch(styles, /\.agentRow time \{ display: none/);
   assert.match(dashboard, /agentMetaRuntime/);
+  assert.match(dashboard, /agentSignal/);
+  assert.match(dashboard, /function AgentChip/);
+  assert.match(dashboard, /<AgentChip/);
+  assert.match(dashboard, /Reported by this agent through the Threadlight MCP tool/);
+  assert.match(styles, /\.agentSignal\.positive/);
+  assert.match(styles, /\.agentSignal\.negative/);
+  assert.match(styles, /\.agentChip \{ min-height: 18px; display: inline-flex; align-items: center/);
+  assert.match(styles, /\.agentTitleLine > \.agentSignal \{ flex: 0 0 auto/);
+  assert.match(styles, /\.skillPopoverAnchor, \.executionTaskAnchor, \.planTaskAnchor \{ display: flex; align-items: center/);
   assert.match(styles, /display: grid; grid-template-areas: "kind tools" "runtime runtime"/);
   assert.match(styles, /grid-template-rows: auto auto auto/);
   assert.match(styles, /\.agentTitleLine > strong \{ overflow: visible; white-space: normal/);
@@ -142,6 +151,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /normalized metadata only/);
   assert.match(styles, /\.skillPopover/);
   assert.match(monitor, /skills: buildSkillUsage\(records\)/);
+  assert.match(monitor, /signal: signalsByFile\.get\(file\) \|\| null/);
+  assert.doesNotMatch(monitor, /signal: file === mainFile \? null/);
   assert.match(monitor, /tool === "Skill" \? normalizedSkillName\(input\)/);
   assert.match(monitor, /buildContextGrowthTimeline/);
   assert.match(dashboard, /buildSessionReport/);
