@@ -12,6 +12,7 @@ import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
+import { readLatestSessionSignal } from "./session-signals.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 
@@ -309,6 +310,10 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
   const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
   const mainRecords = recordsByFile.get(mainFile) || [];
+  const signalsByFile = new Map(await Promise.all(files.map(async (file) => [
+    file,
+    await readLatestSessionSignal(file, recordsByFile.get(file) || []),
+  ])));
   let contextMachinery = contextMachineryCache.get(mainFile);
   if (contextMachinery === undefined) {
     contextMachinery = await readLatestContextMachinery(mainFile);
@@ -426,6 +431,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       effort: runtime.effort,
       status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
       toolCalls: calls,
+      signal: signalsByFile.get(file) || null,
       skills: buildSkillUsage(records),
       lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || (file === mainFile ? registryTimestamp(sessionRegistryEntry) : null) || stat.mtime.toISOString(),
       ...timing,

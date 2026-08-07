@@ -15,6 +15,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - All-agent current context usage and its latest-snapshot composition
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
+- Optional agent-reported session-signal tags captured through Threadlight's MCP tool
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
@@ -56,6 +57,32 @@ The development command starts:
 
 The web server proxies `/api/state` to the loopback-only monitor, so private credentials and raw transcripts are never sent to the browser.
 
+## Session signals through MCP
+
+Threadlight includes a stateless local MCP server with one tool: `report_session_signal`. An agent can report a short label and semantic tone; Threadlight reads the recorded tool call from that agent's transcript and decorates its dashboard row. The transcript is the source of truth for live and historical sessions.
+
+From a Claude Code repository that should use the tool, register this checkout as a local-scoped server. Keep the server name exactly `threadlight`, because the transcript parser uses that namespace:
+
+```powershell
+claude mcp add --transport stdio --scope local threadlight -- node "C:\path\to\threadlight\mcp\server.mjs"
+```
+
+Local scope makes the server available only to you in that repository and keeps the machine-specific path out of its source tree. Use `--scope user` to make it available in all of your repositories. Project scope writes a shared `.mcp.json`, which is appropriate only when its command can be made portable for everyone using the repository.
+
+Check the connection inside Claude Code with `/mcp`. Custom subagents can reference the configured server in their agent frontmatter and instruct themselves when to report:
+
+```yaml
+---
+name: code-reviewer
+mcpServers:
+  - threadlight
+---
+
+Review the requested code. Before returning, call `report_session_signal` once with a concise outcome such as `Approved` or `Rejected` and the corresponding `positive` or `negative` tone. Never include prompts, responses, secrets, commands, or tool output in the label.
+```
+
+Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text and limited to 40 characters. Calling the tool again replaces the earlier tag for that agent. Threadlight derives the agent and report time from the transcript; neither is supplied to the MCP tool.
+
 ## Configuration
 
 The monitor automatically selects a registered session that needs user input first, then an active registered session, then the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`.
@@ -85,6 +112,7 @@ Threadlight does not present cumulative transcript-throughput or token-spend ses
 ## Privacy and security
 
 - Raw prompt and response text is not returned by the monitor API.
+- Session-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; surrounding response and tool-result content remains private.
 - Agent launch text is used only to derive a concise fallback label.
 - Session transcripts and Git state are read-only.
 - Git commands use argument arrays rather than shell interpolation.

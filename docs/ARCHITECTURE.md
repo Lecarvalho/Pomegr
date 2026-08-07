@@ -46,12 +46,14 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 - `session` — title, project, timestamps, repository, and the normalized first-request footprint when recorded
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, parent relationship, runtime settings, state, tokens, and explicitly invoked skill names/counts
+- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, and an optional reported session signal
 - `activity` — sanitized tool and user-input events
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 
 The UI depends on normalized shapes rather than raw provider records.
+
+Session signals use the transcript as their only durable source. The local MCP server validates and acknowledges `report_session_signal`, but stores nothing. For live and historical views alike, the monitor extracts the latest valid call from every agent transcript and applies the shared signal normalizer. Historical full-file scans are cached; raw tool results and surrounding response content are never exposed.
 
 When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 
