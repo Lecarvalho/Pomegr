@@ -13,6 +13,7 @@ import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, wa
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
 import { readTranscriptSignals } from "./session-signals.mjs";
+import { latestSessionSummary } from "./session-summary.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 
@@ -557,6 +558,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
       contextMachinery,
+      summary: latestSessionSummary(mainRecords),
       signal: sessionSignal,
     },
     score,

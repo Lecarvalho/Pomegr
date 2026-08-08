@@ -43,7 +43,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository, and an optional reported session signal
+- `session` — title, project, timestamps, repository, the latest bounded provider-generated session summary when available, and an optional reported session signal
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported agent signal
@@ -55,6 +55,8 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 The UI depends on normalized shapes rather than raw provider records.
 
 Reported signals use the transcript as their only durable source. The local MCP server validates and acknowledges `report_session_signal`, `report_agent_signal`, and `report_task_signal`, but stores nothing. For live and historical views alike, the monitor extracts the latest valid calls from every agent transcript and applies the shared signal normalizer. The latest session signal across all agents decorates the session header. An agent signal decorates only its reporting agent. A task signal is resolved monitor-side against a normalized Bash tool-use or background-task ID and is exposed only when that execution task matches. Historical full-file signal scans are cached; raw target arguments, unmatched signals, tool results, and surrounding response content are never exposed.
+
+When the provider records a recognized session summary, `session.summary` carries only the latest bounded, whitespace-normalized plain-text summary, its transcript timestamp, and provider provenance. Threadlight does not derive a summary from prompts, responses, or tool results. The dashboard labels the text as provider-generated and falls back to static privacy copy when no summary is available.
 
 When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 

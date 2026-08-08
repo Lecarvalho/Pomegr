@@ -91,8 +91,12 @@ if ($listeners.Count -gt 0) {
     [pscustomobject]@{ Id = $rootId; Depth = 0 }
   )
   foreach ($target in $stopTargets) {
-    if (Get-Process -Id $target.Id -ErrorAction SilentlyContinue) {
-      Stop-Process -Id $target.Id -Force
+    try {
+      Stop-Process -Id $target.Id -Force -ErrorAction Stop
+    } catch {
+      if (Get-Process -Id $target.Id -ErrorAction SilentlyContinue) {
+        throw
+      }
     }
   }
 }

@@ -144,6 +144,11 @@ type MonitorState = {
     updatedAt: string | null;
     durationMs: number;
     contextMachinery: ContextMachinery | null;
+    summary: {
+      text: string;
+      observedAt: string | null;
+      source: "provider";
+    } | null;
     signal: ReportedSignal | null;
   } | null;
   score: number;
@@ -789,6 +794,7 @@ export function Dashboard() {
                 </section>
               );
             })}
+            <a className="sidebarAboutLink" href="/about"><span>About Threadlight</span><i aria-hidden="true">→</i></a>
           </div>
         </nav>
       </aside>
@@ -819,9 +825,10 @@ export function Dashboard() {
           <div className="eyebrow"><span /> {viewingHistory ? "HISTORICAL SESSION" : "LIVE SESSION OBSERVER"} {data.session ? `· ${data.session.project}` : ""}</div>
           {data.session && <div className="sessionId"><span>SESSION ID</span><code>{data.session.id}</code></div>}
           <h1>{sessionLabel}</h1>
-          <p>{viewingHistory
-            ? "Reviewing recorded execution metadata. Current usage limits and live repository state are excluded."
-            : "Watching Claude Code quietly. Prompt and response text stay out of the dashboard; only execution metadata is analyzed."}</p>
+          <p title={data.session?.summary ? "Provider-generated session summary" : undefined}>{data.session?.summary?.text || (data.session
+            ? viewingHistory ? "No provider-generated summary was recorded for this session." : "Waiting for a provider-generated session summary."
+            : "Waiting for a session summary.")}</p>
+          {data.session?.summary && <small className="heroSummarySource">Provider-generated session summary</small>}
         </div>
         <div className="sessionMeta">
           <div className="sessionMetaValues">

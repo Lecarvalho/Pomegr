@@ -13,7 +13,7 @@
     "mcp": "node mcp/server.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

@@ -3,12 +3,12 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { USAGE_REFRESH_INTERVAL_MS, usageRefreshDelay } from "../app/usage-refresh.mjs";
 
-async function render() {
+async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
@@ -28,6 +28,16 @@ test("server-renders Threadlight", async () => {
   assert.match(html, /Usage limits/);
   assert.match(html, /Generate report/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("keeps the privacy explanation on the about page", async () => {
+  const response = await render("/about");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /About · Threadlight/);
+  assert.match(html, /Watching Claude Code quietly/);
+  assert.match(html, /Prompt and response text stay out of the dashboard/);
+  assert.match(html, /Back to dashboard/);
 });
 
 test("uses one provider-neutral identity and no starter preview", async () => {
@@ -68,6 +78,14 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /agentMetaRuntime/);
   assert.match(dashboard, /agentSignal/);
   assert.match(dashboard, /sessionSignal/);
+  assert.match(dashboard, /data\.session\?\.summary\?\.text/);
+  assert.match(dashboard, /Provider-generated session summary/);
+  assert.match(dashboard, /className="sidebarAboutLink" href="\/about"/);
+  assert.doesNotMatch(dashboard, /className="aboutLink"/);
+  assert.doesNotMatch(dashboard, /Watching Claude Code quietly/);
+  assert.match(styles, /\.heroSummarySource/);
+  assert.match(styles, /\.sidebarAboutLink/);
+  assert.match(monitor, /summary: latestSessionSummary\(mainRecords\)/);
   assert.match(dashboard, /Reported for this session through the Threadlight MCP tool/);
   assert.match(dashboard, /sessionMetaValues/);
   assert.match(dashboard, /function AgentChip/);

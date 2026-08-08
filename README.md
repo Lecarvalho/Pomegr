@@ -16,6 +16,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
 - Optional session-, agent-, and execution-task signal tags captured through Threadlight's MCP tools
+- The latest provider-generated session summary, when the transcript records one
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
@@ -133,6 +134,7 @@ Threadlight does not present cumulative transcript-throughput or token-spend ses
 ## Privacy and security
 
 - Raw prompt and response text is not returned by the monitor API.
+- Session summaries are accepted only from recognized provider summary records, reduced to bounded plain text, and labeled as provider-generated; Threadlight never derives them from raw prompts, responses, or tool results.
 - Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
 - Agent launch text is used only to derive a concise fallback label.
 - Session transcripts and Git state are read-only.
