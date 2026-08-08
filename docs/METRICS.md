@@ -40,9 +40,9 @@ Only bounded, validated labels and the provider's formatted token estimates ente
 
 ## Execution tasks
 
-The primary-agent popover is derived from Bash execution lifecycle records in the selected session transcript, not the provider's agent-maintained planning checklist. A Bash tool call creates an execution task from its short description. A returned background-task ID keeps it running until a trusted task notification records completion, failure, cancellation, or interruption. Foreground shell calls finish when their matching tool result arrives. In historical sessions, unmatched executions are marked stopped at the recorded session end.
+Each agent's execution-task popover is derived from Bash lifecycle records in that agent's selected-session transcript, not the provider's agent-maintained planning checklist. A Bash tool call creates an execution task from its short description. A returned background-task ID keeps it running until a trusted task notification records completion, failure, cancellation, or interruption. Foreground shell calls finish when their matching tool result arrives. In historical sessions, unmatched executions are marked stopped at the recorded session end.
 
-The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Commands, stdout, stderr, tool-result content, and notification output are excluded. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
+The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Commands, stdout, stderr, tool-result content, and notification output are excluded. Tasks are nested under their owning normalized agent, and the top-level `executionTasks` field retains the primary agent's list for compatibility. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows per agent, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
 
 ## Plan checklist
 

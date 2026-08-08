@@ -137,7 +137,10 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /Finished execution tasks/);
   assert.match(styles, /\.executionTaskPopover/);
   assert.match(styles, /\.executionTaskRow\.running/);
-  assert.match(monitor, /buildExecutionTasks\(mainRecords/);
+  assert.match(monitor, /agent\.executionTasks = file/);
+  assert.match(monitor, /buildExecutionTasks\(recordsByFile\.get\(file\)/);
+  assert.match(dashboard, /executionTasksByAgent\.get\(agent\.id\)/);
+  assert.doesNotMatch(dashboard, /agent\.id === "primary" && executionTasks\.length/);
   assert.match(dashboard, /planTaskTrigger/);
   assert.match(dashboard, /planTaskPopover/);
   assert.match(dashboard, /CLAUDE PLAN/);

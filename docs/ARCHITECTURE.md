@@ -46,8 +46,9 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 - `session` — title, project, timestamps, repository, and the normalized first-request footprint when recorded
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, and an optional reported session signal
+- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported session signal
 - `activity` — sanitized tool and user-input events
+- `executionTasks` — the primary agent's bounded shell-task lifecycle metadata, retained for API compatibility
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 

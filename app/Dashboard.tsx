@@ -23,6 +23,7 @@ type Agent = {
     calls: number;
     lastUsed: string | null;
   }>;
+  executionTasks?: ExecutionTask[];
   lastSeen: string;
   startedAt: string;
   updatedAt: string;
@@ -492,7 +493,7 @@ export function Dashboard() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [openMetric, setOpenMetric] = useState<"tools" | null>(null);
-  const [executionTasksOpen, setExecutionTasksOpen] = useState(false);
+  const [openExecutionTaskAgentId, setOpenExecutionTaskAgentId] = useState<string | null>(null);
   const [planTasksOpen, setPlanTasksOpen] = useState(false);
   const [openSkillAgentId, setOpenSkillAgentId] = useState<string | null>(null);
   const [machineryPopoverOpen, setMachineryPopoverOpen] = useState(false);
@@ -578,12 +579,12 @@ export function Dashboard() {
   }, [sidebarOpen]);
 
   useEffect(() => {
-    if (!executionTasksOpen) return;
+    if (!openExecutionTaskAgentId) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!executionTaskPopoverRef.current?.contains(event.target as Node)) setExecutionTasksOpen(false);
+      if (!executionTaskPopoverRef.current?.contains(event.target as Node)) setOpenExecutionTaskAgentId(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExecutionTasksOpen(false);
+      if (event.key === "Escape") setOpenExecutionTaskAgentId(null);
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -591,7 +592,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [executionTasksOpen]);
+  }, [openExecutionTaskAgentId]);
 
   useEffect(() => {
     if (!planTasksOpen) return;
@@ -662,8 +663,18 @@ export function Dashboard() {
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
   const executionTasks = data.executionTasks || [];
-  const runningExecutionTasks = executionTasks.filter((task) => task.status === "running");
-  const finishedExecutionTasks = executionTasks.filter((task) => task.status !== "running");
+  const executionTasksByAgent = new Map(data.agents.map((agent) => [
+    agent.id,
+    agent.executionTasks || (agent.id === "primary" ? executionTasks : []),
+  ]));
+  const runningExecutionTasksByAgent = new Map([...executionTasksByAgent].map(([agentId, tasks]) => [
+    agentId,
+    tasks.filter((task) => task.status === "running"),
+  ]));
+  const finishedExecutionTasksByAgent = new Map([...executionTasksByAgent].map(([agentId, tasks]) => [
+    agentId,
+    tasks.filter((task) => task.status !== "running"),
+  ]));
   const planTasks = data.planTasks || [];
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
@@ -1013,7 +1024,7 @@ export function Dashboard() {
             {data.agents.length === 0 && <Empty text="No Claude Code agents detected yet." />}
             {agentRows.map(({ agent, depth }) => (
               <div
-                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${((executionTasksOpen || planTasksOpen) && agent.id === "primary") || openSkillAgentId === agent.id ? "agentPopoverOpen" : ""}`}
+                className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${openExecutionTaskAgentId === agent.id || (planTasksOpen && agent.id === "primary") || openSkillAgentId === agent.id ? "agentPopoverOpen" : ""}`}
                 key={agent.id}
                 style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}
               >
@@ -1033,7 +1044,7 @@ export function Dashboard() {
                           as="button"
                           className="skillPopoverTrigger"
                           onClick={() => {
-                            setExecutionTasksOpen(false);
+                            setOpenExecutionTaskAgentId(null);
                             setPlanTasksOpen(false);
                             setOpenSkillAgentId((open) => open === agent.id ? null : agent.id);
                           }}
@@ -1059,27 +1070,27 @@ export function Dashboard() {
                         )}
                       </div>
                     )}
-                    {agent.id === "primary" && executionTasks.length > 0 && (
-                      <div className="executionTaskAnchor" ref={executionTaskPopoverRef}>
+                    {(executionTasksByAgent.get(agent.id)?.length || 0) > 0 && (
+                      <div className="executionTaskAnchor" ref={openExecutionTaskAgentId === agent.id ? executionTaskPopoverRef : undefined}>
                         <AgentChip
                           as="button"
                           className="executionTaskTrigger"
-                          onClick={() => { setPlanTasksOpen(false); setOpenSkillAgentId(null); setExecutionTasksOpen((open) => !open); }}
-                          expanded={executionTasksOpen}
-                          controls="primary-agent-execution-tasks"
-                        >{runningExecutionTasks.length > 0 ? `${runningExecutionTasks.length} running` : `${finishedExecutionTasks.length} shell tasks`}</AgentChip>
-                        {executionTasksOpen && (
-                          <div className="executionTaskPopover" id="primary-agent-execution-tasks" role="dialog" aria-label="Background tasks">
+                          onClick={() => { setPlanTasksOpen(false); setOpenSkillAgentId(null); setOpenExecutionTaskAgentId((open) => open === agent.id ? null : agent.id); }}
+                          expanded={openExecutionTaskAgentId === agent.id}
+                          controls={`agent-execution-tasks-${agent.id}`}
+                        >{(runningExecutionTasksByAgent.get(agent.id)?.length || 0) > 0 ? `${runningExecutionTasksByAgent.get(agent.id)?.length} running` : `${finishedExecutionTasksByAgent.get(agent.id)?.length || 0} shell tasks`}</AgentChip>
+                        {openExecutionTaskAgentId === agent.id && (
+                          <div className="executionTaskPopover" id={`agent-execution-tasks-${agent.id}`} role="dialog" aria-label={`Background tasks for ${agent.label}`}>
                             <div className="executionTaskPopoverHeader">
-                              <div><span className="label">EXECUTION TASKS</span><strong>Background tasks</strong></div>
-                              <button type="button" onClick={() => setExecutionTasksOpen(false)} aria-label="Close execution tasks">×</button>
+                              <div><span className="label">EXECUTION TASKS</span><strong>{agent.label}</strong></div>
+                              <button type="button" onClick={() => setOpenExecutionTaskAgentId(null)} aria-label="Close execution tasks">×</button>
                             </div>
-                            <p>{runningExecutionTasks.length} running · {finishedExecutionTasks.length} recently finished</p>
+                            <p>{runningExecutionTasksByAgent.get(agent.id)?.length || 0} running · {finishedExecutionTasksByAgent.get(agent.id)?.length || 0} recently finished</p>
                             <div className="executionTaskList">
-                              {runningExecutionTasks.length > 0 && (
+                              {(runningExecutionTasksByAgent.get(agent.id)?.length || 0) > 0 && (
                                 <section className="executionTaskSection" aria-label="Running execution tasks">
                                   <h3>Running</h3>
-                                  {runningExecutionTasks.map((task) => (
+                                  {(runningExecutionTasksByAgent.get(agent.id) || []).map((task) => (
                                     <div className="executionTaskRow running" key={task.id}>
                                       <span className="executionTaskState" aria-hidden="true">◷</span>
                                       <div><strong>{task.label}</strong><small>Shell · {task.background ? "background · " : ""}{formatExecutionTaskDuration(task)}</small></div>
@@ -1087,10 +1098,10 @@ export function Dashboard() {
                                   ))}
                                 </section>
                               )}
-                              {finishedExecutionTasks.length > 0 && (
+                              {(finishedExecutionTasksByAgent.get(agent.id)?.length || 0) > 0 && (
                                 <section className="executionTaskSection" aria-label="Finished execution tasks">
-                                  <h3>Recent finished {finishedExecutionTasks.length}</h3>
-                                  {finishedExecutionTasks.map((task) => (
+                                  <h3>Recent finished {finishedExecutionTasksByAgent.get(agent.id)?.length || 0}</h3>
+                                  {(finishedExecutionTasksByAgent.get(agent.id) || []).map((task) => (
                                     <div className={`executionTaskRow ${task.status}`} key={task.id}>
                                       <span className="executionTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "failed" ? "!" : "×"}</span>
                                       <div>
@@ -1111,7 +1122,7 @@ export function Dashboard() {
                         <AgentChip
                           as="button"
                           className="planTaskTrigger"
-                          onClick={() => { setExecutionTasksOpen(false); setOpenSkillAgentId(null); setPlanTasksOpen((open) => !open); }}
+                          onClick={() => { setOpenExecutionTaskAgentId(null); setOpenSkillAgentId(null); setPlanTasksOpen((open) => !open); }}
                           expanded={planTasksOpen}
                           controls="primary-agent-plan-tasks"
                         >{planTasks.length} plan items</AgentChip>

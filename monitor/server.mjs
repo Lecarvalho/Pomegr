@@ -438,6 +438,14 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     });
   }
   if (!historical) applyWaitingStatus(agents);
+  for (const agent of agents) {
+    const file = agent.id === "primary"
+      ? mainFile
+      : files.find((candidate) => path.basename(candidate, ".jsonl") === agent.id);
+    agent.executionTasks = file
+      ? buildExecutionTasks(recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt })
+      : [];
+  }
 
   const groupedTools = [...patternMap.values()].sort((a, b) => b.count - a.count);
   const loops = [...repetitionMap.values()].filter((item) => item.count >= 3).sort((a, b) => b.count - a.count);
@@ -541,7 +549,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     toolPatterns,
     loops: loopPatterns,
     activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail }) => ({ id, timestamp, actor, tool, detail })),
-    executionTasks: buildExecutionTasks(mainRecords, { historical, sessionUpdatedAt: updatedAt }),
+    executionTasks: agents.find((agent) => agent.id === "primary")?.executionTasks || [],
     planTasks: readSessionTasks(TASKS_ROOT, sessionId),
     insights,
     usageLimits: currentUsageLimits,
