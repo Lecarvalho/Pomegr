@@ -41,8 +41,29 @@ test("tracks a background shell command until its completion notification", () =
     startedAt: "2026-08-05T23:14:02.000Z",
     finishedAt: "2026-08-05T23:21:05.000Z",
     exitCode: 0,
+    signal: null,
   }]);
   assert.doesNotMatch(JSON.stringify(buildExecutionTasks(records)), /PRIVATE|command|output/i);
+});
+
+test("attaches the latest bounded signal by tool-use or background task ID", () => {
+  const records = [
+    bash("toolu_wait", "2026-08-05T23:14:02.000Z", { description: "Wait for Codex review", run_in_background: true }),
+    result("toolu_wait", "2026-08-05T23:14:03.000Z", { backgroundTaskId: "review123" }),
+  ];
+  const taskSignals = new Map([
+    ["toolu_wait", { label: "Reviewing", tone: "info", reportedAt: "2026-08-05T23:15:00.000Z" }],
+    ["review123", { label: "Approved with suggestions", tone: "warning", reportedAt: "2026-08-05T23:16:00.000Z" }],
+    ["unknown", { label: "Private unmatched signal", tone: "negative", reportedAt: "2026-08-05T23:17:00.000Z" }],
+  ]);
+
+  const [task] = buildExecutionTasks(records, { taskSignals });
+  assert.deepEqual(task.signal, {
+    label: "Approved with suggestions",
+    tone: "warning",
+    reportedAt: "2026-08-05T23:16:00.000Z",
+  });
+  assert.doesNotMatch(JSON.stringify(task), /unknown|Private unmatched signal/);
 });
 
 test("keeps an unnotified background command running", () => {

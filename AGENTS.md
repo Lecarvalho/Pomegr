@@ -23,7 +23,8 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or credential-file contents to the browser.
 - Execution-task metadata may expose only normalized tool/background IDs, the Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Never expose commands, stdout, stderr, or task-notification output.
 - Plan-task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text, and always label the checklist as agent-maintained and potentially stale.
-- Session-signal metadata may expose only a bounded plain-text label, semantic tone, and transcript-derived timestamp from a recognized Threadlight MCP tool call. Never expose other MCP arguments or tool-result content, and present the signal as agent-reported rather than a Threadlight judgment.
+- Session- and agent-signal metadata may expose only a bounded plain-text label, semantic tone, and transcript-derived timestamp from a recognized Threadlight MCP tool call. Never expose other MCP arguments or tool-result content, and present signals as agent-reported rather than Threadlight judgments.
+- Task-signal metadata may attach the same bounded fields only to a matching normalized execution task resolved monitor-side from a safe tool-use or background-task ID. Never expose the MCP-supplied target separately or include unmatched task signals in the browser API.
 - Keep the monitor bound to loopback.
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.

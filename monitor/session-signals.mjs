@@ -1,23 +1,30 @@
 import fs from "node:fs";
 import readline from "node:readline";
 
+export const AGENT_SIGNAL_TOOL = "report_agent_signal";
+export const AGENT_SIGNAL_MCP_TOOL = `mcp__threadlight__${AGENT_SIGNAL_TOOL}`;
 export const SESSION_SIGNAL_TOOL = "report_session_signal";
 export const SESSION_SIGNAL_MCP_TOOL = `mcp__threadlight__${SESSION_SIGNAL_TOOL}`;
+export const TASK_SIGNAL_TOOL = "report_task_signal";
+export const TASK_SIGNAL_MCP_TOOL = `mcp__threadlight__${TASK_SIGNAL_TOOL}`;
 export const SESSION_SIGNAL_MAX_LABEL_LENGTH = 40;
 export const SESSION_SIGNAL_TONES = ["neutral", "info", "positive", "warning", "negative"];
 
 const toneSet = new Set(SESSION_SIGNAL_TONES);
+const sessionSignalKeys = new Set(["label", "tone"]);
+const taskSignalKeys = new Set(["task_id", "label", "tone"]);
 const signalCache = new Map();
 const MAX_RECENT_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
+const SAFE_TASK_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 
 function normalizedTimestamp(value) {
   if (typeof value !== "string" || !Number.isFinite(new Date(value).getTime())) return null;
   return value;
 }
 
-export function normalizeSessionSignal(input, reportedAt = null) {
+function normalizedSignal(input, allowedKeys, reportedAt) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  if (Object.keys(input).some((key) => key !== "label" && key !== "tone")) return null;
+  if (Object.keys(input).some((key) => !allowedKeys.has(key))) return null;
   const rawLabel = typeof input.label === "string" ? input.label.trim() : "";
   if (!rawLabel || rawLabel.length > SESSION_SIGNAL_MAX_LABEL_LENGTH || /[\u0000-\u001f\u007f]/.test(rawLabel)) return null;
   const label = rawLabel.replace(/ {2,}/g, " ");
@@ -26,34 +33,77 @@ export function normalizeSessionSignal(input, reportedAt = null) {
   return { label, tone, reportedAt: normalizedTimestamp(reportedAt) };
 }
 
-function signalFromRecord(record) {
-  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return null;
-  let latest = null;
+export function normalizeSessionSignal(input, reportedAt = null) {
+  return normalizedSignal(input, sessionSignalKeys, reportedAt);
+}
+
+export function normalizeAgentSignal(input, reportedAt = null) {
+  return normalizedSignal(input, sessionSignalKeys, reportedAt);
+}
+
+export function normalizeTaskSignal(input, reportedAt = null) {
+  const signal = normalizedSignal(input, taskSignalKeys, reportedAt);
+  const taskId = typeof input?.task_id === "string" && SAFE_TASK_ID.test(input.task_id) ? input.task_id : null;
+  return signal && taskId ? { taskId, ...signal } : null;
+}
+
+function signalsFromRecord(record) {
+  const found = { agent: null, session: null, tasks: new Map() };
+  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return found;
   for (const content of record.message.content) {
-    if (content?.type !== "tool_use" || content.name !== SESSION_SIGNAL_MCP_TOOL) continue;
-    const signal = normalizeSessionSignal(content.input, record.timestamp || record.message?.timestamp);
-    if (signal) latest = signal;
+    if (content?.type !== "tool_use") continue;
+    const reportedAt = record.timestamp || record.message?.timestamp;
+    if (content.name === AGENT_SIGNAL_MCP_TOOL) {
+      const signal = normalizeAgentSignal(content.input, reportedAt);
+      if (signal) found.agent = signal;
+    }
+    if (content.name === SESSION_SIGNAL_MCP_TOOL) {
+      const signal = normalizeSessionSignal(content.input, reportedAt);
+      if (signal) found.session = signal;
+    }
+    if (content.name === TASK_SIGNAL_MCP_TOOL) {
+      const taskSignal = normalizeTaskSignal(content.input, reportedAt);
+      if (taskSignal) {
+        const { taskId, ...signal } = taskSignal;
+        found.tasks.set(taskId, signal);
+      }
+    }
   }
+  return found;
+}
+
+function mergeSignals(target, source) {
+  if (source.agent) target.agent = source.agent;
+  if (source.session) target.session = source.session;
+  for (const [taskId, signal] of source.tasks) target.tasks.set(taskId, signal);
+  return target;
+}
+
+export function latestTranscriptSignals(records) {
+  const latest = { agent: null, session: null, tasks: new Map() };
+  for (const record of records || []) mergeSignals(latest, signalsFromRecord(record));
   return latest;
 }
 
 export function latestSessionSignal(records) {
-  let latest = null;
-  for (const record of records || []) {
-    const signal = signalFromRecord(record);
-    if (signal) latest = signal;
-  }
-  return latest;
+  return latestTranscriptSignals(records).session;
+}
+
+export function latestAgentSignal(records) {
+  return latestTranscriptSignals(records).agent;
+}
+
+export function latestTaskSignals(records) {
+  return latestTranscriptSignals(records).tasks;
 }
 
 async function scanCompleteTranscript(file) {
-  let latest = null;
+  const latest = { agent: null, session: null, tasks: new Map() };
   const input = fs.createReadStream(file, { encoding: "utf8" });
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
   for await (const line of lines) {
     try {
-      const signal = signalFromRecord(JSON.parse(line));
-      if (signal) latest = signal;
+      mergeSignals(latest, signalsFromRecord(JSON.parse(line)));
     } catch {
       // Ignore malformed or partially written JSONL records.
     }
@@ -61,22 +111,26 @@ async function scanCompleteTranscript(file) {
   return latest;
 }
 
-export async function readLatestSessionSignal(file, recentRecords = []) {
+export async function readTranscriptSignals(file, recentRecords = []) {
   let stat;
   try { stat = fs.statSync(file); }
-  catch { return null; }
+  catch { return { agent: null, session: null, tasks: new Map() }; }
 
   const cached = signalCache.get(file);
-  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.signal;
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.signals;
 
-  let signal;
+  let signals;
   if (cached && stat.size > cached.size && stat.size - cached.size <= MAX_RECENT_TRANSCRIPT_BYTES) {
-    signal = latestSessionSignal(recentRecords) || cached.signal;
+    signals = mergeSignals({ agent: cached.signals.agent, session: cached.signals.session, tasks: new Map(cached.signals.tasks) }, latestTranscriptSignals(recentRecords));
   } else {
-    signal = await scanCompleteTranscript(file);
+    signals = await scanCompleteTranscript(file);
   }
-  signalCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, signal });
-  return signal;
+  signalCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, signals });
+  return signals;
+}
+
+export async function readLatestSessionSignal(file, recentRecords = []) {
+  return (await readTranscriptSignals(file, recentRecords)).session;
 }
 
 export function clearSessionSignalCache() {

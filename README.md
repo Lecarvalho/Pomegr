@@ -15,7 +15,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - All-agent current context usage and its latest-snapshot composition
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
-- Optional agent-reported session-signal tags captured through Threadlight's MCP tool
+- Optional session-, agent-, and execution-task signal tags captured through Threadlight's MCP tools
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Plan limits for the five-hour session, all models, and Fable
@@ -57,9 +57,9 @@ The development command starts:
 
 The web server proxies `/api/state` to the loopback-only monitor, so private credentials and raw transcripts are never sent to the browser.
 
-## Session signals through MCP
+## Reported signals through MCP
 
-Threadlight includes a stateless local MCP server with one tool: `report_session_signal`. An agent can report a short label and semantic tone; Threadlight reads the recorded tool call from that agent's transcript and decorates its dashboard row. The transcript is the source of truth for live and historical sessions.
+Threadlight includes a stateless local MCP server with three tools. `report_session_signal` attaches a short label and semantic tone to the overall session header. `report_agent_signal` attaches the same metadata to the calling agent. `report_task_signal` attaches it to a specific execution task by its background task ID or Bash tool-use ID. Threadlight reads the recorded tool calls from agent transcripts and decorates the matching dashboard locations. The transcript is the source of truth for live and historical sessions.
 
 From a Claude Code repository that should use the tool, register this checkout as a local-scoped server. Keep the server name exactly `threadlight`, because the transcript parser uses that namespace:
 
@@ -78,10 +78,31 @@ mcpServers:
   - threadlight
 ---
 
-Review the requested code. Before returning, call `report_session_signal` once with a concise outcome such as `Approved` or `Rejected` and the corresponding `positive` or `negative` tone. Never include prompts, responses, secrets, commands, or tool output in the label.
+Review the requested code. Before returning, call `report_agent_signal` once with a concise outcome such as `Approved` or `Rejected` and the corresponding `positive` or `negative` tone. Never include prompts, responses, secrets, commands, or tool output in the label.
 ```
 
-Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text and limited to 40 characters. Calling the tool again replaces the earlier tag for that agent. Threadlight derives the agent and report time from the transcript; neither is supplied to the MCP tool.
+Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text and limited to 40 characters. The latest `report_session_signal` call across all agents replaces the earlier session tag. Calling `report_agent_signal` again replaces the earlier tag for that agent. Calling `report_task_signal` again with the same `task_id` replaces the earlier task tag. Threadlight derives the reporting agent and report time from the transcript.
+
+For a session-wide milestone or state:
+
+```text
+report_session_signal({
+  label: "Review round complete",
+  tone: "positive"
+})
+```
+
+For a task-specific outcome, pass the stable background task ID returned by Claude Code, or the corresponding Bash tool-use ID when it is available:
+
+```text
+report_task_signal({
+  task_id: "review123",
+  label: "Approved with suggestions",
+  tone: "info"
+})
+```
+
+Threadlight resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown or unsafe task identifiers produce no dashboard tag.
 
 ## Configuration
 
@@ -112,7 +133,7 @@ Threadlight does not present cumulative transcript-throughput or token-spend ses
 ## Privacy and security
 
 - Raw prompt and response text is not returned by the monitor API.
-- Session-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; surrounding response and tool-result content remains private.
+- Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
 - Agent launch text is used only to derive a concise fallback label.
 - Session transcripts and Git state are read-only.
 - Git commands use argument arrays rather than shell interpolation.

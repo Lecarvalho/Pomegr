@@ -67,6 +67,9 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.doesNotMatch(styles, /\.agentRow time \{ display: none/);
   assert.match(dashboard, /agentMetaRuntime/);
   assert.match(dashboard, /agentSignal/);
+  assert.match(dashboard, /sessionSignal/);
+  assert.match(dashboard, /Reported for this session through the Threadlight MCP tool/);
+  assert.match(dashboard, /sessionMetaValues/);
   assert.match(dashboard, /function AgentChip/);
   assert.match(dashboard, /<AgentChip/);
   assert.match(dashboard, /Reported by this agent through the Threadlight MCP tool/);
@@ -137,10 +140,15 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /Finished execution tasks/);
   assert.match(styles, /\.executionTaskPopover/);
   assert.match(styles, /\.executionTaskRow\.running/);
+  assert.match(dashboard, /executionTaskSignal/);
+  assert.match(dashboard, /Reported for this task through the Threadlight MCP tool/);
+  assert.match(styles, /\.agentSignal, \.executionTaskSignal, \.sessionSignal/);
+  assert.match(styles, /\.executionTaskTitleLine/);
   assert.match(monitor, /agent\.executionTasks = file/);
   assert.match(monitor, /buildExecutionTasks\(recordsByFile\.get\(file\)/);
   assert.match(dashboard, /executionTasksByAgent\.get\(agent\.id\)/);
   assert.doesNotMatch(dashboard, /agent\.id === "primary" && executionTasks\.length/);
+  assert.match(monitor, /taskSignals/);
   assert.match(dashboard, /planTaskTrigger/);
   assert.match(dashboard, /planTaskPopover/);
   assert.match(dashboard, /CLAUDE PLAN/);
@@ -154,7 +162,8 @@ test("uses one provider-neutral identity and no starter preview", async () => {
   assert.match(dashboard, /normalized metadata only/);
   assert.match(styles, /\.skillPopover/);
   assert.match(monitor, /skills: buildSkillUsage\(records\)/);
-  assert.match(monitor, /signal: signalsByFile\.get\(file\) \|\| null/);
+  assert.match(monitor, /signal: signalsByFile\.get\(file\)\?\.agent \|\| null/);
+  assert.match(monitor, /signal: sessionSignal/);
   assert.doesNotMatch(monitor, /signal: file === mainFile \? null/);
   assert.match(monitor, /tool === "Skill" \? normalizedSkillName\(input\)/);
   assert.match(monitor, /buildContextGrowthTimeline/);

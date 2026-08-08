@@ -12,7 +12,7 @@ import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
-import { readLatestSessionSignal } from "./session-signals.mjs";
+import { readTranscriptSignals } from "./session-signals.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 
@@ -312,8 +312,19 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   const mainRecords = recordsByFile.get(mainFile) || [];
   const signalsByFile = new Map(await Promise.all(files.map(async (file) => [
     file,
-    await readLatestSessionSignal(file, recordsByFile.get(file) || []),
+    await readTranscriptSignals(file, recordsByFile.get(file) || []),
   ])));
+  const taskSignals = new Map();
+  let sessionSignal = null;
+  for (const signals of signalsByFile.values()) {
+    if (signals.session && (!sessionSignal || new Date(signals.session.reportedAt || 0) >= new Date(sessionSignal.reportedAt || 0))) {
+      sessionSignal = signals.session;
+    }
+    for (const [taskId, signal] of signals.tasks) {
+      const previous = taskSignals.get(taskId);
+      if (!previous || new Date(signal.reportedAt || 0) >= new Date(previous.reportedAt || 0)) taskSignals.set(taskId, signal);
+    }
+  }
   let contextMachinery = contextMachineryCache.get(mainFile);
   if (contextMachinery === undefined) {
     contextMachinery = await readLatestContextMachinery(mainFile);
@@ -431,7 +442,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       effort: runtime.effort,
       status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
       toolCalls: calls,
-      signal: signalsByFile.get(file) || null,
+      signal: signalsByFile.get(file)?.agent || null,
       skills: buildSkillUsage(records),
       lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || (file === mainFile ? registryTimestamp(sessionRegistryEntry) : null) || stat.mtime.toISOString(),
       ...timing,
@@ -443,7 +454,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       ? mainFile
       : files.find((candidate) => path.basename(candidate, ".jsonl") === agent.id);
     agent.executionTasks = file
-      ? buildExecutionTasks(recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt })
+      ? buildExecutionTasks(recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt, taskSignals })
       : [];
   }
 
@@ -542,6 +553,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
       contextMachinery,
+      signal: sessionSignal,
     },
     score,
     metrics: { agents: agents.length, activeAgents, toolCalls: allEvents.length, repeatedCalls, tokens: tokenUsage },

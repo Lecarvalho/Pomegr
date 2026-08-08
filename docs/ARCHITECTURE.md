@@ -43,10 +43,10 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository, and the normalized first-request footprint when recorded
+- `session` — title, project, timestamps, repository, and an optional reported session signal
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported session signal
+- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported agent signal
 - `activity` — sanitized tool and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata, retained for API compatibility
 - `insights` — deterministic rules
@@ -54,7 +54,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 The UI depends on normalized shapes rather than raw provider records.
 
-Session signals use the transcript as their only durable source. The local MCP server validates and acknowledges `report_session_signal`, but stores nothing. For live and historical views alike, the monitor extracts the latest valid call from every agent transcript and applies the shared signal normalizer. Historical full-file scans are cached; raw tool results and surrounding response content are never exposed.
+Reported signals use the transcript as their only durable source. The local MCP server validates and acknowledges `report_session_signal`, `report_agent_signal`, and `report_task_signal`, but stores nothing. For live and historical views alike, the monitor extracts the latest valid calls from every agent transcript and applies the shared signal normalizer. The latest session signal across all agents decorates the session header. An agent signal decorates only its reporting agent. A task signal is resolved monitor-side against a normalized Bash tool-use or background-task ID and is exposed only when that execution task matches. Historical full-file signal scans are cached; raw target arguments, unmatched signals, tool results, and surrounding response content are never exposed.
 
 When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 

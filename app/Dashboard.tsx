@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import { usageRefreshDelay } from "./usage-refresh.mjs";
 
+type ReportedSignal = {
+  label: string;
+  tone: "neutral" | "info" | "positive" | "warning" | "negative";
+  reportedAt: string | null;
+};
+
 type Agent = {
   id: string;
   parentId: string | null;
@@ -12,11 +18,7 @@ type Agent = {
   model: string;
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
-  signal: {
-    label: string;
-    tone: "neutral" | "info" | "positive" | "warning" | "negative";
-    reportedAt: string | null;
-  } | null;
+  signal: ReportedSignal | null;
   toolCalls: number;
   skills: Array<{
     name: string;
@@ -55,6 +57,7 @@ type ExecutionTask = {
   startedAt: string;
   finishedAt: string | null;
   exitCode: number | null;
+  signal: ReportedSignal | null;
 };
 
 type PlanTask = {
@@ -140,6 +143,7 @@ type MonitorState = {
     updatedAt: string | null;
     durationMs: number;
     contextMachinery: ContextMachinery | null;
+    signal: ReportedSignal | null;
   } | null;
   score: number;
   metrics: {
@@ -819,9 +823,12 @@ export function Dashboard() {
             : "Watching Claude Code quietly. Prompt and response text stay out of the dashboard; only execution metadata is analyzed."}</p>
         </div>
         <div className="sessionMeta">
-          <span>{viewingHistory ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
-          <strong>{data.session ? formatDuration(data.session.durationMs) : "—"}</strong>
-          <small>{data.session ? viewingHistory ? `Ended ${sessionListTime(data.session.updatedAt || "")}` : `Last event ${relativeTime(data.session.updatedAt)}` : "Auto-discovery enabled"}</small>
+          <div className="sessionMetaValues">
+            <span>{viewingHistory ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
+            <strong>{data.session ? formatDuration(data.session.durationMs) : "—"}</strong>
+            <small>{data.session ? viewingHistory ? `Ended ${sessionListTime(data.session.updatedAt || "")}` : `Last event ${relativeTime(data.session.updatedAt)}` : "Auto-discovery enabled"}</small>
+          </div>
+          {data.session?.signal && <AgentChip className={`sessionSignal ${data.session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{data.session.signal.label}</AgentChip>}
         </div>
       </section>
 
@@ -1093,7 +1100,13 @@ export function Dashboard() {
                                   {(runningExecutionTasksByAgent.get(agent.id) || []).map((task) => (
                                     <div className="executionTaskRow running" key={task.id}>
                                       <span className="executionTaskState" aria-hidden="true">◷</span>
-                                      <div><strong>{task.label}</strong><small>Shell · {task.background ? "background · " : ""}{formatExecutionTaskDuration(task)}</small></div>
+                                      <div>
+                                        <div className="executionTaskTitleLine">
+                                          <strong>{task.label}</strong>
+                                          {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Threadlight MCP tool">{task.signal.label}</AgentChip>}
+                                        </div>
+                                        <small>Shell · {task.background ? "background · " : ""}{formatExecutionTaskDuration(task)}</small>
+                                      </div>
                                     </div>
                                   ))}
                                 </section>
@@ -1105,7 +1118,10 @@ export function Dashboard() {
                                     <div className={`executionTaskRow ${task.status}`} key={task.id}>
                                       <span className="executionTaskState" aria-hidden="true">{task.status === "completed" ? "✓" : task.status === "failed" ? "!" : "×"}</span>
                                       <div>
-                                        <strong>{task.label}</strong>
+                                        <div className="executionTaskTitleLine">
+                                          <strong>{task.label}</strong>
+                                          {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Threadlight MCP tool">{task.signal.label}</AgentChip>}
+                                        </div>
                                         <small>Shell · {formatExecutionTaskDuration(task)}{task.exitCode !== null ? ` · exit ${task.exitCode}` : ""}</small>
                                       </div>
                                     </div>

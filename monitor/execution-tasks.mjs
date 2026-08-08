@@ -41,7 +41,15 @@ function toolParts(record) {
   return Array.isArray(record?.message?.content) ? record.message.content : [];
 }
 
-export function buildExecutionTasks(records, { historical = false, sessionUpdatedAt = null } = {}) {
+function newerSignal(first, second) {
+  if (!first) return second || null;
+  if (!second) return first;
+  const firstTime = new Date(first.reportedAt || 0).getTime();
+  const secondTime = new Date(second.reportedAt || 0).getTime();
+  return secondTime >= firstTime ? second : first;
+}
+
+export function buildExecutionTasks(records, { historical = false, sessionUpdatedAt = null, taskSignals = new Map() } = {}) {
   const tasks = new Map();
   const toolUseIdByBackgroundId = new Map();
 
@@ -62,6 +70,7 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
           startedAt: timestamp,
           finishedAt: null,
           exitCode: null,
+          signal: null,
         });
         continue;
       }
@@ -103,6 +112,7 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
 
   const historicalFinishedAt = safeTimestamp(sessionUpdatedAt);
   for (const task of tasks.values()) {
+    task.signal = newerSignal(taskSignals.get(task.id), task.backgroundId ? taskSignals.get(task.backgroundId) : null);
     if (historical && task.status === "running") {
       task.status = "stopped";
       task.finishedAt = historicalFinishedAt || task.startedAt;
