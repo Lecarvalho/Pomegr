@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ThreadlightBrand } from "../components/ThreadlightBrand";
 
 export const metadata: Metadata = {
   title: "About · Threadlight",
@@ -7,13 +8,15 @@ export const metadata: Metadata = {
 };
 
 export default function About() {
+  const principles = [
+    { label: "LOCAL-FIRST", title: "Your session stays local", detail: "Threadlight reads local session records and presents a normalized, read-only view." },
+    { label: "CLEAR PROVENANCE", title: "Summaries stay attributed", detail: "When a provider records a session summary, Threadlight displays bounded plain text and labels where it came from." },
+    { label: "DETERMINISTIC", title: "Signals are explainable", detail: "Efficiency signals come from concrete execution events and documented rules, not hidden AI judgment." },
+  ];
   return (
     <main className="aboutShell">
       <header className="topbar">
-        <Link className="brand" href="/" aria-label="Threadlight dashboard">
-          <span className="brandMark"><i /><i /><i /></span>
-          <span>Threadlight</span>
-        </Link>
+        <ThreadlightBrand label="Threadlight dashboard" />
         <Link className="ghostButton aboutBack" href="/">Back to dashboard</Link>
       </header>
 
@@ -23,23 +26,13 @@ export default function About() {
         <p className="aboutLead">Watching Claude Code quietly. Prompt and response text stay out of the dashboard; only execution metadata is analyzed.</p>
 
         <section className="aboutGrid" aria-label="Threadlight principles">
-          <div>
-            <span className="label">LOCAL-FIRST</span>
-            <h2>Your session stays local</h2>
-            <p>Threadlight reads local session records and presents a normalized, read-only view.</p>
-          </div>
-          <div>
-            <span className="label">CLEAR PROVENANCE</span>
-            <h2>Summaries stay attributed</h2>
-            <p>When a provider records a session summary, Threadlight displays bounded plain text and labels where it came from.</p>
-          </div>
-          <div>
-            <span className="label">DETERMINISTIC</span>
-            <h2>Signals are explainable</h2>
-            <p>Efficiency signals come from concrete execution events and documented rules, not hidden AI judgment.</p>
-          </div>
+          {principles.map((principle) => <PrincipleCard key={principle.label} {...principle} />)}
         </section>
       </article>
     </main>
   );
+}
+
+function PrincipleCard({ label, title, detail }: { label: string; title: string; detail: string }) {
+  return <div><span className="label">{label}</span><h2>{title}</h2><p>{detail}</p></div>;
 }

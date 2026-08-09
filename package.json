@@ -13,7 +13,9 @@
     "mcp": "node mcp/server.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs",
+    "test": "npm run build && npm run test:node && npm run test:ui",
+    "test:node": "node --test tests/rendered-html.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs",
+    "test:ui": "vitest run",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
@@ -26,6 +28,9 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
@@ -33,11 +38,13 @@
     "@vitejs/plugin-rsc": "0.5.26",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "jsdom": "^29.1.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.0.13",
+    "vitest": "^4.1.10",
     "wrangler": "4.92.0"
   },
   "type": "module"

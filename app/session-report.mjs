@@ -1,15 +1,7 @@
+import { formatAgentWallTime, formatWallTime } from "./formatting.mjs";
+
 function number(value) {
   return new Intl.NumberFormat("en-US").format(Number(value || 0));
-}
-
-function wallTime(milliseconds) {
-  const totalSeconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours) return `${hours}h ${minutes}m`;
-  if (minutes) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
 }
 
 function localTime(value) {
@@ -25,13 +17,6 @@ function cell(value) {
 
 function code(value) {
   return `\`${String(value ?? "").replace(/`/g, "'")}\``;
-}
-
-function agentWallTime(agent, generatedAt) {
-  const startedAt = new Date(agent.startedAt).getTime();
-  const running = agent.status === "active" || agent.status === "waiting";
-  const liveDuration = running && Number.isFinite(startedAt) ? generatedAt.getTime() - startedAt : 0;
-  return wallTime(Math.max(Number(agent.durationMs || 0), liveDuration));
 }
 
 function agentStatus(status) {
@@ -83,7 +68,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `- **Generated:** ${localTime(generatedAt)}`,
     `- **Recorded start:** ${localTime(session.startedAt)}`,
     `- **Recorded end:** ${localTime(session.updatedAt)}`,
-    `- **Elapsed wall time:** ${wallTime(session.durationMs)}`,
+    `- **Elapsed wall time:** ${formatWallTime(session.durationMs)}`,
     `- **Flow score:** ${number(state.score)} / 100`,
     "",
     "## Executive metrics",
@@ -103,7 +88,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   if (agents.length) {
     for (const agent of agents) {
       const parent = agent.parentId ? labelsById.get(agent.parentId) || agent.parentId : "—";
-      lines.push(`| ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.kind)} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agentStatus(agent.status))} | ${agentWallTime(agent, generatedAt)} | ${number(agent.tokens?.total)} | ${number(agent.toolCalls)} |`);
+      lines.push(`| ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.kind)} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agentStatus(agent.status))} | ${formatAgentWallTime(agent, generatedAt.getTime())} | ${number(agent.tokens?.total)} | ${number(agent.toolCalls)} |`);
     }
   } else {
     lines.push("| No agents observed | — | — | — | — | — | — | — | — |");

@@ -1,0 +1,146 @@
+export type ReportedSignal = {
+  label: string;
+  tone: "neutral" | "info" | "positive" | "warning" | "negative";
+  reportedAt: string | null;
+};
+
+export type ExecutionTask = {
+  id: string;
+  label: string;
+  kind: "shell";
+  status: "running" | "completed" | "failed" | "stopped";
+  background: boolean;
+  backgroundId: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  exitCode: number | null;
+  signal: ReportedSignal | null;
+};
+
+export type Agent = {
+  id: string;
+  parentId: string | null;
+  label: string;
+  kind: string;
+  model: string;
+  effort: string;
+  status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
+  signal: ReportedSignal | null;
+  toolCalls: number;
+  skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
+  executionTasks?: ExecutionTask[];
+  lastSeen: string;
+  startedAt: string;
+  updatedAt: string;
+  durationMs: number;
+  tokens: { total: number; input: number; output: number; cacheWrite: number; cacheRead: number };
+};
+
+export type Activity = {
+  id: string;
+  timestamp: string;
+  actor: string;
+  tool: string;
+  detail: string;
+  status: "failed" | null;
+};
+
+export type PlanTask = {
+  id: string;
+  subject: string;
+  status: "pending" | "in_progress" | "completed";
+  blocks: string[];
+  blockedBy: string[];
+};
+
+export type ContextGrowthBucket = {
+  start: string;
+  end: string;
+  total: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+};
+
+export type ContextMachinery = {
+  observedAt: string | null;
+  model: string;
+  total: { used: string; limit: string; percentage: number } | null;
+  machineryTokens: number;
+  categories: Array<{ name: string; tokens: string; percentage: number }>;
+  groups: Array<{
+    id: string;
+    label: string;
+    items: Array<{ name: string; detail: string; tokens: string }>;
+  }>;
+};
+
+export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
+export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
+export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
+export type SessionSummary = { id: string; title: string; project: string; updatedAt: string; isLive: boolean; needsInput: boolean };
+
+export type UsageLimits = {
+  available: boolean;
+  fetchedAt: string | null;
+  attemptedAt: string | null;
+  error?: string;
+  limits: Array<{
+    id: string;
+    label: string;
+    window: string;
+    percent: number;
+    resetsAt: string | null;
+    severity: string;
+    active: boolean;
+  }>;
+};
+
+export type MonitorState = {
+  connected: boolean;
+  source: string;
+  view: "live" | "history";
+  session: {
+    id: string;
+    title: string;
+    project: string;
+    cwd: string;
+    repository: {
+      available: boolean;
+      branch: string;
+      files: Array<{ status: string; path: string }>;
+      historical: boolean;
+    };
+    startedAt: string | null;
+    updatedAt: string | null;
+    durationMs: number;
+    contextMachinery: ContextMachinery | null;
+    summary: { text: string; observedAt: string | null; source: "provider" } | null;
+    signal: ReportedSignal | null;
+  } | null;
+  score: number;
+  metrics: {
+    agents: number;
+    activeAgents: number;
+    toolCalls: number;
+    repeatedCalls: number;
+    tokens: {
+      allAgents: number;
+      input: number;
+      output: number;
+      cacheWrite: number;
+      cacheRead: number;
+      contextGrowthTimeline: { bucketMs: number; buckets: ContextGrowthBucket[] };
+    };
+  };
+  agents: Agent[];
+  toolPatterns: ToolPattern[];
+  loops: LoopPattern[];
+  activity: Activity[];
+  executionTasks: ExecutionTask[];
+  planTasks: PlanTask[];
+  insights: Insight[];
+  usageLimits: UsageLimits;
+  error?: string;
+};
