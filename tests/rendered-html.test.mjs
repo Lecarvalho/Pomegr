@@ -40,6 +40,19 @@ test("keeps the privacy explanation on the about page", async () => {
   assert.match(html, /Back to dashboard/);
 });
 
+test("uses one vector close button across dashboard dialogs", async () => {
+  const [dashboard, closeButton, styles] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/CloseButton.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.equal(dashboard.match(/<CloseButton\b/g)?.length, 6);
+  assert.doesNotMatch(dashboard, /aria-label="Close [^"]+">×<\/button>/);
+  assert.match(closeButton, /className="closeButton"/);
+  assert.match(closeButton, /<svg viewBox="0 0 12 12"/);
+  assert.match(styles, /\.closeButton path \{[^}]*stroke-linecap: round/);
+});
+
 test("uses one provider-neutral identity and no starter preview", async () => {
   const [page, layout, packageJson, dashboard, styles, stateRoute, sessionsRoute, monitor] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

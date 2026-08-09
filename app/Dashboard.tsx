@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { CloseButton } from "./components/CloseButton";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import { usageRefreshDelay } from "./usage-refresh.mjs";
 
@@ -729,7 +730,7 @@ export function Dashboard() {
       <aside className={`sessionSidebar ${sidebarOpen ? "open" : ""}`} aria-label="Session navigation">
         <div className="sidebarHeader">
           <div><span className="label">THREADLIGHT</span><strong>Sessions</strong></div>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Close session navigation">×</button>
+          <CloseButton label="Close session navigation" onClick={() => setSidebarOpen(false)} />
         </div>
         <nav className="sessionNav">
           <div className="liveHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
@@ -940,7 +941,7 @@ export function Dashboard() {
             <div className="metricPopover" id="tool-calls-popover" role="dialog" aria-label="Tool call breakdown">
               <div className="metricPopoverHeader">
                 <div><span className="label">TOOL CALL BREAKDOWN</span><strong>{toolPatterns.length} grouped patterns</strong></div>
-                <button type="button" onClick={() => setOpenMetric(null)} aria-label="Close tool call breakdown">×</button>
+                <CloseButton label="Close tool call breakdown" onClick={() => setOpenMetric(null)} />
               </div>
               <p>{data.metrics.toolCalls} calls grouped by agent, tool, and sanitized target.</p>
               <div className="metricPopoverList">
@@ -985,7 +986,7 @@ export function Dashboard() {
                 <div className="metricPopover machineryPopover" id="loaded-machinery-popover" role="dialog" aria-label="Loaded context machinery">
                   <div className="executionTaskPopoverHeader">
                     <div><span className="label">MACHINERY BREAKDOWN</span><strong>Token inventory</strong></div>
-                    <button type="button" onClick={() => setMachineryPopoverOpen(false)} aria-label="Close loaded machinery">×</button>
+                    <CloseButton label="Close loaded machinery" onClick={() => setMachineryPopoverOpen(false)} />
                   </div>
                   <div className="machineryPopoverBody">
                     <div className="machineryMeta">
@@ -1070,7 +1071,7 @@ export function Dashboard() {
                           <div className="skillPopover" id={`agent-skills-${agent.id}`} role="dialog" aria-label={`Skills used by ${agent.label}`}>
                             <div className="skillPopoverHeader">
                               <div><span className="label">SKILL USAGE</span><strong>{agent.label}</strong></div>
-                              <button type="button" onClick={() => setOpenSkillAgentId(null)} aria-label="Close skill usage">×</button>
+                              <CloseButton label="Close skill usage" onClick={() => setOpenSkillAgentId(null)} />
                             </div>
                             <p>{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"} invoked · normalized metadata only</p>
                             <div className="skillPopoverList">
@@ -1098,7 +1099,7 @@ export function Dashboard() {
                           <div className="executionTaskPopover" id={`agent-execution-tasks-${agent.id}`} role="dialog" aria-label={`Background tasks for ${agent.label}`}>
                             <div className="executionTaskPopoverHeader">
                               <div><span className="label">EXECUTION TASKS</span><strong>{agent.label}</strong></div>
-                              <button type="button" onClick={() => setOpenExecutionTaskAgentId(null)} aria-label="Close execution tasks">×</button>
+                              <CloseButton label="Close execution tasks" onClick={() => setOpenExecutionTaskAgentId(null)} />
                             </div>
                             <p>{runningExecutionTasksByAgent.get(agent.id)?.length || 0} running · {finishedExecutionTasksByAgent.get(agent.id)?.length || 0} recently finished</p>
                             <div className="executionTaskList">
@@ -1154,7 +1155,7 @@ export function Dashboard() {
                           <div className="planTaskPopover" id="primary-agent-plan-tasks" role="dialog" aria-label="Claude plan checklist">
                             <div className="planTaskPopoverHeader">
                               <div><span className="label">CLAUDE PLAN</span><strong>Plan checklist</strong></div>
-                              <button type="button" onClick={() => setPlanTasksOpen(false)} aria-label="Close plan checklist">×</button>
+                              <CloseButton label="Close plan checklist" onClick={() => setPlanTasksOpen(false)} />
                             </div>
                             <p>{completedPlanTasks} done · {activePlanTasks} in progress · {openPlanTasks} open</p>
                             <div className="planTaskList">
