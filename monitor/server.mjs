@@ -16,6 +16,7 @@ import { readTranscriptSignals } from "./session-signals.mjs";
 import { latestSessionSummary } from "./session-summary.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
+import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -30,7 +31,7 @@ const contextMachineryCache = new Map();
 let usageCache = { timestamp: 0, value: null, pending: null };
 
 function emptyUsageLimits(error = "") {
-  return { available: false, fetchedAt: null, attemptedAt: null, limits: [], error };
+  return createEmptyUsageLimits(error ? { error } : {});
 }
 
 function cachedUsageLimits() {
@@ -287,23 +288,12 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     : null;
   const mainFile = requestedSessionId ? explicitMatch || selectedMatch : liveFile;
   const historical = mainFile ? !liveFiles.has(mainFile) : Boolean(requestedSessionId);
-  if (!mainFile) return {
+  if (!mainFile) return createEmptyMonitorState({
     connected: true,
-    source: "Claude Code",
     view: historical ? "history" : "live",
-    session: null,
-    score: 100,
-    metrics: {
-      agents: 0,
-      activeAgents: 0,
-      toolCalls: 0,
-      repeatedCalls: 0,
-      tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
-    },
-    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], planTasks: [], insights: [],
     usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
     error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
-  };
+  });
 
   const sessionId = path.basename(mainFile, ".jsonl");
   const sessionRegistryEntry = registry.get(sessionId);
@@ -607,21 +597,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 function analyzeEmpty() {
-  return {
-    connected: false,
-    source: "Claude Code",
-    view: "live",
-    session: null,
-    score: 100,
-    metrics: {
-      agents: 0,
-      activeAgents: 0,
-      toolCalls: 0,
-      repeatedCalls: 0,
-      tokens: { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
-    },
-    agents: [], toolPatterns: [], loops: [], activity: [], executionTasks: [], planTasks: [], insights: [], usageLimits: emptyUsageLimits(),
-  };
+  return createEmptyMonitorState({ usageLimits: emptyUsageLimits() });
 }
 
 server.listen(PORT, "127.0.0.1", () => {
