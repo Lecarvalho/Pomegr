@@ -2,9 +2,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
-import { groupSessionsByProject, relativeTime, sessionListTime } from "../../dashboard-utils";
+import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
+import { RelativeTimeText } from "../LiveTime";
 
 export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, onClose, onSelect }: {
   open: boolean;
@@ -39,7 +40,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
               return (
                 <button type="button" className={`liveSessionLink ${selected ? "selected" : ""}`} data-needs-input={session.needsInput || undefined} key={session.id} onClick={() => onSelect(session)} aria-current={selected ? "page" : undefined}>
                   <i />
-                  <span><strong>{session.title}</strong><small>{session.project} · {session.needsInput ? <em>Needs input</em> : relativeTime(session.updatedAt)}</small></span>
+                  <span><strong>{session.title}</strong><small>{session.project} · {session.needsInput ? <em>Needs input</em> : <RelativeTimeText value={session.updatedAt} />}</small></span>
                 </button>
               );
             })}

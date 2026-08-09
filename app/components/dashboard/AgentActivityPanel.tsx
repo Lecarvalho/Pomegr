@@ -2,12 +2,12 @@
 
 import { useCallback, useRef, useState, type CSSProperties } from "react";
 import type { Agent, ExecutionTask, PlanTask } from "../../../shared/monitor-contract";
-import { agentTreeRows, compactNumber, relativeTime } from "../../dashboard-utils";
-import { formatAgentWallTime } from "../../formatting.mjs";
+import { agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
 import { EmptyState } from "../EmptyState";
 import { ExecutionTaskRow } from "../ExecutionTaskRow";
+import { AgentWallTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
 
@@ -53,7 +53,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
                       <AgentChip as="button" className="skillPopoverTrigger" onClick={() => toggle("skills", agent.id)} expanded={isOpen("skills", agent.id)} controls={`agent-skills-${agent.id}`}>{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</AgentChip>
                       {isOpen("skills", agent.id) && (
                         <PopoverFrame id={`agent-skills-${agent.id}`} ariaLabel={`Skills used by ${agent.label}`} eyebrow="SKILL USAGE" title={agent.label} closeLabel="Close skill usage" onClose={closePopover} summary={`${agent.skills.length} ${agent.skills.length === 1 ? "skill" : "skills"} invoked · normalized metadata only`} className="skillPopover">
-                          <div className="skillPopoverList">{agent.skills.map((skill) => <div className="skillPopoverRow" key={skill.name}><div><strong>{skill.name}</strong><small>{skill.lastUsed ? `Last used ${relativeTime(skill.lastUsed)}` : "Use time unavailable"}</small></div><div><strong>{skill.calls}</strong><small>{skill.calls === 1 ? "use" : "uses"}</small></div></div>)}</div>
+                          <div className="skillPopoverList">{agent.skills.map((skill) => <div className="skillPopoverRow" key={skill.name}><div><strong>{skill.name}</strong><small>{skill.lastUsed ? <>Last used <RelativeTimeText value={skill.lastUsed} /></> : "Use time unavailable"}</small></div><div><strong>{skill.calls}</strong><small>{skill.calls === 1 ? "use" : "uses"}</small></div></div>)}</div>
                         </PopoverFrame>
                       )}
                     </div>
@@ -86,9 +86,9 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
                 <div className="agentMeta"><span className="agentMetaKind">{agent.kind}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tools</span></div>
               </div>
               <div className="agentTokens"><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "recorded context" : "current context"}</span></div>
-              <div className="agentDuration"><strong>{formatAgentWallTime(agent)}</strong><span>wall time</span></div>
+              <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
               <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
-              <time>{relativeTime(agent.lastSeen)}</time>
+              <time><RelativeTimeText value={agent.lastSeen} /></time>
             </div>
           );
         })}

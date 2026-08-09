@@ -1,6 +1,6 @@
 import type { ExecutionTask } from "../../shared/monitor-contract";
-import { formatExecutionTaskWallTime } from "../formatting.mjs";
 import { AgentChip } from "./AgentChip";
+import { ExecutionTaskWallTimeText } from "./LiveTime";
 
 function taskGlyph(task: ExecutionTask) {
   if (task.status === "running") return "◷";
@@ -19,7 +19,7 @@ export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
           {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Threadlight MCP tool">{task.signal.label}</AgentChip>}
         </div>
         <small>
-          Shell · {running && task.background ? "background · " : ""}{formatExecutionTaskWallTime(task)}
+          Shell · {running && task.background ? "background · " : ""}<ExecutionTaskWallTimeText task={task} />
           {!running && task.exitCode !== null ? ` · exit ${task.exitCode}` : ""}
         </small>
       </div>

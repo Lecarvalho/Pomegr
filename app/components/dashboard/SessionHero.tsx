@@ -1,6 +1,7 @@
 import type { MonitorState } from "../../../shared/monitor-contract";
-import { formatDuration, relativeTime, sessionListTime } from "../../dashboard-utils";
+import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
+import { RelativeTimeText, SessionWallTimeText } from "../LiveTime";
 
 export function SessionHero({ session, historical }: { session: MonitorState["session"]; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
@@ -18,8 +19,8 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
       <div className="sessionMeta">
         <div className="sessionMetaValues">
           <span>{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
-          <strong>{session ? formatDuration(session.durationMs) : "—"}</strong>
-          <small>{session ? historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : `Last event ${relativeTime(session.updatedAt)}` : "Auto-discovery enabled"}</small>
+          <strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong>
+          <small>{session ? historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></> : "Auto-discovery enabled"}</small>
         </div>
         {session?.signal && <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>}
       </div>

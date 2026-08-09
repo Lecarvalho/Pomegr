@@ -8,11 +8,18 @@ export function formatWallTime(milliseconds) {
   return `${seconds}s`;
 }
 
+export function liveWallTimeMs(recordedDurationMs, startedAt, running, now = Date.now()) {
+  const recordedDuration = Math.max(0, Number(recordedDurationMs || 0));
+  const startedAtMs = typeof startedAt === "string" && startedAt
+    ? new Date(startedAt).getTime()
+    : Number.NaN;
+  const frontendDuration = running && Number.isFinite(startedAtMs) ? now - startedAtMs : 0;
+  return Math.max(recordedDuration, frontendDuration);
+}
+
 export function formatAgentWallTime(agent, now = Date.now()) {
-  const startedAt = new Date(agent.startedAt).getTime();
   const running = agent.status === "active" || agent.status === "waiting";
-  const liveDuration = running && Number.isFinite(startedAt) ? now - startedAt : 0;
-  return formatWallTime(Math.max(Number(agent.durationMs || 0), liveDuration));
+  return formatWallTime(liveWallTimeMs(agent.durationMs, agent.startedAt, running, now));
 }
 
 export function formatExecutionTaskWallTime(task, now = Date.now()) {

@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Agent, ExecutionTask, SessionSummary } from "../../shared/monitor-contract";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
+import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 const task: ExecutionTask = {
   id: "task-1",
@@ -40,7 +42,7 @@ const agent: Agent = {
 describe("agent detail popovers", () => {
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {
     const user = userEvent.setup();
-    render(<AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} />);
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} /></LiveClockProvider>);
 
     await user.click(screen.getByRole("button", { name: "1 skill" }));
     expect(screen.getByRole("dialog", { name: "Skills used by Primary agent" })).toBeInTheDocument();
@@ -59,6 +61,23 @@ describe("agent detail popovers", () => {
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("ticks live wall time in the browser and freezes when monitoring stops", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:00:05.000Z");
+    const activeAgent = { ...agent, status: "active" as const, durationMs: 1_000 };
+    const livePanel = (running: boolean) => <LiveClockProvider running={running}><AgentActivityPanel agents={[activeAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>;
+    const { rerender } = render(livePanel(true));
+
+    expect(screen.getByText("5s")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(screen.getByText("6s")).toBeInTheDocument();
+
+    rerender(livePanel(false));
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(screen.getByText("6s")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
 });
 
 describe("session sidebar", () => {
@@ -71,7 +90,7 @@ describe("session sidebar", () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     const onClose = vi.fn();
-    render(<SessionSidebar open sessions={sessions} selectedSessionId={null} currentSessionId="live-1" viewingHistory={false} onClose={onClose} onSelect={onSelect} />);
+    render(<LiveClockProvider running={false}><SessionSidebar open sessions={sessions} selectedSessionId={null} currentSessionId="live-1" viewingHistory={false} onClose={onClose} onSelect={onSelect} /></LiveClockProvider>);
 
     await user.click(screen.getByRole("button", { name: /Live work/ }));
     expect(onSelect).toHaveBeenCalledWith(sessions[0]);
@@ -82,5 +101,35 @@ describe("session sidebar", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("usage-limit clock", () => {
+  it("counts down from the shared frontend clock and freezes with it", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:00:00.000Z");
+    const usageLimits = {
+      available: true,
+      fetchedAt: "2026-08-08T12:00:00.000Z",
+      attemptedAt: "2026-08-08T12:00:00.000Z",
+      limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: "2026-08-08T12:02:00.000Z", severity: "normal", active: true }],
+    };
+    const panelRender = vi.fn();
+    const UsagePanelProbe = () => {
+      panelRender();
+      return <UsageLimitsPanel usageLimits={usageLimits} />;
+    };
+    const panel = (running: boolean) => <LiveClockProvider running={running}><UsagePanelProbe /></LiveClockProvider>;
+    const { rerender } = render(panel(true));
+
+    expect(screen.getByText("Resets in 2m")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
+    expect(panelRender).toHaveBeenCalledTimes(1);
+
+    rerender(panel(false));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

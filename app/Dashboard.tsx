@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
 import { ActivityPanel } from "./components/dashboard/ActivityPanel";
@@ -14,7 +14,9 @@ import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { UsageLimitsPanel } from "./components/dashboard/UsageLimitsPanel";
-import { relativeTime, stateEndpoint } from "./dashboard-utils";
+import { stateEndpoint } from "./dashboard-utils";
+import { LiveClockProvider } from "./hooks/LiveClockContext";
+import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import { usageRefreshDelay } from "./usage-refresh.mjs";
 
@@ -34,8 +36,11 @@ export function Dashboard() {
     try {
       const response = await fetch(stateEndpoint(selectedSessionId, refreshUsage), { cache: "no-store" });
       if (!response.ok) throw new Error("Monitor unavailable");
-      setData(await response.json());
-      setLastRefresh(new Date());
+      const nextData = await response.json() as MonitorState;
+      startTransition(() => {
+        setData(nextData);
+        setLastRefresh(new Date());
+      });
     } catch {
       setData((current) => ({ ...current, connected: false, error: "Start the local monitor with npm run dev." }));
     } finally {
@@ -48,7 +53,7 @@ export function Dashboard() {
       const response = await fetch("/api/sessions", { cache: "no-store" });
       if (!response.ok) return;
       const catalog = await response.json() as { sessions?: SessionSummary[] };
-      setSessions(catalog.sessions || []);
+      startTransition(() => setSessions(catalog.sessions || []));
     } catch {
       // Live monitoring remains available when the catalog cannot be refreshed.
     }
@@ -76,6 +81,7 @@ export function Dashboard() {
   }, [data.usageLimits.attemptedAt, paused, refresh, selectedIsHistorical]);
 
   const viewingHistory = data.view === "history";
+  const clockRunning = data.connected && !viewingHistory && !paused;
   const attentionSessions = sessions.filter((session) => session.isLive && session.needsInput);
 
   const selectSession = useCallback((session: SessionSummary) => {
@@ -119,9 +125,10 @@ export function Dashboard() {
   };
 
   return (
-    <div className="appFrame">
-      <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
-      <main className="shell">
+    <LiveClockProvider running={clockRunning}>
+      <div className="appFrame">
+        <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
+        <main className="shell">
         <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
         <SessionHero session={data.session} historical={viewingHistory} />
 
@@ -139,11 +146,18 @@ export function Dashboard() {
         </section>
 
         <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh(false)} />
-        <footer>
-          <span>{viewingHistory ? "Historical transcript · Read-only" : "Local-only observer · Read-only"}</span>
-          <span>{viewingHistory ? "Archived session view" : paused ? "Updates paused" : lastRefresh ? `Updated ${relativeTime(lastRefresh.toISOString())}` : "Connecting…"}</span>
-        </footer>
-      </main>
-    </div>
+          <DashboardFooter viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
+        </main>
+      </div>
+    </LiveClockProvider>
+  );
+}
+
+function DashboardFooter({ viewingHistory, paused, lastRefresh }: { viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
+  return (
+    <footer>
+      <span>{viewingHistory ? "Historical transcript · Read-only" : "Local-only observer · Read-only"}</span>
+      <span>{viewingHistory ? "Archived session view" : paused ? "Updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
+    </footer>
   );
 }

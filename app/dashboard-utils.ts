@@ -1,8 +1,8 @@
 import type { Agent, ExecutionTask, SessionSummary } from "../shared/monitor-contract";
 
-export function relativeTime(value: string | null) {
+export function relativeTime(value: string | null, now = Date.now()) {
   if (!value) return "—";
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  const seconds = Math.max(0, Math.round((now - new Date(value).getTime()) / 1000));
   if (seconds < 10) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -78,9 +78,9 @@ export function gitPathParts(filePath: string) {
     : { directory: filePath.slice(0, separator + 1), filename: filePath.slice(separator + 1) };
 }
 
-export function resetCountdown(value: string | null) {
+export function resetCountdown(value: string | null, now = Date.now()) {
   if (!value) return "Reset unavailable";
-  const milliseconds = new Date(value).getTime() - Date.now();
+  const milliseconds = new Date(value).getTime() - now;
   if (milliseconds <= 0) return "Resetting now";
   const totalMinutes = Math.ceil(milliseconds / 60_000);
   const days = Math.floor(totalMinutes / 1440);
@@ -114,7 +114,7 @@ export function agentTreeRows(agents: Agent[]) {
   return rows;
 }
 
-export function executionTaskDuration(task: ExecutionTask) {
-  const end = task.finishedAt ? new Date(task.finishedAt).getTime() : Date.now();
+export function executionTaskDuration(task: ExecutionTask, now = Date.now()) {
+  const end = task.finishedAt ? new Date(task.finishedAt).getTime() : now;
   return Math.max(0, end - new Date(task.startedAt).getTime());
 }
