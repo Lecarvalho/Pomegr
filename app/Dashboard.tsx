@@ -137,7 +137,7 @@ export function Dashboard() {
         {data.session && <RepositoryPanel session={data.session} />}
         {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}
         <SummaryMetrics state={data} historical={viewingHistory} />
-        <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} historical={viewingHistory} />
+        <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session?.cost || null} historical={viewingHistory} />
         <MachineryPanel machinery={data.session?.contextMachinery} historical={viewingHistory} />
 
         <section className="contentGrid">

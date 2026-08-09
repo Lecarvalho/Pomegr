@@ -28,6 +28,11 @@ export default function About() {
         <section className="aboutGrid" aria-label="Threadlight principles">
           {principles.map((principle) => <PrincipleCard key={principle.label} {...principle} />)}
         </section>
+
+        <section className="aboutNote" aria-labelledby="estimated-cost-title">
+          <div><span className="label">ESTIMATED API COST</span><h2 id="estimated-cost-title">What the estimate means</h2></div>
+          <p>When the optional status-line bridge is connected, Threadlight displays Claude Code&apos;s client-side <code>cost.total_cost_usd</code> session estimate. Claude Code calculates it using standard API list rates, so it can help compare session consumption but may differ from an actual API bill and does not represent the marginal cost of subscription usage. Threadlight does not reconstruct this value from transcript tokens.</p>
+        </section>
       </article>
     </main>
   );

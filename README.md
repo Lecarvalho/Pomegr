@@ -11,6 +11,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 ## What it shows
 
 - Session title, project, elapsed wall time, and last activity
+- Claude Code's client-side estimated API cost when the optional status-line bridge is connected
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
@@ -105,6 +106,23 @@ report_task_signal({
 
 Threadlight resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown or unsafe task identifiers produce no dashboard tag.
 
+## Estimated API cost through the Claude status line
+
+Claude Code exposes its client-side session estimate only to the configured status-line command. Threadlight's bridge captures that value without replacing an existing status line: put the bridge before the current command and pass the current command after `--`.
+
+For example, this preserves an existing PowerShell status line:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node \"C:\\path\\to\\threadlight\\scripts\\claude-statusline-bridge.mjs\" -- powershell -ExecutionPolicy Bypass -File \"C:\\Users\\you\\.claude\\statusline.ps1\""
+  }
+}
+```
+
+If there is no existing status-line command, omit `--` and everything after it. Restart Claude Code after changing `~/.claude/settings.json`. Each status-line update stores only the session ID, estimated USD amount, estimate type, and observation timestamp in `~/.threadlight/cost-snapshots`. The dashboard shows `—` until the first update arrives. Claude Code computes this number at standard API list rates, so Threadlight labels it as an estimate rather than an authoritative bill.
+
 ## Configuration
 
 The monitor automatically selects a registered session that needs user input first, then an active registered session, then the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`.
@@ -129,11 +147,12 @@ Every displayed or reported token number uses the same latest-snapshot concept s
 - **Agent context:** latest non-zero usage snapshot for that agent
 - **All-agent context:** sum of the latest context snapshot for every visible agent
 
-Threadlight does not present cumulative transcript-throughput or token-spend session totals. Its timeline shows positive changes between all-agent context snapshots at consecutive bucket boundaries; repeated snapshots contribute zero and the result is never labeled as token spend. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
+Threadlight does not derive cumulative transcript-throughput or token-spend totals. Its timeline shows positive changes between all-agent context snapshots at consecutive bucket boundaries; repeated snapshots contribute zero and the result is never labeled as token spend. The separately labeled **Estimated API cost** is Claude Code's own cumulative client-side estimate captured from its status-line feed. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
 
 ## Privacy and security
 
 - Raw prompt and response text is not returned by the monitor API.
+- The optional status-line bridge persists only session ID, estimated USD amount, estimate type, and observation time. It discards workspace paths and every other status-line field.
 - Session summaries are accepted only from recognized provider summary records, reduced to bounded plain text, and labeled as provider-generated; Threadlight never derives them from raw prompts, responses, or tool results.
 - Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
 - Agent launch text is used only to derive a concise fallback label.

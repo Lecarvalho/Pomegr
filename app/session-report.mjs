@@ -4,6 +4,13 @@ function number(value) {
   return new Intl.NumberFormat("en-US").format(Number(value || 0));
 }
 
+function money(cost) {
+  if (!cost) return "Unavailable";
+  const amount = Number(cost.amount);
+  if (!Number.isFinite(amount) || amount < 0) return "Unavailable";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: cost.currency || "USD", minimumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2, maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2 }).format(amount);
+}
+
 function localTime(value) {
   if (!value) return "Unavailable";
   const date = value instanceof Date ? value : new Date(value);
@@ -78,6 +85,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `| Agents running now | ${number(state.metrics.activeAgents)} / ${number(state.metrics.agents)} |`,
     `| Tool calls | ${number(state.metrics.toolCalls)} |`,
     `| All-agent context | ${number(state.metrics.tokens.allAgents)} tokens |`,
+    `| Estimated API cost | ${money(session.cost)} |`,
     "",
     "## Agent activity",
     "",

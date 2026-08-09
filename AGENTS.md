@@ -21,6 +21,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 ## Security and privacy invariants
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or credential-file contents to the browser.
+- Claude status-line cost capture may persist and expose only the normalized session ID, non-negative `total_cost_usd`, USD currency label, estimate type, and local observation timestamp. Never persist other status-line fields, and always present the value as a Claude Code estimate rather than authoritative billing.
 - Execution-task metadata may expose only normalized tool/background IDs, the Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Never expose commands, stdout, stderr, or task-notification output.
 - Plan-task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text, and always label the checklist as agent-maintained and potentially stale.
 - Session- and agent-signal metadata may expose only a bounded plain-text label, semantic tone, and transcript-derived timestamp from a recognized Threadlight MCP tool call. Never expose other MCP arguments or tool-result content, and present signals as agent-reported rather than Threadlight judgments.
@@ -36,7 +37,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 
 - “Context” means the latest non-zero usage snapshot, not historical throughput.
 - “All-agent context” is the sum of each visible agent's latest context snapshot.
-- Present only latest context snapshots or sums derived from them. Never present cumulative transcript throughput, token-spend totals, or recent token rates in the dashboard, API, or generated reports.
+- Present only latest context snapshots or sums derived from them. Never derive or present cumulative transcript throughput, token-spend totals, or recent token rates. A provider-reported cumulative session-cost estimate captured from Claude Code's status-line feed is the sole exception and must remain explicitly labeled as an estimate.
 - Context-growth timelines must carry each agent's latest snapshot to each bucket boundary and plot only the positive change from the preceding boundary. Repeated snapshots contribute zero; never sum full usage snapshots or label the result as token spend.
 - Label elapsed duration as wall time because it includes idle gaps.
 - Document heuristic changes in `docs/METRICS.md`.

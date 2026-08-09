@@ -15,6 +15,7 @@ const state = {
     startedAt: "2026-08-05T17:00:00.000Z",
     updatedAt: "2026-08-05T17:30:00.000Z",
     durationMs: 1_800_000,
+    cost: { amount: 1.2345, currency: "USD", type: "estimated", observedAt: "2026-08-05T17:30:00.000Z" },
     repository: { available: true, branch: "main", files: [{ status: " M", path: "monitor/server.mjs" }], historical: false },
   },
   metrics: {
@@ -55,6 +56,7 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Repair the parser/);
   assert.match(report, /Primary agent.*30m 0s/);
   assert.match(report, /All-agent context.*2,500 tokens/);
+  assert.match(report, /Estimated API cost.*\$1\.23/);
   assert.match(report, /Primary agent.*1,000/);
   assert.match(report, /## Skill usage/);
   assert.match(report, /github:gh-fix-ci.*2/);

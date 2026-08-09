@@ -3,13 +3,25 @@ import type { MonitorState } from "../../../shared/monitor-contract";
 import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 
+type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
+
 function HistogramLegendItem({ swatch, label, value }: { swatch: string; label: string; value: number }) {
   return <div className="histogramLegendItem"><i className={swatch} /><span><small>{label}</small><strong>{compactNumber(value)}</strong></span></div>;
 }
 
-export function ContextGrowthTimeline({ timeline, currentTokens, historical }: {
+function estimatedCostLabel(cost: SessionCost) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cost.currency,
+    minimumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
+    maximumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
+  }).format(cost.amount);
+}
+
+export function ContextGrowthTimeline({ timeline, currentTokens, cost, historical }: {
   timeline: MonitorState["metrics"]["tokens"]["contextGrowthTimeline"];
   currentTokens: MonitorState["metrics"]["tokens"];
+  cost: SessionCost | null;
   historical: boolean;
 }) {
   const buckets = timeline?.buckets || [];
@@ -25,7 +37,11 @@ export function ContextGrowthTimeline({ timeline, currentTokens, historical }: {
           <div className="pulseBars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
           <div><span className="label">CONTEXT GROWTH</span><h2>Context added over time</h2></div>
         </div>
-        <div className="histogramSummary"><strong>{compactNumber(currentTokens.allAgents)}</strong><span>{historical ? "recorded context" : "current context"}</span></div>
+        <div className="histogramSummary">
+          <strong>{compactNumber(currentTokens.allAgents)}</strong>
+          <span>{historical ? "recorded context" : "current context"}</span>
+          {cost && <small className="histogramCost" title="Claude Code's client-side session estimate at standard API list rates; it may differ from the actual bill.">Est. cost {estimatedCostLabel(cost)}</small>}
+        </div>
       </div>
       {buckets.length === 0 ? <EmptyState text="Context growth will appear here after the first model response." /> : (
         <div className="histogramContent">

@@ -46,6 +46,9 @@ test("keeps the privacy explanation on the about page", async () => {
   assert.match(html, /About .* Threadlight/);
   assert.match(html, /Watching Claude Code quietly/);
   assert.match(html, /Prompt and response text stay out of the dashboard/);
+  assert.match(html, /What the estimate means/);
+  assert.match(html, /cost\.total_cost_usd/);
+  assert.match(html, /may differ from an actual API bill/);
   assert.match(html, /Back to dashboard/);
 });
 

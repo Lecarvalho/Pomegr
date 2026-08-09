@@ -5,6 +5,7 @@ import type { Agent, ExecutionTask, SessionSummary } from "../../shared/monitor-
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
+import { ContextGrowthTimeline } from "../../app/components/dashboard/ContextGrowthTimeline";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 const task: ExecutionTask = {
@@ -131,5 +132,30 @@ describe("usage-limit clock", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
     vi.useRealTimers();
+  });
+});
+
+describe("estimated session cost", () => {
+  it("shows the estimate beneath current context", () => {
+    render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 0, buckets: [] }}
+      currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
+      cost={{ amount: 1.2345, currency: "USD", type: "estimated", observedAt: "2026-08-09T12:00:00.000Z" }}
+      historical={false}
+    />);
+
+    expect(screen.getByText("current context")).toBeInTheDocument();
+    expect(screen.getByText("Est. cost $1.23")).toBeInTheDocument();
+  });
+
+  it("omits the estimate when Claude Code has not supplied one", () => {
+    render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 0, buckets: [] }}
+      currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
+      cost={null}
+      historical={false}
+    />);
+
+    expect(screen.queryByText(/Est\. cost/)).not.toBeInTheDocument();
   });
 });

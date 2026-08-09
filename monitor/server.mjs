@@ -14,6 +14,7 @@ import { preferredRegisteredSessionId, readSessionRegistry } from "./session-reg
 import { readSessionTasks } from "./session-tasks.mjs";
 import { readTranscriptSignals } from "./session-signals.mjs";
 import { latestSessionSummary } from "./session-summary.mjs";
+import { readSessionCost } from "./session-cost.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
@@ -296,6 +297,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   });
 
   const sessionId = path.basename(mainFile, ".jsonl");
+  const sessionCost = readSessionCost(sessionId);
   const sessionRegistryEntry = registry.get(sessionId);
   const agentDir = path.join(path.dirname(mainFile), sessionId, "subagents");
   const files = [mainFile, ...walkJsonl(agentDir, 1)];
@@ -547,6 +549,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       startedAt,
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
+      cost: sessionCost,
       contextMachinery,
       summary: latestSessionSummary(mainRecords),
       signal: sessionSignal,

@@ -115,6 +115,12 @@ export type MonitorState = {
     startedAt: string | null;
     updatedAt: string | null;
     durationMs: number;
+    cost: {
+      amount: number;
+      currency: "USD";
+      type: "estimated";
+      observedAt: string;
+    } | null;
     contextMachinery: ContextMachinery | null;
     summary: { text: string; observedAt: string | null; source: "provider" } | null;
     signal: ReportedSignal | null;

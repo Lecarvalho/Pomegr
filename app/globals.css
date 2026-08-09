@@ -68,6 +68,7 @@ button { color: inherit; }
 .aboutGrid > div { min-height: 210px; padding: 28px; background: rgba(251,250,246,.94); }
 .aboutGrid h2 { margin: 28px 0 10px; font: 400 23px/1.15 Georgia, 'Times New Roman', serif; }
 .aboutGrid p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.aboutNote { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 36px; margin-top: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: rgba(251,250,246,.94); }.aboutNote h2 { margin: 10px 0 0; font: 400 23px/1.15 Georgia, 'Times New Roman', serif; }.aboutNote p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }.aboutNote code { color: var(--ink); font: 11px/1.5 var(--font-geist-mono), monospace; }
 
 .hero { display: flex; justify-content: space-between; align-items: flex-end; padding: 66px 0 40px; }
 .eyebrow, .label { font-size: 10px; font-weight: 800; letter-spacing: .15em; color: var(--muted); }
@@ -135,6 +136,7 @@ button { color: inherit; }
 .tokenHistogramHeader { padding-top: 17px; padding-bottom: 14px; }
 .tokenHistogramTitle { min-width: 0; display: flex; align-items: center; gap: 14px; }.tokenHistogramTitle > div:last-child { min-width: 0; }
 .histogramSummary { flex: 0 0 auto; text-align: right; }.histogramSummary strong { display: block; font: 400 20px/1 Georgia, serif; }.histogramSummary span { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; letter-spacing: .09em; text-transform: uppercase; }
+.histogramCost { display: block; margin-top: 7px; color: var(--amber); font-size: 9px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
 .histogramContent { display: flex; gap: 12px; min-height: 187px; padding: 21px 22px 0; }
 .histogramScale { width: 42px; height: 140px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding: 0 2px 1px 0; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
 .histogramChart { min-width: 0; flex: 1; position: relative; }
@@ -219,7 +221,7 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
   .gitPanel { grid-template-columns: 1fr; }.gitSummary { border-right: 0; border-bottom: 1px solid var(--line); }.summaryGrid { grid-template-columns: repeat(2, 1fr); }.scoreCard { grid-column: 1 / -1; }.contentGrid { grid-template-columns: 1fr; }
   .cachePanel { grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); }
   .machineryCategories { grid-template-columns: repeat(3, 1fr); }
-  .aboutGrid { grid-template-columns: 1fr; }
+  .aboutGrid { grid-template-columns: 1fr; }.aboutNote { grid-template-columns: 1fr; gap: 18px; }
   .aboutGrid > div { min-height: 0; }
 }
 @media (max-width: 640px) {
