@@ -1,4 +1,5 @@
 /** @typedef {import("./monitor-contract").MonitorState} MonitorState */
+/** @typedef {import("./monitor-contract").ProviderSource} ProviderSource */
 /** @typedef {import("./monitor-contract").UsageLimits} UsageLimits */
 
 /**
@@ -12,6 +13,7 @@ export function createEmptyUsageLimits(options = {}) {
 /**
  * @param {{
  *   connected?: boolean,
+ *   source?: ProviderSource,
  *   view?: "live" | "history",
  *   usageLimits?: UsageLimits,
  *   error?: string,
@@ -21,7 +23,7 @@ export function createEmptyUsageLimits(options = {}) {
 export function createEmptyMonitorState(options = {}) {
   const state = {
     connected: options.connected ?? false,
-    source: "Claude Code",
+    source: options.source ?? "Claude Code",
     view: options.view ?? "live",
     session: null,
     score: 100,

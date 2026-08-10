@@ -62,9 +62,17 @@ Before starting any task:
 
 ## TL-CX-01 — Freeze the normalized provider contract
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** none
 - **Target size:** 0.5–1 session
+
+### Implementation notes
+
+- Added the typed provider boundary and sanitized evidence shapes in `monitor/providers/provider-contract.ts`.
+- Added deny-by-default capability validation, fixed provider provenance, and safe provider-qualified session ID helpers in `monitor/providers/provider-contract.mjs`.
+- Made empty monitor state provider-aware while preserving `Claude Code` as the existing default.
+- Added focused provider-contract tests and kept all current runtime behavior unchanged.
 
 ### Goal
 
@@ -661,4 +669,4 @@ Add short entries here only after completing a task.
 
 | Date | Task | Result | Notes |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-08-10 | TL-CX-01 | Complete | Provider contract, capability semantics, qualified IDs, provider-aware empty state, and focused tests added. |

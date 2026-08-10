@@ -97,6 +97,9 @@ export type PullRequest = {
   association: "session" | "branch";
 };
 
+export type ProviderId = "claude" | "codex";
+export type ProviderSource = "Claude Code" | "Codex";
+
 export type SessionApprovalMode = {
   id: "auto" | "accept_edits" | "manual" | "default" | "plan" | "dont_ask" | "bypass_permissions";
   label: string;
@@ -122,7 +125,7 @@ export type UsageLimits = {
 
 export type MonitorState = {
   connected: boolean;
-  source: string;
+  source: ProviderSource;
   view: "live" | "history";
   session: {
     id: string;
