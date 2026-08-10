@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Threadlight",
-  description: "A quiet, local monitor for Claude Code sessions.",
+  description: "A quiet, local observer for coding-agent sessions.",
 };
 
 export default function RootLayout({

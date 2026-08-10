@@ -6,10 +6,10 @@ import { PanelHeader } from "../PanelHeader";
 export function ActivityPanel({ activity, historical, loading, onRefresh }: { activity: Activity[]; historical: boolean; loading: boolean; onRefresh: () => void }) {
   return (
     <section className="panel activityPanel">
-      <PanelHeader title={historical ? "Recorded activity" : "Recent activity"} trailing={<button className="textButton" onClick={onRefresh} disabled={loading}>Refresh</button>} />
+      <PanelHeader title={historical ? "Recorded activity" : "Recent activity"} trailing={<button className="textButton" onClick={onRefresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>} />
       <div className="activityTable">
         <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span></div>
-        {activity.length === 0 && <EmptyState text="Tool and user activity will appear here as it happens." />}
+        {activity.length === 0 && <EmptyState text={historical ? "No activity was recorded for this session." : "Tool use and user input will appear here as they happen."} />}
         {activity.slice(0, 12).map((event) => <div className={`activityRow ${event.status === "failed" ? "failed" : ""}`} key={event.id}><time>{shortTime(event.timestamp)}</time><span className="actor"><i />{event.actor}</span><strong>{event.tool}</strong><span className="target" title={event.detail}>{event.detail || "—"}</span></div>)}
       </div>
     </section>

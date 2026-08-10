@@ -14,10 +14,10 @@ export function SummaryMetrics({ state, historical }: { state: MonitorState; his
 
   return (
     <section className="summaryStrip panel" aria-label="Session summary">
-      <article className="summaryItem scoreSummary">
+      <article className="summaryItem scoreSummary" title="Deterministic attention heuristic based on repeated tool calls and overlapping edit targets; not a quality assessment.">
         <span>Flow score</span>
         <strong>{state.score}<small>/100</small></strong>
-        <p>{state.score >= 85 ? "Running cleanly" : state.score >= 65 ? "Worth a look" : "Friction detected"}</p>
+        <p>{state.score >= 85 ? "No friction signals" : state.score >= 65 ? "Review suggested" : "Friction signals found"}</p>
       </article>
       <article className="summaryItem">
         <span>Agents</span>
@@ -28,11 +28,11 @@ export function SummaryMetrics({ state, historical }: { state: MonitorState; his
         <span>Tool calls</span>
         <strong>{state.metrics.toolCalls}</strong>
         <div className="metricFooter">
-          <span>{toolPatterns.length} grouped {toolPatterns.length === 1 ? "pattern" : "patterns"}</span>
+          <span>{toolPatterns.length} {toolPatterns.length === 1 ? "pattern" : "patterns"}</span>
           <button type="button" onClick={() => setToolsOpen((open) => !open)} disabled={toolPatterns.length === 0} aria-expanded={toolsOpen} aria-controls="tool-calls-popover">View list</button>
         </div>
         {toolsOpen && (
-          <PopoverFrame id="tool-calls-popover" ariaLabel="Tool call breakdown" eyebrow="TOOL CALL BREAKDOWN" title={`${toolPatterns.length} grouped patterns`} closeLabel="Close tool call breakdown" onClose={closeTools} summary={`${state.metrics.toolCalls} calls grouped by agent, tool, and sanitized target.`} className="metricPopover">
+          <PopoverFrame id="tool-calls-popover" ariaLabel="Tool call breakdown" eyebrow="TOOL CALL BREAKDOWN" title={`${toolPatterns.length} tool ${toolPatterns.length === 1 ? "pattern" : "patterns"}`} closeLabel="Close tool call breakdown" onClose={closeTools} summary={`${state.metrics.toolCalls} calls grouped by agent, tool, and safe target metadata.`} className="metricPopover">
             <div className="metricPopoverList">{toolPatterns.map((pattern) => (
               <div className="metricPopoverRow" key={pattern.id}>
                 <div><strong>{pattern.agent}</strong><span>{pattern.tool}{pattern.detail ? ` · ${pattern.detail}` : ""}</span></div>

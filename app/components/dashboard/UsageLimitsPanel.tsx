@@ -4,15 +4,15 @@ import { MinuteRelativeTimeText, ResetCountdownText } from "../LiveTime";
 
 export function UsageLimitsPanel({ usageLimits }: { usageLimits: UsageLimits }) {
   return (
-    <section className="panel limitsPanel" aria-label="Claude usage limits">
+    <section className="panel limitsPanel" aria-label="Provider usage limits">
       <div className="limitsHeader">
         <h2>Usage limits</h2>
         <span className="quiet usageCheck">
-          {usageLimits.fetchedAt ? <>Last updated: <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></> : "Connecting…"}
+          {usageLimits.fetchedAt ? <>Updated <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></> : "Connecting…"}
         </span>
       </div>
       <div className="limitCards">
-        {!usageLimits.available && <EmptyState text={usageLimits.error || "Plan usage is connecting."} />}
+        {!usageLimits.available && <EmptyState text={usageLimits.error || "Connecting to plan usage…"} />}
         {usageLimits.limits.map((limit) => (
           <article className={`limitCard ${limit.severity}`} key={limit.id}>
             <div className="limitTop"><div><span>{limit.window}</span><strong>{limit.label}</strong></div><b>{Math.round(limit.percent)}%</b></div>

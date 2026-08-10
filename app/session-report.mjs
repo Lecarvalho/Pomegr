@@ -51,7 +51,7 @@ function skillDistribution(agents) {
 }
 
 export function buildSessionReport(state, generatedAt = new Date()) {
-  if (!state?.session) throw new Error("A live session is required to generate a report.");
+  if (!state?.session) throw new Error("A session is required to generate a report.");
 
   const session = state.session;
   const repository = session.repository || { available: false, branch: "", files: [] };
@@ -76,7 +76,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `- **Recorded start:** ${localTime(session.startedAt)}`,
     `- **Recorded end:** ${localTime(session.updatedAt)}`,
     `- **Elapsed wall time:** ${formatWallTime(session.durationMs)}`,
-    `- **Flow score:** ${number(state.score)} / 100`,
+    `- **Flow score (heuristic):** ${number(state.score)} / 100`,
     "",
     "## Executive metrics",
     "",

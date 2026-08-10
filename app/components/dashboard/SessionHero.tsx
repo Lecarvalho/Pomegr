@@ -11,8 +11,8 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
         <h1>{sessionLabel}</h1>
         {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><code>{session.id}</code></div>}
         {session && <p title={session.summary ? "Provider-generated session summary" : undefined}>{session.summary?.text
-          || (historical ? "No provider-generated summary was recorded for this session." : "Waiting for a provider-generated session summary.")}</p>}
-        {session?.summary && <small className="heroSummarySource">Provider-generated summary</small>}
+          || (historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary.")}</p>}
+        {session?.summary && <small className="heroSummarySource">Provider summary</small>}
       </div>
       {session && <div className="sessionMeta">
         <div className="sessionMetaValues">
@@ -20,7 +20,7 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
           <strong><SessionWallTimeText session={session} historical={historical} /></strong>
           <small>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></>}</small>
           {session?.approvalMode && <div className="sessionApprovalMode">
-            <span>{historical ? "LAST MODE" : "APPROVAL MODE"}</span>
+            <span>{historical ? "LAST APPROVAL MODE" : "APPROVAL MODE"}</span>
             <AgentChip
               className="sessionApprovalModeChip"
               title={historical ? "Last provider-reported mode recorded for this session." : "Provider-reported mode from the latest recorded user turn."}

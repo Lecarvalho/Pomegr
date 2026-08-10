@@ -41,7 +41,7 @@ export function Dashboard() {
         setLastRefresh(new Date());
       });
     } catch {
-      setData((current) => ({ ...current, connected: false, error: "Start the local monitor with npm run dev." }));
+      setData((current) => ({ ...current, connected: false, error: "Local monitor unavailable. Run npm run dev in this project; Threadlight will reconnect automatically." }));
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export function Dashboard() {
         <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
         {data.session && <SessionHero session={data.session} historical={viewingHistory} />}
 
-        {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Claude Code needs your input</strong><small>{attentionSession.title}</small></span></div>}
+        {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
         {data.error && <div className="notice"><span>!</span>{data.error}</div>}
         {data.session ? <>
           <section className="contentGrid">
@@ -137,7 +137,7 @@ export function Dashboard() {
           <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} historical={viewingHistory} />
 
           <details className="sessionDetails">
-            <summary><span>Session details</span><small>Repository, limits, machinery, and activity</small></summary>
+            <summary><span>Session details</span><small>Repository, usage limits, loaded context, and activity</small></summary>
             <div className="sessionDetailsBody">
               <RepositoryPanel session={data.session} />
               {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}
@@ -156,10 +156,10 @@ export function Dashboard() {
 function AwaitingSession({ connected }: { connected: boolean }) {
   return (
     <section className="awaitingSession" aria-label="Session discovery status">
-      <h1>{connected ? "Start a coding-agent session" : "Reconnect the local monitor"}</h1>
+      <h1>{connected ? "No active session yet" : "Local monitor offline"}</h1>
       <p>{connected
-        ? "Your active session will appear here automatically. Prompts and responses stay private."
-        : "Run npm run dev in this project, then Threadlight will resume automatically."}</p>
+        ? "Start a coding-agent session and it will appear here automatically. Prompts and responses stay private."
+        : "Run npm run dev in this project. Threadlight will reconnect automatically."}</p>
     </section>
   );
 }
@@ -167,8 +167,8 @@ function AwaitingSession({ connected }: { connected: boolean }) {
 function DashboardFooter({ viewingHistory, paused, lastRefresh }: { viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
   return (
     <footer>
-      <span>{viewingHistory ? "Historical transcript · Read-only" : "Local-only observer · Read-only"}</span>
-      <span>{viewingHistory ? "Archived session view" : paused ? "Updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
+      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"}</span>
+      <span>{viewingHistory ? "Historical snapshot" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
     </footer>
   );
 }

@@ -23,7 +23,7 @@ export default function About() {
       <article className="aboutPage">
         <div className="eyebrow"><span /> ABOUT THREADLIGHT</div>
         <h1>A quiet view into active work.</h1>
-        <p className="aboutLead">Watching Claude Code quietly. Prompt and response text stay out of the dashboard; only execution metadata is analyzed.</p>
+        <p className="aboutLead">Observe coding-agent sessions without exposing prompts or responses. Threadlight analyzes execution metadata only.</p>
 
         <section className="aboutGrid" aria-label="Threadlight principles">
           {principles.map((principle) => <PrincipleCard key={principle.label} {...principle} />)}

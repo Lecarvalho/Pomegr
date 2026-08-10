@@ -20,7 +20,7 @@ export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
         </div>
         <small>
           Shell · {running && task.background ? "background · " : ""}<ExecutionTaskWallTimeText task={task} />
-          {!running && task.exitCode !== null ? ` · exit ${task.exitCode}` : ""}
+          {!running && task.exitCode !== null ? ` · exit code ${task.exitCode}` : ""}
         </small>
       </div>
     </div>

@@ -87,7 +87,7 @@ describe("session approval mode", () => {
 
     render(<LiveClockProvider running={false}><SessionHero session={session} historical /></LiveClockProvider>);
 
-    expect(screen.getByText("LAST MODE")).toBeInTheDocument();
+    expect(screen.getByText("LAST APPROVAL MODE")).toBeInTheDocument();
     expect(screen.getByText("Accept edits")).toHaveAttribute("title", "Last provider-reported mode recorded for this session.");
   });
 });
@@ -108,7 +108,7 @@ describe("repository branch overview", () => {
     render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
 
     expect(screen.getByRole("region", { name: "Git branch overview" })).toHaveTextContent("RECENT COMMITS");
-    expect(screen.getByText("1 ahead vs origin/main")).toBeInTheDocument();
+    expect(screen.getByText("1 commit ahead compared with origin/main")).toBeInTheDocument();
     expect(screen.getByText("Add commit history")).toBeInTheDocument();
     expect(screen.getByText("No local changes.")).toBeInTheDocument();
     expect(screen.queryByText("Working tree clean")).not.toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("repository branch overview", () => {
     render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
 
     expect(screen.getByText("COMMITS SINCE ORIGIN/MAIN")).toBeInTheDocument();
-    expect(screen.getByText("2 ahead · 1 behind relative to origin/main")).toBeInTheDocument();
+    expect(screen.getByText("2 commits ahead · 1 commit behind relative to origin/main")).toBeInTheDocument();
     expect(screen.getByText("Consolidate branch state")).toBeInTheDocument();
     expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
     expect(screen.queryByText("1 uncommitted")).not.toBeInTheDocument();
@@ -267,16 +267,16 @@ describe("agent detail popovers", () => {
     expect(skillsDialog).toBeInTheDocument();
     expect(skillsDialog.closest(".agentsPanel")).toHaveClass("hasOpenPopover");
 
-    await user.click(screen.getByRole("button", { name: "1 shell tasks" }));
+    await user.click(screen.getByRole("button", { name: "1 shell task" }));
     expect(screen.queryByRole("dialog", { name: "Skills used by Primary agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Background tasks for Primary agent" })).toHaveTextContent("Run verification");
+    expect(screen.getByRole("dialog", { name: "Execution tasks for Primary agent" })).toHaveTextContent("Run verification");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(document.querySelector(".agentsPanel")).not.toHaveClass("hasOpenPopover");
 
-    await user.click(screen.getByRole("button", { name: "1 plan items" }));
-    const planDialog = screen.getByRole("dialog", { name: "Claude plan checklist" });
+    await user.click(screen.getByRole("button", { name: "1 plan item" }));
+    const planDialog = screen.getByRole("dialog", { name: "Agent plan checklist" });
     fireEvent.pointerDown(planDialog);
     expect(planDialog).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
@@ -344,11 +344,11 @@ describe("usage-limit clock", () => {
     const { rerender } = render(panel(true));
 
     expect(screen.getByText("Resets in 2m")).toBeInTheDocument();
-    expect(screen.getByText(/Last updated:/)).toHaveTextContent("Last updated: just now");
+    expect(screen.getByText(/^Updated/)).toHaveTextContent("Updated just now");
     expect(screen.queryByText(/Checked|Refresh failed|retrying|\d+s ago/i)).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
-    expect(screen.getByText(/Last updated:/)).toHaveTextContent("Last updated: 1 minute ago");
+    expect(screen.getByText(/^Updated/)).toHaveTextContent("Updated 1 minute ago");
     expect(panelRender).toHaveBeenCalledTimes(1);
 
     rerender(panel(false));
@@ -368,7 +368,7 @@ describe("estimated session cost", () => {
     />);
 
     expect(screen.getByText("current context")).toBeInTheDocument();
-    expect(screen.getByText("Est. cost $1.23")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code estimate $1.23")).toBeInTheDocument();
   });
 
   it("omits the estimate when Claude Code has not supplied one", () => {

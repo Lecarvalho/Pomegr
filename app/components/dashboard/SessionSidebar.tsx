@@ -44,11 +44,11 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
                 </button>
               );
             })}
-            {liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>Waiting for a session</strong><small>Auto-discovery enabled</small></span></div>}
+            {liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>No live sessions</strong><small>New sessions appear automatically</small></span></div>}
           </div>
           <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
           <div className="historyList">
-            {historySessions.length === 0 && <p>No previous sessions found.</p>}
+            {historySessions.length === 0 && <p>No recorded sessions yet.</p>}
             {historyGroups.map((group) => {
               const collapsed = !expandedProjects.has(group.project);
               const groupId = `history-project-${encodeURIComponent(group.project)}`;

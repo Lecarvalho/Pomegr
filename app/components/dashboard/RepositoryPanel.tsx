@@ -13,9 +13,9 @@ function comparisonLabel(repository: NonNullable<MonitorState["session"]>["repos
   if (comparison.integrated) return `Changes integrated into ${comparison.branch}`;
   if (comparison.ahead === 0 && comparison.behind === 0) return `Up to date with ${comparison.branch}`;
   const parts = [];
-  if (comparison.ahead) parts.push(`${comparison.ahead} ahead`);
-  if (comparison.behind) parts.push(`${comparison.behind} behind`);
-  return `${parts.join(" · ")} ${comparison.kind === "base" ? "relative to" : "vs"} ${comparison.branch}`;
+  if (comparison.ahead) parts.push(`${comparison.ahead} ${comparison.ahead === 1 ? "commit" : "commits"} ahead`);
+  if (comparison.behind) parts.push(`${comparison.behind} ${comparison.behind === 1 ? "commit" : "commits"} behind`);
+  return `${parts.join(" · ")} ${comparison.kind === "base" ? "relative to" : "compared with"} ${comparison.branch}`;
 }
 
 export function RepositoryPanel({ session }: { session: NonNullable<MonitorState["session"]> }) {
@@ -74,7 +74,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
                   title="Pull requests"
                   closeLabel="Close pull requests"
                   onClose={closePullRequests}
-                  summary={<>{sessionPullRequests ? `${sessionPullRequests} recorded in this session` : "Matched to the current branch"}{session.pullRequests?.checkedAt ? <> · status checked <RelativeTimeText value={session.pullRequests.checkedAt} /></> : session.pullRequests?.status === "unavailable" ? " · GitHub refresh unavailable" : null}</>}
+                  summary={<>{sessionPullRequests ? `${sessionPullRequests} recorded in this session` : "Matched to the current branch"}{session.pullRequests?.checkedAt ? <> · checked <RelativeTimeText value={session.pullRequests.checkedAt} /></> : session.pullRequests?.status === "unavailable" ? " · GitHub status unavailable" : null}</>}
                   className="pullRequestPopover"
                 >
                   <div className="pullRequestList">
@@ -100,7 +100,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
           )}
           {repository.available && !repository.historical && comparison && !mergedPullRequestCoversComparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
           {repository.available && !repository.historical && remote.status === "checking" && <span className="branchComparison pending">Checking remote…</span>}
-          {repository.available && !repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote unavailable</span>}
+          {repository.available && !repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote comparison unavailable</span>}
         </div>
       </div>
       {repository.available && (repository.historical ? (
