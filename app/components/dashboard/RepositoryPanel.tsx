@@ -1,6 +1,11 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
 import type { MonitorState } from "../../../shared/monitor-contract";
-import { gitPathParts, gitStatusLabel } from "../../dashboard-utils";
+import { compactNumber, gitPathParts, gitStatusLabel } from "../../dashboard-utils";
+import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { RelativeTimeText } from "../LiveTime";
+import { PopoverFrame } from "../PopoverFrame";
 
 function comparisonLabel(repository: NonNullable<MonitorState["session"]>["repository"]) {
   const comparison = repository.comparison;
@@ -15,7 +20,12 @@ function comparisonLabel(repository: NonNullable<MonitorState["session"]>["repos
 
 export function RepositoryPanel({ session }: { session: NonNullable<MonitorState["session"]> }) {
   const repository = session.repository;
-  if (!repository.available) return null;
+  const pullRequests = session.pullRequests?.items || [];
+  const [pullRequestsOpen, setPullRequestsOpen] = useState(false);
+  const pullRequestAnchorRef = useRef<HTMLDivElement | null>(null);
+  const closePullRequests = useCallback(() => setPullRequestsOpen(false), []);
+  useDismissibleLayer(pullRequestsOpen, pullRequestAnchorRef, closePullRequests);
+  if (!repository.available && pullRequests.length === 0) return null;
   const commits = repository.commits || [];
   const isMain = repository.isMain ?? true;
   const remote = repository.remote || { status: "unavailable", checkedAt: null };
@@ -36,18 +46,59 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
       : remote.status === "unavailable"
         ? "Remote comparison unavailable."
         : `No commits beyond ${repository.comparison?.branch || "the remote default branch"}.`;
+  const pullRequestBadge = pullRequests.length === 1
+    ? `${pullRequests[0].draft ? "Draft" : pullRequests[0].state} PR #${pullRequests[0].number}`
+    : `${pullRequests.length} pull requests`;
+  const sessionPullRequests = pullRequests.filter((pullRequest) => pullRequest.association === "session").length;
   return (
-    <section className="panel gitPanel" aria-label={repository.historical ? "Recorded Git branch" : "Git branch overview"}>
+    <section className="panel gitPanel" aria-label={!repository.available ? "Pull request overview" : repository.historical ? "Recorded Git branch" : "Git branch overview"}>
       <div className="gitSummary">
-        <div><span className="label">{repository.historical ? "RECORDED BRANCH" : "GIT BRANCH"}</span><h2>{repository.branch}</h2><p title={session.cwd}>{session.project}</p></div>
+        <div><span className="label">{repository.available ? repository.historical ? "RECORDED BRANCH" : "GIT BRANCH" : "SESSION REPOSITORY"}</span><h2>{repository.available ? repository.branch : session.project}</h2><p title={session.cwd}>{session.project}</p></div>
         <div className="gitBadges">
-          {!repository.historical && comparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
-          {!repository.historical && remote.status === "checking" && <span className="branchComparison pending">Checking remote…</span>}
-          {!repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote unavailable</span>}
-          <span className={`changeCount ${repository.files.length ? "dirty" : "clean"}`}>{repository.historical ? "Repository state not recorded" : repository.files.length ? `${repository.files.length} uncommitted` : "Working tree clean"}</span>
+          {pullRequests.length > 0 && (
+            <div className="pullRequestAnchor" ref={pullRequestAnchorRef}>
+              <button className={`pullRequestBadge ${pullRequests.some((pullRequest) => pullRequest.state === "open") ? "open" : "settled"}`} type="button" onClick={() => setPullRequestsOpen((open) => !open)} aria-expanded={pullRequestsOpen} aria-controls="session-pull-requests">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="3" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M4 5v8M6 4h3a3 3 0 0 1 3 3v3.5"/></svg>
+                {pullRequestBadge}
+              </button>
+              {pullRequestsOpen && (
+                <PopoverFrame
+                  id="session-pull-requests"
+                  ariaLabel="Pull requests linked to this session"
+                  eyebrow="SESSION LINKS"
+                  title="Pull requests"
+                  closeLabel="Close pull requests"
+                  onClose={closePullRequests}
+                  summary={<>{sessionPullRequests ? `${sessionPullRequests} recorded in this session` : "Matched to the current branch"}{session.pullRequests?.checkedAt ? <> · status checked <RelativeTimeText value={session.pullRequests.checkedAt} /></> : session.pullRequests?.status === "unavailable" ? " · GitHub refresh unavailable" : null}</>}
+                  className="pullRequestPopover"
+                >
+                  <div className="pullRequestList">
+                    {pullRequests.map((pullRequest) => (
+                      <a className="pullRequestRow" href={pullRequest.url} target="_blank" rel="noreferrer" key={pullRequest.url}>
+                        <span className={`pullRequestIcon ${pullRequest.state}`} aria-hidden="true"><i/><i/><i/></span>
+                        <span className="pullRequestBody">
+                          <span className="pullRequestTitle"><strong>{pullRequest.title}</strong><em className={pullRequest.draft ? "draft" : pullRequest.state}>{pullRequest.draft ? "Draft" : pullRequest.state}</em></span>
+                          <small>{pullRequest.repository} · #{pullRequest.number} · {pullRequest.association === "session" ? "recorded in session" : "current branch"}</small>
+                          {pullRequest.headBranch && pullRequest.baseBranch && <code>{pullRequest.headBranch} → {pullRequest.baseBranch}</code>}
+                        </span>
+                        <span className="pullRequestStats">
+                          {pullRequest.additions !== null && <b>+{compactNumber(pullRequest.additions)}</b>}
+                          {pullRequest.deletions !== null && <b>−{compactNumber(pullRequest.deletions)}</b>}
+                          <i aria-hidden="true">↗</i>
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </PopoverFrame>
+              )}
+            </div>
+          )}
+          {repository.available && !repository.historical && comparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
+          {repository.available && !repository.historical && remote.status === "checking" && <span className="branchComparison pending">Checking remote…</span>}
+          {repository.available && !repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote unavailable</span>}
         </div>
       </div>
-      {repository.historical ? (
+      {repository.available && (repository.historical ? (
         <div className="gitHistorical"><span className="label">RECORDED STATE</span><p>Commit history and working-tree changes were not recorded for this session.</p></div>
       ) : (
         <div className="gitDetails">
@@ -73,7 +124,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
             </div>
           </div>
         </div>
-      )}
+      ))}
     </section>
   );
 }

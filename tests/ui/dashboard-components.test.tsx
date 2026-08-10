@@ -41,13 +41,17 @@ const agent: Agent = {
   tokens: { total: 1200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500 },
 };
 
-function repositorySession(repository: NonNullable<MonitorState["session"]>["repository"]) {
+function repositorySession(
+  repository: NonNullable<MonitorState["session"]>["repository"],
+  pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] = { status: "ready", checkedAt: null, items: [] },
+) {
   return {
     id: "session-1",
     title: "Repository work",
     project: "threadlight",
     cwd: "C:\\Workspace\\repos\\threadlight",
     repository,
+    pullRequests,
     startedAt: null,
     updatedAt: null,
     durationMs: 0,
@@ -77,6 +81,7 @@ describe("repository branch overview", () => {
     expect(screen.getByText("1 ahead vs origin/main")).toBeInTheDocument();
     expect(screen.getByText("Add commit history")).toBeInTheDocument();
     expect(screen.getByText("No local changes.")).toBeInTheDocument();
+    expect(screen.queryByText("Working tree clean")).not.toBeInTheDocument();
   });
 
   it("shows branch-only commits relative to the default branch", () => {
@@ -97,6 +102,7 @@ describe("repository branch overview", () => {
     expect(screen.getByText("2 ahead · 1 behind relative to origin/main")).toBeInTheDocument();
     expect(screen.getByText("Consolidate branch state")).toBeInTheDocument();
     expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
+    expect(screen.queryByText("1 uncommitted")).not.toBeInTheDocument();
   });
 
   it("shows remote progress without using stale comparison data", () => {
@@ -136,6 +142,52 @@ describe("repository branch overview", () => {
     expect(screen.getByText("UNMERGED BRANCH COMMITS")).toBeInTheDocument();
     expect(screen.getByText("Branch changes are already integrated into origin/main.")).toBeInTheDocument();
     expect(screen.queryByText(/ahead/)).not.toBeInTheDocument();
+  });
+
+  it("opens a dismissible pull-request view from the repository header", async () => {
+    const user = userEvent.setup();
+    const session = repositorySession({
+      available: true,
+      branch: "feature/pr-drawer",
+      files: [],
+      historical: false,
+      isMain: false,
+      comparison: { branch: "origin/main", kind: "base", ahead: 1, behind: 0, integrated: false },
+      commits: [],
+      remote: { status: "ready", checkedAt: "2026-08-10T12:01:00.000Z" },
+    }, {
+      status: "ready",
+      checkedAt: "2026-08-10T12:02:00.000Z",
+      items: [{
+        host: "github",
+        repository: "ThreadlightHQ/threadlight",
+        number: 42,
+        title: "Add session pull-request view",
+        url: "https://github.com/ThreadlightHQ/threadlight/pull/42",
+        state: "open",
+        draft: false,
+        headBranch: "feature/pr-drawer",
+        baseBranch: "main",
+        additions: 447,
+        deletions: 22,
+        updatedAt: "2026-08-10T12:00:00.000Z",
+        association: "session",
+      }],
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    await user.click(screen.getByRole("button", { name: "open PR #42" }));
+    const dialog = screen.getByRole("dialog", { name: "Pull requests linked to this session" });
+    expect(dialog).toHaveTextContent("Add session pull-request view");
+    expect(dialog).toHaveTextContent("ThreadlightHQ/threadlight · #42 · recorded in session");
+    expect(dialog).toHaveTextContent("feature/pr-drawer → main");
+    expect(dialog).toHaveTextContent("+447");
+    expect(dialog).toHaveTextContent("−22");
+    expect(screen.getByRole("link", { name: /Add session pull-request view/ })).toHaveAttribute("href", "https://github.com/ThreadlightHQ/threadlight/pull/42");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Pull requests linked to this session" })).not.toBeInTheDocument();
   });
 });
 

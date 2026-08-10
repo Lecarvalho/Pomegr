@@ -11,6 +11,7 @@ import { buildExecutionTasks } from "./execution-tasks.mjs";
 import { readGitState } from "./git-state.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
+import { readPullRequests } from "./pull-requests.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
 import { readTranscriptSignals } from "./session-signals.mjs";
 import { latestSessionSummary } from "./session-summary.mjs";
@@ -507,6 +508,12 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
 
   const cwd = projectCwd(mainRecords);
   const repository = historical ? recordedGitState(mainRecords) : { ...gitState(cwd), historical: false };
+  const pullRequests = await readPullRequests([...recordsByFile.values()].flat(), {
+    cwd,
+    branch: repository.branch,
+    historical,
+    transcripts: [...recordsByFile].map(([file, records]) => ({ file, records })),
+  });
   const currentUsageLimits = historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits();
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   allEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -522,6 +529,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
       project: projectName(mainFile, mainRecords),
       cwd,
       repository,
+      pullRequests,
       startedAt,
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,

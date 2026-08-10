@@ -27,7 +27,7 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 2. Reads primary and subagent JSONL files.
 3. Normalizes agents, activity, context snapshots, opt-in context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
 4. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
-5. Inspects the live session repository with read-only Git commands.
+5. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
 6. Retrieves and caches provider plan usage for the live view only.
 
 It listens only on `127.0.0.1`.
@@ -44,7 +44,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
+- `session` — title, project, timestamps, repository, bounded pull-request associations, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported agent signal
@@ -80,6 +80,7 @@ Each provider should implement session discovery, agent relationships, labels, c
 
 - No session: connected monitor with an explanatory empty state
 - Git failure: repository unavailable without failing the session
+- GitHub CLI or network failure: recorded pull-request links remain visible with unavailable live metadata, and branch association degrades independently
 - Usage failure: remaining dashboard stays available
 - Missing historical transcript: selected view explains that the session is no longer available
 - Malformed JSONL: skip the individual line

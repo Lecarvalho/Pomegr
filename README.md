@@ -20,6 +20,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - The latest provider-generated session summary, when the transcript records one
 - Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
 - Current Git branch and every uncommitted path
+- Pull requests created in the session or linked to its live branch, with current GitHub status
 - Plan limits for the five-hour session, all models, and Fable
 - Recent tool activity without displaying prompts or responses
 - Deterministic loop and agent-overlap warnings

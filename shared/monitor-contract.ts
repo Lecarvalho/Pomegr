@@ -81,6 +81,22 @@ export type LoopPattern = { id: string; agent: string; tool: string; detail: str
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 export type SessionSummary = { id: string; title: string; project: string; updatedAt: string; isLive: boolean; needsInput: boolean };
 
+export type PullRequest = {
+  host: "github";
+  repository: string;
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "merged" | "closed" | "unknown";
+  draft: boolean;
+  headBranch: string;
+  baseBranch: string;
+  additions: number | null;
+  deletions: number | null;
+  updatedAt: string | null;
+  association: "session" | "branch";
+};
+
 export type UsageLimits = {
   available: boolean;
   fetchedAt: string | null;
@@ -128,6 +144,11 @@ export type MonitorState = {
         status: "checking" | "ready" | "unavailable";
         checkedAt: string | null;
       };
+    };
+    pullRequests: {
+      status: "ready" | "unavailable";
+      checkedAt: string | null;
+      items: PullRequest[];
     };
     startedAt: string | null;
     updatedAt: string | null;
