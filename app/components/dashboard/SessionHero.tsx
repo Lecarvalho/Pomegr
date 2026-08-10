@@ -13,11 +13,12 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
         {session && <p title={session.summary ? "Provider-generated session summary" : undefined}>{session.summary?.text
           || (historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary.")}</p>}
         {session?.summary && <small className="heroSummarySource">Provider summary</small>}
+        {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
+          <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>
+          <small>Session signal</small>
+        </div>}
       </div>
       {session && <div className="sessionMeta" aria-label="Session status">
-        {session?.signal && <div className="sessionMetaGroup sessionSignalGroup">
-          <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>
-        </div>}
         <div className="sessionMetaGroup sessionTiming">
           <span className="sessionMetaLabel">{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong><SessionWallTimeText session={session} historical={historical} /></strong>
