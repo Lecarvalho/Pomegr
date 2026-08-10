@@ -32,7 +32,7 @@ The **Generate report** button refreshes local session data and downloads a dete
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
 
-Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Threadlight detects that snapshot automatically, parses its Markdown tables by their column headers, and shows whatever machinery groups the provider reported. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Threadlight never reconstructs the list from the current repository or configuration.
+Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Threadlight detects both the Markdown table and ANSI terminal-summary formats, then shows the provider-reported machinery categories and any expanded groups present in the snapshot. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Threadlight never reconstructs the list from the current repository or configuration.
 
 Threadlight combines provider session-registry lifecycle state with transcript activity. A registered interactive session remains live while its process is present, and explicit user-input waits take priority as the live auto-discovery target. Transcript activity in the last five minutes remains the fallback when registry state is unavailable.
 

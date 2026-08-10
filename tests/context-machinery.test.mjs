@@ -45,6 +45,33 @@ function contextRecord(timestamp, skillTokens = "~90") {
   };
 }
 
+function terminalContextRecord(timestamp) {
+  const chart = "⛶ ".repeat(20);
+  return {
+    type: "system",
+    subtype: "local_command",
+    timestamp,
+    content: `<local-command-stdout> \u001b[1mContext Usage\u001b[22m
+${chart}  Opus 5
+${chart}  claude-opus-5
+${chart}  45.4k/1m tokens (5%)
+${chart}  Estimated usage by category
+${chart}  ⛁ System prompt: 4.9k tokens (0.5%)
+${chart}  ⛁ System tools: 19.8k tokens (2.0%)
+${chart}  ⛁ MCP tools: 942 tokens (0.1%)
+${chart}  ⛁ Custom agents: 511 tokens (0.1%)
+${chart}  ⛁ Memory files: 13.1k tokens (1.3%)
+                                          ⛁ Skills: 6.1k tokens (0.6%)
+                                          ⛁ Messages: 8 tokens (0.0%)
+                                          ⛶ Free space: 954.6k (95.5%)
+
+MCP tools · /mcp (loaded on-demand)
+└ 43 tools · 942 tokens
+
+/context all to expand</local-command-stdout>`,
+  };
+}
+
 test("parses context tables dynamically and sanitizes memory paths", () => {
   const snapshot = contextMachineryFromRecord(contextRecord("2026-08-06T20:00:00.000Z"));
 
@@ -70,6 +97,24 @@ test("keeps only the latest valid context snapshot", async (context) => {
   const file = path.join(root, "session.jsonl");
   await writeFile(file, [JSON.stringify(older), "not-json", JSON.stringify(newer)].join("\n"), "utf8");
   assert.equal((await readLatestContextMachinery(file)).observedAt, newer.timestamp);
+});
+
+test("parses the ANSI terminal summary emitted by current Claude Code", () => {
+  const snapshot = contextMachineryFromRecord(terminalContextRecord("2026-08-10T16:06:45.118Z"));
+
+  assert.equal(snapshot.model, "claude-opus-5");
+  assert.deepEqual(snapshot.total, { used: "45.4k", limit: "1m", percentage: 5 });
+  assert.equal(snapshot.machineryTokens, 45_353);
+  assert.deepEqual(snapshot.categories.map(({ name }) => name), [
+    "System prompt",
+    "System tools",
+    "MCP tools",
+    "Custom agents",
+    "Memory files",
+    "Skills",
+  ]);
+  assert.deepEqual(snapshot.groups, []);
+  assert.doesNotMatch(JSON.stringify(snapshot.categories), /Messages|Free space/);
 });
 
 test("ignores unrelated local command output", () => {

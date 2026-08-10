@@ -6,6 +6,7 @@ const MAX_CONTEXT_OUTPUT_CHARS = 100_000;
 const MAX_GROUPS = 12;
 const MAX_ITEMS_PER_GROUP = 250;
 const NON_MACHINERY_CATEGORIES = new Set(["messages", "free space"]);
+const ANSI_ESCAPE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))/g;
 
 function safeLabel(value, fallback = "Unknown") {
   if (typeof value !== "string") return fallback;
@@ -36,6 +37,10 @@ function safePercentage(value) {
 function safeMemoryName(value) {
   const normalized = safeLabel(value, "Memory file").replaceAll("\\", "/");
   return safeLabel(path.posix.basename(normalized), "Memory file");
+}
+
+function renderedContextOutput(content) {
+  return content.replace(ANSI_ESCAPE, "");
 }
 
 function tableCells(line) {
@@ -96,31 +101,54 @@ function groupId(label, index) {
   return `${slug || "machinery"}-${index}`;
 }
 
+function normalizedCategories(table) {
+  const categoryIndex = table.headers.findIndex((header) => header.toLowerCase() === "category");
+  const tokenIndex = table.headers.findIndex((header) => header.toLowerCase() === "tokens");
+  const percentageIndex = table.headers.findIndex((header) => header.toLowerCase() === "percentage");
+  return table.rows.flatMap((cells) => {
+    const name = safeLabel(cells[categoryIndex], "");
+    const tokens = safeTokenLabel(cells[tokenIndex]);
+    const percentage = safePercentage(cells[percentageIndex]);
+    if (!name || !tokens || percentage === null || NON_MACHINERY_CATEGORIES.has(name.toLowerCase())) return [];
+    return [{ name, tokens, percentage }];
+  });
+}
+
+function terminalCategories(lines) {
+  const categoryLine = /([\p{L}\p{N}@:+_.() /\\-]+?):\s*((?:~|<\s+)?\d+(?:\.\d+)?[kKmM]?)\s*(?:tokens)?\s*\((\d+(?:\.\d+)?)%\)/u;
+  return lines.flatMap((line) => {
+    const match = line.match(categoryLine);
+    if (!match) return [];
+    const name = safeLabel(match[1], "");
+    const tokens = safeTokenLabel(match[2]);
+    const percentage = safePercentage(`${match[3]}%`);
+    if (!name || !tokens || percentage === null || NON_MACHINERY_CATEGORIES.has(name.toLowerCase())) return [];
+    return [{ name, tokens, percentage }];
+  });
+}
+
+function contextModel(lines) {
+  const labeledModel = lines.find((line) => line.startsWith("**Model:**"));
+  if (labeledModel) return safeLabel(labeledModel.replace(/^\*\*Model:\*\*\s*/, ""), "Unknown model");
+  const modelMatch = lines.join("\n").match(/\bclaude-[a-z0-9][a-z0-9._-]*\b/i);
+  return safeLabel(modelMatch?.[0], "Unknown model");
+}
+
 export function contextMachineryFromRecord(record) {
   if (record?.type !== "system" || record.subtype !== "local_command" || typeof record.content !== "string") return null;
-  if (record.content.length > MAX_CONTEXT_OUTPUT_CHARS || !record.content.includes("<local-command-stdout>## Context Usage")) return null;
-  const lines = record.content.split(/\r?\n/);
+  if (record.content.length > MAX_CONTEXT_OUTPUT_CHARS) return null;
+  const content = renderedContextOutput(record.content);
+  if (!/<local-command-stdout>\s*(?:##\s+)?Context Usage\b/.test(content)) return null;
+  const lines = content.split(/\r?\n/);
   const tables = markdownTables(lines);
   const categoryTable = tables.find((table) => {
     const headers = new Set(table.headers.map((header) => header.toLowerCase()));
     return headers.has("category") && headers.has("tokens") && headers.has("percentage");
   });
-  if (!categoryTable) return null;
 
-  const modelLine = lines.find((line) => line.startsWith("**Model:**"));
-  const model = safeLabel(modelLine?.replace(/^\*\*Model:\*\*\s*/, ""), "Unknown model");
-  const totalLine = lines.find((line) => line.startsWith("**Tokens:**")) || "";
-  const totalMatch = totalLine.match(/\*\*Tokens:\*\*\s*([0-9.]+[kKmM]?)\s*\/\s*([0-9.]+[kKmM]?)\s*\((\d+(?:\.\d+)?)%\)/);
-  const categoryIndex = categoryTable.headers.findIndex((header) => header.toLowerCase() === "category");
-  const categoryTokenIndex = categoryTable.headers.findIndex((header) => header.toLowerCase() === "tokens");
-  const percentageIndex = categoryTable.headers.findIndex((header) => header.toLowerCase() === "percentage");
-  const categories = categoryTable.rows.flatMap((cells) => {
-    const name = safeLabel(cells[categoryIndex], "");
-    const tokens = safeTokenLabel(cells[categoryTokenIndex]);
-    const percentage = safePercentage(cells[percentageIndex]);
-    if (!name || !tokens || percentage === null || NON_MACHINERY_CATEGORIES.has(name.toLowerCase())) return [];
-    return [{ name, tokens, percentage }];
-  });
+  const model = contextModel(lines);
+  const totalMatch = content.match(/(?:\*\*Tokens:\*\*\s*)?([0-9.]+[kKmM]?)\s*\/\s*([0-9.]+[kKmM]?)\s*(?:tokens\s*)?\((\d+(?:\.\d+)?)%\)/);
+  const categories = categoryTable ? normalizedCategories(categoryTable) : terminalCategories(lines);
   if (!categories.length) return null;
 
   const groups = tables
