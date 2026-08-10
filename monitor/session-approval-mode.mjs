@@ -1,6 +1,7 @@
 const APPROVAL_MODES = new Map([
   ["auto", { id: "auto", label: "Auto mode" }],
   ["acceptEdits", { id: "accept_edits", label: "Accept edits" }],
+  ["manual", { id: "manual", label: "Manual mode" }],
   ["default", { id: "default", label: "Default permissions" }],
   ["plan", { id: "plan", label: "Plan mode" }],
   ["dontAsk", { id: "dont_ask", label: "Don't ask" }],
@@ -13,7 +14,7 @@ function safeTimestamp(value) {
 }
 
 export function sessionApprovalModeFromRecord(record) {
-  if (!record || typeof record !== "object" || record.type !== "user") return null;
+  if (!record || typeof record !== "object" || !["user", "permission-mode"].includes(record.type)) return null;
   const mode = APPROVAL_MODES.get(record.permissionMode);
   if (!mode) return null;
   return {

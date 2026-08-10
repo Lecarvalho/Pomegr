@@ -6,7 +6,7 @@ import { RelativeTimeText, SessionWallTimeText } from "../LiveTime";
 export function SessionHero({ session, historical }: { session: MonitorState["session"]; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
   return (
-    <section className="hero" id="top">
+    <section className="hero">
       <div>
         <h1>{sessionLabel}</h1>
         {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><code>{session.id}</code></div>}

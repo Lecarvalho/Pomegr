@@ -121,8 +121,8 @@ export function Dashboard() {
     <LiveClockProvider running={clockRunning}>
       <div className="appFrame">
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
-        <main className="shell">
-        <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
+        <main className="shell" id="top">
+        <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
         {data.session && <SessionHero session={data.session} historical={viewingHistory} />}
 
         {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
@@ -146,7 +146,7 @@ export function Dashboard() {
             </div>
           </details>
         </> : <AwaitingSession connected={data.connected} />}
-          <DashboardFooter viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
+          <DashboardFooter connected={data.connected} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
         </main>
       </div>
     </LiveClockProvider>
@@ -164,11 +164,11 @@ function AwaitingSession({ connected }: { connected: boolean }) {
   );
 }
 
-function DashboardFooter({ viewingHistory, paused, lastRefresh }: { viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
+function DashboardFooter({ connected, viewingHistory, paused, lastRefresh }: { connected: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
   return (
     <footer>
       <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"}</span>
-      <span>{viewingHistory ? "Historical snapshot" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
+      <span>{viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
     </footer>
   );
 }

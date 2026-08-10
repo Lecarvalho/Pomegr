@@ -2,7 +2,7 @@
 
 :root {
   --ink: #19201d;
-  --muted: #6f7873;
+  --muted: #626b67;
   --paper: #f4f2eb;
   --panel: #fbfaf6;
   --line: #dddcd4;
@@ -20,10 +20,11 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 button, a { font: inherit; }
 button { color: inherit; }
+:where(a, button, summary):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .closeButton { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
 .closeButton svg { width: 12px; height: 12px; overflow: visible; }
 .closeButton path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -41,7 +42,7 @@ button { color: inherit; }
 .historyList { min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; }.historyList > p { margin: 18px 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }.historyProject + .historyProject { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); }.historyProjectHeader { min-height: 30px; padding: 0 10px 5px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); background: transparent; }.historyProjectHeader > span { min-width: 0; display: flex; align-items: center; gap: 7px; }.historyProjectHeader i { flex: 0 0 auto; font-style: normal; font-size: 10px; transition: transform .16s ease; }.historyProject.collapsed .historyProjectHeader i { transform: rotate(-90deg); }.historyProjectHeader strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }.historyProjectHeader small { flex: 0 0 auto; font-size: 8px; }.historyProjectSessions button { min-height: 58px; padding: 10px 11px; border-radius: 8px; background: transparent; }.historyProjectSessions button:hover { background: rgba(251,250,246,.65); }.historyProjectSessions button strong, .historyProjectSessions button time { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.historyProjectSessions button strong { font-size: 11px; }.historyProjectSessions button time { margin-top: 6px; color: #8a908c; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .sidebarAboutLink { min-height: 44px; margin-top: 16px; padding: 0 10px; border-top: 1px solid var(--line); color: var(--muted); text-decoration: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 10px; font-weight: 800; letter-spacing: .06em; }.sidebarAboutLink:hover { color: var(--ink); }.sidebarAboutLink i { font-style: normal; font-size: 13px; }
 .sessionMenuButton { display: none; border: 0; background: transparent; color: var(--green); padding: 7px 4px; cursor: pointer; font-size: 11px; font-weight: 800; }.sidebarBackdrop { display: none; }
-.shell { width: min(1400px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; }
+.shell { width: min(1400px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
 .attentionNotice { width: 100%; margin: -9px 0 22px; padding: 12px 15px; border: 1px solid #e7c7a8; border-radius: 10px; background: var(--amber-soft); color: var(--ink); display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }.attentionGlyph { width: 28px; height: 28px; border-radius: 50%; background: var(--amber); color: white; display: grid; place-items: center; font-weight: 900; animation: attentionPulse 1.8s ease-in-out infinite; }.attentionNotice strong, .attentionNotice small { display: block; }.attentionNotice strong { font-size: 12px; }.attentionNotice small { margin-top: 3px; color: #7f5d40; font-size: 10px; }
 @keyframes attentionPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(185,111,45,.16); } 50% { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(185,111,45,0); } }
 .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
@@ -87,7 +88,7 @@ button { color: inherit; }
 .sessionApprovalMode > small { margin-top: 5px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
 .notice { display: flex; gap: 10px; align-items: center; border: 1px solid #e0c3ad; background: var(--amber-soft); padding: 11px 14px; border-radius: 8px; color: #805024; font-size: 13px; margin-bottom: 18px; }
 .notice span { font-weight: 900; }
-.awaitingSession { min-height: 430px; max-width: 720px; display: flex; flex-direction: column; justify-content: center; padding: 52px 0 70px; }
+.awaitingSession { min-height: 430px; max-width: 720px; flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 52px 0 70px; }
 .awaitingSession h1 { margin: 0 0 14px; font: 400 clamp(38px, 4.5vw, 58px)/1.03 Georgia, serif; letter-spacing: -.04em; }
 .awaitingSession p { max-width: 58ch; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 
@@ -241,10 +242,10 @@ button { color: inherit; }
 .sessionDetails > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .sessionDetailsBody { padding-top: 12px; }
 .sessionDetailsBody > :last-child { margin-bottom: 0; }
-footer { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; }
+footer { display: flex; justify-content: space-between; margin-top: auto; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; }
 
 @media (max-width: 1100px) {
-  .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { transform: translateX(0); }.sidebarHeader > .closeButton { display: grid; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }
+  .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; visibility: hidden; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease, visibility 0s linear .2s; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { visibility: visible; transform: translateX(0); transition-delay: 0s; }.sidebarHeader > .closeButton { display: grid; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }
 }
 @media (max-width: 980px) {
   .gitDetails { grid-template-columns: 1fr; }.gitCommits { border-right: 0; border-bottom: 1px solid var(--line); }.contentGrid { grid-template-columns: 1fr; }
@@ -254,7 +255,7 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
   .aboutGrid > div { min-height: 0; }
 }
 @media (max-width: 640px) {
-  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.topActions { gap: 6px; }.ghostButton { padding: 7px 10px; font-size: 11px; }.brand > span:last-child { display: none; }.hero { padding: 44px 0 28px; display: block; }.hero h1 { font-size: 42px; }.sessionMeta { width: 100%; justify-content: space-between; text-align: left; border-right: 0; border-left: 3px solid var(--green); padding: 0 0 0 13px; margin-top: 25px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.gitSummary { align-items: flex-start; flex-direction: column; }.gitBadges { justify-content: flex-start; }.gitCommit { grid-template-columns: 56px minmax(0, 1fr); }.gitCommit time { display: none; }.gitFile { grid-template-columns: 44px minmax(0, 1fr); align-items: start; padding: 10px 12px; }.gitFile code { display: grid; gap: 4px; }.gitPathDirectory { display: block; }.gitPathName { display: block; max-width: none; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }.gitStatus { margin-top: 1px; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.contentGrid, .agentsPanel, .insightPanel { width: 100%; max-width: 100%; }.agentList { overflow: visible; padding-right: 12px; padding-left: 12px; }.agentRow { width: 100%; min-width: 0; grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-items: start; row-gap: 12px; padding: 14px 0; }.agentRow .treeRail { grid-column: 1; grid-row: 1 / 4; margin-left: calc(6px + min(var(--agent-indent), 40px)); }.agentIdentity { grid-column: 2 / 4; grid-row: 1; }.agentTitleLine > strong { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }.agentTokens { grid-column: 2; grid-row: 2; padding-right: 0; text-align: left; }.agentDuration { grid-column: 3; grid-row: 2; padding-right: 0; text-align: right; }.statusPill { grid-column: 2; grid-row: 3; align-self: center; justify-self: start; }.agentRow time { display: block; grid-column: 3; grid-row: 3; align-self: center; justify-self: end; white-space: nowrap; font-size: 9px; }.agentRow .agentPopover { left: 0; width: calc(100vw - 54px); } footer { gap: 10px; }
+  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.topActions { gap: 6px; }.ghostButton, .sessionMenuButton { min-height: 40px; }.ghostButton { padding: 7px 10px; font-size: 11px; }.sessionMenuButton { padding-right: 8px; padding-left: 8px; }.brand > span:last-child { display: none; }.hero { padding: 44px 0 28px; display: block; }.hero h1 { font-size: 42px; }.sessionMeta { width: 100%; justify-content: space-between; text-align: left; border-right: 0; border-left: 3px solid var(--green); padding: 0 0 0 13px; margin-top: 25px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.gitSummary { align-items: flex-start; flex-direction: column; }.gitBadges { justify-content: flex-start; }.gitCommit { grid-template-columns: 56px minmax(0, 1fr); }.gitCommit time { display: none; }.gitFile { grid-template-columns: 44px minmax(0, 1fr); align-items: start; padding: 10px 12px; }.gitFile code { display: grid; gap: 4px; }.gitPathDirectory { display: block; }.gitPathName { display: block; max-width: none; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }.gitStatus { margin-top: 1px; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.contentGrid, .agentsPanel, .insightPanel { width: 100%; max-width: 100%; }.agentList { overflow: visible; padding-right: 12px; padding-left: 12px; }.agentRow { width: 100%; min-width: 0; grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-items: start; row-gap: 12px; padding: 14px 0; }.agentRow .treeRail { grid-column: 1; grid-row: 1 / 4; margin-left: calc(6px + min(var(--agent-indent), 40px)); }.agentIdentity { grid-column: 2 / 4; grid-row: 1; }.agentTitleLine > strong { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }.agentTokens { grid-column: 2; grid-row: 2; padding-right: 0; text-align: left; }.agentDuration { grid-column: 3; grid-row: 2; padding-right: 0; text-align: right; }.statusPill { grid-column: 2; grid-row: 3; align-self: center; justify-self: start; }.agentRow time { display: block; grid-column: 3; grid-row: 3; align-self: center; justify-self: end; white-space: nowrap; font-size: 9px; }.agentRow .agentPopover { left: 0; width: calc(100vw - 54px); } footer { gap: 10px; }
   .agentMeta { display: grid; grid-template-areas: "kind tools" "runtime runtime"; grid-template-columns: auto minmax(0, 1fr); margin-top: 6px; overflow: visible; line-height: 1.35; }.agentMeta span { overflow: visible; white-space: normal; text-overflow: clip; }.agentMetaKind { grid-area: kind; }.agentMetaRuntime { grid-area: runtime; margin-top: 3px; }.agentMetaTools { grid-area: tools; }.agentMeta .agentMetaRuntime::before { content: none; }.agentMeta .agentMetaTools::before { content: " · "; }
   .cachePanel { grid-template-columns: 1fr; }.cacheLead, .machineryStat { grid-column: 1 / -1; }.cacheLead { border-right: 0; border-bottom: 1px solid var(--line); }.machineryStat { position: relative; border-right: 0; }.machineryPopover { left: 50%; width: calc(100vw - 54px); transform: translateX(-50%); }
   .machineryMeta { align-items: flex-start; flex-direction: column; gap: 5px; }.machineryMeta > span { margin-right: 0; }.machineryCategories, .machineryGroups { grid-template-columns: 1fr; }.machineryCategory { border-right: 0; border-bottom: 1px solid #eceae4; }.machineryCategory:last-child { border-bottom: 0; }.machineryGroup { border-right: 0; }
@@ -268,4 +269,9 @@ footer { display: flex; justify-content: space-between; color: var(--muted); fon
   .summaryItem:last-child { border-bottom: 0; }
   .sessionDetails > summary { align-items: flex-start; flex-wrap: wrap; padding: 14px 4px; }
   .sessionDetails > summary small { width: calc(100% - 40px); margin: -5px 0 0 36px; line-height: 1.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

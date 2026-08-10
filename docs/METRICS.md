@@ -90,7 +90,7 @@ For the Claude Code adapter, Threadlight reads the provider's local session regi
 
 ## Session approval mode
 
-The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Threadlight maps only a fixed enum to bounded labels and exposes the observation timestamp; unknown values and every other field on the transcript record are discarded. A live view labels this as the approval mode observed on the latest recorded user turn. A historical view labels it as the last mode because it does not imply that the configuration remains active.
+The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Threadlight supports both approval modes attached to legacy user records and current standalone permission-mode records. It maps only a fixed enum to bounded labels; unknown values and every other field on the transcript record are discarded. The observation timestamp is exposed only when the provider record contains one. A historical view labels the value as the last approval mode because it does not imply that the configuration remains active.
 
 ## Session duration
 

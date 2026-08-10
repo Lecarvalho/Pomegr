@@ -98,7 +98,7 @@ export type PullRequest = {
 };
 
 export type SessionApprovalMode = {
-  id: "auto" | "accept_edits" | "default" | "plan" | "dont_ask" | "bypass_permissions";
+  id: "auto" | "accept_edits" | "manual" | "default" | "plan" | "dont_ask" | "bypass_permissions";
   label: string;
   observedAt: string | null;
   source: "provider";

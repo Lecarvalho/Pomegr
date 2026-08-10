@@ -27,7 +27,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
   return (
     <>
       {open && <button className="sidebarBackdrop" type="button" onClick={onClose} aria-label="Close session navigation" />}
-      <aside className={`sessionSidebar ${open ? "open" : ""}`} aria-label="Session navigation" ref={sidebarRef}>
+      <aside className={`sessionSidebar ${open ? "open" : ""}`} id="session-navigation" aria-label="Session navigation" ref={sidebarRef}>
         <div className="sidebarHeader">
           <div><span className="label">THREADLIGHT</span><strong>Sessions</strong></div>
           <CloseButton label="Close session navigation" onClick={onClose} />
