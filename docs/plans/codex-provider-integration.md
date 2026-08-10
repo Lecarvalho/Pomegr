@@ -1,0 +1,664 @@
+# Codex provider integration plan
+
+## Objective
+
+Add Codex sessions to Threadlight without regressing the Claude Code adapter or weakening the normalized browser API, privacy guarantees, metric conventions, or read-only monitor behavior.
+
+This plan is divided into tasks intended to be completed in separate coding sessions. Each task should leave the repository in a buildable, tested state and should avoid pulling later tasks into its scope.
+
+## How to use this plan
+
+Start a new session with a request such as:
+
+> Implement `TL-CX-04` from `docs/plans/codex-provider-integration.md`. Preserve unrelated working-tree changes and stop when that task's acceptance criteria are met.
+
+Before starting any task:
+
+1. Read `AGENTS.md`, this plan, and the files named by the task.
+2. Run `git status --short` and preserve unrelated changes.
+3. Confirm all dependencies listed for the task are complete.
+4. Keep raw prompts, responses, commands, tool output, credentials, and private session content out of fixtures, logs, snapshots, and browser state.
+5. Update the task checkbox and its implementation notes only when the task is actually complete.
+
+## Architectural direction
+
+- Keep `monitor/server.mjs` as the provider-neutral HTTP monitor and orchestrator.
+- Move provider-specific discovery and parsing under `monitor/providers/`.
+- Prefer the documented Codex app-server contract for stable thread metadata and account rate limits.
+- Use Codex rollout JSONL only for persisted history or metadata that the read-only app-server surface does not provide reliably.
+- Do not use Codex private SQLite tables as the primary integration contract.
+- On Windows, do not assume another Codex process can be observed through `codex app-server daemon`; the locally installed CLI reports daemon lifecycle support as Unix-only.
+- Provider adapters must return normalized metadata. React components must not understand Claude or Codex transcript schemas.
+- Optional provider capabilities must degrade independently. A missing cost estimate, context-machinery snapshot, plan checklist, summary, or usage limit must not fail the session.
+
+## Initial capability matrix
+
+| Capability | Claude Code | Codex target | Initial Codex source |
+|---|---|---|---|
+| Session catalog and history | Yes | Yes | App-server thread metadata and/or rollout index |
+| Live session classification | Registry-backed | Yes | Outcome of `TL-CX-02` |
+| Needs-input state | Registry plus transcript fallback | Yes | Outcome of `TL-CX-02` plus unresolved structured calls |
+| Parent/child agents | Transcript tree | Yes | `sessionId`, `parentThreadId`, and collaboration records |
+| Model and effort | Transcript | Yes | Turn context or thread settings |
+| Latest context snapshot | Assistant usage | Yes | Codex `last_token_usage` only |
+| Context-growth timeline | Latest snapshots over time | Yes | Codex token-count events |
+| Sanitized tool activity | Yes | Yes | Canonical Codex thread items or rollout calls |
+| Execution tasks | Bash lifecycle | Yes | Codex command-execution lifecycle |
+| Plan tasks | Structured Claude task store | Best effort | Structured Codex plan updates when available |
+| Usage limits | Anthropic endpoint | Yes | Codex account rate-limit read |
+| Threadlight MCP signals | Yes | Yes | Recognized Codex MCP tool calls |
+| Estimated API cost | Claude status line | No initial support | Return `null` |
+| Context machinery | Claude `/context` output | No initial support | Return `null`; hide provider-specific prompt |
+| Provider session summary | Recognized Claude record | No initial support | Return `null` unless a safe documented record exists |
+| Automatic compaction trigger | Explicit auto/manual record | Partial | Do not emit the warning without an explicit automatic trigger |
+
+## Milestones
+
+- **Foundation:** `TL-CX-01` through `TL-CX-05`
+- **Codex beta:** `TL-CX-06` through `TL-CX-13`
+- **Production readiness:** `TL-CX-14` through `TL-CX-16`
+
+---
+
+## TL-CX-01 — Freeze the normalized provider contract
+
+- [ ] Complete
+- **Depends on:** none
+- **Target size:** 0.5–1 session
+
+### Goal
+
+Define the provider interface and optional capability semantics before moving existing Claude logic.
+
+### Work
+
+- Add a provider contract under `monitor/providers/` that covers:
+  - provider identity and display name;
+  - session discovery and catalog summaries;
+  - selected session plus child-agent sources;
+  - normalized timestamps, labels, working directory, model, effort, and approval mode;
+  - normalized tool/activity records and latest usage snapshots;
+  - optional plan tasks, usage limits, cost, summary, context machinery, signals, and compactions;
+  - explicit capability flags for provider-specific UI behavior.
+- Decide how session IDs remain unique if Claude and Codex produce the same raw ID. Prefer an opaque provider-qualified browser ID while retaining the provider-local ID monitor-side.
+- Make empty-state creation accept a provider/source rather than defaulting permanently to Claude Code.
+- Document the interface with JSDoc or TypeScript types; do not add Codex parsing yet.
+
+### Acceptance criteria
+
+- The contract can represent all current Claude state without loss.
+- Optional capabilities have documented `null`/empty behavior.
+- No raw transcript record is part of the provider-neutral return type.
+- Existing runtime behavior is unchanged.
+
+### Verification
+
+```powershell
+npm run build
+npm run test:node
+```
+
+---
+
+## TL-CX-02 — Resolve Windows liveness and needs-input strategy
+
+- [ ] Complete
+- **Depends on:** `TL-CX-01`
+- **Target size:** 1 session
+
+### Goal
+
+Choose and document a reliable, read-only method for classifying Codex threads as live, idle, active, or waiting for input across Codex CLI and desktop processes on Windows.
+
+### Work
+
+- Evaluate, in order:
+  1. a documented read-only connection to an already running Codex app-server;
+  2. app-server thread status combined with rollout-tail evidence;
+  3. a small Codex-side event/status bridge that persists only allowlisted lifecycle metadata;
+  4. bounded transcript-activity fallback when no reliable live source exists.
+- Test whether a newly spawned app-server reports the status of threads owned by another Codex process; do not assume it does.
+- Determine how unresolved user-input and approval requests can be detected without exposing their question, choices, command, or answer.
+- Record the selected design and fallback in `docs/ARCHITECTURE.md` or a focused ADR under `docs/plans/`.
+- Add no private SQLite dependency unless the user explicitly approves a separately documented compatibility fallback.
+
+### Acceptance criteria
+
+- The selected source, fallback, stale-state behavior, and Windows limitation are documented.
+- The design identifies how live status clears after a process exits.
+- The design identifies how needs-input clears after the user responds.
+- Any heuristic is labeled as a heuristic and does not claim operating-system certainty.
+
+### Verification
+
+- Capture sanitized test observations only: IDs, lifecycle enums, timestamps, and record-type/key names.
+- Confirm no diagnostic artifact contains prompts, answers, commands, stdout, stderr, or credentials.
+
+---
+
+## TL-CX-03 — Add provider fixtures and privacy assertions
+
+- [ ] Complete
+- **Depends on:** `TL-CX-01`
+- **Target size:** 1 session
+
+### Goal
+
+Create synthetic, reviewable fixtures that allow provider extraction and Codex parsing to proceed without reading real user conversations during tests.
+
+### Work
+
+- Add minimal synthetic Claude fixtures for every current normalized feature used by extraction tests.
+- Add synthetic Codex rollout fixtures for:
+  - session metadata and turn context;
+  - token-count events;
+  - command, file-change, MCP, dynamic-tool, collaboration, and user-input lifecycles;
+  - parent and child thread metadata;
+  - malformed, truncated, and unknown records.
+- Use unmistakably fake content and secrets such as `PROMPT_MUST_NOT_LEAK` and `TOOL_OUTPUT_MUST_NOT_LEAK`.
+- Add a shared assertion that serialized monitor state contains none of the sentinel private values.
+- Keep fixtures bounded; do not copy real rollouts or provider credential files.
+
+### Acceptance criteria
+
+- Fixtures cover both providers and malformed-line behavior.
+- Privacy sentinel assertions fail if raw content reaches normalized state.
+- Tests need no access to `%USERPROFILE%\.claude` or `%USERPROFILE%\.codex`.
+
+### Verification
+
+```powershell
+npm run test:node
+```
+
+---
+
+## TL-CX-04 — Extract the Claude adapter
+
+- [ ] Complete
+- **Depends on:** `TL-CX-01`, `TL-CX-03`
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Move Claude-specific discovery and parsing out of `monitor/server.mjs` without changing observable Claude behavior.
+
+### Work
+
+- Create `monitor/providers/claude.mjs` and provider-focused helpers where useful.
+- Move Claude roots, environment overrides, registry access, transcript discovery, record decoding, title extraction, runtime metadata, task-store access, status-line cost, context machinery, summary, approval mode, and authenticated plan usage behind the adapter.
+- Keep Git inspection, GitHub metadata lookup, HTTP routing, caching orchestration, normalized metrics, and deterministic rule evaluation provider-neutral.
+- Preserve existing exported helper APIs until their tests are migrated intentionally.
+- Do not rename user-facing features or change metrics in this task.
+
+### Acceptance criteria
+
+- Claude session catalog, live selection, history, agents, metrics, usage limits, signals, Git, and reports remain unchanged.
+- `monitor/server.mjs` no longer contains Claude credential paths, Anthropic URLs, or Claude transcript schema checks.
+- Provider failures still degrade independently.
+
+### Verification
+
+```powershell
+npm run build
+npm test
+npm run lint
+```
+
+---
+
+## TL-CX-05 — Make monitor orchestration provider-neutral
+
+- [ ] Complete
+- **Depends on:** `TL-CX-04`
+- **Target size:** 1 session
+
+### Goal
+
+Allow one monitor process to discover and select sessions from multiple providers while preserving the browser API.
+
+### Work
+
+- Add a provider registry and load the Claude adapter through it.
+- Merge provider catalogs with stable ordering and provider-qualified IDs.
+- Route `/api/state?sessionId=...` to the owning provider without trusting arbitrary paths or provider input.
+- Define automatic live-session selection when multiple providers have live sessions. Prefer explicit selection, then needs-input sessions, then most recent safe activity.
+- Add provider/source metadata to session summaries if required for disambiguation, updating the frontend and contract together.
+- Ensure historical selection never receives current usage limits or current Git state from another provider.
+
+### Acceptance criteria
+
+- Claude remains the only loaded provider but runs entirely through the registry.
+- Unknown or malformed session IDs produce a safe empty state.
+- Catalog ordering and selected-session behavior have deterministic tests.
+- No provider-local path is accepted from a browser query.
+
+### Verification
+
+```powershell
+npm run build
+npm run test:node
+npm run test:ui
+```
+
+---
+
+## TL-CX-06 — Implement the Codex session catalog and history reader
+
+- [ ] Complete
+- **Depends on:** `TL-CX-02`, `TL-CX-03`, `TL-CX-05`
+- **Target size:** 1 session
+
+### Goal
+
+List Codex sessions and load a selected persisted session without yet deriving full activity or metrics.
+
+### Work
+
+- Create `monitor/providers/codex.mjs` plus focused parser helpers.
+- Discover Codex home from supported configuration/environment rules.
+- Prefer documented app-server `thread/list`/`thread/read` metadata where practical; use `session_index.jsonl` and rollout headers as bounded fallbacks.
+- Use only safe title sources such as the explicit thread name. Never expose the app-server `preview`, because it may be the first user prompt.
+- Normalize ID, provider, title, working directory, project, created/updated timestamps, source kind, history/live classification, and recorded Git branch metadata.
+- Support malformed lines, missing rollouts, archived sessions if included by product scope, and bounded catalog size.
+
+### Acceptance criteria
+
+- Codex sessions appear beside Claude sessions with unambiguous IDs/source labels.
+- Selecting a historical Codex session returns only recorded metadata.
+- Missing or deleted sessions return the existing safe missing-session state.
+- No preview, user message, agent message, or rollout path is serialized to the browser.
+
+### Verification
+
+```powershell
+node --test tests/codex-session-discovery.test.mjs tests/session-registry.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-07 — Parse Codex thread and agent metadata
+
+- [ ] Complete
+- **Depends on:** `TL-CX-06`
+- **Target size:** 1 session
+
+### Goal
+
+Build the normalized primary-agent and subagent tree for Codex sessions.
+
+### Work
+
+- Map Codex `sessionId`, `parentThreadId`, collaboration records, agent nickname, and agent role to normalized agent IDs, parents, labels, and kinds.
+- Normalize model, reasoning effort, approval policy, sandbox presentation label, start/update times, duration, and terminal status.
+- Do not expose collaboration prompt text or developer instructions.
+- Handle missing child rollouts, resumed agents, forks, stopped agents, and unknown future source kinds.
+- Keep wall-time semantics consistent with `docs/METRICS.md`.
+
+### Acceptance criteria
+
+- Primary and child agents form a deterministic tree.
+- Model and effort are taken from the latest recognized provider record.
+- Unknown metadata degrades to bounded neutral labels.
+- Agent timing and status fixtures cover active, idle, completed, interrupted, and missing-child cases.
+
+### Verification
+
+```powershell
+node --test tests/codex-agent-metadata.test.mjs tests/agent-metadata.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-08 — Normalize Codex tools and recent activity
+
+- [ ] Complete
+- **Depends on:** `TL-CX-07`
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Convert Codex canonical items and rollout calls into Threadlight's safe activity and tool-pattern inputs.
+
+### Work
+
+- Recognize command execution, file changes, MCP calls, dynamic tools, collaboration tools, web search, image view/generation, and other supported canonical items.
+- Generate stable call IDs, timestamps, actor IDs, safe tool names, bounded safe targets, lifecycle status, and monitor-side repetition inputs.
+- Never expose commands, arguments, prompts, responses, reasoning, stdout, stderr, patches, full paths, or tool-result content.
+- Extend mutation-scope normalization for Codex `apply_patch` and file-change events while keeping exact anchors/digests monitor-side.
+- Preserve unknown item types as ignored records rather than generic raw objects.
+
+### Acceptance criteria
+
+- Tool totals equal the grouped tool-pattern totals.
+- Recent activity is bounded and sorted consistently.
+- Repetition signatures distinguish materially different safe calls without exposing their inputs.
+- Sentinel private values cannot be found in serialized state.
+
+### Verification
+
+```powershell
+node --test tests/codex-activity-events.test.mjs tests/activity-events.test.mjs tests/tool-efficiency.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-09 — Implement Codex execution-task lifecycle
+
+- [ ] Complete
+- **Depends on:** `TL-CX-08`
+- **Target size:** 1 session
+
+### Goal
+
+Represent Codex command executions using the existing safe execution-task contract.
+
+### Work
+
+- Map command-execution start/completion/interruption/failure records to normalized shell tasks.
+- Expose only normalized task ID, bounded description, shell kind, status, timestamps, background flag, background/process ID when safe, and exit code.
+- Never expose the command, parsed command actions, aggregated output, terminal input, stdout, or stderr.
+- Attach task signals only after monitor-side matching to a known execution ID.
+- Mark unmatched historical executions stopped at the recorded session end, consistent with current semantics.
+
+### Acceptance criteria
+
+- Foreground and background lifecycle tests cover success, failure, interruption, missing completion, and duplicate events.
+- Primary compatibility field and per-agent task lists remain consistent.
+- No command or output sentinel reaches normalized state or reports.
+
+### Verification
+
+```powershell
+node --test tests/codex-execution-tasks.test.mjs tests/execution-tasks.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-10 — Implement Codex context snapshots and timeline
+
+- [ ] Complete
+- **Depends on:** `TL-CX-07`
+- **Target size:** 1 session
+
+### Goal
+
+Map Codex token-count events to Threadlight's latest-context metric without introducing cumulative throughput.
+
+### Work
+
+- Read `last_token_usage`, not `total_token_usage`, for the displayed agent snapshot.
+- Map input, output, cached input, cache-write input, reasoning output, total tokens, and model context window into the normalized contract without double-counting reasoning output.
+- Deduplicate snapshots by a stable provider event/message identity.
+- Feed chronological latest snapshots into the existing context-growth timeline algorithm.
+- Treat zero/synthetic snapshots as unavailable.
+- Parse compaction records only as bounded events. Do not emit the automatic-compaction warning unless Codex records an explicit automatic trigger.
+- Update `docs/METRICS.md` for any Codex-specific mapping or limitation.
+
+### Acceptance criteria
+
+- Agent context is the latest non-zero snapshot for that agent.
+- All-agent context is the sum of visible agents' latest snapshots.
+- No cumulative `total_token_usage`, token spend, or recent token rate is exposed.
+- Repeated snapshots contribute zero timeline growth.
+
+### Verification
+
+```powershell
+node --test tests/codex-context.test.mjs tests/context-growth-timeline.test.mjs tests/efficiency-signals.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-11 — Add Codex approval mode and plan tasks
+
+- [ ] Complete
+- **Depends on:** `TL-CX-07`
+- **Target size:** 1 session
+
+### Goal
+
+Expose bounded Codex approval-policy metadata and the latest structured plan when available.
+
+### Work
+
+- Extend the normalized approval-mode contract to represent Codex `untrusted`, `on-request`, granular, and `never` policies using provider-neutral IDs/labels.
+- Record only the recognized policy enum and observation timestamp; do not expose permission rules, writable roots, requested commands, or approval reasons.
+- Normalize structured Codex plan steps to ID, subject, and status.
+- Do not infer dependencies when the provider does not supply them.
+- If only free-form plan prose is available, return no plan tasks rather than parsing natural language.
+- Make plan UI copy provider-neutral and continue labeling the checklist as agent-maintained and potentially stale.
+
+### Acceptance criteria
+
+- Approval modes from both providers render without weakening TypeScript exhaustiveness.
+- Historical modes are labeled as last recorded, not current.
+- Plan fixtures cover pending, in-progress, completed, missing, and malformed updates.
+- Plan explanations and other long-form text never enter browser state.
+
+### Verification
+
+```powershell
+node --test tests/codex-approval-mode.test.mjs tests/session-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/session-tasks.test.mjs
+npm run build
+npm run test:ui
+```
+
+---
+
+## TL-CX-12 — Add Codex usage limits
+
+- [ ] Complete
+- **Depends on:** `TL-CX-05`, `TL-CX-06`
+- **Target size:** 0.5–1 session
+
+### Goal
+
+Map Codex account rate-limit windows to Threadlight's provider-neutral usage-limit panel.
+
+### Work
+
+- Use the documented/local app-server `account/rateLimits/read` response when available.
+- Normalize limit ID/name, primary and secondary window duration, used percentage, reset time, and active/reached state.
+- Do not expose credit balances, account identity, workspace identity, entitlements, raw backend errors, or authentication data.
+- Reuse the shared request coordinator and cooldown behavior where applicable.
+- Keep usage limits out of historical views and reports.
+- Sanitize errors independently so a limit failure cannot fail session parsing.
+
+### Acceptance criteria
+
+- Multiple rate-limit buckets are deterministic and safely labeled.
+- Percentages and reset timestamps are validated and bounded.
+- Concurrent browser polls cannot multiply provider requests.
+- Historical Codex state contains no current limits.
+
+### Verification
+
+```powershell
+node --test tests/codex-usage-limits.test.mjs tests/usage-limits.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-13 — Integrate skills, signals, PRs, and efficiency rules
+
+- [ ] Complete
+- **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-10`
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Feed normalized Codex events into the shared higher-level Threadlight features.
+
+### Work
+
+- Detect explicit Codex skill invocations from recognized metadata/tool calls only.
+- Parse Threadlight MCP signal calls from Codex function/custom-tool records using the existing label/tone allowlist.
+- Derive the reporting agent and timestamp from the rollout; never accept an MCP-supplied agent identity.
+- Resolve task-signal target IDs only against normalized execution tasks.
+- Refactor pull-request association to consume provider-neutral successful creation events, while keeping raw result parsing monitor-side.
+- Run repetition, concurrent-mutation, unshared-context, and healthy-fallback rules over normalized evidence.
+- Disable provider-specific rules when their required evidence is unavailable rather than substituting weaker evidence silently.
+
+### Acceptance criteria
+
+- Claude and Codex share the same rule engine and output contract.
+- Signal replacement and task matching semantics remain unchanged.
+- Unmatched task signals and raw MCP arguments never enter the browser API.
+- Every emitted recommendation traces to a concrete normalized event.
+
+### Verification
+
+```powershell
+node --test tests/codex-session-signals.test.mjs tests/session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/skill-usage.test.mjs tests/pull-requests.test.mjs tests/efficiency-signals.test.mjs
+npm run build
+```
+
+---
+
+## TL-CX-14 — Implement and harden Codex live-state behavior
+
+- [ ] Complete
+- **Depends on:** `TL-CX-02`, `TL-CX-06`, `TL-CX-07`, `TL-CX-08`
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Implement the liveness design chosen in `TL-CX-02` and make automatic session selection trustworthy enough for daily use.
+
+### Work
+
+- Implement the selected primary live-status source and bounded activity fallback.
+- Map active, idle, waiting, needs-input, finished, stopped, interrupted, and system-error states to the existing normalized enum.
+- Add startup/shutdown grace windows where file and registry/event ordering can race.
+- Ensure parents waiting on active descendants use the existing waiting propagation semantics.
+- Prefer needs-input sessions during automatic selection only when the evidence remains current.
+- Cache status reads and avoid scanning every complete rollout on each 1.8-second browser poll.
+- Document any remaining heuristic and its expected false-positive/false-negative window.
+
+### Acceptance criteria
+
+- Starting, idling, awaiting input, answering, finishing, and closing a Codex session produce deterministic state transitions in tests.
+- Stale needs-input state clears.
+- Historical sessions never become live solely because the current repository is active.
+- Polling remains bounded under multiple concurrent Codex sessions and subagents.
+
+### Verification
+
+```powershell
+node --test tests/codex-liveness.test.mjs tests/session-discovery.test.mjs tests/agent-metadata.test.mjs
+npm run build
+```
+
+- Perform a manual Windows smoke test with two concurrent Codex sessions and one subagent.
+
+---
+
+## TL-CX-15 — Add provider capability gates and UI copy
+
+- [ ] Complete
+- **Depends on:** `TL-CX-10`, `TL-CX-11`, `TL-CX-12`, `TL-CX-14`
+- **Target size:** 1 session
+
+### Goal
+
+Make the dashboard accurately present provider capabilities without Claude-specific instructions appearing in Codex views.
+
+### Work
+
+- Add provider/source labeling where needed in the session sidebar and hero.
+- Hide or replace the `/context` instruction for providers without context-machinery support.
+- Show estimated API cost only when a provider supplies the existing explicitly attributed estimate.
+- Keep summary, approval-mode, plan-task, and usage-limit empty states provider-neutral.
+- Ensure reports omit unsupported sections instead of claiming a zero value.
+- Check responsive behavior and accessibility for mixed Claude/Codex catalogs.
+
+### Acceptance criteria
+
+- A Codex session never instructs the user to run Claude `/context` or describes a Claude status-line estimate.
+- Optional panels distinguish unavailable from zero.
+- Provider names are used only for provenance or provider-specific setup copy.
+- Existing Claude rendering remains unchanged where its capabilities are present.
+
+### Verification
+
+```powershell
+npm run build
+npm run test:ui
+npm run lint
+```
+
+- Visually inspect one live and one historical fixture for each provider at desktop and narrow widths.
+
+---
+
+## TL-CX-16 — Privacy audit, compatibility QA, and release documentation
+
+- [ ] Complete
+- **Depends on:** all previous tasks
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Prove that Codex support satisfies Threadlight's privacy, metric, compatibility, and failure-isolation requirements before calling it production-ready.
+
+### Work
+
+- Add an API serialization audit covering both `/api/state` and `/api/sessions` with privacy sentinels for:
+  - user prompts and answers;
+  - agent responses and reasoning;
+  - commands, patches, stdout, stderr, and tool outputs;
+  - OAuth tokens, auth files, environment secrets, and provider-local private paths;
+  - MCP arguments other than the bounded Threadlight signal allowlist.
+- Test at least two recent Codex rollout/app-server schema versions when fixtures are available.
+- Test unknown future record types, malformed JSONL, truncated live writes, missing child rollouts, app-server unavailable, usage-limit failure, Git failure, and deleted history.
+- Run performance checks with multiple large rollouts and confirm polling uses tail reads/caches rather than repeated full scans.
+- Update:
+  - `README.md` provider support and setup;
+  - `docs/ARCHITECTURE.md` provider flow and liveness;
+  - `docs/METRICS.md` Codex mappings and unsupported signals;
+  - environment-variable reference and troubleshooting guidance.
+- Remove any temporary diagnostics or generated schema files.
+
+### Acceptance criteria
+
+- The browser API contains no forbidden sentinel value.
+- Claude and Codex failures degrade independently.
+- Historical views never expose current plan limits or current Git state.
+- Metrics follow latest-snapshot semantics and never expose cumulative transcript throughput.
+- Documentation clearly distinguishes supported, best-effort, and unavailable provider features.
+- Full build, test, and lint suites pass.
+
+### Verification
+
+```powershell
+npm run build
+npm test
+npm run lint
+```
+
+## Definition of done
+
+Codex support is complete when:
+
+- Both providers appear in one safe, deterministic session catalog.
+- Live and historical Codex sessions produce the same normalized session, agent, activity, token, repository, and insight shapes as Claude wherever equivalent evidence exists.
+- Unsupported provider features are omitted or capability-gated without misleading fallbacks.
+- Windows live-state behavior is documented and tested.
+- The browser and generated reports contain no raw private session content.
+- Claude behavior remains regression-tested.
+- `README.md`, `docs/ARCHITECTURE.md`, and `docs/METRICS.md` describe the shipped behavior.
+
+## Progress log
+
+Add short entries here only after completing a task.
+
+| Date | Task | Result | Notes |
+|---|---|---|---|
+| — | — | — | — |
