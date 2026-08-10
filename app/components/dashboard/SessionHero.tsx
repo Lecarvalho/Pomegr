@@ -21,6 +21,16 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
           <span>{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong>
           <small>{session ? historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></> : "Auto-discovery enabled"}</small>
+          {session?.approvalMode && <div className="sessionApprovalMode">
+            <span>{historical ? "LAST MODE" : "APPROVAL MODE"}</span>
+            <AgentChip
+              className="sessionApprovalModeChip"
+              title={historical ? "Last provider-reported mode recorded for this session." : "Provider-reported mode from the latest recorded user turn."}
+            >{session.approvalMode.label}</AgentChip>
+            <small>{session.approvalMode.observedAt
+              ? historical ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}` : <>Observed <RelativeTimeText value={session.approvalMode.observedAt} /></>
+              : "Provider-reported"}</small>
+          </div>}
         </div>
         {session?.signal && <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>}
       </div>

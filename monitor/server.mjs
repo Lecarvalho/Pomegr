@@ -16,6 +16,7 @@ import { readSessionTasks } from "./session-tasks.mjs";
 import { readTranscriptSignals } from "./session-signals.mjs";
 import { latestSessionSummary } from "./session-summary.mjs";
 import { readSessionCost } from "./session-cost.mjs";
+import { latestSessionApprovalMode } from "./session-approval-mode.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
@@ -484,6 +485,7 @@ async function analyze(requestedSessionId = "") {
       updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
       durationMs: startedAt && updatedAt ? Math.max(0, new Date(updatedAt).getTime() - new Date(startedAt).getTime()) : 0,
       cost: sessionCost,
+      approvalMode: latestSessionApprovalMode(mainRecords),
       contextMachinery,
       summary: latestSessionSummary(mainRecords),
       signal: sessionSignal,

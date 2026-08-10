@@ -97,6 +97,13 @@ export type PullRequest = {
   association: "session" | "branch";
 };
 
+export type SessionApprovalMode = {
+  id: "auto" | "accept_edits" | "default" | "plan" | "dont_ask" | "bypass_permissions";
+  label: string;
+  observedAt: string | null;
+  source: "provider";
+};
+
 export type UsageLimits = {
   available: boolean;
   fetchedAt: string | null;
@@ -159,6 +166,7 @@ export type MonitorState = {
       type: "estimated";
       observedAt: string;
     } | null;
+    approvalMode: SessionApprovalMode | null;
     contextMachinery: ContextMachinery | null;
     summary: { text: string; observedAt: string | null; source: "provider" } | null;
     signal: ReportedSignal | null;

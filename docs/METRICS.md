@@ -88,6 +88,10 @@ Selecting any live session keeps its state polling. When a selected session lose
 
 For the Claude Code adapter, Threadlight reads the provider's local session registry and treats a `waiting` session whose safe wait category indicates input, approval, permission, or a question as needing user input. The raw wait value and question content are never sent to the browser. Transcript `AskUserQuestion` calls remain a fallback for sessions without registry state. A registered input wait remains live and takes priority for automatic live-session selection until the provider clears it.
 
+## Session approval mode
+
+The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Threadlight maps only a fixed enum to bounded labels and exposes the observation timestamp; unknown values and every other field on the transcript record are discarded. A live view labels this as the approval mode observed on the latest recorded user turn. A historical view labels it as the last mode because it does not imply that the configuration remains active.
+
 ## Session duration
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.

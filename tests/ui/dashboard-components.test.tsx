@@ -7,6 +7,7 @@ import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { ContextGrowthTimeline } from "../../app/components/dashboard/ContextGrowthTimeline";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
+import { SessionHero } from "../../app/components/dashboard/SessionHero";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 const task: ExecutionTask = {
@@ -56,11 +57,40 @@ function repositorySession(
     updatedAt: null,
     durationMs: 0,
     cost: null,
+    approvalMode: null,
     contextMachinery: null,
     summary: null,
     signal: null,
   } satisfies NonNullable<MonitorState["session"]>;
 }
+
+describe("session approval mode", () => {
+  it("shows the provider-reported live mode beside session timing", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      approvalMode: { id: "auto", label: "Auto mode", observedAt: "2026-08-10T12:00:00.000Z", source: "provider" },
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
+    expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Provider-reported mode from the latest recorded user turn.");
+    expect(screen.getByText(/Observed/)).toBeInTheDocument();
+  });
+
+  it("labels historical approval state as the last recorded mode", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      updatedAt: "2026-08-10T12:05:00.000Z",
+      approvalMode: { id: "accept_edits", label: "Accept edits", observedAt: null, source: "provider" },
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} historical /></LiveClockProvider>);
+
+    expect(screen.getByText("LAST MODE")).toBeInTheDocument();
+    expect(screen.getByText("Accept edits")).toHaveAttribute("title", "Last provider-reported mode recorded for this session.");
+  });
+});
 
 describe("repository branch overview", () => {
   it("shows recent commits and upstream status on the main branch", () => {

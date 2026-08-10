@@ -84,6 +84,11 @@ button { color: inherit; }
 .sessionMetaValues > span { display: block; font-size: 9px; letter-spacing: .13em; color: var(--muted); font-weight: 800; }
 .sessionMetaValues > strong { display: block; font-family: Georgia, serif; font-weight: 400; font-size: 23px; margin: 4px 0; }
 .sessionMetaValues > small { color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 10px; }
+.sessionApprovalMode { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sessionApprovalMode > span, .sessionApprovalMode > small { display: block; }
+.sessionApprovalMode > span { margin-bottom: 5px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.sessionApprovalModeChip { border: 1px solid #cbd1cd; background: rgba(251,250,246,.62); color: var(--ink); }
+.sessionApprovalMode > small { margin-top: 5px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
 .notice { display: flex; gap: 10px; align-items: center; border: 1px solid #e0c3ad; background: var(--amber-soft); padding: 11px 14px; border-radius: 8px; color: #805024; font-size: 13px; margin-bottom: 18px; }
 .notice span { font-weight: 900; }
 

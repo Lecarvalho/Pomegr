@@ -44,7 +44,7 @@ Markdown retrospective reports are assembled and downloaded in the browser from 
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository, bounded pull-request associations, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
+- `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported agent signal

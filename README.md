@@ -10,7 +10,7 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 
 ## What it shows
 
-- Session title, project, elapsed wall time, and last activity
+- Session title, project, elapsed wall time, last activity, and the latest provider-reported approval mode
 - Claude Code's client-side estimated API cost when the optional status-line bridge is connected
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
