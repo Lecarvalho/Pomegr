@@ -7,7 +7,9 @@ import { agentTiming, applyWaitingStatus, externallyStoppedAgentTimes, isAgentTr
 import { shellFailureActivityEvents, userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "./context-machinery.mjs";
+import { contextCompactions, mergeContextCompactions, readContextCompactions } from "./context-compactions.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
+import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { readGitState } from "./git-state.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
@@ -32,6 +34,7 @@ const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
 const sessionSummaryCache = new Map();
 const contextMachineryCache = new Map();
+const contextCompactionsCache = new Map();
 
 function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
@@ -274,6 +277,7 @@ async function analyze(requestedSessionId = "") {
   const patternMap = new Map();
   const mutationEvents = [];
   const usageByMessage = new Map();
+  const compactions = [];
   let startedAt = null;
   let updatedAt = null;
 
@@ -282,6 +286,14 @@ async function analyze(requestedSessionId = "") {
     if (!stat) continue;
     const actor = actorFor(file, mainFile, agentMetadata);
     const records = recordsByFile.get(file) || [];
+    let observedCompactions = contextCompactionsCache.get(file);
+    if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
+    observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
+    contextCompactionsCache.set(file, observedCompactions);
+    compactions.push(...observedCompactions.map((compaction) => ({
+      ...compaction,
+      actor: { id: actor.id, label: actor.label },
+    })));
     const requestedInputIds = new Set();
     let calls = 0;
     for (const record of records) {
@@ -380,50 +392,7 @@ async function analyze(requestedSessionId = "") {
   }
 
   const groupedTools = [...patternMap.values()].sort((a, b) => b.count - a.count);
-  const loops = [...repetitionMap.values()].filter((item) => item.count >= 3).sort((a, b) => b.count - a.count);
-  const overlaps = concurrentMutationOverlaps(mutationEvents);
-  const insights = [];
-  for (const agent of agents.filter((item) => item.status === "needs_input")) insights.push({
-    id: `needs-input-${agent.id}`,
-    level: "warning",
-    title: `${agent.label} needs your input`,
-    detail: "A user-input request is waiting for a response.",
-  });
-  for (const [loopIndex, loop] of loops.slice(0, 3).entries()) insights.push({
-    id: `loop-${loop.actor.id}-${loopIndex}`,
-    level: "warning",
-    title: `${loop.actor.label} repeated ${loop.tool} ${loop.count} times`,
-    detail: loop.detail ? `The same scoped call (${loop.detail}) recurred with unchanged inputs. Check whether it produced new evidence.` : "The same call recurred with unchanged inputs. Check whether it is making progress.",
-  });
-  for (const overlap of overlaps.slice(0, 2)) insights.push({
-    id: `overlap-${overlap.display}`,
-    level: "warning",
-    title: `Concurrent edits may conflict in ${overlap.display}`,
-    detail: `${overlap.actors.size} agents modified the same region within 30 seconds across ${overlap.calls} calls.`,
-  });
-  if (!insights.length) insights.push({
-    id: "healthy-flow",
-    level: "info",
-    title: "No obvious loops right now",
-    detail: "Tool activity is varied and agent overlap remains low. The coach will stay quiet unless that changes.",
-  });
-
-  const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
-  const toolPatterns = groupedTools.map((item) => ({
-    id: crypto.createHash("sha1").update(`${item.actor.id}|${item.tool}|${item.detail}`).digest("hex").slice(0, 12),
-    agent: item.actor.label,
-    tool: item.tool,
-    detail: item.detail,
-    calls: item.count,
-  }));
-  const loopPatterns = loops.map((loop, loopIndex) => ({
-    id: `loop-${loop.actor.id}-${loopIndex}`,
-    agent: loop.actor.label,
-    tool: loop.tool,
-    detail: loop.detail,
-    calls: loop.count,
-    repeats: loop.count - 1,
-  }));
+  const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
   const activeAgents = agents.filter(isRunningAgent).length;
   const latestByAgent = new Map();
   for (const usage of usageByMessage.values()) {
@@ -453,6 +422,28 @@ async function analyze(requestedSessionId = "") {
     cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
     contextGrowthTimeline: buildContextGrowthTimeline([...usageByMessage.values()], { startedAt, updatedAt }),
   };
+  const { insights, loops } = evaluateEfficiencySignals({
+    agents,
+    repetitionCandidates: [...repetitionMap.values()],
+    overlaps,
+    compactions,
+  });
+  const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
+  const toolPatterns = groupedTools.map((item) => ({
+    id: crypto.createHash("sha1").update(`${item.actor.id}|${item.tool}|${item.detail}`).digest("hex").slice(0, 12),
+    agent: item.actor.label,
+    tool: item.tool,
+    detail: item.detail,
+    calls: item.count,
+  }));
+  const loopPatterns = loops.map((loop, loopIndex) => ({
+    id: `loop-${loop.actor.id}-${loopIndex}`,
+    agent: loop.actor.label,
+    tool: loop.tool,
+    detail: loop.detail,
+    calls: loop.count,
+    repeats: loop.count - 1,
+  }));
   const executionTasks = buildExecutionTasks(mainRecords, { historical, sessionUpdatedAt: updatedAt });
   const primaryActor = agents.find((agent) => agent.id === "primary")?.label || "Primary agent";
   allEvents.push(...shellFailureActivityEvents(executionTasks, primaryActor));

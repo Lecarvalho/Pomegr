@@ -1,0 +1,97 @@
+export const EFFICIENCY_SIGNAL_RULES = Object.freeze({
+  repetition: Object.freeze({ minimumCalls: 3, maximumSignals: 3 }),
+  concurrentMutation: Object.freeze({ windowMs: 30_000, maximumSignals: 2 }),
+  automaticCompaction: Object.freeze({ trigger: "auto", maximumSignals: 3 }),
+  unsharedContextPressure: Object.freeze({
+    minimumPrimaryContext: 150_000,
+    minimumPrimaryToolCalls: 40,
+  }),
+});
+
+function compactContext(tokens) {
+  return `${(tokens / 1_000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
+}
+
+// This is the executable catalog for every rule shown in Efficiency signals.
+// Keep thresholds, evidence, severity, and user-facing explanations together so
+// rule changes remain reviewable and deterministic.
+export function evaluateEfficiencySignals({ agents = [], repetitionCandidates = [], overlaps = [], compactions = [] } = {}) {
+  const loops = repetitionCandidates
+    .filter((item) => item.count >= EFFICIENCY_SIGNAL_RULES.repetition.minimumCalls)
+    .sort((a, b) => b.count - a.count);
+  const insights = [];
+
+  for (const agent of agents.filter((item) => item.status === "needs_input")) insights.push({
+    id: `needs-input-${agent.id}`,
+    level: "warning",
+    title: `${agent.label} needs your input`,
+    detail: "A user-input request is waiting for a response.",
+  });
+
+  const compactionRule = EFFICIENCY_SIGNAL_RULES.automaticCompaction;
+  const automaticCompactionsByAgent = new Map();
+  for (const compaction of compactions.filter((item) => item.trigger === compactionRule.trigger)) {
+    automaticCompactionsByAgent.set(compaction.actor.id, [
+      ...(automaticCompactionsByAgent.get(compaction.actor.id) || []),
+      compaction,
+    ]);
+  }
+  let automaticCompactionSignals = 0;
+  for (const agent of agents) {
+    if (automaticCompactionSignals >= compactionRule.maximumSignals) break;
+    const observed = automaticCompactionsByAgent.get(agent.id) || [];
+    if (!observed.length) continue;
+    const latest = observed.at(-1);
+    const occurrence = observed.length === 1 ? "" : ` ${observed.length.toLocaleString("en-US")} times; the latest boundary was recorded`;
+    const context = latest.preTokens === null ? "" : ` at ${compactContext(latest.preTokens)} context`;
+    const event = observed.length === 1
+      ? `The provider automatically compacted this agent's conversation${context}.`
+      : `The provider automatically compacted this agent's conversation${occurrence}${context}.`;
+    insights.push({
+      id: `automatic-compaction-${agent.id}`,
+      level: "warning",
+      title: `${agent.label} context was automatically compacted`,
+      detail: `${event} Earlier conversation detail was summarized to continue the session. Consider delegating or starting a focused follow-up before context pressure builds again.`,
+    });
+    automaticCompactionSignals += 1;
+  }
+
+  const primary = agents.find((agent) => agent.id === "primary");
+  const hasObservedSubagent = agents.some((agent) => agent.id !== "primary");
+  const contextRule = EFFICIENCY_SIGNAL_RULES.unsharedContextPressure;
+  if (
+    primary
+    && !hasObservedSubagent
+    && primary.tokens?.total >= contextRule.minimumPrimaryContext
+    && primary.toolCalls >= contextRule.minimumPrimaryToolCalls
+  ) insights.push({
+    id: "unshared-context-pressure",
+    level: "warning",
+    title: "Large primary context, no delegation observed",
+    detail: `The primary agent's current context is ${compactContext(primary.tokens.total)} after ${primary.toolCalls.toLocaleString("en-US")} tool calls. No subagent transcript was observed. Consider delegating the next bounded, independent task.`,
+  });
+
+  for (const [loopIndex, loop] of loops.slice(0, EFFICIENCY_SIGNAL_RULES.repetition.maximumSignals).entries()) insights.push({
+    id: `loop-${loop.actor.id}-${loopIndex}`,
+    level: "warning",
+    title: `${loop.actor.label} repeated ${loop.tool} ${loop.count} times`,
+    detail: loop.detail ? `The same scoped call (${loop.detail}) recurred with unchanged inputs. Check whether it produced new evidence.` : "The same call recurred with unchanged inputs. Check whether it is making progress.",
+  });
+
+  const overlapRule = EFFICIENCY_SIGNAL_RULES.concurrentMutation;
+  for (const overlap of overlaps.slice(0, overlapRule.maximumSignals)) insights.push({
+    id: `overlap-${overlap.display}`,
+    level: "warning",
+    title: `Concurrent edits may conflict in ${overlap.display}`,
+    detail: `${overlap.actors.size} agents modified the same region within ${overlapRule.windowMs / 1_000} seconds across ${overlap.calls} calls.`,
+  });
+
+  if (!insights.length) insights.push({
+    id: "healthy-flow",
+    level: "info",
+    title: "No obvious loops right now",
+    detail: "Tool activity is varied and agent overlap remains low. The coach will stay quiet unless that changes.",
+  });
+
+  return { insights, loops };
+}

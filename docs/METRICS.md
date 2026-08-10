@@ -96,6 +96,23 @@ The session hero shows the latest recognized approval mode recorded by the provi
 
 Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.
 
+## Efficiency signals
+
+`monitor/efficiency-signals.mjs` is the executable catalog for every rule shown in the **Efficiency signals** panel. It owns each rule's fixed thresholds, evidence requirements, severity, display limit, and user-facing explanation. New rules and adjustments should be made there, covered by `tests/efficiency-signals.test.mjs`, and reflected in this section. Supporting modules may derive evidence, but they do not decide whether the panel emits a signal.
+
+The current catalog contains these deterministic rules:
+
+- **User input needed** — appears while an observed agent has an unresolved structured user-input request.
+- **Automatic context compaction** — appears for an agent when the provider records a `compact_boundary` system event with an `auto` trigger. The signal includes the pre-compaction context snapshot when the provider records a valid value. Manual compaction does not emit a warning because it may be deliberate session maintenance. At most three automatic-compaction signals are shown.
+- **Repeated tool call** — appears when an agent makes the same scoped call with unchanged inputs at least three times. At most three repetition signals are shown.
+- **Concurrent mutation** — appears when at least two agents mutate the same edit anchor, whole-file target, or notebook cell within 30 seconds. At most two overlap signals are shown.
+- **Unshared context pressure** — appears when the primary agent's latest context snapshot is at least 150,000 tokens, the primary agent has made at least 40 observed tool calls, and no subagent transcript has been observed. Finished and stopped subagents still count as observed delegation. The signal describes a possible delegation opportunity; it does not claim that the work was parallelizable, that delegation would have reduced total context, or that a project instruction was violated.
+- **Healthy fallback** — appears only when none of the warning rules emit a signal.
+
+The automatic-compaction parser allows only the normalized agent identity, recognized trigger, non-negative pre-compaction token count, and event timestamp into the rule engine. The compacted summary, provider event content, and all other compaction metadata remain monitor-side and never enter browser state. On first observation Threadlight scans each selected agent transcript for these bounded events, then merges new tail records into an in-memory cache so an earlier compaction remains visible as the transcript grows. Automatic compaction is evidence that context pressure caused the provider to summarize earlier conversation detail; it is not a quality judgment or proof that the session failed.
+
+The unshared-context rule uses the latest context snapshot rather than cumulative transcript throughput or token spend. Tool calls provide evidence of sustained execution; elapsed wall time is deliberately excluded because it includes idle gaps. Threadlight does not parse natural-language instructions such as `AGENTS.md` to infer a delegation policy.
+
 ## Repetition
 
 A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights and the flow score, but is not shown as a persistent summary card or report section.
