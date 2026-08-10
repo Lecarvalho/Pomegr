@@ -123,26 +123,44 @@ export function Dashboard() {
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell">
         <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
-        <SessionHero session={data.session} historical={viewingHistory} />
+        {data.session && <SessionHero session={data.session} historical={viewingHistory} />}
 
         {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Claude Code needs your input</strong><small>{attentionSession.title}</small></span></div>}
         {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-        {data.session && <RepositoryPanel session={data.session} />}
-        {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}
-        <SummaryMetrics state={data} historical={viewingHistory} />
-        <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session?.cost || null} historical={viewingHistory} />
-        <MachineryPanel machinery={data.session?.contextMachinery} historical={viewingHistory} />
+        {data.session ? <>
+          <section className="contentGrid">
+            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={data.planTasks || []} historical={viewingHistory} />
+            <InsightsPanel insights={data.insights} />
+          </section>
 
-        <section className="contentGrid">
-          <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={data.planTasks || []} historical={viewingHistory} />
-          <InsightsPanel insights={data.insights} />
-        </section>
+          <SummaryMetrics state={data} historical={viewingHistory} />
+          <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} historical={viewingHistory} />
 
-        <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh(false)} />
+          <details className="sessionDetails">
+            <summary><span>Session details</span><small>Repository, limits, machinery, and activity</small></summary>
+            <div className="sessionDetailsBody">
+              <RepositoryPanel session={data.session} />
+              {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}
+              <MachineryPanel machinery={data.session.contextMachinery} historical={viewingHistory} />
+              <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh(false)} />
+            </div>
+          </details>
+        </> : <AwaitingSession connected={data.connected} />}
           <DashboardFooter viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
         </main>
       </div>
     </LiveClockProvider>
+  );
+}
+
+function AwaitingSession({ connected }: { connected: boolean }) {
+  return (
+    <section className="awaitingSession" aria-label="Session discovery status">
+      <h1>{connected ? "Start a coding-agent session" : "Reconnect the local monitor"}</h1>
+      <p>{connected
+        ? "Your active session will appear here automatically. Prompts and responses stay private."
+        : "Run npm run dev in this project, then Threadlight will resume automatically."}</p>
+    </section>
   );
 }
 

@@ -263,7 +263,9 @@ describe("agent detail popovers", () => {
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} /></LiveClockProvider>);
 
     await user.click(screen.getByRole("button", { name: "1 skill" }));
-    expect(screen.getByRole("dialog", { name: "Skills used by Primary agent" })).toBeInTheDocument();
+    const skillsDialog = screen.getByRole("dialog", { name: "Skills used by Primary agent" });
+    expect(skillsDialog).toBeInTheDocument();
+    expect(skillsDialog.closest(".agentsPanel")).toHaveClass("hasOpenPopover");
 
     await user.click(screen.getByRole("button", { name: "1 shell tasks" }));
     expect(screen.queryByRole("dialog", { name: "Skills used by Primary agent" })).not.toBeInTheDocument();
@@ -271,6 +273,7 @@ describe("agent detail popovers", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.querySelector(".agentsPanel")).not.toHaveClass("hasOpenPopover");
 
     await user.click(screen.getByRole("button", { name: "1 plan items" }));
     const planDialog = screen.getByRole("dialog", { name: "Claude plan checklist" });

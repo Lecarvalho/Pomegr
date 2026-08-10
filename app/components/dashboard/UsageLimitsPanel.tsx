@@ -6,7 +6,7 @@ export function UsageLimitsPanel({ usageLimits }: { usageLimits: UsageLimits }) 
   return (
     <section className="panel limitsPanel" aria-label="Claude usage limits">
       <div className="limitsHeader">
-        <div><span className="label">CLAUDE PLAN</span><h2>Usage limits</h2></div>
+        <h2>Usage limits</h2>
         <span className="quiet usageCheck">
           {usageLimits.fetchedAt ? <>Last updated: <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></> : "Connecting…"}
         </span>

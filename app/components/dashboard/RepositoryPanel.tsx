@@ -58,7 +58,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
   return (
     <section className="panel gitPanel" aria-label={!repository.available ? "Pull request overview" : repository.historical ? "Recorded Git branch" : "Git branch overview"}>
       <div className="gitSummary">
-        <div><span className="label">{repository.available ? repository.historical ? "RECORDED BRANCH" : "GIT BRANCH" : "SESSION REPOSITORY"}</span><h2>{repository.available ? repository.branch : session.project}</h2><p title={session.cwd}>{session.project}</p></div>
+        <div><h2>{repository.available ? repository.branch : session.project}</h2><p title={session.cwd}>{repository.historical ? `Recorded branch · ${session.project}` : session.project}</p></div>
         <div className="gitBadges">
           {pullRequests.length > 0 && (
             <div className="pullRequestAnchor" ref={pullRequestAnchorRef}>

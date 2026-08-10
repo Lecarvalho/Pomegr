@@ -32,8 +32,8 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
   const toggle = (kind: NonNullable<OpenAgentPopover>["kind"], agentId: string) => setOpenPopover((current) => current?.kind === kind && current.agentId === agentId ? null : { kind, agentId });
 
   return (
-    <article className="panel agentsPanel">
-      <PanelHeader eyebrow="ORCHESTRATION" title="Agent activity" trailing={<span className="quiet">{agents.length} observed</span>} />
+    <article className={`panel agentsPanel ${openPopover ? "hasOpenPopover" : ""}`.trim()}>
+      <PanelHeader title="Agent activity" trailing={<span className="quiet">{agents.length} observed</span>} />
       <div className="agentList">
         {agents.length === 0 && <EmptyState text="No Claude Code agents detected yet." />}
         {agentRows.map(({ agent, depth }) => {

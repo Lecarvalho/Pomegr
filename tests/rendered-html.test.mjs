@@ -29,12 +29,10 @@ test("server-renders the composed Threadlight dashboard", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Threadlight<\/title>/i);
-  assert.match(html, /LIVE SESSION OBSERVER/);
-  assert.match(html, /CONTEXT GROWTH/);
-  assert.match(html, /Usage limits/);
-  assert.match(html, /Generate report/);
-  assert.match(html, /Agent activity/);
-  assert.match(html, /Recent activity/);
+  assert.match(html, /Waiting for a session/);
+  assert.match(html, /Reconnect the local monitor/);
+  assert.match(html, /Local-only observer · Read-only/);
+  assert.doesNotMatch(html, /Generate report|Flow score|Usage limits|Agent activity|Recent activity/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 

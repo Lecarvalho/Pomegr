@@ -8,19 +8,17 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
   return (
     <section className="hero" id="top">
       <div>
-        <div className="eyebrow"><span /> {historical ? "HISTORICAL SESSION" : "LIVE SESSION OBSERVER"} {session ? `· ${session.project}` : ""}</div>
-        {session && <div className="sessionId"><span>SESSION ID</span><code>{session.id}</code></div>}
         <h1>{sessionLabel}</h1>
-        <p title={session?.summary ? "Provider-generated session summary" : undefined}>{session?.summary?.text || (session
-          ? historical ? "No provider-generated summary was recorded for this session." : "Waiting for a provider-generated session summary."
-          : "Waiting for a session summary.")}</p>
-        {session?.summary && <small className="heroSummarySource">Provider-generated session summary</small>}
+        {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><code>{session.id}</code></div>}
+        {session && <p title={session.summary ? "Provider-generated session summary" : undefined}>{session.summary?.text
+          || (historical ? "No provider-generated summary was recorded for this session." : "Waiting for a provider-generated session summary.")}</p>}
+        {session?.summary && <small className="heroSummarySource">Provider-generated summary</small>}
       </div>
-      <div className="sessionMeta">
+      {session && <div className="sessionMeta">
         <div className="sessionMetaValues">
           <span>{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
-          <strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong>
-          <small>{session ? historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></> : "Auto-discovery enabled"}</small>
+          <strong><SessionWallTimeText session={session} historical={historical} /></strong>
+          <small>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></>}</small>
           {session?.approvalMode && <div className="sessionApprovalMode">
             <span>{historical ? "LAST MODE" : "APPROVAL MODE"}</span>
             <AgentChip
@@ -33,7 +31,7 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
           </div>}
         </div>
         {session?.signal && <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>}
-      </div>
+      </div>}
     </section>
   );
 }

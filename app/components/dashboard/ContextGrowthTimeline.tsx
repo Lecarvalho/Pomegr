@@ -34,8 +34,7 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, historica
     <section className={`panel tokenHistogramPanel ${historical ? "historical" : ""}`} aria-label="All-agent context growth timeline">
       <div className="panelHeader tokenHistogramHeader">
         <div className="tokenHistogramTitle">
-          <div className="pulseBars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-          <div><span className="label">CONTEXT GROWTH</span><h2>Context added over time</h2></div>
+          <h2>Context added over time</h2>
         </div>
         <div className="histogramSummary">
           <strong>{compactNumber(currentTokens.allAgents)}</strong>

@@ -13,7 +13,7 @@ export function MachineryPanel({ machinery, historical }: { machinery: ContextMa
   useDismissibleLayer(open, rootRef, close);
   return (
     <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Primary session machinery">
-      <div className="cacheLead"><span className="label">SESSION MACHINERY</span><h2>Loaded machinery</h2><p>Provider-estimated context used by tools, instructions, and other session machinery.</p></div>
+      <div className="cacheLead"><h2>Loaded machinery</h2><p>Provider-estimated context used by tools, instructions, and other session machinery.</p></div>
       <div className="machineryStat" ref={rootRef}>
         <span>Machinery token load</span>
         {machinery ? <>
