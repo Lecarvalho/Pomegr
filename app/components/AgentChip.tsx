@@ -13,7 +13,9 @@ type AgentChipProps = {
 export function AgentChip({ as = "span", children, className = "", title, onClick, expanded, controls }: AgentChipProps) {
   const classes = `agentChip ${as === "button" ? "agentChipButton" : ""} ${className}`.trim();
   if (as === "button") return (
-    <button className={classes} type="button" onClick={onClick} aria-expanded={expanded} aria-controls={controls}>{children}</button>
+    <button className={classes} type="button" onClick={onClick} aria-expanded={expanded} aria-controls={controls}>
+      <span className="agentChipLabel">{children}</span>
+    </button>
   );
-  return <span className={classes} title={title}>{children}</span>;
+  return <span className={classes} title={title}><span className="agentChipLabel" title={title}>{children}</span></span>;
 }
