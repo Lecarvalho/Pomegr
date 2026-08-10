@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Agent, ExecutionTask, SessionSummary } from "../../shared/monitor-contract";
+import type { Agent, ExecutionTask, MonitorState, SessionSummary } from "../../shared/monitor-contract";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { ContextGrowthTimeline } from "../../app/components/dashboard/ContextGrowthTimeline";
+import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 const task: ExecutionTask = {
@@ -39,6 +40,104 @@ const agent: Agent = {
   durationMs: 5_000,
   tokens: { total: 1200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500 },
 };
+
+function repositorySession(repository: NonNullable<MonitorState["session"]>["repository"]) {
+  return {
+    id: "session-1",
+    title: "Repository work",
+    project: "threadlight",
+    cwd: "C:\\Workspace\\repos\\threadlight",
+    repository,
+    startedAt: null,
+    updatedAt: null,
+    durationMs: 0,
+    cost: null,
+    contextMachinery: null,
+    summary: null,
+    signal: null,
+  } satisfies NonNullable<MonitorState["session"]>;
+}
+
+describe("repository branch overview", () => {
+  it("shows recent commits and upstream status on the main branch", () => {
+    const session = repositorySession({
+      available: true,
+      branch: "main",
+      files: [],
+      historical: false,
+      isMain: true,
+      comparison: { branch: "origin/main", kind: "upstream", ahead: 1, behind: 0, integrated: false },
+      commits: [{ hash: "abc1234", subject: "Add commit history", committedAt: "2026-08-09T12:00:00.000Z" }],
+      remote: { status: "ready", checkedAt: "2026-08-09T12:01:00.000Z" },
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    expect(screen.getByRole("region", { name: "Git branch overview" })).toHaveTextContent("RECENT COMMITS");
+    expect(screen.getByText("1 ahead vs origin/main")).toBeInTheDocument();
+    expect(screen.getByText("Add commit history")).toBeInTheDocument();
+    expect(screen.getByText("No local changes.")).toBeInTheDocument();
+  });
+
+  it("shows branch-only commits relative to the default branch", () => {
+    const session = repositorySession({
+      available: true,
+      branch: "feature/commits",
+      files: [{ status: " M", path: "app/Dashboard.tsx" }],
+      historical: false,
+      isMain: false,
+      comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 1, integrated: false },
+      commits: [{ hash: "def5678", subject: "Consolidate branch state", committedAt: null }],
+      remote: { status: "ready", checkedAt: "2026-08-09T12:01:00.000Z" },
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    expect(screen.getByText("COMMITS SINCE ORIGIN/MAIN")).toBeInTheDocument();
+    expect(screen.getByText("2 ahead · 1 behind relative to origin/main")).toBeInTheDocument();
+    expect(screen.getByText("Consolidate branch state")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
+  });
+
+  it("shows remote progress without using stale comparison data", () => {
+    const session = repositorySession({
+      available: true,
+      branch: "feature/commits",
+      files: [],
+      historical: false,
+      isMain: false,
+      comparison: null,
+      commits: [],
+      remote: { status: "checking", checkedAt: null },
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    expect(screen.getByText("Checking remote…")).toBeInTheDocument();
+    expect(screen.getByText("Checking the remote default branch…")).toBeInTheDocument();
+    expect(screen.queryByText(/relative to/)).not.toBeInTheDocument();
+  });
+
+  it("labels squash-merged changes as integrated", () => {
+    const session = repositorySession({
+      available: true,
+      branch: "feature/squash-merged",
+      files: [],
+      historical: false,
+      isMain: false,
+      comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 1, integrated: true },
+      commits: [],
+      remote: { status: "ready", checkedAt: "2026-08-09T12:01:00.000Z" },
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    expect(screen.getByText("Changes integrated into origin/main")).toBeInTheDocument();
+    expect(screen.getByText("UNMERGED BRANCH COMMITS")).toBeInTheDocument();
+    expect(screen.getByText("Branch changes are already integrated into origin/main.")).toBeInTheDocument();
+    expect(screen.queryByText(/ahead/)).not.toBeInTheDocument();
+  });
+});
 
 describe("agent detail popovers", () => {
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {

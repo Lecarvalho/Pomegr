@@ -111,6 +111,23 @@ export type MonitorState = {
       branch: string;
       files: Array<{ status: string; path: string }>;
       historical: boolean;
+      isMain: boolean;
+      comparison: {
+        branch: string;
+        kind: "base" | "upstream";
+        ahead: number;
+        behind: number;
+        integrated: boolean;
+      } | null;
+      commits: Array<{
+        hash: string;
+        subject: string;
+        committedAt: string | null;
+      }>;
+      remote: {
+        status: "checking" | "ready" | "unavailable";
+        checkedAt: string | null;
+      };
     };
     startedAt: string | null;
     updatedAt: string | null;

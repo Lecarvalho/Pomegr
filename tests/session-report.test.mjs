@@ -16,7 +16,16 @@ const state = {
     updatedAt: "2026-08-05T17:30:00.000Z",
     durationMs: 1_800_000,
     cost: { amount: 1.2345, currency: "USD", type: "estimated", observedAt: "2026-08-05T17:30:00.000Z" },
-    repository: { available: true, branch: "main", files: [{ status: " M", path: "monitor/server.mjs" }], historical: false },
+    repository: {
+      available: true,
+      branch: "main",
+      files: [{ status: " M", path: "monitor/server.mjs" }],
+      historical: false,
+      isMain: true,
+      comparison: { branch: "origin/main", kind: "upstream", ahead: 1, behind: 0, integrated: false },
+      commits: [{ hash: "abc1234", subject: "Add repository summary", committedAt: "2026-08-05T17:20:00.000Z" }],
+      remote: { status: "ready", checkedAt: "2026-08-05T17:29:00.000Z" },
+    },
   },
   metrics: {
     agents: 2,
@@ -60,6 +69,9 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Primary agent.*1,000/);
   assert.match(report, /## Skill usage/);
   assert.match(report, /github:gh-fix-ci.*2/);
+  assert.match(report, /Compared with `origin\/main`.*1 ahead, 0 behind/);
+  assert.match(report, /Recent commits/);
+  assert.match(report, /abc1234.*Add repository summary/);
   assert.doesNotMatch(report, /Repeated calls|Repeated call patterns/);
   assert.match(report, /Retrospective questions/);
   assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE PLAN SUBJECT MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
@@ -70,7 +82,7 @@ test("builds a deterministic retrospective without private raw state", () => {
 test("omits live-only data from historical reports", () => {
   const historical = structuredClone(state);
   historical.view = "history";
-  historical.session.repository = { available: true, branch: "feature/history", files: [], historical: true };
+  historical.session.repository = { available: true, branch: "feature/history", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } };
   const report = buildSessionReport(historical, generatedAt);
 
   assert.match(report, /Recorded branch.*feature\/history/);
@@ -86,4 +98,18 @@ test("renders needs-input status as a human-readable report label", () => {
 
   assert.match(report, /Primary agent.*needs input/);
   assert.doesNotMatch(report, /needs_input/);
+});
+
+test("reports squash-integrated changes without an ahead count", () => {
+  const integrated = structuredClone(state);
+  integrated.session.repository.branch = "feature/squash-merged";
+  integrated.session.repository.isMain = false;
+  integrated.session.repository.comparison = { branch: "origin/main", kind: "base", ahead: 0, behind: 1, integrated: true };
+  integrated.session.repository.commits = [];
+
+  const report = buildSessionReport(integrated, generatedAt);
+
+  assert.match(report, /Branch changes are already integrated/);
+  assert.match(report, /rewritten history remains 1 graph commit behind/);
+  assert.doesNotMatch(report, /0 ahead/);
 });

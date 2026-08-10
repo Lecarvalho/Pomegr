@@ -132,6 +132,23 @@ export function buildSessionReport(state, generatedAt = new Date()) {
       lines.push("- Historical uncommitted-file state was not recorded.");
     } else {
       lines.push(`- **Uncommitted files:** ${number(repository.files?.length)}`);
+      if (repository.comparison) {
+        if (repository.comparison.integrated) {
+          const graphCommitLabel = repository.comparison.behind === 1 ? "commit" : "commits";
+          lines.push(`- **Compared with ${code(repository.comparison.branch)}:** Branch changes are already integrated; rewritten history remains ${number(repository.comparison.behind)} graph ${graphCommitLabel} behind`);
+        } else {
+          lines.push(`- **Compared with ${code(repository.comparison.branch)}:** ${number(repository.comparison.ahead)} ahead, ${number(repository.comparison.behind)} behind`);
+        }
+        lines.push(`- **Remote comparison checked:** ${localTime(repository.remote?.checkedAt)}`);
+      } else if (repository.remote?.status === "checking") {
+        lines.push("- **Remote comparison:** In progress");
+      } else if (repository.remote?.status === "unavailable") {
+        lines.push("- **Remote comparison:** Unavailable");
+      }
+      if (repository.commits?.length) {
+        lines.push("", `### ${repository.isMain ? "Recent commits" : "Commits on this branch"}`, "");
+        for (const commit of repository.commits) lines.push(`- ${code(commit.hash)} ${cell(commit.subject)} — ${cell(localTime(commit.committedAt))}`);
+      }
     }
     if (!repository.historical && repository.files?.length) {
       lines.push("");

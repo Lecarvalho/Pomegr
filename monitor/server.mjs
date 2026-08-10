@@ -3,12 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { agentTiming, applyWaitingStatus, externallyStoppedAgentTimes, isAgentTranscriptFinished, isExternalStopCurrent, isRunningAgent, pendingUserInputAt, resolveAgentMetadata } from "./agent-metadata.mjs";
 import { shellFailureActivityEvents, userInputContentType } from "./activity-events.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "./context-machinery.mjs";
 import { buildExecutionTasks } from "./execution-tasks.mjs";
+import { readGitState } from "./git-state.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "./session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "./session-registry.mjs";
 import { readSessionTasks } from "./session-tasks.mjs";
@@ -174,35 +174,11 @@ function projectName(mainFile, records) {
 }
 
 function gitState(cwd) {
-  const empty = { available: false, branch: "Not a Git repository", files: [] };
-  if (!cwd) return empty;
   const cached = gitCache.get(cwd);
   if (cached && Date.now() - cached.timestamp < 2500) return cached.value;
-  try {
-    const commonArgs = ["-c", `safe.directory=${cwd}`, "-c", "core.quotepath=false", "-C", cwd];
-    let branch = execFileSync("git", [...commonArgs, "branch", "--show-current"], {
-      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500,
-    }).trim();
-    if (!branch) {
-      const hash = execFileSync("git", [...commonArgs, "rev-parse", "--short", "HEAD"], {
-        encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500,
-      }).trim();
-      branch = `detached@${hash}`;
-    }
-    const output = execFileSync("git", [...commonArgs, "status", "--porcelain=v1"], {
-      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2500,
-    });
-    const files = output.split(/\r?\n/).filter(Boolean).map((line) => ({
-      status: line.slice(0, 2),
-      path: line.slice(3),
-    }));
-    const value = { available: true, branch, files };
-    gitCache.set(cwd, { timestamp: Date.now(), value });
-    return value;
-  } catch {
-    gitCache.set(cwd, { timestamp: Date.now(), value: empty });
-    return empty;
-  }
+  const value = readGitState(cwd);
+  gitCache.set(cwd, { timestamp: Date.now(), value });
+  return value;
 }
 
 function recordedGitState(records) {
@@ -210,7 +186,7 @@ function recordedGitState(records) {
   for (const record of records) {
     if (typeof record.gitBranch === "string") branch = record.gitBranch;
   }
-  return { available: Boolean(branch), branch, files: [], historical: true };
+  return { available: Boolean(branch), branch, files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } };
 }
 
 function sessionTitle(records) {
