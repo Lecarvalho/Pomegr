@@ -9,6 +9,15 @@ export function relativeTime(value: string | null, now = Date.now()) {
   return `${Math.floor(seconds / 3600)}h ago`;
 }
 
+export function minuteRelativeTime(value: string | null, now = Date.now()) {
+  if (!value) return "—";
+  const seconds = Math.max(0, Math.floor((now - new Date(value).getTime()) / 1000));
+  if (seconds < 10) return "just now";
+  if (seconds < 60) return "less than a minute ago";
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+}
+
 export function shortTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(value));
 }
@@ -17,10 +26,9 @@ export function sessionListTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
-export function stateEndpoint(sessionId: string | null, refreshUsage = false) {
+export function stateEndpoint(sessionId: string | null) {
   const params = new URLSearchParams();
   if (sessionId) params.set("sessionId", sessionId);
-  if (refreshUsage) params.set("refreshUsage", "1");
   return `/api/state${params.size ? `?${params}` : ""}`;
 }
 

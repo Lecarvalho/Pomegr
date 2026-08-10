@@ -1,18 +1,14 @@
 import type { UsageLimits } from "../../../shared/monitor-contract";
 import { EmptyState } from "../EmptyState";
-import { RelativeTimeText, ResetCountdownText } from "../LiveTime";
+import { MinuteRelativeTimeText, ResetCountdownText } from "../LiveTime";
 
 export function UsageLimitsPanel({ usageLimits }: { usageLimits: UsageLimits }) {
   return (
     <section className="panel limitsPanel" aria-label="Claude usage limits">
       <div className="limitsHeader">
         <div><span className="label">CLAUDE PLAN</span><h2>Usage limits</h2></div>
-        <span className={`quiet usageCheck ${usageLimits.error ? "stale" : ""}`} title={usageLimits.error || undefined}>
-          {usageLimits.error
-            ? usageLimits.fetchedAt
-              ? <>Checked <RelativeTimeText value={usageLimits.fetchedAt} /> · retry failed <RelativeTimeText value={usageLimits.attemptedAt} /></>
-              : <>Refresh failed <RelativeTimeText value={usageLimits.attemptedAt} /> · retrying</>
-            : usageLimits.fetchedAt ? <>Checked <RelativeTimeText value={usageLimits.fetchedAt} /></> : "Connecting…"}
+        <span className="quiet usageCheck">
+          {usageLimits.fetchedAt ? <>Last updated: <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></> : "Connecting…"}
         </span>
       </div>
       <div className="limitCards">

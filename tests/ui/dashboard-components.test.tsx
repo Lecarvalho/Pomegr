@@ -311,8 +311,11 @@ describe("usage-limit clock", () => {
     const { rerender } = render(panel(true));
 
     expect(screen.getByText("Resets in 2m")).toBeInTheDocument();
+    expect(screen.getByText(/Last updated:/)).toHaveTextContent("Last updated: just now");
+    expect(screen.queryByText(/Checked|Refresh failed|retrying|\d+s ago/i)).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
+    expect(screen.getByText(/Last updated:/)).toHaveTextContent("Last updated: 1 minute ago");
     expect(panelRender).toHaveBeenCalledTimes(1);
 
     rerender(panel(false));

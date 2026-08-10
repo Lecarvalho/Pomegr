@@ -18,7 +18,6 @@ import { stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
-import { usageRefreshDelay } from "./usage-refresh.mjs";
 
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
@@ -32,9 +31,9 @@ export function Dashboard() {
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
-  const refresh = useCallback(async (refreshUsage = false) => {
+  const refresh = useCallback(async () => {
     try {
-      const response = await fetch(stateEndpoint(selectedSessionId, refreshUsage), { cache: "no-store" });
+      const response = await fetch(stateEndpoint(selectedSessionId), { cache: "no-store" });
       if (!response.ok) throw new Error("Monitor unavailable");
       const nextData = await response.json() as MonitorState;
       startTransition(() => {
@@ -73,12 +72,6 @@ export function Dashboard() {
     const interval = window.setInterval(refreshSessions, 2_000);
     return () => { window.clearTimeout(initial); window.clearInterval(interval); };
   }, [refreshSessions]);
-
-  useEffect(() => {
-    if (selectedIsHistorical || paused) return;
-    const timeout = window.setTimeout(() => { void refresh(true); }, usageRefreshDelay(data.usageLimits.attemptedAt));
-    return () => window.clearTimeout(timeout);
-  }, [data.usageLimits.attemptedAt, paused, refresh, selectedIsHistorical]);
 
   const viewingHistory = data.view === "history";
   const clockRunning = data.connected && !viewingHistory && !paused;

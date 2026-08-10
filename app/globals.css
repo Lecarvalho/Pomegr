@@ -118,7 +118,7 @@ button { color: inherit; }
 .gitHistorical { padding: 19px 21px; }.gitHistorical p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 
 .limitsPanel { margin-bottom: 12px; overflow: hidden; }
-.limitsHeader { padding: 17px 21px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }.limitsHeader h2 { margin: 4px 0 0; font: 400 20px/1 Georgia, serif; }.usageCheck.stale { color: var(--amber); }
+.limitsHeader { padding: 17px 21px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }.limitsHeader h2 { margin: 4px 0 0; font: 400 20px/1 Georgia, serif; }
 .limitCards { display: grid; grid-template-columns: repeat(3, 1fr); }.limitCards > .empty { grid-column: 1 / -1; min-height: 105px; }
 .limitCard { padding: 18px 20px; border-right: 1px solid var(--line); }.limitCard:last-child { border-right: 0; }
 .limitTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.limitTop div > span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }.limitTop div > strong { display: block; margin-top: 5px; font: 400 17px/1 Georgia, serif; }.limitTop b { font: 400 27px/1 Georgia, serif; }

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-import { USAGE_REFRESH_INTERVAL_MS, usageRefreshDelay } from "../app/usage-refresh.mjs";
 
 async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -63,15 +62,6 @@ test("keeps browser modules provider-safe and reuses the vector close control", 
   assert.match(closeButton, /<svg viewBox="0 0 12 12"/);
   assert.match(components, /<CloseButton\b/);
   assert.match(monitor, /listen\(PORT, "127\.0\.0\.1"/);
-  assert.match(stateRoute, /monitorParams\.set\("refreshUsage", "1"\)/);
+  assert.doesNotMatch(stateRoute, /refreshUsage/);
   assert.match(stateRoute, /monitorParams\.set\("sessionId", sessionId\)/);
-});
-
-test("refreshes stale usage immediately and waits out a recent attempt", () => {
-  const now = Date.parse("2026-08-06T14:00:00.000Z");
-  assert.equal(usageRefreshDelay(null, now), 0);
-  assert.equal(usageRefreshDelay("invalid", now), 0);
-  assert.equal(usageRefreshDelay("2026-08-06T13:58:59.999Z", now), 0);
-  assert.equal(usageRefreshDelay("2026-08-06T13:59:20.000Z", now), 20_100);
-  assert.equal(usageRefreshDelay("2026-08-06T14:00:10.000Z", now), USAGE_REFRESH_INTERVAL_MS);
 });

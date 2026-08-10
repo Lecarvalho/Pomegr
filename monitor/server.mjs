@@ -19,6 +19,7 @@ import { readSessionCost } from "./session-cost.mjs";
 import { buildSkillUsage, normalizedSkillName } from "./skill-usage.mjs";
 import { concurrentMutationOverlaps, mutationScopes, repetitionSignature } from "./tool-efficiency.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
+import { createUsageLimitsCoordinator } from "./usage-limits.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const CLAUDE_PROJECTS = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
@@ -30,79 +31,28 @@ const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const gitCache = new Map();
 const sessionSummaryCache = new Map();
 const contextMachineryCache = new Map();
-let usageCache = { timestamp: 0, value: null, pending: null };
 
 function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
 }
 
-function cachedUsageLimits() {
-  return usageCache.value || emptyUsageLimits();
-}
-
-function sanitizedUsageError(error) {
-  const message = error instanceof Error ? error.message : "";
-  if (/credentials|oauth|enoent/i.test(message)) return "Claude usage credentials are unavailable.";
-  if (/returned \d+/i.test(message)) return message.slice(0, 120);
-  return "Claude usage refresh failed.";
-}
-
-async function usageLimits() {
-  if (usageCache.value && Date.now() - usageCache.timestamp < 60_000) return usageCache.value;
-  if (usageCache.pending) return usageCache.pending;
-  usageCache.pending = (async () => {
-    try {
-      const credentialPath = path.join(os.homedir(), ".claude", ".credentials.json");
-      const credentials = JSON.parse(fs.readFileSync(credentialPath, "utf8"));
-      const token = credentials.claudeAiOauth?.accessToken;
-      if (!token) throw new Error("Claude OAuth session not found");
-      const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "anthropic-beta": "oauth-2025-04-20",
-          "anthropic-version": "2023-06-01",
-          "user-agent": "threadlight/0.1",
-        },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (!response.ok) throw new Error(`Anthropic usage endpoint returned ${response.status}`);
-      const body = await response.json();
-      const normalized = (Array.isArray(body.limits) ? body.limits : []).flatMap((limit) => {
-        if (limit.kind === "session") return [{
-          id: "current-session", label: "Current session", window: "5 hours",
-          percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-          severity: limit.severity || "normal", active: Boolean(limit.is_active),
-        }];
-        if (limit.kind === "weekly_all") return [{
-          id: "all-models", label: "All models", window: "7 days",
-          percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-          severity: limit.severity || "normal", active: Boolean(limit.is_active),
-        }];
-        if (limit.kind === "weekly_scoped" && limit.scope?.model?.display_name) return [{
-          id: `model-${String(limit.scope.model.display_name).toLowerCase()}`,
-          label: String(limit.scope.model.display_name), window: "7 days",
-          percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-          severity: limit.severity || "normal", active: Boolean(limit.is_active),
-        }];
-        return [];
-      });
-      const wanted = ["current-session", "all-models", "model-fable"];
-      const limits = wanted.map((id) => normalized.find((limit) => limit.id === id)).filter(Boolean);
-      const checkedAt = new Date().toISOString();
-      const value = { available: limits.length > 0, fetchedAt: checkedAt, attemptedAt: checkedAt, limits, error: "" };
-      usageCache = { timestamp: Date.now(), value, pending: null };
-      return value;
-    } catch (error) {
-      const errorMessage = sanitizedUsageError(error);
-      const value = usageCache.value
-        ? { ...usageCache.value, attemptedAt: new Date().toISOString(), error: errorMessage }
-        : { ...emptyUsageLimits(errorMessage), attemptedAt: new Date().toISOString() };
-      usageCache = { timestamp: Date.now(), value, pending: null };
-      return value;
-    }
-  })();
-  return usageCache.pending;
-}
+const usageLimits = createUsageLimitsCoordinator({
+  request: async () => {
+    const credentialPath = path.join(os.homedir(), ".claude", ".credentials.json");
+    const credentials = JSON.parse(fs.readFileSync(credentialPath, "utf8"));
+    const token = credentials.claudeAiOauth?.accessToken;
+    if (!token) throw new Error("Claude OAuth session not found");
+    return fetch("https://api.anthropic.com/api/oauth/usage", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "anthropic-version": "2023-06-01",
+        "user-agent": "threadlight/0.1",
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+  },
+}).get;
 
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
@@ -254,7 +204,7 @@ function runtimeMetadata(records) {
   return { model, effort };
 }
 
-async function analyze(refreshUsage = false, requestedSessionId = "") {
+async function analyze(requestedSessionId = "") {
   const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
   const explicitMatch = EXPLICIT_SESSION
     && path.basename(EXPLICIT_SESSION, ".jsonl") === requestedSessionId
@@ -269,7 +219,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
   if (!mainFile) return createEmptyMonitorState({
     connected: true,
     view: historical ? "history" : "live",
-    usageLimits: historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits(),
+    usageLimits: historical ? emptyUsageLimits() : await usageLimits(),
     error: requestedSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${CLAUDE_PROJECTS}`,
   });
 
@@ -514,7 +464,7 @@ async function analyze(refreshUsage = false, requestedSessionId = "") {
     historical,
     transcripts: [...recordsByFile].map(([file, records]) => ({ file, records })),
   });
-  const currentUsageLimits = historical ? emptyUsageLimits() : refreshUsage ? await usageLimits() : cachedUsageLimits();
+  const currentUsageLimits = historical ? emptyUsageLimits() : await usageLimits();
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   allEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
@@ -569,10 +519,9 @@ const server = http.createServer(async (request, response) => {
   }
   if (requestUrl.pathname === "/api/state") {
     try {
-      const refreshUsage = requestUrl.searchParams.get("refreshUsage") === "1";
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(await analyze(refreshUsage, sessionId)));
+      response.end(JSON.stringify(await analyze(sessionId)));
     } catch (error) {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ ...analyzeEmpty(), error: error instanceof Error ? error.message : "Monitor error" }));
