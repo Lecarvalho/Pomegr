@@ -41,6 +41,11 @@ export function groupSessionsByProject(sessions: SessionSummary[]) {
   return [...groups].map(([project, projectSessions]) => ({ project, sessions: projectSessions }));
 }
 
+export function sessionNeedingAttention(sessions: SessionSummary[], currentSessionId: string | null, viewingHistory: boolean) {
+  if (!currentSessionId || viewingHistory) return null;
+  return sessions.find((session) => session.id === currentSessionId && session.isLive && session.needsInput) || null;
+}
+
 export function compactNumber(value: number) {
   return new Intl.NumberFormat(undefined, {
     notation: value >= 10_000 ? "compact" : "standard",

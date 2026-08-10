@@ -14,7 +14,7 @@ import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { UsageLimitsPanel } from "./components/dashboard/UsageLimitsPanel";
-import { stateEndpoint } from "./dashboard-utils";
+import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
@@ -75,7 +75,7 @@ export function Dashboard() {
 
   const viewingHistory = data.view === "history";
   const clockRunning = data.connected && !viewingHistory && !paused;
-  const attentionSessions = sessions.filter((session) => session.isLive && session.needsInput);
+  const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
 
   const selectSession = useCallback((session: SessionSummary) => {
     setSelectedSessionId(session.id);
@@ -125,7 +125,7 @@ export function Dashboard() {
         <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
         <SessionHero session={data.session} historical={viewingHistory} />
 
-        {attentionSessions.length > 0 && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Claude Code needs your input</strong><small>{attentionSessions.length === 1 ? attentionSessions[0].title : `${attentionSessions.length} live sessions are waiting for you`}</small></span></div>}
+        {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Claude Code needs your input</strong><small>{attentionSession.title}</small></span></div>}
         {data.error && <div className="notice"><span>!</span>{data.error}</div>}
         {data.session && <RepositoryPanel session={data.session} />}
         {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}

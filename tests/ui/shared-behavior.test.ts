@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { minuteRelativeTime, relativeTime, resetCountdown } from "../../app/dashboard-utils";
+import { minuteRelativeTime, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
+import type { SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
 describe("shared monitor defaults", () => {
@@ -31,6 +32,19 @@ describe("wall-time formatting", () => {
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("1 minute ago");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:03:00.000Z"))).toBe("3 minutes ago");
     expect(resetCountdown("2026-08-08T12:02:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Resets in 1m");
+  });
+});
+
+describe("session attention", () => {
+  const sessions: SessionSummary[] = [
+    { id: "waiting", title: "Waiting session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true },
+    { id: "working", title: "Working session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false },
+  ];
+
+  it("shows attention only while viewing the live session that needs input", () => {
+    expect(sessionNeedingAttention(sessions, "waiting", false)).toEqual(sessions[0]);
+    expect(sessionNeedingAttention(sessions, "working", false)).toBeNull();
+    expect(sessionNeedingAttention(sessions, "waiting", true)).toBeNull();
   });
 });
 
