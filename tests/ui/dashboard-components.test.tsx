@@ -144,6 +144,42 @@ describe("repository branch overview", () => {
     expect(screen.queryByText(/ahead/)).not.toBeInTheDocument();
   });
 
+  it("lets a matching merged pull request replace the integrated comparison badge", () => {
+    const session = repositorySession({
+      available: true,
+      branch: "feature/merged-pr",
+      files: [],
+      historical: false,
+      isMain: false,
+      comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 1, integrated: true },
+      commits: [],
+      remote: { status: "ready", checkedAt: "2026-08-10T12:01:00.000Z" },
+    }, {
+      status: "ready",
+      checkedAt: "2026-08-10T12:02:00.000Z",
+      items: [{
+        host: "github",
+        repository: "ThreadlightHQ/threadlight",
+        number: 42,
+        title: "Merge the completed feature",
+        url: "https://github.com/ThreadlightHQ/threadlight/pull/42",
+        state: "merged",
+        draft: false,
+        headBranch: "feature/merged-pr",
+        baseBranch: "main",
+        additions: 20,
+        deletions: 4,
+        updatedAt: "2026-08-10T12:00:00.000Z",
+        association: "session",
+      }],
+    });
+
+    render(<LiveClockProvider running={false}><RepositoryPanel session={session} /></LiveClockProvider>);
+
+    expect(screen.getByRole("button", { name: "merged PR #42" })).toBeInTheDocument();
+    expect(screen.queryByText("Changes integrated into origin/main")).not.toBeInTheDocument();
+  });
+
   it("opens a dismissible pull-request view from the repository header", async () => {
     const user = userEvent.setup();
     const session = repositorySession({

@@ -50,6 +50,11 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
     ? `${pullRequests[0].draft ? "Draft" : pullRequests[0].state} PR #${pullRequests[0].number}`
     : `${pullRequests.length} pull requests`;
   const sessionPullRequests = pullRequests.filter((pullRequest) => pullRequest.association === "session").length;
+  const mergedPullRequestCoversComparison = Boolean(repository.comparison?.integrated && pullRequests.some((pullRequest) => (
+    pullRequest.state === "merged"
+    && pullRequest.headBranch === repository.branch
+    && (repository.comparison?.branch === pullRequest.baseBranch || repository.comparison?.branch.endsWith(`/${pullRequest.baseBranch}`))
+  )));
   return (
     <section className="panel gitPanel" aria-label={!repository.available ? "Pull request overview" : repository.historical ? "Recorded Git branch" : "Git branch overview"}>
       <div className="gitSummary">
@@ -93,7 +98,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
               )}
             </div>
           )}
-          {repository.available && !repository.historical && comparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
+          {repository.available && !repository.historical && comparison && !mergedPullRequestCoversComparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
           {repository.available && !repository.historical && remote.status === "checking" && <span className="branchComparison pending">Checking remote…</span>}
           {repository.available && !repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote unavailable</span>}
         </div>
