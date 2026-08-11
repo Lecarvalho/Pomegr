@@ -20,7 +20,7 @@ For higher-confidence Windows live state, register this inert hook command for t
 node "C:\path\to\threadlight\scripts\codex-lifecycle-bridge.mjs"
 ```
 
-Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. The default snapshot root is `%USERPROFILE%\.threadlight\codex-liveness`. Set `THREADLIGHT_CODEX_LIVENESS_DIR` in both the hook environment and the Threadlight monitor only when a shared override is needed.
+Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. On Windows, the default snapshot root is `%APPDATA%\threadlight\codex-liveness`. Set `THREADLIGHT_CODEX_LIVENESS_DIR` in both the hook environment and the Threadlight monitor only when a shared override is needed.
 
 An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status and account rate limits. The standalone Windows monitor does not attempt to discover or attach to another process's private stdio transport. Without that connection it uses the lifecycle bridge, then a bounded and explicitly heuristic rollout fallback.
 
@@ -49,12 +49,15 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 | `CLAUDE_PROJECTS_DIR` | Monitor | Claude project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Monitor | Pin one Claude primary JSONL session | Automatic selection |
 | `CODEX_HOME` | Monitor | Codex sessions, archive, and index root | `%USERPROFILE%\.codex` |
-| `THREADLIGHT_CODEX_LIVENESS_DIR` | Monitor and Codex hook bridge | Shared allowlisted lifecycle snapshot root | `%USERPROFILE%\.threadlight\codex-liveness` |
+| `THREADLIGHT_DATA_DIR` | Desktop, monitor, and local bridges | Override Threadlight-owned settings/snapshot root | `%APPDATA%\threadlight` on Windows |
+| `THREADLIGHT_CODEX_LIVENESS_DIR` | Monitor and Codex hook bridge | Shared allowlisted lifecycle snapshot root | `%APPDATA%\threadlight\codex-liveness` on Windows |
 | `THREADLIGHT_CODEX_OWNER_PID` | Codex hook bridge | Explicit owner PID for unusual process-wrapper topologies | Automatic owner discovery |
-| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized Claude estimate snapshots | `%USERPROFILE%\.threadlight\cost-snapshots` |
+| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized Claude estimate snapshots | `%APPDATA%\threadlight\cost-snapshots` on Windows |
 | `SESSION_PULSE_PORT` | Monitor and development launcher | Loopback monitor port | `4317` |
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Threadlight configuration.
+
+Installed desktop state uses Electron's stable user-data directory. Portable builds use `ThreadlightData` beside the executable and never relocate `.claude` or `.codex`. To share Claude cost or Codex lifecycle snapshots with a portable build, set `THREADLIGHT_DATA_DIR` to that portable `ThreadlightData` directory in the external bridge environment as well as when launching Threadlight; the specific snapshot-root variables remain available when only one bridge root should move.
 
 ## Troubleshooting
 

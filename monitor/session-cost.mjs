@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveThreadlightDataRoot } from "../shared/threadlight-paths.mjs";
 
 const SAFE_SESSION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 
 export function sessionCostRoot() {
-  return process.env.THREADLIGHT_COST_SNAPSHOTS_DIR || path.join(os.homedir(), ".threadlight", "cost-snapshots");
+  return process.env.THREADLIGHT_COST_SNAPSHOTS_DIR || path.join(resolveThreadlightDataRoot({ homeDir: os.homedir() }), "cost-snapshots");
 }
 
 function snapshotPath(sessionId, root = sessionCostRoot()) {

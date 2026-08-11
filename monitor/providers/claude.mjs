@@ -149,9 +149,10 @@ function usageRequest(homeDir, fetchImpl) {
 
 /** @returns {import("./provider-contract").ProviderAdapter} */
 export function createClaudeProvider(options = {}) {
+  const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
-  const projectsRoot = options.projectsRoot || process.env.CLAUDE_PROJECTS_DIR || path.join(homeDir, ".claude", "projects");
-  const explicitSession = options.explicitSession ?? process.env.CLAUDE_SESSION_FILE;
+  const projectsRoot = options.projectsRoot || environment.CLAUDE_PROJECTS_DIR || path.join(homeDir, ".claude", "projects");
+  const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const tasksRoot = options.tasksRoot || path.join(homeDir, ".claude", "tasks");
   const registryRoot = options.registryRoot || path.join(homeDir, ".claude", "sessions");
   const now = options.now || (() => Date.now());

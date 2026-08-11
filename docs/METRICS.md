@@ -24,7 +24,7 @@ Codex rollout parsing accepts the recognized snake_case and camelCase token-coun
 
 ## Estimated API cost
 
-Threadlight does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. The bridge persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `~/.threadlight/cost-snapshots`; all other status-line fields are discarded.
+Threadlight does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. The bridge persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `%APPDATA%\threadlight\cost-snapshots` on Windows (`~/.threadlight/cost-snapshots` elsewhere); all other status-line fields are discarded.
 
 The value is cumulative for the Claude Code session and is the only cumulative spend-like value Threadlight presents. It is labeled **Estimated API cost** because Claude Code calculates it at standard API list rates and it may differ from an actual bill. A historical session shows its last captured estimate; if no snapshot was captured, cost remains unavailable rather than being reconstructed from transcript throughput.
 

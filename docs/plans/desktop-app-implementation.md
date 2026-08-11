@@ -170,9 +170,11 @@ npm run test:node
 
 ## TL-DT-02 — Prove packaged Node runtime compatibility
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-01`
 - **Target size:** 1 session
+- **Completed:** 2026-08-11
+- **Implementation notes:** Added Electron 43.3.0 and a hardened real-ASAR smoke fixture using Electron's bundled Node runtime. The accepted feasibility fallback runs the provider-owning monitor in one self-contained physical worker and the provider-neutral web lifecycle in Electron main. Main/web use a strict keep-only environment and a `PATH` with every system-Node directory removed while preserving Git; provider/home paths reach only the monitor through a temporary allowlisted snapshot. The accepted unpack boundary is the monitor bundle, the complete generated `dist/` tree required by Vinext's physical `outDir`, and the three Sharp Windows native files. The final post-hardening `npm.cmd run desktop:smoke` passed manually in normal PowerShell with bounded cleanup.
 
 ### Goal
 
@@ -208,9 +210,11 @@ npm run desktop:smoke
 
 ## TL-DT-03 — Build the secure Electron shell and service supervisor
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-02`
 - **Target size:** 1–2 sessions
+- **Completed:** 2026-08-11
+- **Implementation notes:** Added the single-instance Electron shell, sandboxed dashboard window, fixed external-link allowlist, restrictive CSP, denied permissions/downloads/webviews/navigation/window creation, dynamic loopback services, and an ephemeral launch-token boundary with strict Host/Origin/read-only-method checks. Startup and shutdown use bounded injectable orchestration with fixed safe errors and supervised cleanup. The preload was initially empty and TL-DT-04 later added only a validated report-save method. The accepted TL-DT-02 fallback remains one credential-owning monitor worker plus the provider-neutral web lifecycle in Electron main; a monitor-worker Git probe and the upgraded hidden-`BrowserWindow` packaged smoke passed in normal PowerShell.
 
 ### Goal
 
@@ -254,9 +258,11 @@ npm run lint
 
 ## TL-DT-04 — Make installed-path discovery reliable
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-03`
 - **Target size:** 1 session
+- **Completed:** 2026-08-11
+- **Implementation notes:** Added cwd-independent installed/portable resource and user-data resolution, early portable Electron data redirection, stable allowlisted Threadlight settings/snapshot roots, preserved provider-owned Claude/Codex discovery and Git paths, and a trusted bounded native report-save flow. Desktop settings persist only the versioned window/login/notification/update schema; missing files may be created, while malformed, unreadable, or newer-version files cannot be overwritten on close and explicit recovery quarantines the original. Windows space/non-ASCII/different-cwd coverage, full tests/lint, and the final normal-PowerShell packaged smoke passed.
 
 ### Goal
 
@@ -557,6 +563,9 @@ Add short entries only after completing a task.
 | Date | Task | Result | Notes |
 |---|---|---|---|
 | 2026-08-11 | TL-DT-01 | Complete | Added programmatic monitor/web startup and shutdown, dynamic loopback ports, safe lifecycle failures, cwd-independent production startup, and lifecycle regression coverage. `npm test` and `npm run lint` pass. |
+| 2026-08-11 | TL-DT-02 | Complete | Final normal-PowerShell packaged smoke passed with strict main/web environment isolation, system-Node-free PATH with Git retained, one monitor worker, physical Vinext output, Sharp native loading, dynamic loopback ports, and bounded cleanup. |
+| 2026-08-11 | TL-DT-03 | Complete | Added the secure single-instance shell, launch-token and local-origin gates, sandboxed renderer with no native API, bounded service supervision and failure UI, strict navigation/permission/download denial, and focused lifecycle/security coverage. The upgraded normal-PowerShell packaged dashboard smoke passed. |
+| 2026-08-11 | TL-DT-04 | Complete | Added installed/portable path resolution, isolated Threadlight-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
 
 ## Reference documentation
 

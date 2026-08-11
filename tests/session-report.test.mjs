@@ -147,3 +147,10 @@ test("reports squash-integrated changes without an ahead count", () => {
   assert.match(report, /rewritten history remains 1 graph commit behind/);
   assert.doesNotMatch(report, /0 ahead/);
 });
+
+test("bounds report filenames for native desktop save dialogs", () => {
+  const title = `A very long session ${"with repeated words ".repeat(20)}`;
+  const filename = sessionReportFilename({ session: { title } }, new Date("2026-08-11T12:00:00.000Z"));
+  assert.match(filename, /^threadlight-[a-z0-9-]+-2026-08-11\.md$/);
+  assert.ok(filename.length <= 111);
+});

@@ -190,7 +190,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
 
 export function sessionReportFilename(state, generatedAt = new Date()) {
   const title = state?.session?.title || state?.session?.project || "session";
-  const slug = title.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "session";
+  const slug = title.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 80).replace(/-$/, "") || "session";
   const date = generatedAt.toISOString().slice(0, 10);
   return `threadlight-${slug}-${date}.md`;
 }

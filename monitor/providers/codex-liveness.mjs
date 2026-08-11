@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveThreadlightDataRoot } from "../../shared/threadlight-paths.mjs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { codexTimestamp, isSafeCodexSessionId } from "./codex-session-metadata.mjs";
 
@@ -98,8 +99,7 @@ function leaseFile(root, ownerPid, ownerStartedAt) {
 export function resolveCodexLivenessRoot(options = {}) {
   const environment = options.env ?? process.env;
   return path.resolve(options.root || environment.THREADLIGHT_CODEX_LIVENESS_DIR || path.join(
-    options.homeDir || os.homedir(),
-    ".threadlight",
+    resolveThreadlightDataRoot({ environment, homeDir: options.homeDir || os.homedir(), platform: options.platform }),
     "codex-liveness",
   ));
 }

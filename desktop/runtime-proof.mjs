@@ -2,10 +2,13 @@ import { existsSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parentPort as workerParentPort } from "node:worker_threads";
+import { parentPort as workerParentPort, workerData } from "node:worker_threads";
+
+export { workerData };
 
 export const parentPort = process.parentPort;
-export const resourceRoot = process.env.THREADLIGHT_SMOKE_RESOURCE_ROOT
+export const resourceRoot = process.env.THREADLIGHT_RESOURCE_ROOT
+  || process.env.THREADLIGHT_SMOKE_RESOURCE_ROOT
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function send(message) {
@@ -20,8 +23,8 @@ export function recordUtilityStage(stage) {
   try { writeFileSync(stagePath, stage, "utf8"); } catch { /* Diagnostics are best-effort. */ }
 }
 
-export async function assertPackagedElectronRuntime() {
-  if (!process.versions.electron || !resourceRoot.includes(`${path.sep}app.asar`)) {
+export async function assertPackagedElectronRuntime(options = {}) {
+  if (!process.versions.electron || (options.smoke && !resourceRoot.includes(`${path.sep}app.asar`))) {
     throw new Error("DESKTOP_PACKAGED_ELECTRON_REQUIRED");
   }
   if (process.env.THREADLIGHT_SMOKE_NO_SYSTEM_NODE !== "1") {
@@ -33,7 +36,7 @@ export async function assertPackagedElectronRuntime() {
   }
 
   const packageMetadata = JSON.parse(await readFile(path.join(resourceRoot, "package.json"), "utf8"));
-  if (packageMetadata.name !== "threadlight-desktop-smoke") {
+  if (!['threadlight', 'threadlight-desktop-smoke'].includes(packageMetadata.name)) {
     throw new Error("DESKTOP_RESOURCE_READ_FAILED");
   }
 }

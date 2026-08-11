@@ -128,11 +128,20 @@ export function Dashboard() {
         // The visible snapshot remains sufficient when the local refresh is unavailable.
       }
       const generatedAt = new Date();
-      const blob = new Blob([buildSessionReport(reportState, generatedAt)], { type: "text/markdown;charset=utf-8" });
+      const content = buildSessionReport(reportState, generatedAt);
+      const filename = sessionReportFilename(reportState, generatedAt);
+      const desktopBridge = (window as Window & {
+        threadlightDesktop?: { saveReport(payload: { filename: string; content: string }): Promise<{ status: string }> };
+      }).threadlightDesktop;
+      if (desktopBridge) {
+        await desktopBridge.saveReport({ filename, content });
+        return;
+      }
+      const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = sessionReportFilename(reportState, generatedAt);
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();

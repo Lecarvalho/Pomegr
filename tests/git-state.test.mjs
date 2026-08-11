@@ -11,9 +11,9 @@ function git(cwd, ...args) {
 }
 
 async function repositoryFixture(context) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-git-state-"));
-  const repository = path.join(root, "repository");
-  const remote = path.join(root, "origin.git");
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight Git José -"));
+  const repository = path.join(root, "repository with spaces");
+  const remote = path.join(root, "origin é.git");
   context.after(() => rm(root, { recursive: true, force: true }));
   execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
   execFileSync("git", ["init", "--initial-branch=main", repository], { stdio: "ignore" });

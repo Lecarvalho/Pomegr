@@ -2,6 +2,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startProdServer } from "vinext/server/prod-server";
+import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -38,6 +39,31 @@ async function requireBuild(outDir) {
   }
 }
 
+export function installLocalRequestGate(server, options) {
+  const authorizationToken = requireDesktopToken(options.authorizationToken, "WEB_INVALID_AUTHORIZATION");
+  const expectedHost = `${options.host}:${options.port}`;
+  const expectedOrigin = `http://${expectedHost}`;
+  const responseHeaders = Object.freeze({ ...(options.responseHeaders || {}) });
+  const listeners = server.listeners("request");
+  if (listeners.length !== 1) throw new LocalServiceError("WEB_REQUEST_GATE_FAILED");
+  server.removeAllListeners("request");
+  server.on("request", (request, response) => {
+    const origin = typeof request.headers.origin === "string" ? request.headers.origin : "";
+    const allowed = ["GET", "HEAD"].includes(request.method || "")
+      && request.headers.host === expectedHost
+      && (!origin || origin === expectedOrigin)
+      && requestHasDesktopAuthorization(request, authorizationToken);
+    response.setHeader("Cache-Control", "no-store");
+    for (const [name, value] of Object.entries(responseHeaders)) response.setHeader(name, value);
+    if (!allowed) {
+      response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Unauthorized");
+      return;
+    }
+    listeners[0].call(server, request, response);
+  });
+}
+
 export async function startWebServer(options = {}) {
   const host = requireLoopbackHost(options.host ?? "127.0.0.1", "WEB_INVALID_HOST");
   const port = requirePort(options.port ?? 0, "WEB_INVALID_PORT");
@@ -57,6 +83,15 @@ export async function startWebServer(options = {}) {
   try {
     result = await (options.startProdServerFn || startProdServer)({ host, port, outDir });
     if (!result?.server?.listening) throw new LocalServiceError("WEB_START_FAILED");
+    const boundPort = result.server.address()?.port;
+    if (options.authorizationToken) {
+      installLocalRequestGate(result.server, {
+        authorizationToken: options.authorizationToken,
+        host,
+        port: boundPort,
+        responseHeaders: options.responseHeaders,
+      });
+    }
     handle = createLocalServiceHandle(result.server, {
       host,
       normalExitCode: "WEB_CLOSED",

@@ -27,7 +27,7 @@ import { stopChild } from "../desktop/utility-lifecycle.mjs";
 test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", async () => {
   const [packageJson, main, runner] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
-    readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/smoke-runner.mjs", import.meta.url), "utf8"),
   ]);
 
@@ -38,11 +38,19 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /disable-gpu/);
   assert.match(main, /noerrdialogs/);
   assert.match(main, /THREADLIGHT_SMOKE_PROFILE_ROOT/);
+  assert.match(main, /resolveDesktopPaths\(\{/);
+  assert.match(main, /DESKTOP_DATA_ROOT_NOT_ISOLATED/);
   assert.doesNotMatch(main, /recordStage\(["']FINISHED_FAIL["']\)/);
   assert.match(main, /recordStage\(["']CLEANUP_FAILED["']\)/);
   assert.match(main, /recordStage\(["']WATCHDOG_TIMEOUT["']\)/);
   assert.match(main, /recordStage\(["']UNEXPECTED_QUIT["']\)/);
   assert.match(main, /new Worker\(/);
+  assert.match(main, /new BrowserWindow\(/);
+  assert.match(main, /secureBrowserWindowOptions\(/);
+  assert.match(main, /installSessionSecurity\(/);
+  assert.match(main, /installWebContentsSecurity\(/);
+  assert.match(main, /hasNodeProcess/);
+  assert.match(main, /hasRequire/);
   assert.match(main, /execArgv:\s*\[\]/);
   assert.match(main, /env:\s*\{\s*\.\.\.environment/);
   assert.match(main, /worker\.terminate\(\)/);
@@ -109,13 +117,13 @@ test("ASAR policy unpacks the monitor bundle, complete production build, and Sha
 
 test("monitor is isolated and the in-main web host receives no provider paths or credentials", async () => {
   const [main, monitorHost] = await Promise.all([
-    readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(main, /\.\.\/monitor\/|providers/);
   assert.match(monitorHost, /\.\.\/monitor\/server\.mjs/);
-  assert.doesNotMatch(monitorHost, /node:child_process|execFile/);
+  assert.match(monitorHost, /execFile\("git", \["--version"\]/);
   assert.doesNotMatch(main, /env:\s*\{\s*\.\.\.process\.env/s);
   assert.match(main, /minimalRuntimeEnvironment\(process\.env/);
   assert.ok(main.indexOf("keepOnlyRuntimeEnvironment(process.env") < main.indexOf('import("../web/server.mjs")'));
@@ -197,12 +205,12 @@ test("forced utility cleanup waits for the child exit and leaves no pid", async 
 
 test("monitor worker uses one physical bundle with fixed lifecycle stages", async () => {
   const [main, monitorHost, bundler, runtimeProof] = await Promise.all([
-    readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/service-bundles.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(main, /app\.getAppPath\(\).*\.unpacked/s);
+  assert.match(main, /runtimePaths\.unpackedRoot/);
   assert.match(main, /desktop[\s\S]*workers/);
   assert.match(bundler, /noExternal:\s*true/);
   assert.match(bundler, /codeSplitting:\s*false/);
@@ -216,7 +224,7 @@ test("monitor worker uses one physical bundle with fixed lifecycle stages", asyn
   assert.match(main, /WEB_SERVER_READY/);
   assert.match(main, /WEB_HEALTH_CHECKING/);
   assert.match(main, /WEB_HEALTH_VERIFIED/);
-  assert.match(main, /app\.getAppPath\(\).*\.unpacked[\s\S]*dist/);
+  assert.match(main, /runtimePaths\.unpackedRoot[\s\S]*dist/);
   assert.match(monitorHost, /MONITOR_STARTING/);
   assert.match(monitorHost, /MONITOR_READY/);
   assert.match(runtimeProof, /\^\(\?:MONITOR\|WEB\)_\[A-Z_\]/);

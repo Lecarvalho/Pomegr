@@ -23,8 +23,12 @@ type MonitorProxyOptions = {
 
 export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: MonitorProxyOptions) {
   try {
+    const authorizationToken = process.env.THREADLIGHT_MONITOR_TOKEN;
     const response = await fetch(`${monitorOrigin()}${path}`, {
       cache: "no-store",
+      headers: authorizationToken
+        ? { "x-threadlight-desktop-authorization": authorizationToken }
+        : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`Monitor returned ${response.status}`);

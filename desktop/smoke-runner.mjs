@@ -22,10 +22,20 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const runtimeDirectories = ["dist", "monitor", "shared", "web"];
 const desktopFiles = [
   "asar-policy.mjs",
+  "bounded-lifecycle.mjs",
   "environment-policy.mjs",
   "main.mjs",
   "monitor-host.mjs",
+  "paths.mjs",
+  "preload.cjs",
+  "report-save.mjs",
   "runtime-proof.mjs",
+  "security-policy.mjs",
+  "settings.mjs",
+  "shell-orchestrator.mjs",
+  "shell-main.mjs",
+  "smoke-main.mjs",
+  "startup-error.mjs",
   "utility-lifecycle.mjs",
 ];
 const runtimePackages = [

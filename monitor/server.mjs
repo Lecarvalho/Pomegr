@@ -9,6 +9,7 @@ import { readPullRequests } from "./pull-requests.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
+import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -377,9 +378,31 @@ export function createMonitorRuntime(options = {}) {
 
 export function createMonitorRequestHandler(options = {}) {
   const runtime = options.runtime || createMonitorRuntime(options);
+  const authorizationToken = options.authorizationToken
+    ? requireDesktopToken(options.authorizationToken, "MONITOR_INVALID_AUTHORIZATION")
+    : "";
   return async (request, response) => {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  const localAddress = request.socket?.localAddress;
+  const localPort = request.socket?.localPort;
+  const expectedHost = localAddress && localPort ? `${localAddress}:${localPort}` : "";
+  const desktopRequestAllowed = !authorizationToken || (
+    ["GET", "HEAD"].includes(request.method || "")
+    && request.headers.host === expectedHost
+    && request.headers.origin === undefined
+    && requestHasDesktopAuthorization(request, authorizationToken)
+  );
+  if (!desktopRequestAllowed) {
+    response.writeHead(401, {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+    response.end("Unauthorized");
+    return;
+  }
+  if (!authorizationToken) {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  }
   response.setHeader("Cache-Control", "no-store");
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1");

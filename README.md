@@ -40,7 +40,7 @@ Coding agents increasingly work in parallel, wait for input, consume context, in
 
 Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
 
-The **Generate report** button refreshes local session data and downloads a deterministic Markdown summary. Reports include session metrics, per-agent wall time and context snapshots, skill usage, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
+The **Generate report** button refreshes local session data and creates a deterministic Markdown summary. In the desktop app it opens the native save dialog; browser development uses a normal download. Reports include session metrics, per-agent wall time and context snapshots, skill usage, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
 
 Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
 
@@ -134,7 +134,7 @@ For example, this preserves an existing PowerShell status line:
 }
 ```
 
-If there is no existing status-line command, omit `--` and everything after it. Restart Claude Code after changing `~/.claude/settings.json`. Each status-line update stores only the session ID, estimated USD amount, estimate type, and observation timestamp in `~/.threadlight/cost-snapshots`. The dashboard shows `—` until the first update arrives. Claude Code computes this number at standard API list rates, so Threadlight labels it as an estimate rather than an authoritative bill.
+If there is no existing status-line command, omit `--` and everything after it. Restart Claude Code after changing `~/.claude/settings.json`. Each status-line update stores only the session ID, estimated USD amount, estimate type, and observation timestamp in `%APPDATA%\threadlight\cost-snapshots` on Windows (`~/.threadlight/cost-snapshots` elsewhere). The dashboard shows `—` until the first update arrives. Claude Code computes this number at standard API list rates, so Threadlight labels it as an estimate rather than an authoritative bill.
 
 ## Configuration
 
@@ -145,9 +145,10 @@ The monitor merges both provider catalogs, then selects a current needs-input se
 | `CLAUDE_PROJECTS_DIR` | Override the current provider's project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Pin one primary JSONL session | Latest primary session |
 | `CODEX_HOME` | Override the Codex data root | `%USERPROFILE%\.codex` |
-| `THREADLIGHT_CODEX_LIVENESS_DIR` | Opt in to a shared Codex lifecycle-bridge snapshot root | `%USERPROFILE%\.threadlight\codex-liveness` |
+| `THREADLIGHT_DATA_DIR` | Override the Threadlight-owned settings/snapshot root | `%APPDATA%\threadlight` on Windows |
+| `THREADLIGHT_CODEX_LIVENESS_DIR` | Opt in to a shared Codex lifecycle-bridge snapshot root | `%APPDATA%\threadlight\codex-liveness` on Windows |
 | `THREADLIGHT_CODEX_OWNER_PID` | Override bridge owner discovery for unusual wrappers | Nearest recognized owner process |
-| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Override the Claude estimate-snapshot root | `%USERPROFILE%\.threadlight\cost-snapshots` |
+| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Override the Claude estimate-snapshot root | `%APPDATA%\threadlight\cost-snapshots` on Windows |
 | `SESSION_PULSE_PORT` | Change the private monitor API port | `4317` |
 
 Example:

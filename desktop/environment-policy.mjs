@@ -35,6 +35,7 @@ export const MONITOR_PRIVATE_ENVIRONMENT_NAMES = Object.freeze([
   "THREADLIGHT_CODEX_LIVENESS_DIR",
   "THREADLIGHT_CODEX_OWNER_PID",
   "THREADLIGHT_COST_SNAPSHOTS_DIR",
+  "THREADLIGHT_DATA_DIR",
   "USERPROFILE",
 ]);
 
@@ -84,11 +85,14 @@ export function keepOnlyRuntimeEnvironment(environment, overrides = {}, fileExis
   return environment;
 }
 
-export function monitorPrivateEnvironment(source) {
+export function monitorPrivateEnvironment(source, options = {}) {
   const environment = {};
   for (const name of MONITOR_PRIVATE_ENVIRONMENT_NAMES) {
     const value = environmentValue(source, name);
     if (typeof value === "string" && value) environment[name] = value;
+  }
+  if (options.threadlightDataRoot) {
+    environment.THREADLIGHT_DATA_DIR = options.threadlightDataRoot;
   }
   return environment;
 }
