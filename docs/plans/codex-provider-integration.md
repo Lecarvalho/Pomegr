@@ -110,9 +110,17 @@ npm run test:node
 
 ## TL-CX-02 — Resolve Windows liveness and needs-input strategy
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-01`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added the accepted design in `docs/plans/codex-windows-liveness-strategy.md`.
+- Selected an opt-in, allowlisted Codex lifecycle-hook bridge as the general Windows source, with an explicitly connected owning app-server taking priority when available.
+- Defined a bounded rollout-tail heuristic for installations where hooks or an owning app-server connection are unavailable.
+- Documented stale-state expiry, needs-input clearing, historical isolation, privacy allowlists, and the tested process-local app-server limitation on Windows.
 
 ### Goal
 
@@ -146,9 +154,17 @@ Choose and document a reliable, read-only method for classifying Codex threads a
 
 ## TL-CX-03 — Add provider fixtures and privacy assertions
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-01`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added bounded synthetic Claude and Codex rollout, registry, task, status-line, malformed, truncated, unknown-record, and expected-evidence fixtures under `tests/fixtures/providers/`.
+- Added shared fixture readers and a fail-closed privacy-sentinel assertion in `tests/helpers/provider-fixtures.mjs`.
+- Added contract-aligned synthetic `MonitorState` serialization checks for both providers without reading real user sessions.
+- Registered the focused provider-fixture suite in `npm run test:node`.
 
 ### Goal
 
@@ -670,3 +686,5 @@ Add short entries here only after completing a task.
 | Date | Task | Result | Notes |
 |---|---|---|---|
 | 2026-08-10 | TL-CX-01 | Complete | Provider contract, capability semantics, qualified IDs, provider-aware empty state, and focused tests added. |
+| 2026-08-10 | TL-CX-02 | Complete | Accepted Windows liveness strategy: owning app-server when explicit, opt-in lifecycle bridge generally, bounded rollout heuristic as fallback. |
+| 2026-08-10 | TL-CX-03 | Complete | Synthetic provider fixtures, malformed-record coverage, and serialized-state privacy sentinels added. |

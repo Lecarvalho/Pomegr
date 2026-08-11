@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-08-10T12:01:00.000Z","message":{"content":"PROMPT_MUST_NOT_LEAK"}}
+{"type":"system",
+{"type":"future-record","timestamp":"2026-08-10T12:01:01.000Z","payload":{"private":"TOOL_OUTPUT_MUST_NOT_LEAK"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"RESPONSE_MUST_NOT_LEAK"}]}

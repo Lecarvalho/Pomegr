@@ -1,0 +1,26 @@
+{
+  "localId": "codex-fixture-parent",
+  "historical": false,
+  "session": {
+    "title": "Synthetic Codex fixture",
+    "project": "threadlight-fixture",
+    "cwd": "C:\\synthetic\\threadlight",
+    "startedAt": "2026-08-10T13:00:00.000Z",
+    "updatedAt": "2026-08-10T13:00:17.000Z",
+    "recordedGitBranch": "codex/synthetic-fixture",
+    "cost": null,
+    "approvalMode": null,
+    "contextMachinery": null,
+    "summary": null,
+    "signal": { "label": "Fixture ready", "tone": "positive", "reportedAt": "2026-08-10T13:00:09.000Z" }
+  },
+  "agents": [
+    { "id": "primary", "parentId": null, "label": "Primary agent", "kind": "orchestrator", "model": "gpt-synthetic", "effort": "high", "status": "idle", "signal": null, "toolCalls": 6, "skills": [], "executionTasks": [{ "id": "command-1", "label": "Run synthetic checks", "kind": "shell", "status": "completed", "background": false, "backgroundId": null, "startedAt": "2026-08-10T13:00:05.000Z", "finishedAt": "2026-08-10T13:00:06.000Z", "exitCode": 0, "signal": null }], "lastSeen": "2026-08-10T13:00:16.000Z", "startedAt": "2026-08-10T13:00:00.000Z", "updatedAt": "2026-08-10T13:00:16.000Z", "durationMs": 16000 },
+    { "id": "agent-codex-fixture-child", "parentId": "primary", "label": "Fixture review", "kind": "subagent", "model": "gpt-synthetic", "effort": "medium", "status": "finished", "signal": null, "toolCalls": 0, "skills": [], "executionTasks": [], "lastSeen": "2026-08-10T13:00:17.000Z", "startedAt": "2026-08-10T13:00:14.500Z", "updatedAt": "2026-08-10T13:00:17.000Z", "durationMs": 2500 }
+  ],
+  "usageSnapshots": [{ "dedupeId": "turn-fixture-1:token-count-1", "actorId": "primary", "timestamp": "2026-08-10T13:00:04.000Z", "input": 1500, "output": 120, "cacheWrite": 50, "cacheRead": 500 }],
+  "toolCalls": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Shell", "detail": "Run synthetic checks", "repetitionSignature": "Shell:synthetic", "mutation": null }],
+  "activity": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": "Primary agent", "tool": "Shell", "detail": "Run synthetic checks", "status": null }],
+  "planTasks": [],
+  "compactions": []
+}
