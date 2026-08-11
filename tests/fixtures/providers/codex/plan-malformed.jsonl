@@ -1,0 +1,5 @@
+{"timestamp":"2026-08-11T14:00:00.000Z","type":"session_meta","payload":{"id":"codex-plan-malformed","session_id":"codex-plan-malformed","cwd":"C:\\synthetic\\plan-malformed","source":"cli"}}
+{"timestamp":"2026-08-11T14:00:01.000Z","type":"response_item","payload":{"type":"function_call","name":"update_plan","call_id":"malformed-status","arguments":"{\"plan\":[{\"step\":\"Unsafe inferred state\",\"status\":\"unknown\"}]}"}}
+{"timestamp":"2026-08-11T14:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"update_plan","call_id":"malformed-step","arguments":"{\"plan\":[{\"status\":\"pending\",\"description\":\"PLAN_DESCRIPTION_MUST_NOT_LEAK\",\"activeForm\":\"ACTIVE_FORM_MUST_NOT_LEAK\"}]}"}}
+{"timestamp":"2026-08-11T14:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"update_plan","arguments":"{\"plan\":["
+{"timestamp":"2026-08-11T14:00:04.000Z","type":"future_record","payload":{"plan":"PLAN_PROSE_MUST_NOT_LEAK"}}

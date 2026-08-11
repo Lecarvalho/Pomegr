@@ -19,6 +19,9 @@ const fixturePaths = [
   "codex/parent.jsonl",
   "codex/child.jsonl",
   "codex/malformed.jsonl",
+  "codex/approval-plan.jsonl",
+  "codex/plan-missing.jsonl",
+  "codex/plan-malformed.jsonl",
 ];
 
 test("synthetic fixtures contain every privacy sentinel", async () => {
@@ -78,6 +81,18 @@ test("Codex rollout fixtures cover metadata, usage, and supported item lifecycle
   assert.equal(responseItems.filter((item) => item.type.endsWith("_output")).length, 6);
   assert.equal(childRecords[0].payload.parent_thread_id, "codex-fixture-parent");
   assert.equal(childRecords.some((record) => record.payload?.type === "token_count"), true);
+});
+
+test("Codex plan fixtures cover structured status snapshots, missing plans, and malformed updates", async () => {
+  const { records } = await readProviderJsonlFixture("codex/approval-plan.jsonl");
+  const { records: missingRecords } = await readProviderJsonlFixture("codex/plan-missing.jsonl");
+  const { records: malformedRecords, rejectedLines } = await readProviderJsonlFixture("codex/plan-malformed.jsonl");
+  const structured = records.find((record) => record.type === "turn/plan/updated")?.payload?.plan || [];
+
+  assert.deepEqual(structured.map((step) => step.status), ["completed", "inProgress", "pending"]);
+  assert.equal(missingRecords.some((record) => record.payload?.type === "plan"), true);
+  assert.equal(malformedRecords.some((record) => record.payload?.name === "update_plan"), true);
+  assert.equal(rejectedLines.length, 1);
 });
 
 test("bounded JSONL fixture reader skips malformed and truncated lines but keeps unknown records", async () => {

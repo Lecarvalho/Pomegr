@@ -74,7 +74,7 @@ describe("session approval mode", () => {
     render(<LiveClockProvider running={false}><SessionHero session={session} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
-    expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Provider-reported mode from the latest recorded user turn.");
+    expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Latest recognized provider-reported mode.");
     expect(screen.getByText(/Observed/)).toBeInTheDocument();
   });
 
@@ -89,6 +89,22 @@ describe("session approval mode", () => {
 
     expect(screen.getByText("LAST APPROVAL MODE")).toBeInTheDocument();
     expect(screen.getByText("Accept edits")).toHaveAttribute("title", "Last provider-reported mode recorded for this session.");
+  });
+
+  it.each([
+    ["untrusted", "Untrusted"],
+    ["on_request", "On request"],
+    ["granular", "Granular"],
+    ["never", "Never"],
+  ] as const)("renders the Codex %s approval policy through the exhaustive contract", (id, label) => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      approvalMode: { id, label, observedAt: "2026-08-11T12:00:00.000Z", source: "provider" },
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 });
 

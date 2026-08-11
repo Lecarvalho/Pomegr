@@ -92,12 +92,15 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
   }
   for (const agent of agents) {
     const latest = latestByAgent.get(agent.id) || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const total = latest.input + latest.output + latest.cacheWrite + latest.cacheRead;
     agent.tokens = {
       input: latest.input,
       output: latest.output,
       cacheWrite: latest.cacheWrite,
       cacheRead: latest.cacheRead,
-      total: latest.input + latest.output + latest.cacheWrite + latest.cacheRead,
+      total,
+      ...(Number.isFinite(latest.reasoningOutput) ? { reasoningOutput: latest.reasoningOutput } : {}),
+      ...(Number.isFinite(latest.modelContextWindow) ? { modelContextWindow: latest.modelContextWindow } : {}),
     };
   }
   return {

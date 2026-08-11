@@ -49,6 +49,11 @@ export type ProviderUsageSnapshot = {
   output: number;
   cacheWrite: number;
   cacheRead: number;
+  /** Generated reasoning is already included in `output`; this is informational only. */
+  reasoningOutput?: number;
+  /** Provider-reported total for this latest snapshot, never cumulative transcript usage. */
+  totalTokens?: number;
+  modelContextWindow?: number | null;
 };
 
 /**

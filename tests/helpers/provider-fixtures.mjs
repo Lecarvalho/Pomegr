@@ -20,6 +20,12 @@ export const PRIVATE_FIXTURE_SENTINELS = Object.freeze([
   "OAUTH_TOKEN_MUST_NOT_LEAK",
   "ENV_SECRET_MUST_NOT_LEAK",
   "PRIVATE_PATH_MUST_NOT_LEAK",
+  "APPROVAL_REASON_MUST_NOT_LEAK",
+  "PERMISSION_RULE_MUST_NOT_LEAK",
+  "PLAN_EXPLANATION_MUST_NOT_LEAK",
+  "PLAN_PROSE_MUST_NOT_LEAK",
+  "PLAN_DESCRIPTION_MUST_NOT_LEAK",
+  "ACTIVE_FORM_MUST_NOT_LEAK",
 ]);
 
 export async function readProviderFixture(relativePath) {
@@ -61,6 +67,8 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
   const source = providerSource(providerId);
   const latestUsage = new Map();
   for (const snapshot of evidence.usageSnapshots) {
+    const total = snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead;
+    if (!(total > 0)) continue;
     const previous = latestUsage.get(snapshot.actorId);
     if (!previous || Date.parse(snapshot.timestamp) >= Date.parse(previous.timestamp)) latestUsage.set(snapshot.actorId, snapshot);
   }
@@ -74,6 +82,8 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
         output: snapshot.output,
         cacheWrite: snapshot.cacheWrite,
         cacheRead: snapshot.cacheRead,
+        ...(Number.isFinite(snapshot.reasoningOutput) ? { reasoningOutput: snapshot.reasoningOutput } : {}),
+        ...(Number.isFinite(snapshot.modelContextWindow) ? { modelContextWindow: snapshot.modelContextWindow } : {}),
       },
     };
   });

@@ -145,7 +145,7 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
     updatedAt: "2026-08-10T13:00:16.000Z",
     recordedGitBranch: "codex/synthetic-fixture",
     cost: null,
-    approvalMode: null,
+    approvalMode: { id: "on_request", label: "On request", observedAt: "2026-08-10T13:00:01.000Z", source: "provider" },
     contextMachinery: null,
     summary: null,
     signal: null,

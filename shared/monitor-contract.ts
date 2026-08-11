@@ -33,7 +33,15 @@ export type Agent = {
   startedAt: string;
   updatedAt: string;
   durationMs: number;
-  tokens: { total: number; input: number; output: number; cacheWrite: number; cacheRead: number };
+  tokens: {
+    total: number;
+    input: number;
+    output: number;
+    cacheWrite: number;
+    cacheRead: number;
+    reasoningOutput?: number;
+    modelContextWindow?: number | null;
+  };
 };
 
 export type Activity = {
@@ -110,7 +118,18 @@ export type ProviderId = "claude" | "codex";
 export type ProviderSource = "Claude Code" | "Codex";
 
 export type SessionApprovalMode = {
-  id: "auto" | "accept_edits" | "manual" | "default" | "plan" | "dont_ask" | "bypass_permissions";
+  id:
+    | "auto"
+    | "accept_edits"
+    | "manual"
+    | "default"
+    | "plan"
+    | "dont_ask"
+    | "bypass_permissions"
+    | "untrusted"
+    | "on_request"
+    | "granular"
+    | "never";
   label: string;
   observedAt: string | null;
   source: "provider";

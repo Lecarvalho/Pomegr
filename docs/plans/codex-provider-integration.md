@@ -454,9 +454,16 @@ npm run build
 
 ## TL-CX-10 — Implement Codex context snapshots and timeline
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-07`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added a Codex rollout context parser that reads only `last_token_usage`, rejects cumulative-only and zero/synthetic records, deduplicates stable provider event identities, and emits chronological per-agent snapshots.
+- Mapped uncached input, cached input, cache-write input, generated output, reasoning-output metadata, per-snapshot totals, and model context windows without counting cached input or reasoning output twice; shared aggregation continues to use each visible agent's latest non-zero snapshot.
+- Added bounded explicit-trigger compaction evidence, Codex metric documentation, and focused coverage for timeline repetition, privacy, primary/child aggregation, malformed cumulative evidence, and automatic-warning gating.
 
 ### Goal
 
@@ -490,9 +497,16 @@ npm run build
 
 ## TL-CX-11 — Add Codex approval mode and plan tasks
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** `TL-CX-07`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added provider-neutral Codex approval modes for `untrusted`, `on-request`, granular, and `never`, retaining only the fixed mode, bounded label, provider provenance, and valid observation timestamp.
+- Added latest-valid structured Codex plan normalization for rollout tool calls and documented app-server plan updates, with stable bounded IDs, mapped statuses, empty dependencies, and no natural-language plan inference.
+- Added focused rollout, missing, malformed, privacy-sentinel, browser-state, Claude regression, historical-label, UI, and TypeScript contract coverage; plan prose, explanations, permission details, commands, and approval reasons remain provider-local.
 
 ### Goal
 
@@ -743,3 +757,5 @@ Add short entries here only after completing a task.
 | 2026-08-10 | TL-CX-07 | Complete | Deterministic Codex primary/subagent metadata tree with safe runtime, timing, terminal, fork, resume, and missing-child handling. |
 | 2026-08-10 | TL-CX-08 | Complete | Safe Codex tool/activity normalization, stable lifecycle evidence, repetition signatures, mutation scopes, deterministic recent activity, and privacy coverage added. |
 | 2026-08-10 | TL-CX-09 | Complete | Safe Codex command lifecycle normalization, per-agent execution tasks, process IDs, historical stops, signal matching, and compatibility coverage added. |
+| 2026-08-10 | TL-CX-10 | Complete | Latest non-zero Codex context snapshots, chronological growth timeline input, bounded explicit-trigger compactions, and metric/privacy coverage added. |
+| 2026-08-11 | TL-CX-11 | Complete | Provider-neutral approval modes and latest structured plan tasks added with bounded fields, empty uninferred dependencies, neutral UI copy, and privacy coverage. |

@@ -27,7 +27,7 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
           <span className="sessionMetaLabel">{historical ? "LAST APPROVAL MODE" : "APPROVAL MODE"}</span>
           <AgentChip
             className="sessionApprovalModeChip"
-            title={historical ? "Last provider-reported mode recorded for this session." : "Provider-reported mode from the latest recorded user turn."}
+            title={historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."}
           >{session.approvalMode.label}</AgentChip>
           <small>{session.approvalMode.observedAt
             ? historical ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}` : <>Observed <RelativeTimeText value={session.approvalMode.observedAt} /></>

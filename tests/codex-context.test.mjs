@@ -1,0 +1,167 @@
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { buildContextGrowthTimeline } from "../monitor/context-growth-timeline.mjs";
+import { evaluateEfficiencySignals } from "../monitor/efficiency-signals.mjs";
+import { parseCodexContextRecords } from "../monitor/providers/codex-context.mjs";
+import { createCodexProvider } from "../monitor/providers/codex.mjs";
+import {
+  assertNoPrivateFixtureSentinels,
+  monitorStateFromProviderEvidence,
+  readProviderFixture,
+} from "./helpers/provider-fixtures.mjs";
+
+function tokenCount(timestamp, lastTokenUsage, extras = {}) {
+  return {
+    timestamp,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: {
+        total_token_usage: {
+          input_tokens: 900_000,
+          output_tokens: 80_000,
+          total_tokens: 980_000,
+        },
+        last_token_usage: lastTokenUsage,
+        model_context_window: 200_000,
+      },
+      ...extras,
+    },
+  };
+}
+
+test("maps only last_token_usage and keeps cached and reasoning tokens from being double-counted", () => {
+  const { usageSnapshots } = parseCodexContextRecords([
+    { timestamp: "2026-08-10T13:00:01.000Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    tokenCount("2026-08-10T13:00:02.000Z", {
+      input_tokens: 1_500,
+      cached_input_tokens: 500,
+      cache_creation_input_tokens: 50,
+      output_tokens: 120,
+      reasoning_output_tokens: 40,
+      total_tokens: 1_670,
+    }, { event_id: "usage-1" }),
+  ], { actorId: "primary", sourceKey: "thread-1" });
+
+  assert.deepEqual(usageSnapshots, [{
+    dedupeId: "thread-1:token-count:usage-1",
+    actorId: "primary",
+    timestamp: "2026-08-10T13:00:02.000Z",
+    input: 1_000,
+    output: 120,
+    cacheWrite: 50,
+    cacheRead: 500,
+    reasoningOutput: 40,
+    totalTokens: 1_670,
+    modelContextWindow: 200_000,
+  }]);
+  assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_670);
+  assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);
+});
+
+test("deduplicates stable event identities, ignores cumulative-only and zero snapshots, and retains chronological latest snapshots", () => {
+  const positive = tokenCount("2026-08-10T13:00:04.000Z", {
+    input_tokens: 300,
+    cached_input_tokens: 100,
+    output_tokens: 30,
+    reasoning_output_tokens: 10,
+    total_tokens: 330,
+  }, { message_id: "same-message" });
+  const { usageSnapshots } = parseCodexContextRecords([
+    { timestamp: "2026-08-10T13:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    positive,
+    { ...positive, timestamp: "2026-08-10T13:00:05.000Z" },
+    tokenCount("2026-08-10T13:00:06.000Z", { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, { event_id: "zero" }),
+    { timestamp: "2026-08-10T13:00:07.000Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { total_tokens: 999_999 } } } },
+    tokenCount("2026-08-10T13:00:08.000Z", {
+      input_tokens: 300,
+      cached_input_tokens: 100,
+      output_tokens: 30,
+      reasoning_output_tokens: 10,
+      total_tokens: 330,
+    }, { event_id: "repeated-snapshot" }),
+  ], { actorId: "agent-child", sourceKey: "thread-child" });
+
+  assert.equal(usageSnapshots.length, 2);
+  assert.equal(usageSnapshots[0].timestamp, "2026-08-10T13:00:05.000Z");
+  assert.equal(usageSnapshots[1].timestamp, "2026-08-10T13:00:08.000Z");
+  const timeline = buildContextGrowthTimeline(usageSnapshots, {
+    startedAt: "2026-08-10T13:00:00.000Z",
+    updatedAt: "2026-08-10T13:00:10.000Z",
+    targetBuckets: 1,
+  });
+  assert.equal(timeline.buckets.reduce((sum, bucket) => sum + bucket.total, 0), 330);
+});
+
+test("keeps only bounded compaction evidence and warns only for an explicit automatic trigger", () => {
+  const { compactions } = parseCodexContextRecords([
+    {
+      id: "implicit",
+      timestamp: "2026-08-10T13:00:01.000Z",
+      type: "compacted",
+      payload: { summary: "RESPONSE_MUST_NOT_LEAK", pre_tokens: 190_000 },
+    },
+    {
+      id: "manual",
+      timestamp: "2026-08-10T13:00:02.000Z",
+      type: "compacted",
+      payload: { trigger: "manual", summary: "RESPONSE_MUST_NOT_LEAK", pre_tokens: 180_000 },
+    },
+    {
+      id: "automatic",
+      timestamp: "2026-08-10T13:00:03.000Z",
+      type: "event_msg",
+      payload: { type: "context_compacted", trigger: "automatic", summary: "RESPONSE_MUST_NOT_LEAK", pre_tokens: 195_000 },
+    },
+  ], { actorId: "primary", sourceKey: "thread-1" });
+
+  assert.deepEqual(compactions, [
+    { actorId: "primary", timestamp: "2026-08-10T13:00:02.000Z", trigger: "manual", preTokens: 180_000 },
+    { actorId: "primary", timestamp: "2026-08-10T13:00:03.000Z", trigger: "auto", preTokens: 195_000 },
+  ]);
+  const { insights } = evaluateEfficiencySignals({
+    agents: [{ id: "primary", label: "Primary agent", status: "idle", toolCalls: 0, tokens: { total: 20_000 } }],
+    compactions: compactions.map((compaction) => ({ ...compaction, actor: { id: "primary", label: "Primary agent" } })),
+  });
+  assert.equal(insights.filter((insight) => insight.id === "automatic-compaction-primary").length, 1);
+  assertNoPrivateFixtureSentinels(compactions, "Codex compaction evidence");
+});
+
+test("integrates primary and child latest snapshots into all-agent context", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-context-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "10");
+  await mkdir(directory, { recursive: true });
+  const parent = (await readProviderFixture("codex/parent.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic");
+  const child = (await readProviderFixture("codex/child.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic");
+  await writeFile(path.join(directory, "rollout-parent.jsonl"), parent, "utf8");
+  await writeFile(path.join(directory, "rollout-child.jsonl"), child, "utf8");
+  await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({
+    id: "codex-fixture-parent",
+    thread_name: "Codex context fixture",
+    updated_at: "2026-08-10T13:00:17.000Z",
+  })}\n`, "utf8");
+
+  const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 10 });
+  const evidence = await provider.readSession("codex-fixture-parent", { historical: true });
+  assert.deepEqual(evidence.usageSnapshots.map(({ actorId, input, output, cacheWrite, cacheRead }) => ({
+    actorId, input, output, cacheWrite, cacheRead,
+  })), [
+    { actorId: "primary", input: 1_000, output: 120, cacheWrite: 50, cacheRead: 500 },
+    { actorId: "agent-codex-fixture-child", input: 200, output: 30, cacheWrite: 0, cacheRead: 100 },
+  ]);
+
+  const state = monitorStateFromProviderEvidence("codex", evidence);
+  assert.equal(state.agents.find((agent) => agent.id === "primary").tokens.total, 1_670);
+  assert.equal(state.agents.find((agent) => agent.id === "agent-codex-fixture-child").tokens.total, 330);
+  assert.equal(state.metrics.tokens.allAgents, 2_000);
+  assert.equal(state.metrics.tokens.input, 1_200);
+  assert.equal(state.metrics.tokens.output, 150);
+  assert.equal(state.metrics.tokens.cacheWrite, 50);
+  assert.equal(state.metrics.tokens.cacheRead, 600);
+  assertNoPrivateFixtureSentinels(evidence, "Codex context provider evidence");
+  assert.doesNotMatch(JSON.stringify(evidence), /total_token_usage|900000|980000/);
+});

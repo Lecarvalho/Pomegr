@@ -15,6 +15,8 @@ input_tokens
 
 Zero-valued synthetic messages are ignored.
 
+For Codex, Threadlight reads only each token-count event's `last_token_usage`; it never uses `total_token_usage`. Codex input includes cached input, so the adapter maps uncached input as `input_tokens - cached_input_tokens`, maps cached input to cache read, and maps recognized cache-creation input to cache write. Codex `output_tokens` already includes `reasoning_output_tokens`; reasoning is retained as bounded snapshot metadata but is not added to output a second time. The per-snapshot provider total and model context window are retained only as bounded latest-snapshot metadata. They are not accumulated, converted to spend, or used to derive a recent rate. Missing, invalid, and all-zero snapshots remain unavailable.
+
 - **Agent context** — latest snapshot for that agent
 - **All-agent context** — sum of every visible agent's latest snapshot
 
@@ -52,9 +54,9 @@ The normalized API exposes only tool/background IDs, the short Bash description,
 
 ## Plan checklist
 
-Threadlight also reads the provider's structured task files for the selected session and exposes them separately as `planTasks`. The Plan items badge and checkbox popover are intentionally distinct from Execution tasks: this checklist is an agent-maintained planning snapshot, not observed runtime state. The popover always ends with a warning that it remains static until Claude updates it and Claude may forget to do so.
+Threadlight also reads the selected provider's structured task records or structured plan updates and exposes them separately as `planTasks`. The Plan items badge and checkbox popover are intentionally distinct from Execution tasks: this checklist is an agent-maintained planning snapshot, not observed runtime state. The popover always warns that the snapshot changes only when the agent updates it and may be stale. Free-form plan prose is never parsed into checklist items.
 
-Only normalized task ID, subject, status, and dependency IDs enter the browser API. Long-form descriptions and active-form text are excluded. Unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. Generated reports omit the plan checklist.
+Only normalized task ID, subject, status, and dependency IDs enter the browser API. Long-form descriptions and active-form text are excluded. Claude task records with unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. Malformed Codex plan updates are ignored, and Codex dependencies remain empty because the provider does not supply them. Generated reports omit the plan checklist.
 
 ## Agent state
 
@@ -90,7 +92,7 @@ For the Claude Code adapter, Threadlight reads the provider's local session regi
 
 ## Session approval mode
 
-The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Threadlight supports both approval modes attached to legacy user records and current standalone permission-mode records. It maps only a fixed enum to bounded labels; unknown values and every other field on the transcript record are discarded. The observation timestamp is exposed only when the provider record contains one. A historical view labels the value as the last approval mode because it does not imply that the configuration remains active.
+The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Claude Code approval modes may come from legacy user records or current standalone permission-mode records. Codex approval modes may come from recognized turn-context or thread-settings records and map `untrusted`, `on-request`, granular, and `never` policies to provider-neutral labels. Threadlight keeps only the fixed policy enum and observation timestamp; granular rules, sandbox settings, writable roots, requested commands, approval reasons, and every other field are discarded. A historical view labels the value as the last approval mode because it does not imply that the configuration remains active.
 
 ## Session duration
 
@@ -110,6 +112,8 @@ The current catalog contains these deterministic rules:
 - **Healthy fallback** — appears only when none of the warning rules emit a signal.
 
 The automatic-compaction parser allows only the normalized agent identity, recognized trigger, non-negative pre-compaction token count, and event timestamp into the rule engine. The compacted summary, provider event content, and all other compaction metadata remain monitor-side and never enter browser state. On first observation Threadlight scans each selected agent transcript for these bounded events, then merges new tail records into an in-memory cache so an earlier compaction remains visible as the transcript grows. Automatic compaction is evidence that context pressure caused the provider to summarize earlier conversation detail; it is not a quality judgment or proof that the session failed.
+
+Codex compaction records follow the same bounded evidence contract, but a warning is emitted only when the record contains an explicit `auto` or `automatic` trigger. A compaction-shaped record without a recognized trigger is ignored rather than inferred to be automatic; an explicit manual trigger remains recorded evidence but does not produce a warning.
 
 The unshared-context rule uses the latest context snapshot rather than cumulative transcript throughput or token spend. Tool calls provide evidence of sustained execution; elapsed wall time is deliberately excluded because it includes idle gaps. Threadlight does not parse natural-language instructions such as `AGENTS.md` to infer a delegation policy.
 

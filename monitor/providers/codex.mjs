@@ -11,6 +11,8 @@ import {
   parseCodexCanonicalExecutionTasks,
   readCodexExecutionTaskRollout,
 } from "./codex-execution-tasks.mjs";
+import { readCodexApprovalPlanRollout } from "./codex-approval-plan.mjs";
+import { readCodexContextRollout } from "./codex-context.mjs";
 import { buildCodexAgentTree, readCodexAgentRollout } from "./codex-agent-metadata.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
@@ -262,20 +264,33 @@ export function createCodexProvider(options = {}) {
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
       || startedAt;
+    const approvalPlan = metadata.rolloutFile
+      ? readCodexApprovalPlanRollout(metadata.rolloutFile)
+      : { approvalMode: null, planTasks: [] };
     const actorByThreadId = new Map(agents.map((agent) => [
       agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
       { id: agent.id, label: agent.label },
     ]));
     const rolloutTasksByActor = new Map();
+    const usageSnapshots = [];
+    const compactions = [];
     const rolloutCalls = allMetadata.flatMap((thread) => {
       const actor = actorByThreadId.get(thread.localId);
       if (!actor || !thread.rolloutFile) return [];
+      const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       rolloutTasksByActor.set(actor.id, readCodexExecutionTaskRollout(thread.rolloutFile, {
-        fallbackTimestamp: summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt,
+        fallbackTimestamp,
       }));
+      const context = readCodexContextRollout(thread.rolloutFile, {
+        actorId: actor.id,
+        fallbackTimestamp,
+        sourceKey: thread.localId,
+      });
+      usageSnapshots.push(...context.usageSnapshots);
+      compactions.push(...context.compactions);
       return readCodexActivityRollout(thread.rolloutFile, {
         actor,
-        fallbackTimestamp: summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt,
+        fallbackTimestamp,
         sourceKey: thread.localId,
       });
     });
@@ -295,6 +310,10 @@ export function createCodexProvider(options = {}) {
         canonicalTasksByActor.get(agent.id) || [],
       ], { historical: true, sessionUpdatedAt: updatedAt });
     }
+    usageSnapshots.sort((left, right) => (
+      Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
+    ));
+    compactions.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
     return {
       localId: metadata.localId,
       historical: true,
@@ -306,17 +325,17 @@ export function createCodexProvider(options = {}) {
         updatedAt,
         recordedGitBranch: metadata.recordedGitBranch,
         cost: null,
-        approvalMode: null,
+        approvalMode: approvalPlan.approvalMode,
         contextMachinery: null,
         summary: null,
         signal: null,
       },
       agents,
-      usageSnapshots: [],
+      usageSnapshots,
       toolCalls,
       activity: [],
-      planTasks: [],
-      compactions: [],
+      planTasks: approvalPlan.planTasks,
+      compactions,
       pullRequestUrls: [],
     };
   }
@@ -324,7 +343,7 @@ export function createCodexProvider(options = {}) {
   return defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: {},
+    capabilities: { approvalMode: true, automaticCompactions: true, planTasks: true },
     listSessions,
     readSession,
     unavailableMessage(localSessionId = "") {
