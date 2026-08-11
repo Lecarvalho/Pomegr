@@ -40,7 +40,17 @@ export default function About() {
 
         <section id="license" className="aboutNote" aria-labelledby="license-title">
           <div><span className="label">OPEN SOURCE</span><h2 id="license-title">Source and license</h2></div>
-          <p>Copyright © 2026 Leandro Carvalho. Threadlight is free software: you may redistribute or modify it under the <a href="https://github.com/Lecarvalho/threadlight/blob/main/LICENSE" target="_blank" rel="noreferrer">GNU Affero General Public License version 3</a>. It is provided without warranty. The <a href="https://github.com/Lecarvalho/threadlight" target="_blank" rel="noreferrer">corresponding source code</a> is publicly available.</p>
+          <div className="legalCopy">
+            <p>Copyright © 2026 Leandro Carvalho. Threadlight is free software under the GNU Affero General Public License version 3 only and is provided without warranty. The notices below are copies included in this application.</p>
+            <nav aria-label="Legal and source documents">
+              <a href="/legal/LICENSE.txt">AGPL license</a>
+              <a href="/legal/NOTICE.txt">Copyright and warranty notice</a>
+              <a href="/legal/SOURCE.txt">Corresponding source</a>
+              <a href="/legal/THIRD_PARTY_NOTICES.txt">Third-party notices</a>
+              <a href="/legal/TRADEMARKS.txt">Trademark policy</a>
+            </nav>
+            <p>The <a href="https://github.com/Lecarvalho/threadlight" target="_blank" rel="noreferrer">corresponding source code</a> is also available from the official repository.</p>
+          </div>
         </section>
       </article>
     </main>

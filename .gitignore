@@ -37,8 +37,11 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /dist/
+/\.electron-builder-cache/
 /desktop/workers/
 /.wrangler/
 /outputs/
+/release/
+/release-acceptance/
 /work/
 /.codex-remote-attachments/

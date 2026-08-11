@@ -2,8 +2,14 @@
   "name": "threadlight",
   "version": "0.1.0",
   "private": true,
+  "description": "A local-first, read-only observer for coding-agent sessions.",
   "author": "Leandro Carvalho",
   "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/Lecarvalho/threadlight",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lecarvalho/threadlight.git"
+  },
   "main": "desktop/main.mjs",
   "engines": {
     "node": ">=22.13.0"
@@ -15,19 +21,25 @@
     "mcp": "node mcp/server.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node web/cli.mjs",
-    "desktop:prepare": "npm run build && node desktop/build.mjs",
+    "desktop:legal": "node desktop/legal-notices.mjs",
+    "desktop:prepare": "npm run desktop:legal && npm run build && node desktop/build.mjs",
+    "desktop:package": "npm run desktop:prepare && set ELECTRON_BUILDER_CACHE=.electron-builder-cache&& electron-builder --win nsis portable --x64 && node desktop/finalize-package.mjs",
+    "desktop:inspect": "node desktop/inspect-artifacts.mjs",
+    "desktop:package:acceptance-prior": "npm run desktop:prepare && node desktop/build-acceptance-prior.mjs",
+    "desktop:inspect:acceptance-prior": "node desktop/inspect-acceptance-prior.mjs",
     "desktop:start": "npm run desktop:prepare && electron .",
     "desktop:smoke": "set NODE_NO_WARNINGS=1&& set ELECTRON_RUN_AS_NODE=1&& node_modules\\electron\\dist\\electron.exe desktop/smoke-runner.mjs",
     "test": "npm run build && npm run test:node && npm run test:ui",
-    "test:node": "node --test tests/desktop-runtime-seams.test.mjs tests/desktop-runtime-compatibility.test.mjs tests/desktop-shell.test.mjs tests/desktop-paths.test.mjs tests/dev-startup.test.mjs tests/monitor-runtime-enrichment.test.mjs tests/rendered-html.test.mjs tests/api-serialization.test.mjs tests/provider-contract.test.mjs tests/provider-fixtures.test.mjs tests/claude-provider.test.mjs tests/codex-session-discovery.test.mjs tests/codex-release-qa.test.mjs tests/codex-agent-metadata.test.mjs tests/codex-liveness.test.mjs tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/codex-context.test.mjs tests/codex-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/codex-usage-limits.test.mjs tests/codex-session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/provider-registry.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-approval-mode.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/session-cost.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/efficiency-signals.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs tests/git-state.test.mjs tests/pull-requests.test.mjs tests/usage-limits.test.mjs",
+    "test:node": "node --test tests/desktop-runtime-seams.test.mjs tests/desktop-runtime-compatibility.test.mjs tests/desktop-shell.test.mjs tests/desktop-paths.test.mjs tests/desktop-packaging.test.mjs tests/dev-startup.test.mjs tests/monitor-runtime-enrichment.test.mjs tests/rendered-html.test.mjs tests/api-serialization.test.mjs tests/provider-contract.test.mjs tests/provider-fixtures.test.mjs tests/claude-provider.test.mjs tests/codex-session-discovery.test.mjs tests/codex-release-qa.test.mjs tests/codex-agent-metadata.test.mjs tests/codex-liveness.test.mjs tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/codex-context.test.mjs tests/codex-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/codex-usage-limits.test.mjs tests/codex-session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/provider-registry.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-approval-mode.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/session-cost.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/efficiency-signals.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs tests/git-state.test.mjs tests/pull-requests.test.mjs tests/usage-limits.test.mjs",
     "test:ui": "vitest run",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern release --ignore-pattern .electron-builder-cache"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "vinext": "0.0.50",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -43,16 +55,103 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "electron": "43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "jsdom": "^29.1.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "vinext": "0.0.50",
     "vite": "8.0.13",
     "vitest": "^4.1.10",
     "wrangler": "4.92.0"
   },
-  "type": "module"
+  "type": "module",
+  "build": {
+    "appId": "com.threadlight.desktop",
+    "productName": "Threadlight",
+    "copyright": "Copyright © 2026 Leandro Carvalho",
+    "electronDist": "node_modules/electron/dist",
+    "afterPack": "desktop/after-pack.mjs",
+    "extraMetadata": {
+      "threadlightPackagingScope": "TL-DT-05-no-updater"
+    },
+    "asar": true,
+    "compression": "maximum",
+    "electronLanguages": ["en-US"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "package.json",
+      "desktop/bounded-lifecycle.mjs",
+      "desktop/environment-policy.mjs",
+      "desktop/main.mjs",
+      "desktop/paths.mjs",
+      "desktop/preload.cjs",
+      "desktop/report-save.mjs",
+      "desktop/security-policy.mjs",
+      "desktop/settings.mjs",
+      "desktop/shell-main.mjs",
+      "desktop/shell-orchestrator.mjs",
+      "desktop/startup-error.mjs",
+      "desktop/utility-lifecycle.mjs",
+      "desktop/workers/monitor-host.cjs",
+      "shared/local-auth.mjs",
+      "shared/local-service.mjs",
+      "shared/threadlight-paths.mjs",
+      "web/server.mjs",
+      "dist/**/*",
+      "LICENSE",
+      "NOTICE",
+      "SOURCE.md",
+      "THIRD_PARTY_NOTICES.md",
+      "TRADEMARKS.md",
+      "!**/{test,tests,__tests__,fixtures}/**",
+      "!**/{.claude,.codex,.git,.next,.vinext,.wrangler}/**",
+      "!**/.env*",
+      "!**/*.{map,ts,tsx,cts,mts,tsbuildinfo}"
+    ],
+    "asarUnpack": [
+      "desktop/workers/**/*",
+      "dist/**/*",
+      "node_modules/@img/sharp-win32-x64/lib/**/*"
+    ],
+    "extraResources": [
+      { "from": "LICENSE", "to": "legal/LICENSE" },
+      { "from": "NOTICE", "to": "legal/NOTICE" },
+      { "from": "SOURCE.md", "to": "legal/SOURCE.md" },
+      { "from": "THIRD_PARTY_NOTICES.md", "to": "legal/THIRD_PARTY_NOTICES.md" },
+      { "from": "TRADEMARKS.md", "to": "legal/TRADEMARKS.md" }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "executableName": "Threadlight",
+      "icon": "build/icon.png",
+      "requestedExecutionLevel": "asInvoker",
+      "legalTrademarks": "Threadlight"
+    },
+    "nsis": {
+      "artifactName": "Threadlight-Setup-${version}-${arch}.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "packElevateHelper": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Threadlight",
+      "uninstallDisplayName": "Threadlight",
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": false,
+      "runAfterFinish": false
+    },
+    "portable": {
+      "artifactName": "Threadlight-Portable-${version}-${arch}.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  }
 }
