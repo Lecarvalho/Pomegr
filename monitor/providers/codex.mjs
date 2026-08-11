@@ -102,6 +102,53 @@ function mergeMetadata(items) {
   return [...byId.values()].sort(compareMetadata);
 }
 
+function expandSelectedMetadata(metadataById, selectedIds) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const relatedSessionIds = new Set(
+      [...selectedIds].flatMap((id) => {
+        const sessionId = metadataById.get(id)?.sessionId;
+        return sessionId ? [id, sessionId] : [id];
+      }),
+    );
+    for (const metadata of metadataById.values()) {
+      if (selectedIds.has(metadata.localId)) continue;
+      const hasSelectedParent = [metadata.parentThreadId, metadata.forkedFromId]
+        .some((id) => id && selectedIds.has(id));
+      const sharesSelectedSession = metadata.sessionId
+        && metadata.sessionId !== metadata.localId
+        && relatedSessionIds.has(metadata.sessionId);
+      if (!hasSelectedParent && !sharesSelectedSession) continue;
+      selectedIds.add(metadata.localId);
+      changed = true;
+    }
+  }
+}
+
+function mergeFreshSessionTreeMetadata(discovered, sessionTree) {
+  const merged = mergeMetadata([...discovered, ...sessionTree.metadata]);
+  const freshById = new Map(
+    sessionTree.metadata
+      .filter((item) => sessionTree.freshIds.has(item.localId))
+      .map((item) => [item.localId, item]),
+  );
+  return merged.map((item) => {
+    const fresh = freshById.get(item.localId);
+    return fresh ? {
+      ...item,
+      updatedAt: fresh.updatedAt || item.updatedAt,
+      sessionId: fresh.sessionId,
+      parentThreadId: fresh.parentThreadId,
+      forkedFromId: fresh.forkedFromId,
+      sourceKind: fresh.sourceKind,
+      agentNickname: fresh.agentNickname,
+      agentRole: fresh.agentRole,
+      runtimeStatus: fresh.runtimeStatus,
+    } : item;
+  });
+}
+
 function appServerResponseData(response) {
   const value = response?.result ?? response;
   return Array.isArray(value) ? value : Array.isArray(value?.data) ? value.data : null;
@@ -279,7 +326,7 @@ export function createCodexProvider(options = {}) {
       const combined = appServerMetadata?.length
         ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
         : fallbackMetadata;
-      const value = liveness.observe(combined);
+      const value = combined;
       catalogCache = { expiresAt: now() + cacheMs, value };
       return value;
     })();
@@ -291,7 +338,8 @@ export function createCodexProvider(options = {}) {
   }
 
   async function listSessions() {
-    const { threads, sessions } = await discoveredMetadata();
+    const discovered = await discoveredMetadata();
+    const { threads, sessions } = liveness.observe(discovered);
     return threads.filter(isTopLevelCodexSession).map((thread) => {
       const state = sessions.get(thread.localId) || { isLive: false, needsInput: false, observedAt: null };
       return {
@@ -320,8 +368,10 @@ export function createCodexProvider(options = {}) {
 
   async function readAppServerSessionTree(localSessionId) {
     const root = await readAppServerSession(localSessionId);
-    if (!root) return [];
+    if (!root) return { metadata: [], descendantIds: new Set(), freshIds: new Set() };
     const discovered = [root];
+    const descendantIds = new Set();
+    const freshIds = new Set([root.localId]);
     const filters = includeArchived ? [false, true] : [false];
     try {
       const pages = await Promise.all(filters.map(async (archived) => {
@@ -335,16 +385,33 @@ export function createCodexProvider(options = {}) {
         });
         const data = appServerResponseData(response);
         if (data === null) throw new Error("Invalid Codex app-server descendant response");
-        return data.flatMap((thread) => {
+        const metadata = data.flatMap((thread) => {
           const metadata = normalizeCodexThreadMetadata(thread, { archived });
           return metadata ? [metadata] : [];
         });
+        const ignoredAncestorFilter = metadata.some((item) => (
+          item.localId === localSessionId
+          || (isTopLevelCodexSession(item) && item.localId !== localSessionId)
+        ));
+        return { metadata, trusted: !ignoredAncestorFilter };
       }));
-      discovered.push(...pages.flat());
+      for (const page of pages) {
+        const pageMetadata = page.trusted ? page.metadata.map((item) => (
+          item.sessionId === item.localId && !item.parentThreadId && !item.forkedFromId
+            ? { ...item, sessionId: localSessionId }
+            : item
+        )) : page.metadata;
+        discovered.push(...pageMetadata);
+        if (!page.trusted) continue;
+        for (const item of pageMetadata) {
+          descendantIds.add(item.localId);
+          freshIds.add(item.localId);
+        }
+      }
     } catch {
       // Descendant filtering is experimental; rollout relationships remain the fallback.
     }
-    return mergeMetadata(discovered);
+    return { metadata: mergeMetadata(discovered), descendantIds, freshIds };
   }
 
   async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
@@ -379,21 +446,40 @@ export function createCodexProvider(options = {}) {
   async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
     const historical = readOptions.historical !== false;
-    const fallbackMetadata = readFallbackMetadata();
-    const appServerMetadata = await readAppServerSessionTree(localSessionId);
-    const mergedMetadata = mergeMetadata([...fallbackMetadata, ...appServerMetadata]);
-    const allMetadata = liveness.observe(mergedMetadata, { historical }).threads;
-    const metadata = allMetadata.find((item) => item.localId === localSessionId) || null;
-    if (!metadata || !isTopLevelCodexSession(metadata)) return null;
+    const discovered = await discoveredMetadata();
+    const appServerTree = await readAppServerSessionTree(localSessionId);
+    const mergedMetadata = mergeFreshSessionTreeMetadata(discovered, appServerTree);
+    const metadataById = new Map(mergedMetadata.map((item) => [item.localId, item]));
+    const rootMetadata = metadataById.get(localSessionId) || null;
+    if (appServer && !appServerTree.metadata.length && !rootMetadata?.rolloutFile) return null;
+    if (!rootMetadata || !isTopLevelCodexSession(rootMetadata)) return null;
+    const selectedIds = new Set([localSessionId, ...appServerTree.descendantIds]);
+    expandSelectedMetadata(metadataById, selectedIds);
     const summaries = new Map();
     const recordsByThreadId = new Map();
-    for (const thread of allMetadata) {
-      if (!thread.rolloutFile) continue;
-      const records = readRolloutRecords(thread.rolloutFile, historical);
-      recordsByThreadId.set(thread.localId, records);
-      const summary = parseCodexAgentRecords(records, thread);
-      if (summary.localId) summaries.set(summary.localId, summary);
+    const parsedIds = new Set();
+    while (true) {
+      const pending = [...selectedIds]
+        .filter((id) => !parsedIds.has(id))
+        .map((id) => metadataById.get(id))
+        .filter(Boolean);
+      if (!pending.length) break;
+      for (const thread of pending) {
+        parsedIds.add(thread.localId);
+        if (!thread.rolloutFile) continue;
+        const records = readRolloutRecords(thread.rolloutFile, historical);
+        recordsByThreadId.set(thread.localId, records);
+        const summary = parseCodexAgentRecords(records, thread);
+        if (summary.localId) summaries.set(summary.localId, summary);
+        for (const collaboration of summary.collaborations || []) {
+          if (metadataById.has(collaboration.childThreadId)) selectedIds.add(collaboration.childThreadId);
+        }
+      }
+      expandSelectedMetadata(metadataById, selectedIds);
     }
+    const selectedMetadata = mergedMetadata.filter((item) => selectedIds.has(item.localId));
+    const allMetadata = liveness.observe(selectedMetadata, { historical }).threads;
+    const metadata = allMetadata.find((item) => item.localId === localSessionId) || rootMetadata;
     const agents = buildCodexAgentTree({
       rootThreadId: localSessionId,
       threads: allMetadata,
@@ -538,7 +624,14 @@ export function createCodexProvider(options = {}) {
       return localSessionId ? "The selected session is no longer available." : "No Codex sessions found.";
     },
     qaStats(reset = false) {
-      const value = { ...rolloutStats, cacheEntries: rolloutCache.size, catalogPending: Boolean(catalogPending) };
+      const livenessStats = liveness.stats();
+      const value = {
+        ...rolloutStats,
+        cacheEntries: rolloutCache.size,
+        catalogPending: Boolean(catalogPending),
+        livenessRolloutFiles: livenessStats.rolloutFiles,
+        livenessRolloutBytes: livenessStats.rolloutBytes,
+      };
       if (reset) Object.assign(rolloutStats, { reads: 0, bytes: 0, cacheHits: 0 });
       return value;
     },

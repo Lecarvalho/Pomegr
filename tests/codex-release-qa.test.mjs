@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -137,6 +137,50 @@ test("missing child rollouts, unavailable app-server, malformed records, and del
   assertNoPrivateFixtureSentinels(limits, "usage failure");
 });
 
+test("fresh direct thread metadata wins catalog timestamp ties and trusted ancestor results seed descendants", async () => {
+  const staleRoot = appThread("fresh-root", {
+    status: { type: "active", activeFlags: ["waitingOnUserInput"] },
+  });
+  const freshRoot = appThread("fresh-root", { status: { type: "idle" } });
+  const detachedChild = appThread("ancestor-child", {
+    source: { subAgent: "review" },
+  });
+  const unrelated = appThread("unrelated-root");
+  const provider = createCodexProvider({
+    codexHome: path.join(os.tmpdir(), "threadlight-codex-fresh-tree-missing"),
+    includeArchived: false,
+    cacheMs: 10_000,
+    appServer: {
+      async listThreads(params) {
+        return { data: params.ancestorThreadId ? [detachedChild] : [staleRoot, detachedChild, unrelated] };
+      },
+      async readThread({ threadId, includeTurns }) {
+        const thread = threadId === freshRoot.id ? freshRoot : detachedChild;
+        return { thread: { ...thread, ...(includeTurns ? { turns: [] } : {}) } };
+      },
+    },
+  });
+  await provider.listSessions();
+  const evidence = await provider.readSession(freshRoot.id, { historical: false });
+  assert.equal(evidence.agents.find((agent) => agent.id === "primary").status, "idle");
+  assert.equal(evidence.agents.some((agent) => agent.id === `agent-${detachedChild.id}`), true);
+  assert.equal(evidence.agents.some((agent) => agent.id === `agent-${unrelated.id}`), false);
+
+  const ignoredFilterProvider = createCodexProvider({
+    codexHome: path.join(os.tmpdir(), "threadlight-codex-ignored-ancestor-missing"),
+    includeArchived: false,
+    cacheMs: 10_000,
+    appServer: {
+      async listThreads() { return { data: [freshRoot, detachedChild, unrelated] }; },
+      async readThread({ threadId, includeTurns }) {
+        return { thread: { ...freshRoot, id: threadId, sessionId: threadId, ...(includeTurns ? { turns: [] } : {}) } };
+      },
+    },
+  });
+  const ignoredEvidence = await ignoredFilterProvider.readSession(freshRoot.id, { historical: true });
+  assert.deepEqual(ignoredEvidence.agents.map((agent) => agent.id), ["primary"]);
+});
+
 test("multiple large live rollouts use one bounded read each and reuse provider caches", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-performance-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -190,6 +234,107 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
   const thirdStats = provider.qaStats();
   assert.equal(thirdStats.reads, firstStats.reads + 1);
   assert.equal(thirdStats.bytes <= (count + 1) * maximumTailBytes, true);
+});
+
+test("selected session parsing ignores unrelated rollouts and follows collaboration-only descendants", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-selected-tree-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessions = path.join(root, "sessions", "2026", "08", "11");
+  await mkdir(sessions, { recursive: true });
+  const selectedContents = [];
+
+  async function writeSyntheticRollout(id, metadata = {}, extraRecords = []) {
+    const contents = [
+      JSON.stringify({
+        timestamp: new Date(AT).toISOString(),
+        type: "session_meta",
+        payload: {
+          id,
+          session_id: metadata.sessionId || id,
+          ...(metadata.parentThreadId ? { parent_thread_id: metadata.parentThreadId } : {}),
+          ...(metadata.forkedFromId ? { forked_from_id: metadata.forkedFromId } : {}),
+          source: metadata.source || "cli",
+          cwd: "C:\\synthetic\\selected-tree",
+          timestamp: new Date(AT).toISOString(),
+        },
+      }),
+      ...extraRecords.map((record, index) => JSON.stringify({
+        timestamp: new Date(AT + index + 1).toISOString(),
+        ...record,
+      })),
+    ].join("\n");
+    const file = path.join(sessions, `rollout-${id}.jsonl`);
+    await writeFile(file, contents, "utf8");
+    await utimes(file, new Date(AT), new Date(AT));
+    return Buffer.byteLength(contents);
+  }
+
+  selectedContents.push(await writeSyntheticRollout("selected-root", {}, [
+    { type: "response_item", payload: { type: "function_call", name: "spawn_agent", call_id: "spawn-detached", arguments: JSON.stringify({ task_name: "detached-child" }) } },
+    { type: "response_item", payload: { type: "function_call_output", call_id: "spawn-detached", output: JSON.stringify({ agent_id: "detached-child" }) } },
+  ]));
+  selectedContents.push(await writeSyntheticRollout("session-child", {
+    sessionId: "selected-root",
+    source: { subagent: "review" },
+  }));
+  selectedContents.push(await writeSyntheticRollout("parent-child", {
+    parentThreadId: "selected-root",
+    source: { subagent: { thread_spawn: { parent_thread_id: "selected-root" } } },
+  }));
+  selectedContents.push(await writeSyntheticRollout("fork-grandchild", {
+    forkedFromId: "parent-child",
+    source: "fork",
+  }));
+  selectedContents.push(await writeSyntheticRollout("detached-child", {
+    source: { subagent: "review" },
+  }, [
+    { type: "response_item", payload: { type: "function_call", name: "spawn_agent", call_id: "spawn-nested", arguments: JSON.stringify({ task_name: "detached-nested" }) } },
+    { type: "response_item", payload: { type: "function_call_output", call_id: "spawn-nested", output: JSON.stringify({ agent_id: "detached-nested" }) } },
+  ]));
+  selectedContents.push(await writeSyntheticRollout("detached-nested", {
+    source: { subagent: "review" },
+  }));
+  for (let index = 0; index < 80; index += 1) {
+    const id = `unrelated-${String(index).padStart(3, "0")}`;
+    await writeSyntheticRollout(id, {}, [
+      { type: "future_record", payload: { padding: "x".repeat(8_192) } },
+    ]);
+    const stale = new Date(AT - 10 * 60_000);
+    await utimes(path.join(sessions, `rollout-${id}.jsonl`), stale, stale);
+  }
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 10_000,
+    scanLimit: 100,
+    maximumTailBytes: 1_024,
+    now: () => AT + 60_000,
+  });
+  await provider.listSessions();
+  const catalogStats = provider.qaStats();
+  assert.equal(catalogStats.livenessRolloutFiles, selectedContents.length);
+  assert.equal(catalogStats.livenessRolloutBytes <= selectedContents.length * 1_024, true);
+  provider.qaStats(true);
+  const evidence = await provider.readSession("selected-root", { historical: true });
+  const firstStats = provider.qaStats();
+  assert.deepEqual(new Set(evidence.agents.map((agent) => agent.id)), new Set([
+    "primary",
+    "agent-session-child",
+    "agent-parent-child",
+    "agent-fork-grandchild",
+    "agent-detached-child",
+    "agent-detached-nested",
+  ]));
+  assert.equal(firstStats.reads, selectedContents.length);
+  assert.equal(firstStats.bytes, selectedContents.reduce((total, bytes) => total + bytes, 0));
+  assert.equal(firstStats.cacheEntries, selectedContents.length);
+
+  await provider.readSession("selected-root", { historical: true });
+  const secondStats = provider.qaStats();
+  assert.equal(secondStats.reads, firstStats.reads);
+  assert.equal(secondStats.bytes, firstStats.bytes);
+  assert.equal(secondStats.cacheHits, selectedContents.length);
 });
 
 test("concurrent catalog polls share one app-server request and one cache entry", async () => {

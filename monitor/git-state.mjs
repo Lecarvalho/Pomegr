@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,7 +9,9 @@ const MAX_COMMITS = 8;
 const REMOTE_REFRESH_INTERVAL_MS = 60_000;
 const REMOTE_TIMEOUT_MS = 10_000;
 const remoteCaches = new Map();
+const remoteCacheSetups = new Map();
 let remoteCacheRoot = "";
+let remoteCacheRootSetup = null;
 
 function runGit(cwd, args, timeout = 1_500) {
   return execFileSync("git", [
@@ -50,12 +53,24 @@ function tryGit(cwd, args, timeout) {
   }
 }
 
+async function tryGitAsync(cwd, args, timeout) {
+  try {
+    return await runGitAsync(cwd, args, timeout);
+  } catch {
+    return "";
+  }
+}
+
 function safeText(value, maximumLength) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximumLength);
 }
 
 function refExists(cwd, ref) {
   return Boolean(tryGit(cwd, ["rev-parse", "--verify", "--quiet", ref]));
+}
+
+async function refExistsAsync(cwd, ref) {
+  return Boolean(await tryGitAsync(cwd, ["rev-parse", "--verify", "--quiet", ref], 1_500));
 }
 
 function localDefaultBranch(cwd, currentBranch) {
@@ -68,9 +83,36 @@ function localDefaultBranch(cwd, currentBranch) {
   return currentBranch;
 }
 
+async function localDefaultBranchAsync(cwd, currentBranch) {
+  const remoteHead = (await tryGitAsync(cwd, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], 1_500)).trim();
+  if (remoteHead && await refExistsAsync(cwd, remoteHead)) return remoteHead.replace(/^origin\//, "");
+
+  for (const name of MAIN_BRANCH_CANDIDATES) {
+    const [local, remote] = await Promise.all([
+      refExistsAsync(cwd, `refs/heads/${name}`),
+      refExistsAsync(cwd, `refs/remotes/origin/${name}`),
+    ]);
+    if (local || remote) return name;
+  }
+  return currentBranch;
+}
+
 function ensureRemoteCacheRoot() {
   if (!remoteCacheRoot) remoteCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "threadlight-git-remote-"));
   return remoteCacheRoot;
+}
+
+async function ensureRemoteCacheRootAsync() {
+  if (remoteCacheRoot) return remoteCacheRoot;
+  if (!remoteCacheRootSetup) {
+    remoteCacheRootSetup = mkdtemp(path.join(os.tmpdir(), "threadlight-git-remote-"))
+      .then((directory) => {
+        remoteCacheRoot = directory;
+        return directory;
+      })
+      .finally(() => { remoteCacheRootSetup = null; });
+  }
+  return remoteCacheRootSetup;
 }
 
 function ensureRemoteCache(cwd) {
@@ -87,6 +129,29 @@ function ensureRemoteCache(cwd) {
   cache = { directory, status: "checking", checkedAt: null, lastAttempt: 0, remoteBranch: "", pending: null };
   remoteCaches.set(cwd, cache);
   return cache;
+}
+
+async function ensureRemoteCacheAsync(cwd) {
+  const cached = remoteCaches.get(cwd);
+  if (cached) return cached;
+  const pending = remoteCacheSetups.get(cwd);
+  if (pending) return pending;
+
+  const setup = (async () => {
+    const root = await ensureRemoteCacheRootAsync();
+    const directory = await mkdtemp(path.join(root, "repo-"));
+    await runGitAsync(cwd, ["init", "--bare", "--quiet", directory], 3_000);
+    const commonDirectoryValue = (await runGitAsync(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"], 1_500)).trim();
+    const commonDirectory = path.isAbsolute(commonDirectoryValue) ? commonDirectoryValue : path.resolve(cwd, commonDirectoryValue);
+    const alternateFile = path.join(directory, "objects", "info", "alternates");
+    await mkdir(path.dirname(alternateFile), { recursive: true });
+    await writeFile(alternateFile, `${path.join(commonDirectory, "objects")}\n`, "utf8");
+    const cache = { directory, status: "checking", checkedAt: null, lastAttempt: 0, remoteBranch: "", pending: null };
+    remoteCaches.set(cwd, cache);
+    return cache;
+  })().finally(() => { remoteCacheSetups.delete(cwd); });
+  remoteCacheSetups.set(cwd, setup);
+  return setup;
 }
 
 function remoteHeadBranch(output) {
@@ -113,6 +178,20 @@ function branchChangesIntegrated(cwd, gitDirectory, head) {
   return Boolean(mergedTree && remoteTree && mergedTree === remoteTree);
 }
 
+async function branchChangesIntegratedAsync(cwd, gitDirectory, head) {
+  const [mergedTree, remoteTree] = await Promise.all([
+    tryGitAsync(cwd, [
+      "--git-dir", gitDirectory,
+      "merge-tree", "--write-tree", "--no-messages", "refs/threadlight/default", head,
+    ], 5_000),
+    tryGitAsync(cwd, [
+      "--git-dir", gitDirectory,
+      "rev-parse", "refs/threadlight/default^{tree}",
+    ], 1_500),
+  ]);
+  return Boolean(mergedTree.trim() && remoteTree.trim() && mergedTree.trim() === remoteTree.trim());
+}
+
 function commitHistory(cwd, range, gitDirectory = "") {
   const output = tryGit(cwd, [
     ...(gitDirectory ? ["--git-dir", gitDirectory] : []),
@@ -135,8 +214,30 @@ function commitHistory(cwd, range, gitDirectory = "") {
   });
 }
 
+async function commitHistoryAsync(cwd, range, gitDirectory = "") {
+  const output = await tryGitAsync(cwd, [
+    ...(gitDirectory ? ["--git-dir", gitDirectory] : []),
+    "log",
+    `--max-count=${MAX_COMMITS}`,
+    "--date=iso-strict",
+    "--format=%h%x1f%cI%x1f%s%x1e",
+    range,
+  ], 2_500);
+  if (!output) return [];
+  return output.split("\u001e").flatMap((record) => {
+    const [hash = "", committedAt = "", subject = ""] = record.trim().split("\u001f");
+    if (!/^[0-9a-f]+$/i.test(hash) || !subject) return [];
+    const parsedDate = new Date(committedAt);
+    return [{
+      hash: hash.slice(0, 12),
+      subject: safeText(subject, 160),
+      committedAt: Number.isNaN(parsedDate.getTime()) ? null : parsedDate.toISOString(),
+    }];
+  });
+}
+
 export async function refreshRemoteGitState(cwd, options = {}) {
-  const cache = ensureRemoteCache(cwd);
+  const cache = await ensureRemoteCacheAsync(cwd);
   const now = Date.now();
   if (cache.pending) return cache.pending;
   if (!options.force && now - cache.lastAttempt < REMOTE_REFRESH_INTERVAL_MS) return cache;
@@ -170,6 +271,54 @@ export async function refreshRemoteGitState(cwd, options = {}) {
     return cache;
   })();
   return cache.pending;
+}
+
+async function remoteRepositoryStateAsync(cwd, currentBranch, head) {
+  let cache;
+  try {
+    cache = await ensureRemoteCacheAsync(cwd);
+  } catch {
+    const isMain = currentBranch === await localDefaultBranchAsync(cwd, currentBranch);
+    return {
+      isMain,
+      comparison: null,
+      commits: isMain ? await commitHistoryAsync(cwd, "HEAD") : [],
+      remote: { status: "unavailable", checkedAt: null },
+    };
+  }
+  if (!cache.pending && Date.now() - cache.lastAttempt >= REMOTE_REFRESH_INTERVAL_MS) void refreshRemoteGitState(cwd);
+  if (cache.status !== "ready" || !cache.remoteBranch) {
+    const isMain = currentBranch === await localDefaultBranchAsync(cwd, currentBranch);
+    return {
+      isMain,
+      comparison: null,
+      commits: isMain ? await commitHistoryAsync(cwd, "HEAD") : [],
+      remote: { status: cache.status, checkedAt: null },
+    };
+  }
+
+  const counts = parseCounts(await tryGitAsync(cwd, [
+    "--git-dir", cache.directory,
+    "rev-list", "--left-right", "--count", `refs/threadlight/default...${head}`,
+  ], 2_500));
+  if (!counts) return { isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } };
+
+  const isMain = currentBranch === cache.remoteBranch;
+  const integrated = !isMain && counts.ahead > 0 && await branchChangesIntegratedAsync(cwd, cache.directory, head);
+  return {
+    isMain,
+    comparison: {
+      branch: `origin/${safeText(cache.remoteBranch, 120)}`,
+      kind: isMain ? "upstream" : "base",
+      ahead: integrated ? 0 : counts.ahead,
+      behind: counts.behind,
+      integrated,
+    },
+    commits: isMain
+      ? await commitHistoryAsync(cwd, "HEAD")
+      : integrated ? [] : await commitHistoryAsync(cwd, `refs/threadlight/default..${head}`, cache.directory),
+    remote: { status: "ready", checkedAt: cache.checkedAt },
+  };
 }
 
 function remoteRepositoryState(cwd, currentBranch, head) {
@@ -245,6 +394,44 @@ export function readGitState(cwd) {
   const remoteState = branch.startsWith("detached@")
     ? { isMain: false, comparison: null, commits: commitHistory(cwd, "HEAD"), remote: { status: "unavailable", checkedAt: null } }
     : remoteRepositoryState(cwd, branch, head);
+
+  return {
+    available: true,
+    branch: safeText(branch, 200),
+    files,
+    ...remoteState,
+  };
+}
+
+export async function readGitStateAsync(cwd) {
+  const empty = {
+    available: false,
+    branch: "Not a Git repository",
+    files: [],
+    isMain: false,
+    comparison: null,
+    commits: [],
+    remote: { status: "unavailable", checkedAt: null },
+  };
+  if (!cwd) return empty;
+
+  const [branchOutput, headOutput, statusOutput] = await Promise.all([
+    tryGitAsync(cwd, ["branch", "--show-current"], 1_500),
+    tryGitAsync(cwd, ["rev-parse", "HEAD"], 1_500),
+    tryGitAsync(cwd, ["status", "--porcelain=v1"], 2_500),
+  ]);
+  let branch = branchOutput.trim();
+  const head = headOutput.trim();
+  if (!head) return empty;
+  if (!branch) branch = `detached@${head.slice(0, 12)}`;
+
+  const files = statusOutput.split(/\r?\n/).filter(Boolean).map((line) => ({
+    status: line.slice(0, 2),
+    path: line.slice(3),
+  }));
+  const remoteState = branch.startsWith("detached@")
+    ? { isMain: false, comparison: null, commits: await commitHistoryAsync(cwd, "HEAD"), remote: { status: "unavailable", checkedAt: null } }
+    : await remoteRepositoryStateAsync(cwd, branch, head);
 
   return {
     available: true,

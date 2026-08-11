@@ -32,28 +32,31 @@ export function Dashboard() {
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch(stateEndpoint(selectedSessionId), { cache: "no-store" });
+      const response = await fetch(stateEndpoint(selectedSessionId), { cache: "no-store", signal });
       if (!response.ok) throw new Error("Monitor unavailable");
       const nextData = await response.json() as MonitorState;
+      if (signal?.aborted) return;
       startTransition(() => {
         setSelectedSessionId((current) => current ?? nextData.session?.id ?? null);
         setData(nextData);
         setLastRefresh(new Date());
       });
     } catch {
+      if (signal?.aborted) return;
       setData((current) => ({ ...current, connected: false, error: "Local monitor unavailable. Run npm run dev in this project; Threadlight will reconnect automatically." }));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [selectedSessionId]);
 
-  const refreshSessions = useCallback(async () => {
+  const refreshSessions = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch("/api/sessions", { cache: "no-store" });
+      const response = await fetch("/api/sessions", { cache: "no-store", signal });
       if (!response.ok) return;
       const catalog = await response.json() as { sessions?: SessionSummary[] };
+      if (signal?.aborted) return;
       startTransition(() => setSessions((current) => preserveSessionOrder(current, catalog.sessions || [])));
     } catch {
       // Live monitoring remains available when the catalog cannot be refreshed.
@@ -61,21 +64,37 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const initial = window.setTimeout(refresh, 0);
-    const interval = selectedIsHistorical ? null : window.setInterval(() => { if (!paused) void refresh(); }, 1800);
+    const controller = new AbortController();
+    let nextRefresh: number | null = null;
+    const poll = async () => {
+      await refresh(controller.signal);
+      if (!controller.signal.aborted && !paused && !selectedIsHistorical) {
+        nextRefresh = window.setTimeout(() => void poll(), 1800);
+      }
+    };
+    void poll();
     return () => {
-      window.clearTimeout(initial);
-      if (interval) window.clearInterval(interval);
+      controller.abort();
+      if (nextRefresh !== null) window.clearTimeout(nextRefresh);
     };
   }, [paused, refresh, selectedIsHistorical]);
 
   useEffect(() => {
-    const initial = window.setTimeout(refreshSessions, 0);
-    const interval = window.setInterval(refreshSessions, 2_000);
-    return () => { window.clearTimeout(initial); window.clearInterval(interval); };
+    const controller = new AbortController();
+    let nextRefresh: number | null = null;
+    const poll = async () => {
+      await refreshSessions(controller.signal);
+      if (!controller.signal.aborted) nextRefresh = window.setTimeout(() => void poll(), 2_000);
+    };
+    void poll();
+    return () => {
+      controller.abort();
+      if (nextRefresh !== null) window.clearTimeout(nextRefresh);
+    };
   }, [refreshSessions]);
 
   const viewingHistory = data.view === "history";
+  const connecting = loading && !data.error;
   const clockRunning = data.connected && !viewingHistory && !paused;
   const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
 
@@ -124,7 +143,7 @@ export function Dashboard() {
       <div className="appFrame">
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
-        <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
+        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
         {data.session && <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />}
 
         {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
@@ -144,33 +163,41 @@ export function Dashboard() {
               <RepositoryPanel session={data.session} />
               {!viewingHistory && capabilities.usageLimits && <UsageLimitsPanel usageLimits={data.usageLimits} />}
               <MachineryPanel machinery={data.session.contextMachinery} supported={capabilities.contextMachinery} historical={viewingHistory} />
-              <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh(false)} />
+              <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />
             </div>
           </details>
-        </> : <AwaitingSession connected={data.connected} />}
-          <DashboardFooter connected={data.connected} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
+        </> : <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} />}
+          <DashboardFooter connected={data.connected} connecting={connecting} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
         </main>
       </div>
     </LiveClockProvider>
   );
 }
 
-function AwaitingSession({ connected }: { connected: boolean }) {
+function AwaitingSession({ connected, connecting, loadingSession }: { connected: boolean; connecting: boolean; loadingSession: boolean }) {
+  const heading = connecting
+    ? loadingSession ? "Loading session" : "Connecting to local monitor"
+    : connected ? "No active session yet" : "Local monitor offline";
+  const description = connecting
+    ? loadingSession
+      ? "Fetching the latest state for this session."
+      : "Loading the latest session state. Prompts and responses stay private."
+    : connected
+      ? "Start a coding-agent session and it will appear here automatically. Prompts and responses stay private."
+      : "Run npm run dev in this project. Threadlight will reconnect automatically.";
   return (
-    <section className="awaitingSession" aria-label="Session discovery status">
-      <h1>{connected ? "No active session yet" : "Local monitor offline"}</h1>
-      <p>{connected
-        ? "Start a coding-agent session and it will appear here automatically. Prompts and responses stay private."
-        : "Run npm run dev in this project. Threadlight will reconnect automatically."}</p>
+    <section className="awaitingSession" aria-label="Session discovery status" aria-live="polite">
+      <h1>{heading}</h1>
+      <p>{description}</p>
     </section>
   );
 }
 
-function DashboardFooter({ connected, viewingHistory, paused, lastRefresh }: { connected: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
+function DashboardFooter({ connected, connecting, viewingHistory, paused, lastRefresh }: { connected: boolean; connecting: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
   return (
     <footer>
       <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"}</span>
-      <span>{viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
+      <span>{connecting ? "Connecting…" : viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
     </footer>
   );
 }

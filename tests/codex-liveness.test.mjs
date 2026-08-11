@@ -200,6 +200,86 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
 });
 
+test("liveness scans one recent pending rollout while skipping five hundred provably stale rollouts", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-window-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const recentFile = path.join(root, "rollout-recent-pending.jsonl");
+  await writeFile(recentFile, [
+    JSON.stringify({ timestamp: new Date(START).toISOString(), type: "session_meta", payload: { id: "recent-pending" } }),
+    JSON.stringify({
+      timestamp: new Date(START + 1_000).toISOString(),
+      type: "response_item",
+      payload: { type: "function_call", name: "request_user_input", call_id: "pending-input" },
+    }),
+  ].join("\n"), "utf8");
+  const staleUpdatedAt = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1).toISOString();
+  const stale = await Promise.all(Array.from({ length: 500 }, async (_, index) => {
+    const rolloutFile = path.join(root, `rollout-stale-${index}.jsonl`);
+    await writeFile(rolloutFile, JSON.stringify({
+      timestamp: staleUpdatedAt,
+      type: "session_meta",
+      payload: { id: `stale-${index}` },
+    }), "utf8");
+    return thread(`stale-${index}`, { updatedAt: staleUpdatedAt, rolloutFile });
+  }));
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    now: () => START + 2_000,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([
+    ...stale,
+    thread("recent-pending", { updatedAt: new Date(START + 1_000).toISOString(), rolloutFile: recentFile }),
+  ]);
+  assert.equal(coordinator.stats().rolloutFiles, 1);
+  assert.equal(observed.sessions.get("recent-pending").needsInput, true);
+});
+
+test("authoritative app-server and lifecycle bridge state avoid rollout tail reads", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-authoritative-live-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-unused.jsonl");
+  await writeFile(rolloutFile, JSON.stringify({
+    timestamp: new Date(START).toISOString(),
+    type: "session_meta",
+    payload: { id: "unused" },
+  }), "utf8");
+  const livenessRoot = path.join(root, "liveness");
+  hook(livenessRoot, START, "PermissionRequest", { sessionId: "bridge-root" });
+  const coordinator = createCodexLivenessCoordinator({
+    root: livenessRoot,
+    now: () => START + 1_000,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([
+    thread("app-root", { runtimeStatus: { type: "idle" }, rolloutFile }),
+    thread("bridge-root", { rolloutFile }),
+  ]);
+  assert.equal(coordinator.stats().rolloutFiles, 0);
+  assert.equal(observed.threads.find((item) => item.localId === "app-root").liveness.source, "owning_app_server");
+  assert.equal(observed.threads.find((item) => item.localId === "bridge-root").liveness.source, "lifecycle_bridge");
+});
+
+test("future-dated rollout metadata is scanned and record timestamps decide liveness", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-clock-skew-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-future.jsonl");
+  const future = new Date(START + 60_000).toISOString();
+  await writeFile(rolloutFile, JSON.stringify({
+    timestamp: future,
+    type: "session_meta",
+    payload: { id: "future-root" },
+  }), "utf8");
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    now: () => START,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([thread("future-root", { updatedAt: future, rolloutFile })]);
+  assert.equal(coordinator.stats().rolloutFiles, 1);
+  assert.equal(observed.sessions.get("future-root").isLive, false);
+});
+
 test("Windows owner identity binds a lease to process creation time", { skip: process.platform !== "win32" }, () => {
   assert.match(processStartIdentity(process.pid), /^\d{4}-\d{2}-\d{2}T/);
 });

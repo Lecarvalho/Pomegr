@@ -155,6 +155,70 @@ test("provider failures degrade independently during catalog and automatic selec
   assert.equal((await registry.readSession()).sessionId, "codex:healthy");
 });
 
+test("coalesces only concurrent catalog reads", async () => {
+  let catalogCalls = 0;
+  let releaseCatalog;
+  const catalogReady = new Promise((resolve) => { releaseCatalog = resolve; });
+  const codex = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilities: { liveSessions: true },
+    async listSessions() {
+      catalogCalls += 1;
+      await catalogReady;
+      return [session("live", "2026-08-10T12:00:00.000Z")];
+    },
+    async readSession(localId) { return evidence(localId); },
+  });
+  const registry = createProviderRegistry([codex]);
+
+  const listed = registry.listSessions();
+  const selected = registry.readSession("codex:live");
+  await Promise.resolve();
+  assert.equal(catalogCalls, 1);
+  releaseCatalog();
+
+  assert.deepEqual((await listed).map(({ id }) => id), ["codex:live"]);
+  assert.equal((await selected).sessionId, "codex:live");
+  await registry.listSessions();
+  assert.equal(catalogCalls, 2);
+});
+
+test("explicit reads refresh the catalog before deciding historical state", async () => {
+  let catalogCalls = 0;
+  let sessions = [session("changing", "2026-08-10T12:00:00.000Z")];
+  const readCalls = [];
+  const codex = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilities: { liveSessions: true },
+    async listSessions() {
+      catalogCalls += 1;
+      return sessions;
+    },
+    async readSession(localId, options) {
+      readCalls.push({ localId, options });
+      return evidence(localId, options.historical);
+    },
+  });
+  const registry = createProviderRegistry([codex]);
+
+  await registry.listSessions();
+  sessions = [session("changing", "2026-08-10T12:01:00.000Z", { isLive: false })];
+  const historical = await registry.readSession("codex:changing");
+  assert.equal(catalogCalls, 2);
+  assert.equal(historical.evidence.historical, true);
+
+  sessions = [];
+  const deleted = await registry.readSession("codex:changing");
+  assert.equal(catalogCalls, 3);
+  assert.equal(deleted.evidence.historical, true);
+  assert.deepEqual(readCalls.map(({ options }) => options), [
+    { historical: true },
+    { historical: true },
+  ]);
+});
+
 test("production registry loads Claude and Codex through the provider registry", () => {
   assert.deepEqual(providerRegistry.providers.map(({ id }) => id), ["claude", "codex"]);
 });

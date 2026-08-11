@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { readGitState, refreshRemoteGitState } from "../monitor/git-state.mjs";
+import { readGitState, readGitStateAsync, refreshRemoteGitState } from "../monitor/git-state.mjs";
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -40,6 +40,7 @@ test("reads recent commits and upstream divergence on the main branch", async (c
   const trackingBefore = git(repository, "rev-parse", "origin/main");
   await refreshRemoteGitState(repository, { force: true });
   const state = readGitState(repository);
+  const asyncState = await readGitStateAsync(repository);
 
   assert.equal(state.available, true);
   assert.equal(state.branch, "main");
@@ -53,6 +54,7 @@ test("reads recent commits and upstream divergence on the main branch", async (c
     { status: " M", path: "tracked.txt" },
     { status: "??", path: "untracked.txt" },
   ]);
+  assert.deepEqual(asyncState, state);
 });
 
 test("shows only commits unique to a feature branch", async (context) => {

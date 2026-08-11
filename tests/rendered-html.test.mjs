@@ -30,7 +30,8 @@ test("server-renders the composed Threadlight dashboard", async () => {
   const html = await response.text();
   assert.match(html, /<title>Threadlight<\/title>/i);
   assert.match(html, /No live sessions/);
-  assert.match(html, /Local monitor offline/);
+  assert.match(html, /Connecting to local monitor/);
+  assert.doesNotMatch(html, /Local monitor offline/);
   assert.match(html, /Local observer · Read-only/);
   assert.doesNotMatch(html, /Generate report|Flow score|Usage limits|Agent activity|Recent activity/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);

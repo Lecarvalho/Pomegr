@@ -1,8 +1,9 @@
 import { ThreadlightBrand } from "../ThreadlightBrand";
 import { ThemeToggle } from "../ThemeToggle";
 
-export function DashboardHeader({ connected, historical, paused, sessionsOpen, reportGenerating, canGenerateReport, onOpenSessions, onGenerateReport, onTogglePause }: {
+export function DashboardHeader({ connected, connecting, historical, paused, sessionsOpen, reportGenerating, canGenerateReport, onOpenSessions, onGenerateReport, onTogglePause }: {
   connected: boolean;
+  connecting: boolean;
   historical: boolean;
   paused: boolean;
   sessionsOpen: boolean;
@@ -17,7 +18,7 @@ export function DashboardHeader({ connected, historical, paused, sessionsOpen, r
       <ThreadlightBrand href="#top" />
       <div className="topActions">
         <button className="sessionMenuButton" type="button" onClick={onOpenSessions} aria-expanded={sessionsOpen} aria-controls="session-navigation">Sessions</button>
-        <span className={`connection ${connected ? "online" : "offline"}`}><i /> {historical ? "Historical snapshot" : connected ? "Monitor connected" : "Monitor offline"}</span>
+        <span className={`connection ${connecting ? "connecting" : connected ? "online" : "offline"}`}><i /> {connecting ? "Connecting to monitor" : historical ? "Historical snapshot" : connected ? "Monitor connected" : "Monitor offline"}</span>
         {canGenerateReport && <button className="ghostButton reportButton" onClick={onGenerateReport} disabled={reportGenerating}>{reportGenerating ? "Preparing report…" : "Download report"}</button>}
         {!historical && canGenerateReport && <button className="ghostButton" onClick={onTogglePause}>{paused ? "Resume updates" : "Pause updates"}</button>}
         <ThemeToggle />

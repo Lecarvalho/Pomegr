@@ -41,7 +41,9 @@ export function createProviderRegistry(adapters) {
     providersById.set(provider.id, { provider, providerIndex });
   });
 
-  async function catalogEntries() {
+  let catalogInFlight = null;
+
+  async function loadCatalogEntries() {
     const results = await Promise.all(providers.map(async (provider, providerIndex) => {
       try {
         const sessions = await provider.listSessions();
@@ -69,6 +71,17 @@ export function createProviderRegistry(adapters) {
       seen.add(entry.id);
       return true;
     });
+  }
+
+  function catalogEntries() {
+    if (catalogInFlight) return catalogInFlight;
+
+    const load = loadCatalogEntries()
+      .finally(() => {
+        if (catalogInFlight === load) catalogInFlight = null;
+      });
+    catalogInFlight = load;
+    return load;
   }
 
   async function readCandidate(entry, historical) {

@@ -6,7 +6,7 @@ import { recentActivityEvents, shellFailureActivityEvents } from "./activity-eve
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
-import { readGitState } from "./git-state.mjs";
+import { readGitStateAsync } from "./git-state.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -41,6 +41,10 @@ function recordedGitState(branch) {
     commits: [],
     remote: { status: "unavailable", checkedAt: null },
   };
+}
+
+function unavailablePullRequests() {
+  return { status: "unavailable", checkedAt: null, items: [] };
 }
 
 function groupToolEvidence(toolCalls) {
@@ -116,22 +120,104 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
 
 export function createMonitorRuntime(options = {}) {
   const registry = options.providerRegistry || providerRegistry;
-  const gitReader = options.readGitState || readGitState;
+  const gitReader = options.readGitState || readGitStateAsync;
   const pullRequestReader = options.readPullRequests || readPullRequests;
   const now = options.now || (() => Date.now());
-  const gitCache = new Map();
+  const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
+  const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
+  const enrichmentCache = new Map();
 
-  function gitState(cwd) {
-    const cached = gitCache.get(cwd);
-    if (cached && now() - cached.timestamp < 2500) return cached.value;
-    let value;
+  async function refreshLiveEnrichment(entry, input) {
+    let repository;
     try {
-      value = gitReader(cwd);
+      repository = { ...await gitReader(input.cwd), historical: false };
     } catch {
-      value = unavailableGitState();
+      repository = { ...unavailableGitState(), historical: false };
     }
-    gitCache.set(cwd, { timestamp: now(), value });
-    return value;
+    let pullRequests;
+    try {
+      pullRequests = await pullRequestReader([], {
+        cwd: input.cwd,
+        branch: repository.branch,
+        historical: false,
+        sessionCreations: input.sessionCreations,
+      });
+    } catch {
+      pullRequests = unavailablePullRequests();
+    }
+    const refreshedAt = now();
+    if (entry.generation === input.generation) {
+      entry.value = { repository, pullRequests };
+      entry.refreshedAt = refreshedAt;
+    }
+  }
+
+  function liveEnrichment(sessionId, evidence) {
+    const sessionCreations = [...evidence.pullRequestCreations];
+    const fingerprint = JSON.stringify([evidence.session.cwd, sessionCreations]);
+    let entry = enrichmentCache.get(sessionId);
+    if (!entry) {
+      entry = {
+        fingerprint,
+        generation: 1,
+        cwd: evidence.session.cwd,
+        sessionCreations,
+        refreshedAt: null,
+        refreshing: false,
+        value: {
+          repository: { ...unavailableGitState(), historical: false },
+          pullRequests: unavailablePullRequests(),
+        },
+      };
+      enrichmentCache.set(sessionId, entry);
+    } else if (entry.fingerprint !== fingerprint) {
+      entry.fingerprint = fingerprint;
+      entry.generation += 1;
+      entry.cwd = evidence.session.cwd;
+      entry.sessionCreations = sessionCreations;
+      entry.refreshedAt = null;
+      entry.refreshing = false;
+      entry.value = {
+        repository: { ...unavailableGitState(), historical: false },
+        pullRequests: unavailablePullRequests(),
+      };
+    }
+    const expired = entry.refreshedAt === null || now() - entry.refreshedAt >= enrichmentCacheMs;
+    let enqueue = null;
+    if (expired && !entry.refreshing) {
+      entry.refreshing = true;
+      const input = {
+        generation: entry.generation,
+        cwd: entry.cwd,
+        sessionCreations: entry.sessionCreations,
+      };
+      enqueue = () => {
+        try {
+          scheduleEnrichment(() => {
+            const work = refreshLiveEnrichment(entry, input)
+              .catch(() => {
+                if (entry.generation === input.generation) {
+                  entry.value = {
+                    repository: { ...unavailableGitState(), historical: false },
+                    pullRequests: unavailablePullRequests(),
+                  };
+                  entry.refreshedAt = null;
+                }
+              })
+              .finally(() => {
+                if (entry.generation === input.generation) entry.refreshing = false;
+              });
+            void work.catch(() => {});
+            return work;
+          });
+        } catch {
+          if (entry.generation === input.generation) {
+            entry.refreshing = false;
+          }
+        }
+      };
+    }
+    return { value: entry.value, enqueue };
   }
 
   async function sessionCatalog() {
@@ -206,26 +292,32 @@ export function createMonitorRuntime(options = {}) {
   const primaryActor = agents.find((agent) => agent.id === "primary")?.label || "Primary agent";
   allEvents.push(...shellFailureActivityEvents(executionTasks, primaryActor));
 
-  const repository = historical
-    ? recordedGitState(evidence.session.recordedGitBranch)
-    : { ...gitState(evidence.session.cwd), historical: false };
+  let repository;
   let pullRequests;
-  try {
-    pullRequests = await pullRequestReader([], {
-      cwd: evidence.session.cwd,
-      branch: repository.branch,
-      historical,
-      sessionCreations: evidence.pullRequestCreations,
-    });
-  } catch {
-    pullRequests = { status: "unavailable", checkedAt: null, items: [] };
+  let enqueueLiveEnrichment = null;
+  if (historical) {
+    repository = recordedGitState(evidence.session.recordedGitBranch);
+    try {
+      pullRequests = await pullRequestReader([], {
+        cwd: evidence.session.cwd,
+        branch: repository.branch,
+        historical: true,
+        sessionCreations: evidence.pullRequestCreations,
+      });
+    } catch {
+      pullRequests = unavailablePullRequests();
+    }
+  } else {
+    const live = liveEnrichment(sessionId, evidence);
+    ({ repository, pullRequests } = live.value);
+    enqueueLiveEnrichment = live.enqueue;
   }
   const currentUsageLimits = await registry.readUsageLimits(provider, { historical });
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
 
-  return {
+  const state = {
     connected: true,
     source: provider.source,
     capabilities: provider.capabilities,
@@ -265,6 +357,8 @@ export function createMonitorRuntime(options = {}) {
     insights,
     usageLimits: currentUsageLimits,
   };
+  enqueueLiveEnrichment?.();
+  return state;
   }
 
   function analyzeEmpty() {

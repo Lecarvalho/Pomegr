@@ -594,6 +594,13 @@ export function createCodexLivenessCoordinator(options = {}) {
     return parseCodexRolloutLiveness(cached.records, { now: nowMs });
   }
 
+  function rolloutMetadataCanBeLive(thread, nowMs) {
+    const updatedAt = timestampValue(thread.updatedAt);
+    if (!Number.isFinite(updatedAt)) return true;
+    const age = nowMs - updatedAt;
+    return age <= CODEX_ROLLOUT_LIVE_WINDOW_MS;
+  }
+
   function observe(threads, observeOptions = {}) {
     if (observeOptions.historical) return { threads: threads.map((thread) => ({ ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false })), sessions: new Map() };
     const checkedAt = now();
@@ -628,7 +635,9 @@ export function createCodexLivenessCoordinator(options = {}) {
         const keepStale = checkedAt < resumeGraceUntil || (stalePolls.get(staleKey) || 0) < 2;
         bridge = bridgeLiveness(bridgeRecord, checkedAt, keepStale);
       }
-      const rollout = rolloutEvidence(thread.rolloutFile, checkedAt);
+      const rollout = !app && !bridge && rolloutMetadataCanBeLive(thread, checkedAt)
+        ? rolloutEvidence(thread.rolloutFile, checkedAt)
+        : null;
       const liveness = app || bridge || rollout;
       return {
         ...thread,
