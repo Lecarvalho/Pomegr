@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
-import { shellFailureActivityEvents } from "./activity-events.mjs";
+import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
@@ -164,7 +164,7 @@ async function analyze(requestedSessionId = "") {
       actor: call.actor.label,
       tool: call.tool,
       detail: call.detail,
-      status: null,
+      status: call.status === "failed" ? "failed" : null,
     })),
   ];
   const executionTasks = agents.find((agent) => agent.id === "primary")?.executionTasks || [];
@@ -183,7 +183,6 @@ async function analyze(requestedSessionId = "") {
   const currentUsageLimits = historical ? emptyUsageLimits() : await providerRegistry.readUsageLimits(provider);
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
-  allEvents.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
 
   return {
@@ -219,14 +218,7 @@ async function analyze(requestedSessionId = "") {
     agents,
     toolPatterns,
     loops: loopPatterns,
-    activity: allEvents.slice(0, 30).map(({ id, timestamp, actor, tool, detail, status }) => ({
-      id,
-      timestamp,
-      actor,
-      tool,
-      detail,
-      status: status || null,
-    })),
+    activity: recentActivityEvents(allEvents),
     executionTasks,
     planTasks: evidence.planTasks,
     insights,

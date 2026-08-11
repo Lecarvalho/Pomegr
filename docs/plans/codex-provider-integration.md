@@ -371,9 +371,17 @@ npm run build
 
 ## TL-CX-08 — Normalize Codex tools and recent activity
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-07`
 - **Target size:** 1–2 sessions
+
+### Implementation notes
+
+- Added provider-local normalization for canonical and rollout command, file-change, MCP, dynamic, collaboration, web, image, input-request, tool-search, and wait calls with stable identities and lifecycle status.
+- Exposed only bounded safe tool labels, targets, and basenames while retaining raw inputs solely for monitor-side repetition and hashed mutation evidence; unknown items are ignored.
+- Extended `apply_patch` and canonical file-change mutation scopes across anchored hunks, whole-file changes, and moves without sending full paths, patches, or anchors across the provider boundary.
+- Added deterministic recent-activity ordering/bounds plus focused totals, deduplication, privacy-sentinel, malformed/unknown, and mutation regression coverage.
 
 ### Goal
 
@@ -405,9 +413,17 @@ npm run build
 
 ## TL-CX-09 — Implement Codex execution-task lifecycle
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-08`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added provider-local normalization for Codex canonical and rollout command lifecycles, including foreground/background success, failure, interruption, duplicate-event merging, safe process IDs, and recorded timestamps/exit codes.
+- Kept commands, parsed actions, terminal input, aggregated output, stdout, and stderr inside the adapter while exposing only the existing bounded shell-task contract.
+- Attached signals only after matching known normalized execution or background IDs, populated per-agent task lists, preserved the primary compatibility field, and stopped incomplete historical tasks at the recorded session end.
+- Added focused lifecycle, privacy-sentinel, signal-matching, historical-stop, per-agent, and compatibility coverage.
 
 ### Goal
 
@@ -725,3 +741,5 @@ Add short entries here only after completing a task.
 | 2026-08-10 | TL-CX-05 | Complete | Provider registry, qualified catalog merge, safe selection routing, and deterministic cross-provider priority added. |
 | 2026-08-10 | TL-CX-06 | Complete | Codex catalog/history metadata reader, app-server seam, bounded rollout/index fallbacks, archive support, and privacy tests added. |
 | 2026-08-10 | TL-CX-07 | Complete | Deterministic Codex primary/subagent metadata tree with safe runtime, timing, terminal, fork, resume, and missing-child handling. |
+| 2026-08-10 | TL-CX-08 | Complete | Safe Codex tool/activity normalization, stable lifecycle evidence, repetition signatures, mutation scopes, deterministic recent activity, and privacy coverage added. |
+| 2026-08-10 | TL-CX-09 | Complete | Safe Codex command lifecycle normalization, per-agent execution tasks, process IDs, historical stops, signal matching, and compatibility coverage added. |

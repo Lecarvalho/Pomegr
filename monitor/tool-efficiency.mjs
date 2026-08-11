@@ -20,6 +20,36 @@ function normalizedTarget(input = {}) {
   return typeof target === "string" ? path.normalize(target).toLowerCase() : "";
 }
 
+function normalizedPath(value) {
+  return typeof value === "string" && value.trim()
+    ? path.normalize(value.trim()).toLowerCase()
+    : "";
+}
+
+function patchSections(patch) {
+  if (typeof patch !== "string") return [];
+  const sections = [];
+  let current = null;
+  for (const line of patch.split(/\r?\n/)) {
+    const header = line.match(/^\*\*\* (Update|Add|Delete) File:\s*(.+?)\s*$/);
+    if (header) {
+      current = { kind: header[1].toLowerCase(), path: header[2], movePath: "", lines: [] };
+      sections.push(current);
+      continue;
+    }
+    const move = line.match(/^\*\*\* Move to:\s*(.+?)\s*$/);
+    if (current && move) current.movePath = move[1];
+    else if (current) current.lines.push(line);
+  }
+  return sections;
+}
+
+function diffScopes(target, diff) {
+  if (typeof diff !== "string" || !diff) return [`${target}:whole-file`];
+  const hunks = diff.split(/(?=^@@)/m).filter((part) => part.startsWith("@@"));
+  return (hunks.length ? hunks : [diff]).map((hunk) => `${target}:anchor:${digest(hunk)}`);
+}
+
 // Exact inputs stay monitor-side and are represented only by a digest. This keeps
 // separate file regions and search windows distinct without exposing their content.
 export function repetitionSignature(tool, input = {}) {
@@ -27,24 +57,47 @@ export function repetitionSignature(tool, input = {}) {
 }
 
 export function mutationScopes(tool, input = {}) {
-  const normalizedTool = String(tool).toLowerCase();
+  const normalizedTool = String(tool).toLowerCase().replace(/[^a-z0-9]/g, "");
   const target = normalizedTarget(input);
-  if (!target) return [];
 
   if (normalizedTool === "edit") {
+    if (!target) return [];
     return typeof input.old_string === "string"
       ? [`${target}:anchor:${digest(input.old_string)}`]
       : [];
   }
   if (normalizedTool === "multiedit" && Array.isArray(input.edits)) {
+    if (!target) return [];
     return input.edits.flatMap((edit) => typeof edit?.old_string === "string"
       ? [`${target}:anchor:${digest(edit.old_string)}`]
       : []);
   }
-  if (normalizedTool === "write") return [`${target}:whole-file`];
+  if (normalizedTool === "write") return target ? [`${target}:whole-file`] : [];
   if (normalizedTool === "notebookedit") {
+    if (!target) return [];
     const cell = input.cell_id ?? input.cell_number;
     return cell === undefined ? [] : [`${target}:cell:${digest(cell)}`];
+  }
+  if (normalizedTool === "applypatch") {
+    return patchSections(input.patch ?? input.input).flatMap((section) => {
+      const sectionTarget = normalizedPath(section.path);
+      if (!sectionTarget) return [];
+      const scopes = section.kind === "update"
+        ? diffScopes(sectionTarget, section.lines.join("\n"))
+        : [`${sectionTarget}:whole-file`];
+      const movedTarget = normalizedPath(section.movePath);
+      return movedTarget ? [...scopes, `${movedTarget}:whole-file`] : scopes;
+    });
+  }
+  if (normalizedTool === "filechange" && Array.isArray(input.changes)) {
+    return input.changes.flatMap((change) => {
+      const changeTarget = normalizedPath(change?.path);
+      if (!changeTarget) return [];
+      const kind = String(change?.kind?.type ?? change?.kind ?? "").toLowerCase();
+      const scopes = kind === "update" ? diffScopes(changeTarget, change?.diff) : [`${changeTarget}:whole-file`];
+      const movedTarget = normalizedPath(change?.kind?.move_path ?? change?.kind?.movePath);
+      return movedTarget ? [...scopes, `${movedTarget}:whole-file`] : scopes;
+    });
   }
   return [];
 }

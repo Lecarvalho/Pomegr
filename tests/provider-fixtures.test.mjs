@@ -97,6 +97,9 @@ test("serialized MonitorState fixtures for both providers exclude every private 
     assert.equal(state.source, provider === "claude" ? "Claude Code" : "Codex");
     assert.equal(state.session.id, `${provider}:${evidence.localId}`);
     assert.equal(state.metrics.agents, evidence.agents.length);
+    if (provider === "codex") {
+      assert.equal(state.toolPatterns.reduce((total, pattern) => total + pattern.calls, 0), state.metrics.toolCalls);
+    }
     assertNoPrivateFixtureSentinels(JSON.stringify(state), `${provider} MonitorState`);
   }
 

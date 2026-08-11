@@ -61,6 +61,7 @@ export type ProviderToolCallEvidence = {
   actor: { id: string; label: string };
   tool: string;
   detail: string;
+  status: "running" | "completed" | "failed" | null;
   repetitionSignature: string;
   mutation: {
     display: string;

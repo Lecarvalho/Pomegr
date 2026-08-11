@@ -1,6 +1,16 @@
 import os from "node:os";
 import path from "node:path";
 import { defineProvider } from "./provider-contract.mjs";
+import {
+  mergeCodexToolCalls,
+  parseCodexCanonicalTurns,
+  readCodexActivityRollout,
+} from "./codex-activity-events.mjs";
+import {
+  mergeCodexExecutionTasks,
+  parseCodexCanonicalExecutionTasks,
+  readCodexExecutionTaskRollout,
+} from "./codex-execution-tasks.mjs";
 import { buildCodexAgentTree, readCodexAgentRollout } from "./codex-agent-metadata.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
@@ -214,6 +224,21 @@ export function createCodexProvider(options = {}) {
     return mergeMetadata(discovered);
   }
 
+  async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
+    if (!appServer) return { toolCalls: [], executionTasks: [] };
+    try {
+      const response = await appServerCall("thread/read", { threadId, includeTurns: true });
+      const thread = appServerResponseThread(response);
+      if (!thread || thread.id !== threadId) return { toolCalls: [], executionTasks: [] };
+      return {
+        toolCalls: parseCodexCanonicalTurns(thread.turns, { actor, fallbackTimestamp }),
+        executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
+      };
+    } catch {
+      return { toolCalls: [], executionTasks: [] };
+    }
+  }
+
   async function readSession(localSessionId = "") {
     if (!isSafeCodexSessionId(localSessionId)) return null;
     const fallbackMetadata = readFallbackMetadata();
@@ -237,6 +262,39 @@ export function createCodexProvider(options = {}) {
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
       || startedAt;
+    const actorByThreadId = new Map(agents.map((agent) => [
+      agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
+      { id: agent.id, label: agent.label },
+    ]));
+    const rolloutTasksByActor = new Map();
+    const rolloutCalls = allMetadata.flatMap((thread) => {
+      const actor = actorByThreadId.get(thread.localId);
+      if (!actor || !thread.rolloutFile) return [];
+      rolloutTasksByActor.set(actor.id, readCodexExecutionTaskRollout(thread.rolloutFile, {
+        fallbackTimestamp: summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt,
+      }));
+      return readCodexActivityRollout(thread.rolloutFile, {
+        actor,
+        fallbackTimestamp: summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt,
+        sourceKey: thread.localId,
+      });
+    });
+    const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
+      readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
+    )));
+    const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const callsByActor = new Map();
+    for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
+    const canonicalTasksByActor = new Map(
+      [...actorByThreadId.values()].map((actor, index) => [actor.id, canonicalEvidence[index]?.executionTasks || []]),
+    );
+    for (const agent of agents) {
+      agent.toolCalls = callsByActor.get(agent.id) || 0;
+      agent.executionTasks = mergeCodexExecutionTasks([
+        rolloutTasksByActor.get(agent.id) || [],
+        canonicalTasksByActor.get(agent.id) || [],
+      ], { historical: true, sessionUpdatedAt: updatedAt });
+    }
     return {
       localId: metadata.localId,
       historical: true,
@@ -255,7 +313,7 @@ export function createCodexProvider(options = {}) {
       },
       agents,
       usageSnapshots: [],
-      toolCalls: [],
+      toolCalls,
       activity: [],
       planTasks: [],
       compactions: [],

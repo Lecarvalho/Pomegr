@@ -328,6 +328,7 @@ export function createClaudeProvider(options = {}) {
             actor: { id: actor.id, label: actor.label },
             tool,
             detail,
+            status: null,
             repetitionSignature: repetitionSignature(tool, input),
             mutation: scopes.length ? { display: path.basename(target), scopes } : null,
           });

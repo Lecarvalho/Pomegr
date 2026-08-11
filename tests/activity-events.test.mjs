@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { shellFailureActivityEvents, userInputContentType } from "../monitor/activity-events.mjs";
+import { recentActivityEvents, shellFailureActivityEvents, userInputContentType } from "../monitor/activity-events.mjs";
 
 test("classifies direct user input without exposing its content", () => {
   assert.equal(userInputContentType({ type: "user", message: { content: "PRIVATE PROMPT" } }), "Text");
@@ -57,4 +57,19 @@ test("creates sanitized activity events only for finished shell failures", () =>
     },
   ]);
   assert.doesNotMatch(JSON.stringify(events), /PRIVATE|command|output/i);
+});
+
+test("bounds recent activity and resolves timestamp ties deterministically", () => {
+  const events = Array.from({ length: 35 }, (_, index) => ({
+    id: `event-${String(34 - index).padStart(2, "0")}`,
+    timestamp: index < 2 ? "2026-08-10T15:00:35.000Z" : `2026-08-10T15:00:${String(index).padStart(2, "0")}.000Z`,
+    actor: "Primary agent",
+    tool: "Tool",
+    detail: "Safe detail",
+    status: index === 34 ? "failed" : "completed",
+  }));
+  const recent = recentActivityEvents(events);
+  assert.equal(recent.length, 30);
+  assert.deepEqual(recent.slice(0, 2).map((event) => event.id), ["event-33", "event-34"]);
+  assert.equal(recent.every((event) => event.status === null || event.status === "failed"), true);
 });

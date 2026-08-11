@@ -49,3 +49,21 @@ export function shellFailureActivityEvents(executionTasks, actor = "Primary agen
     }];
   });
 }
+
+export function recentActivityEvents(events, maximum = 30) {
+  const limit = Number.isInteger(maximum) ? Math.max(0, maximum) : 30;
+  return [...events]
+    .sort((left, right) => (
+      Date.parse(right.timestamp) - Date.parse(left.timestamp)
+      || String(left.id).localeCompare(String(right.id))
+    ))
+    .slice(0, limit)
+    .map(({ id, timestamp, actor, tool, detail, status }) => ({
+      id,
+      timestamp,
+      actor,
+      tool,
+      detail,
+      status: status === "failed" ? "failed" : null,
+    }));
+}

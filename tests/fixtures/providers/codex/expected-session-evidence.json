@@ -19,7 +19,14 @@
     { "id": "agent-codex-fixture-child", "parentId": "primary", "label": "Fixture review", "kind": "subagent", "model": "gpt-synthetic", "effort": "medium", "status": "finished", "signal": null, "toolCalls": 0, "skills": [], "executionTasks": [], "lastSeen": "2026-08-10T13:00:17.000Z", "startedAt": "2026-08-10T13:00:14.500Z", "updatedAt": "2026-08-10T13:00:17.000Z", "durationMs": 2500 }
   ],
   "usageSnapshots": [{ "dedupeId": "turn-fixture-1:token-count-1", "actorId": "primary", "timestamp": "2026-08-10T13:00:04.000Z", "input": 1500, "output": 120, "cacheWrite": 50, "cacheRead": 500 }],
-  "toolCalls": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Shell", "detail": "Run synthetic checks", "repetitionSignature": "Shell:synthetic", "mutation": null }],
+  "toolCalls": [
+    { "id": "codex-fbb51bf39c6dca349ace", "timestamp": "2026-08-10T13:00:05.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Shell", "detail": "Command execution", "status": "completed", "repetitionSignature": "shell:6cb07b8688327ad4", "mutation": null },
+    { "id": "codex-f232bf11d94581818976", "timestamp": "2026-08-10T13:00:07.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "File change", "detail": "File change", "status": "completed", "repetitionSignature": "file change:ffe70f1e23cb366f", "mutation": null },
+    { "id": "codex-3dea1e728ff5cfd570a9", "timestamp": "2026-08-10T13:00:09.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "MCP", "detail": "threadlight / report_session_signal", "status": "completed", "repetitionSignature": "mcp:b429e429e412e8ed", "mutation": null },
+    { "id": "codex-9aefaa7507b8c159d7a0", "timestamp": "2026-08-10T13:00:11.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Dynamic tool", "detail": "synthetic_dynamic_tool", "status": "completed", "repetitionSignature": "dynamic tool:c3518bb8a176180e", "mutation": null },
+    { "id": "codex-836c1d0a676a66060171", "timestamp": "2026-08-10T13:00:13.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Spawn agent", "detail": "", "status": "completed", "repetitionSignature": "spawn agent:63f2f7654e230553", "mutation": null },
+    { "id": "codex-1e762f403b9a61cb5768", "timestamp": "2026-08-10T13:00:15.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Request input", "detail": "User input", "status": "completed", "repetitionSignature": "request input:a88591be5ac889c4", "mutation": null }
+  ],
   "activity": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": "Primary agent", "tool": "Shell", "detail": "Run synthetic checks", "status": null }],
   "planTasks": [],
   "compactions": [],
