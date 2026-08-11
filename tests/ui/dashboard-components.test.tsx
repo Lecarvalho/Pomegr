@@ -375,8 +375,10 @@ describe("session sidebar", () => {
     expect(screen.getByRole("button", { name: /Live workClaude Code/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Live workCodex/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Threadlight2$/ }));
-    expect(screen.getByText("Claude Code")).toHaveClass("providerTag");
-    expect(screen.getByText("Codex")).toHaveClass("providerTag");
+    expect(screen.getAllByText("Claude Code")).toHaveLength(2);
+    expect(screen.getAllByText("Claude Code").every((label) => label.classList.contains("providerTag") && Boolean(label.querySelector('[data-mark="claude"]')))).toBe(true);
+    expect(screen.getAllByText("Codex")).toHaveLength(2);
+    expect(screen.getAllByText("Codex").every((label) => label.classList.contains("providerTag") && Boolean(label.querySelector('[data-mark="openai"]')))).toBe(true);
     expect(screen.getAllByRole("button", { name: /Live work/ })).toHaveLength(2);
   });
 });
@@ -462,9 +464,17 @@ describe("provider capability gates", () => {
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("Codex")).toHaveClass("providerTag");
+    expect(screen.getByText("Codex").closest(".providerBadge")?.querySelector('[data-mark="openai"]')).toBeInTheDocument();
     expect(screen.getByText("Session summaries are not available for this provider.")).toBeInTheDocument();
     expect(screen.queryByText("Unsupported summary must stay hidden")).not.toBeInTheDocument();
     expect(screen.queryByText(/Waiting for the provider/)).not.toBeInTheDocument();
+  });
+
+  it("uses the Claude mark for Claude Code sessions", () => {
+    const session = repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("Claude Code").closest(".providerBadge")?.querySelector('[data-mark="claude"]')).toBeInTheDocument();
   });
 
   it("never gives an unsupported provider the Claude /context instruction", () => {

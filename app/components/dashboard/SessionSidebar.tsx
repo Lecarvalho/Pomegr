@@ -6,6 +6,7 @@ import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
 import { RelativeTimeText } from "../LiveTime";
+import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, onClose, onSelect }: {
   open: boolean;
@@ -40,7 +41,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
               return (
                 <button type="button" className={`liveSessionLink ${selected ? "selected" : ""}`} data-needs-input={session.needsInput || undefined} key={session.id} onClick={() => onSelect(session)} aria-current={selected ? "page" : undefined}>
                   <i />
-                  <span><strong>{session.title}</strong><small>{session.source} · {session.project} · {session.needsInput ? <em>Needs input</em> : <RelativeTimeText value={session.updatedAt} />}</small></span>
+                  <span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project} · {session.needsInput ? <em>Needs input</em> : <RelativeTimeText value={session.updatedAt} />}</small></span>
                 </button>
               );
             })}
@@ -64,7 +65,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
                   {!collapsed && <div className="historyProjectSessions" id={groupId}>
                     {group.sessions.map((session) => (
                       <button type="button" className={selectedSessionId === session.id ? "selected" : ""} key={session.id} onClick={() => onSelect(session)} aria-current={selectedSessionId === session.id ? "page" : undefined}>
-                        <strong>{session.title}</strong><span className="historySessionMeta"><span className="providerTag">{session.source}</span><time>{sessionListTime(session.updatedAt)}</time></span>
+                        <strong>{session.title}</strong><span className="historySessionMeta"><ProviderBadge source={session.source} compact /><time>{sessionListTime(session.updatedAt)}</time></span>
                       </button>
                     ))}
                   </div>}

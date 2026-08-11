@@ -2,6 +2,7 @@ import type { MonitorState, ProviderCapabilities, ProviderSource } from "../../.
 import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { RelativeTimeText, SessionWallTimeText } from "../LiveTime";
+import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
@@ -10,7 +11,7 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
     <section className="hero">
       <div>
         <h1>{sessionLabel}</h1>
-        {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><span className="providerTag">{source}</span><span>·</span><code>{session.id}</code></div>}
+        {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><ProviderBadge source={source} /><span>·</span><code>{session.id}</code></div>}
         {session && <p title={summary ? "Provider-generated session summary" : undefined}>{summary?.text
           || (!capabilities.sessionSummary
             ? "Session summaries are not available for this provider."
