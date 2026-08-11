@@ -124,6 +124,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .awaitingSession { min-height: 430px; max-width: 720px; flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 52px 0 70px; }
 .awaitingSession h1 { margin: 0 0 14px; font: 400 clamp(38px, 4.5vw, 58px)/1.03 Georgia, serif; letter-spacing: -.04em; }
 .awaitingSession p { max-width: 58ch; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.sessionView { animation: sessionReveal .18s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes sessionReveal { from { opacity: .72; transform: translateY(3px); filter: blur(1.5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
 
 .gitPanel { position: relative; z-index: 4; margin-bottom: 12px; overflow: visible; }
 .gitSummary { padding: 17px 21px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }

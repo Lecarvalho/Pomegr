@@ -94,16 +94,20 @@ export function Dashboard() {
   }, [refreshSessions]);
 
   const viewingHistory = data.view === "history";
-  const connecting = loading && !data.error;
-  const clockRunning = data.connected && !viewingHistory && !paused;
+  const connecting = loading && !data.error && !data.session;
+  const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
+  const clockRunning = data.connected && !viewingHistory && !paused && !switchingSession;
   const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
 
   const selectSession = useCallback((session: SessionSummary) => {
+    if (session.id === selectedSessionId) {
+      setSidebarOpen(false);
+      return;
+    }
     setSelectedSessionId(session.id);
-    setData(createEmptyMonitorState({ view: session.isLive ? "live" : "history" }));
     setSidebarOpen(false);
     setLoading(true);
-  }, []);
+  }, [selectedSessionId]);
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -144,11 +148,10 @@ export function Dashboard() {
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
         <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
-        {data.session && <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />}
-
-        {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
-        {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-        {data.session ? <>
+        {data.session ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
+          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
+          {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
+          {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <section className="contentGrid">
             <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} historical={viewingHistory} />
             <InsightsPanel insights={data.insights} />
@@ -166,7 +169,10 @@ export function Dashboard() {
               <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />
             </div>
           </details>
-        </> : <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} />}
+        </div> : <>
+          {data.error && <div className="notice"><span>!</span>{data.error}</div>}
+          <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} />
+        </>}
           <DashboardFooter connected={data.connected} connecting={connecting} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
         </main>
       </div>
