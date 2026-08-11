@@ -38,6 +38,7 @@ export function Dashboard() {
       if (!response.ok) throw new Error("Monitor unavailable");
       const nextData = await response.json() as MonitorState;
       startTransition(() => {
+        setSelectedSessionId((current) => current ?? nextData.session?.id ?? null);
         setData(nextData);
         setLastRefresh(new Date());
       });
