@@ -1,12 +1,24 @@
 # Threadlight
 
-Threadlight is a lightweight, local-first dashboard for observing live coding-agent sessions. It illuminates agents, context usage, model settings, tool activity, Git changes, usage limits, and deterministic efficiency signals in real time.
+Threadlight is a privacy-first operations console for coding agents. It gives developers a live, provider-neutral view of agent activity, context usage, model settings, Git changes, usage limits, and deterministic efficiency signals.
 
 Threadlight ships adapters for Claude Code and Codex. Both appear in one deterministic session catalog and produce the same normalized browser state wherever equivalent provider evidence exists.
+
+Threadlight is local-first and read-only. It observes provider session records already stored on the developer's machine and does not send raw prompts, responses, commands, or tool output to the browser. Its purpose is to make agent execution understandable without turning private coding transcripts into a surveillance feed.
 
 <p align="center">
   <img src="docs/assets/threadlight-introduction.png" alt="Threadlight overview: a local view of coding-agent sessions" width="560">
 </p>
+
+## Why Threadlight
+
+Coding agents increasingly work in parallel, wait for input, consume context, invoke tools, and modify repositories outside the narrow view of a single terminal. Threadlight brings that operational metadata into one place while preserving clear privacy boundaries.
+
+- **Local-first:** session discovery and normalization happen on the developer's machine.
+- **Read-only:** Threadlight observes agent and repository state; it does not control sessions or modify source code.
+- **Privacy-bounded:** browser APIs exclude raw prompts, responses, commands, tool results, transcripts, and credentials.
+- **Provider-neutral:** Claude Code and Codex produce the same normalized UI shapes wherever their evidence is equivalent.
+- **Deterministic:** metrics and recommendations are rule-based, reproducible, and documented rather than presented as AI judgments.
 
 ## What it shows
 
@@ -205,4 +217,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the shipped provider flow a
 
 ## License
 
-Threadlight is available under the [MIT License](LICENSE).
+Current Threadlight source is licensed under the [GNU Affero General Public License version 3](LICENSE) (`AGPL-3.0-only`). If you modify Threadlight and make that version available to users over a network, the license requires you to offer those users the corresponding source code.
+
+Revisions through commit [`95cd66c`](https://github.com/Lecarvalho/threadlight/tree/95cd66cb60831ef876421a5149d25788f9dab736) were published under the MIT License and remain available under those terms. See the [license history](docs/LICENSE_HISTORY.md) for the transition boundary.
+
+The Threadlight name and visual identity are not granted by the software license. See the [trademark policy](TRADEMARKS.md). Commercial licenses for uses incompatible with the AGPL may be offered separately; contact the maintainer through the [Threadlight repository](https://github.com/Lecarvalho/threadlight).

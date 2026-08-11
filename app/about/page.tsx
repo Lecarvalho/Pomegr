@@ -37,6 +37,11 @@ export default function About() {
           <div><span className="label">ESTIMATED API COST</span><h2 id="estimated-cost-title">What the estimate means</h2></div>
           <p>When the optional status-line bridge is connected, Threadlight displays Claude Code&apos;s client-side <code>cost.total_cost_usd</code> session estimate. Claude Code calculates it using standard API list rates, so it can help compare session consumption but may differ from an actual API bill and does not represent the marginal cost of subscription usage. Threadlight does not reconstruct this value from transcript tokens.</p>
         </section>
+
+        <section id="license" className="aboutNote" aria-labelledby="license-title">
+          <div><span className="label">OPEN SOURCE</span><h2 id="license-title">Source and license</h2></div>
+          <p>Copyright © 2026 Leandro Carvalho. Threadlight is free software: you may redistribute or modify it under the <a href="https://github.com/Lecarvalho/threadlight/blob/main/LICENSE" target="_blank" rel="noreferrer">GNU Affero General Public License version 3</a>. It is provided without warranty. The <a href="https://github.com/Lecarvalho/threadlight" target="_blank" rel="noreferrer">corresponding source code</a> is publicly available.</p>
+        </section>
       </article>
     </main>
   );

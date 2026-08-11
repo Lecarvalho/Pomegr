@@ -96,7 +96,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .aboutGrid > div { min-height: 210px; padding: 28px; background: rgba(251,250,246,.94); }
 .aboutGrid h2 { margin: 28px 0 10px; font: 400 23px/1.15 Georgia, 'Times New Roman', serif; }
 .aboutGrid p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
-.aboutNote { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 36px; margin-top: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: rgba(251,250,246,.94); }.aboutNote h2 { margin: 10px 0 0; font: 400 23px/1.15 Georgia, 'Times New Roman', serif; }.aboutNote p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }.aboutNote code { color: var(--ink); font: 11px/1.5 var(--font-geist-mono), monospace; }
+.aboutNote { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 36px; margin-top: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: rgba(251,250,246,.94); }.aboutNote h2 { margin: 10px 0 0; font: 400 23px/1.15 Georgia, 'Times New Roman', serif; }.aboutNote p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }.aboutNote a { color: var(--green); text-underline-offset: 3px; }.aboutNote code { color: var(--ink); font: 11px/1.5 var(--font-geist-mono), monospace; }
 
 .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 48px; padding: 46px 0 30px; }
 .hero > div:first-child { min-width: 0; flex: 1 1 auto; }
@@ -278,7 +278,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionDetails > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .sessionDetailsBody { padding-top: 12px; }
 .sessionDetailsBody > :last-child { margin-bottom: 0; }
-footer { display: flex; justify-content: space-between; margin-top: auto; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; }
+footer { display: flex; justify-content: space-between; margin-top: auto; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; } footer a { color: inherit; text-underline-offset: 3px; } footer a:hover { color: var(--green); }
 
 @media (max-width: 1100px) {
   .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; visibility: hidden; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease, visibility 0s linear .2s; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { visibility: visible; transform: translateX(0); transition-delay: 0s; }.sidebarHeader > .closeButton { display: grid; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }

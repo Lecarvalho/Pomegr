@@ -33,6 +33,8 @@ test("server-renders the composed Threadlight dashboard", async () => {
   assert.match(html, /Connecting to local monitor/);
   assert.doesNotMatch(html, /Local monitor offline/);
   assert.match(html, /Local observer · Read-only/);
+  assert.match(html, />Source<\/a>/);
+  assert.match(html, /AGPL-3\.0-only/);
   assert.doesNotMatch(html, /Generate report|Flow score|Usage limits|Agent activity|Recent activity/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
@@ -47,6 +49,10 @@ test("keeps the privacy explanation on the about page", async () => {
   assert.match(html, /What the estimate means/);
   assert.match(html, /cost\.total_cost_usd/);
   assert.match(html, /may differ from an actual API bill/);
+  assert.match(html, /Source and license/);
+  assert.match(html, /GNU Affero General Public License version 3/);
+  assert.match(html, /provided without warranty/);
+  assert.match(html, /corresponding source code/);
   assert.match(html, /Back to dashboard/);
 });
 

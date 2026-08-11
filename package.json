@@ -2,7 +2,8 @@
   "name": "threadlight",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "author": "Leandro Carvalho",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=22.13.0"
   },

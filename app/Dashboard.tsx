@@ -202,7 +202,7 @@ function AwaitingSession({ connected, connecting, loadingSession }: { connected:
 function DashboardFooter({ connected, connecting, viewingHistory, paused, lastRefresh }: { connected: boolean; connecting: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
   return (
     <footer>
-      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"}</span>
+      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"} · <a href="https://github.com/Lecarvalho/threadlight" target="_blank" rel="noreferrer">Source</a> · <a href="/about#license">AGPL-3.0-only</a></span>
       <span>{connecting ? "Connecting…" : viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
     </footer>
   );
