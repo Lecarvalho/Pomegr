@@ -17,13 +17,26 @@ export const metadata: Metadata = {
   description: "A quiet, local observer for coding-agent sessions.",
 };
 
+const themeBootScript = `
+  try {
+    const savedTheme = localStorage.getItem("threadlight-theme");
+    const theme = savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+  } catch {
+    document.documentElement.dataset.theme = "light";
+  }
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }} /></head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

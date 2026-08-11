@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ThreadlightBrand } from "../components/ThreadlightBrand";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "About · Threadlight",
@@ -17,7 +18,10 @@ export default function About() {
     <main className="aboutShell">
       <header className="topbar">
         <ThreadlightBrand label="Threadlight dashboard" />
-        <Link className="ghostButton aboutBack" href="/">Back to dashboard</Link>
+        <div className="topActions">
+          <ThemeToggle />
+          <Link className="ghostButton aboutBack" href="/">Back to dashboard</Link>
+        </div>
       </header>
 
       <article className="aboutPage">

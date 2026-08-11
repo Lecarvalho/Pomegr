@@ -14,6 +14,21 @@
   --red: #a64b3f;
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e6ece8;
+  --muted: #9aa6a0;
+  --paper: #101412;
+  --panel: #171d1a;
+  --line: #303934;
+  --green: #67bc94;
+  --green-soft: #19382b;
+  --blue: #9bace8;
+  --amber: #e4a364;
+  --amber-soft: #3b2819;
+  --red: #e18378;
+}
+
 * { box-sizing: border-box; }
 html { background: var(--paper); scroll-behavior: smooth; }
 body {
@@ -25,6 +40,13 @@ body {
 button, a { font: inherit; }
 button { color: inherit; }
 :where(a, button, summary):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.themeToggle { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,.35); color: var(--muted); cursor: pointer; transition: color .16s ease, border-color .16s ease, background-color .16s ease, transform .16s ease; }
+.themeToggle:hover { border-color: #b8b9b2; background: #fff; color: var(--ink); transform: rotate(-7deg); }
+.themeToggle:active { transform: rotate(-7deg) scale(.94); }
+.themeIcon { width: 16px; height: 16px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.sunIcon { display: none; }
+html[data-theme="dark"] .moonIcon { display: none; }
+html[data-theme="dark"] .sunIcon { display: block; }
 .closeButton { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
 .closeButton svg { width: 12px; height: 12px; overflow: visible; }
 .closeButton path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -287,3 +309,123 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+html[data-theme="dark"] .themeToggle,
+html[data-theme="dark"] .ghostButton { background: rgba(255,255,255,.035); }
+html[data-theme="dark"] .themeToggle:hover,
+html[data-theme="dark"] .ghostButton:hover { border-color: #56635d; background: #202723; }
+html[data-theme="dark"] .closeButton:hover { border-color: #56635d; background: rgba(255,255,255,.05); }
+html[data-theme="dark"] .sessionSidebar { background: #141916; }
+html[data-theme="dark"] .liveSessionLink:hover,
+html[data-theme="dark"] .historyProjectSessions button:hover { background: rgba(255,255,255,.035); }
+html[data-theme="dark"] .liveSessionEmpty > i,
+html[data-theme="dark"] .statusPill.finished i,
+html[data-theme="dark"] .agentRow.idleAgent .treeRail span,
+html[data-theme="dark"] .agentRow.finishedAgent .treeRail span { background: #66716b; }
+html[data-theme="dark"] .historyProjectSessions button time,
+html[data-theme="dark"] .statusPill.finished,
+html[data-theme="dark"] .agentRow.idleAgent,
+html[data-theme="dark"] .agentRow.finishedAgent,
+html[data-theme="dark"] .agentRow.stoppedAgent { color: var(--muted); }
+html[data-theme="dark"] .attentionNotice { border-color: #714e2f; }
+html[data-theme="dark"] .attentionNotice small,
+html[data-theme="dark"] .notice,
+html[data-theme="dark"] .planTaskCaution { color: #edbc8c; }
+html[data-theme="dark"] .notice { border-color: #714e2f; }
+html[data-theme="dark"] .aboutGrid > div,
+html[data-theme="dark"] .aboutNote,
+html[data-theme="dark"] .panel { background: rgba(23,29,26,.94); }
+html[data-theme="dark"] .reportButton,
+html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: var(--green); background: var(--green); color: #0e1712; }
+html[data-theme="dark"] .pullRequestBadge.settled,
+html[data-theme="dark"] .pullRequestIcon { background: #252d45; }
+html[data-theme="dark"] .pullRequestIcon.merged,
+html[data-theme="dark"] .pullRequestTitle em.merged { color: #c5a0e8; background: #352640; }
+html[data-theme="dark"] .pullRequestIcon.closed,
+html[data-theme="dark"] .pullRequestTitle em.closed,
+html[data-theme="dark"] .gitStatus.del,
+html[data-theme="dark"] .gitStatus.conflict,
+html[data-theme="dark"] .agentSignal.negative,
+html[data-theme="dark"] .executionTaskSignal.negative,
+html[data-theme="dark"] .sessionSignal.negative { background: #3d211f; }
+html[data-theme="dark"] .pullRequestTitle em,
+html[data-theme="dark"] .pullRequestTitle em.draft,
+html[data-theme="dark"] .branchComparison.pending,
+html[data-theme="dark"] .agentSignal,
+html[data-theme="dark"] .executionTaskSignal,
+html[data-theme="dark"] .sessionSignal { background: #252c28; }
+html[data-theme="dark"] .pullRequestBody code { color: var(--muted); }
+html[data-theme="dark"] .branchComparison { background: #222d31; }
+html[data-theme="dark"] .limitTrack { background: #2b332f; }
+html[data-theme="dark"] .pullRequestRow,
+html[data-theme="dark"] .gitListHeader,
+html[data-theme="dark"] .gitCommit,
+html[data-theme="dark"] .gitFile,
+html[data-theme="dark"] .agentPopoverIntro,
+html[data-theme="dark"] .metricPopoverRow,
+html[data-theme="dark"] .histogramFooter,
+html[data-theme="dark"] .machineryMeta,
+html[data-theme="dark"] .machineryCategory,
+html[data-theme="dark"] .machineryItems,
+html[data-theme="dark"] .machineryItem,
+html[data-theme="dark"] .agentRow,
+html[data-theme="dark"] .skillPopoverRow,
+html[data-theme="dark"] .executionTaskSection + .executionTaskSection,
+html[data-theme="dark"] .activityRow { border-color: #29312d; }
+html[data-theme="dark"] .histogramGrid i { border-color: #323b36; }
+html[data-theme="dark"] .activityBar > .activityStack { background: #24362d; }
+html[data-theme="dark"] .histogramTooltip { background: #080b0a; color: #f1f5f2; box-shadow: 0 10px 28px rgba(0,0,0,.48); }
+html[data-theme="dark"] .histogramTooltip small { color: #c3cec8; }
+html[data-theme="dark"] .histogramTooltip em { color: #95a69d; }
+html[data-theme="dark"] .machineryStat { background: rgba(228,163,100,.055); }
+html[data-theme="dark"] .agentRow.idleAgent,
+html[data-theme="dark"] .agentRow.finishedAgent { background: rgba(154,166,160,.025); }
+html[data-theme="dark"] .agentRow.stoppedAgent { background: rgba(225,131,120,.035); }
+html[data-theme="dark"] .agentRow.idleAgent .agentIdentity span,
+html[data-theme="dark"] .agentRow.idleAgent .agentTokens span,
+html[data-theme="dark"] .agentRow.idleAgent .agentDuration span,
+html[data-theme="dark"] .agentRow.idleAgent time,
+html[data-theme="dark"] .agentRow.finishedAgent .agentIdentity span,
+html[data-theme="dark"] .agentRow.finishedAgent .agentTokens span,
+html[data-theme="dark"] .agentRow.finishedAgent .agentDuration span,
+html[data-theme="dark"] .agentRow.finishedAgent time,
+html[data-theme="dark"] .agentRow.stoppedAgent .agentIdentity span,
+html[data-theme="dark"] .agentRow.stoppedAgent .agentTokens span,
+html[data-theme="dark"] .agentRow.stoppedAgent .agentDuration span,
+html[data-theme="dark"] .agentRow.stoppedAgent time { color: #7f8b85; }
+html[data-theme="dark"] .treeRail,
+html[data-theme="dark"] .childAgent .treeRail::before,
+html[data-theme="dark"] .childAgent .treeRail::after,
+html[data-theme="dark"] .agentRow.idleAgent .treeRail,
+html[data-theme="dark"] .agentRow.finishedAgent .treeRail,
+html[data-theme="dark"] .agentRow.idleAgent .treeRail::before,
+html[data-theme="dark"] .agentRow.idleAgent .treeRail::after,
+html[data-theme="dark"] .agentRow.finishedAgent .treeRail::before,
+html[data-theme="dark"] .agentRow.finishedAgent .treeRail::after { border-color: #3a443f; }
+html[data-theme="dark"] .agentRow.stoppedAgent .treeRail,
+html[data-theme="dark"] .agentRow.stoppedAgent .treeRail::before,
+html[data-theme="dark"] .agentRow.stoppedAgent .treeRail::after { border-color: #5a3935; }
+html[data-theme="dark"] .skillPopoverTrigger { background: #26302b; color: #bdcac3; }
+html[data-theme="dark"] .skillPopoverTrigger:hover,
+html[data-theme="dark"] .skillPopoverTrigger[aria-expanded="true"] { background: #303d36; }
+html[data-theme="dark"] .executionTaskTrigger:hover,
+html[data-theme="dark"] .executionTaskTrigger[aria-expanded="true"] { background: #244936; }
+html[data-theme="dark"] .executionTaskState { border-color: #53615a; }
+html[data-theme="dark"] .executionTaskRow.completed .executionTaskState { border-color: #4f876d; }
+html[data-theme="dark"] .executionTaskRow.failed .executionTaskState,
+html[data-theme="dark"] .executionTaskRow.stopped .executionTaskState { border-color: #7a4943; }
+html[data-theme="dark"] .executionTaskRow.completed strong { color: #b9c4be; }
+html[data-theme="dark"] .planTaskTrigger:hover,
+html[data-theme="dark"] .planTaskTrigger[aria-expanded="true"] { background: #4b321f; }
+html[data-theme="dark"] .planTaskRow.completed strong { color: #77827c; }
+html[data-theme="dark"] .planTaskCaution { border-color: #68472b; }
+html[data-theme="dark"] .insight { background: #202823; }
+html[data-theme="dark"] .insightGlyph { border-color: #46534c; }
+html[data-theme="dark"] .insight.warning .insightGlyph { border-color: #765034; }
+html[data-theme="dark"] .activityRow.failed { background: #281918; }
+html[data-theme="dark"] .pullRequestPopover,
+html[data-theme="dark"] .metricPopover,
+html[data-theme="dark"] .skillPopover,
+html[data-theme="dark"] .executionTaskPopover,
+html[data-theme="dark"] .planTaskPopover { box-shadow: 0 20px 58px rgba(0,0,0,.46); }
+html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; }
