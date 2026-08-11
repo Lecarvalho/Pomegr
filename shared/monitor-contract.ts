@@ -25,6 +25,10 @@ export type Agent = {
   model: string;
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
+  liveness?: {
+    source: "owning_app_server" | "lifecycle_bridge" | "rollout_activity_heuristic";
+    observedAt: string;
+  } | null;
   signal: ReportedSignal | null;
   toolCalls: number;
   skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
@@ -117,6 +121,20 @@ export type PullRequest = {
 export type ProviderId = "claude" | "codex";
 export type ProviderSource = "Claude Code" | "Codex";
 
+/** Optional provider features; false means unsupported rather than a zero value. */
+export type ProviderCapabilities = {
+  approvalMode: boolean;
+  automaticCompactions: boolean;
+  contextMachinery: boolean;
+  estimatedCost: boolean;
+  liveSessions: boolean;
+  needsInput: boolean;
+  planTasks: boolean;
+  sessionSummary: boolean;
+  signals: boolean;
+  usageLimits: boolean;
+};
+
 export type SessionApprovalMode = {
   id:
     | "auto"
@@ -154,6 +172,7 @@ export type UsageLimits = {
 export type MonitorState = {
   connected: boolean;
   source: ProviderSource;
+  capabilities: ProviderCapabilities;
   view: "live" | "history";
   session: {
     id: string;

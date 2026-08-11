@@ -626,9 +626,18 @@ npm run build
 
 ## TL-CX-14 — Implement and harden Codex live-state behavior
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** `TL-CX-02`, `TL-CX-06`, `TL-CX-07`, `TL-CX-08`
 - **Target size:** 1–2 sessions
+
+### Implementation notes
+
+- Added owning app-server status priority, an opt-in allowlisted lifecycle-hook bridge with PID-plus-process-start owner leases, and a bounded cached rollout-tail fallback.
+- Added deterministic start, active, idle, waiting/needs-input, answer, finish/close, interruption, system-error, lease expiry, prompt expiry, shutdown/resume grace, and descendant waiting behavior.
+- Kept current app-server/bridge/process/lease evidence out of historical reads; exposed only the normalized liveness source and observation timestamp, never hook content or owner identifiers.
+- Bounded each rollout tail to 128 KiB/256 records, bridge scans to 500 files, and status caches to 1.5 seconds; documented the 15/45/120-second and 30-minute uncertainty windows.
+- Automated Windows-safe bridge and privacy coverage passed. The requested manual smoke with two real sessions and one subagent was not run because enabling user-level hooks and launching extra Codex sessions would interfere with existing user sessions; this remains the sole manual verification limitation.
 
 ### Goal
 
@@ -664,9 +673,17 @@ npm run build
 
 ## TL-CX-15 — Add provider capability gates and UI copy
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** `TL-CX-10`, `TL-CX-11`, `TL-CX-12`, `TL-CX-14`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added the provider capability allowlist to normalized browser state with deny-by-default transitional behavior, and gated summaries, approval modes, plan tasks, usage limits, context machinery, and attributed estimated cost without inferring support from provider names.
+- Added provider provenance to live and historical session navigation plus the session hero, with bounded overflow behavior for mixed-provider catalogs at desktop and narrow widths.
+- Made reports omit provider-unsupported cost and plan-limit sections while preserving supplied zero estimates, and added UI/report/privacy regression coverage that keeps Claude `/context` and status-line estimate copy out of Codex views.
+- Visually verified live Claude and historical Claude/Codex sessions at 1440×1000 and 390×844 with no horizontal overflow; a live Codex visual was unavailable without restarting the existing monitor or launching another session, both intentionally avoided for this task.
 
 ### Goal
 
@@ -776,3 +793,5 @@ Add short entries here only after completing a task.
 | 2026-08-11 | TL-CX-11 | Complete | Provider-neutral approval modes and latest structured plan tasks added with bounded fields, empty uninferred dependencies, neutral UI copy, and privacy coverage. |
 | 2026-08-11 | TL-CX-12 | Complete | Documented Codex app-server rate-limit windows, shared request coordination/cooldown, bounded normalization, privacy filtering, failure isolation, and historical exclusion added. |
 | 2026-08-11 | TL-CX-13 | Complete | Codex skill and signal evidence, provider-neutral PR creation events, monitor-side task matching, and evidence-gated shared efficiency rules added. |
+| 2026-08-11 | TL-CX-14 | Complete | Owning app-server liveness, allowlisted lifecycle bridge, bounded rollout fallback, deterministic expiry/grace behavior, descendant waiting, and cached polling added. |
+| 2026-08-11 | TL-CX-15 | Complete | Capability-gated provider copy and optional panels, provenance labels, unsupported-versus-zero report semantics, and mixed-provider responsive/accessibility coverage added. |

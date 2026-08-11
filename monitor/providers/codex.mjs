@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import {
   mergeCodexToolCalls,
@@ -26,6 +27,7 @@ import {
 } from "./codex-session-signals.mjs";
 import { parseCodexCanonicalSkillUsage, readCodexSkillUsageRollout } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
+import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -90,6 +92,8 @@ function mergeMetadata(items) {
       agentNickname: preferred.agentNickname || alternate.agentNickname,
       agentRole: preferred.agentRole || alternate.agentRole,
       runtimeStatus: preferred.runtimeStatus || alternate.runtimeStatus,
+      liveStatus: preferred.liveStatus || alternate.liveStatus,
+      liveness: preferred.liveness || alternate.liveness,
       archived: item.archived && previous.archived,
       rolloutFile: item.rolloutFile || previous.rolloutFile,
     });
@@ -131,12 +135,24 @@ export function createCodexProvider(options = {}) {
   const sessionsRoot = options.sessionsRoot || path.join(codexHome, "sessions");
   const archivedRoot = options.archivedRoot || path.join(codexHome, "archived_sessions");
   const indexFile = options.indexFile || path.join(codexHome, "session_index.jsonl");
+  const livenessRoot = resolveCodexLivenessRoot({
+    root: options.livenessRoot,
+    env: options.env,
+    homeDir: options.homeDir,
+  });
   const appServer = options.appServer || null;
   const now = options.now || (() => Date.now());
   const includeArchived = options.includeArchived ?? true;
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
   const scanLimit = Math.max(catalogLimit, boundedInteger(options.scanLimit, DEFAULT_CODEX_SCAN_LIMIT, DEFAULT_CODEX_SCAN_LIMIT));
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : 1500;
+  const liveness = createCodexLivenessCoordinator({
+    root: livenessRoot,
+    now,
+    cacheMs,
+    maximumBridgeFiles: options.maximumBridgeFiles,
+    maximumTailBytes: options.maximumTailBytes,
+  });
   const usageLimits = createCodexUsageLimitsCoordinator({
     now,
     request: async () => {
@@ -164,10 +180,10 @@ export function createCodexProvider(options = {}) {
     try {
       const pages = await Promise.all(filters.map(async (archived) => {
         const response = await appServerCall("thread/list", {
-          limit: catalogLimit,
+          limit: scanLimit,
           sortKey: "updated_at",
           sortDirection: "desc",
-          sourceKinds: TOP_LEVEL_SOURCE_KINDS,
+          sourceKinds: ALL_SOURCE_KINDS,
           archived,
         });
         const data = appServerResponseData(response);
@@ -175,10 +191,10 @@ export function createCodexProvider(options = {}) {
         return data.flatMap((thread) => {
           const indexed = indexNames.get(thread?.id);
           const metadata = normalizeCodexThreadMetadata(thread, { archived, indexName: indexed?.title });
-          return metadata && isTopLevelCodexSession(metadata) ? [metadata] : [];
+          return metadata ? [metadata] : [];
         });
       }));
-      return mergeMetadata(pages.flat()).slice(0, catalogLimit);
+      return mergeMetadata(pages.flat()).slice(0, scanLimit);
     } catch {
       return null;
     }
@@ -201,28 +217,32 @@ export function createCodexProvider(options = {}) {
     });
   }
 
-  function readFallbackCatalog() {
-    return mergeMetadata(readFallbackMetadata().filter(isTopLevelCodexSession)).slice(0, catalogLimit);
-  }
-
   async function discoveredMetadata() {
     const checkedAt = now();
     if (catalogCache && checkedAt < catalogCache.expiresAt) return catalogCache.value;
     const appServerMetadata = await readAppServerCatalog();
-    const value = appServerMetadata?.length ? appServerMetadata : readFallbackCatalog();
+    const fallbackMetadata = readFallbackMetadata();
+    const combined = appServerMetadata?.length
+      ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
+      : fallbackMetadata;
+    const value = liveness.observe(combined);
     catalogCache = { expiresAt: checkedAt + cacheMs, value };
     return value;
   }
 
   async function listSessions() {
-    return (await discoveredMetadata()).map((metadata) => ({
-      localId: metadata.localId,
-      title: metadata.title,
-      project: metadata.project,
-      updatedAt: metadata.updatedAt || metadata.createdAt || new Date(0).toISOString(),
-      isLive: false,
-      needsInput: false,
-    }));
+    const { threads, sessions } = await discoveredMetadata();
+    return threads.filter(isTopLevelCodexSession).map((thread) => {
+      const state = sessions.get(thread.localId) || { isLive: false, needsInput: false, observedAt: null };
+      return {
+        localId: thread.localId,
+        title: thread.title,
+        project: thread.project,
+        updatedAt: [thread.updatedAt, thread.createdAt, state.observedAt].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
+        isLive: state.isLive,
+        needsInput: state.needsInput,
+      };
+    }).sort(compareMetadata).slice(0, catalogLimit);
   }
 
   async function readAppServerSession(localSessionId) {
@@ -296,11 +316,13 @@ export function createCodexProvider(options = {}) {
     }
   }
 
-  async function readSession(localSessionId = "") {
+  async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
+    const historical = readOptions.historical !== false;
     const fallbackMetadata = readFallbackMetadata();
     const appServerMetadata = await readAppServerSessionTree(localSessionId);
-    const allMetadata = mergeMetadata([...fallbackMetadata, ...appServerMetadata]);
+    const mergedMetadata = mergeMetadata([...fallbackMetadata, ...appServerMetadata]);
+    const allMetadata = liveness.observe(mergedMetadata, { historical }).threads;
     const metadata = allMetadata.find((item) => item.localId === localSessionId) || null;
     if (!metadata || !isTopLevelCodexSession(metadata)) return null;
     const summaries = new Map();
@@ -313,8 +335,9 @@ export function createCodexProvider(options = {}) {
       rootThreadId: localSessionId,
       threads: allMetadata,
       summaries,
-      historical: true,
+      historical,
     });
+    if (!historical) applyWaitingStatus(agents);
     const startedAt = agents.map((agent) => agent.startedAt).filter(Boolean).sort()[0] || metadata.createdAt;
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
@@ -392,7 +415,7 @@ export function createCodexProvider(options = {}) {
       agent.executionTasks = mergeCodexExecutionTasks([
         rolloutTasksByActor.get(agent.id) || [],
         canonicalTasksByActor.get(agent.id) || [],
-      ], { historical: true, sessionUpdatedAt: updatedAt, taskSignals: allSignals.tasks });
+      ], { historical, sessionUpdatedAt: updatedAt, taskSignals: allSignals.tasks });
     }
     pullRequestCreationGroups.push(...canonicalEvidence.map((item) => item.pullRequestCreations));
     usageSnapshots.sort((left, right) => (
@@ -401,7 +424,7 @@ export function createCodexProvider(options = {}) {
     compactions.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
     return {
       localId: metadata.localId,
-      historical: true,
+      historical,
       session: {
         title: metadata.title,
         project: metadata.project,
@@ -438,6 +461,8 @@ export function createCodexProvider(options = {}) {
     capabilities: {
       approvalMode: true,
       automaticCompactions: true,
+      liveSessions: true,
+      needsInput: true,
       planTasks: true,
       signals: true,
       usageLimits: true,
@@ -448,7 +473,7 @@ export function createCodexProvider(options = {}) {
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : "No Codex sessions found.";
     },
-    watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile],
+    watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot],
   });
 }
 

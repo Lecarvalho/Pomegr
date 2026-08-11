@@ -123,6 +123,7 @@ async function analyze(requestedSessionId = "") {
     return createEmptyMonitorState({
       connected: true,
       source: provider?.source || providerRegistry.defaultProvider.source,
+      capabilities: provider?.capabilities || providerRegistry.defaultProvider.capabilities,
       view: historical ? "history" : "live",
       usageLimits: await providerRegistry.readUsageLimits(provider, { historical }),
       error: providerRegistry.unavailableMessage(requestedSessionId),
@@ -197,6 +198,7 @@ async function analyze(requestedSessionId = "") {
   return {
     connected: true,
     source: provider.source,
+    capabilities: provider.capabilities,
     view: historical ? "history" : "live",
     session: {
       id: sessionId,

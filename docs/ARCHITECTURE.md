@@ -5,8 +5,9 @@
 ```text
 Provider session files ─┐
 Git working tree ───────┼─> local monitor (127.0.0.1:4317)
-Plan usage endpoint ────┘            │
-Safe cost snapshots ─────────────────┘
+Plan usage endpoint ────┤            │
+Safe lifecycle data ────┤            │
+Safe cost snapshots ────┘            │
                                      │ normalized JSON
                                      v
                               /api/state proxy
@@ -23,9 +24,9 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 
 `monitor/server.mjs` currently:
 
-1. Finds the session tree with the latest primary or subagent activity, or uses `CLAUDE_SESSION_FILE`.
-2. Reads primary and subagent JSONL files.
-3. Normalizes agents, activity, context snapshots, opt-in context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
+1. Discovers Claude Code and Codex session trees through provider adapters and deterministically selects current or historical sessions.
+2. Reads provider session metadata, bounded live tails, and cached historical evidence.
+3. Normalizes agents, activity, context snapshots, opt-in lifecycle/context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
 4. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
 5. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
 6. Retrieves and caches provider plan usage for the live view only.
@@ -63,18 +64,38 @@ Claude Code sends `cost.total_cost_usd` only to its configured status-line comma
 
 When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 
-## Adding Codex support
-
-Extract the current parser into a provider boundary before adding Codex:
+## Provider boundary
 
 ```text
 monitor/providers/
 ├── claude.mjs
 ├── codex.mjs
-└── shared.mjs
+├── codex-liveness.mjs
+└── provider-contract.mjs
 ```
 
-Each provider should implement session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, and timestamps. Git remains provider-independent after an adapter returns a working directory. Plan usage remains an optional provider capability.
+Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
+
+### Codex live state
+
+Codex liveness is resolved provider-side in strict priority order: an explicitly supplied owning app-server status, an opt-in lifecycle bridge with a valid owner lease, then a bounded rollout-tail heuristic. `notLoaded` from another app-server is unknown and falls through. Current liveness evidence is never applied to historical reads.
+
+The bridge entry point is `scripts/codex-lifecycle-bridge.mjs`. It consumes Codex hook JSON but atomically persists only the allowlisted session/turn/agent IDs, lifecycle enum, request kind, timestamps, sequence, and monitor-local owner identity. On Windows it walks the hook command's process ancestry using process IDs, names, and creation times only, then binds the lease to the nearest allowlisted Codex/ChatGPT owner; none of the discovery fields beyond PID and creation time are persisted. A detached `scripts/codex-lifecycle-owner.mjs` process renews one shared 45-second PID-plus-process-start lease every 15 seconds. It produces no decision or model context. Snapshots and leases default to `~/.threadlight/codex-liveness`; `THREADLIGHT_CODEX_LIVENESS_DIR` is the opt-in root override used by both bridge and monitor. `THREADLIGHT_CODEX_OWNER_PID` can explicitly select the owner for an unusual command-wrapper topology.
+
+Configure the same absolute bridge command for `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop` in a trusted Codex `hooks.json` layer. The handler should be a command with a short timeout, for example:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "commandWindows": "node \"C:\\\\path\\\\to\\\\threadlight\\\\scripts\\\\codex-lifecycle-bridge.mjs\"", "timeout": 3 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "commandWindows": "node \"C:\\\\path\\\\to\\\\threadlight\\\\scripts\\\\codex-lifecycle-bridge.mjs\"", "timeout": 3 }] }]
+  }
+}
+```
+
+Repeat the handler for the other listed events. `PreToolUse`, `PermissionRequest`, and `PostToolUse` must match all supported tools so later progress can clear pending input. Threadlight writes `{}` to hook stdout, which is inert while satisfying `Stop` and `SubagentStop` JSON-output requirements.
+
+Without a current authoritative source, the adapter reads at most 128 KiB and 256 records from each relevant rollout tail. Recognized activity is active for 15 seconds, idle/recent through 120 seconds, then not live. Rollout-only `request_user_input` is current for at most 120 seconds and clears on its matching structured output. Tail results are keyed by file size and modification time; catalog/status reads are cached for 1.5 seconds. Parent agents reuse the shared waiting propagation when a descendant remains active.
 
 ## Failure behavior
 

@@ -18,10 +18,11 @@ function estimatedCostLabel(cost: SessionCost) {
   }).format(cost.amount);
 }
 
-export function ContextGrowthTimeline({ timeline, currentTokens, cost, historical }: {
+export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimatedCostSupported, historical }: {
   timeline: MonitorState["metrics"]["tokens"]["contextGrowthTimeline"];
   currentTokens: MonitorState["metrics"]["tokens"];
   cost: SessionCost | null;
+  estimatedCostSupported: boolean;
   historical: boolean;
 }) {
   const buckets = timeline?.buckets || [];
@@ -39,7 +40,7 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, historica
         <div className="histogramSummary">
           <strong>{compactNumber(currentTokens.allAgents)}</strong>
           <span>{historical ? "recorded context" : "current context"}</span>
-          {cost && <small className="histogramCost" title="Claude Code's client-side session estimate at standard API list rates; it may differ from the actual bill.">Claude Code estimate {estimatedCostLabel(cost)}</small>}
+          {estimatedCostSupported && cost && <small className="histogramCost" title="Claude Code's client-side session estimate at standard API list rates; it may differ from the actual bill.">Claude Code estimate {estimatedCostLabel(cost)}</small>}
         </div>
       </div>
       {buckets.length === 0 ? <EmptyState text="Context growth will appear here after the first model response." /> : (

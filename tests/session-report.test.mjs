@@ -5,6 +5,18 @@ import { buildSessionReport, sessionReportFilename } from "../app/session-report
 const generatedAt = new Date("2026-08-05T18:00:00.000Z");
 const state = {
   source: "Claude Code",
+  capabilities: {
+    approvalMode: true,
+    automaticCompactions: true,
+    contextMachinery: true,
+    estimatedCost: true,
+    liveSessions: true,
+    needsInput: true,
+    planTasks: true,
+    sessionSummary: true,
+    signals: true,
+    usageLimits: true,
+  },
   view: "live",
   score: 84,
   session: {
@@ -88,6 +100,28 @@ test("omits live-only data from historical reports", () => {
   assert.match(report, /Recorded branch.*feature\/history/);
   assert.match(report, /Historical uncommitted-file state was not recorded/);
   assert.doesNotMatch(report, /Plan usage|Current session|5 hours/);
+});
+
+test("omits provider-unsupported cost and usage-limit sections instead of reporting zero or unavailable", () => {
+  const unsupported = structuredClone(state);
+  unsupported.source = "Codex";
+  unsupported.capabilities.estimatedCost = false;
+  unsupported.capabilities.usageLimits = false;
+  unsupported.session.cost = { amount: 0, currency: "USD", type: "estimated", observedAt: "2026-08-05T17:30:00.000Z" };
+
+  const report = buildSessionReport(unsupported, generatedAt);
+
+  assert.doesNotMatch(report, /Estimated API cost|Claude|status-line|Plan usage|Current session|5 hours/i);
+  assert.match(report, /All-agent context.*2,500 tokens/);
+});
+
+test("keeps a supplied zero estimate distinct from an unsupported estimate", () => {
+  const zeroCost = structuredClone(state);
+  zeroCost.session.cost.amount = 0;
+
+  const report = buildSessionReport(zeroCost, generatedAt);
+
+  assert.match(report, /Estimated API cost.*\$0\.00/);
 });
 
 test("renders needs-input status as a human-readable report label", () => {

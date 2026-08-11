@@ -6,7 +6,7 @@ import { compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { PopoverFrame } from "../PopoverFrame";
 
-export function MachineryPanel({ machinery, historical }: { machinery: ContextMachinery | null | undefined; historical: boolean }) {
+export function MachineryPanel({ machinery, supported, historical }: { machinery: ContextMachinery | null | undefined; supported: boolean; historical: boolean }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -16,7 +16,7 @@ export function MachineryPanel({ machinery, historical }: { machinery: ContextMa
       <div className="cacheLead"><h2>Loaded context</h2><p>Provider-estimated context used by tools, instructions, and other session components.</p></div>
       <div className="machineryStat" ref={rootRef}>
         <span>Estimated token load</span>
-        {machinery ? <>
+        {supported && machinery ? <>
           <strong title="Sum of the provider-estimated context categories in the latest /context snapshot. Messages and free space are excluded.">{compactNumber(machinery.machineryTokens)}</strong>
           <small>Estimated tokens across {machinery.categories.length} {machinery.categories.length === 1 ? "category" : "categories"}</small>
           <button className="machineryPopoverTrigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="loaded-machinery-popover">View context breakdown <span aria-hidden="true">▸</span></button>
@@ -37,7 +37,9 @@ export function MachineryPanel({ machinery, historical }: { machinery: ContextMa
               </div>
             </PopoverFrame>
           )}
-        </> : <><strong>—</strong><small>{historical ? "No context snapshot was recorded" : "Run /context in the active session to measure the loaded context"}</small></>}
+        </> : <><strong>—</strong><small>{!supported
+          ? "Loaded context details are not available for this provider"
+          : historical ? "No context snapshot was recorded" : "Run /context in the active session to measure the loaded context"}</small></>}
       </div>
     </section>
   );

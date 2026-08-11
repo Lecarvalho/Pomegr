@@ -2,7 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
-import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
+import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { ActivityPanel } from "./components/dashboard/ActivityPanel";
 import { AgentActivityPanel } from "./components/dashboard/AgentActivityPanel";
 import { ContextGrowthTimeline } from "./components/dashboard/ContextGrowthTimeline";
@@ -28,6 +28,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const capabilities = data.capabilities || createEmptyProviderCapabilities();
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
@@ -123,25 +124,25 @@ export function Dashboard() {
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
         <DashboardHeader connected={data.connected} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
-        {data.session && <SessionHero session={data.session} historical={viewingHistory} />}
+        {data.session && <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />}
 
         {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
         {data.error && <div className="notice"><span>!</span>{data.error}</div>}
         {data.session ? <>
           <section className="contentGrid">
-            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={data.planTasks || []} historical={viewingHistory} />
+            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} historical={viewingHistory} />
             <InsightsPanel insights={data.insights} />
           </section>
 
           <SummaryMetrics state={data} historical={viewingHistory} />
-          <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} historical={viewingHistory} />
+          <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} estimatedCostSupported={capabilities.estimatedCost} historical={viewingHistory} />
 
           <details className="sessionDetails">
             <summary><span>Session details</span><small>Repository, usage limits, loaded context, and activity</small></summary>
             <div className="sessionDetailsBody">
               <RepositoryPanel session={data.session} />
-              {!viewingHistory && <UsageLimitsPanel usageLimits={data.usageLimits} />}
-              <MachineryPanel machinery={data.session.contextMachinery} historical={viewingHistory} />
+              {!viewingHistory && capabilities.usageLimits && <UsageLimitsPanel usageLimits={data.usageLimits} />}
+              <MachineryPanel machinery={data.session.contextMachinery} supported={capabilities.contextMachinery} historical={viewingHistory} />
               <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh(false)} />
             </div>
           </details>

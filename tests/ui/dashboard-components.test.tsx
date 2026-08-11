@@ -8,7 +8,28 @@ import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPane
 import { ContextGrowthTimeline } from "../../app/components/dashboard/ContextGrowthTimeline";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
+import { MachineryPanel } from "../../app/components/dashboard/MachineryPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
+
+const claudeCapabilities = {
+  approvalMode: true,
+  automaticCompactions: true,
+  contextMachinery: true,
+  estimatedCost: true,
+  liveSessions: true,
+  needsInput: true,
+  planTasks: true,
+  sessionSummary: true,
+  signals: true,
+  usageLimits: true,
+} as const;
+
+const codexCapabilities = {
+  ...claudeCapabilities,
+  contextMachinery: false,
+  estimatedCost: false,
+  sessionSummary: false,
+} as const;
 
 const task: ExecutionTask = {
   id: "task-1",
@@ -71,7 +92,7 @@ describe("session approval mode", () => {
       approvalMode: { id: "auto", label: "Auto mode", observedAt: "2026-08-10T12:00:00.000Z", source: "provider" },
     } satisfies NonNullable<MonitorState["session"]>;
 
-    render(<LiveClockProvider running={false}><SessionHero session={session} historical={false} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
     expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Latest recognized provider-reported mode.");
@@ -85,7 +106,7 @@ describe("session approval mode", () => {
       approvalMode: { id: "accept_edits", label: "Accept edits", observedAt: null, source: "provider" },
     } satisfies NonNullable<MonitorState["session"]>;
 
-    render(<LiveClockProvider running={false}><SessionHero session={session} historical /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical /></LiveClockProvider>);
 
     expect(screen.getByText("LAST APPROVAL MODE")).toBeInTheDocument();
     expect(screen.getByText("Accept edits")).toHaveAttribute("title", "Last provider-reported mode recorded for this session.");
@@ -102,7 +123,7 @@ describe("session approval mode", () => {
       approvalMode: { id, label, observedAt: "2026-08-11T12:00:00.000Z", source: "provider" },
     } satisfies NonNullable<MonitorState["session"]>;
 
-    render(<LiveClockProvider running={false}><SessionHero session={session} historical={false} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText(label)).toBeInTheDocument();
   });
@@ -339,6 +360,25 @@ describe("session sidebar", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("disambiguates mixed-provider live and historical sessions", async () => {
+    const user = userEvent.setup();
+    const mixedSessions: SessionSummary[] = [
+      sessions[0],
+      { id: "codex:live-2", provider: "codex", source: "Codex", title: "Live work", project: "Threadlight", updatedAt: "2026-08-11T12:00:00.000Z", isLive: true, needsInput: false },
+      sessions[1],
+      { id: "codex:old-2", provider: "codex", source: "Codex", title: "Older work", project: "Threadlight", updatedAt: "2026-08-06T12:00:00.000Z", isLive: false, needsInput: false },
+    ];
+
+    render(<LiveClockProvider running={false}><SessionSidebar open sessions={mixedSessions} selectedSessionId={null} currentSessionId={null} viewingHistory={false} onClose={vi.fn()} onSelect={vi.fn()} /></LiveClockProvider>);
+
+    expect(screen.getByRole("button", { name: /Live workClaude Code/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live workCodex/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Threadlight2$/ }));
+    expect(screen.getByText("Claude Code")).toHaveClass("providerTag");
+    expect(screen.getByText("Codex")).toHaveClass("providerTag");
+    expect(screen.getAllByRole("button", { name: /Live work/ })).toHaveLength(2);
+  });
 });
 
 describe("usage-limit clock", () => {
@@ -380,6 +420,7 @@ describe("estimated session cost", () => {
       timeline={{ bucketMs: 0, buckets: [] }}
       currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
       cost={{ amount: 1.2345, currency: "USD", type: "estimated", observedAt: "2026-08-09T12:00:00.000Z" }}
+      estimatedCostSupported
       historical={false}
     />);
 
@@ -392,9 +433,50 @@ describe("estimated session cost", () => {
       timeline={{ bucketMs: 0, buckets: [] }}
       currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
       cost={null}
+      estimatedCostSupported
       historical={false}
     />);
 
     expect(screen.queryByText(/Est\. cost/)).not.toBeInTheDocument();
+  });
+
+  it("does not show Claude estimate copy when the selected provider lacks cost support", () => {
+    render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 0, buckets: [] }}
+      currentTokens={{ allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
+      cost={{ amount: 0, currency: "USD", type: "estimated", observedAt: "2026-08-11T12:00:00.000Z" }}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    expect(screen.queryByText(/Claude Code estimate|status-line|API cost/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("provider capability gates", () => {
+  it("labels Codex provenance and uses a provider-neutral unsupported summary state", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      summary: { text: "Unsupported summary must stay hidden", observedAt: null, source: "provider" },
+    } satisfies NonNullable<MonitorState["session"]>;
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("Codex")).toHaveClass("providerTag");
+    expect(screen.getByText("Session summaries are not available for this provider.")).toBeInTheDocument();
+    expect(screen.queryByText("Unsupported summary must stay hidden")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for the provider/)).not.toBeInTheDocument();
+  });
+
+  it("never gives an unsupported provider the Claude /context instruction", () => {
+    render(<MachineryPanel machinery={null} supported={false} historical={false} />);
+
+    expect(screen.getByText("Loaded context details are not available for this provider")).toBeInTheDocument();
+    expect(screen.queryByText(/\/context/)).not.toBeInTheDocument();
+  });
+
+  it("preserves the Claude /context setup copy when the capability is supported", () => {
+    render(<MachineryPanel machinery={null} supported historical={false} />);
+
+    expect(screen.getByText("Run /context in the active session to measure the loaded context")).toBeInTheDocument();
   });
 });

@@ -4,6 +4,10 @@
 - **Date:** 2026-08-10
 - **Scope:** Design only; implementation belongs to `TL-CX-14`
 
+## Implementation status
+
+Implemented by `TL-CX-14` in `monitor/providers/codex-liveness.mjs`, `scripts/codex-lifecycle-bridge.mjs`, and `scripts/codex-lifecycle-owner.mjs`. The Codex adapter applies the source priority below to current views, retains the normalized evidence source and observation timestamp, and strips all current liveness evidence from historical reads.
+
 ## Context
 
 Threadlight needs to classify Codex threads as active, idle, waiting for input, or no longer live without controlling Codex or exposing conversation content. On Windows, the classification must work for both CLI and desktop-owned threads.
@@ -82,9 +86,13 @@ If both waiting flags appear, needs-input remains true and the safe kind is `mul
 
 Normal shutdown clears liveness on `SessionEnd`. Unexpected process exit clears it when the owner watcher stops renewing its lease. The monitor allows a 15-second heartbeat interval, a 45-second lease, and two consecutive failed polls before clearing, which bounds the ordinary crash false-positive window while tolerating scheduling jitter. After system resume, the monitor applies one fresh lease interval before declaring old snapshots stale.
 
+The implementation keeps heartbeat leases separate from lifecycle snapshots so renewal cannot overwrite a newer transition. A root `SessionEnd` snapshot immediately suppresses rollout fallback for the rollout's remaining 120-second freshness window; otherwise the close event itself could make a just-closed thread appear recent and live. A first expired-lease poll and the resume grace can temporarily retain the last bridge state, but never beyond the documented lease/grace bounds while polling continues.
+
 Needs-input clears on `serverRequest/resolved`, matching `PostToolUse`, a later recognized progress event for the same turn, `Stop`, `UserPromptSubmit`, `SessionEnd`, or owner-lease expiry. As a final guard against a lost clear event, a bridge needs-input record expires after 30 minutes without reaffirming evidence. This can produce a false negative for a prompt left unanswered longer than 30 minutes; the state must therefore retain its evidence label.
 
 Rollout-only liveness and needs-input always expire after 120 seconds. Thus a crashed process cannot leave a transcript-derived live or needs-input state indefinitely. A later matching function-call output clears rollout needs-input as soon as it is observed.
+
+Rollout parsing is limited to the final 128 KiB and 256 JSONL records per relevant file. Parsed tails are cached by size and modification time, bridge/catalog reads use a 1.5-second cache, and bridge directory scans are capped at 500 newest snapshot/lease files. These bounds mean a very large burst of more than 256 records can hide an unmatched request and produce a false negative; missing or disabled hooks can leave a finished client classified idle/recent for at most 120 seconds.
 
 Historical views never receive current app-server, bridge, process, or lease evidence. They show only recorded terminal state and must not be promoted to live because the repository or another Codex process is active.
 

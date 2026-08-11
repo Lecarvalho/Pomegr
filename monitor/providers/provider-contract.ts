@@ -5,30 +5,13 @@ import type {
   ExecutionTask,
   MonitorState,
   PlanTask,
+  ProviderCapabilities,
   ProviderId,
   ProviderSource,
   ReportedSignal,
   SessionApprovalMode,
   UsageLimits,
 } from "../../shared/monitor-contract";
-
-/**
- * Optional provider features. Core session discovery, normalized agents,
- * sanitized activity, and latest context snapshots are required by every
- * adapter and therefore are not capability-gated.
- */
-export type ProviderCapabilities = {
-  approvalMode: boolean;
-  automaticCompactions: boolean;
-  contextMachinery: boolean;
-  estimatedCost: boolean;
-  liveSessions: boolean;
-  needsInput: boolean;
-  planTasks: boolean;
-  sessionSummary: boolean;
-  signals: boolean;
-  usageLimits: boolean;
-};
 
 /** Provider-local catalog item. The monitor qualifies `localId` before exposing it. */
 export type ProviderSessionReference = {

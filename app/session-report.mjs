@@ -61,6 +61,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   const skills = skillDistribution(agents);
   const insights = state.insights || [];
   const limits = state.usageLimits?.limits || [];
+  const capabilities = state.capabilities || {};
   const lines = [
     "# Threadlight Session Report",
     "",
@@ -85,13 +86,17 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `| Agents running now | ${number(state.metrics.activeAgents)} / ${number(state.metrics.agents)} |`,
     `| Tool calls | ${number(state.metrics.toolCalls)} |`,
     `| All-agent context | ${number(state.metrics.tokens.allAgents)} tokens |`,
-    `| Estimated API cost | ${money(session.cost)} |`,
+  ];
+
+  if (capabilities.estimatedCost) lines.push(`| Estimated API cost | ${money(session.cost)} |`);
+
+  lines.push(
     "",
     "## Agent activity",
     "",
     "| Agent | Parent | Role | Model | Effort | Status | Wall time | Context snapshot | Tool calls |",
     "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
-  ];
+  );
 
   if (agents.length) {
     for (const agent of agents) {
@@ -158,7 +163,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     lines.push("Repository metadata was unavailable.");
   }
 
-  if (state.view !== "history") {
+  if (state.view !== "history" && capabilities.usageLimits) {
     lines.push("", "## Plan usage", "");
     if (state.usageLimits?.available && limits.length) {
       lines.push("| Window | Limit | Used | Reset |", "| --- | --- | ---: | --- |");

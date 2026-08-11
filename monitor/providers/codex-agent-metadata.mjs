@@ -321,6 +321,10 @@ function runtimeStatus(value) {
   return null;
 }
 
+function liveStatus(value) {
+  return ["active", "waiting", "needs_input", "finished", "stopped", "idle"].includes(value) ? value : null;
+}
+
 function mergeCollaboration(previous, next) {
   if (!previous) return { ...next, startedAt: next.timestamp, updatedAt: next.timestamp };
   const nextIsLater = timestampValue(next.timestamp) >= timestampValue(previous.updatedAt);
@@ -436,10 +440,12 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       || startedAt;
     const collaborationIsLater = collaboration?.status
       && timestampValue(collaboration.updatedAt) > timestampValue(summary?.updatedAt);
-    const observedStatus = runtimeStatus(thread.runtimeStatus);
-    let status = primary ? (observedStatus === "active" && !historical ? "active" : "idle") : null;
+    const currentLiveStatus = liveStatus(thread.liveStatus);
+    const observedStatus = currentLiveStatus || runtimeStatus(thread.runtimeStatus);
+    let status = primary ? (!historical && observedStatus ? observedStatus : "idle") : null;
     if (!primary) {
-      if (observedStatus === "active") status = historical ? "idle" : "active";
+      if (!historical && currentLiveStatus) status = currentLiveStatus;
+      else if (observedStatus === "active") status = historical ? "idle" : "active";
       else if (collaborationIsLater) status = collaboration.status;
       else if (summary?.terminal) status = summary.terminal.status;
       else if (observedStatus) status = observedStatus;
@@ -458,9 +464,12 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       ? "orchestrator"
       : role || (collaboration?.kind !== "subagent" ? collaboration?.kind : "")
         || sourceKindLabel(sourceKind, summary?.forkedFromId ?? thread.forkedFromId);
-    const lastSeen = collaborationIsLater
+    let lastSeen = collaborationIsLater
       ? collaboration.updatedAt
       : summary?.terminal?.timestamp || updatedAt;
+    if (!historical && timestampValue(thread.liveness?.observedAt) > timestampValue(lastSeen)) {
+      lastSeen = thread.liveness.observedAt;
+    }
 
     return {
       id: primary ? "primary" : `agent-${threadId}`,
@@ -482,6 +491,7 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       startedAt,
       updatedAt: lastSeen,
       durationMs: Math.max(0, timestampValue(lastSeen) - timestampValue(startedAt)),
+      liveness: historical || !thread.liveness ? null : thread.liveness,
     };
   });
 }

@@ -55,4 +55,6 @@ test("validates provider declarations and optional usage readers", () => {
 test("creates provider-aware empty state while preserving the Claude default", () => {
   assert.equal(createEmptyMonitorState().source, "Claude Code");
   assert.equal(createEmptyMonitorState({ source: "Codex", connected: true }).source, "Codex");
+  assert.equal(createEmptyMonitorState().capabilities.estimatedCost, false);
+  assert.equal(createEmptyMonitorState().capabilities.contextMachinery, false);
 });
