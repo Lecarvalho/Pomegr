@@ -15,7 +15,6 @@ export function SessionHero({ session, historical }: { session: MonitorState["se
         {session?.summary && <small className="heroSummarySource">Provider summary</small>}
         {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
           <AgentChip className={`sessionSignal ${session.signal.tone}`} title="Reported for this session through the Threadlight MCP tool">{session.signal.label}</AgentChip>
-          <small>Session signal</small>
         </div>}
       </div>
       {session && <div className="sessionMeta" aria-label="Session status">

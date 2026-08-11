@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import fs from "node:fs";
-import readline from "node:readline";
+import { pullRequestUrls, readClaudePullRequestUrls } from "./providers/claude-pull-requests.mjs";
+
+export { pullRequestUrls } from "./providers/claude-pull-requests.mjs";
 
 const MAX_PULL_REQUESTS = 8;
 const CACHE_TTL_MS = 60_000;
@@ -9,7 +10,6 @@ const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-
 const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt";
 const metadataCache = new Map();
 const branchCache = new Map();
-const transcriptUrlCache = new Map();
 
 function safeText(value, maximumLength) {
   return typeof value === "string"
@@ -33,76 +33,6 @@ function pullRequestReference(url) {
     number,
     url: canonicalPullRequestUrl(match[1], match[2], number),
   };
-}
-
-function resultText(content) {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.flatMap((part) => typeof part?.text === "string" ? [part.text] : []).join("\n");
-}
-
-function createdPullRequestTool(part) {
-  if (part?.type !== "tool_use" || typeof part.id !== "string") return false;
-  if (part.name === "Bash" && typeof part.input?.command === "string") {
-    return /(?:^|\s)gh\s+pr\s+create(?:\s|$)/i.test(part.input.command);
-  }
-  return typeof part.name === "string" && /(?:^|__)create_pull_request$/i.test(part.name);
-}
-
-function collectPullRequestUrls(records, state) {
-  if (state.urls.length >= MAX_PULL_REQUESTS) return state;
-  for (const record of records || []) {
-    for (const part of Array.isArray(record?.message?.content) ? record.message.content : []) {
-      if (record.type === "assistant" && createdPullRequestTool(part)) state.creationToolIds.add(part.id);
-      if (record.type !== "user" || part?.type !== "tool_result" || part.is_error || !state.creationToolIds.has(part.tool_use_id)) continue;
-      const text = resultText(part.content);
-      GITHUB_PULL_REQUEST_URL.lastIndex = 0;
-      for (const match of text.matchAll(GITHUB_PULL_REQUEST_URL)) {
-        const reference = pullRequestReference(match[0]);
-        if (!reference || state.seen.has(reference.url)) continue;
-        state.seen.add(reference.url);
-        state.urls.push(reference.url);
-        if (state.urls.length >= MAX_PULL_REQUESTS) return state;
-      }
-    }
-  }
-  return state;
-}
-
-function newUrlState(urls = []) {
-  return { creationToolIds: new Set(), urls: [...urls], seen: new Set(urls) };
-}
-
-export function pullRequestUrls(records) {
-  return collectPullRequestUrls(records, newUrlState()).urls;
-}
-
-async function scanCompleteTranscript(file) {
-  const state = newUrlState();
-  const input = fs.createReadStream(file, { encoding: "utf8" });
-  const lines = readline.createInterface({ input, crlfDelay: Infinity });
-  for await (const line of lines) {
-    try { collectPullRequestUrls([JSON.parse(line)], state); }
-    catch { /* Ignore malformed or partially written JSONL records. */ }
-  }
-  return state.urls;
-}
-
-async function readTranscriptPullRequestUrls(file, recentRecords = []) {
-  let stat;
-  try { stat = fs.statSync(file); }
-  catch { return []; }
-  const cached = transcriptUrlCache.get(file);
-  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.urls;
-  const urls = cached && stat.size > cached.size && stat.size - cached.size <= 2 * 1024 * 1024
-    ? collectPullRequestUrls(recentRecords, newUrlState(cached.urls)).urls
-    : await scanCompleteTranscript(file);
-  transcriptUrlCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, urls });
-  return urls;
-}
-
-function uniqueUrls(groups) {
-  return [...new Set(groups.flat())].slice(0, MAX_PULL_REQUESTS);
 }
 
 function runGh(cwd, args) {
@@ -190,9 +120,11 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
 
 export async function readPullRequests(records, options = {}) {
   const ghRunner = options.ghRunner || runGh;
-  const transcriptUrls = Array.isArray(options.transcripts)
-    ? uniqueUrls(await Promise.all(options.transcripts.map(({ file, records: recentRecords }) => readTranscriptPullRequestUrls(file, recentRecords))))
-    : pullRequestUrls(records);
+  const transcriptUrls = Array.isArray(options.sessionUrls)
+    ? [...new Set(options.sessionUrls)].slice(0, MAX_PULL_REQUESTS)
+    : Array.isArray(options.transcripts)
+      ? await readClaudePullRequestUrls(options.transcripts)
+      : pullRequestUrls(records);
   const metadata = await Promise.all(transcriptUrls.map(async (url) => ({ url, result: await metadataForUrl(options.cwd, url, ghRunner) })));
   const branchResult = options.historical ? null : await pullRequestsForBranch(options.cwd, options.branch, ghRunner);
   const branchValues = branchResult?.loaded ?? null;

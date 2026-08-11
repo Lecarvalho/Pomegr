@@ -199,9 +199,17 @@ npm run test:node
 
 ## TL-CX-04 — Extract the Claude adapter
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-01`, `TL-CX-03`
 - **Target size:** 1–2 sessions
+
+### Implementation notes
+
+- Added the Claude provider adapter in `monitor/providers/claude.mjs`, with discovery, registry selection, transcript parsing, runtime metadata, tasks, cost, context machinery, summaries, approval mode, signals, compactions, and authenticated usage limits behind the provider boundary.
+- Kept Git inspection, GitHub metadata lookup, context aggregation, activity grouping, scoring, and deterministic efficiency rules in the provider-neutral monitor orchestration.
+- Moved Claude transcript PR-result parsing into a provider helper and passed only canonical successful creation URLs to shared GitHub metadata lookup.
+- Added synthetic adapter regression/privacy tests and a source assertion that the monitor contains no Claude credential paths, Anthropic endpoints, or transcript schema checks.
 
 ### Goal
 
@@ -233,9 +241,18 @@ npm run lint
 
 ## TL-CX-05 — Make monitor orchestration provider-neutral
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-04`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added a provider registry with a production registration entry point; Claude remains the only loaded adapter and the monitor now consumes it exclusively through the registry.
+- Merged allowlisted catalog summaries under provider-qualified IDs with deterministic recency and tie ordering, duplicate/unsafe-ID rejection, and independent provider failure handling.
+- Routed explicit IDs only to their owning provider and made automatic selection prefer live needs-input sessions, then recent live activity, then recent history.
+- Kept usage limits and Git state scoped to the selected provider evidence, with safe empty historical states for unknown, malformed, missing, or failed selections.
+- Added deterministic registry, routing, privacy, fallback, and production-registration tests.
 
 ### Goal
 
@@ -688,3 +705,5 @@ Add short entries here only after completing a task.
 | 2026-08-10 | TL-CX-01 | Complete | Provider contract, capability semantics, qualified IDs, provider-aware empty state, and focused tests added. |
 | 2026-08-10 | TL-CX-02 | Complete | Accepted Windows liveness strategy: owning app-server when explicit, opt-in lifecycle bridge generally, bounded rollout heuristic as fallback. |
 | 2026-08-10 | TL-CX-03 | Complete | Synthetic provider fixtures, malformed-record coverage, and serialized-state privacy sentinels added. |
+| 2026-08-10 | TL-CX-04 | Complete | Claude discovery and parsing extracted behind the provider contract; shared orchestration and regression/privacy coverage retained. |
+| 2026-08-10 | TL-CX-05 | Complete | Provider registry, qualified catalog merge, safe selection routing, and deterministic cross-provider priority added. |

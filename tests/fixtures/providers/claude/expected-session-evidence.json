@@ -21,5 +21,6 @@
   "toolCalls": [{ "id": "bash-1", "timestamp": "2026-08-10T12:00:02.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Bash", "detail": "Run synthetic checks", "repetitionSignature": "Bash:synthetic", "mutation": null }],
   "activity": [{ "id": "bash-1", "timestamp": "2026-08-10T12:00:02.000Z", "actor": "Primary agent", "tool": "Bash", "detail": "Run synthetic checks", "status": null }],
   "planTasks": [{ "id": "task-1", "subject": "Verify synthetic fixture", "status": "in_progress", "blocks": [], "blockedBy": [] }],
-  "compactions": [{ "actorId": "primary", "timestamp": "2026-08-10T12:00:07.000Z", "trigger": "auto", "preTokens": 180000 }]
+  "compactions": [{ "actorId": "primary", "timestamp": "2026-08-10T12:00:07.000Z", "trigger": "auto", "preTokens": 180000 }],
+  "pullRequestUrls": []
 }

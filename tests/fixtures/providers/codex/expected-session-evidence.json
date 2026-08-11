@@ -22,5 +22,6 @@
   "toolCalls": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Shell", "detail": "Run synthetic checks", "repetitionSignature": "Shell:synthetic", "mutation": null }],
   "activity": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": "Primary agent", "tool": "Shell", "detail": "Run synthetic checks", "status": null }],
   "planTasks": [],
-  "compactions": []
+  "compactions": [],
+  "pullRequestUrls": []
 }

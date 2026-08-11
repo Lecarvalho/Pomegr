@@ -103,9 +103,17 @@ export function defineProvider(adapter) {
   if (adapter.source !== expectedSource) throw new TypeError(`Provider ${adapter.id} source must be ${expectedSource}`);
   if (typeof adapter.listSessions !== "function") throw new TypeError("Provider adapter must implement listSessions");
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
+  if (adapter.unavailableMessage !== undefined && typeof adapter.unavailableMessage !== "function") {
+    throw new TypeError("Provider unavailableMessage must be a function");
+  }
+  if (adapter.watchTargets !== undefined && (!Array.isArray(adapter.watchTargets)
+    || adapter.watchTargets.some((target) => typeof target !== "string" || !target))) {
+    throw new TypeError("Provider watchTargets must contain non-empty strings");
+  }
   const capabilities = createProviderCapabilities(adapter.capabilities);
   if (capabilities.usageLimits && typeof adapter.readUsageLimits !== "function") {
     throw new TypeError("Provider with usageLimits capability must implement readUsageLimits");
   }
-  return Object.freeze({ ...adapter, capabilities });
+  const watchTargets = adapter.watchTargets ? Object.freeze([...adapter.watchTargets]) : undefined;
+  return Object.freeze({ ...adapter, capabilities, ...(watchTargets ? { watchTargets } : {}) });
 }

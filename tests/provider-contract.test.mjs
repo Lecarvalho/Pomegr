@@ -36,15 +36,20 @@ test("validates provider declarations and optional usage readers", () => {
     id: "codex",
     source: "Codex",
     capabilities: { liveSessions: true },
+    watchTargets: ["synthetic-root"],
     async listSessions() { return []; },
     async readSession() { return null; },
   };
   const provider = defineProvider(base);
   assert.equal(provider.source, providerSource("codex"));
   assert.equal(provider.capabilities.liveSessions, true);
+  assert.deepEqual(provider.watchTargets, ["synthetic-root"]);
+  assert.equal(Object.isFrozen(provider.watchTargets), true);
   assert.equal(Object.isFrozen(provider), true);
   assert.throws(() => defineProvider({ ...base, source: "Claude Code" }), /source must be Codex/);
   assert.throws(() => defineProvider({ ...base, capabilities: { usageLimits: true } }), /must implement readUsageLimits/);
+  assert.throws(() => defineProvider({ ...base, watchTargets: [""] }), /watchTargets/);
+  assert.throws(() => defineProvider({ ...base, unavailableMessage: "private" }), /unavailableMessage/);
 });
 
 test("creates provider-aware empty state while preserving the Claude default", () => {

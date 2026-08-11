@@ -109,6 +109,8 @@ export type ProviderSessionEvidence = {
   activity: Activity[];
   planTasks: PlanTask[];
   compactions: ProviderCompactionEvidence[];
+  /** Canonical successful PR-creation results only; no command or tool output crosses the boundary. */
+  pullRequestUrls: string[];
 };
 
 export type ProviderReadOptions = {
@@ -119,7 +121,9 @@ export interface ProviderAdapter {
   readonly id: ProviderId;
   readonly source: ProviderSource;
   readonly capabilities: Readonly<ProviderCapabilities>;
+  readonly watchTargets?: readonly string[];
   listSessions(): Promise<ProviderSessionReference[]>;
   readSession(localSessionId: string, options: ProviderReadOptions): Promise<ProviderSessionEvidence | null>;
   readUsageLimits?(): Promise<UsageLimits>;
+  unavailableMessage?(localSessionId: string): string;
 }
