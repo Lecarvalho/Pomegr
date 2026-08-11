@@ -286,9 +286,17 @@ npm run test:ui
 
 ## TL-CX-06 — Implement the Codex session catalog and history reader
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-02`, `TL-CX-03`, `TL-CX-05`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added a Codex provider with stable `CODEX_HOME` discovery, provider-qualified catalog provenance, and historical-only state pending the dedicated liveness task.
+- Preferred allowlisted `thread/list` and `thread/read` metadata through an owning app-server client seam, using only explicit thread names and never previews or loaded turns.
+- Added bounded `session_index.jsonl`, active rollout-header, and archived rollout-header fallbacks with malformed-line, missing-file, safe-ID, source-kind, and deterministic catalog handling.
+- Registered Codex beside Claude and added focused privacy, history, archive, missing-session, bounded-catalog, and regression coverage without parsing activity or agent metadata.
 
 ### Goal
 
@@ -321,9 +329,17 @@ npm run build
 
 ## TL-CX-07 — Parse Codex thread and agent metadata
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-10
 - **Depends on:** `TL-CX-06`
 - **Target size:** 1 session
+
+### Implementation notes
+
+- Added a privacy-bounded Codex agent metadata parser for session relationships, collaboration lifecycle records, latest model/effort/settings metadata, transcript timing, and terminal outcomes.
+- Built deterministic primary, nested subagent, fork, resumed, interrupted, unknown-source, and missing-rollout agent trees from app-server metadata plus rollout relationships.
+- Kept collaboration prompts, developer instructions, writable roots, raw tool output, previews, turns, and provider-local rollout paths out of provider evidence.
+- Added focused fixtures and regression coverage for active, idle, finished, stopped, missing-child, wall-time, cross-session isolation, and neutral fallback behavior.
 
 ### Goal
 
@@ -707,3 +723,5 @@ Add short entries here only after completing a task.
 | 2026-08-10 | TL-CX-03 | Complete | Synthetic provider fixtures, malformed-record coverage, and serialized-state privacy sentinels added. |
 | 2026-08-10 | TL-CX-04 | Complete | Claude discovery and parsing extracted behind the provider contract; shared orchestration and regression/privacy coverage retained. |
 | 2026-08-10 | TL-CX-05 | Complete | Provider registry, qualified catalog merge, safe selection routing, and deterministic cross-provider priority added. |
+| 2026-08-10 | TL-CX-06 | Complete | Codex catalog/history metadata reader, app-server seam, bounded rollout/index fallbacks, archive support, and privacy tests added. |
+| 2026-08-10 | TL-CX-07 | Complete | Deterministic Codex primary/subagent metadata tree with safe runtime, timing, terminal, fork, resume, and missing-child handling. |

@@ -1,0 +1,5 @@
+{"timestamp":"2026-08-10T16:00:03.100Z","type":"session_meta","payload":{"id":"codex-agent-completed","session_id":"codex-agent-root","parent_thread_id":"codex-agent-root","cwd":"C:\\PRIVATE_PATH_MUST_NOT_LEAK\\repo","source":{"subagent":{"thread_spawn":{"parent_thread_id":"codex-agent-root","depth":1,"agent_nickname":"Delta","agent_role":"reviewer"}}},"instructions":"DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-10T16:00:04.100Z","type":"turn_context","payload":{"model":"gpt-child-old","effort":"low","developer_instructions":"DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-10T16:00:05.100Z","type":"turn_context","payload":{"model":"gpt-child-latest","effort":"high","user_instructions":"PROMPT_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-10T16:00:06.100Z","type":"event_msg","payload":{"type":"agent_message","message":"RESPONSE_MUST_NOT_LEAK"}}
+

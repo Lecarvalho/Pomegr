@@ -303,8 +303,8 @@ describe("agent detail popovers", () => {
 
 describe("session sidebar", () => {
   const sessions: SessionSummary[] = [
-    { id: "live-1", title: "Live work", project: "Threadlight", updatedAt: "2026-08-08T12:00:00.000Z", isLive: true, needsInput: true },
-    { id: "old-1", title: "Older work", project: "Threadlight", updatedAt: "2026-08-07T12:00:00.000Z", isLive: false, needsInput: false },
+    { id: "live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Threadlight", updatedAt: "2026-08-08T12:00:00.000Z", isLive: true, needsInput: true },
+    { id: "old-1", provider: "claude", source: "Claude Code", title: "Older work", project: "Threadlight", updatedAt: "2026-08-07T12:00:00.000Z", isLive: false, needsInput: false },
   ];
 
   it("selects sessions, expands history, and closes on Escape", async () => {

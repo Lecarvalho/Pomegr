@@ -1,0 +1,4 @@
+{"timestamp":"2026-08-10T16:00:05.500Z","type":"session_meta","payload":{"id":"codex-agent-nested","session_id":"codex-agent-root","parent_thread_id":"codex-agent-completed","cwd":"C:\\PRIVATE_PATH_MUST_NOT_LEAK\\repo","source":{"subagent":{"thread_spawn":{"parent_thread_id":"codex-agent-completed","depth":2,"agent_nickname":"Nested","agent_role":"investigator"}}}}}
+{"timestamp":"2026-08-10T16:00:06.500Z","type":"turn_context","payload":{"model":"gpt-nested","effort":"medium"}}
+{"timestamp":"2026-08-10T16:00:07.500Z","type":"event_msg","payload":{"type":"agent_message","message":"RESPONSE_MUST_NOT_LEAK"}}
+

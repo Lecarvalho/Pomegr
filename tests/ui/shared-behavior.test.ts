@@ -37,8 +37,8 @@ describe("wall-time formatting", () => {
 
 describe("session attention", () => {
   const sessions: SessionSummary[] = [
-    { id: "waiting", title: "Waiting session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true },
-    { id: "working", title: "Working session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false },
+    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true },
+    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false },
   ];
 
   it("shows attention only while viewing the live session that needs input", () => {

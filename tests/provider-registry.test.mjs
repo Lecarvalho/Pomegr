@@ -155,6 +155,6 @@ test("provider failures degrade independently during catalog and automatic selec
   assert.equal((await registry.readSession()).sessionId, "codex:healthy");
 });
 
-test("production registry loads only Claude through the provider registry", () => {
-  assert.deepEqual(providerRegistry.providers.map(({ id }) => id), ["claude"]);
+test("production registry loads Claude and Codex through the provider registry", () => {
+  assert.deepEqual(providerRegistry.providers.map(({ id }) => id), ["claude", "codex"]);
 });

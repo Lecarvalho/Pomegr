@@ -94,6 +94,8 @@ export function createProviderRegistry(adapters) {
       const entries = await catalogEntries();
       return entries.map((entry) => ({
         id: entry.id,
+        provider: entry.provider.id,
+        source: entry.provider.source,
         title: entry.title,
         project: entry.project,
         updatedAt: entry.updatedAt,

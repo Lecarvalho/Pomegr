@@ -79,7 +79,16 @@ export type ContextMachinery = {
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
 export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
-export type SessionSummary = { id: string; title: string; project: string; updatedAt: string; isLive: boolean; needsInput: boolean };
+export type SessionSummary = {
+  id: string;
+  provider: ProviderId;
+  source: ProviderSource;
+  title: string;
+  project: string;
+  updatedAt: string;
+  isLive: boolean;
+  needsInput: boolean;
+};
 
 export type PullRequest = {
   host: "github";

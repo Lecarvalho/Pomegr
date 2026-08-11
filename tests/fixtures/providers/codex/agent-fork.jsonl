@@ -1,0 +1,4 @@
+{"timestamp":"2026-08-10T16:00:08.500Z","type":"session_meta","payload":{"id":"codex-agent-fork","session_id":"codex-agent-root","forked_from_id":"codex-agent-root","cwd":"C:\\PRIVATE_PATH_MUST_NOT_LEAK\\repo","source":"cli","instructions":"DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-10T16:00:09.500Z","type":"turn_context","payload":{"model":"gpt-fork","effort":"medium"}}
+{"timestamp":"2026-08-10T16:00:10.500Z","type":"event_msg","payload":{"type":"task_complete","message":"RESPONSE_MUST_NOT_LEAK"}}
+
