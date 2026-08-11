@@ -14,7 +14,7 @@ import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { UsageLimitsPanel } from "./components/dashboard/UsageLimitsPanel";
-import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
+import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
@@ -54,7 +54,7 @@ export function Dashboard() {
       const response = await fetch("/api/sessions", { cache: "no-store" });
       if (!response.ok) return;
       const catalog = await response.json() as { sessions?: SessionSummary[] };
-      startTransition(() => setSessions(catalog.sessions || []));
+      startTransition(() => setSessions((current) => preserveSessionOrder(current, catalog.sessions || [])));
     } catch {
       // Live monitoring remains available when the catalog cannot be refreshed.
     }

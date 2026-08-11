@@ -41,6 +41,21 @@ export function groupSessionsByProject(sessions: SessionSummary[]) {
   return [...groups].map(([project, projectSessions]) => ({ project, sessions: projectSessions }));
 }
 
+export function preserveSessionOrder(current: SessionSummary[], incoming: SessionSummary[]) {
+  const incomingById = new Map(incoming.map((session) => [session.id, session]));
+  const ordered: SessionSummary[] = [];
+  const seen = new Set<string>();
+  const append = (id: string) => {
+    const session = incomingById.get(id);
+    if (!session || seen.has(id)) return;
+    seen.add(id);
+    ordered.push(session);
+  };
+  for (const session of current) append(session.id);
+  for (const session of incoming) append(session.id);
+  return ordered;
+}
+
 export function sessionNeedingAttention(sessions: SessionSummary[], currentSessionId: string | null, viewingHistory: boolean) {
   if (!currentSessionId || viewingHistory) return null;
   return sessions.find((session) => session.id === currentSessionId && session.isLive && session.needsInput) || null;
