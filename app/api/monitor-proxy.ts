@@ -1,4 +1,19 @@
-const MONITOR_ORIGIN = "http://127.0.0.1:4317";
+const DEFAULT_MONITOR_ORIGIN = "http://127.0.0.1:4317";
+
+export function monitorOrigin(value = process.env.THREADLIGHT_MONITOR_ORIGIN) {
+  if (!value) return DEFAULT_MONITOR_ORIGIN;
+  try {
+    const origin = new URL(value);
+    if (origin.protocol !== "http:" || origin.username || origin.password
+      || origin.pathname !== "/" || origin.search || origin.hash || !origin.port
+      || !["127.0.0.1", "[::1]"].includes(origin.hostname)) {
+      return DEFAULT_MONITOR_ORIGIN;
+    }
+    return origin.origin;
+  } catch {
+    return DEFAULT_MONITOR_ORIGIN;
+  }
+}
 
 type MonitorProxyOptions = {
   path: string;
@@ -8,7 +23,7 @@ type MonitorProxyOptions = {
 
 export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: MonitorProxyOptions) {
   try {
-    const response = await fetch(`${MONITOR_ORIGIN}${path}`, {
+    const response = await fetch(`${monitorOrigin()}${path}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
     });

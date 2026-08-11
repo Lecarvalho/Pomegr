@@ -162,7 +162,7 @@ export async function startDev({
   try {
     await assertPortsAvailableFn();
     const specs = [
-      [process.execPath, [path.join(root, "monitor", "server.mjs")]],
+      [process.execPath, [path.join(root, "monitor", "cli.mjs")]],
       [process.execPath, [path.join(root, "scripts", "run-vinext.mjs"), "dev", "--hostname", "0.0.0.0", "--port", String(webPort)]],
     ];
     for (const [command, args] of specs) {

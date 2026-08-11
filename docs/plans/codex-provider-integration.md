@@ -57,6 +57,7 @@ Before starting any task:
 - **Foundation:** `TL-CX-01` through `TL-CX-05`
 - **Codex beta:** `TL-CX-06` through `TL-CX-13`
 - **Production readiness:** `TL-CX-14` through `TL-CX-16`
+- **Post-launch efficiency signals:** `TL-CX-17` and later follow-up tasks
 
 ---
 
@@ -769,6 +770,61 @@ Prove that Codex support satisfies Threadlight's privacy, metric, compatibility,
 npm run build
 npm test
 npm run lint
+```
+
+---
+
+## TL-CX-17 — Detect costly prompt-cache misses after idle gaps
+
+- [ ] Complete
+- **Depends on:** `TL-CX-10`, `TL-CX-13`
+- **Target size:** 1 session
+
+### Goal
+
+Add a deterministic Codex efficiency signal when a large context that previously received a strong prompt-cache read is subsequently processed mostly as uncached input after an idle gap, without claiming authoritative billing impact or attributing every cache miss to expiration.
+
+### Provider facts and interpretation boundary
+
+- For GPT-5.6-family models, OpenAI documents `prompt_cache_options.ttl = "30m"` as a minimum cache lifetime, not an exact expiration time. A cached prefix may remain eligible longer.
+- Prompt-cache application state is not retained beyond 24 hours. Older model families and data-retention policies may use different in-memory or extended-retention behavior.
+- A low cache-read count can also result from a changed prefix, compaction, model changes, a different cache key, routing, eviction, or a cache entry that was never written. Elapsed time and token counts alone do not prove which cause occurred.
+- Codex subscription usage is not equivalent to API list-price billing. Describe observed token treatment as cached or uncached processing; do not say that the user paid a particular amount or was charged “full price.”
+
+Reference the current official OpenAI prompt-caching and data-retention documentation when implementing this task, and update these facts if provider behavior changes.
+
+### Work
+
+- Preserve enough bounded, chronological `last_token_usage` evidence to compare adjacent Codex requests for the same normalized agent without exposing `total_token_usage` or accumulating transcript throughput.
+- Add an explicit provider evidence capability for prompt-cache classification. Missing, malformed, synthetic, cumulative-only, or provider-unsupported usage must disable the rule.
+- Centralize the rule and its fixed thresholds in `monitor/efficiency-signals.mjs`. Start with conservative candidate boundaries and validate them against synthetic fixtures:
+  - current input context of at least 8,000 tokens;
+  - previous cached-input share of at least 80 percent;
+  - current cached-input share of at most 10 percent;
+  - at least 30 minutes between the comparable observations.
+- Treat a simultaneous large cache-write count as corroborating cold-refill evidence when the provider reports it, but do not require or fabricate it when Codex omits that field.
+- Emit cautious copy such as **Prompt cache miss after idle gap**. State that expiration or eviction may have reduced efficiency and report only bounded normalized context size, cache-read share, and elapsed time.
+- Reserve stronger expiration wording for a gap beyond the documented 24-hour maximum and only when the observations remain otherwise comparable. Do not describe a 30-minute gap as proof of expiration.
+- Suppress the signal when known evidence makes the observations incomparable, including automatic or manual compaction, agent forks, model changes, unavailable intermediate usage, or a changed provider/session identity. A normal resume of the same thread is not by itself a suppression condition.
+- Keep prompt content, cache keys, request bodies, response content, provider routing data, and pricing assumptions monitor-side or entirely unread. None may enter the normalized browser API.
+- Document the final rule, thresholds, evidence gaps, and false-positive boundary in `docs/METRICS.md`.
+
+### Acceptance criteria
+
+- A large, previously cache-efficient context followed by a near-total cache miss after the threshold idle gap emits one bounded warning for the affected agent.
+- The same token pattern before the idle threshold does not claim TTL expiration, and an observation between 30 minutes and 24 hours uses only cautious cache-miss wording.
+- A comparable observation beyond 24 hours may use expiration wording but still makes no billing or savings claim.
+- Compaction, fork, model-change, malformed-record, synthetic-record, cumulative-only, and missing-evidence fixtures do not emit the signal.
+- Repeated polling and duplicate token-count records do not duplicate the warning.
+- No cumulative transcript throughput, inferred cost, raw prompt content, cache key, or private provider field is serialized to `/api/state`, `/api/sessions`, reports, or UI fixtures.
+- Existing Claude and Codex efficiency signals remain unchanged when prompt-cache evidence is unavailable.
+
+### Verification
+
+```powershell
+node --test tests/codex-context.test.mjs tests/efficiency-signals.test.mjs tests/privacy.test.mjs
+npm run build
+npm test
 ```
 
 ## Definition of done

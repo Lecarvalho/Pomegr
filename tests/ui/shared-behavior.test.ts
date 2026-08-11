@@ -76,7 +76,10 @@ describe("session catalog order", () => {
 });
 
 describe("monitor proxy", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
 
   it("forwards successful JSON with no-store headers", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
@@ -93,5 +96,16 @@ describe("monitor proxy", () => {
     const response = await proxyMonitorJson({ path: "/api/state", timeoutMs: 1500, unavailableBody: { connected: false, error: "Monitor unavailable" } });
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ connected: false, error: "Monitor unavailable" });
+  });
+
+  it("never proxies an ambient non-loopback monitor origin", async () => {
+    vi.stubEnv("THREADLIGHT_MONITOR_ORIGIN", "https://private.example.invalid:8443/metadata");
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await proxyMonitorJson({ path: "/api/sessions", timeoutMs: 4000, unavailableBody: {} });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4317/api/sessions");
   });
 });

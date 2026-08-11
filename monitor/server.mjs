@@ -1,7 +1,5 @@
 import crypto from "node:crypto";
 import http from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
@@ -11,8 +9,17 @@ import { readPullRequests } from "./pull-requests.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
+import {
+  closeServer,
+  createLocalServiceHandle,
+  listen,
+  requireLoopbackHost,
+  requirePort,
+  safeServiceError,
+} from "../shared/local-service.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
+const HOST = "127.0.0.1";
 
 function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
@@ -408,19 +415,28 @@ export function createMonitorServer(options = {}) {
   return http.createServer(createMonitorRequestHandler(options));
 }
 
-export function startMonitorServer(options = {}) {
-  const port = Number.isInteger(options.port) ? options.port : PORT;
-  const host = "127.0.0.1";
-  const registry = options.providerRegistry || providerRegistry;
-  const server = createMonitorServer(options);
-  server.listen(port, host, () => {
-    console.log(`Threadlight monitor: http://${host}:${port}`);
-    const watchTargets = registry.watchTargets();
-    if (watchTargets.length) console.log(`Watching: ${watchTargets.join(", ")}`);
-  });
-  return server;
+export async function startMonitorServer(options = {}) {
+  let server;
+  let handle;
+  try {
+    const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
+    const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
+    const registry = options.providerRegistry || providerRegistry;
+    server = (options.serverFactory || createMonitorServer)(options);
+    await listen(server, { host, port, startupErrorCode: "MONITOR_START_FAILED" });
+    handle = createLocalServiceHandle(server, {
+      host,
+      normalExitCode: "MONITOR_CLOSED",
+      unexpectedExitCode: "MONITOR_EXIT_UNEXPECTED",
+    });
+    // Initialize provider-owned watch targets only after the listener is ready.
+    // The values are intentionally neither logged nor exposed by this seam.
+    await registry.watchTargets();
+    options.logger?.log?.(`[threadlight] Monitor ready on ${handle.origin}.`);
+    return handle;
+  } catch (error) {
+    if (handle) await handle.close();
+    else await closeServer(server);
+    throw safeServiceError(error, "MONITOR_START_FAILED");
+  }
 }
-
-const isEntrypoint = process.argv[1]
-  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
-if (isEntrypoint) startMonitorServer();
