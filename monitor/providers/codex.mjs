@@ -35,6 +35,7 @@ import {
   isTopLevelCodexSession,
   listCodexRolloutMetadata,
   normalizeCodexThreadMetadata,
+  readCodexRolloutHeader,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
 
@@ -159,6 +160,31 @@ function appServerResponseThread(response) {
   return value?.thread && typeof value.thread === "object" ? value.thread : null;
 }
 
+function pathIsWithin(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return Boolean(relative)
+    && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
+
+function trustedAppServerRolloutFile(thread, roots) {
+  if (!isSafeCodexSessionId(thread?.id) || typeof thread?.path !== "string" || !thread.path.trim()) return null;
+  let candidate;
+  try {
+    candidate = fs.realpathSync(path.resolve(thread.path));
+    if (!fs.statSync(candidate).isFile()) return null;
+  } catch {
+    return null;
+  }
+  const allowed = roots.some((root) => {
+    try { return pathIsWithin(fs.realpathSync(root), candidate); } catch { return false; }
+  });
+  if (!allowed) return null;
+  const header = readCodexRolloutHeader(candidate);
+  return header?.localId === thread.id ? candidate : null;
+}
+
 function mergeSkillUsage(groups) {
   const usage = new Map();
   for (const item of groups.flat()) {
@@ -217,6 +243,13 @@ export function createCodexProvider(options = {}) {
   let catalogPending = null;
   const rolloutCache = new Map();
   const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0 };
+
+  function normalizeAppServerMetadata(thread, metadataOptions = {}) {
+    const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
+    if (!metadata) return null;
+    const rolloutFile = trustedAppServerRolloutFile(thread, [sessionsRoot, archivedRoot]);
+    return rolloutFile ? { ...metadata, rolloutFile } : metadata;
+  }
 
   function readRolloutRecords(file, historical) {
     let stat;
@@ -360,7 +393,7 @@ export function createCodexProvider(options = {}) {
       const thread = appServerResponseThread(response);
       if (!thread || thread.id !== localSessionId) return null;
       const indexed = readCodexSessionIndex(indexFile).get(localSessionId);
-      return normalizeCodexThreadMetadata(thread, { indexName: indexed?.title });
+      return normalizeAppServerMetadata(thread, { indexName: indexed?.title });
     } catch {
       return null;
     }
@@ -386,7 +419,7 @@ export function createCodexProvider(options = {}) {
         const data = appServerResponseData(response);
         if (data === null) throw new Error("Invalid Codex app-server descendant response");
         const metadata = data.flatMap((thread) => {
-          const metadata = normalizeCodexThreadMetadata(thread, { archived });
+          const metadata = normalizeAppServerMetadata(thread, { archived });
           return metadata ? [metadata] : [];
         });
         const ignoredAncestorFilter = metadata.some((item) => (

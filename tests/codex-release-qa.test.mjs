@@ -181,6 +181,94 @@ test("fresh direct thread metadata wins catalog timestamp ties and trusted ances
   assert.deepEqual(ignoredEvidence.agents.map((agent) => agent.id), ["primary"]);
 });
 
+test("fresh app-server descendants read authoritative in-home rollouts before the catalog cache refreshes", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-fresh-runtime-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessions = path.join(root, "sessions", "2026", "08", "11");
+  await mkdir(sessions, { recursive: true });
+
+  async function writeRuntimeRollout(file, id, metadata = {}) {
+    await writeFile(file, [
+      JSON.stringify({
+        timestamp: new Date(AT).toISOString(),
+        type: "session_meta",
+        payload: {
+          id,
+          session_id: metadata.sessionId || id,
+          ...(metadata.parentThreadId ? { parent_thread_id: metadata.parentThreadId } : {}),
+          source: metadata.source || "cli",
+          cwd: "C:\\synthetic\\fresh-runtime",
+        },
+      }),
+      JSON.stringify({
+        timestamp: new Date(AT + 1).toISOString(),
+        type: "turn_context",
+        payload: { model: metadata.model, effort: metadata.effort },
+      }),
+    ].join("\n"), "utf8");
+  }
+
+  const rootFile = path.join(sessions, "rollout-authoritative-root.jsonl");
+  await writeRuntimeRollout(rootFile, "authoritative-root", { model: "gpt-parent", effort: "medium" });
+  const rootThread = { ...appThread("authoritative-root"), path: rootFile };
+  let descendants = [];
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 10_000,
+    appServer: {
+      async listThreads(params) {
+        return { data: params.ancestorThreadId ? descendants : [rootThread] };
+      },
+      async readThread() { return { thread: rootThread }; },
+    },
+  });
+
+  await provider.listSessions();
+
+  const childFile = path.join(sessions, "rollout-authoritative-child.jsonl");
+  await writeRuntimeRollout(childFile, "authoritative-child", {
+    sessionId: rootThread.id,
+    parentThreadId: rootThread.id,
+    source: { subagent: { thread_spawn: { parent_thread_id: rootThread.id } } },
+    model: "gpt-child-recorded",
+    effort: "high",
+  });
+  const childThread = {
+    ...appThread("authoritative-child", {
+      sessionId: rootThread.id,
+      parentThreadId: rootThread.id,
+    }),
+    path: childFile,
+  };
+  const outsideFile = path.join(root, "outside-rollout.jsonl");
+  await writeRuntimeRollout(outsideFile, "outside-child", {
+    sessionId: rootThread.id,
+    parentThreadId: rootThread.id,
+    source: { subagent: { thread_spawn: { parent_thread_id: rootThread.id } } },
+    model: "gpt-outside-must-not-be-read",
+    effort: "ultra",
+  });
+  const outsideChild = {
+    ...appThread("outside-child", {
+      sessionId: rootThread.id,
+      parentThreadId: rootThread.id,
+    }),
+    path: outsideFile,
+  };
+  descendants = [childThread, outsideChild];
+
+  const evidence = await provider.readSession(rootThread.id, { historical: false });
+  const child = evidence.agents.find((agent) => agent.id === `agent-${childThread.id}`);
+  const rejected = evidence.agents.find((agent) => agent.id === `agent-${outsideChild.id}`);
+  assert.equal(child.model, "gpt-child-recorded");
+  assert.equal(child.effort, "high");
+  assert.equal(rejected.model, "unknown");
+  assert.equal(rejected.effort, "unspecified");
+  assertNoPrivateFixtureSentinels(evidence, "fresh authoritative child runtime evidence");
+  assert.doesNotMatch(JSON.stringify(evidence), /rollout-authoritative-child|gpt-outside-must-not-be-read/);
+});
+
 test("multiple large live rollouts use one bounded read each and reuse provider caches", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-performance-"));
   context.after(() => rm(root, { recursive: true, force: true }));
