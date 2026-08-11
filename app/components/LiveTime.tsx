@@ -36,5 +36,6 @@ export function SessionWallTimeText({ session, historical }: {
 }) {
   const now = useLiveNow();
   const durationMs = liveWallTimeMs(session.durationMs, session.startedAt, !historical, now);
+  if (!historical && durationMs < 60_000) return <>Less than 1m</>;
   return <>{formatDuration(durationMs)}</>;
 }

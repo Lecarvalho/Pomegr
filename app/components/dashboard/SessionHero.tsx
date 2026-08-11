@@ -1,17 +1,22 @@
 import type { MonitorState, ProviderCapabilities, ProviderSource } from "../../../shared/monitor-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
-import { RelativeTimeText, SessionWallTimeText } from "../LiveTime";
+import { MinuteRelativeTimeText, RelativeTimeText, SessionWallTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
   const summary = capabilities.sessionSummary ? session?.summary : null;
+  const sessionDisplayId = session?.id.includes(":") ? session.id.slice(session.id.indexOf(":") + 1) : session?.id;
   return (
     <section className="hero">
       <div>
         <h1>{sessionLabel}</h1>
-        {session && <div className="sessionIdentity"><strong>{session.project}</strong><span>·</span><ProviderBadge source={source} /><span>·</span><code>{session.id}</code></div>}
+        {session && <div className="sessionIdentity">
+          <strong>{session.project}</strong>
+          <span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={source} /></span>
+          <span className="sessionIdentityPart"><span aria-hidden="true">·</span><code>{sessionDisplayId}</code></span>
+        </div>}
         {session && <p title={summary ? "Provider-generated session summary" : undefined}>{summary?.text
           || (!capabilities.sessionSummary
             ? "Session summaries are not available for this provider."
@@ -25,7 +30,7 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
         <div className="sessionMetaGroup sessionTiming">
           <span className="sessionMetaLabel">{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong><SessionWallTimeText session={session} historical={historical} /></strong>
-          <small>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <RelativeTimeText value={session.updatedAt} /></>}</small>
+          <small>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <MinuteRelativeTimeText value={session.updatedAt} /></>}</small>
         </div>
         {capabilities.approvalMode && session?.approvalMode && <div className="sessionMetaGroup sessionApprovalMode">
           <span className="sessionMetaLabel">{historical ? "LAST APPROVAL MODE" : "APPROVAL MODE"}</span>

@@ -86,6 +86,23 @@ function repositorySession(
 }
 
 describe("session approval mode", () => {
+  it("uses coarse early-session timing instead of zero minutes or a seconds counter", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-11T12:00:14.000Z");
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      startedAt: "2026-08-11T12:00:00.000Z",
+      updatedAt: "2026-08-11T12:00:00.000Z",
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("Less than 1m")).toBeInTheDocument();
+    expect(screen.getByText("Last event less than a minute ago")).toBeInTheDocument();
+    expect(screen.queryByText(/\b(?:0m|14s ago)\b/)).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("shows the provider-reported live mode beside session timing", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
@@ -456,6 +473,23 @@ describe("estimated session cost", () => {
 });
 
 describe("provider capability gates", () => {
+  it.each([
+    ["Claude Code", claudeCapabilities, "claude:999b3d6b-24d5-4d66-93b1-38f502f5f811"],
+    ["Codex", codexCapabilities, "codex:019ff0fa-1f93-7032-bc0d-ddec9cf3a7e4"],
+  ] as const)("shows the full project and local %s session ID without repeating the provider", (source, capabilities, id) => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      id,
+      project: "threadlight-observability-dashboard",
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} source={source} capabilities={capabilities} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("threadlight-observability-dashboard")).toBeInTheDocument();
+    expect(screen.getByText(id.slice(id.indexOf(":") + 1))).toBeInTheDocument();
+    expect(screen.queryByText(id)).not.toBeInTheDocument();
+  });
+
   it("labels Codex provenance and uses a provider-neutral unsupported summary state", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
