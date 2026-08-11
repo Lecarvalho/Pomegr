@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
+  AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH,
   AGENT_SIGNAL_TOOL,
   normalizeAgentSignal,
   normalizeSessionSignal,
@@ -20,6 +21,10 @@ const labelSchema = z.string().trim().min(1).max(SESSION_SIGNAL_MAX_LABEL_LENGTH
   .describe("Short plain-text tag, such as Approved, Rejected, or Research complete.");
 const toneSchema = z.enum(SESSION_SIGNAL_TONES).default("neutral")
   .describe("Semantic tone used by Threadlight to decorate the tag.");
+const descriptionSchema = z.string().trim().min(1).max(AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH)
+  .refine((description) => normalizeAgentSignal({ label: "Signal", tone: "neutral", description }) !== null, "Use one line of plain text without control characters.")
+  .describe("Optional short plain-text explanation shown as the agent tag tooltip.")
+  .optional();
 const signalAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -37,10 +42,11 @@ export function buildThreadlightMcpServer() {
     AGENT_SIGNAL_TOOL,
     {
       title: "Report Threadlight agent signal",
-      description: "Report one short status tag for the calling agent. A later call from that agent replaces its earlier tag. Do not include prompts, responses, secrets, commands, or tool output.",
+      description: "Report one short status tag for the calling agent, with an optional tooltip description. A later call from that agent replaces its earlier tag. Do not include prompts, responses, secrets, commands, or tool output.",
       inputSchema: z.object({
         label: labelSchema,
         tone: toneSchema,
+        description: descriptionSchema,
       }).strict(),
       annotations: signalAnnotations,
       _meta: { "anthropic/alwaysLoad": true },
@@ -50,7 +56,7 @@ export function buildThreadlightMcpServer() {
       if (!signal) {
         return {
           isError: true,
-          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-40 characters and a supported tone." }],
+          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-40 characters, an optional one-line description of up to 160 characters, and a supported tone." }],
         };
       }
       return {

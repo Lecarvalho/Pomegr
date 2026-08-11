@@ -10,6 +10,7 @@ import {
   latestSessionSignal,
   latestTaskSignals,
   normalizeSessionSignal,
+  normalizeAgentSignal,
   normalizeTaskSignal,
   readTranscriptSignals,
   SESSION_SIGNAL_MCP_TOOL,
@@ -73,6 +74,20 @@ test("normalizes bounded plain-text signals", () => {
   assert.equal(normalizeSessionSignal({ label: "Approved", tone: "green" }), null);
   assert.equal(normalizeSessionSignal({ label: "Approved\nprivate output", tone: "positive" }), null);
   assert.equal(normalizeSessionSignal({ label: "Approved", tone: "positive", detail: "not exposed" }), null);
+  assert.deepEqual(normalizeAgentSignal({
+    label: "Approved",
+    tone: "positive",
+    description: "  All requested checks   passed.  ",
+  }, "2026-08-07T14:00:00.000Z"), {
+    label: "Approved",
+    tone: "positive",
+    reportedAt: "2026-08-07T14:00:00.000Z",
+    description: "All requested checks passed.",
+  });
+  assert.equal(normalizeAgentSignal({ label: "Approved", description: "" }), null);
+  assert.equal(normalizeAgentSignal({ label: "Approved", description: "x".repeat(161) }), null);
+  assert.equal(normalizeAgentSignal({ label: "Approved", description: "Private\noutput" }), null);
+  assert.equal(normalizeSessionSignal({ label: "Approved", description: "Agent-only field" }), null);
   assert.deepEqual(normalizeTaskSignal({ task_id: "background_123", label: "Approved with suggestions", tone: "info" }), {
     taskId: "background_123",
     label: "Approved with suggestions",

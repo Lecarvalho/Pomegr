@@ -18,7 +18,7 @@ const signalCall = (timestamp, name, callId, input, type = "function_call") => r
 test("accepts only allowlisted Codex Threadlight signal calls and rollout timestamps", () => {
   const signals = parseCodexSignalRecords([
     signalCall("2026-08-11T14:00:00.000Z", "mcp__threadlight__report_agent_signal", "agent-1", { label: "Reviewing", tone: "info" }),
-    signalCall("2026-08-11T14:01:00.000Z", "mcp__threadlight__report_agent_signal", "agent-2", { label: "Ready", tone: "positive" }, "custom_tool_call"),
+    signalCall("2026-08-11T14:01:00.000Z", "mcp__threadlight__report_agent_signal", "agent-2", { label: "Ready", tone: "positive", description: "All review findings were resolved." }, "custom_tool_call"),
     signalCall("2026-08-11T14:02:00.000Z", "mcp__threadlight__report_session_signal", "session-1", { label: "PR ready", tone: "positive" }),
     signalCall("2026-08-11T14:03:00.000Z", "mcp__threadlight__report_task_signal", "task-1", { task_id: "command-1", label: "Passed", tone: "positive" }),
     signalCall("2026-08-11T14:04:00.000Z", "mcp__another__report_session_signal", "spoof-1", { label: "Spoofed", tone: "negative" }),
@@ -26,7 +26,7 @@ test("accepts only allowlisted Codex Threadlight signal calls and rollout timest
     signalCall("not-a-time", "mcp__threadlight__report_session_signal", "bad-time", { label: "Spoofed", tone: "negative" }),
   ]);
 
-  assert.deepEqual(signals.agent, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T14:01:00.000Z" });
+  assert.deepEqual(signals.agent, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T14:01:00.000Z", description: "All review findings were resolved." });
   assert.deepEqual(signals.session, { label: "PR ready", tone: "positive", reportedAt: "2026-08-11T14:02:00.000Z" });
   assert.deepEqual([...signals.tasks], [["command-1", {
     label: "Passed",
@@ -51,7 +51,7 @@ test("derives the reporting agent from each rollout and resolves task targets mo
   ];
   const child = [
     record("2026-08-11T15:00:06.000Z", "session_meta", { id: "signal-child", parent_thread_id: "signal-parent", cwd: "C:\\synthetic\\repo", source: { subagent: "review" } }),
-    signalCall("2026-08-11T15:00:07.000Z", "mcp__threadlight__report_agent_signal", "agent-valid", { label: "Reviewed", tone: "info" }),
+    signalCall("2026-08-11T15:00:07.000Z", "mcp__threadlight__report_agent_signal", "agent-valid", { label: "Reviewed", tone: "info", description: "No blocking findings." }),
     signalCall("2026-08-11T15:00:08.000Z", "mcp__threadlight__report_agent_signal", "agent-spoof", { label: "Spoofed", tone: "negative", agent_id: "primary" }),
   ];
   await writeFile(path.join(directory, "rollout-parent.jsonl"), `${parent.map(JSON.stringify).join("\n")}\n`, "utf8");
@@ -64,7 +64,7 @@ test("derives the reporting agent from each rollout and resolves task targets mo
 
   assert.equal(provider.capabilities.signals, true);
   assert.deepEqual(evidence.session.signal, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T15:00:05.000Z" });
-  assert.deepEqual(childAgent.signal, { label: "Reviewed", tone: "info", reportedAt: "2026-08-11T15:00:07.000Z" });
+  assert.deepEqual(childAgent.signal, { label: "Reviewed", tone: "info", reportedAt: "2026-08-11T15:00:07.000Z", description: "No blocking findings." });
   assert.deepEqual(task.signal, { label: "Checks passed", tone: "positive", reportedAt: "2026-08-11T15:00:03.000Z" });
   assert.doesNotMatch(JSON.stringify(evidence), /unknown-task|Spoofed|MCP_ARGUMENT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK/);
   assertNoPrivateFixtureSentinels(monitorStateFromProviderEvidence("codex", evidence), "Codex signal MonitorState");

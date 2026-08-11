@@ -312,6 +312,22 @@ describe("repository branch overview", () => {
 });
 
 describe("agent detail popovers", () => {
+  it("shows an agent signal description as the tag tooltip", () => {
+    const signaledAgent = {
+      ...agent,
+      signal: {
+        label: "Approved",
+        tone: "positive" as const,
+        reportedAt: "2026-08-08T12:00:05.000Z",
+        description: "All requested checks passed.",
+      },
+    };
+
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[signaledAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("Approved")).toHaveAttribute("title", "All requested checks passed.");
+  });
+
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {
     const user = userEvent.setup();
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} /></LiveClockProvider>);

@@ -8,10 +8,12 @@ export const SESSION_SIGNAL_MCP_TOOL = `mcp__threadlight__${SESSION_SIGNAL_TOOL}
 export const TASK_SIGNAL_TOOL = "report_task_signal";
 export const TASK_SIGNAL_MCP_TOOL = `mcp__threadlight__${TASK_SIGNAL_TOOL}`;
 export const SESSION_SIGNAL_MAX_LABEL_LENGTH = 40;
+export const AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH = 160;
 export const SESSION_SIGNAL_TONES = ["neutral", "info", "positive", "warning", "negative"];
 
 const toneSet = new Set(SESSION_SIGNAL_TONES);
 const sessionSignalKeys = new Set(["label", "tone"]);
+const agentSignalKeys = new Set(["label", "tone", "description"]);
 const taskSignalKeys = new Set(["task_id", "label", "tone"]);
 const signalCache = new Map();
 const MAX_RECENT_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
@@ -38,7 +40,13 @@ export function normalizeSessionSignal(input, reportedAt = null) {
 }
 
 export function normalizeAgentSignal(input, reportedAt = null) {
-  return normalizedSignal(input, sessionSignalKeys, reportedAt);
+  const signal = normalizedSignal(input, agentSignalKeys, reportedAt);
+  if (!signal || input.description === undefined) return signal;
+  const rawDescription = typeof input.description === "string" ? input.description.trim() : "";
+  if (!rawDescription
+    || rawDescription.length > AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH
+    || /[\u0000-\u001f\u007f]/.test(rawDescription)) return null;
+  return { ...signal, description: rawDescription.replace(/ {2,}/g, " ") };
 }
 
 export function normalizeTaskSignal(input, reportedAt = null) {

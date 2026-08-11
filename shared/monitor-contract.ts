@@ -4,6 +4,10 @@ export type ReportedSignal = {
   reportedAt: string | null;
 };
 
+export type AgentReportedSignal = ReportedSignal & {
+  description?: string;
+};
+
 export type ExecutionTask = {
   id: string;
   label: string;
@@ -29,7 +33,7 @@ export type Agent = {
     source: "owning_app_server" | "lifecycle_bridge" | "rollout_activity_heuristic";
     observedAt: string;
   } | null;
-  signal: ReportedSignal | null;
+  signal: AgentReportedSignal | null;
   toolCalls: number;
   skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
   executionTasks?: ExecutionTask[];
