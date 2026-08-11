@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { normalizePullRequest, pullRequestUrls, readPullRequests } from "../monitor/pull-requests.mjs";
+import { parseCodexPullRequestRecords } from "../monitor/providers/codex-pull-requests.mjs";
 
 function bashCall(id, command) {
   return { type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", id, input: { command } }] } };
@@ -121,4 +122,36 @@ test("reconstructs session PR associations from the complete transcript", async 
   assert.equal(result.items[0].number, 40);
   assert.equal(result.items[0].state, "merged");
   assert.equal(result.items[0].association, "session");
+});
+
+test("Codex emits provider-neutral events only for successful recognized PR creation results", async () => {
+  const records = [
+    { timestamp: "2026-08-11T18:00:00.000Z", type: "response_item", payload: { type: "function_call", name: "shell_command", call_id: "create-1", arguments: JSON.stringify({ command: "gh pr create --title PRIVATE", cwd: "PRIVATE_PATH_MUST_NOT_LEAK" }) } },
+    { timestamp: "2026-08-11T18:00:01.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "create-1", output: "TOOL_OUTPUT_MUST_NOT_LEAK https://github.com/ThreadlightHQ/threadlight/pull/52", exit_code: 0 } },
+    { timestamp: "2026-08-11T18:00:02.000Z", type: "response_item", payload: { type: "function_call", name: "shell_command", call_id: "view-1", arguments: JSON.stringify({ command: "gh pr view 53" }) } },
+    { timestamp: "2026-08-11T18:00:03.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "view-1", output: "https://github.com/ThreadlightHQ/threadlight/pull/53" } },
+    { timestamp: "2026-08-11T18:00:04.000Z", type: "response_item", payload: { type: "function_call", name: "mcp__github__create_pull_request", call_id: "create-failed", arguments: "{}" } },
+    { timestamp: "2026-08-11T18:00:05.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "create-failed", output: "https://github.com/ThreadlightHQ/threadlight/pull/54", is_error: true } },
+  ];
+  const creations = parseCodexPullRequestRecords(records, { actorId: "primary", sourceKey: "fixture" });
+
+  assert.equal(creations.length, 1);
+  assert.deepEqual({ actorId: creations[0].actorId, timestamp: creations[0].timestamp, url: creations[0].url }, {
+    actorId: "primary",
+    timestamp: "2026-08-11T18:00:01.000Z",
+    url: "https://github.com/ThreadlightHQ/threadlight/pull/52",
+  });
+  assert.doesNotMatch(JSON.stringify(creations), /PRIVATE|TOOL_OUTPUT|gh pr create/);
+
+  const result = await readPullRequests([], {
+    historical: true,
+    sessionCreations: creations,
+    ghRunner: async () => JSON.stringify({
+      number: 52,
+      title: "Created by Codex",
+      state: "OPEN",
+      url: "https://github.com/ThreadlightHQ/threadlight/pull/52",
+    }),
+  });
+  assert.deepEqual(result.items.map(({ number, association }) => ({ number, association })), [{ number: 52, association: "session" }]);
 });

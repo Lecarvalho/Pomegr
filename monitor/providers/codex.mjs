@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import fs from "node:fs";
 import { defineProvider } from "./provider-contract.mjs";
 import {
   mergeCodexToolCalls,
@@ -14,6 +15,17 @@ import {
 import { readCodexApprovalPlanRollout } from "./codex-approval-plan.mjs";
 import { readCodexContextRollout } from "./codex-context.mjs";
 import { buildCodexAgentTree, readCodexAgentRollout } from "./codex-agent-metadata.mjs";
+import {
+  mergeCodexPullRequestCreations,
+  parseCodexCanonicalPullRequests,
+  readCodexPullRequestRollout,
+} from "./codex-pull-requests.mjs";
+import {
+  mergeCodexSignals,
+  readCodexSignalRollout,
+} from "./codex-session-signals.mjs";
+import { parseCodexCanonicalSkillUsage, readCodexSkillUsageRollout } from "./codex-skill-usage.mjs";
+import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -95,6 +107,24 @@ function appServerResponseThread(response) {
   return value?.thread && typeof value.thread === "object" ? value.thread : null;
 }
 
+function mergeSkillUsage(groups) {
+  const usage = new Map();
+  for (const item of groups.flat()) {
+    if (!item) continue;
+    const previous = usage.get(item.name);
+    usage.set(item.name, {
+      name: item.name,
+      calls: (previous?.calls || 0) + item.calls,
+      lastUsed: !previous?.lastUsed || Date.parse(item.lastUsed || "") >= Date.parse(previous.lastUsed)
+        ? item.lastUsed
+        : previous.lastUsed,
+    });
+  }
+  return [...usage.values()].sort((left, right) => (
+    Date.parse(right.lastUsed || "") - Date.parse(left.lastUsed || "") || left.name.localeCompare(right.name)
+  ));
+}
+
 /** @returns {import("./provider-contract").ProviderAdapter} */
 export function createCodexProvider(options = {}) {
   const codexHome = resolveCodexHome(options);
@@ -102,10 +132,20 @@ export function createCodexProvider(options = {}) {
   const archivedRoot = options.archivedRoot || path.join(codexHome, "archived_sessions");
   const indexFile = options.indexFile || path.join(codexHome, "session_index.jsonl");
   const appServer = options.appServer || null;
+  const now = options.now || (() => Date.now());
   const includeArchived = options.includeArchived ?? true;
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
   const scanLimit = Math.max(catalogLimit, boundedInteger(options.scanLimit, DEFAULT_CODEX_SCAN_LIMIT, DEFAULT_CODEX_SCAN_LIMIT));
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : 1500;
+  const usageLimits = createCodexUsageLimitsCoordinator({
+    now,
+    request: async () => {
+      if (!appServer) throw new Error("Codex app-server is unavailable");
+      const response = await appServerCall("account/rateLimits/read");
+      if (response === null || response === undefined) throw new Error("Codex rate limits are unavailable");
+      return response;
+    },
+  }).get;
   let catalogCache = null;
 
   async function appServerCall(method, params) {
@@ -113,6 +153,7 @@ export function createCodexProvider(options = {}) {
     if (typeof appServer.request === "function") return appServer.request(method, params);
     if (method === "thread/list" && typeof appServer.listThreads === "function") return appServer.listThreads(params);
     if (method === "thread/read" && typeof appServer.readThread === "function") return appServer.readThread(params);
+    if (method === "account/rateLimits/read" && typeof appServer.readRateLimits === "function") return appServer.readRateLimits();
     return null;
   }
 
@@ -165,11 +206,11 @@ export function createCodexProvider(options = {}) {
   }
 
   async function discoveredMetadata() {
-    const now = Date.now();
-    if (catalogCache && now < catalogCache.expiresAt) return catalogCache.value;
+    const checkedAt = now();
+    if (catalogCache && checkedAt < catalogCache.expiresAt) return catalogCache.value;
     const appServerMetadata = await readAppServerCatalog();
     const value = appServerMetadata?.length ? appServerMetadata : readFallbackCatalog();
-    catalogCache = { expiresAt: now + cacheMs, value };
+    catalogCache = { expiresAt: checkedAt + cacheMs, value };
     return value;
   }
 
@@ -227,17 +268,31 @@ export function createCodexProvider(options = {}) {
   }
 
   async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
-    if (!appServer) return { toolCalls: [], executionTasks: [] };
+    const unavailable = {
+      available: false,
+      toolCalls: [],
+      executionTasks: [],
+      skills: [],
+      pullRequestCreations: [],
+    };
+    if (!appServer) return unavailable;
     try {
       const response = await appServerCall("thread/read", { threadId, includeTurns: true });
       const thread = appServerResponseThread(response);
-      if (!thread || thread.id !== threadId) return { toolCalls: [], executionTasks: [] };
+      if (!thread || thread.id !== threadId || !Array.isArray(thread.turns)) return unavailable;
       return {
+        available: true,
         toolCalls: parseCodexCanonicalTurns(thread.turns, { actor, fallbackTimestamp }),
         executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
+        skills: parseCodexCanonicalSkillUsage(thread.turns),
+        pullRequestCreations: parseCodexCanonicalPullRequests(thread.turns, {
+          actorId: actor.id,
+          fallbackTimestamp,
+          sourceKey: threadId,
+        }),
       };
     } catch {
-      return { toolCalls: [], executionTasks: [] };
+      return unavailable;
     }
   }
 
@@ -272,14 +327,26 @@ export function createCodexProvider(options = {}) {
       { id: agent.id, label: agent.label },
     ]));
     const rolloutTasksByActor = new Map();
+    const rolloutSignalsByActor = new Map();
+    const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
     const compactions = [];
+    const pullRequestCreationGroups = [];
+    let rolloutEvidenceAvailable = false;
     const rolloutCalls = allMetadata.flatMap((thread) => {
       const actor = actorByThreadId.get(thread.localId);
       if (!actor || !thread.rolloutFile) return [];
+      rolloutEvidenceAvailable ||= fs.existsSync(thread.rolloutFile);
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       rolloutTasksByActor.set(actor.id, readCodexExecutionTaskRollout(thread.rolloutFile, {
         fallbackTimestamp,
+      }));
+      rolloutSignalsByActor.set(actor.id, readCodexSignalRollout(thread.rolloutFile));
+      rolloutSkillsByActor.set(actor.id, readCodexSkillUsageRollout(thread.rolloutFile));
+      pullRequestCreationGroups.push(readCodexPullRequestRollout(thread.rolloutFile, {
+        actorId: actor.id,
+        fallbackTimestamp,
+        sourceKey: thread.localId,
       }));
       const context = readCodexContextRollout(thread.rolloutFile, {
         actorId: actor.id,
@@ -303,13 +370,31 @@ export function createCodexProvider(options = {}) {
     const canonicalTasksByActor = new Map(
       [...actorByThreadId.values()].map((actor, index) => [actor.id, canonicalEvidence[index]?.executionTasks || []]),
     );
+    const canonicalByActor = new Map(
+      [...actorByThreadId.values()].map((actor, index) => [actor.id, canonicalEvidence[index]]),
+    );
+    const allSignals = { agent: null, session: null, tasks: new Map() };
+    const signalsByActor = new Map();
+    for (const actor of actorByThreadId.values()) {
+      const signals = mergeCodexSignals(
+        { agent: null, session: null, tasks: new Map() },
+        rolloutSignalsByActor.get(actor.id) || { agent: null, session: null, tasks: new Map() },
+      );
+      signalsByActor.set(actor.id, signals);
+      mergeCodexSignals(allSignals, signals);
+    }
     for (const agent of agents) {
+      const signals = signalsByActor.get(agent.id) || { agent: null, session: null, tasks: new Map() };
+      agent.signal = signals.agent;
+      const rolloutSkills = rolloutSkillsByActor.get(agent.id) || [];
+      agent.skills = mergeSkillUsage([rolloutSkills.length ? rolloutSkills : canonicalByActor.get(agent.id)?.skills || []]);
       agent.toolCalls = callsByActor.get(agent.id) || 0;
       agent.executionTasks = mergeCodexExecutionTasks([
         rolloutTasksByActor.get(agent.id) || [],
         canonicalTasksByActor.get(agent.id) || [],
-      ], { historical: true, sessionUpdatedAt: updatedAt });
+      ], { historical: true, sessionUpdatedAt: updatedAt, taskSignals: allSignals.tasks });
     }
+    pullRequestCreationGroups.push(...canonicalEvidence.map((item) => item.pullRequestCreations));
     usageSnapshots.sort((left, right) => (
       Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
     ));
@@ -328,7 +413,7 @@ export function createCodexProvider(options = {}) {
         approvalMode: approvalPlan.approvalMode,
         contextMachinery: null,
         summary: null,
-        signal: null,
+        signal: allSignals.session,
       },
       agents,
       usageSnapshots,
@@ -336,16 +421,30 @@ export function createCodexProvider(options = {}) {
       activity: [],
       planTasks: approvalPlan.planTasks,
       compactions,
-      pullRequestUrls: [],
+      efficiencyRuleEvidence: {
+        repetition: rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available),
+        concurrentMutation: rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available),
+        unsharedContext: (rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available))
+          && usageSnapshots.some((snapshot) => snapshot.actorId === "primary"),
+        healthyFallback: rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available),
+      },
+      pullRequestCreations: mergeCodexPullRequestCreations(pullRequestCreationGroups),
     };
   }
 
   return defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: { approvalMode: true, automaticCompactions: true, planTasks: true },
+    capabilities: {
+      approvalMode: true,
+      automaticCompactions: true,
+      planTasks: true,
+      signals: true,
+      usageLimits: true,
+    },
     listSessions,
     readSession,
+    readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : "No Codex sessions found.";
     },

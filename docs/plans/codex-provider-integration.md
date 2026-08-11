@@ -540,9 +540,17 @@ npm run test:ui
 
 ## TL-CX-12 — Add Codex usage limits
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** `TL-CX-05`, `TL-CX-06`
 - **Target size:** 0.5–1 session
+
+### Implementation notes
+
+- Added documented `account/rateLimits/read` normalization for deterministic multi-bucket primary and secondary windows, with bounded IDs, labels, percentages, durations, reset timestamps, severity, and reached state.
+- Shared the existing request coordinator and five-minute cooldown across providers so concurrent browser polls coalesce while Claude Retry-After behavior remains unchanged.
+- Discarded credits, spend controls, account/workspace/entitlement/authentication metadata, specific reached reasons, and raw errors; Codex limit failures degrade to a fixed provider-safe message without affecting session discovery.
+- Centralized historical usage-limit exclusion in provider orchestration and added focused normalization, privacy, concurrency, cooldown, failure-isolation, and historical-state coverage.
 
 ### Goal
 
@@ -575,9 +583,16 @@ npm run build
 
 ## TL-CX-13 — Integrate skills, signals, PRs, and efficiency rules
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-10`
 - **Target size:** 1–2 sessions
+
+### Implementation notes
+
+- Added explicit Codex rollout/canonical skill evidence and rollout-only Threadlight MCP signal parsing with strict label/tone/input allowlists, rollout-derived actor/timestamps, latest replacement semantics, and monitor-side execution-task target resolution.
+- Replaced provider-local PR URL lists with normalized successful creation events for both adapters; commands, arguments, and result content remain provider-local while the shared GitHub association path consumes only canonical URLs and bounded event provenance.
+- Gated repetition, concurrent-mutation, unshared-context, and healthy-fallback rules on explicit provider evidence availability while retaining Claude's existing rule behavior, and added focused Codex/privacy/regression coverage.
 
 ### Goal
 
@@ -759,3 +774,5 @@ Add short entries here only after completing a task.
 | 2026-08-10 | TL-CX-09 | Complete | Safe Codex command lifecycle normalization, per-agent execution tasks, process IDs, historical stops, signal matching, and compatibility coverage added. |
 | 2026-08-10 | TL-CX-10 | Complete | Latest non-zero Codex context snapshots, chronological growth timeline input, bounded explicit-trigger compactions, and metric/privacy coverage added. |
 | 2026-08-11 | TL-CX-11 | Complete | Provider-neutral approval modes and latest structured plan tasks added with bounded fields, empty uninferred dependencies, neutral UI copy, and privacy coverage. |
+| 2026-08-11 | TL-CX-12 | Complete | Documented Codex app-server rate-limit windows, shared request coordination/cooldown, bounded normalization, privacy filtering, failure isolation, and historical exclusion added. |
+| 2026-08-11 | TL-CX-13 | Complete | Codex skill and signal evidence, provider-neutral PR creation events, monitor-side task matching, and evidence-gated shared efficiency rules added. |

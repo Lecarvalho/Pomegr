@@ -12,7 +12,7 @@
     "approvalMode": { "id": "on_request", "label": "On request", "observedAt": "2026-08-10T13:00:01.000Z", "source": "provider" },
     "contextMachinery": null,
     "summary": null,
-    "signal": { "label": "Fixture ready", "tone": "positive", "reportedAt": "2026-08-10T13:00:09.000Z" }
+    "signal": null
   },
   "agents": [
     { "id": "primary", "parentId": null, "label": "Primary agent", "kind": "orchestrator", "model": "gpt-synthetic", "effort": "high", "status": "idle", "signal": null, "toolCalls": 6, "skills": [], "executionTasks": [{ "id": "command-1", "label": "Run synthetic checks", "kind": "shell", "status": "completed", "background": false, "backgroundId": null, "startedAt": "2026-08-10T13:00:05.000Z", "finishedAt": "2026-08-10T13:00:06.000Z", "exitCode": 0, "signal": null }], "lastSeen": "2026-08-10T13:00:16.000Z", "startedAt": "2026-08-10T13:00:00.000Z", "updatedAt": "2026-08-10T13:00:16.000Z", "durationMs": 16000 },
@@ -30,5 +30,6 @@
   "activity": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": "Primary agent", "tool": "Shell", "detail": "Run synthetic checks", "status": null }],
   "planTasks": [],
   "compactions": [],
-  "pullRequestUrls": []
+  "efficiencyRuleEvidence": { "repetition": true, "concurrentMutation": true, "unsharedContext": true, "healthyFallback": true },
+  "pullRequestCreations": []
 }

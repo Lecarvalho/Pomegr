@@ -156,3 +156,21 @@ test("user-input attention remains part of the centralized signal catalog", () =
   assert.equal(insights[0].id, "needs-input-primary");
   assert.equal(insights.some((insight) => insight.id === "healthy-flow"), false);
 });
+
+test("missing provider evidence disables dependent rules and the healthy fallback", () => {
+  const actor = { id: "primary", label: "Primary agent" };
+  const { insights, loops } = evaluateEfficiencySignals({
+    agents: [primary()],
+    repetitionCandidates: [{ actor, tool: "Shell", detail: "Command execution", count: 4 }],
+    overlaps: [{ display: "index.ts", actors: new Set(["primary", "agent-review"]), calls: 2 }],
+    availableEvidence: {
+      repetition: false,
+      concurrentMutation: false,
+      unsharedContext: false,
+      healthyFallback: false,
+    },
+  });
+
+  assert.deepEqual(loops, []);
+  assert.deepEqual(insights, []);
+});

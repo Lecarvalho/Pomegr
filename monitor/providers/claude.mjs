@@ -26,7 +26,7 @@ import { buildSkillUsage, normalizedSkillName } from "../skill-usage.mjs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { defineProvider } from "./provider-contract.mjs";
-import { readClaudePullRequestUrls } from "./claude-pull-requests.mjs";
+import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
@@ -393,7 +393,17 @@ export function createClaudeProvider(options = {}) {
       activity,
       planTasks: readSessionTasks(tasksRoot, sessionId),
       compactions,
-      pullRequestUrls: await readClaudePullRequestUrls([...recordsByFile].map(([file, records]) => ({ file, records }))),
+      efficiencyRuleEvidence: {
+        repetition: true,
+        concurrentMutation: true,
+        unsharedContext: true,
+        healthyFallback: true,
+      },
+      pullRequestCreations: await readClaudePullRequestCreations([...recordsByFile].map(([file, records]) => ({
+        file,
+        records,
+        actorId: actorFor(file, mainFile, agentMetadata).id,
+      }))),
     };
   }
 

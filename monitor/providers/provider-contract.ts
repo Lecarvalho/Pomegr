@@ -82,6 +82,22 @@ export type ProviderCompactionEvidence = {
   preTokens: number | null;
 };
 
+/** Successful provider-local PR creation with all raw command/result content discarded. */
+export type ProviderPullRequestCreationEvidence = {
+  id: string;
+  actorId: string;
+  timestamp: string | null;
+  url: string;
+};
+
+/** Explicit availability gates for rules whose absence of events is meaningful. */
+export type ProviderEfficiencyRuleEvidence = {
+  repetition: boolean;
+  concurrentMutation: boolean;
+  unsharedContext: boolean;
+  healthyFallback: boolean;
+};
+
 export type ProviderAgentEvidence = Omit<Agent, "tokens" | "executionTasks"> & {
   executionTasks: ExecutionTask[];
 };
@@ -115,8 +131,9 @@ export type ProviderSessionEvidence = {
   activity: Activity[];
   planTasks: PlanTask[];
   compactions: ProviderCompactionEvidence[];
-  /** Canonical successful PR-creation results only; no command or tool output crosses the boundary. */
-  pullRequestUrls: string[];
+  efficiencyRuleEvidence: ProviderEfficiencyRuleEvidence;
+  /** Canonical successful PR-creation events only; no command or tool output crosses the boundary. */
+  pullRequestCreations: ProviderPullRequestCreationEvidence[];
 };
 
 export type ProviderReadOptions = {

@@ -8,6 +8,13 @@ export const EFFICIENCY_SIGNAL_RULES = Object.freeze({
   }),
 });
 
+const ALL_RULE_EVIDENCE = Object.freeze({
+  repetition: true,
+  concurrentMutation: true,
+  unsharedContext: true,
+  healthyFallback: true,
+});
+
 function compactContext(tokens) {
   return `${(tokens / 1_000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
 }
@@ -15,8 +22,17 @@ function compactContext(tokens) {
 // This is the executable catalog for every rule shown in Efficiency signals.
 // Keep thresholds, evidence, severity, and user-facing explanations together so
 // rule changes remain reviewable and deterministic.
-export function evaluateEfficiencySignals({ agents = [], repetitionCandidates = [], overlaps = [], compactions = [] } = {}) {
-  const loops = repetitionCandidates
+export function evaluateEfficiencySignals({
+  agents = [],
+  repetitionCandidates = [],
+  overlaps = [],
+  compactions = [],
+  availableEvidence,
+} = {}) {
+  const evidence = availableEvidence === undefined
+    ? ALL_RULE_EVIDENCE
+    : Object.fromEntries(Object.keys(ALL_RULE_EVIDENCE).map((key) => [key, availableEvidence?.[key] === true]));
+  const loops = (evidence.repetition ? repetitionCandidates : [])
     .filter((item) => item.count >= EFFICIENCY_SIGNAL_RULES.repetition.minimumCalls)
     .sort((a, b) => b.count - a.count);
   const insights = [];
@@ -60,7 +76,8 @@ export function evaluateEfficiencySignals({ agents = [], repetitionCandidates = 
   const hasObservedSubagent = agents.some((agent) => agent.id !== "primary");
   const contextRule = EFFICIENCY_SIGNAL_RULES.unsharedContextPressure;
   if (
-    primary
+    evidence.unsharedContext
+    && primary
     && !hasObservedSubagent
     && primary.tokens?.total >= contextRule.minimumPrimaryContext
     && primary.toolCalls >= contextRule.minimumPrimaryToolCalls
@@ -79,14 +96,14 @@ export function evaluateEfficiencySignals({ agents = [], repetitionCandidates = 
   });
 
   const overlapRule = EFFICIENCY_SIGNAL_RULES.concurrentMutation;
-  for (const overlap of overlaps.slice(0, overlapRule.maximumSignals)) insights.push({
+  for (const overlap of (evidence.concurrentMutation ? overlaps : []).slice(0, overlapRule.maximumSignals)) insights.push({
     id: `overlap-${overlap.display}`,
     level: "warning",
     title: `Concurrent edits may conflict in ${overlap.display}`,
     detail: `${overlap.actors.size} agents modified the same region within ${overlapRule.windowMs / 1_000} seconds across ${overlap.calls} calls.`,
   });
 
-  if (!insights.length) insights.push({
+  if (!insights.length && evidence.healthyFallback) insights.push({
     id: "healthy-flow",
     level: "info",
     title: "No obvious loops right now",

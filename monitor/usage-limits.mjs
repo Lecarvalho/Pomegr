@@ -45,7 +45,12 @@ function normalizedUsageLimits(body) {
   return wanted.map((id) => normalized.find((limit) => limit.id === id)).filter(Boolean);
 }
 
-export function createUsageLimitsCoordinator({ request, now = () => Date.now() }) {
+export function createCoordinatedUsageLimitsReader({
+  read,
+  errorMessage = () => "Usage limits are temporarily unavailable.",
+  retryDelay = () => USAGE_REFRESH_INTERVAL_MS,
+  now = () => Date.now(),
+}) {
   let cache = { value: null, nextAttemptAt: 0, pending: null };
 
   function cachedValue() {
@@ -53,34 +58,26 @@ export function createUsageLimitsCoordinator({ request, now = () => Date.now() }
   }
 
   function startRefresh() {
-    let retryDelay = USAGE_REFRESH_INTERVAL_MS;
+    let nextRetryDelay = USAGE_REFRESH_INTERVAL_MS;
     cache.pending = (async () => {
       try {
-        const response = await request();
-        if (!response.ok) {
-          if (response.status === 429) {
-            retryDelay = Math.max(
-              USAGE_REFRESH_INTERVAL_MS,
-              retryAfterDelay(response.headers.get("retry-after"), now()) ?? 0,
-            );
-          }
-          throw new Error(`Anthropic usage endpoint returned ${response.status}`);
-        }
-        const limits = normalizedUsageLimits(await response.json());
+        const limits = await read();
+        if (!Array.isArray(limits)) throw new TypeError("Usage limit reader returned an invalid value");
         const checkedAt = new Date(now()).toISOString();
         const value = { available: limits.length > 0, fetchedAt: checkedAt, attemptedAt: checkedAt, limits, error: "" };
         cache.value = value;
         return value;
       } catch (error) {
+        nextRetryDelay = Math.max(USAGE_REFRESH_INTERVAL_MS, Number(retryDelay(error, now())) || 0);
         const attemptedAt = new Date(now()).toISOString();
-        const errorMessage = sanitizedUsageError(error);
+        const safeError = String(errorMessage(error) || "Usage limits are temporarily unavailable.").slice(0, 120);
         const value = cache.value
-          ? { ...cache.value, attemptedAt, error: errorMessage }
-          : { ...emptyUsageLimits(errorMessage), attemptedAt };
+          ? { ...cache.value, attemptedAt, error: safeError }
+          : { ...emptyUsageLimits(safeError), attemptedAt };
         cache.value = value;
         return value;
       } finally {
-        cache.nextAttemptAt = now() + retryDelay;
+        cache.nextAttemptAt = now() + nextRetryDelay;
         cache.pending = null;
       }
     })();
@@ -95,4 +92,28 @@ export function createUsageLimitsCoordinator({ request, now = () => Date.now() }
   }
 
   return { get };
+}
+
+export function createUsageLimitsCoordinator({ request, now = () => Date.now() }) {
+  return createCoordinatedUsageLimitsReader({
+    now,
+    async read() {
+      const response = await request();
+      if (!response.ok) {
+        const error = new Error(`Anthropic usage endpoint returned ${response.status}`);
+        error.status = response.status;
+        error.retryAfter = response.headers.get("retry-after");
+        throw error;
+      }
+      return normalizedUsageLimits(await response.json());
+    },
+    errorMessage: sanitizedUsageError,
+    retryDelay(error, currentTime) {
+      if (error?.status !== 429) return USAGE_REFRESH_INTERVAL_MS;
+      return Math.max(
+        USAGE_REFRESH_INTERVAL_MS,
+        retryAfterDelay(error.retryAfter, currentTime) ?? 0,
+      );
+    },
+  });
 }

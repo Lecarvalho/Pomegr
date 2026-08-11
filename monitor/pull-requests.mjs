@@ -120,8 +120,10 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
 
 export async function readPullRequests(records, options = {}) {
   const ghRunner = options.ghRunner || runGh;
-  const transcriptUrls = Array.isArray(options.sessionUrls)
-    ? [...new Set(options.sessionUrls)].slice(0, MAX_PULL_REQUESTS)
+  const transcriptUrls = Array.isArray(options.sessionCreations)
+    ? [...new Set(options.sessionCreations.map((event) => event?.url).filter((url) => typeof url === "string"))].slice(0, MAX_PULL_REQUESTS)
+    : Array.isArray(options.sessionUrls)
+      ? [...new Set(options.sessionUrls)].slice(0, MAX_PULL_REQUESTS)
     : Array.isArray(options.transcripts)
       ? await readClaudePullRequestUrls(options.transcripts)
       : pullRequestUrls(records);

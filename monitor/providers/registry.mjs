@@ -125,7 +125,8 @@ export function createProviderRegistry(adapters) {
       return null;
     },
 
-    async readUsageLimits(provider) {
+    async readUsageLimits(provider, options = {}) {
+      if (options.historical) return createEmptyUsageLimits();
       if (!provider?.capabilities.usageLimits || typeof provider.readUsageLimits !== "function") {
         return createEmptyUsageLimits();
       }

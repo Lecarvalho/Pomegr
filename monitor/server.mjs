@@ -124,7 +124,7 @@ async function analyze(requestedSessionId = "") {
       connected: true,
       source: provider?.source || providerRegistry.defaultProvider.source,
       view: historical ? "history" : "live",
-      usageLimits: historical ? emptyUsageLimits() : await providerRegistry.readUsageLimits(provider),
+      usageLimits: await providerRegistry.readUsageLimits(provider, { historical }),
       error: providerRegistry.unavailableMessage(requestedSessionId),
     });
   }
@@ -142,7 +142,13 @@ async function analyze(requestedSessionId = "") {
       label: agents.find((agent) => agent.id === compaction.actorId)?.label || "Agent",
     },
   }));
-  const { insights, loops } = evaluateEfficiencySignals({ agents, repetitionCandidates, overlaps, compactions });
+  const { insights, loops } = evaluateEfficiencySignals({
+    agents,
+    repetitionCandidates,
+    overlaps,
+    compactions,
+    availableEvidence: evidence.efficiencyRuleEvidence,
+  });
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
   const toolPatterns = groupedTools.map((item) => ({
     id: crypto.createHash("sha1").update(`${item.actor.id}|${item.tool}|${item.detail}`).digest("hex").slice(0, 12),
@@ -181,9 +187,9 @@ async function analyze(requestedSessionId = "") {
     cwd: evidence.session.cwd,
     branch: repository.branch,
     historical,
-    sessionUrls: evidence.pullRequestUrls,
+    sessionCreations: evidence.pullRequestCreations,
   });
-  const currentUsageLimits = historical ? emptyUsageLimits() : await providerRegistry.readUsageLimits(provider);
+  const currentUsageLimits = await providerRegistry.readUsageLimits(provider, { historical });
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
