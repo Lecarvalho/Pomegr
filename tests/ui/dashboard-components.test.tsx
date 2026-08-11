@@ -103,7 +103,7 @@ describe("session approval mode", () => {
     vi.useRealTimers();
   });
 
-  it("shows the provider-reported live mode beside session timing", () => {
+  it("shows the current provider-reported approval mode without a redundant observation age", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       approvalMode: { id: "auto", label: "Auto mode", observedAt: "2026-08-10T12:00:00.000Z", source: "provider" },
@@ -113,7 +113,7 @@ describe("session approval mode", () => {
 
     expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
     expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Latest recognized provider-reported mode.");
-    expect(screen.getByText(/Observed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Observed/)).not.toBeInTheDocument();
   });
 
   it("labels historical approval state as the last recorded mode", () => {

@@ -1,7 +1,7 @@
 import type { MonitorState, ProviderCapabilities, ProviderSource } from "../../../shared/monitor-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
-import { MinuteRelativeTimeText, RelativeTimeText, SessionWallTimeText } from "../LiveTime";
+import { MinuteRelativeTimeText, SessionWallTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
@@ -38,9 +38,9 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
             className="sessionApprovalModeChip"
             title={historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."}
           >{session.approvalMode.label}</AgentChip>
-          <small>{session.approvalMode.observedAt
-            ? historical ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}` : <>Observed <RelativeTimeText value={session.approvalMode.observedAt} /></>
-            : "Provider-reported"}</small>
+          {historical && <small>{session.approvalMode.observedAt
+            ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}`
+            : "Provider-reported"}</small>}
         </div>}
       </div>}
     </section>
