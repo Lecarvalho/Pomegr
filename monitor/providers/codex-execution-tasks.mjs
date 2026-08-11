@@ -60,6 +60,101 @@ function commandFunctionName(value) {
   return ["shellcommand", "execcommand", "commandexecution"].includes(normalized);
 }
 
+function normalizedFunctionName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function quotedLiteral(source, start) {
+  const quote = source[start];
+  if (!["\"", "'", "`"].includes(quote)) return "";
+  let value = "";
+  for (let index = start + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === quote) return value;
+    if (character === "\\" && index + 1 < source.length) {
+      value += source[index + 1];
+      index += 1;
+    } else {
+      value += character;
+    }
+  }
+  return "";
+}
+
+function safeCommandDescription(command) {
+  const value = String(command || "").toLowerCase();
+  if (!value) return "Shell command";
+  if (/restart-threadlight/.test(value)) return "Restart Threadlight";
+  if (/\b(?:npm(?:\.cmd)?\s+(?:run\s+)?test|node\s+--test|vitest)\b/.test(value)) return "Run tests";
+  if (/\b(?:npm(?:\.cmd)?\s+run\s+build|vinext\s+build)\b/.test(value)) return "Build project";
+  if (/\b(?:npm(?:\.cmd)?\s+run\s+lint|eslint)\b/.test(value)) return "Run lint";
+  if (/\b(?:tsc|npm(?:\.cmd)?\s+run\s+typecheck)\b/.test(value)) return "Type-check project";
+  if (/\b(?:npm(?:\.cmd)?\s+(?:ci|install)|pnpm\s+install|yarn\s+install)\b/.test(value)) return "Install dependencies";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bstatus\b/.test(value)) return "Inspect Git status";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bdiff\b/.test(value)) return "Inspect Git changes";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\b(?:log|show)\b/.test(value)) return "Inspect Git history";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\b(?:branch|rev-parse)\b/.test(value)) return "Inspect Git branch";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bremote\b/.test(value)) return "Inspect Git remotes";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bfetch\b/.test(value)) return "Refresh Git metadata";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\badd\b/.test(value)) return "Stage changes";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bcommit\b/.test(value)) return "Commit changes";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bpush\b/.test(value)) return "Push branch";
+  if (/\bgit(?:\.exe)?\b[^\r\n]{0,160}\bpull\b/.test(value)) return "Update branch";
+  if (/\bgh(?:\.exe)?\s+pr\s+create\b/.test(value)) return "Create pull request";
+  if (/\bgh(?:\.exe)?\s+pr\s+(?:view|list|status|checks|diff)\b/.test(value)) return "Inspect pull requests";
+  if (/\bgh(?:\.exe)?\s+pr\s+(?:edit|comment|review|merge|close|reopen|ready)\b/.test(value)) return "Update pull request";
+  if (/\bgh(?:\.exe)?\s+issue\s+(?:view|list|status)\b/.test(value)) return "Inspect GitHub issues";
+  if (/\bgh(?:\.exe)?\s+issue\s+(?:create|edit|comment|close|reopen)\b/.test(value)) return "Update GitHub issue";
+  if (/\bgh(?:\.exe)?\s+auth\s+status\b/.test(value)) return "Check GitHub authentication";
+  if (/\bgh(?:\.exe)?\s+api\b/.test(value)) return "Query GitHub";
+  if (/\brg(?:\.exe)?\b[^\r\n]*--files\b|get-childitem/.test(value)) return "List workspace files";
+  if (/\brg(?:\.exe)?\b|select-string/.test(value)) return "Search workspace";
+  if (/get-content/.test(value)) return "Read files";
+  if (/test-path/.test(value)) return "Check files";
+  if (/invoke-restmethod|\bcurl(?:\.exe)?\b/.test(value)) return "Check service";
+  if (/get-nettcpconnection|get-winevent|get-process/.test(value)) return "Inspect system state";
+  if (/\bnode(?:\.exe)?\b/.test(value)) return "Run Node script";
+  if (/\bnpm(?:\.cmd)?\s+run\s+dev\b/.test(value)) return "Start development server";
+  if (/\bnpm(?:\.cmd)?\s+run\s+[^\s"'`]+/.test(value)) return "Run project script";
+  if (/\bdotnet(?:\.exe)?\b/.test(value)) return "Run .NET tool";
+  if (/\.ps1\b/.test(value)) return "Run PowerShell script";
+  return "Shell command";
+}
+
+function execCellShellEvidence(payload) {
+  if (payload?.type !== "custom_tool_call" || normalizedFunctionName(payload.name) !== "exec") return [];
+  if (typeof payload.input !== "string") return [];
+  const matches = [...payload.input.matchAll(/\btools\s*\.\s*shell_command\s*\(/g)].slice(0, MAX_TASKS);
+  return matches.map((match, index) => {
+    const end = matches[index + 1]?.index ?? payload.input.length;
+    const segment = payload.input.slice(match.index, end);
+    const property = /\bcommand\s*:\s*/.exec(segment);
+    const literalStart = property ? property.index + property[0].length : -1;
+    let command = literalStart >= 0 ? quotedLiteral(segment, literalStart) : "";
+    if (!command) {
+      const prefix = payload.input.slice(0, match.index);
+      const assignments = [...prefix.matchAll(/\b(?:const|let|var)\s+command\s*=\s*/g)];
+      const assignment = assignments.at(-1);
+      if (assignment) command = quotedLiteral(prefix, assignment.index + assignment[0].length);
+    }
+    if (!command && matches.length === 1) command = payload.input;
+    return { label: safeCommandDescription(command) };
+  });
+}
+
+function execCellOutput(payload, taskCount) {
+  const texts = (Array.isArray(payload?.output) ? payload.output : [])
+    .flatMap((item) => typeof item?.text === "string" ? [item.text] : []);
+  const failed = texts.some((value) => /^Script failed\b/m.test(value));
+  const exitCodes = texts.flatMap((value) => [...value.matchAll(/^Exit code:\s*(-?\d+)\s*$/gm)])
+    .map((match) => safeExitCode(Number(match[1])))
+    .filter((value) => value !== null);
+  return {
+    failed,
+    exitCodes: exitCodes.length === taskCount ? exitCodes : taskCount === 1 && exitCodes.length ? [exitCodes[0]] : [],
+  };
+}
+
 function commandIdentity(value) {
   return safeId(value?.call_id ?? value?.callId ?? value?.id ?? value?.itemId ?? value?.item_id);
 }
@@ -229,6 +324,7 @@ function completionUpdate(payload, timestamp, fallbackTimestamp) {
 export function parseCodexExecutionTaskRecords(records, options = {}) {
   const tasks = new Map();
   const commandCallIds = new Set();
+  const execCellTaskIds = new Map();
   const fallbackTimestamp = codexTimestamp(options.fallbackTimestamp);
   const add = (task) => {
     if (task) tasks.set(task.id, mergeTask(tasks.get(task.id), task));
@@ -246,6 +342,21 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
     }
 
     if (record.type === "response_item") {
+      const shellEvidence = execCellShellEvidence(payload);
+      if (shellEvidence.length > 0) {
+        const callId = commandIdentity(payload);
+        if (!callId) continue;
+        const ids = [];
+        for (const [index, evidence] of shellEvidence.entries()) {
+          const id = `${callId}-shell-${index + 1}`;
+          const task = makeTask({ id, timestamp, status: "running", label: evidence.label });
+          if (!task) continue;
+          ids.push(task.id);
+          add(task);
+        }
+        if (ids.length) execCellTaskIds.set(callId, ids);
+        continue;
+      }
       if (payload.type === "function_call" && commandFunctionName(payload.name)) {
         const id = commandIdentity(payload);
         const input = parseObject(payload.arguments) || {};
@@ -254,6 +365,23 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
         if (task) {
           commandCallIds.add(task.id);
           add(task);
+        }
+        continue;
+      }
+      if (payload.type === "custom_tool_call_output") {
+        const callId = commandIdentity(payload);
+        const ids = callId ? execCellTaskIds.get(callId) || [] : [];
+        const result = execCellOutput(payload, ids.length);
+        for (const [index, id] of ids.entries()) {
+          const exitCode = result.exitCodes[index] ?? null;
+          add(makeTask({
+            id,
+            timestamp,
+            status: result.failed ? "failed" : "completed",
+            label: "Shell command",
+            exitCode,
+            finishedAt: timestamp,
+          }));
         }
         continue;
       }

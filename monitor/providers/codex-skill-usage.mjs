@@ -4,6 +4,8 @@ import { codexTimestamp } from "./codex-session-metadata.mjs";
 
 const SKILL_FUNCTION_NAMES = new Set(["skill", "invokeskill"]);
 const SKILL_RECORD_TYPES = new Set(["skillinvocation", "skillinvoked"]);
+const MAX_HOST_SKILLS_BODY = 256 * 1024;
+const MAX_SKILL_SOURCE_PATH = 1024;
 
 function normalizedType(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -50,11 +52,50 @@ function explicitSkillInvocation(record) {
   return name ? { name, timestamp } : null;
 }
 
+function normalizedPathEvidence(value) {
+  return String(value || "")
+    .replace(/\\\\/g, "\\")
+    .replace(/\//g, "\\")
+    .toLowerCase();
+}
+
+function addHostSkillCatalog(record, catalog) {
+  if (record?.type !== "world_state") return;
+  const body = record?.payload?.state?.host_skills?.body;
+  if (typeof body !== "string" || !body || body.length > MAX_HOST_SKILLS_BODY) return;
+  const pattern = /^-\s+([A-Za-z0-9_.:-]+):.*?\(file:\s*([^\r\n)]+?SKILL\.md)\)/gm;
+  for (const match of body.matchAll(pattern)) {
+    const name = normalizedSkillName({ skill: match[1] });
+    const source = match[2].trim();
+    if (!name || !source || source.length > MAX_SKILL_SOURCE_PATH) continue;
+    catalog.set(normalizedPathEvidence(source), name);
+  }
+}
+
+function skillSourceReads(record, catalog) {
+  const payload = record?.payload;
+  if (record?.type !== "response_item"
+    || payload?.type !== "custom_tool_call"
+    || normalizedType(payload.name) !== "exec"
+    || typeof payload.input !== "string") return [];
+  const timestamp = codexTimestamp(record.timestamp ?? payload.timestamp);
+  if (!timestamp) return [];
+  const input = normalizedPathEvidence(payload.input);
+  const names = new Set();
+  for (const [source, name] of catalog) {
+    if (source && input.includes(source)) names.add(name);
+  }
+  return [...names].map((name) => ({ name, timestamp }));
+}
+
 export function parseCodexSkillUsageRecords(records) {
-  return buildSkillUsageFromInvocations((Array.isArray(records) ? records : []).flatMap((record) => {
+  const catalog = new Map();
+  const invocations = (Array.isArray(records) ? records : []).flatMap((record) => {
+    addHostSkillCatalog(record, catalog);
     const invocation = explicitSkillInvocation(record);
-    return invocation ? [invocation] : [];
-  }));
+    return [...(invocation ? [invocation] : []), ...skillSourceReads(record, catalog)];
+  });
+  return buildSkillUsageFromInvocations(invocations);
 }
 
 export function parseCodexCanonicalSkillUsage(turns) {

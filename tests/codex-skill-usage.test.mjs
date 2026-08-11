@@ -36,6 +36,45 @@ test("counts only explicit recognized Codex skill invocation records", () => {
   assertNoPrivateFixtureSentinels(usage, "Codex skill evidence");
 });
 
+test("counts current Codex skill-source reads against the sanitized host-skill catalog", () => {
+  const skillCatalog = [
+    "- openai-docs: Provider documentation. (file: C:/PRIVATE_PATH_MUST_NOT_LEAK/openai-docs/SKILL.md)",
+    "- github:github: Repository help. (file: C:/PRIVATE_PATH_MUST_NOT_LEAK/github/SKILL.md)",
+  ].join("\n");
+  const usage = parseCodexSkillUsageRecords([
+    {
+      timestamp: "2026-08-11T17:30:00.000Z",
+      type: "world_state",
+      payload: { state: { host_skills: { includeInstructions: true, body: skillCatalog } } },
+    },
+    {
+      timestamp: "2026-08-11T17:30:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "custom_tool_call",
+        name: "exec",
+        call_id: "read-openai-docs",
+        input: `const result = await tools.shell_command({ command: "Get-Content -LiteralPath 'C:\\\\PRIVATE_PATH_MUST_NOT_LEAK\\\\openai-docs\\\\SKILL.md'" }); text(result);`,
+      },
+    },
+    {
+      timestamp: "2026-08-11T17:30:02.000Z",
+      type: "response_item",
+      payload: {
+        type: "custom_tool_call",
+        name: "exec",
+        call_id: "unrelated-read",
+        input: `const result = await tools.shell_command({ command: "Get-Content C:/PRIVATE_PATH_MUST_NOT_LEAK/github/reference.md" }); text(result);`,
+      },
+    },
+  ]);
+
+  assert.deepEqual(usage, [
+    { name: "openai-docs", calls: 1, lastUsed: "2026-08-11T17:30:01.000Z" },
+  ]);
+  assertNoPrivateFixtureSentinels(usage, "Codex skill-source read evidence");
+});
+
 test("supports documented canonical skill tool calls and attaches rollout usage to the actor", async (context) => {
   assert.deepEqual(parseCodexCanonicalSkillUsage([{
     startedAt: Date.parse("2026-08-11T16:30:00.000Z") / 1000,

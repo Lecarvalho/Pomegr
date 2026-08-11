@@ -16,6 +16,7 @@ export const CODEX_LIVENESS_CACHE_MS = 1_500;
 export const CODEX_LIVENESS_MAX_TAIL_BYTES = 128 * 1024;
 export const CODEX_LIVENESS_MAX_TAIL_RECORDS = 256;
 export const CODEX_LIVENESS_MAX_BRIDGE_FILES = 500;
+const CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS = 2_000;
 
 const SAFE_LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
@@ -572,6 +573,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     ? Math.max(1, Math.min(CODEX_LIVENESS_MAX_TAIL_BYTES, options.maximumTailBytes))
     : CODEX_LIVENESS_MAX_TAIL_BYTES;
   const tailCache = new Map();
+  const rolloutObservations = new Map();
   const stalePolls = new Map();
   let cache = null;
   let lastCheckedAt = null;
@@ -596,9 +598,21 @@ export function createCodexLivenessCoordinator(options = {}) {
 
   function rolloutMetadataCanBeLive(thread, nowMs) {
     const updatedAt = timestampValue(thread.updatedAt);
-    if (!Number.isFinite(updatedAt)) return true;
-    const age = nowMs - updatedAt;
-    return age <= CODEX_ROLLOUT_LIVE_WINDOW_MS;
+    const metadataFresh = !Number.isFinite(updatedAt) || nowMs - updatedAt <= CODEX_ROLLOUT_LIVE_WINDOW_MS;
+    if (!thread.rolloutFile) return metadataFresh;
+    let stat;
+    try { stat = fs.statSync(thread.rolloutFile); } catch { return metadataFresh; }
+    const key = `${stat.size}:${stat.mtimeMs}`;
+    const previous = rolloutObservations.get(thread.rolloutFile);
+    const changedAt = previous && previous.key !== key
+      ? nowMs
+      : previous?.changedAt ?? (metadataFresh ? nowMs : null);
+    rolloutObservations.delete(thread.rolloutFile);
+    rolloutObservations.set(thread.rolloutFile, { key, changedAt });
+    while (rolloutObservations.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) {
+      rolloutObservations.delete(rolloutObservations.keys().next().value);
+    }
+    return metadataFresh || (changedAt !== null && nowMs - changedAt <= CODEX_ROLLOUT_LIVE_WINDOW_MS);
   }
 
   function observe(threads, observeOptions = {}) {

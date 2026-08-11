@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -198,6 +198,41 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(interrupted, { now: START + 6_000 }).status, "stopped");
   const systemError = [...progress, record(5_000, "turn_completed", { status: "failed" })];
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
+});
+
+test("a growing rollout stays live when Windows reports a stale modification time", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-stale-mtime-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-growing.jsonl");
+  await writeFile(rolloutFile, [
+    JSON.stringify({ timestamp: new Date(START).toISOString(), type: "session_meta", payload: { id: "growing-root" } }),
+    JSON.stringify({ timestamp: new Date(START + 1_000).toISOString(), type: "turn_context", payload: {} }),
+  ].join("\n"), "utf8");
+
+  let now = START + 1_000;
+  const coordinator = createCodexLivenessCoordinator({ root, cacheMs: 0, now: () => now });
+  const initialThread = thread("growing-root", {
+    rolloutFile,
+    updatedAt: new Date(START + 1_000).toISOString(),
+  });
+  assert.equal(coordinator.observe([initialThread]).sessions.get("growing-root").isLive, true);
+
+  now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  await appendFile(rolloutFile, `\n${JSON.stringify({
+    timestamp: new Date(now).toISOString(),
+    type: "response_item",
+    payload: { type: "custom_tool_call", name: "exec", call_id: "fresh-exec", input: "PRIVATE_INPUT_MUST_NOT_LEAK" },
+  })}\n`, "utf8");
+  const staleTime = new Date(START);
+  await utimes(rolloutFile, staleTime, staleTime);
+
+  const observed = coordinator.observe([thread("growing-root", {
+    rolloutFile,
+    updatedAt: staleTime.toISOString(),
+  })]);
+  assert.equal(observed.sessions.get("growing-root").isLive, true);
+  assert.equal(observed.threads[0].liveStatus, "active");
+  assert.equal(observed.threads[0].liveness.observedAt, new Date(now).toISOString());
 });
 
 test("liveness scans one recent pending rollout while skipping five hundred provably stale rollouts", async (context) => {

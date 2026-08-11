@@ -27,7 +27,7 @@ Coding agents increasingly work in parallel, wait for input, consume context, in
 - Left-side navigation between concurrent live sessions and recent history, grouped into collapsible projects, with an attention marker when a session needs input
 - All-agent current context usage and its latest-snapshot composition
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
-- Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
+- Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and recognized skill-use evidence
 - Optional session-, agent-, and execution-task signal tags captured through Threadlight's MCP tools
 - The latest provider-generated session summary, when the transcript records one
 - Separate primary-agent popovers for live shell executions and the provider's structured, agent-maintained plan checklist

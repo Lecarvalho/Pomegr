@@ -70,6 +70,100 @@ test("maps foreground rollout success, failure, and interruption without command
   assert.doesNotMatch(JSON.stringify(tasks), /commandActions|parsed_cmd|aggregated_output|stdout|stderr|output/i);
 });
 
+test("maps current Codex exec cells to safe shell tasks without exposing cell source or output", () => {
+  const records = [
+    record("2026-08-11T15:00:00.000Z", "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-success",
+      input: `const result = await tools.shell_command({ command: "COMMAND_MUST_NOT_LEAK" }); text(result);`,
+      status: "completed",
+    }),
+    record("2026-08-11T15:00:02.000Z", "response_item", {
+      type: "custom_tool_call_output",
+      call_id: "exec-success",
+      output: [
+        { type: "input_text", text: "Script completed\nWall time: 0.1 seconds" },
+        { type: "input_text", text: "Exit code: 0\nSTDOUT_MUST_NOT_LEAK" },
+      ],
+    }),
+    record("2026-08-11T15:01:00.000Z", "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-failed",
+      input: `const result = await tools.shell_command({ command: "COMMAND_MUST_NOT_LEAK" }); text(result);`,
+    }),
+    record("2026-08-11T15:01:01.000Z", "response_item", {
+      type: "custom_tool_call_output",
+      call_id: "exec-failed",
+      output: [
+        { type: "input_text", text: "Script failed\nWall time: 0.1 seconds" },
+        { type: "input_text", text: "Script error:\nSTDERR_MUST_NOT_LEAK" },
+      ],
+    }),
+    record("2026-08-11T15:02:00.000Z", "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-without-shell",
+      input: `const result = await tools.view_image({ path: "C:\\PRIVATE_PATH_MUST_NOT_LEAK" }); image(result.image_url);`,
+    }),
+    record("2026-08-11T15:03:00.000Z", "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-categorized",
+      input: `const results = await Promise.all([
+        tools.shell_command({ command: "npm.cmd test PRIVATE_ARGUMENT_MUST_NOT_LEAK" }),
+        tools.shell_command({ command: "git diff -- PRIVATE_PATH_MUST_NOT_LEAK" }),
+        tools.shell_command({ command: "node PRIVATE_SCRIPT_MUST_NOT_LEAK.mjs" }),
+        tools.shell_command({ command: "gh pr view PRIVATE_ARGUMENT_MUST_NOT_LEAK" }),
+        tools.shell_command({ command: "npm.cmd run PRIVATE_SCRIPT_MUST_NOT_LEAK" }),
+        tools.shell_command({ command: "dotnet PRIVATE_ARGUMENT_MUST_NOT_LEAK" }),
+      ]); results.forEach(text);`,
+    }),
+    record("2026-08-11T15:03:02.000Z", "response_item", {
+      type: "custom_tool_call_output",
+      call_id: "exec-categorized",
+      output: [
+        { type: "input_text", text: "Script completed\nWall time: 0.2 seconds" },
+        { type: "input_text", text: "Exit code: 0\nTEST_OUTPUT_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Exit code: 0\nDIFF_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Exit code: 0\nNODE_OUTPUT_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Exit code: 0\nGITHUB_OUTPUT_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Exit code: 0\nSCRIPT_OUTPUT_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Exit code: 0\nDOTNET_OUTPUT_MUST_NOT_LEAK" },
+      ],
+    }),
+  ];
+
+  const tasks = parseCodexExecutionTaskRecords(records);
+  assert.deepEqual(tasks.map(({ id, label, status, exitCode }) => ({ id, label, status, exitCode })), [
+    { id: "exec-categorized-shell-1", label: "Run tests", status: "completed", exitCode: 0 },
+    { id: "exec-categorized-shell-2", label: "Inspect Git changes", status: "completed", exitCode: 0 },
+    { id: "exec-categorized-shell-3", label: "Run Node script", status: "completed", exitCode: 0 },
+    { id: "exec-categorized-shell-4", label: "Inspect pull requests", status: "completed", exitCode: 0 },
+    { id: "exec-categorized-shell-5", label: "Run project script", status: "completed", exitCode: 0 },
+    { id: "exec-categorized-shell-6", label: "Run .NET tool", status: "completed", exitCode: 0 },
+    { id: "exec-failed-shell-1", label: "Shell command", status: "failed", exitCode: null },
+    { id: "exec-success-shell-1", label: "Shell command", status: "completed", exitCode: 0 },
+  ]);
+  assertNoPrivateFixtureSentinels(tasks, "current Codex exec-cell tasks");
+});
+
+test("uses a fixed description for a single exec-cell shell command passed by shorthand", () => {
+  const tasks = parseCodexExecutionTaskRecords([
+    record("2026-08-11T15:10:00.000Z", "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-shorthand",
+      input: `const command = "git status --short PRIVATE_PATH_MUST_NOT_LEAK";
+        const result = await tools.shell_command({ command, timeout_ms: 1000 }); text(result);`,
+    }),
+  ], { historical: true, sessionUpdatedAt: "2026-08-11T15:10:01.000Z" });
+
+  assert.equal(tasks[0].label, "Inspect Git status");
+  assertNoPrivateFixtureSentinels(tasks, "Codex shorthand shell description");
+});
+
 test("deduplicates canonical lifecycle events and exposes only safe background process IDs", () => {
   const started = {
     type: "commandExecution",

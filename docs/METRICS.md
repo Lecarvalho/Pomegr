@@ -56,7 +56,15 @@ Codex does not currently provide a recognized context-machinery snapshot. The pa
 
 Each agent's execution-task popover is derived from Bash lifecycle records in that agent's selected-session transcript, not the provider's agent-maintained planning checklist. A Bash tool call creates an execution task from its short description. A returned background-task ID keeps it running until a trusted task notification records completion, failure, cancellation, or interruption. Foreground shell calls finish when their matching tool result arrives. In historical sessions, unmatched executions are marked stopped at the recorded session end.
 
+Current Codex desktop rollouts may wrap shell calls inside a recorded `exec` cell rather than emitting the older command lifecycle shape. Threadlight recognizes literal `tools.shell_command(...)` call evidence in that cell and pairs it with the cell's completion and exit-code markers. When that record has no provider description, a deterministic allowlist maps the command shape to a fixed category such as **Run tests**, **Inspect Git changes**, or **Read files**. Arguments, paths, arbitrary script names, and command text never enter the label. Other nested tools are not promoted to shell tasks, and the cell source is never returned to the browser. This compatibility path remains bounded to the same 30 most recent safe task rows.
+
 The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, and exit code. Commands, stdout, stderr, tool-result content, and notification output are excluded. Tasks are nested under their owning normalized agent, and the top-level `executionTasks` field retains the primary agent's list for compatibility. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows per agent, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
+
+## Skill usage
+
+Skill usage requires concrete transcript evidence. Threadlight counts explicit provider skill-invocation records. For current Codex desktop `exec` cells, it also counts a read of the exact `SKILL.md` source path declared in that session's host-skill catalog. Merely listing, mentioning, or making a skill available does not count as use.
+
+Only the validated canonical skill name, invocation count, and latest observed timestamp enter normalized state. Skill source paths, catalog descriptions, exec-cell source, prompts, arguments, and tool output remain monitor-side and are never returned to the browser.
 
 ## Plan checklist
 
@@ -90,7 +98,7 @@ When Claude's local session registry is available, its entries are the primary l
 
 When the provider registry is unavailable, Threadlight falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 
-Codex uses a separate evidence order: owning app-server status, a current allowlisted lifecycle-bridge lease, then a rollout-tail heuristic. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly. Bridge leases use a 15-second heartbeat and 45-second expiry; needs-input also has a 30-minute safety expiry. Rollout-only activity is active for 15 seconds, idle/recent through 120 seconds, and unavailable after 120 seconds. Rollout-only approval waiting is unsupported. These windows are liveness heuristics, not token metrics or operating-system certainty.
+Codex uses a separate evidence order: owning app-server status, a current allowlisted lifecycle-bridge lease, then a rollout-tail heuristic. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly. Bridge leases use a 15-second heartbeat and 45-second expiry; needs-input also has a 30-minute safety expiry. Rollout-only activity is active for 15 seconds, idle/recent through 120 seconds, and unavailable after 120 seconds. On Windows, Codex can append fresh records while the open rollout's reported modification time remains stale, so Threadlight also tracks bounded file-size/stat changes before applying that expiry gate. Rollout-only approval waiting is unsupported. These windows are liveness heuristics, not token metrics or operating-system certainty.
 
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
