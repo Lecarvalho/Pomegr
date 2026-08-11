@@ -719,9 +719,18 @@ npm run lint
 
 ## TL-CX-16 — Privacy audit, compatibility QA, and release documentation
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-11
 - **Depends on:** all previous tasks
 - **Target size:** 1–2 sessions
+
+### Implementation notes
+
+- Added end-to-end synthetic HTTP serialization audits for `/api/state` and `/api/sessions`, covering both providers, every forbidden privacy category, fixed fail-closed errors, provider/Git/pull-request/usage failure isolation, deleted history, and historical exclusion of current Git and limits.
+- Added snake_case/camelCase rollout fixtures plus direct/JSON-RPC app-server compatibility coverage for malformed, truncated, unknown, missing-child, unavailable-app-server, usage-failure, and deleted-history behavior.
+- Made Codex selected-state reads parse each rollout once, bound live parsing to a cached 512 KiB tail, cache full historical parses, cap cache entries, and coalesce concurrent catalog polls; focused QA verifies bounded reads across eight synthetic large rollouts.
+- Updated provider support/setup, architecture and liveness flow, Codex metric mappings and unavailable evidence, complete environment-variable reference, and troubleshooting guidance.
+- Full build, 171 Node tests, 28 UI tests, focused privacy/performance QA, lint, and diff checks pass; lint reports only pre-existing warnings under `.agents/skills/impeccable`.
 
 ### Goal
 
@@ -795,3 +804,4 @@ Add short entries here only after completing a task.
 | 2026-08-11 | TL-CX-13 | Complete | Codex skill and signal evidence, provider-neutral PR creation events, monitor-side task matching, and evidence-gated shared efficiency rules added. |
 | 2026-08-11 | TL-CX-14 | Complete | Owning app-server liveness, allowlisted lifecycle bridge, bounded rollout fallback, deterministic expiry/grace behavior, descendant waiting, and cached polling added. |
 | 2026-08-11 | TL-CX-15 | Complete | Capability-gated provider copy and optional panels, provenance labels, unsupported-versus-zero report semantics, and mixed-provider responsive/accessibility coverage added. |
+| 2026-08-11 | TL-CX-16 | Complete | API privacy audit, schema/failure compatibility QA, bounded Codex state parsing and caching, release documentation, and full-suite verification completed. |

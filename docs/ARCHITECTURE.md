@@ -76,6 +76,16 @@ monitor/providers/
 
 Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
 
+### Provider flow and serialization boundary
+
+The provider registry queries adapters independently and merges their allowlisted catalog summaries under opaque IDs such as `claude:session-id` and `codex:thread-id`. A provider failure contributes no rows but cannot fail another provider's catalog. Explicit browser IDs are parsed against the fixed provider namespace and safe local-ID grammar; they are never resolved as filesystem paths or routed to a different adapter.
+
+For Codex, the adapter prefers an explicitly connected app-server for allowlisted thread metadata and canonical items. It never serializes thread previews or loaded turns directly. Persisted rollout headers and `session_index.jsonl` fill gaps and keep history available when the app-server is absent. Unknown record/item types, malformed JSONL lines, and a truncated final live write are ignored individually. A missing child rollout produces bounded neutral child metadata when the relationship is still documented elsewhere.
+
+Provider evidence crosses into `monitor/server.mjs` only after raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, tool output, credentials, environment values, private transcript/auth paths, and unrecognized MCP arguments have been discarded. The monitor adds provider-neutral Git, pull-request, metric, and deterministic-rule data. `/api/state` and `/api/sessions` serialize only that normalized result; caught exceptions use fixed messages rather than arbitrary provider or filesystem error text. Browser reports are derived from the same state.
+
+Codex selected-state polling parses each rollout once per read and reuses that record array for agent, activity, execution-task, context, approval/plan, signal, skill, and pull-request normalization. Live reads are capped at the final 512 KiB per rollout and cached by size and modification time. Historical reads may parse the complete persisted rollout once, then reuse the cache. Cache entries are bounded by the provider scan limit. Concurrent catalog polls share one in-flight app-server request and the 1.5-second catalog cache.
+
 ### Codex live state
 
 Codex liveness is resolved provider-side in strict priority order: an explicitly supplied owning app-server status, an opt-in lifecycle bridge with a valid owner lease, then a bounded rollout-tail heuristic. `notLoaded` from another app-server is unknown and falls through. Current liveness evidence is never applied to historical reads.
@@ -100,9 +110,12 @@ Without a current authoritative source, the adapter reads at most 128 KiB and 25
 ## Failure behavior
 
 - No session: connected monitor with an explanatory empty state
+- One provider unavailable: sessions from other providers remain discoverable and selectable
+- Codex app-server unavailable: rollout/index discovery and persisted history remain available
+- Missing child rollout: keep only bounded relationship/runtime fallback metadata
 - Git failure: repository unavailable without failing the session
 - GitHub CLI or network failure: recorded pull-request links remain visible with unavailable live metadata, and branch association degrades independently
-- Usage failure: remaining dashboard stays available
-- Missing historical transcript: selected view explains that the session is no longer available
-- Malformed JSONL: skip the individual line
+- Usage failure: expose a fixed provider-safe unavailable message while the remaining dashboard stays available
+- Missing or deleted historical transcript: selected historical view explains that the session is no longer available and receives no current Git or usage data
+- Malformed JSONL, unknown future record, or truncated final write: skip the individual record/line and retain other recognized evidence
 - Synthetic or zero usage: exclude from latest-context selection

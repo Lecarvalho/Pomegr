@@ -20,11 +20,15 @@ For Codex, Threadlight reads only each token-count event's `last_token_usage`; i
 - **Agent context** — latest snapshot for that agent
 - **All-agent context** — sum of every visible agent's latest snapshot
 
+Codex rollout parsing accepts the recognized snake_case and camelCase token-count shapes. Unknown future shapes are unavailable rather than interpreted as cumulative usage. Live files are read from a bounded tail, so a burst that pushes the latest recognized snapshot beyond that tail can temporarily make context unavailable; Threadlight never substitutes `total_token_usage`.
+
 ## Estimated API cost
 
 Threadlight does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. The bridge persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `~/.threadlight/cost-snapshots`; all other status-line fields are discarded.
 
 The value is cumulative for the Claude Code session and is the only cumulative spend-like value Threadlight presents. It is labeled **Estimated API cost** because Claude Code calculates it at standard API list rates and it may differ from an actual bill. A historical session shows its last captured estimate; if no snapshot was captured, cost remains unavailable rather than being reconstructed from transcript throughput.
+
+The initial Codex adapter has no cost source. Cost is capability-gated and omitted rather than inferred from token snapshots or displayed as zero.
 
 All-agent context is the only context total Threadlight presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
 
@@ -45,6 +49,8 @@ The parser is output-driven rather than repository-driven. It accepts both Markd
 The **Machinery token load** is the sum of the remaining provider-estimated category values. Threadlight sums category rows rather than detailed group items because the groups expand portions of the category summary and would otherwise be counted twice. The total is present only when the session has a valid recorded `/context` snapshot; the expandable category and item inventory remains available beside it.
 
 Only bounded, validated labels and the provider's formatted token estimates enter normalized state. Memory paths are reduced to their basename. The raw local-command output, repository paths, prompts, and responses never enter the browser API. These values are provider estimates from the captured `/context` rendering, not Threadlight measurements, billing totals, or cumulative token spend. Historical views use only the recorded snapshot and never substitute current machinery.
+
+Codex does not currently provide a recognized context-machinery snapshot. The panel and Claude `/context` instruction are omitted for Codex sessions.
 
 ## Execution tasks
 
@@ -84,11 +90,15 @@ When Claude's local session registry is available, its entries are the primary l
 
 When the provider registry is unavailable, Threadlight falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 
+Codex uses a separate evidence order: owning app-server status, a current allowlisted lifecycle-bridge lease, then a rollout-tail heuristic. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly. Bridge leases use a 15-second heartbeat and 45-second expiry; needs-input also has a 30-minute safety expiry. Rollout-only activity is active for 15 seconds, idle/recent through 120 seconds, and unavailable after 120 seconds. Rollout-only approval waiting is unsupported. These windows are liveness heuristics, not token metrics or operating-system certainty.
+
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
 ## User attention
 
 For the Claude Code adapter, Threadlight reads the provider's local session registry and treats a `waiting` session whose safe wait category indicates input, approval, permission, or a question as needing user input. The raw wait value and question content are never sent to the browser. Transcript `AskUserQuestion` calls remain a fallback for sessions without registry state. A registered input wait remains live and takes priority for automatic live-session selection until the provider clears it.
+
+For Codex, owning app-server waiting flags or lifecycle-bridge request kinds can mark needs-input. Rollout fallback recognizes only a fresh unmatched structured `request_user_input` call. The matching output clears it; questions, choices, answers, approval reasons, and commands are discarded.
 
 ## Session approval mode
 
@@ -114,6 +124,8 @@ The current catalog contains these deterministic rules:
 The automatic-compaction parser allows only the normalized agent identity, recognized trigger, non-negative pre-compaction token count, and event timestamp into the rule engine. The compacted summary, provider event content, and all other compaction metadata remain monitor-side and never enter browser state. On first observation Threadlight scans each selected agent transcript for these bounded events, then merges new tail records into an in-memory cache so an earlier compaction remains visible as the transcript grows. Automatic compaction is evidence that context pressure caused the provider to summarize earlier conversation detail; it is not a quality judgment or proof that the session failed.
 
 Codex compaction records follow the same bounded evidence contract, but a warning is emitted only when the record contains an explicit `auto` or `automatic` trigger. A compaction-shaped record without a recognized trigger is ignored rather than inferred to be automatic; an explicit manual trigger remains recorded evidence but does not produce a warning.
+
+Codex repetition, concurrent-mutation, unshared-context, and healthy-fallback rules run only when recognized rollout or canonical tool evidence is available. Missing app-server turns or rollout history disables the affected rule; Threadlight does not silently substitute timestamps, prose, file modification times, or cumulative token totals. Provider-generated summaries, estimated cost, and context machinery are unavailable for Codex and therefore contribute no metrics or efficiency evidence.
 
 The unshared-context rule uses the latest context snapshot rather than cumulative transcript throughput or token spend. Tool calls provide evidence of sustained execution; elapsed wall time is deliberately excluded because it includes idle gaps. Threadlight does not parse natural-language instructions such as `AGENTS.md` to infer a delegation policy.
 

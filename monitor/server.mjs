@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
@@ -11,18 +13,21 @@ import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
-const gitCache = new Map();
 
 function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
 }
 
-function gitState(cwd) {
-  const cached = gitCache.get(cwd);
-  if (cached && Date.now() - cached.timestamp < 2500) return cached.value;
-  const value = readGitState(cwd);
-  gitCache.set(cwd, { timestamp: Date.now(), value });
-  return value;
+function unavailableGitState() {
+  return {
+    available: false,
+    branch: "Not a Git repository",
+    files: [],
+    isMain: false,
+    comparison: null,
+    commits: [],
+    remote: { status: "unavailable", checkedAt: null },
+  };
 }
 
 function recordedGitState(branch) {
@@ -36,10 +41,6 @@ function recordedGitState(branch) {
     commits: [],
     remote: { status: "unavailable", checkedAt: null },
   };
-}
-
-async function sessionCatalog() {
-  return providerRegistry.listSessions();
 }
 
 function groupToolEvidence(toolCalls) {
@@ -113,20 +114,44 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
   };
 }
 
-async function analyze(requestedSessionId = "") {
-  const selection = await providerRegistry.readSession(requestedSessionId);
+export function createMonitorRuntime(options = {}) {
+  const registry = options.providerRegistry || providerRegistry;
+  const gitReader = options.readGitState || readGitState;
+  const pullRequestReader = options.readPullRequests || readPullRequests;
+  const now = options.now || (() => Date.now());
+  const gitCache = new Map();
+
+  function gitState(cwd) {
+    const cached = gitCache.get(cwd);
+    if (cached && now() - cached.timestamp < 2500) return cached.value;
+    let value;
+    try {
+      value = gitReader(cwd);
+    } catch {
+      value = unavailableGitState();
+    }
+    gitCache.set(cwd, { timestamp: now(), value });
+    return value;
+  }
+
+  async function sessionCatalog() {
+    return registry.listSessions();
+  }
+
+  async function analyze(requestedSessionId = "") {
+  const selection = await registry.readSession(requestedSessionId);
   if (!selection) {
     const historical = Boolean(requestedSessionId);
     const provider = requestedSessionId
-      ? providerRegistry.providerForSessionId(requestedSessionId)
-      : providerRegistry.defaultProvider;
+      ? registry.providerForSessionId(requestedSessionId)
+      : registry.defaultProvider;
     return createEmptyMonitorState({
       connected: true,
-      source: provider?.source || providerRegistry.defaultProvider.source,
-      capabilities: provider?.capabilities || providerRegistry.defaultProvider.capabilities,
+      source: provider?.source || registry.defaultProvider.source,
+      capabilities: provider?.capabilities || registry.defaultProvider.capabilities,
       view: historical ? "history" : "live",
-      usageLimits: await providerRegistry.readUsageLimits(provider, { historical }),
-      error: providerRegistry.unavailableMessage(requestedSessionId),
+      usageLimits: await registry.readUsageLimits(provider, { historical }),
+      error: registry.unavailableMessage(requestedSessionId),
     });
   }
 
@@ -184,13 +209,18 @@ async function analyze(requestedSessionId = "") {
   const repository = historical
     ? recordedGitState(evidence.session.recordedGitBranch)
     : { ...gitState(evidence.session.cwd), historical: false };
-  const pullRequests = await readPullRequests([], {
-    cwd: evidence.session.cwd,
-    branch: repository.branch,
-    historical,
-    sessionCreations: evidence.pullRequestCreations,
-  });
-  const currentUsageLimits = await providerRegistry.readUsageLimits(provider, { historical });
+  let pullRequests;
+  try {
+    pullRequests = await pullRequestReader([], {
+      cwd: evidence.session.cwd,
+      branch: repository.branch,
+      historical,
+      sessionCreations: evidence.pullRequestCreations,
+    });
+  } catch {
+    pullRequests = { status: "unavailable", checkedAt: null, items: [] };
+  }
+  const currentUsageLimits = await registry.readUsageLimits(provider, { historical });
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
@@ -235,13 +265,18 @@ async function analyze(requestedSessionId = "") {
     insights,
     usageLimits: currentUsageLimits,
   };
+  }
+
+  function analyzeEmpty() {
+    return createEmptyMonitorState({ source: registry.defaultProvider.source, usageLimits: emptyUsageLimits() });
+  }
+
+  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog });
 }
 
-function analyzeEmpty() {
-  return createEmptyMonitorState({ source: providerRegistry.defaultProvider.source, usageLimits: emptyUsageLimits() });
-}
-
-const server = http.createServer(async (request, response) => {
+export function createMonitorRequestHandler(options = {}) {
+  const runtime = options.runtime || createMonitorRuntime(options);
+  return async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Cache-Control", "no-store");
@@ -249,31 +284,49 @@ const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
   if (requestUrl.pathname === "/api/sessions") {
     try {
+      const body = JSON.stringify({ sessions: await runtime.sessionCatalog() });
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ sessions: await sessionCatalog() }));
-    } catch (error) {
+      response.end(body);
+    } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ sessions: [], error: error instanceof Error ? error.message : "Session catalog error" }));
+      response.end(JSON.stringify({ sessions: [], error: "Session catalog error" }));
     }
     return;
   }
   if (requestUrl.pathname === "/api/state") {
     try {
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
+      const body = JSON.stringify(await runtime.analyze(sessionId));
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(await analyze(sessionId)));
-    } catch (error) {
+      response.end(body);
+    } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ ...analyzeEmpty(), error: error instanceof Error ? error.message : "Monitor error" }));
+      response.end(JSON.stringify({ ...runtime.analyzeEmpty(), error: "Monitor error" }));
     }
     return;
   }
   if (requestUrl.pathname === "/health") { response.writeHead(204); response.end(); return; }
   response.writeHead(404); response.end("Not found");
-});
+  };
+}
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Threadlight monitor: http://127.0.0.1:${PORT}`);
-  const watchTargets = providerRegistry.watchTargets();
-  if (watchTargets.length) console.log(`Watching: ${watchTargets.join(", ")}`);
-});
+export function createMonitorServer(options = {}) {
+  return http.createServer(createMonitorRequestHandler(options));
+}
+
+export function startMonitorServer(options = {}) {
+  const port = Number.isInteger(options.port) ? options.port : PORT;
+  const host = "127.0.0.1";
+  const registry = options.providerRegistry || providerRegistry;
+  const server = createMonitorServer(options);
+  server.listen(port, host, () => {
+    console.log(`Threadlight monitor: http://${host}:${port}`);
+    const watchTargets = registry.watchTargets();
+    if (watchTargets.length) console.log(`Watching: ${watchTargets.join(", ")}`);
+  });
+  return server;
+}
+
+const isEntrypoint = process.argv[1]
+  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isEntrypoint) startMonitorServer();

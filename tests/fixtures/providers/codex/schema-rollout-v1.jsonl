@@ -1,0 +1,6 @@
+{"timestamp":"2026-08-11T16:00:00.000Z","type":"session_meta","payload":{"id":"schema-rollout-v1","timestamp":"2026-08-11T16:00:00.000Z","cwd":"C:\\synthetic\\schema-v1","source":"cli","instructions":"DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-11T16:00:01.000Z","type":"turn_context","payload":{"model":"gpt-synthetic-v1","effort":"high","approval_policy":"on-request","sandbox_policy":{"type":"workspace-write"},"user_instructions":"PROMPT_MUST_NOT_LEAK"}}
+{"timestamp":"2026-08-11T16:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"cached_input_tokens":20,"output_tokens":10,"total_tokens":130},"total_token_usage":{"input_tokens":999999,"output_tokens":999999},"model_context_window":200000}}}
+{"timestamp":"2026-08-11T16:00:03.000Z","type":"future_record","payload":{"private":"TOOL_OUTPUT_MUST_NOT_LEAK"}}
+not-json
+{"timestamp":"2026-08-11T16:00:04.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","call_id":"truncated","arguments":"COMMAND_MUST_NOT_LEAK"}

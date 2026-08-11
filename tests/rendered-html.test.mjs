@@ -59,7 +59,8 @@ test("keeps browser modules provider-safe and reuses the vector close control", 
   assert.doesNotMatch(components, /node:fs|node:child_process|CLAUDE_PROJECTS_DIR|credential-file|raw session/i);
   assert.match(closeButton, /<svg viewBox="0 0 12 12"/);
   assert.match(components, /<CloseButton\b/);
-  assert.match(monitor, /listen\(PORT, "127\.0\.0\.1"/);
+  assert.match(monitor, /const host = "127\.0\.0\.1"/);
+  assert.match(monitor, /server\.listen\(port, host/);
   assert.doesNotMatch(stateRoute, /refreshUsage/);
   assert.match(stateRoute, /monitorParams\.set\("sessionId", sessionId\)/);
 });

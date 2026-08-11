@@ -6,26 +6,26 @@ import { defineProvider } from "./provider-contract.mjs";
 import {
   mergeCodexToolCalls,
   parseCodexCanonicalTurns,
-  readCodexActivityRollout,
+  parseCodexActivityRecords,
 } from "./codex-activity-events.mjs";
 import {
   mergeCodexExecutionTasks,
   parseCodexCanonicalExecutionTasks,
-  readCodexExecutionTaskRollout,
+  parseCodexExecutionTaskRecords,
 } from "./codex-execution-tasks.mjs";
-import { readCodexApprovalPlanRollout } from "./codex-approval-plan.mjs";
-import { readCodexContextRollout } from "./codex-context.mjs";
-import { buildCodexAgentTree, readCodexAgentRollout } from "./codex-agent-metadata.mjs";
+import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
+import { parseCodexContextRecords } from "./codex-context.mjs";
+import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
 import {
   mergeCodexPullRequestCreations,
   parseCodexCanonicalPullRequests,
-  readCodexPullRequestRollout,
+  parseCodexPullRequestRecords,
 } from "./codex-pull-requests.mjs";
 import {
   mergeCodexSignals,
-  readCodexSignalRollout,
+  parseCodexSignalRecords,
 } from "./codex-session-signals.mjs";
-import { parseCodexCanonicalSkillUsage, readCodexSkillUsageRollout } from "./codex-skill-usage.mjs";
+import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
 import {
@@ -39,6 +39,7 @@ import {
 } from "./codex-session-metadata.mjs";
 
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
+export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 const ALL_SOURCE_KINDS = [
   ...TOP_LEVEL_SOURCE_KINDS,
   "subAgent",
@@ -146,6 +147,9 @@ export function createCodexProvider(options = {}) {
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
   const scanLimit = Math.max(catalogLimit, boundedInteger(options.scanLimit, DEFAULT_CODEX_SCAN_LIMIT, DEFAULT_CODEX_SCAN_LIMIT));
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : 1500;
+  const maximumLiveTailBytes = Number.isInteger(options.maximumStateTailBytes)
+    ? Math.max(1, Math.min(4 * 1024 * 1024, options.maximumStateTailBytes))
+    : CODEX_LIVE_STATE_MAX_TAIL_BYTES;
   const liveness = createCodexLivenessCoordinator({
     root: livenessRoot,
     now,
@@ -163,6 +167,54 @@ export function createCodexProvider(options = {}) {
     },
   }).get;
   let catalogCache = null;
+  let catalogPending = null;
+  const rolloutCache = new Map();
+  const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0 };
+
+  function readRolloutRecords(file, historical) {
+    let stat;
+    try { stat = fs.statSync(file); } catch { return []; }
+    if (!stat.isFile() || stat.size <= 0) return [];
+    const bytes = historical ? stat.size : Math.min(stat.size, maximumLiveTailBytes);
+    const key = `${historical ? "history" : "live"}:${stat.size}:${stat.mtimeMs}:${bytes}`;
+    const cached = rolloutCache.get(file);
+    if (cached?.key === key) {
+      rolloutStats.cacheHits += 1;
+      return cached.records;
+    }
+    let text = "";
+    let descriptor;
+    try {
+      descriptor = fs.openSync(file, "r");
+      const buffer = Buffer.alloc(bytes);
+      fs.readSync(descriptor, buffer, 0, bytes, historical ? 0 : Math.max(0, stat.size - bytes));
+      text = buffer.toString("utf8");
+    } catch {
+      return [];
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    if (!historical && stat.size > bytes) {
+      const newline = text.indexOf("\n");
+      text = newline >= 0 ? text.slice(newline + 1) : "";
+    }
+    const records = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+      } catch {
+        // A malformed or partially written line does not invalidate other records.
+      }
+    }
+    rolloutStats.reads += 1;
+    rolloutStats.bytes += bytes;
+    rolloutCache.delete(file);
+    rolloutCache.set(file, { key, records });
+    while (rolloutCache.size > scanLimit) rolloutCache.delete(rolloutCache.keys().next().value);
+    return records;
+  }
 
   async function appServerCall(method, params) {
     if (!appServer) return null;
@@ -220,14 +272,22 @@ export function createCodexProvider(options = {}) {
   async function discoveredMetadata() {
     const checkedAt = now();
     if (catalogCache && checkedAt < catalogCache.expiresAt) return catalogCache.value;
-    const appServerMetadata = await readAppServerCatalog();
-    const fallbackMetadata = readFallbackMetadata();
-    const combined = appServerMetadata?.length
-      ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
-      : fallbackMetadata;
-    const value = liveness.observe(combined);
-    catalogCache = { expiresAt: checkedAt + cacheMs, value };
-    return value;
+    if (catalogPending) return catalogPending;
+    catalogPending = (async () => {
+      const appServerMetadata = await readAppServerCatalog();
+      const fallbackMetadata = readFallbackMetadata();
+      const combined = appServerMetadata?.length
+        ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
+        : fallbackMetadata;
+      const value = liveness.observe(combined);
+      catalogCache = { expiresAt: now() + cacheMs, value };
+      return value;
+    })();
+    try {
+      return await catalogPending;
+    } finally {
+      catalogPending = null;
+    }
   }
 
   async function listSessions() {
@@ -326,9 +386,12 @@ export function createCodexProvider(options = {}) {
     const metadata = allMetadata.find((item) => item.localId === localSessionId) || null;
     if (!metadata || !isTopLevelCodexSession(metadata)) return null;
     const summaries = new Map();
+    const recordsByThreadId = new Map();
     for (const thread of allMetadata) {
       if (!thread.rolloutFile) continue;
-      const summary = readCodexAgentRollout(thread.rolloutFile, thread);
+      const records = readRolloutRecords(thread.rolloutFile, historical);
+      recordsByThreadId.set(thread.localId, records);
+      const summary = parseCodexAgentRecords(records, thread);
       if (summary.localId) summaries.set(summary.localId, summary);
     }
     const agents = buildCodexAgentTree({
@@ -343,7 +406,7 @@ export function createCodexProvider(options = {}) {
       || metadata.updatedAt
       || startedAt;
     const approvalPlan = metadata.rolloutFile
-      ? readCodexApprovalPlanRollout(metadata.rolloutFile)
+      ? parseCodexApprovalPlanRecords(recordsByThreadId.get(metadata.localId) || [])
       : { approvalMode: null, planTasks: [] };
     const actorByThreadId = new Map(agents.map((agent) => [
       agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
@@ -360,25 +423,26 @@ export function createCodexProvider(options = {}) {
       const actor = actorByThreadId.get(thread.localId);
       if (!actor || !thread.rolloutFile) return [];
       rolloutEvidenceAvailable ||= fs.existsSync(thread.rolloutFile);
+      const records = recordsByThreadId.get(thread.localId) || [];
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
-      rolloutTasksByActor.set(actor.id, readCodexExecutionTaskRollout(thread.rolloutFile, {
+      rolloutTasksByActor.set(actor.id, parseCodexExecutionTaskRecords(records, {
         fallbackTimestamp,
       }));
-      rolloutSignalsByActor.set(actor.id, readCodexSignalRollout(thread.rolloutFile));
-      rolloutSkillsByActor.set(actor.id, readCodexSkillUsageRollout(thread.rolloutFile));
-      pullRequestCreationGroups.push(readCodexPullRequestRollout(thread.rolloutFile, {
+      rolloutSignalsByActor.set(actor.id, parseCodexSignalRecords(records));
+      rolloutSkillsByActor.set(actor.id, parseCodexSkillUsageRecords(records));
+      pullRequestCreationGroups.push(parseCodexPullRequestRecords(records, {
         actorId: actor.id,
         fallbackTimestamp,
         sourceKey: thread.localId,
       }));
-      const context = readCodexContextRollout(thread.rolloutFile, {
+      const context = parseCodexContextRecords(records, {
         actorId: actor.id,
         fallbackTimestamp,
         sourceKey: thread.localId,
       });
       usageSnapshots.push(...context.usageSnapshots);
       compactions.push(...context.compactions);
-      return readCodexActivityRollout(thread.rolloutFile, {
+      return parseCodexActivityRecords(records, {
         actor,
         fallbackTimestamp,
         sourceKey: thread.localId,
@@ -472,6 +536,11 @@ export function createCodexProvider(options = {}) {
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : "No Codex sessions found.";
+    },
+    qaStats(reset = false) {
+      const value = { ...rolloutStats, cacheEntries: rolloutCache.size, catalogPending: Boolean(catalogPending) };
+      if (reset) Object.assign(rolloutStats, { reads: 0, bytes: 0, cacheHits: 0 });
+      return value;
     },
     watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot],
   });

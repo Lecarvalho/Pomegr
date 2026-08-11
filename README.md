@@ -2,7 +2,7 @@
 
 Threadlight is a lightweight, local-first dashboard for observing live coding-agent sessions. It illuminates agents, context usage, model settings, tool activity, Git changes, usage limits, and deterministic efficiency signals in real time.
 
-The current adapter supports Claude Code. Codex is the next planned integration; the product and normalized data model remain provider-neutral.
+Threadlight ships adapters for Claude Code and Codex. Both appear in one deterministic session catalog and produce the same normalized browser state wherever equivalent provider evidence exists.
 
 <p align="center">
   <img src="docs/assets/threadlight-introduction.png" alt="Threadlight overview: a local view of coding-agent sessions" width="560">
@@ -18,10 +18,10 @@ The current adapter supports Claude Code. Codex is the next planned integration;
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and explicitly invoked skills
 - Optional session-, agent-, and execution-task signal tags captured through Threadlight's MCP tools
 - The latest provider-generated session summary, when the transcript records one
-- Separate primary-agent popovers for live shell executions and Claude's agent-maintained plan checklist
+- Separate primary-agent popovers for live shell executions and the provider's structured, agent-maintained plan checklist
 - Current Git branch and every uncommitted path
 - Pull requests created in the session or linked to its live branch, with current GitHub status
-- Plan limits for the five-hour session, all models, and Fable
+- Provider usage-limit windows when a supported authenticated connection is available
 - Recent tool activity without displaying prompts or responses
 - Deterministic loop and agent-overlap warnings
 - Local Markdown retrospective reports for discussion with the main agent
@@ -34,14 +34,14 @@ Session history is indexed directly from the provider's existing JSONL files; Th
 
 Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Threadlight detects both the Markdown table and ANSI terminal-summary formats, then shows the provider-reported machinery categories and any expanded groups present in the snapshot. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Threadlight never reconstructs the list from the current repository or configuration.
 
-Threadlight combines provider session-registry lifecycle state with transcript activity. A registered interactive session remains live while its process is present, and explicit user-input waits take priority as the live auto-discovery target. Transcript activity in the last five minutes remains the fallback when registry state is unavailable.
+Live-state evidence is provider-specific and explicitly bounded. Claude Code prefers its local session registry. Codex prefers an owning app-server connection, then the opt-in allowlisted lifecycle bridge, then a 120-second bounded rollout-tail heuristic. A current needs-input session takes priority during automatic selection. Historical views never inherit current lifecycle evidence.
 
 ## Run locally
 
 Requirements:
 
 - Windows with Node.js 22.13 or newer
-- Claude Code with local session persistence enabled
+- Claude Code and/or Codex with local session persistence enabled
 - Git on `PATH`
 
 ```powershell
@@ -64,7 +64,7 @@ The web server proxies `/api/state` to the loopback-only monitor, so private cre
 
 Threadlight includes a stateless local MCP server with three tools. `report_session_signal` attaches a short label and semantic tone to the overall session header. `report_agent_signal` attaches the same metadata to the calling agent. `report_task_signal` attaches it to a specific execution task by its background task ID or Bash tool-use ID. Threadlight reads the recorded tool calls from agent transcripts and decorates the matching dashboard locations. The transcript is the source of truth for live and historical sessions.
 
-From a Claude Code repository that should use the tool, register this checkout as a local-scoped server. Keep the server name exactly `threadlight`, because the transcript parser uses that namespace:
+Register this checkout as a local stdio MCP server in the provider that should report signals. Keep the server name exactly `threadlight`, because both transcript parsers use that namespace. For Claude Code, a local-scoped registration is:
 
 ```powershell
 claude mcp add --transport stdio --scope local threadlight -- node "C:\path\to\threadlight\mcp\server.mjs"
@@ -126,12 +126,16 @@ If there is no existing status-line command, omit `--` and everything after it. 
 
 ## Configuration
 
-The monitor automatically selects a registered session that needs user input first, then an active registered session, then the session tree with the most recent activity under `%USERPROFILE%\.claude\projects`.
+The monitor merges both provider catalogs, then selects a current needs-input session, another live session, or the most recent safe historical entry in that order. Provider-local IDs are never accepted as paths.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `CLAUDE_PROJECTS_DIR` | Override the current provider's project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Pin one primary JSONL session | Latest primary session |
+| `CODEX_HOME` | Override the Codex data root | `%USERPROFILE%\.codex` |
+| `THREADLIGHT_CODEX_LIVENESS_DIR` | Opt in to a shared Codex lifecycle-bridge snapshot root | `%USERPROFILE%\.threadlight\codex-liveness` |
+| `THREADLIGHT_CODEX_OWNER_PID` | Override bridge owner discovery for unusual wrappers | Nearest recognized owner process |
+| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Override the Claude estimate-snapshot root | `%USERPROFILE%\.threadlight\cost-snapshots` |
 | `SESSION_PULSE_PORT` | Change the private monitor API port | `4317` |
 
 Example:
@@ -140,6 +144,8 @@ Example:
 $env:CLAUDE_SESSION_FILE='C:\path\to\session.jsonl'
 npm run dev
 ```
+
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for provider setup, the Codex lifecycle bridge, every supported environment variable, capability availability, and troubleshooting.
 
 ## Metrics
 
@@ -152,14 +158,14 @@ Threadlight does not derive cumulative transcript-throughput or token-spend tota
 
 ## Privacy and security
 
-- Raw prompt and response text is not returned by the monitor API.
+- Raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, and tool output are not returned by the monitor API.
 - The optional status-line bridge persists only session ID, estimated USD amount, estimate type, and observation time. It discards workspace paths and every other status-line field.
 - Session summaries are accepted only from recognized provider summary records, reduced to bounded plain text, and labeled as provider-generated; Threadlight never derives them from raw prompts, responses, or tool results.
 - Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
 - Agent launch text is used only to derive a concise fallback label.
 - Session transcripts and Git state are read-only.
 - Git commands use argument arrays rather than shell interpolation.
-- OAuth credentials remain in the monitor process.
+- OAuth credentials, provider auth files, environment secrets, and provider-local transcript paths remain in the monitor process.
 - Credentials are sent only to the provider's own usage endpoint and never enter browser state.
 - Plan usage is refreshed every 60 seconds while a live view is unpaused. Normal session polling and manual refreshes never call the provider usage endpoint; server caching deduplicates simultaneous tabs.
 
@@ -183,16 +189,19 @@ Important source files:
 - `app/api/state/route.ts` — same-origin proxy to the private monitor
 - `scripts/dev.mjs` — local process orchestration
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and provider-extension plan.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the shipped provider flow and failure boundaries.
 
 ## Current limitations
 
-- The monitor currently supports Claude Code session files only.
+- Codex live state is exact only with an owning app-server connection or a current lifecycle-bridge lease; rollout-only state is a bounded heuristic.
+- Codex estimated API cost, context-machinery snapshots, and provider-generated session summaries are unavailable in the initial adapter.
+- Codex structured plan items and automatic-compaction warnings are best effort and appear only with explicit recognized records.
+- Codex account usage limits require an owning app-server connection; the standalone Windows monitor cannot discover another process's private app-server transport.
 - Session duration is elapsed wall time and includes idle periods.
-- History is limited to the 49 most recent non-live transcript sessions.
+- Each provider catalog is bounded to its 50 most recent safe entries by default.
 - Subagent completion uses transcript stop reasons, with modification time as a fallback.
 - Efficiency warnings are heuristics, not authoritative judgments.
-- Transcript parsing reads a bounded tail of each file.
+- Live Codex state parsing reads a bounded 512 KiB tail per rollout and caches unchanged files; historical reads are cached after the first full parse.
 
 ## License
 
