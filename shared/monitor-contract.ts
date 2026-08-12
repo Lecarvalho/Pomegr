@@ -8,6 +8,10 @@ export type AgentReportedSignal = ReportedSignal & {
   description?: string;
 };
 
+export type SessionReportedSignal = ReportedSignal & {
+  description?: string;
+};
+
 /** Transient provider-authored activity heading for an open agent turn. */
 export type AgentCurrentActivity = {
   label: string;
@@ -231,7 +235,7 @@ export type MonitorState = {
     approvalMode: SessionApprovalMode | null;
     contextMachinery: ContextMachinery | null;
     summary: { text: string; observedAt: string | null; source: "provider" } | null;
-    signal: ReportedSignal | null;
+    signal: SessionReportedSignal | null;
   } | null;
   score: number;
   metrics: {

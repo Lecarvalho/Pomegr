@@ -19,7 +19,7 @@ test("accepts only allowlisted Codex Threadlight signal calls and rollout timest
   const signals = parseCodexSignalRecords([
     signalCall("2026-08-11T14:00:00.000Z", "mcp__threadlight__report_agent_signal", "agent-1", { label: "Reviewing", tone: "info" }),
     signalCall("2026-08-11T14:01:00.000Z", "mcp__threadlight__report_agent_signal", "agent-2", { label: "Ready", tone: "positive", description: "All review findings were resolved." }, "custom_tool_call"),
-    signalCall("2026-08-11T14:02:00.000Z", "mcp__threadlight__report_session_signal", "session-1", { label: "PR ready", tone: "positive" }),
+    signalCall("2026-08-11T14:02:00.000Z", "mcp__threadlight__report_session_signal", "session-1", { label: "PR ready", tone: "positive", description: "All requested checks passed." }),
     signalCall("2026-08-11T14:03:00.000Z", "mcp__threadlight__report_task_signal", "task-1", { task_id: "command-1", label: "Passed", tone: "positive" }),
     signalCall("2026-08-11T14:04:00.000Z", "mcp__another__report_session_signal", "spoof-1", { label: "Spoofed", tone: "negative" }),
     signalCall("2026-08-11T14:05:00.000Z", "mcp__threadlight__report_agent_signal", "spoof-2", { label: "Spoofed", tone: "negative", agent_id: "primary" }),
@@ -27,7 +27,7 @@ test("accepts only allowlisted Codex Threadlight signal calls and rollout timest
   ]);
 
   assert.deepEqual(signals.agent, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T14:01:00.000Z", description: "All review findings were resolved." });
-  assert.deepEqual(signals.session, { label: "PR ready", tone: "positive", reportedAt: "2026-08-11T14:02:00.000Z" });
+  assert.deepEqual(signals.session, { label: "PR ready", tone: "positive", reportedAt: "2026-08-11T14:02:00.000Z", description: "All requested checks passed." });
   assert.deepEqual([...signals.tasks], [["command-1", {
     label: "Passed",
     tone: "positive",
@@ -47,7 +47,7 @@ test("derives the reporting agent from each rollout and resolves task targets mo
     record("2026-08-11T15:00:02.000Z", "response_item", { type: "function_call", name: "shell_command", call_id: "command-1", arguments: JSON.stringify({ command: "COMMAND_MUST_NOT_LEAK", description: "Run checks" }) }),
     signalCall("2026-08-11T15:00:03.000Z", "mcp__threadlight__report_task_signal", "task-valid", { task_id: "command-1", label: "Checks passed", tone: "positive" }),
     signalCall("2026-08-11T15:00:04.000Z", "mcp__threadlight__report_task_signal", "task-private", { task_id: "unknown-task", label: "MCP_ARGUMENT_MUST_NOT_LEAK", tone: "negative" }),
-    signalCall("2026-08-11T15:00:05.000Z", "mcp__threadlight__report_session_signal", "session-valid", { label: "Ready", tone: "positive" }),
+    signalCall("2026-08-11T15:00:05.000Z", "mcp__threadlight__report_session_signal", "session-valid", { label: "Ready", tone: "positive", description: "The session is ready for handoff." }),
   ];
   const child = [
     record("2026-08-11T15:00:06.000Z", "session_meta", { id: "signal-child", parent_thread_id: "signal-parent", cwd: "C:\\synthetic\\repo", source: { subagent: "review" } }),
@@ -63,7 +63,7 @@ test("derives the reporting agent from each rollout and resolves task targets mo
   const task = evidence.agents.find((agent) => agent.id === "primary").executionTasks.find(({ id }) => id === "command-1");
 
   assert.equal(provider.capabilities.signals, true);
-  assert.deepEqual(evidence.session.signal, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T15:00:05.000Z" });
+  assert.deepEqual(evidence.session.signal, { label: "Ready", tone: "positive", reportedAt: "2026-08-11T15:00:05.000Z", description: "The session is ready for handoff." });
   assert.deepEqual(childAgent.signal, { label: "Reviewed", tone: "info", reportedAt: "2026-08-11T15:00:07.000Z", description: "No blocking findings." });
   assert.deepEqual(task.signal, { label: "Checks passed", tone: "positive", reportedAt: "2026-08-11T15:00:03.000Z" });
   assert.doesNotMatch(JSON.stringify(evidence), /unknown-task|Spoofed|MCP_ARGUMENT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK/);

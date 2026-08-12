@@ -8,8 +8,8 @@ import type {
   ProviderCapabilities,
   ProviderId,
   ProviderSource,
-  ReportedSignal,
   SessionApprovalMode,
+  SessionReportedSignal,
   UsageLimits,
 } from "../../shared/monitor-contract";
 
@@ -113,7 +113,7 @@ export type ProviderSessionEvidence = {
     approvalMode: SessionApprovalMode | null;
     contextMachinery: ContextMachinery | null;
     summary: SessionSummary | null;
-    signal: ReportedSignal | null;
+    signal: SessionReportedSignal | null;
   };
   agents: ProviderAgentEvidence[];
   usageSnapshots: ProviderUsageSnapshot[];

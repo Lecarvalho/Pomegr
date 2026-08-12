@@ -253,6 +253,13 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .agentChip { min-width: 0; max-width: 100%; min-height: 18px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 99px; padding: 3px 7px; white-space: nowrap; font-size: 8px; line-height: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .agentChipLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agentChipButton { cursor: pointer; }
+.agentChipTooltipTrigger { position: relative; overflow: visible; cursor: help; }
+.agentChipTooltipTrigger::before { content: ""; position: absolute; inset: -5px -4px; }
+.signalTooltip { position: fixed; z-index: 100; width: max-content; max-width: min(260px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: #19201d; color: #fbfaf6; box-shadow: 0 10px 28px rgba(25,32,29,.22); font-size: 11px; font-weight: 500; letter-spacing: 0; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; pointer-events: none; animation: signalTooltipIn .14s cubic-bezier(.2,.8,.2,1); }
+.signalTooltip::after { content: ""; position: absolute; left: calc(var(--signal-tooltip-arrow-left) - 5px); width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
+.signalTooltip[data-placement="top"]::after { bottom: -4px; }
+.signalTooltip[data-placement="bottom"]::after { top: -4px; }
+@keyframes signalTooltipIn { from { opacity: 0; transform: translateY(3px); } }
 .agentRow .agentTitleLine > .agentSignal { flex: 0 0 auto; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .agentSignal, .executionTaskSignal, .sessionSignal { color: var(--muted); background: #ebeae4; }.agentSignal.info, .executionTaskSignal.info, .sessionSignal.info { color: var(--blue); background: rgba(80,101,168,.12); }.agentSignal.positive, .executionTaskSignal.positive, .sessionSignal.positive { color: var(--green); background: var(--green-soft); }.agentSignal.warning, .executionTaskSignal.warning, .sessionSignal.warning { color: var(--amber); background: var(--amber-soft); }.agentSignal.negative, .executionTaskSignal.negative, .sessionSignal.negative { color: var(--red); background: #f1ddd9; }
 .sessionSignal { flex: 0 1 auto; max-width: 190px; overflow: hidden; }
@@ -261,6 +268,9 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .skillPopoverList { max-height: 280px; overflow-y: auto; padding: 5px 0; scrollbar-width: thin; }.skillPopoverRow { min-height: 47px; padding: 9px 15px; display: grid; grid-template-columns: minmax(0, 1fr) 52px; align-items: center; gap: 12px; border-bottom: 1px solid #eceae4; }.skillPopoverRow:last-child { border-bottom: 0; }.skillPopoverRow > div { min-width: 0; }.skillPopoverRow > div:last-child { text-align: right; }.skillPopoverRow strong, .skillPopoverRow small { display: block; }.skillPopoverRow strong { overflow-wrap: anywhere; font-size: 11px; }.skillPopoverRow small { margin-top: 4px; color: var(--muted); font-size: 9px; }
 .executionTaskTrigger { background: var(--green-soft); color: var(--green); }.executionTaskTrigger:hover, .executionTaskTrigger[aria-expanded="true"] { background: #cfe2d8; }.executionTaskTrigger[aria-expanded="true"] { box-shadow: 0 0 0 1px var(--green); }
 .executionTaskList { max-height: 310px; overflow-y: auto; padding: 4px 0 7px; scrollbar-width: thin; }.executionTaskSection h3 { margin: 0; padding: 10px 15px 5px; color: var(--muted); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }.executionTaskSection + .executionTaskSection { border-top: 1px solid #eceae4; }.executionTaskRow { min-height: 48px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; padding: 9px 15px; }.executionTaskRow > div { min-width: 0; }.executionTaskTitleLine { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 5px 7px; }.executionTaskTitleLine strong { min-width: 0; }.executionTaskSignal { flex: 0 0 auto; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }.executionTaskRow strong { display: block; overflow-wrap: anywhere; font-size: 11px; line-height: 1.35; }.executionTaskRow small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }.executionTaskState { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid #cbd1cd; border-radius: 50%; color: var(--muted); font: 800 10px/1 Arial, sans-serif; }.executionTaskRow.running .executionTaskState { border-color: var(--green); color: var(--green); animation: taskPulse 1.4s ease-in-out infinite; }.executionTaskRow.completed .executionTaskState { border-color: #a8c9ba; color: var(--green); }.executionTaskRow.failed .executionTaskState, .executionTaskRow.stopped .executionTaskState { border-color: #d4aaa0; color: var(--red); }.executionTaskRow.completed strong { color: #5e6661; }
+.agentRow .agentTitleLine > .agentSignal.agentChipTooltipTrigger,
+.executionTaskSignal.agentChipTooltipTrigger,
+.sessionSignal.agentChipTooltipTrigger { overflow: visible; }
 .currentActivitySection { background: rgba(80,101,168,.055); }.currentActivityRow { min-height: 55px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; padding: 9px 15px 12px; }.currentActivityRow > div { min-width: 0; }.currentActivityRow strong { display: block; overflow-wrap: anywhere; font-size: 11px; line-height: 1.4; }.currentActivityRow small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.35; }.currentActivityMark { position: relative; width: 18px; height: 18px; border: 1px dashed var(--blue); border-radius: 50%; }.currentActivityMark::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--blue); animation: activityPulse 1.8s ease-in-out infinite; }
 @keyframes activityPulse { 50% { transform: scale(.55); opacity: .45; } }
 .planTaskTrigger { background: var(--amber-soft); color: var(--amber); }.planTaskTrigger:hover, .planTaskTrigger[aria-expanded="true"] { background: #efdbc5; }.planTaskTrigger[aria-expanded="true"] { box-shadow: 0 0 0 1px var(--amber); }
@@ -295,6 +305,16 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionDetailsBody { padding-top: 12px; }
 .sessionDetailsBody > :last-child { margin-bottom: 0; }
 footer { display: flex; justify-content: space-between; margin-top: auto; color: var(--muted); font-size: 10px; padding: 5px 2px 30px; } footer a { color: inherit; text-underline-offset: 3px; } footer a:hover { color: var(--green); }
+
+@media (hover: none), (pointer: coarse) {
+  .agentChipTooltipTrigger { cursor: pointer; }
+  .agentChipTooltipTrigger::before { inset: -13px -8px; }
+  .signalTooltip { max-width: min(280px, calc(100vw - 24px)); padding: 10px 12px; font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signalTooltip { animation: none; }
+}
 
 @media (max-width: 1100px) {
   .appFrame { display: block; }.sessionSidebar { position: fixed; left: 0; visibility: hidden; transform: translateX(-100%); width: min(286px, calc(100vw - 42px)); transition: transform .2s ease, visibility 0s linear .2s; box-shadow: 18px 0 50px rgba(25,32,29,.14); }.sessionSidebar.open { visibility: visible; transform: translateX(0); transition-delay: 0s; }.sidebarHeader > .closeButton { display: grid; }.sidebarBackdrop { display: block; position: fixed; inset: 0; z-index: 15; border: 0; background: rgba(25,32,29,.28); }.sessionMenuButton { display: inline-block; }
@@ -382,6 +402,7 @@ html[data-theme="dark"] .branchComparison.pending,
 html[data-theme="dark"] .agentSignal,
 html[data-theme="dark"] .executionTaskSignal,
 html[data-theme="dark"] .sessionSignal { background: #252c28; }
+html[data-theme="dark"] .signalTooltip { background: #e6ece8; color: #101412; box-shadow: 0 12px 30px rgba(0,0,0,.38); }
 html[data-theme="dark"] .currentActivitySection { background: rgba(155,172,232,.075); }
 html[data-theme="dark"] .pullRequestBody code { color: var(--muted); }
 html[data-theme="dark"] .branchComparison { background: #222d31; }

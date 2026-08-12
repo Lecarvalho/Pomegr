@@ -326,8 +326,30 @@ describe("repository branch overview", () => {
   });
 });
 
-describe("agent detail popovers", () => {
-  it("shows an agent signal description as the tag tooltip", () => {
+describe("reported signal tooltips", () => {
+  it("shows a session signal description on desktop hover", async () => {
+    const user = userEvent.setup();
+    const signaledSession = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      signal: {
+        label: "Review complete",
+        tone: "positive" as const,
+        reportedAt: "2026-08-08T12:00:05.000Z",
+        description: "All requested checks passed.",
+      },
+    };
+
+    render(<LiveClockProvider running={false}><SessionHero session={signaledSession} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+
+    const trigger = screen.getByRole("button", { name: "Review complete" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    await user.hover(trigger);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("All requested checks passed.");
+    await user.unhover(trigger);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("toggles an agent signal description on touch and dismisses it", () => {
     const signaledAgent = {
       ...agent,
       signal: {
@@ -340,9 +362,16 @@ describe("agent detail popovers", () => {
 
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[signaledAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("Approved")).toHaveAttribute("title", "All requested checks passed.");
+    const trigger = screen.getByRole("button", { name: "Approved" });
+    fireEvent.pointerDown(trigger, { pointerType: "touch" });
+    fireEvent.pointerUp(trigger, { pointerType: "touch" });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("All requested checks passed.");
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
+});
 
+describe("agent detail popovers", () => {
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {
     const user = userEvent.setup();
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} /></LiveClockProvider>);

@@ -5,25 +5,25 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
-  AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH,
   AGENT_SIGNAL_TOOL,
   normalizeAgentSignal,
   normalizeSessionSignal,
   normalizeTaskSignal,
-  SESSION_SIGNAL_MAX_LABEL_LENGTH,
+  SIGNAL_MAX_DESCRIPTION_LENGTH,
+  SIGNAL_MAX_LABEL_LENGTH,
   SESSION_SIGNAL_TOOL,
   SESSION_SIGNAL_TONES,
   TASK_SIGNAL_TOOL,
 } from "../monitor/session-signals.mjs";
 
-const labelSchema = z.string().trim().min(1).max(SESSION_SIGNAL_MAX_LABEL_LENGTH)
+const labelSchema = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
   .refine((label) => normalizeSessionSignal({ label, tone: "neutral" }) !== null, "Use one line of plain text without control characters.")
   .describe("Short plain-text tag, such as Approved, Rejected, or Research complete.");
 const toneSchema = z.enum(SESSION_SIGNAL_TONES).default("neutral")
   .describe("Semantic tone used by Threadlight to decorate the tag.");
-const descriptionSchema = z.string().trim().min(1).max(AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH)
+const descriptionSchema = z.string().trim().min(1).max(SIGNAL_MAX_DESCRIPTION_LENGTH)
   .refine((description) => normalizeAgentSignal({ label: "Signal", tone: "neutral", description }) !== null, "Use one line of plain text without control characters.")
-  .describe("Optional short plain-text explanation shown as the agent tag tooltip.")
+  .describe("Optional short plain-text explanation shown as the tag tooltip.")
   .optional();
 const signalAnnotations = {
   readOnlyHint: true,
@@ -56,7 +56,7 @@ export function buildThreadlightMcpServer() {
       if (!signal) {
         return {
           isError: true,
-          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-40 characters, an optional one-line description of up to 160 characters, and a supported tone." }],
+          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-20 characters, an optional one-line description of up to 160 characters, and a supported tone." }],
         };
       }
       return {
@@ -69,10 +69,11 @@ export function buildThreadlightMcpServer() {
     SESSION_SIGNAL_TOOL,
     {
       title: "Report Threadlight session signal",
-      description: "Report one short status tag for the overall Threadlight session. Any agent may report it, and the latest call replaces the earlier session tag. Do not include prompts, responses, secrets, commands, or tool output.",
+      description: "Report one short status tag for the overall Threadlight session, with an optional tooltip description. Any agent may report it, and the latest call replaces the earlier session tag. Do not include prompts, responses, secrets, commands, or tool output.",
       inputSchema: z.object({
         label: labelSchema,
         tone: toneSchema,
+        description: descriptionSchema,
       }).strict(),
       annotations: signalAnnotations,
       _meta: { "anthropic/alwaysLoad": true },
@@ -82,7 +83,7 @@ export function buildThreadlightMcpServer() {
       if (!signal) {
         return {
           isError: true,
-          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-40 characters and a supported tone." }],
+          content: [{ type: "text", text: "Signal rejected. Use a plain-text label of 1-20 characters, an optional one-line description of up to 160 characters, and a supported tone." }],
         };
       }
       return {
@@ -110,7 +111,7 @@ export function buildThreadlightMcpServer() {
       if (!signal) {
         return {
           isError: true,
-          content: [{ type: "text", text: "Task signal rejected. Use a safe task ID, a plain-text label of 1-40 characters, and a supported tone." }],
+          content: [{ type: "text", text: "Task signal rejected. Use a safe task ID, a plain-text label of 1-20 characters, and a supported tone." }],
         };
       }
       return {

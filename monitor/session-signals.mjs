@@ -7,12 +7,12 @@ export const SESSION_SIGNAL_TOOL = "report_session_signal";
 export const SESSION_SIGNAL_MCP_TOOL = `mcp__threadlight__${SESSION_SIGNAL_TOOL}`;
 export const TASK_SIGNAL_TOOL = "report_task_signal";
 export const TASK_SIGNAL_MCP_TOOL = `mcp__threadlight__${TASK_SIGNAL_TOOL}`;
-export const SESSION_SIGNAL_MAX_LABEL_LENGTH = 40;
-export const AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH = 160;
+export const SIGNAL_MAX_LABEL_LENGTH = 20;
+export const SIGNAL_MAX_DESCRIPTION_LENGTH = 160;
 export const SESSION_SIGNAL_TONES = ["neutral", "info", "positive", "warning", "negative"];
 
 const toneSet = new Set(SESSION_SIGNAL_TONES);
-const sessionSignalKeys = new Set(["label", "tone"]);
+const sessionSignalKeys = new Set(["label", "tone", "description"]);
 const agentSignalKeys = new Set(["label", "tone", "description"]);
 const taskSignalKeys = new Set(["task_id", "label", "tone"]);
 const signalCache = new Map();
@@ -28,7 +28,7 @@ function normalizedSignal(input, allowedKeys, reportedAt) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   if (Object.keys(input).some((key) => !allowedKeys.has(key))) return null;
   const rawLabel = typeof input.label === "string" ? input.label.trim() : "";
-  if (!rawLabel || rawLabel.length > SESSION_SIGNAL_MAX_LABEL_LENGTH || /[\u0000-\u001f\u007f]/.test(rawLabel)) return null;
+  if (!rawLabel || rawLabel.length > SIGNAL_MAX_LABEL_LENGTH || /[\u0000-\u001f\u007f]/.test(rawLabel)) return null;
   const label = rawLabel.replace(/ {2,}/g, " ");
   const tone = input?.tone === undefined ? "neutral" : input.tone;
   if (!toneSet.has(tone)) return null;
@@ -36,17 +36,21 @@ function normalizedSignal(input, allowedKeys, reportedAt) {
 }
 
 export function normalizeSessionSignal(input, reportedAt = null) {
-  return normalizedSignal(input, sessionSignalKeys, reportedAt);
+  return normalizedDescribedSignal(input, sessionSignalKeys, reportedAt);
 }
 
-export function normalizeAgentSignal(input, reportedAt = null) {
-  const signal = normalizedSignal(input, agentSignalKeys, reportedAt);
+function normalizedDescribedSignal(input, allowedKeys, reportedAt) {
+  const signal = normalizedSignal(input, allowedKeys, reportedAt);
   if (!signal || input.description === undefined) return signal;
   const rawDescription = typeof input.description === "string" ? input.description.trim() : "";
   if (!rawDescription
-    || rawDescription.length > AGENT_SIGNAL_MAX_DESCRIPTION_LENGTH
+    || rawDescription.length > SIGNAL_MAX_DESCRIPTION_LENGTH
     || /[\u0000-\u001f\u007f]/.test(rawDescription)) return null;
   return { ...signal, description: rawDescription.replace(/ {2,}/g, " ") };
+}
+
+export function normalizeAgentSignal(input, reportedAt = null) {
+  return normalizedDescribedSignal(input, agentSignalKeys, reportedAt);
 }
 
 export function normalizeTaskSignal(input, reportedAt = null) {

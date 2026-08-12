@@ -32,7 +32,7 @@ function agentSignalRecord(label, tone, timestamp) {
   };
 }
 
-function sessionSignalRecord(label, tone, timestamp) {
+function sessionSignalRecord(label, tone, timestamp, description) {
   return {
     type: "assistant",
     timestamp,
@@ -41,7 +41,7 @@ function sessionSignalRecord(label, tone, timestamp) {
         type: "tool_use",
         id: `signal-${label}`,
         name: SESSION_SIGNAL_MCP_TOOL,
-        input: { label, tone },
+        input: { label, tone, ...(description ? { description } : {}) },
       }],
     },
   };
@@ -70,7 +70,14 @@ test("normalizes bounded plain-text signals", () => {
   });
   assert.deepEqual(normalizeSessionSignal({ label: "Approved" }), { label: "Approved", tone: "neutral", reportedAt: null });
   assert.equal(normalizeSessionSignal({ label: "", tone: "positive" }), null);
-  assert.equal(normalizeSessionSignal({ label: "x".repeat(41), tone: "positive" }), null);
+  assert.deepEqual(normalizeSessionSignal({ label: "x".repeat(20), tone: "positive" }), {
+    label: "x".repeat(20),
+    tone: "positive",
+    reportedAt: null,
+  });
+  assert.equal(normalizeSessionSignal({ label: "x".repeat(21), tone: "positive" }), null);
+  assert.equal(normalizeAgentSignal({ label: "x".repeat(21), tone: "positive" }), null);
+  assert.equal(normalizeTaskSignal({ task_id: "background_123", label: "x".repeat(21), tone: "positive" }), null);
   assert.equal(normalizeSessionSignal({ label: "Approved", tone: "green" }), null);
   assert.equal(normalizeSessionSignal({ label: "Approved\nprivate output", tone: "positive" }), null);
   assert.equal(normalizeSessionSignal({ label: "Approved", tone: "positive", detail: "not exposed" }), null);
@@ -87,10 +94,21 @@ test("normalizes bounded plain-text signals", () => {
   assert.equal(normalizeAgentSignal({ label: "Approved", description: "" }), null);
   assert.equal(normalizeAgentSignal({ label: "Approved", description: "x".repeat(161) }), null);
   assert.equal(normalizeAgentSignal({ label: "Approved", description: "Private\noutput" }), null);
-  assert.equal(normalizeSessionSignal({ label: "Approved", description: "Agent-only field" }), null);
-  assert.deepEqual(normalizeTaskSignal({ task_id: "background_123", label: "Approved with suggestions", tone: "info" }), {
+  assert.deepEqual(normalizeSessionSignal({
+    label: "Approved",
+    tone: "positive",
+    description: "  Session checks   passed.  ",
+  }), {
+    label: "Approved",
+    tone: "positive",
+    reportedAt: null,
+    description: "Session checks passed.",
+  });
+  assert.equal(normalizeSessionSignal({ label: "Approved", description: "x".repeat(161) }), null);
+  assert.equal(normalizeSessionSignal({ label: "Approved", description: "Private\noutput" }), null);
+  assert.deepEqual(normalizeTaskSignal({ task_id: "background_123", label: "Approved w/ notes", tone: "info" }), {
     taskId: "background_123",
-    label: "Approved with suggestions",
+    label: "Approved w/ notes",
     tone: "info",
     reportedAt: null,
   });
@@ -111,13 +129,14 @@ test("uses the latest valid Threadlight MCP signal and ignores other content", (
       timestamp: "2026-08-07T14:02:00.000Z",
       message: { content: [{ type: "tool_result", content: "Approved" }] },
     },
-    sessionSignalRecord("Approved", "positive", "2026-08-07T14:03:00.000Z"),
+    sessionSignalRecord("Approved", "positive", "2026-08-07T14:03:00.000Z", "All review checks passed."),
   ];
 
   assert.deepEqual(latestSessionSignal(records), {
     label: "Approved",
     tone: "positive",
     reportedAt: "2026-08-07T14:03:00.000Z",
+    description: "All review checks passed.",
   });
 });
 
@@ -164,7 +183,7 @@ test("reconstructs historical session and task signals outside the bounded activ
   const transcript = path.join(directory, "agent-reviewer.jsonl");
   const olderAgentSignal = JSON.stringify(agentSignalRecord("Reviewer finished", "positive", "2026-08-07T13:59:00.000Z"));
   const olderSignal = JSON.stringify(sessionSignalRecord("Approved", "positive", "2026-08-07T14:00:00.000Z"));
-  const olderTaskSignal = JSON.stringify(taskSignalRecord("background_123", "Approved with suggestions", "info", "2026-08-07T14:01:00.000Z"));
+  const olderTaskSignal = JSON.stringify(taskSignalRecord("background_123", "Approved w/ notes", "info", "2026-08-07T14:01:00.000Z"));
   const filler = JSON.stringify({ type: "system", payload: "x".repeat(2 * 1024 * 1024 + 32) });
   await writeFile(transcript, `${olderAgentSignal}\n${olderSignal}\n${olderTaskSignal}\n${filler}\n`, "utf8");
 
@@ -181,7 +200,7 @@ test("reconstructs historical session and task signals outside the bounded activ
       reportedAt: "2026-08-07T14:00:00.000Z",
     });
     assert.deepEqual([...signals.tasks], [["background_123", {
-      label: "Approved with suggestions",
+      label: "Approved w/ notes",
       tone: "info",
       reportedAt: "2026-08-07T14:01:00.000Z",
     }]]);
