@@ -45,6 +45,11 @@ import {
   installDesktopWindowLifecycle,
   installWindowBoundsGuard,
 } from "./desktop-behavior.mjs";
+import {
+  installDesktopBehaviorIpcHandlers,
+  installRendererFailureHandler,
+  startOptionalDesktopIntegration,
+} from "./native-security.mjs";
 
 installQuietConsole();
 
@@ -259,36 +264,28 @@ function createShellTray() {
   tray.on("click", showShellWindow);
 }
 
+function startOptionalTray() {
+  return startOptionalDesktopIntegration({
+    start() { createShellTray(); updateTrayMenu(behaviorController.snapshot()); },
+    cleanup() { tray?.destroy(); tray = undefined; },
+  });
+}
+
 function broadcastDesktopState(state) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(DESKTOP_BEHAVIOR_CHANNELS.stateChanged, state);
 }
 
 function installDesktopBehaviorIpc() {
-  for (const channel of [
-    DESKTOP_BEHAVIOR_CHANNELS.getState,
-    DESKTOP_BEHAVIOR_CHANNELS.setPaused,
-    DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
-    DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior,
-    DESKTOP_BEHAVIOR_CHANNELS.setNotifications,
-    DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet,
-    DESKTOP_BEHAVIOR_CHANNELS.setTheme,
-    DESKTOP_BEHAVIOR_CHANNELS.quit,
-  ]) ipcMain.removeHandler(channel);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.getState, (event) => trustedDesktopEvent(event) ? behaviorController.snapshot() : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setPaused, (event, value) => trustedDesktopEvent(event) ? behaviorController.setPaused(value) : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setLaunchAtLogin(value) : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setCloseBehavior(value) : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setNotifications, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setNotifications(value) : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet, (event, value) => trustedDesktopEvent(event) ? behaviorController.setNotificationQuiet(value) : null);
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setTheme, createDesktopThemeHandler({
+  installDesktopBehaviorIpcHandlers({
+    ipcMain,
+    channels: DESKTOP_BEHAVIOR_CHANNELS,
     isTrustedEvent: trustedDesktopEvent,
-    nativeTheme,
-  }));
-  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.quit, (event) => {
-    if (!trustedDesktopEvent(event)) return false;
-    behaviorController.quit();
-    return true;
+    getController: () => behaviorController,
+    themeHandler: createDesktopThemeHandler({
+      isTrustedEvent: trustedDesktopEvent,
+      nativeTheme,
+    }),
   });
 }
 
@@ -488,8 +485,7 @@ async function startDesktop() {
           updateTray: updateTrayMenu,
           broadcast: broadcastDesktopState,
         });
-        createShellTray();
-        updateTrayMenu(behaviorController.snapshot());
+        startOptionalTray();
         installDesktopBehaviorIpc();
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {
@@ -499,6 +495,11 @@ async function startDesktop() {
         installWebContentsSecurity(mainWindow.webContents, {
           webOrigin: web.origin,
           openExternal: (url) => shell.openExternal(url),
+        });
+        installRendererFailureHandler(mainWindow.webContents, {
+          getRuntimeState: () => runtimeState,
+          markStartupFailed: () => { startupFailed = true; },
+          handleRuntimeFailure,
         });
         mainWindow.once("ready-to-show", () => {
           mainWindow?.show();

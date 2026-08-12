@@ -94,7 +94,7 @@ test("native payload is fixed, bounded, and excludes every private sentinel", ()
   assert.equal(notifications.length, 1);
   assert.deepEqual(notifications[0].payload, {
     title: "Threadlight",
-    body: `${NEEDS_INPUT_NOTIFICATION_COPY} — Safe normalized title`,
+    body: NEEDS_INPUT_NOTIFICATION_COPY,
   });
   assert.doesNotMatch(JSON.stringify(notifications[0].payload), /QUESTION|CHOICE|PROMPT|COMMAND|TOOL_INPUT|FILE_CONTENT|STDOUT|STDERR|APPROVAL/);
   notifications[0].onClick();
@@ -111,4 +111,17 @@ test("unsafe IDs are ignored and notification titles remain one bounded line", (
   const bounded = boundedNotificationTitle(`\u0000 ${"x".repeat(200)}\nprivate`);
   assert.equal(bounded.length, 96);
   assert.doesNotMatch(bounded, /[\r\n\u0000]/);
+});
+
+test("session-title privacy sentinels never enter the native notification payload", () => {
+  const { controller, notifications } = harness();
+  controller.observe([session("codex:safe-id", {
+    needsInput: true,
+    title: "PROMPT_MUST_NOT_LEAK CREDENTIAL_MUST_NOT_LEAK C:\\Users\\private",
+  })], { enabled: true });
+  assert.deepEqual(notifications[0].payload, {
+    title: "Threadlight",
+    body: NEEDS_INPUT_NOTIFICATION_COPY,
+  });
+  assert.doesNotMatch(JSON.stringify(notifications[0].payload), /MUST_NOT_LEAK|C:\\\\Users/);
 });

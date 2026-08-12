@@ -48,9 +48,21 @@ Claude Code's `/context` command writes its rendered context snapshot to the ses
 
 Live-state evidence is provider-specific and explicitly bounded. Claude Code prefers its local session registry. Codex prefers an owning app-server connection, then the opt-in allowlisted lifecycle bridge, then a 120-second bounded rollout-tail heuristic. A current needs-input session takes priority during automatic selection. Historical views never inherit current lifecycle evidence.
 
-## Run locally
+## Install the Windows desktop app
 
-Requirements:
+For a published Windows x64 release, the desktop app is the primary user path. Download the signed `Threadlight-Setup-X.Y.Z-x64.exe` and `SHA256SUMS.txt` from the matching [Threadlight release](https://github.com/Lecarvalho/threadlight/releases). Verify the checksum and that Windows reports a valid, timestamped signature from the expected publisher, then run the per-user installer. It does not require a repository checkout, Node.js, administrator privileges, or an open terminal. A release without those signed matching assets is not a supported desktop release.
+
+Threadlight discovers persisted Claude Code and Codex sessions from their normal Windows user locations. Either provider may be installed independently. The desktop monitor and web service bind only to dynamically assigned `127.0.0.1` ports; desktop LAN sharing is unavailable. Closing the window follows the selected ask, tray, or quit preference; use **Quit Threadlight** or the tray's **Quit** command to stop the app and its services.
+
+The portable beta is a separate recovery/testing option. Place `Threadlight-Portable-X.Y.Z-x64.exe` in a writable directory and run it directly. It keeps Threadlight-owned state in `ThreadlightData` beside the executable, does not register launch at login, and does not offer automatic updates. It never relocates or copies provider data.
+
+Only Windows x64 is supported for this first desktop release. There is no supported macOS, Linux, ARM64, app-store, or cloud-hosted desktop build.
+
+See [desktop configuration and troubleshooting](docs/CONFIGURATION.md) and [release verification details](docs/DESKTOP_RELEASES.md).
+
+## Contributor development
+
+Requirements for source development only:
 
 - Windows with Node.js 22.13 or newer
 - Claude Code and/or Codex with local session persistence enabled
@@ -61,9 +73,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://<YOUR-LAN-IP>:3003` from another device on the same network. For
-example, if this computer's IPv4 address is `192.168.1.25`, open
-`http://192.168.1.25:3003` on your phone.
+Open `http://localhost:3003` on the development computer. The source-development web server also binds to `0.0.0.0:3003`, so it can be opened from another device on the same trusted network; this LAN exposure is a development feature and is not available in the desktop app.
 
 The development command starts:
 
@@ -182,7 +192,7 @@ Threadlight does not derive cumulative transcript-throughput or token-spend tota
 - Credentials are sent only to the provider's own usage endpoint and never enter browser state.
 - Plan usage is refreshed every 60 seconds while a live view is unpaused. Normal session polling and manual refreshes never call the provider usage endpoint; server caching deduplicates simultaneous tabs.
 
-Anyone who can reach port 3003 on the local network can view dashboard metadata. The development server accepts any hostname so it can be reached by IP; bind the web server to localhost if that is inappropriate for your network. Your firewall may prompt you to allow Node.js on private networks.
+In the installed and portable desktop apps, both local services use dynamic loopback-only ports plus a per-launch authorization boundary; other LAN devices cannot connect. In source development, anyone who can reach port 3003 on the local network can view dashboard metadata. The development server accepts any hostname, so use it only on a trusted network or change the development binding if that is inappropriate. Your firewall may prompt you to allow Node.js on private networks.
 
 ## Development
 

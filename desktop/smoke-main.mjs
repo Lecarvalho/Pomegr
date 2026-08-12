@@ -274,6 +274,8 @@ async function executeSmoke() {
           ]);
           const state = response.ok ? await response.json() : null;
           const sessions = sessionsResponse.ok ? await sessionsResponse.json() : null;
+          const privateSentinel = /(?:PROMPT|RESPONSE|COMMAND|STDOUT|STDERR|TOOL_OUTPUT|OAUTH_TOKEN|ENV_SECRET|PRIVATE_PATH|CREDENTIAL|ARBITRARY_EXCEPTION)_MUST_NOT_LEAK/;
+          const serializedApi = JSON.stringify({ state, sessions });
           return {
             title: document.title,
             hasNodeProcess: typeof process !== 'undefined',
@@ -284,6 +286,8 @@ async function executeSmoke() {
               && typeof state?.connected === 'boolean'
               && sessionsResponse.status === 200
               && Array.isArray(sessions?.sessions),
+            privacySafe: !privateSentinel.test(serializedApi)
+              && !privateSentinel.test(document.documentElement.outerHTML),
           };
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -295,7 +299,8 @@ async function executeSmoke() {
       || rendererBoundary.hasRequire !== false
       || rendererBoundary.styled !== true
       || rendererBoundary.hydrated !== true
-      || rendererBoundary.stateReady !== true) {
+      || rendererBoundary.stateReady !== true
+      || rendererBoundary.privacySafe !== true) {
       throw new Error("DESKTOP_RENDERER_BOUNDARY_FAILED");
     }
     recordStage("WINDOW_VERIFIED");

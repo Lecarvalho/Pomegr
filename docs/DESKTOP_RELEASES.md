@@ -2,6 +2,18 @@
 
 Official Threadlight Windows releases are built only by the tag-triggered GitHub Actions workflow from a clean checkout of the tagged commit. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
 
+## Release checklist
+
+- [ ] The exact tag matches `package.json`, is immutable, and points at the clean checkout used by CI.
+- [ ] `npm test`, `npm run lint`, `npm run desktop:smoke`, `npm run desktop:security`, and `npm run desktop:inspect` pass.
+- [ ] Both executables have valid Authenticode signatures, the exact complete publisher Subject, and trusted timestamps.
+- [ ] `SHA256SUMS.txt` matches every published artifact and update metadata names/version/checksum are internally consistent.
+- [ ] The exact tagged `Threadlight-X.Y.Z-source.zip` is published beside the binaries at no charge.
+- [ ] `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` are present, non-empty, and accessible from About.
+- [ ] The remote release asset set exactly matches the allowlist; no diagnostics, unsigned fixtures, private paths, secrets, certificate material, or signing configuration are present.
+- [ ] For beta, every clean-VM gate in `DESKTOP_BETA_ACCEPTANCE.md` passes and `npm run desktop:beta:verify -- --version X.Y.Z-beta.N` verifies the archived evidence record.
+- [ ] Download, first launch, provider discovery, notification transition/clear, preference restart, signed update, clean shutdown, uninstall data preservation, and portable isolation are recorded as pass.
+
 ## Signing configuration
 
 The repository release environment must define these GitHub Actions secrets:

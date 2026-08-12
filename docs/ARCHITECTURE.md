@@ -20,6 +20,23 @@ The browser receives normalized metadata only. The monitor owns privileged acces
 
 ## Runtime components
 
+### Desktop process ownership
+
+The Windows x64 desktop application is a single Electron application with three explicit trust levels:
+
+```text
+Electron main (lifecycle, tray, notifications, updater, narrow IPC)
+  |-- monitor worker (provider files, credentials, Git, normalization)
+  |-- in-main web listener (provider-neutral production UI/proxy)
+  `-- sandboxed BrowserWindow (normalized state and bounded desktop controls)
+```
+
+Electron main acquires the single-instance lock and owns startup, shutdown, window/tray behavior, settings, native notifications, update coordination, and service supervision. The monitor worker is the sole desktop process allowed provider discovery roots and credentials. The in-main web listener receives only the monitor origin and ephemeral authorization value. The renderer receives normalized API state and a frozen narrow preload bridge; it has no Node.js, filesystem, environment, child-process, credential, transcript, or arbitrary IPC access.
+
+Main starts the monitor before the web listener and creates the window only after both are ready. It stops the notification poller, updater listeners, monitor worker, and web listener on explicit quit, failure, or update installation. Closing to the tray deliberately keeps observation running; pausing affects UI polling only and never controls an agent.
+
+Needs-input notifications are produced from the normalized session catalog on a false-to-true transition. Their title and body are fixed generic Threadlight copy; session titles and all other provider metadata are excluded. Clicking navigates to the exact safe provider-qualified session ID in the existing observation UI; it does not answer or approve anything. Automatic updates are installed-mode only, channel-isolated, signature-verified against one full publisher Subject, and require explicit restart/install confirmation. Portable mode disables login registration and updates.
+
 ### Local monitor
 
 `monitor/server.mjs` currently:

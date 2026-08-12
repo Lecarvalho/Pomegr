@@ -12,6 +12,7 @@ import {
   renderChecksumManifest,
   updateMetadataName,
 } from "./release-policy.mjs";
+import { assertReleasePublishPrivacy } from "./artifact-privacy.mjs";
 
 const moduleRoot = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepositoryRoot = path.resolve(moduleRoot, "..");
@@ -44,6 +45,7 @@ export async function prepareRelease({
   inputRoot = path.join(repositoryRoot, "release"),
   outputRoot = path.join(inputRoot, "publish"),
   tag,
+  artifactExtractorPath,
 } = {}) {
   const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
   const { version } = packageJson;
@@ -88,6 +90,7 @@ export async function prepareRelease({
   if (actual.length !== expected.length || expected.some((name) => !actual.includes(name))) {
     throw new Error("DESKTOP_RELEASE_OUTPUT_INVALID");
   }
+  await assertReleasePublishPrivacy(outputRoot, expected, { extractorPath: artifactExtractorPath });
   return Object.freeze({ version, artifactCount: actual.length });
 }
 

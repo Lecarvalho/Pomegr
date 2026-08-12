@@ -54,12 +54,13 @@ export function installLocalRequestGate(server, options) {
   const expectedHost = `${options.host}:${options.port}`;
   const expectedOrigin = `http://${expectedHost}`;
   const responseHeaders = Object.freeze({ ...(options.responseHeaders || {}) });
+  let active = true;
   const listeners = server.listeners("request");
   if (listeners.length !== 1) throw new LocalServiceError("WEB_REQUEST_GATE_FAILED");
   server.removeAllListeners("request");
   server.on("request", (request, response) => {
     const origin = typeof request.headers.origin === "string" ? request.headers.origin : "";
-    const allowed = ["GET", "HEAD"].includes(request.method || "")
+    const allowed = active && ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
       && (!origin || origin === expectedOrigin)
       && requestHasDesktopAuthorization(request, authorizationToken);
@@ -72,6 +73,7 @@ export function installLocalRequestGate(server, options) {
     }
     listeners[0].call(server, request, response);
   });
+  return Object.freeze({ revoke() { active = false; } });
 }
 
 export function installStaticAssetFallback(server, serveStaticAsset) {
@@ -159,6 +161,7 @@ export async function startWebServer(options = {}) {
   process.env.THREADLIGHT_MONITOR_ORIGIN = monitorOrigin;
   let result;
   let handle;
+  let requestGate;
   try {
     recordStartupStage(options, "SHELL_WEB_LISTENER_STARTING");
     result = await startProdServer({ host, port, outDir });
@@ -167,7 +170,7 @@ export async function startWebServer(options = {}) {
     const boundPort = result.server.address()?.port;
     installStaticAssetFallback(result.server, serveStaticAsset);
     if (options.authorizationToken) {
-      installLocalRequestGate(result.server, {
+      requestGate = installLocalRequestGate(result.server, {
         authorizationToken: options.authorizationToken,
         host,
         port: boundPort,
@@ -175,13 +178,24 @@ export async function startWebServer(options = {}) {
       });
     }
     recordStartupStage(options, "SHELL_WEB_AUTH_READY");
-    handle = createLocalServiceHandle(result.server, {
+    const serviceHandle = createLocalServiceHandle(result.server, {
       host,
       normalExitCode: "WEB_CLOSED",
       unexpectedExitCode: "WEB_EXIT_UNEXPECTED",
       onClose() {
         if (previousMonitorOrigin === undefined) delete process.env.THREADLIGHT_MONITOR_ORIGIN;
         else process.env.THREADLIGHT_MONITOR_ORIGIN = previousMonitorOrigin;
+      },
+    });
+    let closePromise;
+    handle = Object.freeze({
+      ...serviceHandle,
+      revokeAuthorization: requestGate ? () => requestGate.revoke() : undefined,
+      close() {
+        if (closePromise) return closePromise;
+        requestGate?.revoke();
+        closePromise = new Promise((resolve) => setImmediate(resolve)).then(() => serviceHandle.close());
+        return closePromise;
       },
     });
     recordStartupStage(options, "SHELL_WEB_HANDLE_READY");

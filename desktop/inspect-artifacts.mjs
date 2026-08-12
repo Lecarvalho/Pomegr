@@ -1,5 +1,5 @@
-import { extractFile, listPackage } from "@electron/asar";
-import { readFile, readdir } from "node:fs/promises";
+import { extractFile, listPackage, statFile } from "@electron/asar";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +17,16 @@ import {
   recursiveFiles,
 } from "./artifact-policy.mjs";
 import { SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "./asar-policy.mjs";
+import {
+  assertBytesHaveNoPrivacySentinel,
+  assertDirectoryHasNoPrivacySentinel,
+  assertExtractedArtifactHasNoPrivacySentinel,
+  inspectAsarPrivacyEntry,
+  MAX_PRIVACY_SCAN_FILE_BYTES,
+  MAX_PRIVACY_SCAN_FILES,
+  MAX_PRIVACY_SCAN_TOTAL_BYTES,
+  resolveArtifactExtractor,
+} from "./artifact-privacy.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
@@ -38,6 +48,7 @@ try {
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
+  await assertDirectoryHasNoPrivacySentinel(unpackedRoot);
   for (const filename of EXTERNAL_RUNTIME_FILES) await assertNonemptyFile(path.join(resourcesRoot, filename));
   const updateConfiguration = await readFile(path.join(resourcesRoot, "app-update.yml"), "utf8");
   for (const expected of ["provider: github", "owner: Lecarvalho", "repo: threadlight"]) {
@@ -49,6 +60,28 @@ try {
 
   const applicationFiles = listPackage(archivePath).map(normalizeArtifactPath);
   const packageResult = assertPackagedApplicationFiles(applicationFiles);
+  let asarFiles = 0;
+  let asarBytes = 0;
+  for (const filename of applicationFiles) {
+    const archiveFilename = filename.split("/").join(path.sep);
+    const details = inspectAsarPrivacyEntry(archivePath, archiveFilename, statFile);
+    if (details.files) continue;
+    asarFiles += 1;
+    asarBytes += Number(details.size || 0);
+    if (asarFiles > MAX_PRIVACY_SCAN_FILES
+      || Number(details.size || 0) > MAX_PRIVACY_SCAN_FILE_BYTES
+      || asarBytes > MAX_PRIVACY_SCAN_TOTAL_BYTES) {
+      throw new Error("DESKTOP_ARTIFACT_PRIVACY_BOUND_EXCEEDED");
+    }
+    try { assertBytesHaveNoPrivacySentinel(readArchiveFile(filename)); } catch (error) {
+      if (/^DESKTOP_ARTIFACT_PRIVACY_/.test(error?.message || "")) throw error;
+      throw new Error("DESKTOP_ARTIFACT_ASAR_READ_FAILED");
+    }
+  }
+  const extractorPath = await resolveArtifactExtractor();
+  for (const artifactName of expectedArtifactNames(packageJson.version)) {
+    await assertExtractedArtifactHasNoPrivacySentinel(path.join(releaseRoot, artifactName), extractorPath);
+  }
 
   const unpackedFiles = (await recursiveFiles(`${archivePath}.unpacked`)).map(normalizeArtifactPath);
   for (const filename of unpackedFiles) {
@@ -116,7 +149,12 @@ try {
   if (unexpectedResources.length) throw new Error("DESKTOP_ARTIFACT_RESOURCE_NOT_ALLOWLISTED");
 
   const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version), ...expectedUpdateArtifactNames(packageJson.version)]);
-  if ((await readdir(releaseRoot)).some((filename) => !expectedReleaseFiles.has(filename))) {
+  const releaseEntries = await readdir(releaseRoot);
+  if (releaseEntries.includes("ThreadlightData")) {
+    const portableData = await lstat(path.join(releaseRoot, "ThreadlightData"));
+    if (!portableData.isDirectory() || portableData.isSymbolicLink()) throw new Error("DESKTOP_RELEASE_OUTPUT_NOT_ALLOWLISTED");
+  }
+  if (releaseEntries.some((filename) => filename !== "ThreadlightData" && !expectedReleaseFiles.has(filename))) {
     throw new Error("DESKTOP_RELEASE_OUTPUT_NOT_ALLOWLISTED");
   }
 

@@ -96,7 +96,7 @@ test("release preparation requires a clean exact tag and emits a closed checksum
     writeFile(path.join(inputRoot, "beta.yml"), `version: ${version}\npath: ${installer}\nsha512: fixture\n`, "utf8"),
     writeFile(path.join(inputRoot, "RELEASE_NOTES.md"), "Fixture release notes\n", "utf8"),
   ]);
-  const result = await prepareRelease({ repositoryRoot: root, inputRoot, outputRoot: path.join(inputRoot, "publish"), tag: `v${version}` });
+  const result = await prepareRelease({ repositoryRoot: root, inputRoot, outputRoot: path.join(inputRoot, "publish"), tag: `v${version}`, artifactExtractorPath: false });
   assert.deepEqual(result, { version, artifactCount: releaseArtifactNames(version).length });
   assert.deepEqual((await readdir(path.join(inputRoot, "publish"))).sort(), [...releaseArtifactNames(version)].sort());
   const checksums = await readFile(path.join(inputRoot, "publish", "SHA256SUMS.txt"), "utf8");

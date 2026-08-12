@@ -29,9 +29,11 @@ export const PUBLIC_LEGAL_FILES = Object.freeze([
 
 export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/bounded-lifecycle.mjs",
+  "desktop/artifact-privacy.mjs",
   "desktop/desktop-behavior.mjs",
   "desktop/environment-policy.mjs",
   "desktop/main.mjs",
+  "desktop/native-security.mjs",
   "desktop/notifications.mjs",
   "desktop/paths.mjs",
   "desktop/preload.cjs",

@@ -470,7 +470,7 @@ Prove that desktop packaging and native integrations do not weaken Threadlight's
 ### Work
 
 - Add automated assertions for BrowserWindow sandboxing, context isolation, disabled Node integration, denied webviews, denied unexpected navigation, and bounded preload APIs.
-- Test local-origin authorization, Host/Origin rejection, dynamic ports, concurrent local clients, and startup-token expiry.
+- Test local-origin authorization, Host/Origin rejection, dynamic ports, concurrent local clients, and launch-lifetime authorization revocation.
 - Repeat `/api/state` and `/api/sessions` serialization privacy audits through the packaged desktop path.
 - Add desktop IPC privacy sentinels for prompts, responses, commands, tool output, credentials, environment values, private paths, and arbitrary exceptions.
 - Verify notifications, tray labels, desktop logs, crash handling, and update errors contain only bounded safe metadata.
@@ -504,6 +504,7 @@ npm run lint
 - [ ] Complete
 - **Depends on:** all previous tasks
 - **Target size:** 1 session
+- **Acceptance status:** Automation, user/contributor documentation, and the release checklist are implemented. Final signed-beta clean-VM evidence remains open; the earlier unsigned alpha VM record cannot satisfy it.
 
 ### Goal
 

@@ -180,7 +180,7 @@ Create synthetic, reviewable fixtures that allow provider extraction and Codex p
   - command, file-change, MCP, dynamic-tool, collaboration, and user-input lifecycles;
   - parent and child thread metadata;
   - malformed, truncated, and unknown records.
-- Use unmistakably fake content and secrets such as `PROMPT_MUST_NOT_LEAK` and `TOOL_OUTPUT_MUST_NOT_LEAK`.
+- Use unmistakably fake privacy sentinels kept exclusively under test and fixture paths.
 - Add a shared assertion that serialized monitor state contains none of the sentinel private values.
 - Keep fixtures bounded; do not copy real rollouts or provider credential files.
 

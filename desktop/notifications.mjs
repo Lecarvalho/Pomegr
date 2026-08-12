@@ -18,11 +18,10 @@ export function boundedNotificationTitle(value) {
     .slice(0, MAX_SESSION_TITLE_LENGTH);
 }
 
-export function needsInputNotificationPayload(session) {
-  const title = boundedNotificationTitle(session?.title);
+export function needsInputNotificationPayload() {
   return Object.freeze({
     title: "Threadlight",
-    body: title ? `${NEEDS_INPUT_NOTIFICATION_COPY} — ${title}` : NEEDS_INPUT_NOTIFICATION_COPY,
+    body: NEEDS_INPUT_NOTIFICATION_COPY,
   });
 }
 

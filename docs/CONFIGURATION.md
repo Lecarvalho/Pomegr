@@ -2,6 +2,32 @@
 
 Threadlight discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`; only the web dashboard binds to the LAN interface in development.
 
+## Supported desktop modes
+
+Threadlight desktop supports Windows x64 only. The per-user installer is the normal user path and requires neither administrator credentials, Node.js, Git, nor a repository checkout. Git and GitHub metadata degrade independently when their optional command-line tools are unavailable. macOS, Linux, Windows ARM64, app-store builds, and LAN access from the desktop app are not supported.
+
+The portable beta runs without installation from a writable directory. It stores Threadlight-owned state in `ThreadlightData` beside its executable. Portable mode does not register launch at login and automatic updates are disabled; download and verify a newer portable artifact manually.
+
+## Desktop settings and behavior
+
+Open **Desktop controls** in the dashboard or use the tray menu to manage supported behavior:
+
+- **Pause updates** pauses dashboard polling only. It does not pause or control coding agents and is not persisted.
+- **Launch at login** is opt-in and available only for the installed app.
+- **Close behavior** can ask each time, hide to the tray, or quit. Explicit **Quit Threadlight** and the tray **Quit** command stop all Threadlight-owned services.
+- **Needs-input notifications** are enabled by default and can be disabled persistently. **Quiet for one hour** is temporary and clears when the app exits. Notifications use only the fixed generic Threadlight title and body; they never contain a session title, question, approval reason, command, response, tool output, or provider path.
+- **Updates** are enabled by default for installed signed builds. A beta accepts only a higher beta, a stable build accepts only a higher stable release, and installation requires explicit confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates.
+
+Closing to the tray leaves local observation running. Click the tray icon, use **Open Threadlight**, or launch Threadlight again to reopen the single existing instance.
+
+## Desktop paths and privacy boundaries
+
+Installed state is stored in Electron's per-user application-data directory for Threadlight (normally beneath `%APPDATA%`). `THREADLIGHT_DATA_DIR` is an advanced override that redirects Threadlight-owned state when set before launch. Portable state is always `ThreadlightData` beside the portable executable.
+
+Threadlight-owned storage is limited to versioned `settings.json`, bounded Claude cost snapshots, bounded Codex lifecycle snapshots, and reserved cache data. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Threadlight user data and never deletes provider data.
+
+Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Threadlight keeps no implicit report archive.
+
 ## Provider setup
 
 ### Claude Code
@@ -57,9 +83,38 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Threadlight configuration.
 
-Installed desktop state uses Electron's stable user-data directory. Portable builds use `ThreadlightData` beside the executable and never relocate `.claude` or `.codex`. To share Claude cost or Codex lifecycle snapshots with a portable build, set `THREADLIGHT_DATA_DIR` to that portable `ThreadlightData` directory in the external bridge environment as well as when launching Threadlight; the specific snapshot-root variables remain available when only one bridge root should move.
+To share Claude cost or Codex lifecycle snapshots with a portable build, set `THREADLIGHT_DATA_DIR` to that portable `ThreadlightData` directory in the external bridge environment as well as when launching Threadlight; the specific snapshot-root variables remain available when only one bridge root should move.
 
 ## Troubleshooting
+
+### The desktop app does not open
+
+- Confirm the downloaded artifact is the Windows x64 build, its SHA-256 matches `SHA256SUMS.txt`, and its Authenticode signature is valid and timestamped for the expected complete publisher Subject.
+- Quit any existing tray instance before retrying. A second launch focuses the existing window instead of starting another service set.
+- If a fixed Threadlight startup-error page appears, restart once and record only its bounded diagnostic code. Do not publish environment dumps, private paths, transcripts, credentials, or screenshots containing session data.
+- Installed and portable builds do not require system Node.js. Missing Git affects repository enrichment only and must not prevent startup.
+
+### The window disappeared after I closed it
+
+The selected close behavior may hide Threadlight to the system tray. Reopen it from the tray or launch Threadlight again. Change **Close behavior** under **Desktop controls** if you prefer explicit quit. Use the tray **Quit** command to stop all owned services.
+
+### Notifications do not appear
+
+- Confirm **Needs-input notifications** is enabled and temporary quiet mode is off.
+- Threadlight notifies only on a transition into a recognized live needs-input state; it deduplicates repeated observations until the state clears.
+- Windows notification settings or Focus Assist can suppress native presentation. Threadlight monitoring continues if notification delivery fails.
+- Notification clicks navigate to an observation view only. Threadlight cannot approve, answer, resume, or control an agent.
+
+### Updates are unavailable
+
+- Automatic updates require an installed, signed release with updates enabled and network access to the official release endpoint. Portable builds intentionally disable them.
+- Stable and beta channels never cross. Publish or install a monotonically higher version on the same channel.
+- A failed or rejected update leaves the current installation runnable. Never bypass publisher checks or replace updater metadata manually; use a newer correctly signed release.
+- See `docs/DESKTOP_RELEASES.md` for signature, publisher, checksum, and rollback policy.
+
+### Another device cannot open the dashboard
+
+This is expected in the desktop app: both services bind to dynamic `127.0.0.1` ports and LAN sharing is unavailable. The `0.0.0.0:3003` LAN binding exists only in the source-development workflow.
 
 ### No sessions appear
 
