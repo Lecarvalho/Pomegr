@@ -14,7 +14,7 @@ import {
   parseCodexCanonicalExecutionTasks,
   parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
-import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
+import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexContextRecords } from "./codex-context.mjs";
 import { parseCodexCurrentActivityRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
@@ -245,11 +245,13 @@ export function createCodexProvider(options = {}) {
   let catalogPending = null;
   const rolloutCache = new Map();
   const liveExecutionTaskCache = new Map();
+  const livePlanTaskCache = new Map();
   const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0 };
 
   const invalidateRolloutFile = (file) => {
     rolloutCache.delete(file);
     liveExecutionTaskCache.delete(file);
+    livePlanTaskCache.delete(file);
   };
 
   const rolloutIdentity = (stat) => {
@@ -297,6 +299,22 @@ export function createCodexProvider(options = {}) {
       return null;
     }
     return cached.state;
+  }
+
+  function reusableLivePlanTasks(file, threadId, generation) {
+    const cached = livePlanTaskCache.get(file);
+    if (!cached || cached.threadId !== threadId || !generation) return null;
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
+    if (!monotonic || !priorSuffixStillMatches(file, previous)) {
+      livePlanTaskCache.delete(file);
+      return null;
+    }
+    return cached.planTasks;
   }
 
   function normalizeAppServerMetadata(thread, metadataOptions = {}) {
@@ -386,6 +404,7 @@ export function createCodexProvider(options = {}) {
       const evictedFile = rolloutCache.keys().next().value;
       rolloutCache.delete(evictedFile);
       liveExecutionTaskCache.delete(evictedFile);
+      livePlanTaskCache.delete(evictedFile);
     }
     return { records, generation };
   }
@@ -624,9 +643,28 @@ export function createCodexProvider(options = {}) {
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
       || startedAt;
-    const approvalPlan = metadata.rolloutFile
-      ? parseCodexApprovalPlanRecords(recordsByThreadId.get(metadata.localId) || [])
+    const rootRecords = recordsByThreadId.get(metadata.localId) || [];
+    const parsedApprovalPlan = metadata.rolloutFile
+      ? parseCodexApprovalPlanRecords(rootRecords)
       : { approvalMode: null, planTasks: [] };
+    let planTasks = parsedApprovalPlan.planTasks;
+    const rootGeneration = generationsByThreadId.get(metadata.localId) || null;
+    if (!historical && metadata.rolloutFile && rootGeneration) {
+      const latestSnapshot = latestCodexPlanSnapshot(rootRecords);
+      planTasks = latestSnapshot
+        ?? reusableLivePlanTasks(metadata.rolloutFile, metadata.localId, rootGeneration)
+        ?? [];
+      livePlanTaskCache.delete(metadata.rolloutFile);
+      livePlanTaskCache.set(metadata.rolloutFile, {
+        threadId: metadata.localId,
+        generation: rootGeneration,
+        planTasks,
+      });
+      while (livePlanTaskCache.size > scanLimit) {
+        livePlanTaskCache.delete(livePlanTaskCache.keys().next().value);
+      }
+    }
+    const approvalPlan = { ...parsedApprovalPlan, planTasks };
     const actorByThreadId = new Map(agents.map((agent) => [
       agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
       { id: agent.id, label: agent.label },
@@ -788,6 +826,7 @@ export function createCodexProvider(options = {}) {
         ...rolloutStats,
         cacheEntries: rolloutCache.size,
         liveExecutionTaskEntries: liveExecutionTaskCache.size,
+        livePlanTaskEntries: livePlanTaskCache.size,
         catalogPending: Boolean(catalogPending),
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,

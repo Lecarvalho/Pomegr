@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -56,6 +56,108 @@ test("accepts documented app-server plan notifications without inferring depende
   ]);
   assertNoPrivateFixtureSentinels(planTasks, "Codex app-server plan");
   assert.doesNotMatch(JSON.stringify(planTasks), /PRIVATE_DEPENDENCY/);
+});
+
+test("extracts current Codex plans nested in exec without evaluating source or accepting decoys", () => {
+  const records = [{
+    timestamp: "2026-08-12T13:53:24.908Z",
+    type: "response_item",
+    payload: {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-plan-current",
+      input: `
+        const stringDecoy = "tools.update_plan({plan:[{step:'STRING_MUST_NOT_LEAK',status:'completed'}]})";
+        // tools.update_plan({plan:[{step:"COMMENT_MUST_NOT_LEAK",status:"completed"}]})
+        const result = await tools.update_plan({
+          explanation: "EXPLANATION_MUST_NOT_LEAK",
+          plan: [
+            { step: "Reproduce live plan", status: "completed", description: "DESCRIPTION_MUST_NOT_LEAK" },
+            { step: "Normalize nested metadata", status: "in_progress" },
+            { step: "Verify the checklist", status: "pending" },
+          ],
+        });
+        text(result);
+      `,
+    },
+  }, {
+    timestamp: "2026-08-12T13:53:25.908Z",
+    type: "response_item",
+    payload: {
+      type: "custom_tool_call",
+      name: "exec",
+      input: "const result = await tools.update_plan(dynamicPlan); text(result);",
+    },
+  }];
+
+  const planTasks = parseCodexPlanRecords(records);
+  assert.deepEqual(planTasks.map(({ subject, status }) => ({ subject, status })), [
+    { subject: "Reproduce live plan", status: "completed" },
+    { subject: "Normalize nested metadata", status: "in_progress" },
+    { subject: "Verify the checklist", status: "pending" },
+  ]);
+  assertNoPrivateFixtureSentinels(planTasks, "nested Codex exec plan");
+  assert.doesNotMatch(JSON.stringify(planTasks), /explanation|description|dynamicPlan/i);
+});
+
+test("retains the latest sanitized live plan after its exec record leaves the rollout tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-plan-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-plan-cache.jsonl");
+  const session = {
+    timestamp: "2026-08-12T12:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: "live-plan-cache",
+      session_id: "live-plan-cache",
+      source: "cli",
+      cwd: "C:\\synthetic\\plan-cache",
+    },
+  };
+  const plan = {
+    timestamp: "2026-08-12T12:00:01.000Z",
+    type: "response_item",
+    payload: {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "exec-live-plan",
+      input: `const result = await tools.update_plan({plan:[
+        {step:"Retain bounded plan",status:"in_progress"},
+        {step:"Verify rollover",status:"pending"}
+      ]}); text(result);`,
+    },
+  };
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  await writeFile(file, serialize([session, plan]), "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 1024,
+  });
+  const first = await provider.readSession("live-plan-cache", { historical: false });
+  assert.deepEqual(first.planTasks.map(({ subject }) => subject), ["Retain bounded plan", "Verify rollover"]);
+
+  await appendFile(file, serialize([{
+    timestamp: "2026-08-12T12:00:02.000Z",
+    type: "future_record",
+    payload: { private: `TOOL_OUTPUT_MUST_NOT_LEAK${"x".repeat(4_000)}` },
+  }]), "utf8");
+  const afterRollover = await provider.readSession("live-plan-cache", { historical: false });
+  assert.deepEqual(afterRollover.planTasks, first.planTasks);
+  assert.equal(provider.qaStats().livePlanTaskEntries, 1);
+  assertNoPrivateFixtureSentinels(afterRollover, "cached live Codex plan");
+
+  await writeFile(file, serialize([session, {
+    timestamp: "2026-08-12T12:01:00.000Z",
+    type: "future_record",
+    payload: { safe: true },
+  }]), "utf8");
+  const afterTruncate = await provider.readSession("live-plan-cache", { historical: false });
+  assert.deepEqual(afterTruncate.planTasks, []);
 });
 
 test("integrates the latest primary plan snapshot through provider evidence", async (context) => {
