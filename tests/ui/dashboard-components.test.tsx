@@ -86,7 +86,7 @@ function repositorySession(
 }
 
 describe("session approval mode", () => {
-  it("uses coarse early-session timing instead of zero minutes or a seconds counter", () => {
+  it("uses coarse early-session timing without redundant last-event copy", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-11T12:00:14.000Z");
     const session = {
@@ -98,7 +98,7 @@ describe("session approval mode", () => {
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("Less than 1m")).toBeInTheDocument();
-    expect(screen.getByText("Last event less than a minute ago")).toBeInTheDocument();
+    expect(screen.queryByText(/Last event/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\b(?:0m|14s ago)\b/)).not.toBeInTheDocument();
     vi.useRealTimers();
   });
@@ -112,8 +112,23 @@ describe("session approval mode", () => {
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
-    expect(screen.getByText("Auto mode")).toHaveAttribute("title", "Latest recognized provider-reported mode.");
+    const approvalMode = screen.getByText("Auto mode");
+    expect(approvalMode).toHaveAttribute("title", "Latest recognized provider-reported mode.");
+    expect(approvalMode.tagName).toBe("STRONG");
+    expect(approvalMode).toHaveClass("sessionApprovalModeValue");
     expect(screen.queryByText(/Observed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the approval-mode slot visible until the provider reports a mode", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      approvalMode: null,
+    } satisfies NonNullable<MonitorState["session"]>;
+
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
+    expect(screen.getByText("Not reported yet")).toHaveAttribute("title", "Waiting for the provider to report an approval mode for this session.");
   });
 
   it("labels historical approval state as the last recorded mode", () => {

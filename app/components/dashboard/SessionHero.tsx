@@ -1,7 +1,7 @@
 import type { MonitorState, ProviderCapabilities, ProviderSource } from "../../../shared/monitor-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
-import { MinuteRelativeTimeText, SessionWallTimeText } from "../LiveTime";
+import { SessionWallTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
@@ -30,15 +30,17 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
         <div className="sessionMetaGroup sessionTiming">
           <span className="sessionMetaLabel">{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong><SessionWallTimeText session={session} historical={historical} /></strong>
-          <small className={historical ? undefined : "sessionLastEvent"}>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <MinuteRelativeTimeText value={session.updatedAt} /></>}</small>
+          {historical && <small>{`Ended ${sessionListTime(session.updatedAt || "")}`}</small>}
         </div>
-        {capabilities.approvalMode && session?.approvalMode && <div className="sessionMetaGroup sessionApprovalMode">
+        {capabilities.approvalMode && <div className="sessionMetaGroup sessionApprovalMode">
           <span className="sessionMetaLabel">{historical ? "LAST APPROVAL MODE" : "APPROVAL MODE"}</span>
-          <AgentChip
-            className="sessionApprovalModeChip"
-            title={historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."}
-          >{session.approvalMode.label}</AgentChip>
-          {historical && <small>{session.approvalMode.observedAt
+          <strong
+            className={`sessionApprovalModeValue${session.approvalMode ? "" : " sessionApprovalModeUnavailable"}`}
+            title={session.approvalMode
+              ? historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."
+              : historical ? "The provider did not record an approval mode for this session." : "Waiting for the provider to report an approval mode for this session."}
+          >{session.approvalMode?.label || (historical ? "Not recorded" : "Not reported yet")}</strong>
+          {historical && session.approvalMode && <small>{session.approvalMode.observedAt
             ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}`
             : "Provider-reported"}</small>}
         </div>}

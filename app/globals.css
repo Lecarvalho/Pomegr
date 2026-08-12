@@ -130,10 +130,9 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionApprovalMode { grid-area: approval; }
 .sessionMetaLabel, .sessionMetaGroup > small { display: block; }
 .sessionMetaLabel { margin-bottom: 7px; color: var(--muted); font-size: 8px; font-weight: 600; letter-spacing: .1em; }
-.sessionTiming > strong { display: block; margin: 0 0 4px; font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
+.sessionTiming > strong, .sessionApprovalModeValue { display: block; margin: 0 0 4px; font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
+.sessionApprovalModeUnavailable { color: var(--muted); }
 .sessionMetaGroup > small { margin-top: 5px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
-@media (min-width: 641px) { .sessionLastEvent { width: 33ch; } }
-.sessionApprovalMode > .sessionApprovalModeChip { width: fit-content; min-height: auto; justify-content: flex-start; border: 0; border-radius: 0; padding: 0; background: transparent; color: var(--ink); }
 .notice { display: flex; gap: 10px; align-items: center; border: 1px solid #e0c3ad; background: var(--amber-soft); padding: 11px 14px; border-radius: 8px; color: #805024; font-size: 13px; margin-bottom: 18px; }
 .notice span { font-weight: 900; }
 .awaitingSession { min-height: 430px; max-width: 720px; flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 52px 0 70px; }
