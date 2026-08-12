@@ -827,6 +827,55 @@ npm run build
 npm test
 ```
 
+---
+
+## TL-CX-18 — Surface Codex current activity alongside execution tasks
+
+- [ ] Complete
+- **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-14`, `TL-CX-15`
+- **Target size:** 1–2 sessions
+
+### Goal
+
+Show the latest bounded Codex activity summary for each agent in the existing execution-task popover so users can understand work such as **Planning detailed shell stage logging** without misrepresenting that text as a shell command, structured plan task, custom Threadlight signal, or deterministic Threadlight judgment.
+
+### Evidence and interpretation boundary
+
+- Recent Codex desktop rollouts may record the same UI-facing activity summary as an `event_msg` with `payload.type = "agent_reasoning"` and as a `response_item` reasoning summary. Treat these duplicate records as one provider-authored activity observation.
+- An activity summary has no execution-task ID or reliable association with a particular shell command. Never use temporal proximity to rename, annotate, or otherwise attach it to an execution task.
+- Current activity is provider-reported, transient session metadata. It is not chain-of-thought, a task lifecycle, a plan item, a completion claim, or an efficiency signal.
+- Unknown reasoning shapes, encrypted reasoning content, full responses, prompts, tool arguments, tool results, commands, and arbitrary future fields remain private and unsupported.
+
+### Work
+
+- Add an optional agent-scoped current-activity shape containing only a bounded, sanitized one-line label and transcript-derived observation timestamp.
+- Parse only the explicitly recognized Codex UI-facing activity-summary records, deduplicate their rollout representations, and let the latest valid observation replace the previous one for that agent.
+- Define deterministic live lifecycle rules: expose the observation only while its owning turn is open, replace it when a newer summary arrives, and clear it when the turn or agent completes, fails, stops, or otherwise reaches a recognized terminal state. Historical sessions must not present a stale observation as current activity.
+- Rename the execution-task popover to **Activity & Execution** and render a **Current activity** section above the existing **Running** and **Finished** execution sections. Use a visually distinct row treatment that does not imply a terminal or shell process.
+- Keep the popover available when current activity exists even if the agent has no execution tasks. Preserve existing running/finished execution counts without including the current-activity row.
+- Keep current activity out of execution-task arrays, task signals, plan tasks, tool-call totals, elapsed execution timing, efficiency metrics, generated reports, and recommendation rules.
+- Preserve provider capability and failure isolation: Claude behavior remains unchanged, and missing or malformed Codex activity evidence yields no current-activity row.
+- Document the source, lifecycle, privacy boundary, and non-task semantics in `docs/METRICS.md` and update the normalized API documentation where the optional agent field is introduced.
+
+### Acceptance criteria
+
+- A live Codex agent with a recognized activity summary shows one **Current activity** row in **Activity & Execution** with the bounded provider-authored label.
+- Duplicate event and response-item representations produce one observation, and a newer valid summary replaces the previous row rather than accumulating history.
+- The activity row remains distinct from actual running and finished shell executions and never changes their labels, counts, status, duration, or task-signal association.
+- The correct primary agent or subagent owns the observation; summaries never cross agent or session boundaries.
+- Turn completion and every recognized terminal agent state remove the current row, and historical views never label a stale summary as current.
+- Unknown reasoning records, encrypted content, prompts, responses, commands, tool arguments, tool results, control characters, multiline content beyond the bounded label, and unsupported fields never enter the browser API.
+- Claude sessions and Codex sessions without recognized activity evidence retain the existing execution-task behavior and UI without an empty Current activity section.
+- Responsive and keyboard-accessible popover behavior remains correct when only current activity, only execution tasks, or both are present.
+
+### Verification
+
+```powershell
+node --test tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/api-serialization.test.mjs tests/privacy.test.mjs
+npm run build
+npm test
+```
+
 ## Definition of done
 
 Codex support is complete when:

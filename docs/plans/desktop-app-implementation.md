@@ -299,9 +299,11 @@ npm run desktop:smoke
 
 ## TL-DT-05 — Produce the Windows installer and portable build
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-04`
 - **Target size:** 1–2 sessions
+- **Completed:** 2026-08-11
+- **Implementation notes:** Added an explicit electron-builder allowlist, per-user NSIS installer, portable build, packaged legal/source/dependency notices, artifact inspection, and a test-only 0.0.9 upgrade fixture. Installed startup no longer requires Git, generated Vinext entries can install bounded console-warning filters, and a Windows-safe static fallback serves authorized CSS/JavaScript with the desktop no-store and security headers. The strengthened packaged smoke verifies CSS application, React hydration, normalized state/catalog delivery, and renderer isolation. A clean Windows Sandbox without system Node.js or Git passed install, first launch, 0.0.9-to-0.1.0 in-place upgrade, portable launch and storage, clean shutdown, and uninstall/data-preservation checks. Accepted SHA-256 values: prior `F3C70717DB2CA3A586176EA216A2A747B3D04CBB4713CAF700DB43E55A3CC1FF`, setup `CE79013A31EE2461748665F4DA9776A8F260EBF4E19B4C5A9D474036A4BD9597`, portable `39DB7D6D011A4EC273EB8F93588A61CFE32D69845E3521EE1746053FB8B971FA`.
 
 ### Goal
 
@@ -566,6 +568,7 @@ Add short entries only after completing a task.
 | 2026-08-11 | TL-DT-02 | Complete | Final normal-PowerShell packaged smoke passed with strict main/web environment isolation, system-Node-free PATH with Git retained, one monitor worker, physical Vinext output, Sharp native loading, dynamic loopback ports, and bounded cleanup. |
 | 2026-08-11 | TL-DT-03 | Complete | Added the secure single-instance shell, launch-token and local-origin gates, sandboxed renderer with no native API, bounded service supervision and failure UI, strict navigation/permission/download denial, and focused lifecycle/security coverage. The upgraded normal-PowerShell packaged dashboard smoke passed. |
 | 2026-08-11 | TL-DT-04 | Complete | Added installed/portable path resolution, isolated Threadlight-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
+| 2026-08-11 | TL-DT-05 | Complete | Produced and inspected the per-user installer, portable build, and test-only upgrade fixture; fixed Git-independent startup and Windows static delivery; all clean-Sandbox install, upgrade, portable, shutdown, uninstall, and data-boundary checks passed with the recorded artifact hashes. |
 
 ## Reference documentation
 

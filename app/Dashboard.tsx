@@ -32,6 +32,11 @@ export function Dashboard() {
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
+  useEffect(() => {
+    document.documentElement.dataset.threadlightHydrated = "true";
+    return () => { delete document.documentElement.dataset.threadlightHydrated; };
+  }, []);
+
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
       const response = await fetch(stateEndpoint(selectedSessionId), { cache: "no-store", signal });

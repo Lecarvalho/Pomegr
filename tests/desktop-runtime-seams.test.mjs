@@ -135,12 +135,14 @@ test("production web server uses explicit runtime inputs from any working direct
   const otherDirectory = await mkdtemp(path.join(os.tmpdir(), "threadlight-web-cwd-"));
   const originalCwd = process.cwd();
   let web;
+  const stages = [];
   try {
     process.chdir(otherDirectory);
     web = await startWebServer({
       host: "127.0.0.1",
       port: 0,
       monitorOrigin: monitor.origin,
+      recordStage: (stage) => stages.push(stage),
       logger: quietLogger,
     });
     assert.equal(web.host, "127.0.0.1");
@@ -150,7 +152,19 @@ test("production web server uses explicit runtime inputs from any working direct
       fetch(`${web.origin}/api/sessions`),
     ]);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /<title>Threadlight<\/title>/i);
+    const html = await page.text();
+    assert.match(html, /<title>Threadlight<\/title>/i);
+    const assetPaths = [...new Set(
+      [...html.matchAll(/(?:href|src)="(\/assets\/[^"]+\.(?:css|js))"/g)].map((match) => match[1]),
+    )];
+    assert.ok(assetPaths.some((filename) => filename.endsWith(".css")));
+    assert.ok(assetPaths.some((filename) => filename.endsWith(".js")));
+    for (const assetPath of assetPaths) {
+      const asset = await fetch(`${web.origin}${assetPath}`);
+      assert.equal(asset.status, 200);
+      assert.match(asset.headers.get("content-type") || "", assetPath.endsWith(".css") ? /^text\/css/ : /^application\/javascript/);
+      assert.ok((await asset.arrayBuffer()).byteLength > 0);
+    }
     assert.equal(sessions.status, 200);
     assert.ok(Array.isArray((await sessions.json()).sessions));
   } finally {
@@ -160,6 +174,18 @@ test("production web server uses explicit runtime inputs from any working direct
     await rm(otherDirectory, { recursive: true, force: true });
   }
   assert.deepEqual(await web.exit, { code: "WEB_CLOSED" });
+  assert.deepEqual(stages, [
+    "SHELL_WEB_OUT_DIR_VALIDATING",
+    "SHELL_WEB_OUT_DIR_READY",
+    "SHELL_WEB_VINEXT_LOADING",
+    "SHELL_WEB_VINEXT_LOADED",
+    "SHELL_WEB_ENTRY_LOADING",
+    "SHELL_WEB_ENTRY_READY",
+    "SHELL_WEB_LISTENER_STARTING",
+    "SHELL_WEB_LISTENER_READY",
+    "SHELL_WEB_AUTH_READY",
+    "SHELL_WEB_HANDLE_READY",
+  ]);
   await web.close();
 });
 
@@ -197,6 +223,89 @@ test("production web startup validation returns only fixed safe error codes", as
   );
 });
 
+test("authorized production assets retain desktop security and no-store headers", async () => {
+  const token = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
+  const responseHeaders = {
+    "Content-Security-Policy": "default-src 'self'",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  };
+  const web = await startWebServer({
+    host: "127.0.0.1",
+    port: 0,
+    monitorOrigin: "http://127.0.0.1:4317",
+    authorizationToken: token,
+    responseHeaders,
+    logger: quietLogger,
+  });
+  const authorization = { "x-threadlight-desktop-authorization": token };
+  try {
+    const page = await fetch(web.origin, { headers: authorization });
+    const html = await page.text();
+    const assetPath = html.match(/href="(\/assets\/[^"]+\.css)"/)?.[1];
+    assert.ok(assetPath);
+    const asset = await fetch(`${web.origin}${assetPath}`, { headers: authorization });
+    assert.equal(asset.status, 200);
+    assert.match(asset.headers.get("content-type") || "", /^text\/css/);
+    assert.equal(asset.headers.get("cache-control"), "no-store");
+    for (const [name, value] of Object.entries(responseHeaders)) {
+      assert.equal(asset.headers.get(name), value);
+    }
+    assert.ok((await asset.arrayBuffer()).byteLength > 0);
+    assert.equal((await fetch(`${web.origin}${assetPath}`)).status, 401);
+  } finally {
+    await web.close();
+  }
+});
+
+test("production web startup stages stop at the fixed failing boundary", async () => {
+  const stages = [];
+  await assert.rejects(startWebServer({
+    host: "127.0.0.1",
+    port: 0,
+    monitorOrigin: "http://127.0.0.1:4317",
+    recordStage: (stage) => stages.push(stage),
+    loadBuildEntryFn: async () => ({ default() {} }),
+    loadProdServerFn: async () => ({
+      async startProdServer() { throw new Error("PRIVATE_PATH_MUST_NOT_LEAK"); },
+    }),
+  }), (error) => error.code === "WEB_START_FAILED"
+    && error.stack === "LocalServiceError: WEB_START_FAILED"
+    && !error.stack.includes("PRIVATE_PATH"));
+  assert.deepEqual(stages, [
+    "SHELL_WEB_OUT_DIR_VALIDATING",
+    "SHELL_WEB_OUT_DIR_READY",
+    "SHELL_WEB_VINEXT_LOADING",
+    "SHELL_WEB_VINEXT_LOADED",
+    "SHELL_WEB_ENTRY_LOADING",
+    "SHELL_WEB_ENTRY_READY",
+    "SHELL_WEB_LISTENER_STARTING",
+  ]);
+});
+
+test("production web startup stages isolate a generated entry import failure", async () => {
+  const stages = [];
+  await assert.rejects(startWebServer({
+    host: "127.0.0.1",
+    port: 0,
+    monitorOrigin: "http://127.0.0.1:4317",
+    recordStage: (stage) => stages.push(stage),
+    loadBuildEntryFn: async () => { throw new Error("PRIVATE_PATH_MUST_NOT_LEAK"); },
+    loadProdServerFn: async () => ({ async startProdServer() {} }),
+  }), (error) => error.code === "WEB_START_FAILED"
+    && error.stack === "LocalServiceError: WEB_START_FAILED"
+    && !error.stack.includes("PRIVATE_PATH"));
+  assert.deepEqual(stages, [
+    "SHELL_WEB_OUT_DIR_VALIDATING",
+    "SHELL_WEB_OUT_DIR_READY",
+    "SHELL_WEB_VINEXT_LOADING",
+    "SHELL_WEB_VINEXT_LOADED",
+    "SHELL_WEB_ENTRY_LOADING",
+  ]);
+});
+
 test("production web handle reports unexpected listener exit", async () => {
   const monitor = await startMonitorServer({ port: 0, logger: quietLogger });
   const web = await startWebServer({
@@ -225,7 +334,7 @@ test("production web startup awaits listener cleanup after a post-bind failure",
       port: 0,
       monitorOrigin: "http://127.0.0.1:4317",
       async startProdServerFn({ host, port }) {
-        server = http.createServer();
+        server = http.createServer((_request, response) => response.end("test"));
         server.once("close", () => { closeObserved = true; });
         await new Promise((resolve, reject) => {
           server.once("error", reject);

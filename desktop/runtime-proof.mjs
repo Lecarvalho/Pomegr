@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,9 +17,16 @@ export function send(message) {
   else workerParentPort?.postMessage(message);
 }
 
+export function containsShellStageTrace(value) {
+  return String(value || "").split(/\r?\n/).some((line) => /^SHELL_[A-Z_]{1,30}$/.test(line.trim()));
+}
+
 export function recordUtilityStage(stage) {
   const stagePath = process.env.THREADLIGHT_SMOKE_MAIN_STAGE_PATH;
   if (!stagePath || !/^(?:MONITOR|WEB)_[A-Z_]{1,30}$/.test(stage)) return;
+  try {
+    if (containsShellStageTrace(readFileSync(stagePath, "utf8"))) return;
+  } catch { /* The worker may be the first process to create the diagnostic file. */ }
   try { writeFileSync(stagePath, stage, "utf8"); } catch { /* Diagnostics are best-effort. */ }
 }
 

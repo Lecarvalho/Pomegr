@@ -62,6 +62,7 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.match(packageJson.scripts["desktop:package"], /electron-builder --win nsis portable --x64/);
   assert.match(packageJson.scripts["desktop:package"], /finalize-package\.mjs/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release/);
+  assert.match(packageJson.scripts.lint, /ignore-pattern release-acceptance/);
   assert.equal(build.afterPack, "desktop/after-pack.mjs");
   assert.equal(build.extraMetadata.threadlightPackagingScope, TL_DT_05_PACKAGING_SCOPE);
   assert.equal(build.publish, undefined);

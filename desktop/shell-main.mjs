@@ -25,14 +25,10 @@ import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
+import { recordShellStage } from "./shell-stage.mjs";
+import { installQuietConsole } from "./quiet-console.mjs";
 
-for (const method of ["debug", "error", "info", "log", "warn"]) {
-  Object.defineProperty(globalThis.console, method, {
-    configurable: false,
-    value() {},
-    writable: false,
-  });
-}
+installQuietConsole();
 
 const START_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
@@ -52,6 +48,7 @@ let desktopSettings;
 let settingsLoad;
 let settingsStore;
 let settingsSavePromise = Promise.resolve();
+const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
 function workerEntrypoint() {
   const entrypoint = path.join(desktopPaths.unpackedRoot, "desktop", "workers", "monitor-host.cjs");
@@ -93,6 +90,7 @@ function createSecureWindow(browserSession, windowState) {
 }
 
 async function showStartupError() {
+  recordStage("SHELL_ERROR_LOADING");
   try { mainWindow?.destroy(); } catch { /* A failed renderer may already be gone. */ }
   const errorSession = session.fromPartition(`threadlight-error-${randomUUID()}`);
   installSessionSecurity(errorSession, {
@@ -110,11 +108,13 @@ async function showStartupError() {
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
   mainWindow.show();
   if (focusRequested) mainWindow.focus();
+  recordStage("SHELL_ERROR_READY");
 }
 
 async function stopRuntime() {
   if (stopPromise) return stopPromise;
   runtimeState = "stopping";
+  recordStage("SHELL_CLEANUP_STARTED");
   stopPromise = (async () => {
     try {
       if (monitorChild?.pid) {
@@ -131,6 +131,7 @@ async function stopRuntime() {
     } catch { /* Shutdown is best-effort after a bounded stop. */ }
     try { await settingsSavePromise; } catch { /* Settings persistence never blocks shutdown. */ }
     runtimeState = "stopped";
+    recordStage("SHELL_CLEANUP_COMPLETE");
   })();
   return stopPromise;
 }
@@ -148,9 +149,11 @@ async function startDesktop() {
     userDataPath: app.getPath("userData"),
     environment: process.env,
   });
+  recordStage("SHELL_PATHS_READY");
   settingsStore = createDesktopSettingsStore(desktopPaths.settingsFile);
   settingsLoad = await settingsStore.load();
   desktopSettings = settingsLoad.settings;
+  recordStage("SHELL_SETTINGS_READY");
   ipcMain.removeHandler(DESKTOP_REPORT_CHANNEL);
   ipcMain.handle(DESKTOP_REPORT_CHANNEL, createReportSaveHandler({
     defaultDirectory: app.getPath("documents"),
@@ -170,6 +173,7 @@ async function startDesktop() {
       startTimeoutMs: START_TIMEOUT_MS,
       stopTimeoutMs: STOP_TIMEOUT_MS + KILL_TIMEOUT_MS,
       startMonitor() {
+        recordStage("SHELL_MONITOR_STARTING");
         monitorChild = createMonitorWorker(privateEnvironment);
         privateEnvironment = undefined;
         const monitorFailed = () => {
@@ -180,7 +184,11 @@ async function startDesktop() {
         monitorChild.once("error", monitorFailed);
         return monitorChild;
       },
-      waitForMonitor: (child) => waitForMessage(child, "ready", START_TIMEOUT_MS),
+      async waitForMonitor(child) {
+        const ready = await waitForMessage(child, "ready", START_TIMEOUT_MS);
+        recordStage("SHELL_MONITOR_READY");
+        return ready;
+      },
       async startWeb(monitorReady) {
         if (startupFailed || !monitorChild.pid) throw new Error("DESKTOP_MONITOR_EXITED");
         keepOnlyRuntimeEnvironment(process.env, {
@@ -188,12 +196,15 @@ async function startDesktop() {
           THREADLIGHT_MONITOR_TOKEN: authorizationToken,
         });
         assertNoSystemNodeInPath(process.env);
+        recordStage("SHELL_WEB_IMPORTING");
         const { startWebServer } = await withDeadline(
           import("../web/server.mjs"),
           START_TIMEOUT_MS,
           "DESKTOP_WEB_IMPORT_TIMEOUT",
         );
+        recordStage("SHELL_WEB_IMPORTED");
         const outDir = path.join(desktopPaths.unpackedRoot, "dist");
+        recordStage("SHELL_WEB_STARTING");
         webHandle = await startWebServer({
           host: "127.0.0.1",
           port: 0,
@@ -207,8 +218,10 @@ async function startDesktop() {
             "X-Content-Type-Options": "nosniff",
             "X-Frame-Options": "DENY",
           },
+          recordStage,
           logger: Object.freeze({ log() {} }),
         });
+        recordStage("SHELL_WEB_READY");
         void webHandle.exit.then(({ code }) => {
           if (code !== "WEB_EXIT_UNEXPECTED") return;
           if (runtimeState === "starting") startupFailed = true;
@@ -224,6 +237,7 @@ async function startDesktop() {
           authorizationToken,
         });
         mainWindow = createSecureWindow(browserSession, desktopSettings.window);
+        recordStage("SHELL_WINDOW_CREATED");
         if (desktopSettings.window.maximized) mainWindow.maximize();
         mainWindow.on("close", () => {
           if (mainWindow?.isDestroyed()) return;
@@ -243,7 +257,11 @@ async function startDesktop() {
         });
         return mainWindow;
       },
-      loadWindow: (window, origin) => window.loadURL(origin),
+      async loadWindow(window, origin) {
+        recordStage("SHELL_WINDOW_LOADING");
+        await window.loadURL(origin);
+        recordStage("SHELL_WINDOW_READY");
+      },
       stopMonitor: (child) => stopChild(child, {
         gracefulTimeoutMs: STOP_TIMEOUT_MS,
         killTimeoutMs: KILL_TIMEOUT_MS,
@@ -252,8 +270,10 @@ async function startDesktop() {
     });
     if (startupFailed) throw new Error("DESKTOP_SERVICE_EXITED");
     runtimeState = "running";
+    recordStage("SHELL_RUNTIME_READY");
     if (!mainWindow.isVisible()) mainWindow.show();
   } catch {
+    recordStage("SHELL_START_FAILED");
     privateEnvironment = undefined;
     await stopRuntime();
     await showStartupError();

@@ -1,7 +1,6 @@
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { startProdServer } from "vinext/server/prod-server";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import {
   closeServer,
@@ -14,6 +13,10 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUT_DIR = path.join(ROOT, "dist");
+
+function recordStartupStage(options, stage) {
+  try { options.recordStage?.(stage); } catch { /* Diagnostics never affect service startup. */ }
+}
 
 function requireMonitorOrigin(origin) {
   let parsed;
@@ -37,6 +40,13 @@ async function requireBuild(outDir) {
   } catch {
     throw new LocalServiceError("WEB_BUILD_MISSING");
   }
+}
+
+async function loadBuildEntry(outDir, loadBuildEntryFn) {
+  const entryPath = path.join(outDir, "server", "index.js");
+  const entryStat = await stat(entryPath);
+  const entryUrl = `${pathToFileURL(entryPath).href}?t=${entryStat.mtimeMs}`;
+  return (loadBuildEntryFn || ((url) => import(url)))(entryUrl);
 }
 
 export function installLocalRequestGate(server, options) {
@@ -64,6 +74,28 @@ export function installLocalRequestGate(server, options) {
   });
 }
 
+export function installStaticAssetFallback(server, serveStaticAsset) {
+  const listeners = server.listeners("request");
+  if (listeners.length !== 1 || typeof serveStaticAsset !== "function") {
+    throw new LocalServiceError("WEB_STATIC_FALLBACK_FAILED");
+  }
+  server.removeAllListeners("request");
+  server.on("request", (request, response) => {
+    let pathname = "";
+    try { pathname = new URL(request.url || "/", "http://127.0.0.1").pathname; } catch { /* The app handler returns its bounded response. */ }
+    if (!pathname.startsWith("/assets/")) {
+      listeners[0].call(server, request, response);
+      return;
+    }
+    void serveStaticAsset(request, response, pathname).then((served) => {
+      if (!served) listeners[0].call(server, request, response);
+    }).catch(() => {
+      if (!response.headersSent) response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Internal Server Error");
+    });
+  });
+}
+
 export async function startWebServer(options = {}) {
   const host = requireLoopbackHost(options.host ?? "127.0.0.1", "WEB_INVALID_HOST");
   const port = requirePort(options.port ?? 0, "WEB_INVALID_PORT");
@@ -74,16 +106,66 @@ export async function startWebServer(options = {}) {
   } catch {
     throw new LocalServiceError("WEB_INVALID_BUILD_PATH");
   }
+  recordStartupStage(options, "SHELL_WEB_OUT_DIR_VALIDATING");
   await requireBuild(outDir);
+  recordStartupStage(options, "SHELL_WEB_OUT_DIR_READY");
+
+  recordStartupStage(options, "SHELL_WEB_VINEXT_LOADING");
+  let startProdServer;
+  let serveStaticAsset;
+  try {
+    const loadProdServer = options.loadProdServerFn
+      || (options.startProdServerFn
+        ? async () => ({ startProdServer: options.startProdServerFn })
+        : async () => import("vinext/server/prod-server"));
+    const vinext = await loadProdServer();
+    startProdServer = vinext?.startProdServer;
+    const staticResponseHeaders = options.authorizationToken
+      ? { ...(options.responseHeaders || {}), "Cache-Control": "no-store" }
+      : undefined;
+    serveStaticAsset = typeof vinext?.tryServeStatic === "function"
+      ? (request, response, pathname) => vinext.tryServeStatic(
+        request,
+        response,
+        path.join(outDir, "client"),
+        pathname,
+        false,
+        undefined,
+        staticResponseHeaders,
+      )
+      : async () => false;
+    if (typeof startProdServer !== "function") throw new Error("WEB_VINEXT_RUNTIME_INVALID");
+    if (!options.loadProdServerFn && !options.startProdServerFn && typeof vinext?.tryServeStatic !== "function") {
+      throw new Error("WEB_VINEXT_STATIC_RUNTIME_INVALID");
+    }
+  } catch {
+    throw new LocalServiceError("WEB_START_FAILED");
+  }
+  recordStartupStage(options, "SHELL_WEB_VINEXT_LOADED");
+
+  recordStartupStage(options, "SHELL_WEB_ENTRY_LOADING");
+  try {
+    const entry = await loadBuildEntry(outDir, options.loadBuildEntryFn);
+    const handler = entry?.default;
+    if (typeof handler !== "function" && typeof handler?.fetch !== "function") {
+      throw new Error("WEB_BUILD_ENTRY_INVALID");
+    }
+  } catch {
+    throw new LocalServiceError("WEB_START_FAILED");
+  }
+  recordStartupStage(options, "SHELL_WEB_ENTRY_READY");
 
   const previousMonitorOrigin = process.env.THREADLIGHT_MONITOR_ORIGIN;
   process.env.THREADLIGHT_MONITOR_ORIGIN = monitorOrigin;
   let result;
   let handle;
   try {
-    result = await (options.startProdServerFn || startProdServer)({ host, port, outDir });
+    recordStartupStage(options, "SHELL_WEB_LISTENER_STARTING");
+    result = await startProdServer({ host, port, outDir });
     if (!result?.server?.listening) throw new LocalServiceError("WEB_START_FAILED");
+    recordStartupStage(options, "SHELL_WEB_LISTENER_READY");
     const boundPort = result.server.address()?.port;
+    installStaticAssetFallback(result.server, serveStaticAsset);
     if (options.authorizationToken) {
       installLocalRequestGate(result.server, {
         authorizationToken: options.authorizationToken,
@@ -92,6 +174,7 @@ export async function startWebServer(options = {}) {
         responseHeaders: options.responseHeaders,
       });
     }
+    recordStartupStage(options, "SHELL_WEB_AUTH_READY");
     handle = createLocalServiceHandle(result.server, {
       host,
       normalExitCode: "WEB_CLOSED",
@@ -101,6 +184,7 @@ export async function startWebServer(options = {}) {
         else process.env.THREADLIGHT_MONITOR_ORIGIN = previousMonitorOrigin;
       },
     });
+    recordStartupStage(options, "SHELL_WEB_HANDLE_READY");
     options.logger?.log?.(`[threadlight] Web server ready on ${handle.origin}.`);
     return handle;
   } catch (error) {

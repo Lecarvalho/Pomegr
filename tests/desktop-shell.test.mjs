@@ -13,9 +13,16 @@ import {
   isAllowedExternalUrl,
   secureBrowserWindowOptions,
 } from "../desktop/security-policy.mjs";
-import { installLocalRequestGate } from "../web/server.mjs";
+import { installLocalRequestGate, installStaticAssetFallback } from "../web/server.mjs";
 import { focusShellWindow, startShellRuntime } from "../desktop/shell-orchestrator.mjs";
 import { DESKTOP_STARTUP_ERROR_CODE, startupErrorDocument } from "../desktop/startup-error.mjs";
+import {
+  SHELL_LIFECYCLE_STAGES,
+  SHELL_STARTUP_STAGES,
+  isAllowedShellStage,
+  recordShellStage,
+} from "../desktop/shell-stage.mjs";
+import { installQuietConsole } from "../desktop/quiet-console.mjs";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 
@@ -30,12 +37,12 @@ function close(server) {
   return new Promise((resolve) => server.close(resolve));
 }
 
-function request(port, { method = "GET", host = `127.0.0.1:${port}`, origin, token } = {}) {
+function request(port, { method = "GET", host = `127.0.0.1:${port}`, origin, path: requestPath = "/", token } = {}) {
   return new Promise((resolve, reject) => {
     const headers = { Host: host };
     if (origin) headers.Origin = origin;
     if (token) headers[DESKTOP_AUTH_HEADER] = token;
-    const outgoing = http.request({ host: "127.0.0.1", port, method, path: "/", headers }, (response) => {
+    const outgoing = http.request({ host: "127.0.0.1", port, method, path: requestPath, headers }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => { body += chunk; });
@@ -69,6 +76,29 @@ test("secure BrowserWindow preferences deny renderer privileges", () => {
   assert.match(DESKTOP_CSP, /default-src 'self'/);
   assert.match(DESKTOP_CSP, /object-src 'none'/);
   assert.match(DESKTOP_CSP, /frame-ancestors 'none'/);
+});
+
+test("quiet desktop console permits runtime warning filters without restoring output", () => {
+  const leaked = [];
+  const target = {
+    debug: (...values) => leaked.push(values),
+    error: (...values) => leaked.push(values),
+    info: (...values) => leaked.push(values),
+    log: (...values) => leaked.push(values),
+    warn: (...values) => leaked.push(values),
+  };
+  installQuietConsole(target);
+  const originalSink = target.error;
+  target.error = (...values) => leaked.push(values);
+  target.error("PRIVATE_PATH_MUST_NOT_LEAK");
+  assert.equal(target.error, originalSink);
+  assert.deepEqual(leaked, []);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(target, "error"), {
+    configurable: false,
+    enumerable: true,
+    get: Object.getOwnPropertyDescriptor(target, "error").get,
+    set: Object.getOwnPropertyDescriptor(target, "error").set,
+  });
 });
 
 test("desktop session injects local authorization and denies permissions and downloads", () => {
@@ -153,6 +183,41 @@ test("desktop web gate requires the dynamic host, same origin, read-only method,
   }
 });
 
+test("desktop web gate serves authorized generated assets before the Windows Vinext cache miss", async () => {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(404);
+    response.end("vinext cache miss");
+  });
+  const port = await listen(server);
+  let fallbackCalls = 0;
+  installStaticAssetFallback(server, async (_request, response, pathname) => {
+    fallbackCalls += 1;
+    assert.equal(pathname, "/assets/app-fixed.css");
+    response.writeHead(200, { "Content-Type": "text/css; charset=utf-8" });
+    response.end(".appFrame { display: grid; }");
+    return true;
+  });
+  installLocalRequestGate(server, {
+    authorizationToken: TOKEN,
+    host: "127.0.0.1",
+    port,
+  });
+  try {
+    const accepted = await request(port, { token: TOKEN, origin: `http://127.0.0.1:${port}`, path: "/assets/app-fixed.css" });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.headers["content-type"], "text/css; charset=utf-8");
+    assert.match(accepted.body, /display: grid/);
+    assert.equal(fallbackCalls, 1);
+    assert.equal((await request(port, { path: "/assets/app-fixed.css" })).status, 401);
+    assert.equal(fallbackCalls, 1);
+    assert.equal((await request(port, { token: TOKEN, path: "/assets/%2e%2e/private.css" })).status, 404);
+    assert.equal((await request(port, { token: TOKEN, path: "/.vite/private.css" })).status, 404);
+    assert.equal(fallbackCalls, 1);
+  } finally {
+    await close(server);
+  }
+});
+
 test("authorized monitor mode removes wildcard CORS and rejects untrusted local clients", async () => {
   const runtime = {
     async sessionCatalog() { return []; },
@@ -191,6 +256,52 @@ test("production shell orchestration starts in readiness order", async () => {
   });
   assert.deepEqual(order, ["monitor-start", "monitor-ready", "web-start", "window-create", "window-load"]);
   assert.deepEqual(result, { monitor, web, window });
+});
+
+test("durable shell diagnostics use only fixed ordered stages and retain the worker handoff", () => {
+  assert.deepEqual(SHELL_STARTUP_STAGES, [
+    "SHELL_PATHS_READY",
+    "SHELL_SETTINGS_READY",
+    "SHELL_MONITOR_STARTING",
+    "SHELL_MONITOR_READY",
+    "SHELL_WEB_IMPORTING",
+    "SHELL_WEB_IMPORTED",
+    "SHELL_WEB_STARTING",
+    "SHELL_WEB_OUT_DIR_VALIDATING",
+    "SHELL_WEB_OUT_DIR_READY",
+    "SHELL_WEB_VINEXT_LOADING",
+    "SHELL_WEB_VINEXT_LOADED",
+    "SHELL_WEB_ENTRY_LOADING",
+    "SHELL_WEB_ENTRY_READY",
+    "SHELL_WEB_LISTENER_STARTING",
+    "SHELL_WEB_LISTENER_READY",
+    "SHELL_WEB_AUTH_READY",
+    "SHELL_WEB_HANDLE_READY",
+    "SHELL_WEB_READY",
+    "SHELL_WINDOW_CREATED",
+    "SHELL_WINDOW_LOADING",
+    "SHELL_WINDOW_READY",
+    "SHELL_RUNTIME_READY",
+  ]);
+  assert.deepEqual(SHELL_LIFECYCLE_STAGES, [
+    "SHELL_START_FAILED",
+    "SHELL_CLEANUP_STARTED",
+    "SHELL_CLEANUP_COMPLETE",
+    "SHELL_ERROR_LOADING",
+    "SHELL_ERROR_READY",
+  ]);
+  let content = "MONITOR_READY\nPRIVATE_PATH_MUST_NOT_SURVIVE";
+  const io = {
+    readFileSync: () => content,
+    writeFileSync: (_path, value) => { content = value; },
+  };
+  const environment = { THREADLIGHT_SMOKE_MAIN_STAGE_PATH: "fixed-diagnostic-path" };
+  for (const stage of SHELL_STARTUP_STAGES) assert.equal(recordShellStage(environment, stage, io), true);
+  assert.equal(recordShellStage(environment, "SHELL_PRIVATE_PATH", io), false);
+  assert.equal(isAllowedShellStage("SHELL_WEB_READY"), true);
+  assert.equal(isAllowedShellStage("SHELL_PRIVATE_PATH"), false);
+  assert.deepEqual(content.split("\n"), ["MONITOR_READY", ...SHELL_STARTUP_STAGES]);
+  assert.doesNotMatch(content, /PRIVATE_PATH/);
 });
 
 test("production shell orchestration bounds a late web start and cleans every owned service", async () => {
@@ -259,12 +370,15 @@ test("production startup error document contains only fixed bounded diagnostics"
 });
 
 test("desktop shell startup ordering and failure UI remain bounded", async () => {
-  const [main, preload] = await Promise.all([
+  const [main, preload, runtimeProof, serverBundle, webServer] = await Promise.all([
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/shell-main.mjs", import.meta.url), "utf8")),
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8")),
+    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8")),
+    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../dist/server/index.js", import.meta.url), "utf8")),
+    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../web/server.mjs", import.meta.url), "utf8")),
   ]);
   assert.ok(main.indexOf('waitForMessage(monitorChild, "ready"') < main.indexOf("startWebServer({"));
-  assert.ok(main.indexOf("startWebServer({") < main.indexOf("loadWindow: (window, origin) => window.loadURL(origin)"));
+  assert.ok(main.indexOf("startWebServer({") < main.indexOf('recordStage("SHELL_WINDOW_LOADING")'));
   assert.match(main, /startShellRuntime\(\{/);
   assert.match(main, /requestSingleInstanceLock\(\)/);
   assert.match(main, /second-instance/);
@@ -276,6 +390,12 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(main, /settingsForWindowClose\(settingsLoad, desktopSettings/);
   assert.match(main, /WEB_EXIT_UNEXPECTED/);
   assert.match(main, /startupErrorDocument\(\)/);
+  for (const stage of SHELL_STARTUP_STAGES) assert.match(`${main}\n${webServer}`, new RegExp(stage));
+  for (const stage of SHELL_LIFECYCLE_STAGES) assert.match(main, new RegExp(stage));
+  assert.match(runtimeProof, /containsShellStageTrace\(readFileSync/);
+  assert.match(main, /installQuietConsole\(\)/);
+  assert.doesNotMatch(main, /writable:\s*false/);
+  assert.match(serverBundle, /console\.error\s*=/);
   assert.doesNotMatch(main, /error\.message|error\.stack|console\.(?:error|log)/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("threadlightDesktop"/);
   assert.match(preload, /ipcRenderer\.invoke\("threadlight:save-report", payload\)/);

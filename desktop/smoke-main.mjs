@@ -196,6 +196,7 @@ async function executeSmoke() {
       "MONITOR",
       { authorizationToken, smoke: true },
     );
+    if (monitor.ready.gitProof !== "verified") throw new Error("DESKTOP_MONITOR_GIT_PROOF_MISSING");
     recordStage("MONITOR_READY");
 
     keepOnlyRuntimeEnvironment(process.env, {
@@ -246,13 +247,40 @@ async function executeSmoke() {
       openExternal: async () => {},
     });
     await smokeWindow.loadURL(webHandle.origin);
-    const rendererBoundary = await smokeWindow.webContents.executeJavaScript(
-      "({ title: document.title, hasNodeProcess: typeof process !== 'undefined', hasRequire: typeof require !== 'undefined' })",
-      true,
-    );
+    const rendererBoundary = await smokeWindow.webContents.executeJavaScript(`(async () => {
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        const frame = document.querySelector('.appFrame');
+        const hydrated = document.documentElement.dataset.threadlightHydrated === 'true';
+        if (frame && hydrated && getComputedStyle(frame).display === 'grid') {
+          const [response, sessionsResponse] = await Promise.all([
+            fetch('/api/state', { cache: 'no-store' }),
+            fetch('/api/sessions', { cache: 'no-store' }),
+          ]);
+          const state = response.ok ? await response.json() : null;
+          const sessions = sessionsResponse.ok ? await sessionsResponse.json() : null;
+          return {
+            title: document.title,
+            hasNodeProcess: typeof process !== 'undefined',
+            hasRequire: typeof require !== 'undefined',
+            styled: true,
+            hydrated: true,
+            stateReady: response.status === 200
+              && typeof state?.connected === 'boolean'
+              && sessionsResponse.status === 200
+              && Array.isArray(sessions?.sessions),
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return { title: document.title, styled: false, hydrated: false, stateReady: false };
+    })()`, true);
     if (rendererBoundary?.title !== "Threadlight"
       || rendererBoundary.hasNodeProcess !== false
-      || rendererBoundary.hasRequire !== false) {
+      || rendererBoundary.hasRequire !== false
+      || rendererBoundary.styled !== true
+      || rendererBoundary.hydrated !== true
+      || rendererBoundary.stateReady !== true) {
       throw new Error("DESKTOP_RENDERER_BOUNDARY_FAILED");
     }
     recordStage("WINDOW_VERIFIED");

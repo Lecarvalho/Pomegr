@@ -15,6 +15,7 @@ import {
   unpackedFilesFromHeader,
 } from "../desktop/asar-policy.mjs";
 import { buildDesktopServiceBundles } from "../desktop/service-bundles.mjs";
+import { startMonitorAfterEnvironment } from "../desktop/monitor-startup-policy.mjs";
 import {
   assertNoSystemNodeInPath,
   executableOnPath,
@@ -23,6 +24,7 @@ import {
   monitorPrivateEnvironment,
 } from "../desktop/environment-policy.mjs";
 import { stopChild } from "../desktop/utility-lifecycle.mjs";
+import { containsShellStageTrace } from "../desktop/runtime-proof.mjs";
 
 test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", async () => {
   const [packageJson, main, runner] = await Promise.all([
@@ -55,6 +57,13 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /env:\s*\{\s*\.\.\.environment/);
   assert.match(main, /worker\.terminate\(\)/);
   assert.match(main, /execFile\("git", \["--version"\]/);
+  assert.match(main, /monitor\.ready\.gitProof !== "verified"/);
+  assert.match(main, /threadlightHydrated/);
+  assert.match(main, /getComputedStyle\(frame\)\.display === 'grid'/);
+  assert.match(main, /fetch\('\/api\/state'/);
+  assert.match(main, /fetch\('\/api\/sessions'/);
+  assert.match(main, /typeof state\?\.connected === 'boolean'/);
+  assert.match(main, /Array\.isArray\(sessions\?\.sessions\)/);
   assert.doesNotMatch(main, /(?:spawn|execFile|fork)\([^\n]*["']node(?:\.exe)?["']/i);
   assert.doesNotMatch(main, /utilityProcess\.fork/);
   assert.match(runner, /createPackageWithOptions/);
@@ -69,6 +78,55 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(runner, /minimalRuntimeEnvironment\(process\.env/);
   assert.doesNotMatch(runner, /env:\s*\{\s*\.\.\.process\.env/s);
   assert.match(runner, /executableOnPath\(environment, ["']git\.exe["']\)/);
+});
+
+test("production monitor readiness does not require Git while smoke readiness proves Git execution", async () => {
+  const productionStages = [];
+  let productionGitCalls = 0;
+  const productionHandle = await startMonitorAfterEnvironment({
+    smoke: false,
+    recordStage: (stage) => productionStages.push(stage),
+    verifyGitExecution: async () => {
+      productionGitCalls += 1;
+      throw new Error("GIT_MUST_NOT_GATE_PRODUCTION");
+    },
+    startMonitor: async () => ({ origin: "http://127.0.0.1:4317" }),
+  });
+  assert.deepEqual(productionHandle, { origin: "http://127.0.0.1:4317" });
+  assert.equal(productionGitCalls, 0);
+  assert.deepEqual(productionStages, ["MONITOR_STARTING"]);
+
+  const smokeStages = [];
+  let smokeStarted = false;
+  await assert.rejects(startMonitorAfterEnvironment({
+    smoke: true,
+    recordStage: (stage) => smokeStages.push(stage),
+    verifyGitExecution: async () => { throw new Error("DESKTOP_MONITOR_GIT_FAILED"); },
+    startMonitor: async () => { smokeStarted = true; },
+  }), /DESKTOP_MONITOR_GIT_FAILED/);
+  assert.equal(smokeStarted, false);
+  assert.deepEqual(smokeStages, ["MONITOR_GIT_CHECKING"]);
+
+  let smokeGitCalls = 0;
+  const successfulStages = [];
+  await startMonitorAfterEnvironment({
+    smoke: true,
+    recordStage: (stage) => successfulStages.push(stage),
+    verifyGitExecution: async () => { smokeGitCalls += 1; },
+    startMonitor: async () => ({ origin: "http://127.0.0.1:4318" }),
+  });
+  assert.equal(smokeGitCalls, 1);
+  assert.deepEqual(successfulStages, [
+    "MONITOR_GIT_CHECKING",
+    "MONITOR_GIT_VERIFIED",
+    "MONITOR_STARTING",
+  ]);
+});
+
+test("monitor diagnostics cannot overwrite an established production shell trace", () => {
+  assert.equal(containsShellStageTrace("MONITOR_READY"), false);
+  assert.equal(containsShellStageTrace("MONITOR_READY\nSHELL_WEB_IMPORTING"), true);
+  assert.equal(containsShellStageTrace("PRIVATE_SHELL_WEB_IMPORTING"), false);
 });
 
 test("ASAR policy unpacks the monitor bundle, complete production build, and Sharp native files", async () => {
@@ -149,12 +207,14 @@ test("monitor is isolated and the in-main web host receives no provider paths or
     OPENAI_API_KEY: "private-key",
     SERVICE_PAT: "private-pat",
     SSH_AUTH_SOCK: "private-socket",
+    THREADLIGHT_SMOKE_MAIN_STAGE_PATH: "safe-fixed-stage-path",
     PATH: [nodeDirectory, gitDirectory].join(path.delimiter),
     SystemRoot: "safe-system-root",
     TEMP: "safe-temp",
   };
   const runtime = minimalRuntimeEnvironment(source, {}, fileExists);
   assert.equal(runtime.PATH, gitDirectory);
+  assert.equal(runtime.THREADLIGHT_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
   assert.equal(executableOnPath(runtime, "git.exe", fileExists), true);
   assert.doesNotThrow(() => assertNoSystemNodeInPath(runtime, fileExists));
   assert.throws(() => assertNoSystemNodeInPath(source, fileExists), /DESKTOP_SYSTEM_NODE_VISIBLE/);
@@ -165,6 +225,7 @@ test("monitor is isolated and the in-main web host receives no provider paths or
   keepOnlyRuntimeEnvironment(webEnvironment, { THREADLIGHT_MONITOR_ORIGIN: "http://127.0.0.1:4317" }, fileExists);
   assert.equal(webEnvironment.PATH, gitDirectory);
   assert.equal(webEnvironment.THREADLIGHT_MONITOR_ORIGIN, "http://127.0.0.1:4317");
+  assert.equal(webEnvironment.THREADLIGHT_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
   assert.equal(webEnvironment.SSH_AUTH_SOCK, undefined);
 
   const monitorEnvironment = monitorPrivateEnvironment(source);
@@ -204,9 +265,10 @@ test("forced utility cleanup waits for the child exit and leaves no pid", async 
 });
 
 test("monitor worker uses one physical bundle with fixed lifecycle stages", async () => {
-  const [main, monitorHost, bundler, runtimeProof] = await Promise.all([
+  const [main, monitorHost, monitorStartupPolicy, bundler, runtimeProof] = await Promise.all([
     readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/monitor-startup-policy.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/service-bundles.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8"),
   ]);
@@ -216,6 +278,9 @@ test("monitor worker uses one physical bundle with fixed lifecycle stages", asyn
   assert.match(bundler, /codeSplitting:\s*false/);
   assert.doesNotMatch(main, /hang-probe/);
   assert.match(monitorHost, /MONITOR_RUNTIME_ASSERTING/);
+  assert.match(monitorHost, /smoke \? \{ gitProof: "verified" \} : \{\}/);
+  assert.match(monitorStartupPolicy, /if \(options\.smoke === true\)/);
+  assert.match(monitorStartupPolicy, /await options\.verifyGitExecution\(\)/);
   assert.match(main, /MAIN_GIT_EXECUTING/);
   assert.match(main, /MAIN_GIT_VERIFIED/);
   assert.match(main, /WEB_IMPORTING/);
@@ -225,7 +290,7 @@ test("monitor worker uses one physical bundle with fixed lifecycle stages", asyn
   assert.match(main, /WEB_HEALTH_CHECKING/);
   assert.match(main, /WEB_HEALTH_VERIFIED/);
   assert.match(main, /runtimePaths\.unpackedRoot[\s\S]*dist/);
-  assert.match(monitorHost, /MONITOR_STARTING/);
+  assert.match(monitorStartupPolicy, /MONITOR_STARTING/);
   assert.match(monitorHost, /MONITOR_READY/);
   assert.match(runtimeProof, /\^\(\?:MONITOR\|WEB\)_\[A-Z_\]/);
   assert.match(runtimeProof, /node\.exe/);

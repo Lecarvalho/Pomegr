@@ -4,6 +4,8 @@ import { execFile } from "node:child_process";
 import { startMonitorServer } from "../monitor/server.mjs";
 import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
 import { environmentValue, MONITOR_PRIVATE_ENVIRONMENT_NAMES } from "./environment-policy.mjs";
+import { startMonitorAfterEnvironment } from "./monitor-startup-policy.mjs";
+import { installQuietConsole } from "./quiet-console.mjs";
 import {
   assertPackagedElectronRuntime,
   installShutdown,
@@ -13,13 +15,7 @@ import {
 } from "./runtime-proof.mjs";
 
 const quietLogger = Object.freeze({ log() {} });
-for (const method of ["debug", "error", "info", "log", "warn"]) {
-  Object.defineProperty(globalThis.console, method, {
-    configurable: false,
-    value() {},
-    writable: false,
-  });
-}
+installQuietConsole();
 let handle;
 const shutdown = installShutdown(async () => { await handle?.close(); });
 recordUtilityStage("MONITOR_MODULE_LOADED");
@@ -60,16 +56,18 @@ async function main() {
     recordUtilityStage("MONITOR_ENV_LOADING");
     await installMonitorPrivateEnvironment();
     recordUtilityStage("MONITOR_ENV_LOADED");
-    recordUtilityStage("MONITOR_GIT_CHECKING");
-    await verifyGitExecution();
-    recordUtilityStage("MONITOR_GIT_VERIFIED");
-    recordUtilityStage("MONITOR_STARTING");
-    handle = await startMonitorServer({
-      host: "127.0.0.1",
-      port: 0,
-      authorizationToken: workerData?.authorizationToken,
-      providerRegistry: createDefaultProviderRegistry(),
-      logger: quietLogger,
+    const smoke = workerData?.smoke === true;
+    handle = await startMonitorAfterEnvironment({
+      smoke,
+      verifyGitExecution,
+      recordStage: recordUtilityStage,
+      startMonitor: () => startMonitorServer({
+        host: "127.0.0.1",
+        port: 0,
+        authorizationToken: workerData?.authorizationToken,
+        providerRegistry: createDefaultProviderRegistry(),
+        logger: quietLogger,
+      }),
     });
     const health = await fetch(`${handle.origin}/health`, {
       headers: workerData?.authorizationToken
@@ -78,7 +76,12 @@ async function main() {
     });
     if (health.status !== 204) throw new Error("DESKTOP_MONITOR_FETCH_FAILED");
     recordUtilityStage("MONITOR_READY");
-    send({ type: "ready", service: "monitor", origin: handle.origin });
+    send({
+      type: "ready",
+      service: "monitor",
+      origin: handle.origin,
+      ...(smoke ? { gitProof: "verified" } : {}),
+    });
   } catch {
     send({ type: "failed", service: "monitor", code: "DESKTOP_MONITOR_START_FAILED" });
     await shutdown(1);
