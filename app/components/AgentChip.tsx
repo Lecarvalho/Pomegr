@@ -9,19 +9,20 @@ type AgentChipProps = {
   children: ReactNode;
   className?: string;
   title?: string;
+  ariaLabel?: string;
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
 };
 
-export function AgentChip({ as = "span", children, className = "", title, onClick, expanded, controls }: AgentChipProps) {
+export function AgentChip({ as = "span", children, className = "", title, ariaLabel, onClick, expanded, controls }: AgentChipProps) {
   const classes = `agentChip ${as === "button" ? "agentChipButton" : ""} ${className}`.trim();
   if (as === "button") return (
     <button className={classes} type="button" onClick={onClick} aria-expanded={expanded} aria-controls={controls}>
       <span className="agentChipLabel">{children}</span>
     </button>
   );
-  if (title) return <TooltippedAgentChip classes={classes} tooltip={title}>{children}</TooltippedAgentChip>;
+  if (title) return <TooltippedAgentChip ariaLabel={ariaLabel} classes={classes} tooltip={title}>{children}</TooltippedAgentChip>;
   return <span className={classes}><span className="agentChipLabel">{children}</span></span>;
 }
 
@@ -32,7 +33,7 @@ type TooltipPosition = {
   top: number;
 };
 
-function TooltippedAgentChip({ children, classes, tooltip }: { children: ReactNode; classes: string; tooltip: string }) {
+function TooltippedAgentChip({ children, classes, tooltip, ariaLabel }: { children: ReactNode; classes: string; tooltip: string; ariaLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -82,6 +83,7 @@ function TooltippedAgentChip({ children, classes, tooltip }: { children: ReactNo
       ref={triggerRef}
       className={`${classes} agentChipTooltipTrigger`}
       type="button"
+      aria-label={ariaLabel}
       aria-describedby={open ? tooltipId : undefined}
       aria-expanded={open}
       onBlur={close}

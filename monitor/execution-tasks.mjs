@@ -1,3 +1,5 @@
+import { classifyExecutionFailure } from "./execution-failures.mjs";
+
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const MAX_LABEL_LENGTH = 160;
 const MAX_TASKS = 30;
@@ -27,6 +29,10 @@ function notificationFrom(value) {
     toolUseId: safeId(field("tool-use-id")),
     status: field("status").toLowerCase(),
     exitCode: exitCodeMatch ? Number(exitCodeMatch[1]) : null,
+    failureCause: classifyExecutionFailure(summary, {
+      failed: Boolean(exitCodeMatch && Number(exitCodeMatch[1]) !== 0) || ["failed", "error"].includes(field("status").toLowerCase()),
+      exitCode: exitCodeMatch ? Number(exitCodeMatch[1]) : null,
+    }),
   };
 }
 
@@ -70,6 +76,7 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
           startedAt: timestamp,
           finishedAt: null,
           exitCode: null,
+          failureCause: null,
           signal: null,
         });
         continue;
@@ -88,6 +95,12 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
       }
       task.status = record.toolUseResult?.interrupted ? "stopped" : part.is_error ? "failed" : "completed";
       task.finishedAt = timestamp;
+      task.failureCause = classifyExecutionFailure([
+        part.content,
+        record.toolUseResult?.stderr,
+        record.toolUseResult?.error,
+        record.toolUseResult?.message,
+      ], { failed: task.status === "failed" });
     }
 
     const notificationText = record?.type === "queue-operation"
@@ -108,6 +121,7 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
     task.status = completionStatus(notification);
     task.finishedAt = timestamp;
     task.exitCode = notification.exitCode;
+    task.failureCause = task.status === "failed" ? notification.failureCause : null;
   }
 
   const historicalFinishedAt = safeTimestamp(sessionUpdatedAt);

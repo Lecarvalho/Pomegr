@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
+import { classifyExecutionFailure, safeExecutionFailureCause } from "../execution-failures.mjs";
 
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const MAX_LABEL_LENGTH = 160;
@@ -152,6 +153,7 @@ function execCellOutput(payload, taskCount) {
   return {
     failed,
     exitCodes: exitCodes.length === taskCount ? exitCodes : taskCount === 1 && exitCodes.length ? [exitCodes[0]] : [],
+    failureCause: classifyExecutionFailure(texts, { failed, exitCode: exitCodes[0] ?? null }),
   };
 }
 
@@ -179,7 +181,7 @@ function commandMetadata(value, input = value) {
   };
 }
 
-function makeTask({ id, timestamp, status = "running", label, background = false, backgroundId = null, exitCode = null, finishedAt = null }) {
+function makeTask({ id, timestamp, status = "running", label, background = false, backgroundId = null, exitCode = null, finishedAt = null, failureCause = null }) {
   const taskId = safeId(id);
   const startedAt = codexTimestamp(timestamp);
   if (!taskId || !startedAt) return null;
@@ -195,6 +197,9 @@ function makeTask({ id, timestamp, status = "running", label, background = false
     startedAt,
     finishedAt: normalizedTaskStatus === "running" ? null : codexTimestamp(finishedAt) || startedAt,
     exitCode: normalizedExitCode,
+    failureCause: normalizedTaskStatus === "failed"
+      ? safeExecutionFailureCause(failureCause) || classifyExecutionFailure([], { exitCode: normalizedExitCode })
+      : null,
     signal: null,
   };
 }
@@ -210,6 +215,7 @@ function cachedTask(value) {
     backgroundId: value.backgroundId,
     exitCode: value.exitCode,
     finishedAt: value.finishedAt,
+    failureCause: value.failureCause,
   });
 }
 
@@ -218,6 +224,10 @@ function statusRank(status) {
   if (status === "failed") return 3;
   if (status === "completed") return 2;
   return 1;
+}
+
+function failureCauseRank(value) {
+  return value && !["non_zero_exit", "provider_error"].includes(value) ? 2 : value ? 1 : 0;
 }
 
 function mergeTask(previous, next) {
@@ -237,6 +247,9 @@ function mergeTask(previous, next) {
     startedAt: nextStartedEarlier ? next.startedAt : previous.startedAt,
     finishedAt: nextStatusWins ? next.finishedAt : previous.finishedAt,
     exitCode: nextStatusWins && next.exitCode !== null ? next.exitCode : previous.exitCode,
+    failureCause: nextStatusWins && failureCauseRank(next.failureCause) >= failureCauseRank(previous.failureCause)
+      ? next.failureCause
+      : previous.failureCause,
   };
 }
 
@@ -294,6 +307,14 @@ function canonicalTask(item, turn, options) {
     ...metadata,
     exitCode,
     finishedAt: status === "running" ? null : finishedTimestamp(startedAt, turn?.completedAt, durationMs),
+    failureCause: classifyExecutionFailure([
+      item.aggregatedOutput,
+      item.aggregated_output,
+      item.output,
+      item.stderr,
+      item.error,
+      item.message,
+    ], { failed: status === "failed", exitCode }),
   });
 }
 
@@ -316,6 +337,14 @@ function taskFromItem(item, timestamp, completed, fallbackTimestamp) {
     ...commandMetadata(item),
     exitCode,
     finishedAt: status === "running" ? null : timestamp || fallbackTimestamp,
+    failureCause: classifyExecutionFailure([
+      item.aggregatedOutput,
+      item.aggregated_output,
+      item.output,
+      item.stderr,
+      item.error,
+      item.message,
+    ], { failed: status === "failed", exitCode }),
   });
 }
 
@@ -332,6 +361,14 @@ function completionUpdate(payload, timestamp, fallbackTimestamp) {
     ...commandMetadata(payload),
     exitCode,
     finishedAt: timestamp || fallbackTimestamp,
+    failureCause: classifyExecutionFailure([
+      payload?.aggregatedOutput,
+      payload?.aggregated_output,
+      payload?.output,
+      payload?.stderr,
+      payload?.error,
+      payload?.message,
+    ], { failed: status === "failed", exitCode }),
   });
 }
 
@@ -421,6 +458,7 @@ export function parseCodexExecutionTaskStateRecords(records, options = {}) {
             label: "Shell command",
             exitCode,
             finishedAt: timestamp,
+            failureCause: result.failureCause,
           }));
         }
         continue;

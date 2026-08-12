@@ -41,6 +41,7 @@ const task: ExecutionTask = {
   startedAt: "2026-08-08T12:00:00.000Z",
   finishedAt: "2026-08-08T12:00:05.000Z",
   exitCode: 0,
+  failureCause: null,
   signal: null,
 };
 
@@ -372,6 +373,25 @@ describe("reported signal tooltips", () => {
 });
 
 describe("agent detail popovers", () => {
+  it("shows a privacy-safe cause tooltip for a failed shell task", async () => {
+    const user = userEvent.setup();
+    const failedTask: ExecutionTask = {
+      ...task,
+      id: "task-failed",
+      label: "Shell command",
+      status: "failed",
+      exitCode: 1,
+      failureCause: "permission_denied",
+    };
+    const failedAgent = { ...agent, executionTasks: [failedTask] };
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[failedAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
+
+    await user.click(screen.getByRole("button", { name: "1 shell task" }));
+    const causeTrigger = screen.getByRole("button", { name: /Show failure cause/ });
+    await user.hover(causeTrigger);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Cause: the command was blocked by a permissions or sandbox restriction. Exit code 1.");
+  });
+
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {
     const user = userEvent.setup();
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[{ id: "plan-1", subject: "Refactor dashboard", status: "in_progress", blocks: [], blockedBy: [] }]} historical={false} /></LiveClockProvider>);

@@ -101,7 +101,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 - `metrics` — agents, tools, repetition, context usage
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
 - `activity` — sanitized tool, failed shell-completion, and user-input events
-- `executionTasks` — the primary agent's bounded shell-task lifecycle metadata, retained for API compatibility
+- `executionTasks` — the primary agent's bounded shell-task lifecycle metadata and optional enum-based failure category, retained for API compatibility
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 

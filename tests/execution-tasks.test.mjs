@@ -41,6 +41,7 @@ test("tracks a background shell command until its completion notification", () =
     startedAt: "2026-08-05T23:14:02.000Z",
     finishedAt: "2026-08-05T23:21:05.000Z",
     exitCode: 0,
+    failureCause: null,
     signal: null,
   }]);
   assert.doesNotMatch(JSON.stringify(buildExecutionTasks(records)), /PRIVATE|command|output/i);
@@ -91,7 +92,21 @@ test("records foreground completion, failure, and interruption without output", 
     { label: "Publish changes", status: "failed" },
     { label: "Run checks", status: "completed" },
   ]);
+  assert.equal(tasks.find((task) => task.label === "Publish changes").failureCause, "provider_error");
   assert.doesNotMatch(JSON.stringify(tasks), /secret|PRIVATE/);
+});
+
+test("reduces private shell output to a bounded failure category", () => {
+  const tasks = buildExecutionTasks([
+    bash("toolu_denied", "2026-08-05T12:01:00.000Z", { command: "secret", description: "Read protected files" }),
+    {
+      ...result("toolu_denied", "2026-08-05T12:01:02.000Z", { isError: true }),
+      message: { content: [{ type: "tool_result", tool_use_id: "toolu_denied", is_error: true, content: "Permission denied: PRIVATE_PATH_MUST_NOT_LEAK" }] },
+    },
+  ]);
+
+  assert.equal(tasks[0].failureCause, "permission_denied");
+  assert.doesNotMatch(JSON.stringify(tasks), /PRIVATE_PATH_MUST_NOT_LEAK|Permission denied/);
 });
 
 test("marks incomplete commands stopped in historical sessions", () => {

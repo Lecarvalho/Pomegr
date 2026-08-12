@@ -28,6 +28,7 @@ export type ExecutionTask = {
   startedAt: string;
   finishedAt: string | null;
   exitCode: number | null;
+  failureCause: "command_not_found" | "invalid_path" | "network_error" | "not_found" | "non_zero_exit" | "permission_denied" | "provider_error" | "syntax_error" | "tests_failed" | "timed_out" | null;
   signal: ReportedSignal | null;
 };
 

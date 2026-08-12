@@ -39,6 +39,7 @@ const task: ExecutionTask = {
   startedAt: "2026-08-12T12:00:02.000Z",
   finishedAt: null,
   exitCode: null,
+  failureCause: null,
   signal: null,
 };
 

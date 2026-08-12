@@ -158,7 +158,15 @@ test("maps foreground rollout success, failure, and interruption without command
       call_id: "command-failed",
       status: "completed",
       success: false,
-      aggregated_output: "TOOL_OUTPUT_MUST_NOT_LEAK",
+      aggregated_output: "Permission denied: TOOL_OUTPUT_MUST_NOT_LEAK",
+      exit_code: 17,
+    }),
+    record("2026-08-10T13:00:04.500Z", "event_msg", {
+      type: "exec_command_end",
+      call_id: "command-failed",
+      status: "completed",
+      success: false,
+      aggregated_output: "DUPLICATE_OUTPUT_MUST_NOT_LEAK",
       exit_code: 17,
     }),
     record("2026-08-10T13:00:05.000Z", "response_item", {
@@ -176,10 +184,10 @@ test("maps foreground rollout success, failure, and interruption without command
   ];
 
   const tasks = parseCodexExecutionTaskRecords(records);
-  assert.deepEqual(tasks.map(({ id, label, status, exitCode }) => ({ id, label, status, exitCode })), [
-    { id: "command-stopped", label: "Shell command", status: "stopped", exitCode: null },
-    { id: "command-failed", label: "Compile fixture", status: "failed", exitCode: 17 },
-    { id: "command-ok", label: "Run checks", status: "completed", exitCode: 0 },
+  assert.deepEqual(tasks.map(({ id, label, status, exitCode, failureCause }) => ({ id, label, status, exitCode, failureCause })), [
+    { id: "command-stopped", label: "Shell command", status: "stopped", exitCode: null, failureCause: null },
+    { id: "command-failed", label: "Compile fixture", status: "failed", exitCode: 17, failureCause: "permission_denied" },
+    { id: "command-ok", label: "Run checks", status: "completed", exitCode: 0, failureCause: null },
   ]);
   assertNoPrivateFixtureSentinels(tasks, "Codex foreground execution tasks");
   assert.doesNotMatch(JSON.stringify(tasks), /commandActions|parsed_cmd|aggregated_output|stdout|stderr|output/i);
@@ -213,7 +221,7 @@ test("maps current Codex exec cells to safe shell tasks without exposing cell so
       call_id: "exec-failed",
       output: [
         { type: "input_text", text: "Script failed\nWall time: 0.1 seconds" },
-        { type: "input_text", text: "Script error:\nSTDERR_MUST_NOT_LEAK" },
+        { type: "input_text", text: "Script error:\nPermission denied: STDERR_MUST_NOT_LEAK" },
       ],
     }),
     record("2026-08-11T15:02:00.000Z", "response_item", {
@@ -262,6 +270,7 @@ test("maps current Codex exec cells to safe shell tasks without exposing cell so
     { id: "exec-success-shell-1", label: "Shell command", status: "completed", exitCode: 0 },
   ]);
   assertNoPrivateFixtureSentinels(tasks, "current Codex exec-cell tasks");
+  assert.equal(tasks.find((task) => task.id === "exec-failed-shell-1").failureCause, "permission_denied");
 });
 
 test("reconciles exec-cell completion from sanitized cached task identities", () => {
@@ -386,6 +395,7 @@ test("deduplicates canonical lifecycle events and exposes only safe background p
     startedAt: "2026-08-10T14:00:00.000Z",
     finishedAt: "2026-08-10T14:00:03.000Z",
     exitCode: 0,
+    failureCause: null,
     signal: { label: "Ready", tone: "positive", reportedAt: "2026-08-10T14:00:02.000Z" },
   });
   assert.equal(tasks.find((task) => task.id === "unsafe-process").backgroundId, null);
@@ -429,6 +439,7 @@ test("maps canonical command items with authoritative status and bounded descrip
   assert.equal(tasks.find((task) => task.id === "canonical-ok").status, "completed");
   assert.equal(tasks.find((task) => task.id === "canonical-ok").startedAt, "2026-08-10T16:00:04.000Z");
   assert.equal(tasks.find((task) => task.id === "canonical-failed").status, "failed");
+  assert.equal(tasks.find((task) => task.id === "canonical-failed").failureCause, "non_zero_exit");
   assert.equal(tasks.find((task) => task.id === "canonical-declined").status, "stopped");
   assertNoPrivateFixtureSentinels(tasks, "canonical Codex execution tasks");
 });
