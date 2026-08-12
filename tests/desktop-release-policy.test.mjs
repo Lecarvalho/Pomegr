@@ -7,6 +7,10 @@ import test from "node:test";
 
 import { assertCleanTaggedCheckout, prepareRelease } from "../desktop/prepare-release.mjs";
 import {
+  parseAcceptanceArguments,
+  verifyUpdateSignatureAcceptance,
+} from "../desktop/update-signature-acceptance.mjs";
+import {
   RELEASE_LEGAL_FILES,
   THREADLIGHT_WINDOWS_PUBLISHER,
   assertReleaseArtifactNames,
@@ -17,6 +21,15 @@ import {
   renderChecksumManifest,
   updateMetadataName,
 } from "../desktop/release-policy.mjs";
+
+const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=Threadlight, C=CA";
+
+async function updateSignatureFixture(contents = "synthetic executable fixture") {
+  const root = await mkdtemp(path.join(tmpdir(), "threadlight-update-acceptance-"));
+  const filename = path.join(root, "PRIVATE_PATH_MUST_NOT_LEAK.exe");
+  await writeFile(filename, contents, "utf8");
+  return filename;
+}
 
 test("release versions keep stable and beta channels separate", () => {
   assert.deepEqual(parseReleaseVersion("1.2.3"), { version: "1.2.3", channel: "stable", prerelease: false });
@@ -67,6 +80,117 @@ test("checksum manifests are deterministic and reject unsafe input", () => {
   ]), `${first} *a.zip\n${second.toLowerCase()} *z.exe\n`);
   assert.throws(() => renderChecksumManifest([{ name: "../secret", sha256: first }]), /CHECKSUM_INVALID/);
   assert.throws(() => renderChecksumManifest([]), /CHECKSUMS_EMPTY/);
+});
+
+test("real-file acceptance verifies a private snapshot and distinguishes three exact outcomes", async () => {
+  const filename = await updateSignatureFixture();
+  let stagedPath;
+  const accepted = await verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "accepted",
+    verifier: async (publishers, observedPath) => {
+      assert.deepEqual(publishers, [ACCEPTANCE_PUBLISHER_SUBJECT]);
+      assert.notEqual(observedPath, filename);
+      assert.equal(path.basename(observedPath), "update-fixture.exe");
+      stagedPath = observedPath;
+      return null;
+    },
+    inspectSignature: async (observedPath) => {
+      assert.notEqual(observedPath, filename);
+      return { status: "Valid", subject: ACCEPTANCE_PUBLISHER_SUBJECT, timestamped: true };
+    },
+  });
+  assert.equal(accepted.result, "accepted");
+  assert.match(accepted.sha256, /^[a-f0-9]{64}$/);
+  assert.ok(stagedPath);
+
+  const unsigned = await verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "rejected-unsigned",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_INVALID",
+    inspectSignature: async () => ({ status: "NotSigned", subject: "", timestamped: false }),
+  });
+  assert.deepEqual(unsigned, { result: "rejected-unsigned", sha256: accepted.sha256 });
+
+  const wrongPublisher = await verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "rejected-wrong-publisher",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_INVALID",
+    inspectSignature: async () => ({
+      status: "Valid",
+      subject: "CN=Different Publisher, O=Different Organization, C=CA",
+      timestamped: true,
+    }),
+  });
+  assert.deepEqual(wrongPublisher, { result: "rejected-wrong-publisher", sha256: accepted.sha256 });
+});
+
+test("wrong-publisher evidence cannot be satisfied by another unsigned or invalid file", async () => {
+  const filename = await updateSignatureFixture();
+  await assert.rejects(() => verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "rejected-wrong-publisher",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_INVALID",
+    inspectSignature: async () => ({ status: "NotSigned", subject: "", timestamped: false }),
+  }), /RESULT_MISMATCH/);
+  await assert.rejects(() => verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "rejected-wrong-publisher",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_INVALID",
+    inspectSignature: async () => ({
+      status: "HashMismatch",
+      subject: "CN=Different Publisher, O=Different Organization, C=CA",
+      timestamped: true,
+    }),
+  }), /VERIFICATION_FAILED/);
+});
+
+test("real-file acceptance fails closed on verifier errors, result mismatch, and source mutation", async () => {
+  const filename = await updateSignatureFixture();
+  await assert.rejects(() => verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "rejected-unsigned",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_CHECK_FAILED",
+    inspectSignature: async () => ({ status: "NotSigned", subject: "", timestamped: false }),
+  }), /VERIFICATION_FAILED/);
+  await assert.rejects(() => verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "accepted",
+    verifier: async () => "DESKTOP_UPDATE_SIGNATURE_INVALID",
+    inspectSignature: async () => ({ status: "NotSigned", subject: "", timestamped: false }),
+  }), /RESULT_MISMATCH/);
+  await assert.rejects(() => verifyUpdateSignatureAcceptance({
+    filename,
+    publisherSubject: ACCEPTANCE_PUBLISHER_SUBJECT,
+    expected: "accepted",
+    verifier: async () => {
+      await writeFile(filename, "changed executable fixture", "utf8");
+      return null;
+    },
+    inspectSignature: async () => ({ status: "Valid", subject: ACCEPTANCE_PUBLISHER_SUBJECT, timestamped: true }),
+  }), /FILE_CHANGED/);
+});
+
+test("signature acceptance CLI parser rejects missing, unknown, and duplicate options", () => {
+  assert.deepEqual(parseAcceptanceArguments(["--file", "candidate.exe", "--expect", "accepted"]), {
+    filename: "candidate.exe",
+    expected: "accepted",
+  });
+  for (const args of [
+    ["--file", "candidate.exe"],
+    ["--file", "a.exe", "--file", "b.exe"],
+    ["--expect", "accepted", "--expect", "accepted"],
+    ["--file", "candidate.exe", "--unknown", "accepted"],
+  ]) {
+    assert.throws(() => parseAcceptanceArguments(args), /ARGUMENTS_INVALID/);
+  }
 });
 
 test("release preparation requires a clean exact tag and emits a closed checksummed set", async () => {
@@ -122,6 +246,10 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
   assert.match(workflow, /DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE/);
   assert.match(workflow, /forceCodeSigning=true/);
+  const qualityStep = workflow.match(/- name: Run release quality gates[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  for (const command of ["npm test", "npm run desktop:smoke", "npm run desktop:security", "npm run lint"]) {
+    assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
+  }
   assert.match(workflow, /verify-signature\.ps1/);
   assert.match(workflow, /gh release create[^\n]+--draft/);
   assert.match(workflow, /verify-assets/);

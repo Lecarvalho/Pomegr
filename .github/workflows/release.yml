@@ -58,6 +58,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           npm test
+          npm run desktop:smoke
+          npm run desktop:security
           npm run lint
 
       - name: Build and sign Windows artifacts

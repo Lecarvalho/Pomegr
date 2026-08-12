@@ -46,6 +46,22 @@ Do not promote the first beta produced by a new signing or updater configuration
 
 Record the two versions, VM image/version, workflow run URLs, hashes, signature result, publisher, update outcome, interruption outcome, and negative-test outcome in the release acceptance record. These observations are required external evidence; unit tests and a successful packaging job are not substitutes.
 
+### Real-file signature acceptance
+
+Run every candidate through Threadlight's production Authenticode verifier. Set the expected complete publisher Subject only in the process environment; the command prints no path or certificate identity:
+
+```powershell
+$env:WINDOWS_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=YOUR ACTUAL ORGANIZATION, C=YOUR COUNTRY"
+
+npm run desktop:update:verify-signature -- --file .\Threadlight-Setup-X.Y.Z-beta.N-x64.exe --expect accepted
+npm run desktop:update:verify-signature -- --file .\unsigned-negative-fixture.exe --expect rejected-unsigned
+npm run desktop:update:verify-signature -- --file .\wrong-publisher-negative-fixture.exe --expect rejected-wrong-publisher
+
+Remove-Item Env:WINDOWS_PUBLISHER_SUBJECT
+```
+
+Use the complete Subject copied from the issued certificate, not the example. `accepted` requires a valid timestamped Authenticode signature whose complete Subject matches. `rejected-unsigned` requires Windows to report `NotSigned`. `rejected-wrong-publisher` requires a valid timestamped signature with a different complete Subject, so an unsigned or corrupt second fixture cannot satisfy that gate. The command verifies a private snapshot and fails if the source changes during the run. A PowerShell failure, unreadable file, malformed publisher Subject, duplicate option, or unexpected result also fails closed. Record each command's reported SHA-256 and only the fixed signature/publisher/timestamp result words required by the beta evidence schema; do not copy certificate Subjects or private paths into the record. Keep negative fixtures outside `release/`, never upload them, and remove them after the acceptance run.
+
 ## Failure and rollback
 
 An update check, download, or verification failure must leave the installed version runnable. Do not delete the working installation, bypass signature checks, switch a stable installation to beta, or manually replace updater metadata to force a retry.

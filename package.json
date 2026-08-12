@@ -29,6 +29,7 @@
     "desktop:inspect:acceptance-prior": "node desktop/inspect-acceptance-prior.mjs",
     "desktop:beta:init": "node desktop/beta-acceptance.mjs init",
     "desktop:beta:verify": "node desktop/beta-acceptance.mjs verify",
+    "desktop:update:verify-signature": "node desktop/update-signature-acceptance.mjs",
     "desktop:start": "npm run desktop:prepare && electron .",
     "desktop:smoke": "set NODE_NO_WARNINGS=1&& set ELECTRON_RUN_AS_NODE=1&& node_modules\\electron\\dist\\electron.exe desktop/smoke-runner.mjs",
     "desktop:security": "node --test --test-concurrency=1 tests/desktop-security.test.mjs tests/api-serialization.test.mjs tests/desktop-shell.test.mjs tests/desktop-behavior.test.mjs tests/desktop-notifications.test.mjs tests/desktop-updater.test.mjs tests/desktop-runtime-seams.test.mjs tests/desktop-packaging.test.mjs",
