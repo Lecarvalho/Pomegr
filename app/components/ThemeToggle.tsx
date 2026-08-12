@@ -1,8 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
+type DesktopThemeBridge = { setNativeTheme?: (source: Theme) => Promise<unknown> };
 
 const THEME_STORAGE_KEY = "threadlight-theme";
 const THEME_CHANGE_EVENT = "threadlight-theme-change";
@@ -24,6 +25,11 @@ export function ThemeToggle() {
     currentTheme,
     () => "light",
   );
+
+  useEffect(() => {
+    const bridge = (window as Window & { threadlightDesktop?: DesktopThemeBridge }).threadlightDesktop;
+    void bridge?.setNativeTheme?.(theme).catch(() => {});
+  }, [theme]);
 
   const toggleTheme = () => {
     const nextTheme = currentTheme() === "dark" ? "light" : "dark";

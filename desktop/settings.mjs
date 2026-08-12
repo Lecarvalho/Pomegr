@@ -2,11 +2,12 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const DESKTOP_SETTINGS_VERSION = 1;
+export const DESKTOP_SETTINGS_VERSION = 2;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   version: DESKTOP_SETTINGS_VERSION,
   window: Object.freeze({ width: 1280, height: 800, x: null, y: null, maximized: false }),
   launchAtLogin: false,
+  closeBehavior: "ask",
   notifications: true,
   updates: true,
 });
@@ -19,16 +20,17 @@ function isBoundedInteger(value, minimum, maximum) {
   return Number.isInteger(value) && value >= minimum && value <= maximum;
 }
 
-function isPersistedSettings(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== DESKTOP_SETTINGS_VERSION) return false;
+function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== version) return false;
   const window = value.window;
   return Boolean(window && typeof window === "object" && !Array.isArray(window)
-    && isBoundedInteger(window.width, 900, 3840)
-    && isBoundedInteger(window.height, 620, 2160)
+    && isBoundedInteger(window.width, 720, 3840)
+    && isBoundedInteger(window.height, 520, 2160)
     && (window.x === null || isBoundedInteger(window.x, -100_000, 100_000))
     && (window.y === null || isBoundedInteger(window.y, -100_000, 100_000))
     && typeof window.maximized === "boolean"
     && typeof value.launchAtLogin === "boolean"
+    && (version === 1 || ["ask", "tray", "quit"].includes(value.closeBehavior))
     && typeof value.notifications === "boolean"
     && typeof value.updates === "boolean");
 }
@@ -45,13 +47,14 @@ export function normalizeDesktopSettings(input) {
   return {
     version: DESKTOP_SETTINGS_VERSION,
     window: {
-      width: boundedInteger(window.width, 900, 3840, DEFAULT_DESKTOP_SETTINGS.window.width),
-      height: boundedInteger(window.height, 620, 2160, DEFAULT_DESKTOP_SETTINGS.window.height),
+      width: boundedInteger(window.width, 720, 3840, DEFAULT_DESKTOP_SETTINGS.window.width),
+      height: boundedInteger(window.height, 520, 2160, DEFAULT_DESKTOP_SETTINGS.window.height),
       x: boundedInteger(window.x, -100_000, 100_000, null),
       y: boundedInteger(window.y, -100_000, 100_000, null),
       maximized: typeof window.maximized === "boolean" ? window.maximized : false,
     },
     launchAtLogin: typeof source.launchAtLogin === "boolean" ? source.launchAtLogin : false,
+    closeBehavior: ["ask", "tray", "quit"].includes(source.closeBehavior) ? source.closeBehavior : "ask",
     notifications: typeof source.notifications === "boolean" ? source.notifications : true,
     updates: typeof source.updates === "boolean" ? source.updates : true,
   };
@@ -101,6 +104,10 @@ export function createDesktopSettingsStore(settingsFile, io = {}) {
         if (Number.isInteger(parsed?.version) && parsed.version > DESKTOP_SETTINGS_VERSION) {
           state = "future-version";
           return loadResult(normalizeDesktopSettings(), state, false);
+        }
+        if (parsed?.version === 1 && isPersistedSettings(parsed, 1)) {
+          state = "loaded";
+          return loadResult(normalizeDesktopSettings(parsed), "migrated", true);
         }
         if (!isPersistedSettings(parsed)) {
           state = "invalid";

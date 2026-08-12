@@ -77,7 +77,7 @@ test("desktop settings persist only the bounded allowlist", async () => {
   const file = path.join(root, "Data With Spaces", "settings.json");
   try {
     const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
-    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "notifications", "updates"]);
+    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates"]);
     const store = createDesktopSettingsStore(file);
     assert.deepEqual(await store.load(), { settings: normalizeDesktopSettings(), status: "missing", canPersist: true });
     await store.save(normalized);
@@ -149,6 +149,27 @@ test("unknown newer settings versions remain untouched", async () => {
   assert.deepEqual({ status: loaded.status, canPersist: loaded.canPersist }, { status: "future-version", canPersist: false });
   await assert.rejects(store.save(loaded.settings), /DESKTOP_SETTINGS_RECOVERY_REQUIRED/);
   assert.equal(writes, 0);
+});
+
+test("version-one settings migrate in memory without unsafe fields or destructive overwrite", async () => {
+  const versionOne = {
+    version: 1,
+    window: { width: 1280, height: 800, x: 4, y: 8, maximized: false },
+    launchAtLogin: true,
+    notifications: false,
+    updates: true,
+  };
+  let writes = 0;
+  const store = createDesktopSettingsStore("C:\\Threadlight\\settings.json", {
+    async readFile() { return JSON.stringify(versionOne); },
+    async writeFile() { writes += 1; },
+  });
+  const loaded = await store.load();
+  assert.equal(loaded.status, "migrated");
+  assert.equal(loaded.canPersist, true);
+  assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
+  assert.equal(loaded.settings.closeBehavior, "ask");
+  assert.equal(writes, 0, "migration waits for an ordinary explicit settings save");
 });
 
 test("desktop report save is explicit, bounded, and rejects untrusted IPC", async () => {

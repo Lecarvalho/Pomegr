@@ -10,6 +10,7 @@ import {
 } from "./acceptance-prior.mjs";
 import {
   EXTERNAL_LEGAL_FILES,
+  EXTERNAL_RUNTIME_FILES,
   assertNonemptyFile,
   assertPackagedApplicationFiles,
   dependencyNoticeKeys,
@@ -33,6 +34,7 @@ try {
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
+  for (const filename of EXTERNAL_RUNTIME_FILES) await assertNonemptyFile(path.join(resourcesRoot, filename));
 
   const applicationFiles = listPackage(archivePath).map(normalizeArtifactPath);
   const result = assertPackagedApplicationFiles(applicationFiles);
@@ -72,7 +74,7 @@ try {
     throw new Error("DESKTOP_ACCEPTANCE_DEPENDENCY_NOTICE_MISMATCH");
   }
 
-  if ((await readdir(resourcesRoot)).some((name) => !["app.asar", "app.asar.unpacked", "legal"].includes(name))) {
+  if ((await readdir(resourcesRoot)).some((name) => !["app.asar", "app.asar.unpacked", "legal", ...EXTERNAL_RUNTIME_FILES].includes(name))) {
     throw new Error("DESKTOP_ACCEPTANCE_RESOURCE_NOT_ALLOWLISTED");
   }
   if (JSON.stringify((await readdir(outputRoot)).sort())

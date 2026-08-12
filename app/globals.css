@@ -86,6 +86,20 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .ghostButton { border: 1px solid var(--line); background: rgba(255,255,255,.35); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
 .ghostButton:hover { border-color: #b8b9b2; background: #fff; }
 .ghostButton:disabled { cursor: default; opacity: .5; }.reportButton { border-color: var(--green); background: var(--green); color: #fff; }.reportButton:hover:not(:disabled) { border-color: #1f664b; background: #1f664b; }
+.desktopControls { position: relative; }
+.desktopControls > summary { min-height: 36px; display: flex; align-items: center; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.35); cursor: pointer; list-style: none; font-size: 12px; }
+.desktopControls > summary::-webkit-details-marker { display: none; }
+.desktopControls > summary::after { content: "+"; margin-inline-start: 8px; color: var(--muted); }
+.desktopControls[open] > summary::after { content: "−"; }
+.desktopControlsPanel { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: min(280px, calc(100vw - 28px)); padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 18px 50px rgba(25,32,29,.16); display: grid; gap: 4px; }
+.desktopControlsPanel > button, .desktopControlsPanel > a { min-height: 38px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); text-align: left; text-decoration: none; cursor: pointer; font-size: 12px; }
+.desktopControlsPanel > button:hover, .desktopControlsPanel > a:hover { background: var(--green-soft); }
+.desktopToggle, .desktopSelect { padding: 9px 10px; display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 12px; }
+.desktopToggle input { width: 16px; height: 16px; accent-color: var(--green); }
+.desktopControlsPanel > small { margin: -4px 10px 5px 35px; color: var(--muted); font-size: 10px; }
+.desktopSelect { align-items: flex-start; flex-direction: column; gap: 7px; }
+.desktopSelect select { width: 100%; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); font: inherit; }
+.desktopControlsPanel > .desktopQuit { margin-top: 3px; color: var(--red); }
 
 .aboutShell { width: min(1120px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; }
 .aboutBack { color: var(--ink); text-decoration: none; }
@@ -118,6 +132,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionMetaLabel { margin-bottom: 7px; color: var(--muted); font-size: 8px; font-weight: 600; letter-spacing: .1em; }
 .sessionTiming > strong { display: block; margin: 0 0 4px; font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
 .sessionMetaGroup > small { margin-top: 5px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
+@media (min-width: 641px) { .sessionLastEvent { width: 33ch; } }
 .sessionApprovalMode > .sessionApprovalModeChip { width: fit-content; min-height: auto; justify-content: flex-start; border: 0; border-radius: 0; padding: 0; background: transparent; color: var(--ink); }
 .notice { display: flex; gap: 10px; align-items: center; border: 1px solid #e0c3ad; background: var(--amber-soft); padding: 11px 14px; border-radius: 8px; color: #805024; font-size: 13px; margin-bottom: 18px; }
 .notice span { font-weight: 900; }
@@ -292,6 +307,11 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .hero { display: block; padding: 40px 0 28px; }
   .sessionMeta { width: 100%; min-width: 0; margin-top: 28px; }
 }
+@media (max-width: 820px) {
+  .connection { display: none; }
+  .topActions { gap: 8px; }
+  .brand > span:last-child { display: none; }
+}
 @media (max-width: 640px) {
   .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.connection { display: none; }.topActions { gap: 6px; }.ghostButton, .sessionMenuButton { min-height: 40px; }.ghostButton { padding: 7px 10px; font-size: 11px; }.sessionMenuButton { padding-right: 8px; padding-left: 8px; }.brand > span:last-child { display: none; }.hero h1 { font-size: 42px; }.sessionMeta { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "signal signal" "timing approval"; gap: 22px 28px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.gitSummary { align-items: flex-start; flex-direction: column; }.gitBadges { justify-content: flex-start; }.gitCommit { grid-template-columns: 56px minmax(0, 1fr); }.gitCommit time { display: none; }.gitFile { grid-template-columns: 44px minmax(0, 1fr); align-items: start; padding: 10px 12px; }.gitFile code { display: grid; gap: 4px; }.gitPathDirectory { display: block; }.gitPathName { display: block; max-width: none; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }.gitStatus { margin-top: 1px; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.contentGrid, .agentsPanel, .insightPanel { width: 100%; max-width: 100%; }.agentList { overflow: visible; padding-right: 12px; padding-left: 12px; }.agentRow { width: 100%; min-width: 0; grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-items: start; row-gap: 12px; padding: 14px 0; }.agentRow .treeRail { grid-column: 1; grid-row: 1 / 4; margin-left: calc(6px + min(var(--agent-indent), 40px)); }.agentIdentity { grid-column: 2 / 4; grid-row: 1; }.agentTitleLine > strong { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }.agentTokens { grid-column: 2; grid-row: 2; padding-right: 0; text-align: left; }.agentDuration { grid-column: 3; grid-row: 2; padding-right: 0; text-align: right; }.statusPill { grid-column: 2; grid-row: 3; align-self: center; justify-self: start; }.agentRow time { display: block; grid-column: 3; grid-row: 3; align-self: center; justify-self: end; white-space: nowrap; font-size: 9px; }.agentRow .agentPopover { left: 0; width: calc(100vw - 54px); } footer { gap: 10px; }
   .sessionIdentityPart:last-child { flex-basis: 100%; }.sessionIdentityPart:last-child > span { display: none; }
@@ -317,7 +337,8 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
 }
 
 html[data-theme="dark"] .themeToggle,
-html[data-theme="dark"] .ghostButton { background: rgba(255,255,255,.035); }
+html[data-theme="dark"] .ghostButton,
+html[data-theme="dark"] .desktopControls > summary { background: rgba(255,255,255,.035); }
 html[data-theme="dark"] .themeToggle:hover,
 html[data-theme="dark"] .ghostButton:hover { border-color: #56635d; background: #202723; }
 html[data-theme="dark"] .closeButton:hover { border-color: #56635d; background: rgba(255,255,255,.05); }

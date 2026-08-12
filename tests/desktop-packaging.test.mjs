@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   EXTERNAL_LEGAL_FILES,
+  EXTERNAL_RUNTIME_FILES,
   PUBLIC_LEGAL_FILES,
   DESKTOP_RUNTIME_FILES,
   assertPackagedApplicationFiles,
@@ -58,7 +59,7 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.equal(build.files.includes("**/*"), false);
   assert.equal(build.files.includes("desktop/**/*"), false);
   assert.equal(build.files.includes("tests/**/*"), false);
-  assert.deepEqual(build.extraResources.map(({ to }) => to).sort(), [...EXTERNAL_LEGAL_FILES].sort());
+  assert.deepEqual(build.extraResources.map(({ to }) => to).sort(), [...EXTERNAL_LEGAL_FILES, ...EXTERNAL_RUNTIME_FILES].sort());
   assert.match(packageJson.scripts["desktop:package"], /electron-builder --win nsis portable --x64/);
   assert.match(packageJson.scripts["desktop:package"], /finalize-package\.mjs/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release/);

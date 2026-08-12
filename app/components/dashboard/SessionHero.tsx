@@ -30,7 +30,7 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
         <div className="sessionMetaGroup sessionTiming">
           <span className="sessionMetaLabel">{historical ? "RECORDED WALL TIME" : "ELAPSED WALL TIME"}</span>
           <strong><SessionWallTimeText session={session} historical={historical} /></strong>
-          <small>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <MinuteRelativeTimeText value={session.updatedAt} /></>}</small>
+          <small className={historical ? undefined : "sessionLastEvent"}>{historical ? `Ended ${sessionListTime(session.updatedAt || "")}` : <>Last event <MinuteRelativeTimeText value={session.updatedAt} /></>}</small>
         </div>
         {capabilities.approvalMode && session?.approvalMode && <div className="sessionMetaGroup sessionApprovalMode">
           <span className="sessionMetaLabel">{historical ? "LAST APPROVAL MODE" : "APPROVAL MODE"}</span>

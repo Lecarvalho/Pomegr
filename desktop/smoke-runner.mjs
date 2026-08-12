@@ -23,6 +23,7 @@ const runtimeDirectories = ["dist", "monitor", "shared", "web"];
 const desktopFiles = [
   "asar-policy.mjs",
   "bounded-lifecycle.mjs",
+  "desktop-behavior.mjs",
   "environment-policy.mjs",
   "main.mjs",
   "monitor-host.mjs",

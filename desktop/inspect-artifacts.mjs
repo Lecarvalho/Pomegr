@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   EXTERNAL_LEGAL_FILES,
+  EXTERNAL_RUNTIME_FILES,
   PUBLIC_LEGAL_FILES,
   assertNonemptyFile,
   assertPackagedApplicationFiles,
@@ -33,6 +34,7 @@ try {
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
+  for (const filename of EXTERNAL_RUNTIME_FILES) await assertNonemptyFile(path.join(resourcesRoot, filename));
 
   const applicationFiles = listPackage(archivePath).map(normalizeArtifactPath);
   const packageResult = assertPackagedApplicationFiles(applicationFiles);
@@ -99,7 +101,7 @@ try {
   }
 
   const unexpectedResources = (await readdir(resourcesRoot))
-    .filter((name) => !["app.asar", "app.asar.unpacked", "legal"].includes(name));
+    .filter((name) => !["app.asar", "app.asar.unpacked", "legal", ...EXTERNAL_RUNTIME_FILES].includes(name));
   if (unexpectedResources.length) throw new Error("DESKTOP_ARTIFACT_RESOURCE_NOT_ALLOWLISTED");
 
   const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version)]);

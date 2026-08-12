@@ -18,6 +18,21 @@ import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
+import type { DesktopState } from "./components/DesktopControls";
+
+type DesktopBridge = {
+  saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
+  getDesktopState(): Promise<DesktopState | null>;
+  setPaused(value: boolean): Promise<DesktopState | null>;
+  setLaunchAtLogin(value: boolean): Promise<DesktopState | null>;
+  setCloseBehavior(value: DesktopState["closeBehavior"]): Promise<DesktopState | null>;
+  quit(): Promise<boolean>;
+  onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
+};
+
+function desktopBridge() {
+  return (window as Window & { threadlightDesktop?: DesktopBridge }).threadlightDesktop;
+}
 
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
@@ -25,6 +40,7 @@ export function Dashboard() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -35,6 +51,20 @@ export function Dashboard() {
   useEffect(() => {
     document.documentElement.dataset.threadlightHydrated = "true";
     return () => { delete document.documentElement.dataset.threadlightHydrated; };
+  }, []);
+
+  useEffect(() => {
+    const bridge = desktopBridge();
+    if (!bridge) return;
+    let active = true;
+    const apply = (state: DesktopState | null) => {
+      if (!active || !state) return;
+      setDesktopState(state);
+      setPaused(state.paused);
+    };
+    void bridge.getDesktopState().then(apply, () => {});
+    const unsubscribe = bridge.onDesktopStateChanged(apply);
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -71,6 +101,7 @@ export function Dashboard() {
   useEffect(() => {
     const controller = new AbortController();
     let nextRefresh: number | null = null;
+    if (paused) return () => controller.abort();
     const poll = async () => {
       await refresh(controller.signal);
       if (!controller.signal.aborted && !paused && !selectedIsHistorical) {
@@ -87,16 +118,37 @@ export function Dashboard() {
   useEffect(() => {
     const controller = new AbortController();
     let nextRefresh: number | null = null;
+    if (paused) return () => controller.abort();
     const poll = async () => {
       await refreshSessions(controller.signal);
-      if (!controller.signal.aborted) nextRefresh = window.setTimeout(() => void poll(), 2_000);
+      if (!controller.signal.aborted && !paused) nextRefresh = window.setTimeout(() => void poll(), 2_000);
     };
     void poll();
     return () => {
       controller.abort();
       if (nextRefresh !== null) window.clearTimeout(nextRefresh);
     };
-  }, [refreshSessions]);
+  }, [paused, refreshSessions]);
+
+  const togglePause = useCallback(() => {
+    const next = !paused;
+    const bridge = desktopBridge();
+    setPaused(next);
+    if (!bridge) return;
+    void bridge.setPaused(next).then((state) => {
+      if (!state) return;
+      setDesktopState(state);
+      setPaused(state.paused);
+    }, () => setPaused(!next));
+  }, [paused]);
+
+  const setLaunchAtLogin = useCallback((value: boolean) => {
+    void desktopBridge()?.setLaunchAtLogin(value).then((state) => { if (state) setDesktopState(state); }, () => {});
+  }, []);
+
+  const setCloseBehavior = useCallback((value: DesktopState["closeBehavior"]) => {
+    void desktopBridge()?.setCloseBehavior(value).then((state) => { if (state) setDesktopState(state); }, () => {});
+  }, []);
 
   const viewingHistory = data.view === "history";
   const connecting = loading && !data.error && !data.session;
@@ -135,11 +187,9 @@ export function Dashboard() {
       const generatedAt = new Date();
       const content = buildSessionReport(reportState, generatedAt);
       const filename = sessionReportFilename(reportState, generatedAt);
-      const desktopBridge = (window as Window & {
-        threadlightDesktop?: { saveReport(payload: { filename: string; content: string }): Promise<{ status: string }> };
-      }).threadlightDesktop;
-      if (desktopBridge) {
-        await desktopBridge.saveReport({ filename, content });
+      const bridge = desktopBridge();
+      if (bridge) {
+        await bridge.saveReport({ filename, content });
         return;
       }
       const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -161,7 +211,7 @@ export function Dashboard() {
       <div className="appFrame">
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
-        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={() => setPaused((value) => !value)} />
+        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}

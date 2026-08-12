@@ -342,9 +342,11 @@ npm test
 
 ## TL-DT-06 — Add tray, window, and launch-at-login behavior
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-05`
 - **Target size:** 1 session
+- **Completed:** 2026-08-11
+- **Implementation notes:** Added a bounded system tray and accessible in-app controls for open, UI-refresh pause/resume, About, launch at login, close behavior, and explicit quit. Close-to-tray is explained on first use and safely remembered; explicit quit, OS shutdown, and second-instance activation have deterministic cleanup/focus behavior. Launch at login remains opt-in, settings mutations serialize without resurrecting rejected values, and window bounds restore and re-clamp on live display changes. Pause affects only renderer polling, never provider state. A trusted allowlisted theme bridge synchronizes the standard Windows title bar with light/dark mode. Full build, Node/UI tests, lint, packaging inspection, the normal-PowerShell packaged smoke, and installed dark/light title-bar and native-control checks passed.
 
 ### Goal
 
@@ -569,6 +571,7 @@ Add short entries only after completing a task.
 | 2026-08-11 | TL-DT-03 | Complete | Added the secure single-instance shell, launch-token and local-origin gates, sandboxed renderer with no native API, bounded service supervision and failure UI, strict navigation/permission/download denial, and focused lifecycle/security coverage. The upgraded normal-PowerShell packaged dashboard smoke passed. |
 | 2026-08-11 | TL-DT-04 | Complete | Added installed/portable path resolution, isolated Threadlight-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
 | 2026-08-11 | TL-DT-05 | Complete | Produced and inspected the per-user installer, portable build, and test-only upgrade fixture; fixed Git-independent startup and Windows static delivery; all clean-Sandbox install, upgrade, portable, shutdown, uninstall, and data-boundary checks passed with the recorded artifact hashes. |
+| 2026-08-11 | TL-DT-06 | Complete | Added deterministic tray/window/quit/second-instance behavior, opt-in launch at login, UI-only pause controls, serialized bounded settings, live display re-clamping, and trusted native title-bar theme sync. Packaged smoke and installed dark/light native-chrome checks passed. |
 
 ## Reference documentation
 

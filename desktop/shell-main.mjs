@@ -5,7 +5,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, session, shell, Tray } from "electron";
 import {
   assertNoSystemNodeInPath,
   keepOnlyRuntimeEnvironment,
@@ -27,6 +27,18 @@ import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.m
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
 import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
+import {
+  clampWindowState,
+  applyDesktopNativeTheme,
+  applyTrayLoginToggle,
+  createDesktopBehaviorController,
+  createDesktopThemeHandler,
+  createSerializedSettingsWriter,
+  DESKTOP_BEHAVIOR_CHANNELS,
+  installDesktopAppLifecycle,
+  installDesktopWindowLifecycle,
+  installWindowBoundsGuard,
+} from "./desktop-behavior.mjs";
 
 installQuietConsole();
 
@@ -48,6 +60,11 @@ let desktopSettings;
 let settingsLoad;
 let settingsStore;
 let settingsSavePromise = Promise.resolve();
+let settingsWriter;
+let behaviorController;
+let tray;
+let removeWindowBoundsGuard;
+let removeWindowLifecycle;
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
 function workerEntrypoint() {
@@ -89,8 +106,108 @@ function createSecureWindow(browserSession, windowState) {
   return window;
 }
 
+function queueSettingsUpdate(transform) {
+  const operation = settingsWriter.update(transform).then((saved) => {
+    desktopSettings = saved;
+    return saved;
+  });
+  settingsSavePromise = operation;
+  return operation;
+}
+
+function persistCurrentWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const bounds = mainWindow.getNormalBounds();
+  const maximized = mainWindow.isMaximized();
+  void queueSettingsUpdate((current) => settingsForWindowClose(
+    settingsLoad,
+    current,
+    bounds,
+    maximized,
+  ) || current).catch(() => {});
+}
+
+function trustedDesktopEvent(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !webHandle?.origin) return false;
+  try { return new URL(event.senderFrame.url).origin === webHandle.origin; } catch { return false; }
+}
+
+function showShellWindow() {
+  if (!focusShellWindow(mainWindow) && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+}
+
+function openAbout() {
+  if (!mainWindow || mainWindow.isDestroyed() || !webHandle?.origin) return;
+  void mainWindow.loadURL(`${webHandle.origin}/about`).then(showShellWindow, showShellWindow);
+}
+
+function updateTrayMenu(state) {
+  if (!tray || tray.isDestroyed()) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Threadlight", click: showShellWindow },
+    { label: state.paused ? "Resume live refresh" : "Pause live refresh", click: () => behaviorController?.togglePaused() },
+    { label: "Launch at login", type: "checkbox", checked: state.launchAtLogin, enabled: state.launchAtLoginAvailable, click: (item) => {
+      if (behaviorController) void applyTrayLoginToggle(behaviorController, item.checked, updateTrayMenu);
+    } },
+    { type: "separator" },
+    { label: "About Threadlight", click: openAbout },
+    { type: "separator" },
+    { label: "Quit Threadlight", click: () => behaviorController?.quit() },
+  ]));
+}
+
+function createShellTray() {
+  const packagedIcon = path.join(process.resourcesPath, "tray-icon.png");
+  const developmentIcon = path.join(desktopPaths.applicationRoot, "build", "icon.png");
+  const iconPath = existsSync(packagedIcon) ? packagedIcon : developmentIcon;
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  if (icon.isEmpty()) throw new Error("DESKTOP_TRAY_ICON_MISSING");
+  tray = new Tray(icon);
+  tray.setToolTip("Threadlight — local read-only observer");
+  tray.on("click", showShellWindow);
+}
+
+function broadcastDesktopState(state) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(DESKTOP_BEHAVIOR_CHANNELS.stateChanged, state);
+}
+
+function installDesktopBehaviorIpc() {
+  for (const channel of [
+    DESKTOP_BEHAVIOR_CHANNELS.getState,
+    DESKTOP_BEHAVIOR_CHANNELS.setPaused,
+    DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
+    DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior,
+    DESKTOP_BEHAVIOR_CHANNELS.setTheme,
+    DESKTOP_BEHAVIOR_CHANNELS.quit,
+  ]) ipcMain.removeHandler(channel);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.getState, (event) => trustedDesktopEvent(event) ? behaviorController.snapshot() : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setPaused, (event, value) => trustedDesktopEvent(event) ? behaviorController.setPaused(value) : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setLaunchAtLogin(value) : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setCloseBehavior(value) : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setTheme, createDesktopThemeHandler({
+    isTrustedEvent: trustedDesktopEvent,
+    nativeTheme,
+  }));
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.quit, (event) => {
+    if (!trustedDesktopEvent(event)) return false;
+    behaviorController.quit();
+    return true;
+  });
+}
+
 async function showStartupError() {
   recordStage("SHELL_ERROR_LOADING");
+  // Electron's native theme is process-global. Keep the fixed dark error page and
+  // its standard title bar aligned even if startup fails before renderer sync.
+  applyDesktopNativeTheme(nativeTheme, "dark");
+  behaviorController = undefined;
+  try { tray?.destroy(); } catch { /* A partially created tray may already be gone. */ }
+  tray = undefined;
+  removeWindowBoundsGuard?.();
+  removeWindowBoundsGuard = undefined;
+  removeWindowLifecycle?.();
+  removeWindowLifecycle = undefined;
   try { mainWindow?.destroy(); } catch { /* A failed renderer may already be gone. */ }
   const errorSession = session.fromPartition(`threadlight-error-${randomUUID()}`);
   installSessionSecurity(errorSession, {
@@ -153,14 +270,12 @@ async function startDesktop() {
   settingsStore = createDesktopSettingsStore(desktopPaths.settingsFile);
   settingsLoad = await settingsStore.load();
   desktopSettings = settingsLoad.settings;
+  settingsWriter = createSerializedSettingsWriter(desktopSettings, (next) => settingsStore.save(next));
   recordStage("SHELL_SETTINGS_READY");
   ipcMain.removeHandler(DESKTOP_REPORT_CHANNEL);
   ipcMain.handle(DESKTOP_REPORT_CHANNEL, createReportSaveHandler({
     defaultDirectory: app.getPath("documents"),
-    isTrustedEvent: (event) => {
-      if (!mainWindow || event.sender !== mainWindow.webContents || !webHandle?.origin) return false;
-      try { return new URL(event.senderFrame.url).origin === webHandle.origin; } catch { return false; }
-    },
+    isTrustedEvent: trustedDesktopEvent,
     showSaveDialog: (options) => dialog.showSaveDialog(mainWindow, options),
     writeFile,
   }));
@@ -236,16 +351,45 @@ async function startDesktop() {
           webOrigin: web.origin,
           authorizationToken,
         });
-        mainWindow = createSecureWindow(browserSession, desktopSettings.window);
+        const restoredWindow = clampWindowState(desktopSettings.window, screen.getAllDisplays());
+        mainWindow = createSecureWindow(browserSession, restoredWindow);
+        removeWindowBoundsGuard = installWindowBoundsGuard(screen, mainWindow);
         recordStage("SHELL_WINDOW_CREATED");
         if (desktopSettings.window.maximized) mainWindow.maximize();
-        mainWindow.on("close", () => {
-          if (mainWindow?.isDestroyed()) return;
-          const bounds = mainWindow.getNormalBounds();
-          const closingSettings = settingsForWindowClose(settingsLoad, desktopSettings, bounds, mainWindow.isMaximized());
-          if (!closingSettings) return;
-          desktopSettings = closingSettings;
-          settingsSavePromise = settingsStore.save(desktopSettings).catch(() => {});
+        behaviorController = createDesktopBehaviorController({
+          settings: desktopSettings,
+          canPersist: settingsLoad.canPersist,
+          launchAtLoginAvailable: desktopPaths.mode === "installed",
+          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window })),
+          setLoginItem: async (openAtLogin) => app.setLoginItemSettings({ openAtLogin, path: process.execPath, args: [] }),
+          hideWindow: () => mainWindow?.hide(),
+          showWindow: showShellWindow,
+          quitApp: () => app.quit(),
+          explainClose: async () => {
+            const result = await dialog.showMessageBox(mainWindow, {
+              type: "info",
+              title: "Keep Threadlight available?",
+              message: "Threadlight can keep observing locally after you close its window.",
+              detail: "Choose Keep running to leave it in the system tray. Monitoring stays read-only, and you can quit at any time from Threadlight or the tray.",
+              buttons: ["Keep running", "Quit Threadlight"],
+              defaultId: 0,
+              cancelId: 0,
+              checkboxLabel: "Remember my choice",
+              checkboxChecked: false,
+              noLink: true,
+            });
+            return { action: result.response === 1 ? "quit" : "tray", remember: result.checkboxChecked };
+          },
+          updateTray: updateTrayMenu,
+          broadcast: broadcastDesktopState,
+        });
+        createShellTray();
+        updateTrayMenu(behaviorController.snapshot());
+        installDesktopBehaviorIpc();
+        void behaviorController.initializeLogin().catch(() => {});
+        removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {
+          getController: () => behaviorController,
+          persistWindowState: persistCurrentWindowState,
         });
         installWebContentsSecurity(mainWindow.webContents, {
           webOrigin: web.origin,
@@ -284,15 +428,13 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    focusRequested = true;
-    focusShellWindow(mainWindow);
-  });
-  app.on("window-all-closed", () => app.quit());
-  app.on("before-quit", (event) => {
-    if (runtimeState === "stopped" || runtimeState === "idle") return;
-    event.preventDefault();
-    void stopRuntime().then(() => app.exit(0));
+  installDesktopAppLifecycle(app, {
+    getController: () => behaviorController,
+    getWindow: () => mainWindow,
+    getRuntimeState: () => runtimeState,
+    focusWindow: (window) => { focusRequested = true; focusShellWindow(window); },
+    persistWindowState: persistCurrentWindowState,
+    stopRuntime,
   });
   process.once("uncaughtException", () => { void stopRuntime().then(() => app.exit(1)); });
   process.once("unhandledRejection", () => { void stopRuntime().then(() => app.exit(1)); });

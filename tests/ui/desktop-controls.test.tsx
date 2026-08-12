@@ -1,0 +1,88 @@
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Dashboard } from "../../app/Dashboard";
+import type { DesktopState } from "../../app/components/DesktopControls";
+import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
+
+function response(body: object) {
+  return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+}
+
+afterEach(() => {
+  delete (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop;
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe("desktop controls", () => {
+  it("provides keyboard-accessible equivalents for pause, login, close behavior, About, and quit", async () => {
+    const user = userEvent.setup();
+    let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask" };
+    let stateListener: ((next: DesktopState) => void) | undefined;
+    const setPaused = vi.fn(async (value: boolean) => (state = { ...state, paused: value }));
+    const setLaunchAtLogin = vi.fn(async (value: boolean) => (state = { ...state, launchAtLogin: value }));
+    const setCloseBehavior = vi.fn(async (value: DesktopState["closeBehavior"]) => (state = { ...state, closeBehavior: value }));
+    const quit = vi.fn(async () => true);
+    (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
+      saveReport: vi.fn(),
+      getDesktopState: async () => state,
+      setPaused,
+      setLaunchAtLogin,
+      setCloseBehavior,
+      quit,
+      onDesktopStateChanged(callback: (next: DesktopState) => void) { stateListener = callback; return () => { stateListener = undefined; }; },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => String(input).startsWith("/api/sessions")
+      ? response({ sessions: [] })
+      : response(createEmptyMonitorState({ connected: true })));
+
+    render(<Dashboard />);
+    await screen.findByText("Monitor connected");
+    await user.click(screen.getByText("Desktop"));
+    const controls = screen.getByRole("group", { name: "Desktop controls" });
+    expect(controls).toBeInTheDocument();
+    expect(within(controls).getByRole("link", { name: "About Threadlight" })).toHaveAttribute("href", "/about");
+
+    await user.click(screen.getByRole("button", { name: "Pause live refresh" }));
+    expect(setPaused).toHaveBeenCalledWith(true);
+    expect(await screen.findByText("Live updates paused")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "Launch at login" }));
+    expect(setLaunchAtLogin).toHaveBeenCalledWith(true);
+    await user.selectOptions(screen.getByRole("combobox", { name: "When I close the window" }), "tray");
+    expect(setCloseBehavior).toHaveBeenCalledWith("tray");
+    await user.click(screen.getByRole("button", { name: "Quit Threadlight" }));
+    expect(quit).toHaveBeenCalledOnce();
+
+    act(() => stateListener?.({ ...state, paused: false }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause live refresh" })).toBeInTheDocument());
+  });
+
+  it("tray pause stops both state and session-catalog polling without invoking provider controls", async () => {
+    vi.useFakeTimers();
+    let listener: ((next: DesktopState) => void) | undefined;
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask" };
+    (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
+      saveReport: vi.fn(),
+      getDesktopState: async () => state,
+      setPaused: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      setCloseBehavior: vi.fn(),
+      quit: vi.fn(),
+      onDesktopStateChanged(callback: (next: DesktopState) => void) { listener = callback; return () => { listener = undefined; }; },
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => String(input).startsWith("/api/sessions")
+      ? response({ sessions: [] })
+      : response(createEmptyMonitorState({ connected: true })));
+
+    render(<Dashboard />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    act(() => listener?.({ ...state, paused: true }));
+    await act(async () => { await Promise.resolve(); });
+    const pausedRequestCount = fetchMock.mock.calls.length;
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(fetchMock).toHaveBeenCalledTimes(pausedRequestCount);
+    expect(JSON.stringify((window as Window & { threadlightDesktop?: unknown }).threadlightDesktop)).not.toMatch(/provider|command|prompt|response/i);
+  });
+});

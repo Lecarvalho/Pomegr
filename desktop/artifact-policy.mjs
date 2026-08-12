@@ -17,6 +17,8 @@ export const EXTERNAL_LEGAL_FILES = Object.freeze([
   "legal/TRADEMARKS.md",
 ]);
 
+export const EXTERNAL_RUNTIME_FILES = Object.freeze(["tray-icon.png"]);
+
 export const PUBLIC_LEGAL_FILES = Object.freeze([
   "dist/client/legal/LICENSE.txt",
   "dist/client/legal/NOTICE.txt",
@@ -27,6 +29,7 @@ export const PUBLIC_LEGAL_FILES = Object.freeze([
 
 export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/bounded-lifecycle.mjs",
+  "desktop/desktop-behavior.mjs",
   "desktop/environment-policy.mjs",
   "desktop/main.mjs",
   "desktop/paths.mjs",
