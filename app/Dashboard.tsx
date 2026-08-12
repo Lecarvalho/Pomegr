@@ -26,6 +26,8 @@ type DesktopBridge = {
   setPaused(value: boolean): Promise<DesktopState | null>;
   setLaunchAtLogin(value: boolean): Promise<DesktopState | null>;
   setCloseBehavior(value: DesktopState["closeBehavior"]): Promise<DesktopState | null>;
+  setNotifications(value: boolean): Promise<DesktopState | null>;
+  setNotificationQuiet(value: boolean): Promise<DesktopState | null>;
   quit(): Promise<boolean>;
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
@@ -34,10 +36,16 @@ function desktopBridge() {
   return (window as Window & { threadlightDesktop?: DesktopBridge }).threadlightDesktop;
 }
 
+function notificationNavigationSessionId() {
+  if (typeof window === "undefined") return null;
+  const candidate = new URLSearchParams(window.location.search).get("sessionId");
+  return candidate && /^[a-z][a-z0-9_-]{0,31}:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(candidate) ? candidate : null;
+}
+
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => notificationNavigationSessionId());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
@@ -51,6 +59,11 @@ export function Dashboard() {
   useEffect(() => {
     document.documentElement.dataset.threadlightHydrated = "true";
     return () => { delete document.documentElement.dataset.threadlightHydrated; };
+  }, []);
+
+  useEffect(() => {
+    if (!notificationNavigationSessionId()) return;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
   }, []);
 
   useEffect(() => {
@@ -150,6 +163,14 @@ export function Dashboard() {
     void desktopBridge()?.setCloseBehavior(value).then((state) => { if (state) setDesktopState(state); }, () => {});
   }, []);
 
+  const setNotifications = useCallback((value: boolean) => {
+    void desktopBridge()?.setNotifications(value).then((state) => { if (state) setDesktopState(state); }, () => {});
+  }, []);
+
+  const setNotificationQuiet = useCallback((value: boolean) => {
+    void desktopBridge()?.setNotificationQuiet(value).then((state) => { if (state) setDesktopState(state); }, () => {});
+  }, []);
+
   const viewingHistory = data.view === "history";
   const connecting = loading && !data.error && !data.session;
   const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
@@ -211,7 +232,7 @@ export function Dashboard() {
       <div className="appFrame">
         <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
-        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onQuit={() => { void desktopBridge()?.quit(); }} />
+        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}

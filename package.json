@@ -30,12 +30,13 @@
     "desktop:start": "npm run desktop:prepare && electron .",
     "desktop:smoke": "set NODE_NO_WARNINGS=1&& set ELECTRON_RUN_AS_NODE=1&& node_modules\\electron\\dist\\electron.exe desktop/smoke-runner.mjs",
     "test": "npm run build && npm run test:node && npm run test:ui",
-    "test:node": "node --test tests/desktop-runtime-seams.test.mjs tests/desktop-runtime-compatibility.test.mjs tests/desktop-shell.test.mjs tests/desktop-behavior.test.mjs tests/desktop-paths.test.mjs tests/desktop-packaging.test.mjs tests/dev-startup.test.mjs tests/monitor-runtime-enrichment.test.mjs tests/rendered-html.test.mjs tests/api-serialization.test.mjs tests/provider-contract.test.mjs tests/provider-fixtures.test.mjs tests/claude-provider.test.mjs tests/codex-session-discovery.test.mjs tests/codex-release-qa.test.mjs tests/codex-agent-metadata.test.mjs tests/codex-liveness.test.mjs tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/codex-context.test.mjs tests/codex-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/codex-usage-limits.test.mjs tests/codex-session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/provider-registry.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-approval-mode.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/session-cost.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/efficiency-signals.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs tests/git-state.test.mjs tests/pull-requests.test.mjs tests/usage-limits.test.mjs",
+    "test:node": "node --test tests/desktop-runtime-seams.test.mjs tests/desktop-runtime-compatibility.test.mjs tests/desktop-shell.test.mjs tests/desktop-behavior.test.mjs tests/desktop-notifications.test.mjs tests/desktop-updater.test.mjs tests/desktop-release-policy.test.mjs tests/desktop-paths.test.mjs tests/desktop-packaging.test.mjs tests/dev-startup.test.mjs tests/monitor-runtime-enrichment.test.mjs tests/rendered-html.test.mjs tests/api-serialization.test.mjs tests/provider-contract.test.mjs tests/provider-fixtures.test.mjs tests/claude-provider.test.mjs tests/codex-session-discovery.test.mjs tests/codex-release-qa.test.mjs tests/codex-agent-metadata.test.mjs tests/codex-liveness.test.mjs tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/codex-context.test.mjs tests/codex-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/codex-usage-limits.test.mjs tests/codex-session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/provider-registry.test.mjs tests/activity-events.test.mjs tests/agent-metadata.test.mjs tests/session-approval-mode.test.mjs tests/session-discovery.test.mjs tests/session-registry.test.mjs tests/session-report.test.mjs tests/session-cost.test.mjs tests/execution-tasks.test.mjs tests/session-tasks.test.mjs tests/session-signals.test.mjs tests/session-summary.test.mjs tests/context-growth-timeline.test.mjs tests/tool-efficiency.test.mjs tests/efficiency-signals.test.mjs tests/skill-usage.test.mjs tests/context-machinery.test.mjs tests/git-state.test.mjs tests/pull-requests.test.mjs tests/usage-limits.test.mjs",
     "test:ui": "vitest run",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern release --ignore-pattern release-acceptance --ignore-pattern .electron-builder-cache"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
+    "electron-updater": "6.8.9",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -73,12 +74,16 @@
     "copyright": "Copyright © 2026 Leandro Carvalho",
     "electronDist": "node_modules/electron/dist",
     "afterPack": "desktop/after-pack.mjs",
+    "electronUpdaterCompatibility": ">=2.16",
     "extraMetadata": {
-      "threadlightPackagingScope": "TL-DT-05-no-updater"
+      "threadlightPackagingScope": "TL-DT-08-signed-updates"
     },
+    "publish": [{ "provider": "github", "owner": "Lecarvalho", "repo": "threadlight" }],
     "asar": true,
     "compression": "maximum",
-    "electronLanguages": ["en-US"],
+    "electronLanguages": [
+      "en-US"
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -89,6 +94,7 @@
       "desktop/desktop-behavior.mjs",
       "desktop/environment-policy.mjs",
       "desktop/main.mjs",
+      "desktop/notifications.mjs",
       "desktop/paths.mjs",
       "desktop/preload.cjs",
       "desktop/quiet-console.mjs",
@@ -99,6 +105,7 @@
       "desktop/shell-main.mjs",
       "desktop/shell-orchestrator.mjs",
       "desktop/startup-error.mjs",
+      "desktop/updater.mjs",
       "desktop/utility-lifecycle.mjs",
       "desktop/workers/monitor-host.cjs",
       "shared/local-auth.mjs",
@@ -122,21 +129,53 @@
       "node_modules/@img/sharp-win32-x64/lib/**/*"
     ],
     "extraResources": [
-      { "from": "build/icon.png", "to": "tray-icon.png" },
-      { "from": "LICENSE", "to": "legal/LICENSE" },
-      { "from": "NOTICE", "to": "legal/NOTICE" },
-      { "from": "SOURCE.md", "to": "legal/SOURCE.md" },
-      { "from": "THIRD_PARTY_NOTICES.md", "to": "legal/THIRD_PARTY_NOTICES.md" },
-      { "from": "TRADEMARKS.md", "to": "legal/TRADEMARKS.md" }
+      {
+        "from": "build/icon.png",
+        "to": "tray-icon.png"
+      },
+      {
+        "from": "LICENSE",
+        "to": "legal/LICENSE"
+      },
+      {
+        "from": "NOTICE",
+        "to": "legal/NOTICE"
+      },
+      {
+        "from": "SOURCE.md",
+        "to": "legal/SOURCE.md"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "legal/THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "TRADEMARKS.md",
+        "to": "legal/TRADEMARKS.md"
+      }
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "executableName": "Threadlight",
       "icon": "build/icon.png",
       "requestedExecutionLevel": "asInvoker",
+      "signtoolOptions": {
+        "publisherName": "Leandro Carvalho"
+      },
+      "verifyUpdateCodeSignature": true,
       "legalTrademarks": "Threadlight"
     },
     "nsis": {
@@ -150,7 +189,7 @@
       "shortcutName": "Threadlight",
       "uninstallDisplayName": "Threadlight",
       "deleteAppDataOnUninstall": false,
-      "differentialPackage": false,
+      "differentialPackage": true,
       "runAfterFinish": false
     },
     "portable": {

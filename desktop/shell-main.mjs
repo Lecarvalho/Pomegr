@@ -5,7 +5,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, session, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
+import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import {
   assertNoSystemNodeInPath,
   keepOnlyRuntimeEnvironment,
@@ -24,9 +25,14 @@ import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
+import {
+  createNeedsInputNotificationController,
+  createSessionNotificationPoller,
+} from "./notifications.mjs";
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
 import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
+import { createDesktopUpdaterController, createWindowsUpdateSignatureVerifier } from "./updater.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -65,6 +71,9 @@ let behaviorController;
 let tray;
 let removeWindowBoundsGuard;
 let removeWindowLifecycle;
+let notificationPoller;
+let updaterController;
+const nativeNotifications = new Set();
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
 function workerEntrypoint() {
@@ -141,6 +150,89 @@ function openAbout() {
   void mainWindow.loadURL(`${webHandle.origin}/about`).then(showShellWindow, showShellWindow);
 }
 
+function openNotificationSession(sessionId) {
+  if (!mainWindow || mainWindow.isDestroyed() || !webHandle?.origin) return;
+  const target = `${webHandle.origin}/?sessionId=${encodeURIComponent(sessionId)}`;
+  void mainWindow.loadURL(target).then(showShellWindow, showShellWindow);
+}
+
+function showNeedsInputNotification(payload, onClick) {
+  if (!Notification.isSupported()) return false;
+  const notification = new Notification(payload);
+  const release = () => { nativeNotifications.delete(notification); };
+  notification.once("click", () => {
+    release();
+    onClick();
+  });
+  notification.once("close", release);
+  nativeNotifications.add(notification);
+  notification.show();
+  return true;
+}
+
+async function loadNotificationSessions(signal) {
+  if (!webHandle?.origin) return null;
+  const combinedSignal = AbortSignal.any([signal, AbortSignal.timeout(4_000)]);
+  const response = await fetch(`${webHandle.origin}/api/sessions`, {
+    cache: "no-store",
+    headers: { [DESKTOP_AUTH_HEADER]: authorizationToken },
+    signal: combinedSignal,
+  });
+  if (!response.ok) return null;
+  const body = await response.json();
+  return Array.isArray(body?.sessions) ? body.sessions : null;
+}
+
+function startNotificationPolling() {
+  const controller = createNeedsInputNotificationController({
+    notify: showNeedsInputNotification,
+    openSession: openNotificationSession,
+  });
+  notificationPoller = createSessionNotificationPoller({
+    controller,
+    loadSessions: loadNotificationSessions,
+    getMode: () => {
+      const state = behaviorController?.snapshot();
+      return { enabled: state?.notifications === true, quietUntil: state?.notificationQuietUntil };
+    },
+  });
+  notificationPoller.start();
+}
+
+async function startDesktopUpdates() {
+  if (!app.isPackaged || desktopPaths.mode !== "installed" || desktopSettings.updates !== true) return;
+  try {
+    const electronUpdater = await import("electron-updater");
+    const updater = electronUpdater.autoUpdater || electronUpdater.default?.autoUpdater;
+    if (!updater) return;
+    updaterController = createDesktopUpdaterController({
+      updater,
+      currentVersion: app.getVersion(),
+      packaged: app.isPackaged,
+      mode: desktopPaths.mode,
+      updatesEnabled: desktopSettings.updates,
+      verifyUpdateCodeSignature: createWindowsUpdateSignatureVerifier(),
+      async confirmInstall(version) {
+        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        const result = await dialog.showMessageBox(mainWindow, {
+          type: "info",
+          title: "Threadlight update ready",
+          message: `Threadlight ${version} is ready to install.`,
+          detail: "Restart Threadlight now to install the verified update, or choose Later to keep using this version.",
+          buttons: ["Later", "Restart and install"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        return result.response === 1;
+      },
+      prepareInstall: () => behaviorController?.prepareForUpdateInstall(),
+      cancelInstall: () => behaviorController?.cancelUpdateInstall(),
+    });
+    void updaterController.start();
+  } catch { /* Update availability degrades independently from the dashboard. */ }
+}
+
 function updateTrayMenu(state) {
   if (!tray || tray.isDestroyed()) return;
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -178,6 +270,8 @@ function installDesktopBehaviorIpc() {
     DESKTOP_BEHAVIOR_CHANNELS.setPaused,
     DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
     DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior,
+    DESKTOP_BEHAVIOR_CHANNELS.setNotifications,
+    DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet,
     DESKTOP_BEHAVIOR_CHANNELS.setTheme,
     DESKTOP_BEHAVIOR_CHANNELS.quit,
   ]) ipcMain.removeHandler(channel);
@@ -185,6 +279,8 @@ function installDesktopBehaviorIpc() {
   ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setPaused, (event, value) => trustedDesktopEvent(event) ? behaviorController.setPaused(value) : null);
   ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setLaunchAtLogin(value) : null);
   ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setCloseBehavior(value) : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setNotifications, async (event, value) => trustedDesktopEvent(event) ? behaviorController.setNotifications(value) : null);
+  ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet, (event, value) => trustedDesktopEvent(event) ? behaviorController.setNotificationQuiet(value) : null);
   ipcMain.handle(DESKTOP_BEHAVIOR_CHANNELS.setTheme, createDesktopThemeHandler({
     isTrustedEvent: trustedDesktopEvent,
     nativeTheme,
@@ -233,6 +329,15 @@ async function stopRuntime() {
   runtimeState = "stopping";
   recordStage("SHELL_CLEANUP_STARTED");
   stopPromise = (async () => {
+    notificationPoller?.stop();
+    notificationPoller = undefined;
+    updaterController?.dispose();
+    updaterController = undefined;
+    behaviorController?.dispose();
+    for (const notification of nativeNotifications) {
+      try { notification.close(); } catch { /* Native notifications may already be closed. */ }
+    }
+    nativeNotifications.clear();
     try {
       if (monitorChild?.pid) {
         await stopChild(monitorChild, {
@@ -415,6 +520,8 @@ async function startDesktop() {
     if (startupFailed) throw new Error("DESKTOP_SERVICE_EXITED");
     runtimeState = "running";
     recordStage("SHELL_RUNTIME_READY");
+    startNotificationPolling();
+    void startDesktopUpdates();
     if (!mainWindow.isVisible()) mainWindow.show();
   } catch {
     recordStage("SHELL_START_FAILED");

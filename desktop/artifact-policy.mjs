@@ -32,6 +32,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/desktop-behavior.mjs",
   "desktop/environment-policy.mjs",
   "desktop/main.mjs",
+  "desktop/notifications.mjs",
   "desktop/paths.mjs",
   "desktop/preload.cjs",
   "desktop/quiet-console.mjs",
@@ -42,6 +43,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/shell-main.mjs",
   "desktop/shell-orchestrator.mjs",
   "desktop/startup-error.mjs",
+  "desktop/updater.mjs",
   "desktop/utility-lifecycle.mjs",
   "desktop/workers/monitor-host.cjs",
   "shared/local-auth.mjs",
@@ -112,6 +114,17 @@ export function expectedArtifactNames(version) {
   return Object.freeze([
     `Threadlight-Setup-${version}-x64.exe`,
     `Threadlight-Portable-${version}-x64.exe`,
+  ]);
+}
+
+export function expectedUpdateArtifactNames(version) {
+  const match = String(version || "").match(/^\d+\.\d+\.\d+(?:-(beta)\.\d+)?$/);
+  if (!match) {
+    throw new Error("DESKTOP_ARTIFACT_VERSION_INVALID");
+  }
+  return Object.freeze([
+    match[1] === "beta" ? "beta.yml" : "latest.yml",
+    `Threadlight-Setup-${version}-x64.exe.blockmap`,
   ]);
 }
 

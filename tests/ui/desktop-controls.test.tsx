@@ -18,11 +18,13 @@ afterEach(() => {
 describe("desktop controls", () => {
   it("provides keyboard-accessible equivalents for pause, login, close behavior, About, and quit", async () => {
     const user = userEvent.setup();
-    let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask" };
+    let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null };
     let stateListener: ((next: DesktopState) => void) | undefined;
     const setPaused = vi.fn(async (value: boolean) => (state = { ...state, paused: value }));
     const setLaunchAtLogin = vi.fn(async (value: boolean) => (state = { ...state, launchAtLogin: value }));
     const setCloseBehavior = vi.fn(async (value: DesktopState["closeBehavior"]) => (state = { ...state, closeBehavior: value }));
+    const setNotifications = vi.fn(async (value: boolean) => (state = { ...state, notifications: value }));
+    const setNotificationQuiet = vi.fn(async (value: boolean) => (state = { ...state, notificationQuietUntil: value ? "2026-08-12T13:00:00.000Z" : null }));
     const quit = vi.fn(async () => true);
     (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
       saveReport: vi.fn(),
@@ -30,6 +32,8 @@ describe("desktop controls", () => {
       setPaused,
       setLaunchAtLogin,
       setCloseBehavior,
+      setNotifications,
+      setNotificationQuiet,
       quit,
       onDesktopStateChanged(callback: (next: DesktopState) => void) { stateListener = callback; return () => { stateListener = undefined; }; },
     };
@@ -52,6 +56,11 @@ describe("desktop controls", () => {
     expect(setLaunchAtLogin).toHaveBeenCalledWith(true);
     await user.selectOptions(screen.getByRole("combobox", { name: "When I close the window" }), "tray");
     expect(setCloseBehavior).toHaveBeenCalledWith("tray");
+    await user.click(screen.getByRole("checkbox", { name: "Needs-input notifications" }));
+    expect(setNotifications).toHaveBeenCalledWith(false);
+    act(() => stateListener?.({ ...state, notifications: true }));
+    await user.click(screen.getByRole("button", { name: "Quiet notifications for 1 hour" }));
+    expect(setNotificationQuiet).toHaveBeenCalledWith(true);
     await user.click(screen.getByRole("button", { name: "Quit Threadlight" }));
     expect(quit).toHaveBeenCalledOnce();
 
@@ -62,13 +71,15 @@ describe("desktop controls", () => {
   it("tray pause stops both state and session-catalog polling without invoking provider controls", async () => {
     vi.useFakeTimers();
     let listener: ((next: DesktopState) => void) | undefined;
-    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask" };
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null };
     (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
       saveReport: vi.fn(),
       getDesktopState: async () => state,
       setPaused: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       setCloseBehavior: vi.fn(),
+      setNotifications: vi.fn(),
+      setNotificationQuiet: vi.fn(),
       quit: vi.fn(),
       onDesktopStateChanged(callback: (next: DesktopState) => void) { listener = callback; return () => { listener = undefined; }; },
     };

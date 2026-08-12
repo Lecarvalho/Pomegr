@@ -11,6 +11,7 @@ import {
   assertPackagedApplicationFiles,
   dependencyNoticeKeys,
   expectedArtifactNames,
+  expectedUpdateArtifactNames,
   isDependencyPackageManifest,
   normalizeArtifactPath,
   recursiveFiles,
@@ -30,11 +31,21 @@ try {
   for (const artifactName of expectedArtifactNames(packageJson.version)) {
     artifactSizes.push(await assertNonemptyFile(path.join(releaseRoot, artifactName)));
   }
+  for (const artifactName of expectedUpdateArtifactNames(packageJson.version)) {
+    artifactSizes.push(await assertNonemptyFile(path.join(releaseRoot, artifactName)));
+  }
   await assertNonemptyFile(path.join(unpackedRoot, "Threadlight.exe"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
   for (const filename of EXTERNAL_RUNTIME_FILES) await assertNonemptyFile(path.join(resourcesRoot, filename));
+  const updateConfiguration = await readFile(path.join(resourcesRoot, "app-update.yml"), "utf8");
+  for (const expected of ["provider: github", "owner: Lecarvalho", "repo: threadlight"]) {
+    if (!updateConfiguration.includes(expected)) throw new Error("DESKTOP_UPDATE_CONFIGURATION_INVALID");
+  }
+  if (/(?:token|authorization|password|credential|private[-_ ]?key)\s*:/i.test(updateConfiguration)) {
+    throw new Error("DESKTOP_UPDATE_CONFIGURATION_PRIVATE");
+  }
 
   const applicationFiles = listPackage(archivePath).map(normalizeArtifactPath);
   const packageResult = assertPackagedApplicationFiles(applicationFiles);
@@ -101,10 +112,10 @@ try {
   }
 
   const unexpectedResources = (await readdir(resourcesRoot))
-    .filter((name) => !["app.asar", "app.asar.unpacked", "legal", ...EXTERNAL_RUNTIME_FILES].includes(name));
+    .filter((name) => !["app.asar", "app.asar.unpacked", "app-update.yml", "legal", ...EXTERNAL_RUNTIME_FILES].includes(name));
   if (unexpectedResources.length) throw new Error("DESKTOP_ARTIFACT_RESOURCE_NOT_ALLOWLISTED");
 
-  const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version)]);
+  const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version), ...expectedUpdateArtifactNames(packageJson.version)]);
   if ((await readdir(releaseRoot)).some((filename) => !expectedReleaseFiles.has(filename))) {
     throw new Error("DESKTOP_RELEASE_OUTPUT_NOT_ALLOWLISTED");
   }

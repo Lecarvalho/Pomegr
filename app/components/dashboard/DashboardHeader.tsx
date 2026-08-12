@@ -2,7 +2,7 @@ import { ThreadlightBrand } from "../ThreadlightBrand";
 import { ThemeToggle } from "../ThemeToggle";
 import { DesktopControls, type DesktopState } from "../DesktopControls";
 
-export function DashboardHeader({ connected, connecting, historical, paused, desktopState, sessionsOpen, reportGenerating, canGenerateReport, onOpenSessions, onGenerateReport, onTogglePause, onSetLaunchAtLogin, onSetCloseBehavior, onQuit }: {
+export function DashboardHeader({ connected, connecting, historical, paused, desktopState, sessionsOpen, reportGenerating, canGenerateReport, onOpenSessions, onGenerateReport, onTogglePause, onSetLaunchAtLogin, onSetCloseBehavior, onSetNotifications, onSetNotificationQuiet, onQuit }: {
   connected: boolean;
   connecting: boolean;
   historical: boolean;
@@ -16,6 +16,8 @@ export function DashboardHeader({ connected, connecting, historical, paused, des
   onTogglePause: () => void;
   onSetLaunchAtLogin: (value: boolean) => void;
   onSetCloseBehavior: (value: DesktopState["closeBehavior"]) => void;
+  onSetNotifications: (value: boolean) => void;
+  onSetNotificationQuiet: (value: boolean) => void;
   onQuit: () => void;
 }) {
   return (
@@ -26,7 +28,7 @@ export function DashboardHeader({ connected, connecting, historical, paused, des
         <span className={`connection ${connecting ? "connecting" : connected ? "online" : "offline"}`}><i /> {connecting ? "Connecting to monitor" : historical ? "Historical snapshot" : connected ? "Monitor connected" : "Monitor offline"}</span>
         {canGenerateReport && <button className="ghostButton reportButton" onClick={onGenerateReport} disabled={reportGenerating}>{reportGenerating ? "Preparing report…" : "Download report"}</button>}
         {!historical && !desktopState && <button className="ghostButton" onClick={onTogglePause}>{paused ? "Resume updates" : "Pause updates"}</button>}
-        {desktopState && <DesktopControls state={desktopState} onTogglePause={onTogglePause} onSetLaunchAtLogin={onSetLaunchAtLogin} onSetCloseBehavior={onSetCloseBehavior} onQuit={onQuit} />}
+        {desktopState && <DesktopControls state={desktopState} onTogglePause={onTogglePause} onSetLaunchAtLogin={onSetLaunchAtLogin} onSetCloseBehavior={onSetCloseBehavior} onSetNotifications={onSetNotifications} onSetNotificationQuiet={onSetNotificationQuiet} onQuit={onQuit} />}
         <ThemeToggle />
       </div>
     </header>

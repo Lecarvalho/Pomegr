@@ -30,6 +30,12 @@ contextBridge.exposeInMainWorld("threadlightDesktop", Object.freeze({
   setCloseBehavior(value) {
     return ipcRenderer.invoke("threadlight:set-close-behavior", value);
   },
+  setNotifications(value) {
+    return ipcRenderer.invoke("threadlight:set-notifications", value);
+  },
+  setNotificationQuiet(value) {
+    return ipcRenderer.invoke("threadlight:set-notification-quiet", value);
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("threadlight:quit");

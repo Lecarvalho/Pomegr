@@ -1,0 +1,124 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Verify exact release tag and clean checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node desktop/release-policy.mjs verify-tag --tag $env:GITHUB_REF_NAME
+          if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
+
+      - name: Require signing credentials
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) { throw 'DESKTOP_RELEASE_CERTIFICATE_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) { throw 'DESKTOP_RELEASE_CERTIFICATE_PASSWORD_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_PUBLISHER_SUBJECT)) { throw 'DESKTOP_RELEASE_PUBLISHER_SUBJECT_MISSING' }
+          if ($env:WINDOWS_PUBLISHER_SUBJECT -notmatch '^CN=.+,\s*[A-Z][A-Z0-9.]*=.+$') { throw 'DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE' }
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run release quality gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm test
+          npm run lint
+
+      - name: Build and sign Windows artifacts
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run desktop:prepare
+          npx electron-builder --win nsis portable --x64 --publish never -c.forceCodeSigning=true "-c.win.signtoolOptions.publisherName=$env:WINDOWS_PUBLISHER_SUBJECT"
+          node desktop/finalize-package.mjs
+
+      - name: Inspect packaged privacy and legal boundaries
+        run: npm run desktop:inspect
+
+      - name: Verify publisher, signature, and timestamp
+        shell: pwsh
+        env:
+          WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./desktop/verify-signature.ps1 -Path @(
+            "release/win-unpacked/Threadlight.exe",
+            "release/Threadlight-Setup-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe",
+            "release/Threadlight-Portable-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe"
+          )
+
+      - name: Generate release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ReleaseNotes = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases/generate-notes" -f "tag_name=$env:GITHUB_REF_NAME" --jq .body
+          if ([string]::IsNullOrWhiteSpace(($ReleaseNotes -join "`n"))) { throw 'DESKTOP_RELEASE_NOTES_EMPTY' }
+          $ReleaseNotes | Out-File -LiteralPath release/RELEASE_NOTES.md -Encoding utf8NoBOM
+
+      - name: Prepare exact source, notices, and checksums
+        run: node desktop/prepare-release.mjs --tag ${{ github.ref_name }}
+
+      - name: Create draft release
+        id: create
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = (Get-Content package.json | ConvertFrom-Json).version
+          $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--latest' }
+          gh release create $env:GITHUB_REF_NAME release/publish/* --draft $Prerelease --verify-tag --title "Threadlight $Version" --notes-file release/publish/RELEASE_NOTES.md
+
+      - name: Verify draft assets and publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release view $env:GITHUB_REF_NAME --json assets | Out-File -LiteralPath release/remote-assets.json -Encoding utf8NoBOM
+          $Version = (Get-Content package.json | ConvertFrom-Json).version
+          node desktop/release-policy.mjs verify-assets --version $Version --assets-file release/remote-assets.json
+          $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--prerelease=false' }
+          gh release edit $env:GITHUB_REF_NAME --draft=false $Prerelease

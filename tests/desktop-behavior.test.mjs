@@ -55,6 +55,9 @@ function harness(overrides = {}) {
     async explainClose() { calls.push(["explain"]); return overrides.closeChoice || { action: "tray", remember: false }; },
     updateTray(state) { calls.push(["tray", state]); },
     broadcast(state) { calls.push(["broadcast", state]); },
+    ...(overrides.now ? { now: overrides.now } : {}),
+    ...(overrides.schedule ? { schedule: overrides.schedule } : {}),
+    ...(overrides.cancel ? { cancel: overrides.cancel } : {}),
   });
   return { calls, controller, persisted: () => persisted };
 }
@@ -112,6 +115,8 @@ test("pause changes only bounded UI state and login startup is opt-in and revers
     launchAtLogin: false,
     launchAtLoginAvailable: true,
     closeBehavior: "ask",
+    notifications: true,
+    notificationQuietUntil: null,
   });
   assert.equal(calls.some(([name]) => /monitor|provider|session|command/i.test(name)), false);
   await controller.initializeLogin();
@@ -157,10 +162,47 @@ test("login registration rolls back when persistence fails and close still honor
 });
 
 test("desktop renderer contract is fixed, bounded, and contains no provider metadata", () => {
-  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "quit", "setCloseBehavior", "setLaunchAtLogin", "setPaused", "setTheme", "stateChanged"].sort());
+  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "quit", "setCloseBehavior", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
   const state = harness().controller.snapshot();
-  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "launchAtLogin", "launchAtLoginAvailable", "paused"].sort());
+  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused"].sort());
   assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
+});
+
+test("update installation bypasses close prompts without invoking an early app quit", async () => {
+  const { calls, controller } = harness();
+  controller.prepareForUpdateInstall();
+  assert.equal(await controller.handleWindowClose({ preventDefault() { calls.push(["prevent"]); } }), "quit");
+  assert.equal(calls.some(([name]) => name === "quit" || name === "explain" || name === "prevent"), false);
+});
+
+test("failed update launch restores ordinary close behavior", async () => {
+  const { calls, controller } = harness({ closeChoice: { action: "tray", remember: false } });
+  controller.prepareForUpdateInstall();
+  controller.cancelUpdateInstall();
+  assert.equal(await controller.handleWindowClose({ preventDefault() { calls.push(["prevent"]); } }), "tray");
+  assert.equal(calls.some(([name]) => name === "prevent"), true);
+  assert.equal(calls.some(([name]) => name === "explain"), true);
+});
+
+test("notification preference persists while one-hour quiet mode is temporary and expires", async () => {
+  let nowMs = Date.parse("2026-08-12T12:00:00.000Z");
+  let expiry;
+  const { calls, controller, persisted } = harness({
+    now: () => nowMs,
+    schedule(callback) { expiry = callback; return 1; },
+    cancel() { expiry = undefined; },
+  });
+  await controller.setNotifications(false);
+  assert.equal(persisted().notifications, false);
+  assert.equal(controller.setNotificationQuiet(true).notificationQuietUntil, null);
+  await controller.setNotifications(true);
+  const quiet = controller.setNotificationQuiet(true);
+  assert.equal(quiet.notificationQuietUntil, "2026-08-12T13:00:00.000Z");
+  assert.equal(persisted().notificationQuietUntil, undefined);
+  nowMs += 60 * 60_000;
+  expiry();
+  assert.equal(controller.snapshot().notificationQuietUntil, null);
+  assert.ok(calls.some(([name]) => name === "broadcast"));
 });
 
 test("concurrent preference writes serialize without dropping either setting", async () => {

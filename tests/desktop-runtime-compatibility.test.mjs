@@ -78,6 +78,14 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(runner, /minimalRuntimeEnvironment\(process\.env/);
   assert.doesNotMatch(runner, /env:\s*\{\s*\.\.\.process\.env/s);
   assert.match(runner, /executableOnPath\(environment, ["']git\.exe["']\)/);
+  assert.match(runner, /"updater\.mjs"/);
+  assert.match(runner, /"electron-updater"/);
+  assert.match(main, /UPDATER_RUNTIME_VERIFIED/);
+  assert.match(main, /stream\.write\(`\$\{message\}\\n`, resolve\)/);
+  assert.match(main, /app\.on\(["']window-all-closed["'], \(\) => \{\}\)/);
+  assert.ok(main.indexOf("smokeWindow?.destroy()") < main.indexOf("webHandle.close()"));
+  assert.match(main, /withDeadline\(webHandle\.close\(\), STOP_TIMEOUT_MS/);
+  assert.match(main, /CLEANUP_WEB_STOPPED/);
 });
 
 test("production monitor readiness does not require Git while smoke readiness proves Git execution", async () => {

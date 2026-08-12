@@ -7,8 +7,11 @@ export default async function removeUnshippedElectronResources(context) {
   const packageJson = JSON.parse(await readFile(path.join(context.packager.projectDir, "package.json"), "utf8"));
   assertTlDt05PackagingScope(packageJson);
   const resourcesRoot = path.join(context.appOutDir, "resources");
-  await Promise.all([
+  const removable = [
     rm(path.join(resourcesRoot, "default_app.asar"), { force: true }),
-    rm(path.join(resourcesRoot, "app-update.yml"), { force: true }),
-  ]);
+  ];
+  if (context.packager.appInfo.version === "0.0.9") {
+    removable.push(rm(path.join(resourcesRoot, "app-update.yml"), { force: true }));
+  }
+  await Promise.all(removable);
 }

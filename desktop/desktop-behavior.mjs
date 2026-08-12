@@ -3,6 +3,8 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
   setPaused: "threadlight:set-paused",
   setLaunchAtLogin: "threadlight:set-launch-at-login",
   setCloseBehavior: "threadlight:set-close-behavior",
+  setNotifications: "threadlight:set-notifications",
+  setNotificationQuiet: "threadlight:set-notification-quiet",
   quit: "threadlight:quit",
   setTheme: "threadlight:set-native-theme",
   stateChanged: "threadlight:desktop-state-changed",
@@ -73,12 +75,25 @@ export function createDesktopBehaviorController(options) {
   let quitting = false;
   let closeDecisionPending = false;
   let mutationQueue = Promise.resolve();
+  let notificationQuietUntil = 0;
+  let notificationQuietTimer = null;
+  const now = options.now || Date.now;
+  const schedule = options.schedule || ((callback, delay) => setTimeout(callback, delay));
+  const cancel = options.cancel || ((handle) => clearTimeout(handle));
+
+  const clearNotificationQuiet = () => {
+    if (notificationQuietTimer !== null) cancel(notificationQuietTimer);
+    notificationQuietTimer = null;
+    notificationQuietUntil = 0;
+  };
 
   const snapshot = () => Object.freeze({
     paused,
     launchAtLogin: Boolean(settings.launchAtLogin),
     launchAtLoginAvailable: options.launchAtLoginAvailable !== false,
     closeBehavior: isCloseBehavior(settings.closeBehavior) ? settings.closeBehavior : "ask",
+    notifications: Boolean(settings.notifications),
+    notificationQuietUntil: notificationQuietUntil > now() ? new Date(notificationQuietUntil).toISOString() : null,
   });
   const broadcast = () => options.broadcast?.(snapshot());
   const persist = async (patch) => {
@@ -179,6 +194,35 @@ export function createDesktopBehaviorController(options) {
         return snapshot();
       });
     },
+    async setNotifications(value) {
+      if (typeof value !== "boolean") return snapshot();
+      return enqueueMutation(async () => {
+        await persist({ notifications: value });
+        if (!value) clearNotificationQuiet();
+        options.updateTray?.(snapshot());
+        broadcast();
+        return snapshot();
+      });
+    },
+    setNotificationQuiet(value) {
+      if (typeof value !== "boolean" || !settings.notifications) return snapshot();
+      clearNotificationQuiet();
+      if (value) {
+        notificationQuietUntil = now() + 60 * 60_000;
+        notificationQuietTimer = schedule(() => {
+          notificationQuietTimer = null;
+          notificationQuietUntil = 0;
+          options.updateTray?.(snapshot());
+          broadcast();
+        }, 60 * 60_000);
+      }
+      options.updateTray?.(snapshot());
+      broadcast();
+      return snapshot();
+    },
+    prepareForUpdateInstall() { quitting = true; },
+    cancelUpdateInstall() { quitting = false; },
+    dispose() { clearNotificationQuiet(); },
     quit: requestQuit,
   });
 }

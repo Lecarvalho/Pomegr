@@ -381,9 +381,11 @@ npm run lint
 
 ## TL-DT-07 — Add privacy-bounded native notifications
 
-- [ ] Complete
+- [x] Complete
 - **Depends on:** `TL-DT-06`
 - **Target size:** 1 session
+- **Completed:** 2026-08-12
+- **Implementation notes:** Added native needs-input notifications derived only from the normalized session catalog, with transition deduplication, deterministic clearing, fixed privacy-bounded payloads, safe click-through session selection, a persistent notification preference, and temporary one-hour quiet mode. Focused Node/UI coverage, the production build, lint, and packaged desktop smoke pass.
 
 ### Goal
 
@@ -421,6 +423,7 @@ npm run desktop:smoke
 - [ ] Complete
 - **Depends on:** `TL-DT-05`, `TL-DT-06`
 - **Target size:** 1–2 sessions
+- **Acceptance status:** Repository implementation and automated release gates are in place. Completion remains blocked on external evidence from two real signed beta releases: clean-Windows-VM upgrade, invalid-signer rejection, checksum/signature re-verification, and CI log inspection. See `docs/DESKTOP_RELEASES.md`.
 
 ### Goal
 
@@ -572,6 +575,7 @@ Add short entries only after completing a task.
 | 2026-08-11 | TL-DT-04 | Complete | Added installed/portable path resolution, isolated Threadlight-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
 | 2026-08-11 | TL-DT-05 | Complete | Produced and inspected the per-user installer, portable build, and test-only upgrade fixture; fixed Git-independent startup and Windows static delivery; all clean-Sandbox install, upgrade, portable, shutdown, uninstall, and data-boundary checks passed with the recorded artifact hashes. |
 | 2026-08-11 | TL-DT-06 | Complete | Added deterministic tray/window/quit/second-instance behavior, opt-in launch at login, UI-only pause controls, serialized bounded settings, live display re-clamping, and trusted native title-bar theme sync. Packaged smoke and installed dark/light native-chrome checks passed. |
+| 2026-08-12 | TL-DT-07 | Complete | Added privacy-bounded needs-input transition notifications, deterministic deduplication/clearing, safe observation-only click navigation, persistent enablement, temporary quiet mode, and sentinel coverage. Build, lint, focused tests, and packaged smoke pass. |
 
 ## Reference documentation
 

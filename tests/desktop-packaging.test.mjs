@@ -10,6 +10,7 @@ import {
   assertPackagedApplicationFiles,
   dependencyNoticeKeys,
   expectedArtifactNames,
+  expectedUpdateArtifactNames,
   forbiddenArtifactPath,
   isAllowedApplicationPath,
   isDependencyPackageManifest,
@@ -47,13 +48,17 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.equal(build.nsis.allowElevation, false);
   assert.equal(build.nsis.packElevateHelper, false);
   assert.equal(build.nsis.deleteAppDataOnUninstall, false);
-  assert.equal(build.nsis.differentialPackage, false);
+  assert.equal(build.nsis.differentialPackage, true);
   assert.equal(build.nsis.createDesktopShortcut, "always");
   assert.equal(build.nsis.createStartMenuShortcut, true);
   assert.equal(build.portable.requestExecutionLevel, "user");
   assert.deepEqual(expectedArtifactNames(packageJson.version), [
     `Threadlight-Setup-${packageJson.version}-x64.exe`,
     `Threadlight-Portable-${packageJson.version}-x64.exe`,
+  ]);
+  assert.deepEqual(expectedUpdateArtifactNames(packageJson.version), [
+    "latest.yml",
+    `Threadlight-Setup-${packageJson.version}-x64.exe.blockmap`,
   ]);
   assert.ok(build.files.length > 20);
   assert.equal(build.files.includes("**/*"), false);
@@ -66,7 +71,11 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.match(packageJson.scripts.lint, /ignore-pattern release-acceptance/);
   assert.equal(build.afterPack, "desktop/after-pack.mjs");
   assert.equal(build.extraMetadata.threadlightPackagingScope, TL_DT_05_PACKAGING_SCOPE);
-  assert.equal(build.publish, undefined);
+  assert.deepEqual(build.publish, [{ provider: "github", owner: "Lecarvalho", repo: "threadlight" }]);
+  assert.equal(build.electronUpdaterCompatibility, ">=2.16");
+  assert.equal(build.win.verifyUpdateCodeSignature, true);
+  assert.equal(build.win.signtoolOptions.publisherName, "Leandro Carvalho");
+  assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
   assert.deepEqual(build.asarUnpack, [
     "desktop/workers/**/*",
     "dist/**/*",
@@ -146,24 +155,32 @@ test("dependency notice generation excludes development tools and requires decla
   } }), /DESKTOP_DEPENDENCY_LICENSE_MISSING/);
 });
 
-test("TL-DT-05 updater stripping fails closed when release-update configuration appears", () => {
+test("desktop update packaging fails closed when publishing, dependency, or signature verification drifts", () => {
   const base = {
-    build: { extraMetadata: { threadlightPackagingScope: TL_DT_05_PACKAGING_SCOPE } },
-    dependencies: {},
+    build: {
+      extraMetadata: { threadlightPackagingScope: TL_DT_05_PACKAGING_SCOPE },
+      electronUpdaterCompatibility: ">=2.16",
+      publish: [{ provider: "github", owner: "Lecarvalho", repo: "threadlight" }],
+      win: { verifyUpdateCodeSignature: true, signtoolOptions: { publisherName: "Leandro Carvalho" } },
+      nsis: { differentialPackage: true },
+    },
+    dependencies: { "electron-updater": "6.8.9" },
     devDependencies: {},
   };
   assert.equal(assertTlDt05PackagingScope(base), true);
   assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
     ...base.build,
-    extraMetadata: { threadlightPackagingScope: "TL-DT-08-updater" },
+    extraMetadata: { threadlightPackagingScope: "TL-DT-05-no-updater" },
   } }), /DESKTOP_TL_DT_05_SCOPE_REQUIRED/);
   assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
     ...base.build,
     publish: [{ provider: "github" }],
-  } }), /DESKTOP_TL_DT_05_PUBLISH_FORBIDDEN/);
-  assert.throws(() => assertTlDt05PackagingScope({ ...base, dependencies: {
-    "electron-updater": "1.0.0",
-  } }), /DESKTOP_TL_DT_05_UPDATER_FORBIDDEN/);
+  } }), /DESKTOP_UPDATE_PUBLISH_INVALID/);
+  assert.throws(() => assertTlDt05PackagingScope({ ...base, dependencies: {} }), /DESKTOP_UPDATER_DEPENDENCY_REQUIRED/);
+  assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
+    ...base.build,
+    win: { verifyUpdateCodeSignature: false },
+  } }), /DESKTOP_UPDATE_SIGNATURE_VERIFICATION_REQUIRED/);
 });
 
 test("packaged legal copies match canonical project documents and About links every copy", async () => {

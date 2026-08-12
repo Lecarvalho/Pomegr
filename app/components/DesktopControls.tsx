@@ -3,13 +3,17 @@ export type DesktopState = {
   launchAtLogin: boolean;
   launchAtLoginAvailable: boolean;
   closeBehavior: "ask" | "tray" | "quit";
+  notifications: boolean;
+  notificationQuietUntil: string | null;
 };
 
-export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSetCloseBehavior, onQuit }: {
+export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSetCloseBehavior, onSetNotifications, onSetNotificationQuiet, onQuit }: {
   state: DesktopState;
   onTogglePause: () => void;
   onSetLaunchAtLogin: (value: boolean) => void;
   onSetCloseBehavior: (value: DesktopState["closeBehavior"]) => void;
+  onSetNotifications: (value: boolean) => void;
+  onSetNotificationQuiet: (value: boolean) => void;
   onQuit: () => void;
 }) {
   return (
@@ -22,6 +26,13 @@ export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSe
           <span>Launch at login</span>
         </label>
         {!state.launchAtLoginAvailable && <small>Available in the installed app</small>}
+        <label className="desktopToggle">
+          <input type="checkbox" checked={state.notifications} onChange={(event) => onSetNotifications(event.currentTarget.checked)} />
+          <span>Needs-input notifications</span>
+        </label>
+        <button type="button" disabled={!state.notifications} onClick={() => onSetNotificationQuiet(!state.notificationQuietUntil)}>
+          {state.notificationQuietUntil ? "Resume notifications" : "Quiet notifications for 1 hour"}
+        </button>
         <label className="desktopSelect">
           <span>When I close the window</span>
           <select value={state.closeBehavior} onChange={(event) => onSetCloseBehavior(event.currentTarget.value as DesktopState["closeBehavior"])}>

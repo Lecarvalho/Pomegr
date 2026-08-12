@@ -14,6 +14,7 @@ import {
   minimalRuntimeEnvironment,
 } from "./environment-policy.mjs";
 import { stopChild, waitForMessage } from "./utility-lifecycle.mjs";
+import { withDeadline } from "./bounded-lifecycle.mjs";
 import {
   DESKTOP_CSP,
   installSessionSecurity,
@@ -120,20 +121,30 @@ async function startService(filename, args, environment, stagePrefix, workerData
 
 async function stopAll() {
   let failed = false;
+  recordStage("CLEANUP_WINDOW_CLOSING");
   try { smokeWindow?.destroy(); } catch { failed = true; }
+  recordStage("CLEANUP_WINDOW_CLOSED");
   for (const child of [...children].reverse()) {
+    recordStage("CLEANUP_WORKER_STOPPING");
     try {
       await stopChild(child, { gracefulTimeoutMs: STOP_TIMEOUT_MS, killTimeoutMs: KILL_TIMEOUT_MS });
     } catch {
       failed = true;
     }
   }
+  recordStage("CLEANUP_WORKERS_STOPPED");
   try {
-    await webHandle?.close();
+    if (webHandle) await withDeadline(webHandle.close(), STOP_TIMEOUT_MS, "DESKTOP_SMOKE_WEB_STOP_TIMEOUT");
   } catch {
+    try { webHandle?.server?.closeAllConnections?.(); } catch { /* The fixed cleanup result remains authoritative. */ }
     failed = true;
   }
+  recordStage("CLEANUP_WEB_STOPPED");
   if (failed) throw new Error("DESKTOP_CLEANUP_FAILED");
+}
+
+function writeResult(message, stream) {
+  return new Promise((resolve) => stream.write(`${message}\n`, resolve));
 }
 
 async function finish(exitCode) {
@@ -147,9 +158,9 @@ async function finish(exitCode) {
     recordStage("CLEANUP_FAILED");
   }
   if (exitCode === 0) recordStage("FINISHED_PASS");
-  if (exitCode === 0) console.log("Threadlight desktop runtime compatibility: PASS");
-  else console.error("Threadlight desktop runtime compatibility: FAIL (DESKTOP_SMOKE_FAILED)");
-  process.exit(exitCode);
+  if (exitCode === 0) await writeResult("Threadlight desktop runtime compatibility: PASS", process.stdout);
+  else await writeResult("Threadlight desktop runtime compatibility: FAIL (DESKTOP_SMOKE_FAILED)", process.stderr);
+  setImmediate(() => process.exit(exitCode));
 }
 
 async function executeSmoke() {
@@ -179,6 +190,10 @@ async function executeSmoke() {
     const sharp = require("sharp");
     if (!sharp?.versions?.vips) throw new Error("DESKTOP_NATIVE_MODULE_FAILED");
     recordStage("NATIVE_RUNTIME_VERIFIED");
+
+    const electronUpdater = require("electron-updater");
+    if (!electronUpdater?.autoUpdater) throw new Error("DESKTOP_UPDATER_RUNTIME_FAILED");
+    recordStage("UPDATER_RUNTIME_VERIFIED");
 
     recordStage("MAIN_GIT_EXECUTING");
     const gitVersion = await readGitVersion();
@@ -301,6 +316,9 @@ app.on("before-quit", (event) => {
   recordStage("UNEXPECTED_QUIT");
   void finish(1);
 });
+// Keep Electron alive while the final BrowserWindow is destroyed before the
+// loopback web server, then exit explicitly after the fixed result is flushed.
+app.on("window-all-closed", () => {});
 process.once("uncaughtException", () => {
   recordStage("UNCAUGHT_EXCEPTION");
   void finish(1);
