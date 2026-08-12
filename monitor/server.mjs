@@ -267,6 +267,7 @@ export function createMonitorRuntime(options = {}) {
     repetitionCandidates,
     overlaps,
     compactions,
+    usageSnapshots: evidence.usageSnapshots,
     availableEvidence: evidence.efficiencyRuleEvidence,
   });
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);

@@ -174,3 +174,106 @@ test("missing provider evidence disables dependent rules and the healthy fallbac
   assert.deepEqual(loops, []);
   assert.deepEqual(insights, []);
 });
+
+function cacheSnapshot({
+  id,
+  timestamp,
+  input,
+  cacheRead,
+  cacheWrite = 0,
+  model = "gpt-5.6",
+  group = 0,
+  actorId = "primary",
+}) {
+  return {
+    dedupeId: id,
+    actorId,
+    timestamp,
+    input,
+    output: 10,
+    cacheWrite,
+    cacheRead,
+    model,
+    comparisonGroup: group,
+  };
+}
+
+test("prompt cache miss after idle uses centralized boundaries and cautious bounded copy", () => {
+  const previous = cacheSnapshot({
+    id: "previous",
+    timestamp: "2026-08-10T10:00:00.000Z",
+    input: 2_000,
+    cacheRead: 8_000,
+  });
+  const current = cacheSnapshot({
+    id: "current",
+    timestamp: "2026-08-11T11:00:00.000Z",
+    input: 7_200,
+    cacheRead: 800,
+    cacheWrite: 8_000,
+  });
+  const { insights } = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 8_000 } })],
+    usageSnapshots: [current, previous, current],
+    availableEvidence: {
+      repetition: false,
+      concurrentMutation: false,
+      unsharedContext: false,
+      healthyFallback: false,
+      cacheUsageClassification: true,
+    },
+  });
+
+  assert.deepEqual(insights, [{
+    id: "prompt-cache-miss-primary",
+    level: "warning",
+    title: "Prompt cache miss after idle gap",
+    detail: "Primary agent's current input context was 8K with 10% read from cache after 25 hours. The preceding comparable request read 80% from cache. The provider also recorded a large cache refill on the current request. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.",
+  }]);
+  assert.doesNotMatch(JSON.stringify(insights), /charged|price|billing|paid|cache key value/i);
+});
+
+test("prompt cache classification suppresses short gaps and incomparable observations", () => {
+  const base = cacheSnapshot({
+    id: "previous",
+    timestamp: "2026-08-10T10:00:00.000Z",
+    input: 1_000,
+    cacheRead: 9_000,
+  });
+  const qualifying = cacheSnapshot({
+    id: "current",
+    timestamp: "2026-08-10T10:30:00.000Z",
+    input: 9_500,
+    cacheRead: 500,
+  });
+  const cases = [
+    [cacheSnapshot({ ...qualifying, id: "short", timestamp: "2026-08-10T10:29:59.999Z" }), [], primary()],
+    [cacheSnapshot({ ...qualifying, id: "model", model: "gpt-5.7" }), [], primary()],
+    [cacheSnapshot({ ...qualifying, id: "missing", group: 1 }), [], primary()],
+    [qualifying, [{ actor: { id: "primary", label: "Primary agent" }, timestamp: "2026-08-10T10:15:00.000Z", trigger: "manual", preTokens: null }], primary()],
+    [qualifying, [], primary({ kind: "fork" })],
+  ];
+
+  const boundary = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 10_000 } })],
+    usageSnapshots: [base, qualifying],
+    availableEvidence: { cacheUsageClassification: true },
+  });
+  assert.equal(boundary.insights.filter((insight) => insight.id === "prompt-cache-miss-primary").length, 1);
+  for (const [current, compactions, agent] of cases) {
+    const { insights } = evaluateEfficiencySignals({
+      agents: [agent],
+      usageSnapshots: [base, current],
+      compactions,
+      availableEvidence: { cacheUsageClassification: true },
+    });
+    assert.equal(insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+  }
+
+  const disabled = evaluateEfficiencySignals({
+    agents: [primary()],
+    usageSnapshots: [base, qualifying],
+    availableEvidence: { cacheUsageClassification: false },
+  });
+  assert.equal(disabled.insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+});

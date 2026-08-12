@@ -99,7 +99,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 - `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, context usage
-- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, and an optional reported agent signal
+- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
 - `activity` — sanitized tool, failed shell-completion, and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata, retained for API compatibility
 - `insights` — deterministic rules
@@ -134,6 +134,8 @@ The provider registry queries adapters independently and merges their allowliste
 For Codex, the adapter prefers an explicitly connected app-server for allowlisted thread metadata and canonical items. It never serializes thread previews or loaded turns directly. Persisted rollout headers and `session_index.jsonl` fill gaps and keep history available when the app-server is absent. Unknown record/item types, malformed JSONL lines, and a truncated final live write are ignored individually. A missing child rollout produces bounded neutral child metadata when the relationship is still documented elsewhere.
 
 Provider evidence crosses into `monitor/server.mjs` only after raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, tool output, credentials, environment values, private transcript/auth paths, and unrecognized MCP arguments have been discarded. The monitor adds provider-neutral Git, pull-request, metric, and deterministic-rule data. `/api/state` and `/api/sessions` serialize only that normalized result; caught exceptions use fixed messages rather than arbitrary provider or filesystem error text. Browser reports are derived from the same state.
+
+An agent's optional `currentActivity` contains only a bounded, one-line provider-authored activity label and its transcript-derived observation timestamp. It is live transient state, not chain-of-thought, a completion claim, a structured task, an execution-task association, or a Threadlight judgment. Provider adapters clear it when its owning turn or agent reaches a recognized terminal state, and historical state omits it. Generated reports do not consume the field.
 
 Codex selected-state polling parses each rollout once per read and reuses that record array for agent, activity, execution-task, context, approval/plan, signal, skill, and pull-request normalization. Live reads are capped at the final 512 KiB per rollout and cached by size and modification time. Historical reads may parse the complete persisted rollout once, then reuse the cache. Cache entries are bounded by the provider scan limit. Concurrent catalog polls share one in-flight app-server request and the 1.5-second catalog cache.
 

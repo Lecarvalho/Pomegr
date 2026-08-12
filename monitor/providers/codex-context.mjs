@@ -21,6 +21,26 @@ function normalizedType(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+const MAX_USAGE_SNAPSHOTS = 100;
+
+function boundedModel(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
+}
+
+function isTokenCountRecord(record) {
+  return normalizedType(record?.type) === "tokencount"
+    || normalizedType(record?.payload?.type) === "tokencount";
+}
+
+function modelFromContextRecord(record) {
+  const type = normalizedType(record?.type);
+  if (!["turncontext", "threadsettings", "threadsettingsupdated"].includes(type)) return "";
+  const payload = record?.payload && typeof record.payload === "object" ? record.payload : {};
+  const settings = payload.settings && typeof payload.settings === "object" ? payload.settings : payload;
+  return boundedModel(settings.model);
+}
+
 function recordTimestamp(record, fallbackTimestamp) {
   return codexTimestamp(record?.timestamp ?? record?.payload?.timestamp) || codexTimestamp(fallbackTimestamp);
 }
@@ -70,6 +90,17 @@ function eventIdentity(record, info) {
   );
 }
 
+function optionalAliasedInteger(object, keys) {
+  const values = keys
+    .filter((key) => Object.hasOwn(object, key))
+    .map((key) => nonNegativeInteger(object[key]));
+  if (!values.length) return { present: false, value: 0 };
+  if (values.some((value) => value === null) || values.some((value) => value !== values[0])) {
+    return { present: true, value: null };
+  }
+  return { present: true, value: values[0] };
+}
+
 function usageFromRecord(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) return null;
   const payload = record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
@@ -85,7 +116,9 @@ function usageFromRecord(record) {
   }
 
   const rawInput = nonNegativeInteger(usage.input_tokens ?? usage.inputTokens) ?? 0;
-  const rawCached = nonNegativeInteger(usage.cached_input_tokens ?? usage.cachedInputTokens) ?? 0;
+  const cachedInput = optionalAliasedInteger(usage, ["cached_input_tokens", "cachedInputTokens"]);
+  if (cachedInput.present && cachedInput.value === null) return null;
+  const rawCached = cachedInput.value;
   const cacheRead = Math.min(rawInput, rawCached);
   const cacheWrite = nonNegativeInteger(
     usage.cache_creation_input_tokens
@@ -128,14 +161,23 @@ export function parseCodexContextRecords(records, options = {}) {
   const compactions = new Map();
   const tokenCountsByTurn = new Map();
   let turnId = "turn";
+  let model = "";
+  let comparisonGroup = 0;
+  let sawTurn = false;
+  let turnHasUsage = false;
 
   for (const record of (Array.isArray(records) ? records : [])) {
     if (normalizedType(record?.type) === "turncontext") {
+      if (sawTurn && !turnHasUsage) comparisonGroup += 1;
+      sawTurn = true;
+      turnHasUsage = false;
       turnId = boundedIdentity(record?.payload?.turn_id ?? record?.payload?.turnId) || turnId;
     }
+    model = modelFromContextRecord(record) || model;
     const timestamp = recordTimestamp(record, options.fallbackTimestamp);
     const normalizedUsage = usageFromRecord(record);
     if (normalizedUsage && timestamp) {
+      turnHasUsage = true;
       const providerIdentity = eventIdentity(record, normalizedUsage.info);
       const nextCount = (tokenCountsByTurn.get(turnId) || 0) + 1;
       tokenCountsByTurn.set(turnId, nextCount);
@@ -153,8 +195,15 @@ export function parseCodexContextRecords(records, options = {}) {
         reasoningOutput: normalizedUsage.reasoningOutput,
         totalTokens: normalizedUsage.totalTokens,
         modelContextWindow: normalizedUsage.modelContextWindow,
+        model,
+        comparisonGroup,
       };
       snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
+    } else if (isTokenCountRecord(record)) {
+      // A recognized but unusable observation means later valid snapshots are
+      // not adjacent evidence. Keep the boundary, never the malformed fields.
+      comparisonGroup += 1;
+      turnHasUsage = true;
     }
 
     const compacted = compactionPayload(record);
@@ -181,7 +230,9 @@ export function parseCodexContextRecords(records, options = {}) {
 
   const chronological = (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp);
   return {
-    usageSnapshots: [...snapshots.values()].sort((left, right) => chronological(left, right) || left.dedupeId.localeCompare(right.dedupeId)),
+    usageSnapshots: [...snapshots.values()]
+      .sort((left, right) => chronological(left, right) || left.dedupeId.localeCompare(right.dedupeId))
+      .slice(-MAX_USAGE_SNAPSHOTS),
     compactions: [...compactions.values()].sort(chronological).slice(-100),
   };
 }

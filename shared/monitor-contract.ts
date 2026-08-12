@@ -8,6 +8,12 @@ export type AgentReportedSignal = ReportedSignal & {
   description?: string;
 };
 
+/** Transient provider-authored activity heading for an open agent turn. */
+export type AgentCurrentActivity = {
+  label: string;
+  observedAt: string;
+};
+
 export type ExecutionTask = {
   id: string;
   label: string;
@@ -34,6 +40,7 @@ export type Agent = {
     observedAt: string;
   } | null;
   signal: AgentReportedSignal | null;
+  currentActivity?: AgentCurrentActivity | null;
   toolCalls: number;
   skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
   executionTasks?: ExecutionTask[];
@@ -134,6 +141,7 @@ export type ProviderCapabilities = {
   liveSessions: boolean;
   needsInput: boolean;
   planTasks: boolean;
+  cacheUsageClassification: boolean;
   sessionSummary: boolean;
   signals: boolean;
   usageLimits: boolean;

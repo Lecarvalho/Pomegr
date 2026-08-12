@@ -40,6 +40,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
           const tasks = executionTasksByAgent.get(agent.id) || [];
           const runningTasks = tasks.filter((task) => task.status === "running");
           const finishedTasks = tasks.filter((task) => task.status !== "running");
+          const currentActivity = historical ? null : agent.currentActivity;
           const rowPopoverOpen = openPopover?.agentId === agent.id;
           return (
             <div className={`agentRow ${depth > 0 ? "childAgent" : "rootAgent"} ${agent.status}Agent ${rowPopoverOpen ? "agentPopoverOpen" : ""}`} key={agent.id} style={{ "--agent-indent": `${Math.min(depth, 8) * 20}px` } as CSSProperties}>
@@ -58,12 +59,13 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
                       )}
                     </div>
                   )}
-                  {tasks.length > 0 && (
+                  {(tasks.length > 0 || currentActivity) && (
                     <div className="agentPopoverAnchor executionTaskAnchor" ref={isOpen("execution", agent.id) ? popoverAnchorRef : undefined}>
-                      <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`}</AgentChip>
+                      <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : "Current activity"}</AgentChip>
                       {isOpen("execution", agent.id) && (
-                        <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Execution tasks for ${agent.label}`} eyebrow="EXECUTION TASKS" title={agent.label} closeLabel="Close execution tasks" onClose={closePopover} summary={`${runningTasks.length} running · ${finishedTasks.length} finished`} className="executionTaskPopover">
+                        <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Activity and execution for ${agent.label}`} eyebrow="ACTIVITY & EXECUTION" title={agent.label} closeLabel="Close activity and execution" onClose={closePopover} summary={`${runningTasks.length} running · ${finishedTasks.length} finished`} className="executionTaskPopover">
                           <div className="executionTaskList">
+                            {currentActivity && <section className="executionTaskSection currentActivitySection" aria-label="Current provider-reported activity"><h3>Current activity</h3><div className="currentActivityRow"><span className="currentActivityMark" aria-hidden="true" /><div><strong>{currentActivity.label}</strong><small>Provider-reported · observed <RelativeTimeText value={currentActivity.observedAt} /></small></div></div></section>}
                             {runningTasks.length > 0 && <section className="executionTaskSection" aria-label="Running execution tasks"><h3>Running</h3>{runningTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
                             {finishedTasks.length > 0 && <section className="executionTaskSection" aria-label="Finished execution tasks"><h3>Recently finished ({finishedTasks.length})</h3>{finishedTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
                           </div>

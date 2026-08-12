@@ -57,9 +57,97 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     reasoningOutput: 40,
     totalTokens: 1_670,
     modelContextWindow: 200_000,
+    model: "",
+    comparisonGroup: 0,
   }]);
   assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_670);
   assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);
+});
+
+test("preserves bounded comparable usage and marks missing intermediate evidence", () => {
+  const records = [
+    { timestamp: "2026-08-10T10:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1", model: "gpt-5.6" } },
+    tokenCount("2026-08-10T10:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 9_000, output_tokens: 10 }, { event_id: "before" }),
+    { timestamp: "2026-08-10T10:10:00.000Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { total_tokens: 99_999 } } } },
+    { timestamp: "2026-08-10T11:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-2", model: "gpt-5.6" } },
+    tokenCount("2026-08-10T11:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 500, output_tokens: 10 }, { event_id: "after" }),
+  ];
+  const interrupted = parseCodexContextRecords(records, { actorId: "primary", sourceKey: "thread-1" }).usageSnapshots;
+  assert.equal(interrupted.length, 2);
+  assert.notEqual(interrupted[0].comparisonGroup, interrupted[1].comparisonGroup);
+  const interruptedSignals = evaluateEfficiencySignals({
+    agents: [{ id: "primary", label: "Primary agent", kind: "orchestrator", status: "idle", toolCalls: 0, tokens: { total: 10_000 } }],
+    usageSnapshots: interrupted,
+    availableEvidence: { cacheUsageClassification: true },
+  }).insights;
+  assert.equal(interruptedSignals.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+  for (let index = 0; index < 105; index += 1) records.push(
+    { timestamp: new Date(Date.parse("2026-08-10T12:00:00.000Z") + index).toISOString(), type: "turn_context", payload: { turn_id: `bounded-${index}`, model: "gpt-5.6" } },
+    tokenCount(new Date(Date.parse("2026-08-10T12:00:00.000Z") + index).toISOString(), { input_tokens: 100 + index, output_tokens: 1 }, { event_id: `bounded-${index}` }),
+  );
+
+  const { usageSnapshots } = parseCodexContextRecords(records, { actorId: "primary", sourceKey: "thread-1" });
+  assert.equal(usageSnapshots.length, 100);
+  assert.equal(usageSnapshots.some((snapshot) => snapshot.dedupeId.endsWith(":before")), false);
+  assert.equal(usageSnapshots.every((snapshot) => snapshot.model === "gpt-5.6"), true);
+});
+
+test("malformed present cached-input evidence invalidates cache classification while absence remains valid", () => {
+  for (const cachedField of ["cached_input_tokens", "cachedInputTokens"]) {
+    const malformedUsage = {
+      input_tokens: 10_000,
+      output_tokens: 10,
+      [cachedField]: "not-a-token-count",
+    };
+    const { usageSnapshots } = parseCodexContextRecords([
+      { timestamp: "2026-08-10T10:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1", model: "gpt-5.6" } },
+      tokenCount("2026-08-10T10:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 9_000, output_tokens: 10 }, { event_id: "before" }),
+      tokenCount("2026-08-10T10:10:00.000Z", malformedUsage, { event_id: `malformed-${cachedField}` }),
+      { timestamp: "2026-08-10T11:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-2", model: "gpt-5.6" } },
+      tokenCount("2026-08-10T11:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 500, output_tokens: 10 }, { event_id: "after" }),
+    ], { actorId: "primary", sourceKey: `thread-${cachedField}` });
+
+    assert.equal(usageSnapshots.length, 2);
+    assert.notEqual(usageSnapshots[0].comparisonGroup, usageSnapshots[1].comparisonGroup);
+    const { insights } = evaluateEfficiencySignals({
+      agents: [{ id: "primary", label: "Primary agent", kind: "orchestrator", status: "idle", toolCalls: 0, tokens: { total: 10_000 } }],
+      usageSnapshots,
+      availableEvidence: { cacheUsageClassification: true },
+    });
+    assert.equal(insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+  }
+
+  const absent = parseCodexContextRecords([
+    { timestamp: "2026-08-10T12:00:00.000Z", type: "turn_context", payload: { model: "gpt-5.6" } },
+    tokenCount("2026-08-10T12:00:01.000Z", { input_tokens: 1_000, output_tokens: 10 }, { event_id: "absent-cache-read" }),
+  ], { actorId: "primary", sourceKey: "thread-absent" }).usageSnapshots;
+  assert.equal(absent.length, 1);
+  assert.equal(absent[0].cacheRead, 0);
+});
+
+test("provider compaction actorId suppresses a cache comparison and remains valid automatic-compaction evidence", () => {
+  const { usageSnapshots, compactions } = parseCodexContextRecords([
+    { timestamp: "2026-08-10T10:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1", model: "gpt-5.6" } },
+    tokenCount("2026-08-10T10:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 9_000, output_tokens: 10 }, { event_id: "before" }),
+    { timestamp: "2026-08-10T10:15:00.000Z", id: "compacted", type: "compacted", payload: { trigger: "auto", pre_tokens: 10_000 } },
+    { timestamp: "2026-08-10T11:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-2", model: "gpt-5.6" } },
+    tokenCount("2026-08-10T11:00:01.000Z", { input_tokens: 10_000, cached_input_tokens: 500, output_tokens: 10 }, { event_id: "after" }),
+  ], { actorId: "primary", sourceKey: "thread-compacted" });
+  assert.deepEqual(compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-10T10:15:00.000Z",
+    trigger: "auto",
+    preTokens: 10_000,
+  }]);
+
+  const { insights } = evaluateEfficiencySignals({
+    agents: [{ id: "primary", label: "Primary agent", kind: "orchestrator", status: "idle", toolCalls: 0, tokens: { total: 10_000 } }],
+    usageSnapshots,
+    compactions,
+    availableEvidence: { cacheUsageClassification: true },
+  });
+  assert.equal(insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+  assert.equal(insights.some((insight) => insight.id === "automatic-compaction-primary"), true);
 });
 
 test("deduplicates stable event identities, ignores cumulative-only and zero snapshots, and retains chronological latest snapshots", () => {
@@ -147,6 +235,8 @@ test("integrates primary and child latest snapshots into all-agent context", asy
 
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 10 });
   const evidence = await provider.readSession("codex-fixture-parent", { historical: true });
+  assert.equal(provider.capabilities.cacheUsageClassification, true);
+  assert.equal(evidence.efficiencyRuleEvidence.cacheUsageClassification, true);
   assert.deepEqual(evidence.usageSnapshots.map(({ actorId, input, output, cacheWrite, cacheRead }) => ({
     actorId, input, output, cacheWrite, cacheRead,
   })), [

@@ -199,6 +199,20 @@ function makeTask({ id, timestamp, status = "running", label, background = false
   };
 }
 
+function cachedTask(value) {
+  if (!value || typeof value !== "object" || value.kind !== "shell") return null;
+  return makeTask({
+    id: value.id,
+    timestamp: value.startedAt,
+    status: value.status,
+    label: value.label,
+    background: value.background,
+    backgroundId: value.backgroundId,
+    exitCode: value.exitCode,
+    finishedAt: value.finishedAt,
+  });
+}
+
 function statusRank(status) {
   if (status === "stopped") return 4;
   if (status === "failed") return 3;
@@ -321,7 +335,7 @@ function completionUpdate(payload, timestamp, fallbackTimestamp) {
   });
 }
 
-export function parseCodexExecutionTaskRecords(records, options = {}) {
+export function parseCodexExecutionTaskStateRecords(records, options = {}) {
   const tasks = new Map();
   const commandCallIds = new Set();
   const execCellTaskIds = new Map();
@@ -329,6 +343,32 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
   const add = (task) => {
     if (task) tasks.set(task.id, mergeTask(tasks.get(task.id), task));
   };
+
+  const existingState = options.existingState && typeof options.existingState === "object"
+    ? options.existingState
+    : { tasks: [], execCellLinks: [] };
+  for (const value of Array.isArray(existingState.tasks) ? existingState.tasks : []) {
+    const task = cachedTask(value);
+    if (task) add(task);
+  }
+  const linkedTaskIds = new Set();
+  for (const value of Array.isArray(existingState.execCellLinks) ? existingState.execCellLinks : []) {
+    const callId = safeId(value?.callId);
+    const taskCount = Number.isInteger(value?.taskCount) && value.taskCount >= 1 && value.taskCount <= MAX_TASKS
+      ? value.taskCount
+      : null;
+    if (!callId || !taskCount || !Array.isArray(value?.tasks) || value.tasks.length > MAX_TASKS) continue;
+    const taskIds = new Map();
+    for (const linked of value.tasks) {
+      const index = Number.isInteger(linked?.index) && linked.index >= 0 && linked.index < taskCount ? linked.index : null;
+      const taskId = safeId(linked?.id);
+      if (index === null || !taskId || !tasks.has(taskId) || taskIds.has(index)) continue;
+      taskIds.set(index, taskId);
+      linkedTaskIds.add(taskId);
+    }
+    if (taskIds.size) execCellTaskIds.set(callId, { taskCount, taskIds });
+  }
+  for (const taskId of tasks.keys()) if (!linkedTaskIds.has(taskId)) commandCallIds.add(taskId);
 
   for (const record of Array.isArray(records) ? records : []) {
     const timestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp) || fallbackTimestamp;
@@ -346,15 +386,15 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
       if (shellEvidence.length > 0) {
         const callId = commandIdentity(payload);
         if (!callId) continue;
-        const ids = [];
+        const taskIds = new Map();
         for (const [index, evidence] of shellEvidence.entries()) {
           const id = `${callId}-shell-${index + 1}`;
           const task = makeTask({ id, timestamp, status: "running", label: evidence.label });
           if (!task) continue;
-          ids.push(task.id);
+          taskIds.set(index, task.id);
           add(task);
         }
-        if (ids.length) execCellTaskIds.set(callId, ids);
+        if (taskIds.size) execCellTaskIds.set(callId, { taskCount: shellEvidence.length, taskIds });
         continue;
       }
       if (payload.type === "function_call" && commandFunctionName(payload.name)) {
@@ -370,9 +410,9 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
       }
       if (payload.type === "custom_tool_call_output") {
         const callId = commandIdentity(payload);
-        const ids = callId ? execCellTaskIds.get(callId) || [] : [];
-        const result = execCellOutput(payload, ids.length);
-        for (const [index, id] of ids.entries()) {
+        const link = callId ? execCellTaskIds.get(callId) : null;
+        const result = execCellOutput(payload, link?.taskCount || 0);
+        for (const [index, id] of link?.taskIds || []) {
           const exitCode = result.exitCodes[index] ?? null;
           add(makeTask({
             id,
@@ -411,7 +451,19 @@ export function parseCodexExecutionTaskRecords(records, options = {}) {
     }
   }
 
-  return mergeCodexExecutionTasks([[...tasks.values()]], options);
+  const normalizedTasks = mergeCodexExecutionTasks([[...tasks.values()]], options);
+  const retainedTaskIds = new Set(normalizedTasks.map((task) => task.id));
+  const execCellLinks = [...execCellTaskIds].flatMap(([callId, link]) => {
+    const linkedTasks = [...link.taskIds]
+      .filter(([, taskId]) => retainedTaskIds.has(taskId))
+      .map(([index, id]) => ({ index, id }));
+    return linkedTasks.length ? [{ callId, taskCount: link.taskCount, tasks: linkedTasks }] : [];
+  });
+  return { tasks: normalizedTasks, execCellLinks };
+}
+
+export function parseCodexExecutionTaskRecords(records, options = {}) {
+  return parseCodexExecutionTaskStateRecords(records, options).tasks;
 }
 
 export function readCodexExecutionTaskRollout(file, options = {}) {

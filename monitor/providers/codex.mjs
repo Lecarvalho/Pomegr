@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import {
@@ -11,10 +12,11 @@ import {
 import {
   mergeCodexExecutionTasks,
   parseCodexCanonicalExecutionTasks,
-  parseCodexExecutionTaskRecords,
+  parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
 import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexContextRecords } from "./codex-context.mjs";
+import { parseCodexCurrentActivityRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
 import {
   mergeCodexPullRequestCreations,
@@ -242,7 +244,60 @@ export function createCodexProvider(options = {}) {
   let catalogCache = null;
   let catalogPending = null;
   const rolloutCache = new Map();
+  const liveExecutionTaskCache = new Map();
   const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0 };
+
+  const invalidateRolloutFile = (file) => {
+    rolloutCache.delete(file);
+    liveExecutionTaskCache.delete(file);
+  };
+
+  const rolloutIdentity = (stat) => {
+    const device = Number.isFinite(stat?.dev) ? stat.dev : null;
+    const inode = Number.isFinite(stat?.ino) && stat.ino > 0 ? stat.ino : null;
+    return inode !== null
+      ? `${device ?? "device"}:${inode}`
+      : `birth:${Number.isFinite(stat?.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
+  };
+
+  const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
+
+  function priorSuffixStillMatches(file, generation) {
+    if (!generation?.suffixDigest || !Number.isInteger(generation.suffixBytes) || generation.suffixBytes < 1) return false;
+    let descriptor;
+    try {
+      descriptor = fs.openSync(file, "r");
+      const buffer = Buffer.alloc(generation.suffixBytes);
+      const read = fs.readSync(
+        descriptor,
+        buffer,
+        0,
+        generation.suffixBytes,
+        generation.size - generation.suffixBytes,
+      );
+      return read === generation.suffixBytes && digest(buffer) === generation.suffixDigest;
+    } catch {
+      return false;
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+  }
+
+  function reusableLiveTaskState(file, threadId, generation) {
+    const cached = liveExecutionTaskCache.get(file);
+    if (!cached || cached.threadId !== threadId || !generation) return null;
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
+    if (!monotonic || !priorSuffixStillMatches(file, previous)) {
+      liveExecutionTaskCache.delete(file);
+      return null;
+    }
+    return cached.state;
+  }
 
   function normalizeAppServerMetadata(thread, metadataOptions = {}) {
     const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
@@ -253,26 +308,53 @@ export function createCodexProvider(options = {}) {
 
   function readRolloutRecords(file, historical) {
     let stat;
-    try { stat = fs.statSync(file); } catch { return []; }
-    if (!stat.isFile() || stat.size <= 0) return [];
+    try { stat = fs.statSync(file); } catch {
+      invalidateRolloutFile(file);
+      return { records: [], generation: null };
+    }
+    if (!stat.isFile() || stat.size <= 0) {
+      invalidateRolloutFile(file);
+      return { records: [], generation: null };
+    }
     const bytes = historical ? stat.size : Math.min(stat.size, maximumLiveTailBytes);
-    const key = `${historical ? "history" : "live"}:${stat.size}:${stat.mtimeMs}:${bytes}`;
+    const identity = rolloutIdentity(stat);
+    const key = `${historical ? "history" : "live"}:${identity}:${stat.size}:${stat.mtimeMs}:${bytes}`;
     const cached = rolloutCache.get(file);
     if (cached?.key === key) {
-      rolloutStats.cacheHits += 1;
-      return cached.records;
+      if (priorSuffixStillMatches(file, cached.generation)) {
+        rolloutStats.cacheHits += 1;
+        return { records: cached.records, generation: cached.generation };
+      }
+      invalidateRolloutFile(file);
     }
     let text = "";
+    let buffer;
     let descriptor;
     try {
       descriptor = fs.openSync(file, "r");
-      const buffer = Buffer.alloc(bytes);
-      fs.readSync(descriptor, buffer, 0, bytes, historical ? 0 : Math.max(0, stat.size - bytes));
+      buffer = Buffer.alloc(bytes);
+      const read = fs.readSync(descriptor, buffer, 0, bytes, historical ? 0 : Math.max(0, stat.size - bytes));
+      if (read !== bytes) throw new Error("Incomplete Codex rollout read");
       text = buffer.toString("utf8");
     } catch {
-      return [];
+      invalidateRolloutFile(file);
+      return { records: [], generation: null };
     } finally {
       if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    let confirmed;
+    try { confirmed = fs.statSync(file); } catch {
+      invalidateRolloutFile(file);
+      return { records: [], generation: null };
+    }
+    if (
+      !confirmed.isFile()
+      || confirmed.size !== stat.size
+      || confirmed.mtimeMs !== stat.mtimeMs
+      || rolloutIdentity(confirmed) !== identity
+    ) {
+      invalidateRolloutFile(file);
+      return { records: [], generation: null };
     }
     if (!historical && stat.size > bytes) {
       const newline = text.indexOf("\n");
@@ -290,10 +372,22 @@ export function createCodexProvider(options = {}) {
     }
     rolloutStats.reads += 1;
     rolloutStats.bytes += bytes;
+    const suffixBytes = Math.min(256, buffer.length);
+    const generation = {
+      identity,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      suffixBytes,
+      suffixDigest: digest(buffer.subarray(buffer.length - suffixBytes)),
+    };
     rolloutCache.delete(file);
-    rolloutCache.set(file, { key, records });
-    while (rolloutCache.size > scanLimit) rolloutCache.delete(rolloutCache.keys().next().value);
-    return records;
+    rolloutCache.set(file, { key, records, generation });
+    while (rolloutCache.size > scanLimit) {
+      const evictedFile = rolloutCache.keys().next().value;
+      rolloutCache.delete(evictedFile);
+      liveExecutionTaskCache.delete(evictedFile);
+    }
+    return { records, generation };
   }
 
   async function appServerCall(method, params) {
@@ -360,6 +454,10 @@ export function createCodexProvider(options = {}) {
         ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
         : fallbackMetadata;
       const value = combined;
+      const knownRolloutFiles = new Set(value.map((item) => item.rolloutFile).filter(Boolean));
+      for (const file of liveExecutionTaskCache.keys()) {
+        if (!knownRolloutFiles.has(file)) liveExecutionTaskCache.delete(file);
+      }
       catalogCache = { expiresAt: now() + cacheMs, value };
       return value;
     })();
@@ -490,6 +588,7 @@ export function createCodexProvider(options = {}) {
     expandSelectedMetadata(metadataById, selectedIds);
     const summaries = new Map();
     const recordsByThreadId = new Map();
+    const generationsByThreadId = new Map();
     const parsedIds = new Set();
     while (true) {
       const pending = [...selectedIds]
@@ -500,8 +599,9 @@ export function createCodexProvider(options = {}) {
       for (const thread of pending) {
         parsedIds.add(thread.localId);
         if (!thread.rolloutFile) continue;
-        const records = readRolloutRecords(thread.rolloutFile, historical);
+        const { records, generation } = readRolloutRecords(thread.rolloutFile, historical);
         recordsByThreadId.set(thread.localId, records);
+        if (generation) generationsByThreadId.set(thread.localId, generation);
         const summary = parseCodexAgentRecords(records, thread);
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
@@ -532,6 +632,7 @@ export function createCodexProvider(options = {}) {
       { id: agent.id, label: agent.label },
     ]));
     const rolloutTasksByActor = new Map();
+    const rolloutActivityByActor = new Map();
     const rolloutSignalsByActor = new Map();
     const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
@@ -544,8 +645,29 @@ export function createCodexProvider(options = {}) {
       rolloutEvidenceAvailable ||= fs.existsSync(thread.rolloutFile);
       const records = recordsByThreadId.get(thread.localId) || [];
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
-      rolloutTasksByActor.set(actor.id, parseCodexExecutionTaskRecords(records, {
+      const generation = generationsByThreadId.get(thread.localId) || null;
+      const existingState = historical
+        ? null
+        : reusableLiveTaskState(thread.rolloutFile, thread.localId, generation);
+      const rolloutTaskState = parseCodexExecutionTaskStateRecords(records, {
         fallbackTimestamp,
+        existingState,
+      });
+      rolloutTasksByActor.set(actor.id, rolloutTaskState.tasks);
+      if (!historical && generation) {
+        liveExecutionTaskCache.delete(thread.rolloutFile);
+        liveExecutionTaskCache.set(thread.rolloutFile, {
+          threadId: thread.localId,
+          generation,
+          state: rolloutTaskState,
+        });
+        while (liveExecutionTaskCache.size > scanLimit) {
+          liveExecutionTaskCache.delete(liveExecutionTaskCache.keys().next().value);
+        }
+      }
+      rolloutActivityByActor.set(actor.id, parseCodexCurrentActivityRecords(records, {
+        historical,
+        agentStatus: agents.find((agent) => agent.id === actor.id)?.status,
       }));
       rolloutSignalsByActor.set(actor.id, parseCodexSignalRecords(records));
       rolloutSkillsByActor.set(actor.id, parseCodexSkillUsageRecords(records));
@@ -592,6 +714,8 @@ export function createCodexProvider(options = {}) {
     for (const agent of agents) {
       const signals = signalsByActor.get(agent.id) || { agent: null, session: null, tasks: new Map() };
       agent.signal = signals.agent;
+      const currentActivity = rolloutActivityByActor.get(agent.id);
+      if (currentActivity) agent.currentActivity = currentActivity;
       const rolloutSkills = rolloutSkillsByActor.get(agent.id) || [];
       agent.skills = mergeSkillUsage([rolloutSkills.length ? rolloutSkills : canonicalByActor.get(agent.id)?.skills || []]);
       agent.toolCalls = callsByActor.get(agent.id) || 0;
@@ -633,6 +757,7 @@ export function createCodexProvider(options = {}) {
         unsharedContext: (rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available))
           && usageSnapshots.some((snapshot) => snapshot.actorId === "primary"),
         healthyFallback: rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available),
+        cacheUsageClassification: rolloutEvidenceAvailable && usageSnapshots.length > 0,
       },
       pullRequestCreations: mergeCodexPullRequestCreations(pullRequestCreationGroups),
     };
@@ -647,6 +772,7 @@ export function createCodexProvider(options = {}) {
       liveSessions: true,
       needsInput: true,
       planTasks: true,
+      cacheUsageClassification: true,
       signals: true,
       usageLimits: true,
     },
@@ -661,6 +787,7 @@ export function createCodexProvider(options = {}) {
       const value = {
         ...rolloutStats,
         cacheEntries: rolloutCache.size,
+        liveExecutionTaskEntries: liveExecutionTaskCache.size,
         catalogPending: Boolean(catalogPending),
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,

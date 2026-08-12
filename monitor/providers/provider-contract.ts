@@ -37,6 +37,10 @@ export type ProviderUsageSnapshot = {
   /** Provider-reported total for this latest snapshot, never cumulative transcript usage. */
   totalTokens?: number;
   modelContextWindow?: number | null;
+  /** Bounded model identity at this observation; used only for same-model comparisons. */
+  model?: string;
+  /** Changes when recognized missing/malformed usage makes adjacent comparison unsafe. */
+  comparisonGroup?: number;
 };
 
 /**
@@ -79,9 +83,12 @@ export type ProviderEfficiencyRuleEvidence = {
   concurrentMutation: boolean;
   unsharedContext: boolean;
   healthyFallback: boolean;
+  cacheUsageClassification: boolean;
 };
 
 export type ProviderAgentEvidence = Omit<Agent, "tokens" | "executionTasks"> & {
+  /** Live provider-authored heading only; never reasoning prose or a task association. */
+  currentActivity?: Agent["currentActivity"];
   executionTasks: ExecutionTask[];
 };
 

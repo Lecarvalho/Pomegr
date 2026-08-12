@@ -399,6 +399,7 @@ export function createClaudeProvider(options = {}) {
         concurrentMutation: true,
         unsharedContext: true,
         healthyFallback: true,
+        cacheUsageClassification: false,
       },
       pullRequestCreations: await readClaudePullRequestCreations([...recordsByFile].map(([file, records]) => ({
         file,

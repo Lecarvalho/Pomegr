@@ -776,7 +776,8 @@ npm run lint
 
 ## TL-CX-17 — Detect costly prompt-cache misses after idle gaps
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-12
 - **Depends on:** `TL-CX-10`, `TL-CX-13`
 - **Target size:** 1 session
 
@@ -784,10 +785,16 @@ npm run lint
 
 Add a deterministic Codex efficiency signal when a large context that previously received a strong prompt-cache read is subsequently processed mostly as uncached input after an idle gap, without claiming authoritative billing impact or attributing every cache miss to expiration.
 
+### Implementation notes
+
+- Added a bounded 100-observation chronological Codex usage-evidence window using only valid `last_token_usage`, with same-model comparison groups and fail-closed boundaries for missing, malformed, synthetic, cumulative-only, or conflicting cached-input evidence.
+- Added the provider-gated **Prompt cache miss after idle gap** rule with centralized 8,000-token, 80%, 10%, and 30-minute thresholds, one warning per affected agent, cautious non-billing copy, optional cache-refill corroboration, and compaction/fork/model/evidence suppression.
+- Updated the provider capability contract and metric documentation. Current OpenAI documentation no longer gives GPT-5.6-family caches a 24-hour maximum, so the shipped rule keeps cautious cache-miss wording beyond 24 hours instead of claiming expiration.
+
 ### Provider facts and interpretation boundary
 
 - For GPT-5.6-family models, OpenAI documents `prompt_cache_options.ttl = "30m"` as a minimum cache lifetime, not an exact expiration time. A cached prefix may remain eligible longer.
-- Prompt-cache application state is not retained beyond 24 hours. Older model families and data-retention policies may use different in-memory or extended-retention behavior.
+- For GPT-5.6-family and later models, the current prompt-caching guide documents a 30-minute minimum lifetime and no maximum retention period. Older model families and data-retention policies may use different in-memory or extended-retention behavior, including documented 24-hour maximum policies where supported.
 - A low cache-read count can also result from a changed prefix, compaction, model changes, a different cache key, routing, eviction, or a cache entry that was never written. Elapsed time and token counts alone do not prove which cause occurred.
 - Codex subscription usage is not equivalent to API list-price billing. Describe observed token treatment as cached or uncached processing; do not say that the user paid a particular amount or was charged “full price.”
 
@@ -804,7 +811,7 @@ Reference the current official OpenAI prompt-caching and data-retention document
   - at least 30 minutes between the comparable observations.
 - Treat a simultaneous large cache-write count as corroborating cold-refill evidence when the provider reports it, but do not require or fabricate it when Codex omits that field.
 - Emit cautious copy such as **Prompt cache miss after idle gap**. State that expiration or eviction may have reduced efficiency and report only bounded normalized context size, cache-read share, and elapsed time.
-- Reserve stronger expiration wording for a gap beyond the documented 24-hour maximum and only when the observations remain otherwise comparable. Do not describe a 30-minute gap as proof of expiration.
+- Keep cautious cache-miss wording at every elapsed interval for GPT-5.6-family evidence. Current documentation defines 30 minutes as a minimum lifetime and no longer documents a 24-hour maximum for that family; do not infer expiration from elapsed time alone.
 - Suppress the signal when known evidence makes the observations incomparable, including automatic or manual compaction, agent forks, model changes, unavailable intermediate usage, or a changed provider/session identity. A normal resume of the same thread is not by itself a suppression condition.
 - Keep prompt content, cache keys, request bodies, response content, provider routing data, and pricing assumptions monitor-side or entirely unread. None may enter the normalized browser API.
 - Document the final rule, thresholds, evidence gaps, and false-positive boundary in `docs/METRICS.md`.
@@ -813,7 +820,7 @@ Reference the current official OpenAI prompt-caching and data-retention document
 
 - A large, previously cache-efficient context followed by a near-total cache miss after the threshold idle gap emits one bounded warning for the affected agent.
 - The same token pattern before the idle threshold does not claim TTL expiration, and an observation between 30 minutes and 24 hours uses only cautious cache-miss wording.
-- A comparable observation beyond 24 hours may use expiration wording but still makes no billing or savings claim.
+- A comparable observation beyond 24 hours still uses cautious cache-miss wording and makes no billing or savings claim.
 - Compaction, fork, model-change, malformed-record, synthetic-record, cumulative-only, and missing-evidence fixtures do not emit the signal.
 - Repeated polling and duplicate token-count records do not duplicate the warning.
 - No cumulative transcript throughput, inferred cost, raw prompt content, cache key, or private provider field is serialized to `/api/state`, `/api/sessions`, reports, or UI fixtures.
@@ -831,13 +838,20 @@ npm test
 
 ## TL-CX-18 — Surface Codex current activity alongside execution tasks
 
-- [ ] Complete
+- [x] Complete
+- **Completed:** 2026-08-12
 - **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-14`, `TL-CX-15`
 - **Target size:** 1–2 sessions
 
 ### Goal
 
 Show the latest bounded Codex activity summary for each agent in the existing execution-task popover so users can understand work such as **Planning detailed shell stage logging** without misrepresenting that text as a shell command, structured plan task, custom Threadlight signal, or deterministic Threadlight judgment.
+
+### Implementation notes
+
+- Added a strict Codex current-activity parser that accepts only recognized one-line UI summary records, bounds labels to 160 Unicode code points, deduplicates paired rollout representations, tracks open-turn lifecycle, and clears on recognized turn or agent terminal state.
+- Added optional agent-scoped normalized `currentActivity` metadata and provider integration that preserves primary/subagent ownership, omits historical observations, and keeps reasoning, encrypted content, commands, responses, arguments, and unsupported shapes out of browser state.
+- Renamed the popover to **Activity & Execution**, added a distinct accessible current-activity row without changing shell counts or execution semantics, and verified activity-only, task-only, combined, long-text, desktop, narrow, dark-theme, and keyboard behavior.
 
 ### Evidence and interpretation boundary
 
@@ -910,3 +924,5 @@ Add short entries here only after completing a task.
 | 2026-08-11 | TL-CX-14 | Complete | Owning app-server liveness, allowlisted lifecycle bridge, bounded rollout fallback, deterministic expiry/grace behavior, descendant waiting, and cached polling added. |
 | 2026-08-11 | TL-CX-15 | Complete | Capability-gated provider copy and optional panels, provenance labels, unsupported-versus-zero report semantics, and mixed-provider responsive/accessibility coverage added. |
 | 2026-08-11 | TL-CX-16 | Complete | API privacy audit, schema/failure compatibility QA, bounded Codex state parsing and caching, release documentation, and full-suite verification completed. |
+| 2026-08-12 | TL-CX-17 | Complete | Bounded comparable cache-usage evidence and a cautious, provider-gated cache-miss-after-idle rule added with compaction/model/fork/malformed-evidence suppression. |
+| 2026-08-12 | TL-CX-18 | Complete | Live per-agent Codex current activity added to Activity & Execution with strict parsing, terminal clearing, privacy isolation, and responsive UI coverage. |

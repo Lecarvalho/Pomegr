@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   parseCodexCanonicalExecutionTasks,
   parseCodexExecutionTaskRecords,
+  parseCodexExecutionTaskStateRecords,
 } from "../monitor/providers/codex-execution-tasks.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import {
@@ -14,6 +15,120 @@ import {
 } from "./helpers/provider-fixtures.mjs";
 
 const record = (timestamp, type, payload) => ({ timestamp, type, payload });
+
+test("retains bounded sanitized live task history and reconciles a completion after its start leaves the tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-task-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-task-cache.jsonl");
+  const records = [record("2026-08-12T12:00:00.000Z", "session_meta", {
+    id: "live-task-cache",
+    session_id: "live-task-cache",
+    source: "cli",
+    cwd: "C:\\synthetic\\task-cache",
+  })];
+  for (let index = 0; index < 29; index += 1) {
+    const id = `completed-${index}`;
+    records.push(record(`2026-08-12T12:00:${String(index + 1).padStart(2, "0")}.000Z`, "response_item", {
+      type: "function_call",
+      name: "shell_command",
+      call_id: id,
+      arguments: JSON.stringify({ command: "COMMAND_MUST_NOT_LEAK", description: `Completed ${index}` }),
+    }));
+    records.push(record(`2026-08-12T12:01:${String(index + 1).padStart(2, "0")}.000Z`, "response_item", {
+      type: "function_call_output",
+      call_id: id,
+      status: "completed",
+      exit_code: 0,
+      output: "STDOUT_MUST_NOT_LEAK",
+    }));
+  }
+  records.push(record("2026-08-12T12:02:00.000Z", "response_item", {
+    type: "function_call",
+    name: "shell_command",
+    call_id: "cached-running",
+    arguments: JSON.stringify({ command: "COMMAND_MUST_NOT_LEAK", description: "Cached running task" }),
+  }));
+  await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`, "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 16 * 1024,
+  });
+  const first = await provider.readSession("live-task-cache", { historical: false });
+  assert.equal(first.agents[0].executionTasks.length, 30);
+  assert.equal(first.agents[0].executionTasks.find((task) => task.id === "cached-running")?.status, "running");
+
+  await appendFile(file, `${JSON.stringify(record("2026-08-12T12:03:00.000Z", "future_record", {
+    private: `TOOL_OUTPUT_MUST_NOT_LEAK${"x".repeat(20_000)}`,
+  }))}\n${JSON.stringify(record("2026-08-12T12:03:01.000Z", "response_item", {
+    type: "function_call_output",
+    call_id: "cached-running",
+    status: "completed",
+    exit_code: 0,
+    output: "STDOUT_MUST_NOT_LEAK",
+  }))}\n`, "utf8");
+
+  const second = await provider.readSession("live-task-cache", { historical: false });
+  const tasks = second.agents[0].executionTasks;
+  assert.equal(tasks.length, 30);
+  assert.equal(new Set(tasks.map((task) => task.id)).size, 30);
+  assert.equal(tasks.find((task) => task.id === "cached-running")?.status, "completed");
+  assert.equal(provider.qaStats().liveExecutionTaskEntries, 1);
+  assertNoPrivateFixtureSentinels(second, "cached live Codex execution tasks");
+
+  const historical = await provider.readSession("live-task-cache", { historical: true });
+  assert.equal(historical.agents[0].executionTasks.length, 30);
+  assert.equal(historical.agents[0].executionTasks.find((task) => task.id === "cached-running")?.status, "completed");
+  assertNoPrivateFixtureSentinels(historical, "authoritative historical Codex execution tasks");
+});
+
+test("invalidates live task history when a rollout is truncated, replaced, or deleted", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-task-generation-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-task-generation.jsonl");
+  const session = record("2026-08-12T12:00:00.000Z", "session_meta", {
+    id: "live-task-generation",
+    session_id: "live-task-generation",
+    source: "cli",
+    cwd: "C:\\synthetic\\task-generation",
+  });
+  const task = (id, timestamp) => record(timestamp, "response_item", {
+    type: "function_call",
+    name: "shell_command",
+    call_id: id,
+    arguments: JSON.stringify({ command: "COMMAND_MUST_NOT_LEAK", description: id }),
+  });
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0 });
+
+  await writeFile(file, serialize([
+    session,
+    task("before-truncate", "2026-08-12T12:00:01.000Z"),
+    record("2026-08-12T12:00:02.000Z", "ignored", { padding: "x".repeat(4_000) }),
+  ]), "utf8");
+  const beforeTruncate = await provider.readSession("live-task-generation", { historical: false });
+  assert.deepEqual(beforeTruncate.agents[0].executionTasks.map(({ id }) => id), ["before-truncate"]);
+
+  await writeFile(file, serialize([session, task("after-truncate", "2026-08-12T12:01:00.000Z")]), "utf8");
+  const afterTruncate = await provider.readSession("live-task-generation", { historical: false });
+  assert.deepEqual(afterTruncate.agents[0].executionTasks.map(({ id }) => id), ["after-truncate"]);
+
+  await rm(file);
+  await writeFile(file, serialize([session, task("after-replacement", "2026-08-12T12:02:00.000Z")]), "utf8");
+  const afterReplacement = await provider.readSession("live-task-generation", { historical: false });
+  assert.deepEqual(afterReplacement.agents[0].executionTasks.map(({ id }) => id), ["after-replacement"]);
+  assertNoPrivateFixtureSentinels(afterReplacement, "generation-scoped Codex execution tasks");
+
+  await rm(file);
+  assert.equal(await provider.readSession("live-task-generation", { historical: false }), null);
+  assert.equal(provider.qaStats().liveExecutionTaskEntries, 0);
+});
 
 test("maps foreground rollout success, failure, and interruption without command or output content", () => {
   const records = [
@@ -147,6 +262,60 @@ test("maps current Codex exec cells to safe shell tasks without exposing cell so
     { id: "exec-success-shell-1", label: "Shell command", status: "completed", exitCode: 0 },
   ]);
   assertNoPrivateFixtureSentinels(tasks, "current Codex exec-cell tasks");
+});
+
+test("reconciles exec-cell completion from sanitized cached task identities", () => {
+  const startedState = parseCodexExecutionTaskStateRecords([record("2026-08-12T13:00:00.000Z", "response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "exec-cached",
+    input: `const results = await Promise.all([
+      tools.shell_command({ command: "COMMAND_MUST_NOT_LEAK" }),
+      tools.shell_command({ command: "COMMAND_MUST_NOT_LEAK" }),
+    ]); results.forEach(text);`,
+  })]);
+  const completedState = parseCodexExecutionTaskStateRecords([record("2026-08-12T13:00:02.000Z", "response_item", {
+    type: "custom_tool_call_output",
+    call_id: "exec-cached",
+    output: [
+      { type: "input_text", text: "Script completed" },
+      { type: "input_text", text: "Exit code: 0\nSTDOUT_MUST_NOT_LEAK" },
+      { type: "input_text", text: "Exit code: 0\nSTDOUT_MUST_NOT_LEAK" },
+    ],
+  })], { existingState: startedState });
+  const started = startedState.tasks;
+  const completed = completedState.tasks;
+
+  assert.equal(started.length, 2);
+  assert.equal(completed.length, 2);
+  assert.equal(new Set(completed.map((task) => task.id)).size, 2);
+  assert.equal(completed.every((task) => task.status === "completed"), true);
+  assertNoPrivateFixtureSentinels(completed, "cached Codex exec-cell tasks");
+});
+
+test("does not classify ordinary function calls as exec-cell tasks from their ID suffix", () => {
+  for (const id of ["ordinary-shell-1", `ordinary-shell-${"9".repeat(100)}`]) {
+    const started = parseCodexExecutionTaskStateRecords([record("2026-08-12T13:10:00.000Z", "response_item", {
+      type: "function_call",
+      name: "shell_command",
+      call_id: id,
+      arguments: JSON.stringify({ command: "COMMAND_MUST_NOT_LEAK", description: "Ordinary function call" }),
+    })]);
+    const completed = parseCodexExecutionTaskStateRecords([record("2026-08-12T13:10:01.000Z", "response_item", {
+      type: "function_call_output",
+      call_id: id,
+      status: "completed",
+      exit_code: 0,
+      output: "STDOUT_MUST_NOT_LEAK",
+    })], { existingState: started });
+
+    assert.deepEqual(started.execCellLinks, []);
+    assert.equal(completed.tasks.length, 1);
+    assert.equal(completed.tasks[0].id, id);
+    assert.equal(completed.tasks[0].status, "completed");
+    assert.deepEqual(completed.execCellLinks, []);
+    assertNoPrivateFixtureSentinels(completed, "collision-proof cached Codex function task");
+  }
 });
 
 test("uses a fixed description for a single exec-cell shell command passed by shorthand", () => {

@@ -339,7 +339,7 @@ describe("agent detail popovers", () => {
 
     await user.click(screen.getByRole("button", { name: "1 shell task" }));
     expect(screen.queryByRole("dialog", { name: "Skills used by Primary agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Execution tasks for Primary agent" })).toHaveTextContent("Run verification");
+    expect(screen.getByRole("dialog", { name: "Activity and execution for Primary agent" })).toHaveTextContent("Run verification");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

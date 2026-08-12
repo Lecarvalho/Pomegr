@@ -21,6 +21,7 @@ export function createEmptyProviderCapabilities() {
     liveSessions: false,
     needsInput: false,
     planTasks: false,
+    cacheUsageClassification: false,
     sessionSummary: false,
     signals: false,
     usageLimits: false,
