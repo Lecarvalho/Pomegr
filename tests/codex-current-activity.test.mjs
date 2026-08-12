@@ -42,7 +42,6 @@ test("deduplicates Codex activity representations and replaces them with the lat
 
 test("keeps activity scoped to an open live turn and clears every recognized terminal shape", () => {
   const terminalRecords = [
-    { type: "event_msg", payload: { type: "agent_message", message: "RESPONSE_MUST_NOT_LEAK" } },
     { type: "event_msg", payload: { type: "task_complete" } },
     { type: "event_msg", payload: { type: "task_failed" } },
     { type: "event_msg", payload: { type: "turn_aborted" } },
@@ -63,6 +62,28 @@ test("keeps activity scoped to an open live turn and clears every recognized ter
   assert.equal(parseCodexCurrentActivityRecords([
     eventSummary("2026-08-12T12:00:01.000Z", "**Working safely**"),
   ], { historical: true, agentStatus: "active" }), null);
+});
+
+test("keeps the live heading across interim agent commentary until genuine turn completion", () => {
+  const interimMessage = {
+    timestamp: "2026-08-12T12:00:02.000Z",
+    type: "event_msg",
+    payload: { type: "agent_message", message: "RESPONSE_MUST_NOT_LEAK" },
+  };
+  const records = [
+    { timestamp: "2026-08-12T12:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    interimMessage,
+    eventSummary("2026-08-12T12:00:03.000Z", "**Planning task ID parsing and association**"),
+  ];
+
+  assert.deepEqual(parseCodexCurrentActivityRecords(records, { agentStatus: "active" }), {
+    label: "Planning task ID parsing and association",
+    observedAt: "2026-08-12T12:00:03.000Z",
+  });
+  assert.equal(parseCodexCurrentActivityRecords([
+    ...records,
+    { timestamp: "2026-08-12T12:00:04.000Z", type: "event_msg", payload: { type: "task_complete" } },
+  ], { agentStatus: "active" }), null);
 });
 
 test("ignores a late duplicate after terminal until a subsequent turn starts", () => {
@@ -133,6 +154,7 @@ test("provider normalization keeps live current activity on its owning agent and
   });
   await writeFile(rootFile, [
     sessionRecord("activity-root", "activity-root", null, "cli"),
+    { timestamp: "2026-08-12T12:00:00.500Z", type: "event_msg", payload: { type: "agent_message", message: "INTERIM_RESPONSE_MUST_NOT_LEAK" } },
     eventSummary("2026-08-12T12:00:01.000Z", "**Root activity**"),
     responseSummary("2026-08-12T12:00:01.000Z", "**Root activity**"),
   ].map(JSON.stringify).join("\n"), "utf8");

@@ -47,7 +47,6 @@ function terminalRecord(record) {
   const payload = record?.payload;
   if (record?.type === "turn_completed" || record?.type === "turn/completed") return true;
   if (record?.type !== "event_msg") return false;
-  if (payload?.type === "agent_message") return true;
   return TERMINAL_EVENT_TYPES.has(String(payload?.type || "").toLowerCase());
 }
 
