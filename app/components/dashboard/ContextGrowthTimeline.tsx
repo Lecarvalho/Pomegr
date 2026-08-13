@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type { MonitorState } from "../../../shared/monitor-contract";
 import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
@@ -7,6 +7,7 @@ import { TooltipPopover } from "../TooltipPopover";
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 type Point = { x: number; y: number };
 type CubicSegment = { start: Point; firstControl: Point; secondControl: Point; end: Point };
+type ContextSeries = "input" | "cacheWrite" | "cacheRead" | "output";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 140;
@@ -84,8 +85,19 @@ function stackedAreaPath(componentSeries: Point[][], maximum: number) {
   return `${stackedPath(componentSeries, maximum)} L ${firstSeries.at(-1)?.x || 0} ${CHART_HEIGHT} L ${firstSeries[0].x} ${CHART_HEIGHT} Z`;
 }
 
-function HistogramLegendItem({ swatch, label, value }: { swatch: string; label: string; value: number }) {
-  return <div className="histogramLegendItem"><i className={swatch} /><span><small>{label}</small><strong>{compactNumber(value)}</strong></span></div>;
+function HistogramLegendItem({ swatch, label, value, enabled, onToggle }: {
+  swatch: string;
+  label: string;
+  value: number;
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button className="histogramLegendItem" type="button" role="switch" aria-checked={enabled} onClick={onToggle}>
+      <i className={swatch} aria-hidden="true" />
+      <span><small>{label}</small><strong>{compactNumber(value)}</strong></span>
+    </button>
+  );
 }
 
 function estimatedCostLabel(cost: SessionCost) {
@@ -104,6 +116,18 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
   estimatedCostSupported: boolean;
   historical: boolean;
 }) {
+  const [visibleSeries, setVisibleSeries] = useState<Record<ContextSeries, boolean>>({
+    input: true,
+    cacheWrite: true,
+    cacheRead: true,
+    output: true,
+  });
+  const toggleSeries = (series: ContextSeries) => {
+    setVisibleSeries((current) => ({ ...current, [series]: !current[series] }));
+  };
+  const areaClass = (series: ContextSeries, className: string) => (
+    `contextArea ${className}${visibleSeries[series] ? "" : " isHidden"}`
+  );
   const buckets = timeline?.buckets || [];
   const components = buckets.map((bucket) => {
     const input = finiteNonNegative(bucket.input);
@@ -148,10 +172,10 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
           <div className="histogramChart">
             <div className="histogramGrid" aria-hidden="true"><i /><i /><i /></div>
             <svg className="contextAreaChart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
-              <path className="contextArea outputArea" data-series="output" d={paths.output} />
-              <path className="contextArea cacheReadArea" data-series="cacheRead" d={paths.cacheRead} />
-              <path className="contextArea cacheWriteArea" data-series="cacheWrite" d={paths.cacheWrite} />
-              <path className="contextArea inputArea" data-series="input" d={paths.input} />
+              <path className={areaClass("output", "outputArea")} data-series="output" d={paths.output} />
+              <path className={areaClass("cacheRead", "cacheReadArea")} data-series="cacheRead" d={paths.cacheRead} />
+              <path className={areaClass("cacheWrite", "cacheWriteArea")} data-series="cacheWrite" d={paths.cacheWrite} />
+              <path className={areaClass("input", "inputArea")} data-series="input" d={paths.input} />
               <path className="contextTotalLine" data-series="total" d={paths.total} />
             </svg>
             <div className="activityBars" role="list" aria-label={`${buckets.length} chronological context-growth buckets`}>
@@ -183,10 +207,10 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
       {buckets.length > 0 && (
         <div className="histogramFooter">
           <div className="histogramLegend" aria-label="Context growth composition legend">
-            <HistogramLegendItem swatch="inputSwatch" label="Uncached input" value={currentTokens.input} />
-            <HistogramLegendItem swatch="cacheWriteSwatch" label="Cache write" value={currentTokens.cacheWrite} />
-            <HistogramLegendItem swatch="cacheReadSwatch" label="Cache read" value={currentTokens.cacheRead} />
-            <HistogramLegendItem swatch="outputSwatch" label="Generated output" value={currentTokens.output} />
+            <HistogramLegendItem swatch="inputSwatch" label="Uncached input" value={currentTokens.input} enabled={visibleSeries.input} onToggle={() => toggleSeries("input")} />
+            <HistogramLegendItem swatch="cacheWriteSwatch" label="Cache write" value={currentTokens.cacheWrite} enabled={visibleSeries.cacheWrite} onToggle={() => toggleSeries("cacheWrite")} />
+            <HistogramLegendItem swatch="cacheReadSwatch" label="Cache read" value={currentTokens.cacheRead} enabled={visibleSeries.cacheRead} onToggle={() => toggleSeries("cacheRead")} />
+            <HistogramLegendItem swatch="outputSwatch" label="Generated output" value={currentTokens.output} enabled={visibleSeries.output} onToggle={() => toggleSeries("output")} />
           </div>
           <span className="histogramMethod">{formatBucketDuration(timeline.bucketMs)} per bar · positive change in latest snapshots</span>
         </div>

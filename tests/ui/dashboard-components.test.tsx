@@ -592,6 +592,31 @@ describe("context growth area chart", () => {
     expect(screen.getAllByText("120 context added")).toHaveLength(1);
   });
 
+  it("lets the legend toggle each context area independently", async () => {
+    const user = userEvent.setup();
+    const buckets = [bucket("2026-08-09T12:00:00.000Z", 120)];
+    const { container } = render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 60_000, buckets }}
+      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
+      cost={null}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    const inputToggle = screen.getByRole("switch", { name: /Uncached input/ });
+    const inputArea = container.querySelector<SVGPathElement>('[data-series="input"]');
+    expect(inputToggle).toHaveAttribute("aria-checked", "true");
+    expect(inputArea).not.toHaveClass("isHidden");
+
+    await user.click(inputToggle);
+    expect(inputToggle).toHaveAttribute("aria-checked", "false");
+    expect(inputArea).toHaveClass("isHidden");
+
+    await user.click(inputToggle);
+    expect(inputToggle).toHaveAttribute("aria-checked", "true");
+    expect(inputArea).not.toHaveClass("isHidden");
+  });
+
   it("keeps adversarial smooth cumulative layers ordered throughout every curve", () => {
     const inputs = [28, 72, 57, 48];
     const writes = [2, 6, 90, 75];
