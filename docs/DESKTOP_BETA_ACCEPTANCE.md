@@ -30,7 +30,7 @@ The release workflow must also pass tag/version matching, fail-closed signing, e
 - [ ] `providerDiscovery`: Confirm existing Claude Code and/or Codex persisted sessions appear and that absence of one provider does not hide the other.
 - [ ] `needsInputNotification`: Create a synthetic needs-input transition carrying a sentinel session title. Confirm exactly one notification with title `Pomegr` and body `A coding-agent session needs input`, confirm the sentinel title is absent, click through to the matching observation view, then clear the transition and confirm a future transition can notify again.
 - [ ] `preferenceRestart`: Change close behavior, launch-at-login, and notification preference; restart and confirm those bounded preferences persist while temporary one-hour quiet mode does not.
-- [ ] `signedUpdate`: From an older signed beta, accept an offered higher signed beta on the beta channel and confirm the explicitly approved restart/install opens the newer version.
+- [ ] `signedUpdate`: From an older signed beta, confirm a higher signed beta downloads silently on the beta channel, the bottom-left update action appears only when verification completes, and activating **Restart to update** opens the newer version.
 - [ ] `updateFailureRecovery`: Repeat the interrupted-download, unsigned-package, and wrong-publisher cases in `DESKTOP_RELEASES.md`; confirm every case is rejected and the installed version remains runnable.
 - [ ] `cleanShutdown`: Quit and confirm every owned monitor, web, and Electron process stops.
 - [ ] `uninstallDataBoundary`: Uninstall and confirm application files and shortcuts are removed while Pomegr user data, provider data, and unrelated user data remain untouched.

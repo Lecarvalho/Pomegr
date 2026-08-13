@@ -208,6 +208,7 @@ async function startDesktopUpdates() {
   if (!app.isPackaged || desktopPaths.mode !== "installed" || desktopSettings.updates !== true) return;
   try {
     const electronUpdater = await import("electron-updater");
+    if (runtimeState !== "running") return;
     const updater = electronUpdater.autoUpdater || electronUpdater.default?.autoUpdater;
     if (!updater) return;
     updaterController = createDesktopUpdaterController({
@@ -217,20 +218,7 @@ async function startDesktopUpdates() {
       mode: desktopPaths.mode,
       updatesEnabled: desktopSettings.updates,
       verifyUpdateCodeSignature: createWindowsUpdateSignatureVerifier(),
-      async confirmInstall(version) {
-        if (!mainWindow || mainWindow.isDestroyed()) return false;
-        const result = await dialog.showMessageBox(mainWindow, {
-          type: "info",
-          title: "Pomegr update ready",
-          message: `Pomegr ${version} is ready to install.`,
-          detail: "Restart Pomegr now to install the verified update, or choose Later to keep using this version.",
-          buttons: ["Later", "Restart and install"],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        });
-        return result.response === 1;
-      },
+      onState: () => { if (behaviorController) broadcastDesktopState(behaviorController.snapshot()); },
       prepareInstall: () => behaviorController?.prepareForUpdateInstall(),
       cancelInstall: () => behaviorController?.cancelUpdateInstall(),
     });
@@ -282,6 +270,7 @@ function installDesktopBehaviorIpc() {
     channels: DESKTOP_BEHAVIOR_CHANNELS,
     isTrustedEvent: trustedDesktopEvent,
     getController: () => behaviorController,
+    getUpdater: () => updaterController,
     themeHandler: createDesktopThemeHandler({
       isTrustedEvent: trustedDesktopEvent,
       nativeTheme,
@@ -484,6 +473,9 @@ async function startDesktop() {
           },
           updateTray: updateTrayMenu,
           broadcast: broadcastDesktopState,
+          snapshotExtension: () => ({
+            update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null }),
+          }),
         });
         startOptionalTray();
         installDesktopBehaviorIpc();

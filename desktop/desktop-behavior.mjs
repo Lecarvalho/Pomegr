@@ -5,6 +5,7 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
   setCloseBehavior: "pomegr:set-close-behavior",
   setNotifications: "pomegr:set-notifications",
   setNotificationQuiet: "pomegr:set-notification-quiet",
+  installUpdate: "pomegr:install-update",
   quit: "pomegr:quit",
   setTheme: "pomegr:set-native-theme",
   stateChanged: "pomegr:desktop-state-changed",
@@ -94,6 +95,7 @@ export function createDesktopBehaviorController(options) {
     closeBehavior: isCloseBehavior(settings.closeBehavior) ? settings.closeBehavior : "ask",
     notifications: Boolean(settings.notifications),
     notificationQuietUntil: notificationQuietUntil > now() ? new Date(notificationQuietUntil).toISOString() : null,
+    ...(options.snapshotExtension?.() || {}),
   });
   const broadcast = () => options.broadcast?.(snapshot());
   const persist = async (patch) => {

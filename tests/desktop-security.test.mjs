@@ -115,6 +115,7 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
   assert.match(source, /installQuietConsole\(\)/);
   assert.match(source, /DESKTOP_START_FAILED/);
   assert.match(source, /updater\.logger = Object\.freeze/);
+  assert.match(await readFile(preloadPath, "utf8"), /installUpdate\(\)\s*\{\s*return ipcRenderer\.invoke\("pomegr:install-update"\);/);
   assert.match(source, /privacySafe:/);
   assert.match(source, /DESKTOP_ARTIFACT_PRIVACY_SENTINEL/);
 });
@@ -227,7 +228,9 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     removeHandler(channel) { handlers.delete(channel); },
     handle(channel, handler) { handlers.set(channel, handler); },
   };
-  const safeState = Object.freeze({ paused: false });
+  const safeState = Object.freeze({ paused: false, update: Object.freeze({ status: "ready", version: "1.2.3" }) });
+  let updateInstalls = 0;
+  const updater = { async install() { updateInstalls += 1; } };
   const controller = {
     snapshot: () => safeState,
     setPaused() { throw new Error("PROMPT_MUST_NOT_LEAK"); },
@@ -243,9 +246,10 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     channels: DESKTOP_BEHAVIOR_CHANNELS,
     isTrustedEvent: (event) => event === trustedEvent,
     getController: () => controller,
+    getUpdater: () => updater,
     themeHandler: () => false,
   });
-  assert.equal(registered.length, 8);
+  assert.equal(registered.length, 9);
   for (const channel of [
     DESKTOP_BEHAVIOR_CHANNELS.setPaused,
     DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
@@ -256,6 +260,10 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     assert.deepEqual(await handlers.get(channel)(trustedEvent, true), safeState);
     assert.equal(await handlers.get(channel)({}, true), null);
   }
+  assert.deepEqual(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.installUpdate)(trustedEvent), safeState);
+  assert.equal(updateInstalls, 1);
+  assert.equal(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.installUpdate)({}), null);
+  assert.equal(updateInstalls, 1);
   assert.equal(handlers.get(DESKTOP_BEHAVIOR_CHANNELS.quit)(trustedEvent), false);
 });
 

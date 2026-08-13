@@ -38,8 +38,8 @@ Do not promote the first beta produced by a new signing or updater configuration
 1. On a fully patched, clean Windows VM, download the older beta installer, its checksum manifest, and its source archive from the same release.
 2. Verify the installer SHA-256, valid Authenticode signature, exact publisher, and trusted timestamp; install it without disabling SmartScreen or other security controls.
 3. Confirm the older installed beta remains usable when offline and when the update endpoint fails.
-4. Publish the newer beta, start the older beta, and confirm its background check offers only the newer beta channel version without blocking the dashboard.
-5. Accept the explicit restart/install confirmation. Confirm Pomegr shuts down its local services, installs the update, restarts, and reports the newer version.
+4. Publish the newer beta, start the older beta, and confirm its background check silently downloads only the newer beta channel version without blocking the dashboard. If validating periodic discovery, keep the app running and confirm the next non-overlapping four-hour check finds the release.
+5. Confirm the bottom-left **Restart to update** action appears only after verification. Activate it as the explicit confirmation, then confirm Pomegr shuts down its local services, installs the update, restarts, and reports the newer version.
 6. Verify the downloaded installer and installed executable signatures and checksums again. Confirm the old installation was not damaged if download or verification was deliberately interrupted.
 7. Repeat with an unsigned test package and a package signed by a different publisher; both must be rejected while the current installation remains usable. Never publish those negative fixtures.
 8. Inspect the workflow log and downloaded artifacts for credential values, signed URLs with query strings, certificate bytes, private workstation paths, transcripts, prompts, responses, commands, and tool output.

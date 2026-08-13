@@ -55,6 +55,7 @@ function harness(overrides = {}) {
     async explainClose() { calls.push(["explain"]); return overrides.closeChoice || { action: "tray", remember: false }; },
     updateTray(state) { calls.push(["tray", state]); },
     broadcast(state) { calls.push(["broadcast", state]); },
+    ...(overrides.snapshotExtension ? { snapshotExtension: overrides.snapshotExtension } : {}),
     ...(overrides.now ? { now: overrides.now } : {}),
     ...(overrides.schedule ? { schedule: overrides.schedule } : {}),
     ...(overrides.cancel ? { cancel: overrides.cancel } : {}),
@@ -162,9 +163,11 @@ test("login registration rolls back when persistence fails and close still honor
 });
 
 test("desktop renderer contract is fixed, bounded, and contains no provider metadata", () => {
-  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "quit", "setCloseBehavior", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
-  const state = harness().controller.snapshot();
-  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused"].sort());
+  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "installUpdate", "quit", "setCloseBehavior", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
+  const update = Object.freeze({ status: "ready", version: "1.2.3" });
+  const state = harness({ snapshotExtension: () => ({ update }) }).controller.snapshot();
+  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
+  assert.deepEqual(state.update, update);
   assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
 });
 

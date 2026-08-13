@@ -411,6 +411,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(main, /createNeedsInputNotificationController\(\{/);
   assert.match(main, /createDesktopUpdaterController\(\{/);
   assert.match(main, /void startDesktopUpdates\(\)/);
+  assert.match(main, /const electronUpdater = await import\("electron-updater"\);\s*if \(runtimeState !== "running"\) return;\s*const updater =/);
   assert.match(main, /prepareInstall:\s*\(\) => behaviorController\?\.prepareForUpdateInstall\(\)/);
   assert.match(main, /cancelInstall:\s*\(\) => behaviorController\?\.cancelUpdateInstall\(\)/);
   assert.doesNotMatch(main, /releaseNotes|signedUrl|certificate|update[^\n]*console\./i);

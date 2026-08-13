@@ -5,15 +5,19 @@ import type { SessionSummary } from "../../../shared/monitor-contract";
 import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
+import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
 import { RelativeTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
+import type { DesktopState } from "../DesktopControls";
 
-export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, onClose, onSelect }: {
+export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, update, onInstallUpdate, onClose, onSelect }: {
   open: boolean;
   sessions: SessionSummary[];
   selectedSessionId: string | null;
   currentSessionId: string | null;
   viewingHistory: boolean;
+  update: DesktopState["update"] | null;
+  onInstallUpdate: () => void;
   onClose: () => void;
   onSelect: (session: SessionSummary) => void;
 }) {
@@ -75,6 +79,11 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
             <a className="sidebarAboutLink" href="/about"><span>About Pomegr</span><i aria-hidden="true">→</i></a>
           </div>
         </nav>
+        {update?.version && (update.status === "ready" || update.status === "installing") && (
+          <div className="sidebarFooter">
+            <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} />
+          </div>
+        )}
       </aside>
     </>
   );

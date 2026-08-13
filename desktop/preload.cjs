@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   setNotificationQuiet(value) {
     return ipcRenderer.invoke("pomegr:set-notification-quiet", value);
   },
+  installUpdate() {
+    return ipcRenderer.invoke("pomegr:install-update");
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("pomegr:quit");

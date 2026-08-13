@@ -28,6 +28,7 @@ type DesktopBridge = {
   setCloseBehavior(value: DesktopState["closeBehavior"]): Promise<DesktopState | null>;
   setNotifications(value: boolean): Promise<DesktopState | null>;
   setNotificationQuiet(value: boolean): Promise<DesktopState | null>;
+  installUpdate(): Promise<DesktopState | null>;
   quit(): Promise<boolean>;
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
@@ -171,6 +172,10 @@ export function Dashboard() {
     void desktopBridge()?.setNotificationQuiet(value).then((state) => { if (state) setDesktopState(state); }, () => {});
   }, []);
 
+  const installUpdate = useCallback(() => {
+    void desktopBridge()?.installUpdate().then((state) => { if (state) setDesktopState(state); }, () => {});
+  }, []);
+
   const viewingHistory = data.view === "history";
   const connecting = loading && !data.error && !data.session;
   const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
@@ -230,7 +235,7 @@ export function Dashboard() {
   return (
     <LiveClockProvider running={clockRunning}>
       <div className="appFrame">
-        <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
+        <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} update={desktopState?.update || null} onInstallUpdate={installUpdate} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
         <main className="shell" id="top">
         <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>

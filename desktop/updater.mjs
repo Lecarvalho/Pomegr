@@ -3,9 +3,11 @@ import path from "node:path";
 
 import { minimalRuntimeEnvironment } from "./environment-policy.mjs";
 
+const MAX_SAFE_VERSION_LENGTH = 64;
 const SAFE_VERSION = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z]+)(?:\.[0-9A-Za-z-]+)*)?$/;
 const FULL_PUBLISHER_SUBJECT = /^CN=.+,\s*[A-Z][A-Z0-9.]*=.+$/i;
 const SIGNATURE_TIMEOUT_MS = 20_000;
+export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000;
 
 function sameWindowsPath(left, right) {
   return path.resolve(String(left || "")).toUpperCase() === path.resolve(String(right || "")).toUpperCase();
@@ -69,7 +71,9 @@ export const DESKTOP_UPDATE_STATES = Object.freeze([
 ]);
 
 export function desktopReleaseChannel(version) {
-  const match = String(version || "").match(SAFE_VERSION);
+  const normalizedVersion = String(version || "");
+  if (normalizedVersion.length > MAX_SAFE_VERSION_LENGTH) return null;
+  const match = normalizedVersion.match(SAFE_VERSION);
   if (!match) return null;
   return match[1] === undefined ? "stable" : match[1] === "beta" ? "beta" : null;
 }
@@ -80,14 +84,21 @@ export function isUpdateVersionAllowed(currentVersion, candidateVersion) {
 }
 
 function boundedUpdateState(status, version = null) {
+  const normalizedVersion = String(version || "");
   return Object.freeze({
     status: DESKTOP_UPDATE_STATES.includes(status) ? status : "failed",
-    version: SAFE_VERSION.test(String(version || "")) ? String(version) : null,
+    version: normalizedVersion.length <= MAX_SAFE_VERSION_LENGTH && SAFE_VERSION.test(normalizedVersion)
+      ? normalizedVersion
+      : null,
   });
 }
 
 export function createDesktopUpdaterController(options) {
   const updater = options.updater;
+  const scheduler = options.scheduler || globalThis;
+  const checkIntervalMs = Number.isFinite(options.checkIntervalMs) && options.checkIntervalMs > 0
+    ? options.checkIntervalMs
+    : DESKTOP_UPDATE_CHECK_INTERVAL_MS;
   const enabled = options.packaged === true
     && options.mode === "installed"
     && options.updatesEnabled === true
@@ -96,10 +107,28 @@ export function createDesktopUpdaterController(options) {
   let started = false;
   let disposed = false;
   let installing = false;
+  let readyVersion = null;
+  let checkPromise = null;
+  let checkTimer = null;
   const listeners = [];
+  const clearScheduledCheck = () => {
+    if (checkTimer === null) return;
+    scheduler.clearTimeout(checkTimer);
+    checkTimer = null;
+  };
+  const scheduleCheck = () => {
+    clearScheduledCheck();
+    if (!started || disposed || (state.status !== "idle" && state.status !== "failed")) return;
+    checkTimer = scheduler.setTimeout(() => {
+      checkTimer = null;
+      void check();
+    }, checkIntervalMs);
+    checkTimer?.unref?.();
+  };
   const setState = (status, version = null) => {
     state = boundedUpdateState(status, version);
     options.onState?.(state);
+    scheduleCheck();
     return state;
   };
   const listen = (event, handler) => {
@@ -109,11 +138,31 @@ export function createDesktopUpdaterController(options) {
   const recoverInstall = () => {
     if (!installing) return;
     installing = false;
-    options.cancelInstall?.();
-    if (!disposed) setState("failed");
+    try { options.cancelInstall?.(); } catch { /* Recovery must still restore the verified update offer. */ }
+    if (!disposed && readyVersion) setState("ready", readyVersion);
   };
 
+  async function check() {
+    if (checkPromise || disposed || (state.status !== "idle" && state.status !== "failed")) return checkPromise;
+    clearScheduledCheck();
+    setState("checking");
+    checkPromise = (async () => {
+      try {
+        await updater.checkForUpdates();
+        if (!disposed && state.status === "checking") setState("idle");
+      } catch {
+        if (!disposed && state.status === "checking") setState("failed");
+      } finally {
+        checkPromise = null;
+        scheduleCheck();
+      }
+      return state;
+    })();
+    return checkPromise;
+  }
+
   async function download(info) {
+    if (disposed || state.status === "ready" || state.status === "installing") return;
     if (!isUpdateVersionAllowed(options.currentVersion, info?.version)) {
       setState("idle");
       return;
@@ -126,29 +175,33 @@ export function createDesktopUpdaterController(options) {
     }
   }
 
-  async function offerInstall(info) {
-    if (installing || !isUpdateVersionAllowed(options.currentVersion, info?.version)) {
-      if (!installing) setState("failed");
+  function markReady(info) {
+    if (disposed || installing || state.status === "ready") return;
+    if (!isUpdateVersionAllowed(options.currentVersion, info?.version)) {
+      setState("failed");
       return;
     }
-    setState("ready", info.version);
-    let confirmed = false;
-    try { confirmed = await options.confirmInstall(info.version); } catch { /* A failed prompt leaves the current app running. */ }
-    if (!confirmed || disposed) return;
+    readyVersion = info.version;
+    setState("ready", readyVersion);
+  }
+
+  function install() {
+    if (disposed || installing || state.status !== "ready" || !readyVersion) return false;
     installing = true;
-    setState("installing", info.version);
+    setState("installing", readyVersion);
     try {
       options.prepareInstall?.();
       updater.quitAndInstall(false, true);
     } catch {
       recoverInstall();
     }
+    return installing;
   }
 
   return Object.freeze({
     snapshot: () => state,
     async start() {
-      if (started || !enabled) return state;
+      if (started || disposed || !enabled) return state;
       started = true;
       updater.logger = Object.freeze({ debug() {}, error() {}, info() {}, warn() {} });
       updater.autoDownload = false;
@@ -157,19 +210,19 @@ export function createDesktopUpdaterController(options) {
       updater.allowPrerelease = desktopReleaseChannel(options.currentVersion) === "beta";
       if (options.verifyUpdateCodeSignature) updater.verifyUpdateCodeSignature = options.verifyUpdateCodeSignature;
       listen("update-available", (info) => { void download(info); });
-      listen("update-downloaded", (info) => { void offerInstall(info); });
-      listen("update-not-available", () => { if (!installing) setState("idle"); });
-      listen("error", () => { if (installing) recoverInstall(); else setState("failed"); });
-      setState("checking");
-      try {
-        await updater.checkForUpdates();
-      } catch {
-        if (!disposed) setState("failed");
-      }
+      listen("update-downloaded", markReady);
+      listen("update-not-available", () => { if (state.status === "checking") setState("idle"); });
+      listen("error", () => {
+        if (installing) recoverInstall();
+        else if (state.status !== "ready") setState("failed");
+      });
+      await check();
       return state;
     },
+    install,
     dispose() {
       disposed = true;
+      clearScheduledCheck();
       for (const [event, handler] of listeners) updater.removeListener(event, handler);
       listeners.length = 0;
     },

@@ -16,7 +16,7 @@ Open **Desktop controls** in the dashboard or use the tray menu to manage suppor
 - **Launch at login** is opt-in and available only for the installed app.
 - **Close behavior** can ask each time, hide to the tray, or quit. Explicit **Quit Pomegr** and the tray **Quit** command stop all Pomegr-owned services.
 - **Needs-input notifications** are enabled by default and can be disabled persistently. **Quiet for one hour** is temporary and clears when the app exits. Notifications use only the fixed generic Pomegr title and body; they never contain a session title, question, approval reason, command, response, tool output, or provider path.
-- **Updates** are enabled by default for installed signed builds. A beta accepts only a higher beta, a stable build accepts only a higher stable release, and installation requires explicit confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates.
+- **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours, silently downloads a higher same-channel release, and shows **Restart to update** at the bottom-left only after the installer is verified and ready. Clicking that action is the explicit installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates.
 
 Closing to the tray leaves local observation running. Click the tray icon, use **Open Pomegr**, or launch Pomegr again to reopen the single existing instance.
 
@@ -108,6 +108,7 @@ The selected close behavior may hide Pomegr to the system tray. Reopen it from t
 ### Updates are unavailable
 
 - Automatic updates require an installed, signed release with updates enabled and network access to the official release endpoint. Portable builds intentionally disable them.
+- The update action appears only after the signed installer finishes downloading and verification succeeds; checking and downloading do not interrupt the dashboard.
 - Stable and beta channels never cross. Publish or install a monotonically higher version on the same channel.
 - A failed or rejected update leaves the current installation runnable. Never bypass publisher checks or replace updater metadata manually; use a newer correctly signed release.
 - See `docs/DESKTOP_RELEASES.md` for signature, publisher, checksum, and rollback policy.

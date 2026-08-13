@@ -5,6 +5,10 @@ export type DesktopState = {
   closeBehavior: "ask" | "tray" | "quit";
   notifications: boolean;
   notificationQuietUntil: string | null;
+  update?: {
+    status: "disabled" | "idle" | "checking" | "downloading" | "ready" | "installing" | "failed";
+    version: string | null;
+  };
 };
 
 export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSetCloseBehavior, onSetNotifications, onSetNotificationQuiet, onQuit }: {
