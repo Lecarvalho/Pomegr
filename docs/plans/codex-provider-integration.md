@@ -2,7 +2,7 @@
 
 ## Objective
 
-Add Codex sessions to Threadlight without regressing the Claude Code adapter or weakening the normalized browser API, privacy guarantees, metric conventions, or read-only monitor behavior.
+Add Codex sessions to Pomegr without regressing the Claude Code adapter or weakening the normalized browser API, privacy guarantees, metric conventions, or read-only monitor behavior.
 
 This plan is divided into tasks intended to be completed in separate coding sessions. Each task should leave the repository in a buildable, tested state and should avoid pulling later tasks into its scope.
 
@@ -10,7 +10,7 @@ This plan is divided into tasks intended to be completed in separate coding sess
 
 Start a new session with a request such as:
 
-> Implement `TL-CX-04` from `docs/plans/codex-provider-integration.md`. Preserve unrelated working-tree changes and stop when that task's acceptance criteria are met.
+> Implement `POMEGR-CX-04` from `docs/plans/codex-provider-integration.md`. Preserve unrelated working-tree changes and stop when that task's acceptance criteria are met.
 
 Before starting any task:
 
@@ -36,8 +36,8 @@ Before starting any task:
 | Capability | Claude Code | Codex target | Initial Codex source |
 |---|---|---|---|
 | Session catalog and history | Yes | Yes | App-server thread metadata and/or rollout index |
-| Live session classification | Registry-backed | Yes | Outcome of `TL-CX-02` |
-| Needs-input state | Registry plus transcript fallback | Yes | Outcome of `TL-CX-02` plus unresolved structured calls |
+| Live session classification | Registry-backed | Yes | Outcome of `POMEGR-CX-02` |
+| Needs-input state | Registry plus transcript fallback | Yes | Outcome of `POMEGR-CX-02` plus unresolved structured calls |
 | Parent/child agents | Transcript tree | Yes | `sessionId`, `parentThreadId`, and collaboration records |
 | Model and effort | Transcript | Yes | Turn context or thread settings |
 | Latest context snapshot | Assistant usage | Yes | Codex `last_token_usage` only |
@@ -46,7 +46,7 @@ Before starting any task:
 | Execution tasks | Bash lifecycle | Yes | Codex command-execution lifecycle |
 | Plan tasks | Structured Claude task store | Best effort | Structured Codex plan updates when available |
 | Usage limits | Anthropic endpoint | Yes | Codex account rate-limit read |
-| Threadlight MCP signals | Yes | Yes | Recognized Codex MCP tool calls |
+| Pomegr MCP signals | Yes | Yes | Recognized Codex MCP tool calls |
 | Estimated API cost | Claude status line | No initial support | Return `null` |
 | Context machinery | Claude `/context` output | No initial support | Return `null`; hide provider-specific prompt |
 | Provider session summary | Recognized Claude record | No initial support | Return `null` unless a safe documented record exists |
@@ -54,14 +54,14 @@ Before starting any task:
 
 ## Milestones
 
-- **Foundation:** `TL-CX-01` through `TL-CX-05`
-- **Codex beta:** `TL-CX-06` through `TL-CX-13`
-- **Production readiness:** `TL-CX-14` through `TL-CX-16`
-- **Post-launch efficiency signals:** `TL-CX-17` and later follow-up tasks
+- **Foundation:** `POMEGR-CX-01` through `POMEGR-CX-05`
+- **Codex beta:** `POMEGR-CX-06` through `POMEGR-CX-13`
+- **Production readiness:** `POMEGR-CX-14` through `POMEGR-CX-16`
+- **Post-launch efficiency signals:** `POMEGR-CX-17` and later follow-up tasks
 
 ---
 
-## TL-CX-01 — Freeze the normalized provider contract
+## POMEGR-CX-01 — Freeze the normalized provider contract
 
 - [x] Complete
 - **Completed:** 2026-08-10
@@ -109,11 +109,11 @@ npm run test:node
 
 ---
 
-## TL-CX-02 — Resolve Windows liveness and needs-input strategy
+## POMEGR-CX-02 — Resolve Windows liveness and needs-input strategy
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-01`
+- **Depends on:** `POMEGR-CX-01`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -153,11 +153,11 @@ Choose and document a reliable, read-only method for classifying Codex threads a
 
 ---
 
-## TL-CX-03 — Add provider fixtures and privacy assertions
+## POMEGR-CX-03 — Add provider fixtures and privacy assertions
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-01`
+- **Depends on:** `POMEGR-CX-01`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -198,11 +198,11 @@ npm run test:node
 
 ---
 
-## TL-CX-04 — Extract the Claude adapter
+## POMEGR-CX-04 — Extract the Claude adapter
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-01`, `TL-CX-03`
+- **Depends on:** `POMEGR-CX-01`, `POMEGR-CX-03`
 - **Target size:** 1–2 sessions
 
 ### Implementation notes
@@ -240,11 +240,11 @@ npm run lint
 
 ---
 
-## TL-CX-05 — Make monitor orchestration provider-neutral
+## POMEGR-CX-05 — Make monitor orchestration provider-neutral
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-04`
+- **Depends on:** `POMEGR-CX-04`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -285,11 +285,11 @@ npm run test:ui
 
 ---
 
-## TL-CX-06 — Implement the Codex session catalog and history reader
+## POMEGR-CX-06 — Implement the Codex session catalog and history reader
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-02`, `TL-CX-03`, `TL-CX-05`
+- **Depends on:** `POMEGR-CX-02`, `POMEGR-CX-03`, `POMEGR-CX-05`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -328,11 +328,11 @@ npm run build
 
 ---
 
-## TL-CX-07 — Parse Codex thread and agent metadata
+## POMEGR-CX-07 — Parse Codex thread and agent metadata
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-06`
+- **Depends on:** `POMEGR-CX-06`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -370,11 +370,11 @@ npm run build
 
 ---
 
-## TL-CX-08 — Normalize Codex tools and recent activity
+## POMEGR-CX-08 — Normalize Codex tools and recent activity
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-07`
+- **Depends on:** `POMEGR-CX-07`
 - **Target size:** 1–2 sessions
 
 ### Implementation notes
@@ -386,7 +386,7 @@ npm run build
 
 ### Goal
 
-Convert Codex canonical items and rollout calls into Threadlight's safe activity and tool-pattern inputs.
+Convert Codex canonical items and rollout calls into Pomegr's safe activity and tool-pattern inputs.
 
 ### Work
 
@@ -412,11 +412,11 @@ npm run build
 
 ---
 
-## TL-CX-09 — Implement Codex execution-task lifecycle
+## POMEGR-CX-09 — Implement Codex execution-task lifecycle
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-08`
+- **Depends on:** `POMEGR-CX-08`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -453,11 +453,11 @@ npm run build
 
 ---
 
-## TL-CX-10 — Implement Codex context snapshots and timeline
+## POMEGR-CX-10 — Implement Codex context snapshots and timeline
 
 - [x] Complete
 - **Completed:** 2026-08-10
-- **Depends on:** `TL-CX-07`
+- **Depends on:** `POMEGR-CX-07`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -468,7 +468,7 @@ npm run build
 
 ### Goal
 
-Map Codex token-count events to Threadlight's latest-context metric without introducing cumulative throughput.
+Map Codex token-count events to Pomegr's latest-context metric without introducing cumulative throughput.
 
 ### Work
 
@@ -496,11 +496,11 @@ npm run build
 
 ---
 
-## TL-CX-11 — Add Codex approval mode and plan tasks
+## POMEGR-CX-11 — Add Codex approval mode and plan tasks
 
 - [x] Complete
 - **Completed:** 2026-08-11
-- **Depends on:** `TL-CX-07`
+- **Depends on:** `POMEGR-CX-07`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -539,11 +539,11 @@ npm run test:ui
 
 ---
 
-## TL-CX-12 — Add Codex usage limits
+## POMEGR-CX-12 — Add Codex usage limits
 
 - [x] Complete
 - **Completed:** 2026-08-11
-- **Depends on:** `TL-CX-05`, `TL-CX-06`
+- **Depends on:** `POMEGR-CX-05`, `POMEGR-CX-06`
 - **Target size:** 0.5–1 session
 
 ### Implementation notes
@@ -555,7 +555,7 @@ npm run test:ui
 
 ### Goal
 
-Map Codex account rate-limit windows to Threadlight's provider-neutral usage-limit panel.
+Map Codex account rate-limit windows to Pomegr's provider-neutral usage-limit panel.
 
 ### Work
 
@@ -582,27 +582,27 @@ npm run build
 
 ---
 
-## TL-CX-13 — Integrate skills, signals, PRs, and efficiency rules
+## POMEGR-CX-13 — Integrate skills, signals, PRs, and efficiency rules
 
 - [x] Complete
 - **Completed:** 2026-08-11
-- **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-10`
+- **Depends on:** `POMEGR-CX-08`, `POMEGR-CX-09`, `POMEGR-CX-10`
 - **Target size:** 1–2 sessions
 
 ### Implementation notes
 
-- Added explicit Codex rollout/canonical skill evidence and rollout-only Threadlight MCP signal parsing with strict label/tone/input allowlists, rollout-derived actor/timestamps, latest replacement semantics, and monitor-side execution-task target resolution.
+- Added explicit Codex rollout/canonical skill evidence and rollout-only Pomegr MCP signal parsing with strict label/tone/input allowlists, rollout-derived actor/timestamps, latest replacement semantics, and monitor-side execution-task target resolution.
 - Replaced provider-local PR URL lists with normalized successful creation events for both adapters; commands, arguments, and result content remain provider-local while the shared GitHub association path consumes only canonical URLs and bounded event provenance.
 - Gated repetition, concurrent-mutation, unshared-context, and healthy-fallback rules on explicit provider evidence availability while retaining Claude's existing rule behavior, and added focused Codex/privacy/regression coverage.
 
 ### Goal
 
-Feed normalized Codex events into the shared higher-level Threadlight features.
+Feed normalized Codex events into the shared higher-level Pomegr features.
 
 ### Work
 
 - Detect explicit Codex skill invocations from recognized metadata/tool calls only.
-- Parse Threadlight MCP signal calls from Codex function/custom-tool records using the existing label/tone allowlist.
+- Parse Pomegr MCP signal calls from Codex function/custom-tool records using the existing label/tone allowlist.
 - Derive the reporting agent and timestamp from the rollout; never accept an MCP-supplied agent identity.
 - Resolve task-signal target IDs only against normalized execution tasks.
 - Refactor pull-request association to consume provider-neutral successful creation events, while keeping raw result parsing monitor-side.
@@ -625,11 +625,11 @@ npm run build
 
 ---
 
-## TL-CX-14 — Implement and harden Codex live-state behavior
+## POMEGR-CX-14 — Implement and harden Codex live-state behavior
 
 - [x] Complete
 - **Completed:** 2026-08-11
-- **Depends on:** `TL-CX-02`, `TL-CX-06`, `TL-CX-07`, `TL-CX-08`
+- **Depends on:** `POMEGR-CX-02`, `POMEGR-CX-06`, `POMEGR-CX-07`, `POMEGR-CX-08`
 - **Target size:** 1–2 sessions
 
 ### Implementation notes
@@ -642,7 +642,7 @@ npm run build
 
 ### Goal
 
-Implement the liveness design chosen in `TL-CX-02` and make automatic session selection trustworthy enough for daily use.
+Implement the liveness design chosen in `POMEGR-CX-02` and make automatic session selection trustworthy enough for daily use.
 
 ### Work
 
@@ -672,11 +672,11 @@ npm run build
 
 ---
 
-## TL-CX-15 — Add provider capability gates and UI copy
+## POMEGR-CX-15 — Add provider capability gates and UI copy
 
 - [x] Complete
 - **Completed:** 2026-08-11
-- **Depends on:** `TL-CX-10`, `TL-CX-11`, `TL-CX-12`, `TL-CX-14`
+- **Depends on:** `POMEGR-CX-10`, `POMEGR-CX-11`, `POMEGR-CX-12`, `POMEGR-CX-14`
 - **Target size:** 1 session
 
 ### Implementation notes
@@ -718,7 +718,7 @@ npm run lint
 
 ---
 
-## TL-CX-16 — Privacy audit, compatibility QA, and release documentation
+## POMEGR-CX-16 — Privacy audit, compatibility QA, and release documentation
 
 - [x] Complete
 - **Completed:** 2026-08-11
@@ -735,7 +735,7 @@ npm run lint
 
 ### Goal
 
-Prove that Codex support satisfies Threadlight's privacy, metric, compatibility, and failure-isolation requirements before calling it production-ready.
+Prove that Codex support satisfies Pomegr's privacy, metric, compatibility, and failure-isolation requirements before calling it production-ready.
 
 ### Work
 
@@ -744,7 +744,7 @@ Prove that Codex support satisfies Threadlight's privacy, metric, compatibility,
   - agent responses and reasoning;
   - commands, patches, stdout, stderr, and tool outputs;
   - OAuth tokens, auth files, environment secrets, and provider-local private paths;
-  - MCP arguments other than the bounded Threadlight signal allowlist.
+  - MCP arguments other than the bounded Pomegr signal allowlist.
 - Test at least two recent Codex rollout/app-server schema versions when fixtures are available.
 - Test unknown future record types, malformed JSONL, truncated live writes, missing child rollouts, app-server unavailable, usage-limit failure, Git failure, and deleted history.
 - Run performance checks with multiple large rollouts and confirm polling uses tail reads/caches rather than repeated full scans.
@@ -774,11 +774,11 @@ npm run lint
 
 ---
 
-## TL-CX-17 — Detect costly prompt-cache misses after idle gaps
+## POMEGR-CX-17 — Detect costly prompt-cache misses after idle gaps
 
 - [x] Complete
 - **Completed:** 2026-08-12
-- **Depends on:** `TL-CX-10`, `TL-CX-13`
+- **Depends on:** `POMEGR-CX-10`, `POMEGR-CX-13`
 - **Target size:** 1 session
 
 ### Goal
@@ -836,16 +836,16 @@ npm test
 
 ---
 
-## TL-CX-18 — Surface Codex current activity alongside execution tasks
+## POMEGR-CX-18 — Surface Codex current activity alongside execution tasks
 
 - [x] Complete
 - **Completed:** 2026-08-12
-- **Depends on:** `TL-CX-08`, `TL-CX-09`, `TL-CX-14`, `TL-CX-15`
+- **Depends on:** `POMEGR-CX-08`, `POMEGR-CX-09`, `POMEGR-CX-14`, `POMEGR-CX-15`
 - **Target size:** 1–2 sessions
 
 ### Goal
 
-Show the latest bounded Codex activity summary for each agent in the existing execution-task popover so users can understand work such as **Planning detailed shell stage logging** without misrepresenting that text as a shell command, structured plan task, custom Threadlight signal, or deterministic Threadlight judgment.
+Show the latest bounded Codex activity summary for each agent in the existing execution-task popover so users can understand work such as **Planning detailed shell stage logging** without misrepresenting that text as a shell command, structured plan task, custom Pomegr signal, or deterministic Pomegr judgment.
 
 ### Implementation notes
 
@@ -908,21 +908,21 @@ Add short entries here only after completing a task.
 
 | Date | Task | Result | Notes |
 |---|---|---|---|
-| 2026-08-10 | TL-CX-01 | Complete | Provider contract, capability semantics, qualified IDs, provider-aware empty state, and focused tests added. |
-| 2026-08-10 | TL-CX-02 | Complete | Accepted Windows liveness strategy: owning app-server when explicit, opt-in lifecycle bridge generally, bounded rollout heuristic as fallback. |
-| 2026-08-10 | TL-CX-03 | Complete | Synthetic provider fixtures, malformed-record coverage, and serialized-state privacy sentinels added. |
-| 2026-08-10 | TL-CX-04 | Complete | Claude discovery and parsing extracted behind the provider contract; shared orchestration and regression/privacy coverage retained. |
-| 2026-08-10 | TL-CX-05 | Complete | Provider registry, qualified catalog merge, safe selection routing, and deterministic cross-provider priority added. |
-| 2026-08-10 | TL-CX-06 | Complete | Codex catalog/history metadata reader, app-server seam, bounded rollout/index fallbacks, archive support, and privacy tests added. |
-| 2026-08-10 | TL-CX-07 | Complete | Deterministic Codex primary/subagent metadata tree with safe runtime, timing, terminal, fork, resume, and missing-child handling. |
-| 2026-08-10 | TL-CX-08 | Complete | Safe Codex tool/activity normalization, stable lifecycle evidence, repetition signatures, mutation scopes, deterministic recent activity, and privacy coverage added. |
-| 2026-08-10 | TL-CX-09 | Complete | Safe Codex command lifecycle normalization, per-agent execution tasks, process IDs, historical stops, signal matching, and compatibility coverage added. |
-| 2026-08-10 | TL-CX-10 | Complete | Latest non-zero Codex context snapshots, chronological growth timeline input, bounded explicit-trigger compactions, and metric/privacy coverage added. |
-| 2026-08-11 | TL-CX-11 | Complete | Provider-neutral approval modes and latest structured plan tasks added with bounded fields, empty uninferred dependencies, neutral UI copy, and privacy coverage. |
-| 2026-08-11 | TL-CX-12 | Complete | Documented Codex app-server rate-limit windows, shared request coordination/cooldown, bounded normalization, privacy filtering, failure isolation, and historical exclusion added. |
-| 2026-08-11 | TL-CX-13 | Complete | Codex skill and signal evidence, provider-neutral PR creation events, monitor-side task matching, and evidence-gated shared efficiency rules added. |
-| 2026-08-11 | TL-CX-14 | Complete | Owning app-server liveness, allowlisted lifecycle bridge, bounded rollout fallback, deterministic expiry/grace behavior, descendant waiting, and cached polling added. |
-| 2026-08-11 | TL-CX-15 | Complete | Capability-gated provider copy and optional panels, provenance labels, unsupported-versus-zero report semantics, and mixed-provider responsive/accessibility coverage added. |
-| 2026-08-11 | TL-CX-16 | Complete | API privacy audit, schema/failure compatibility QA, bounded Codex state parsing and caching, release documentation, and full-suite verification completed. |
-| 2026-08-12 | TL-CX-17 | Complete | Bounded comparable cache-usage evidence and a cautious, provider-gated cache-miss-after-idle rule added with compaction/model/fork/malformed-evidence suppression. |
-| 2026-08-12 | TL-CX-18 | Complete | Live per-agent Codex current activity added to Activity & Execution with strict parsing, terminal clearing, privacy isolation, and responsive UI coverage. |
+| 2026-08-10 | POMEGR-CX-01 | Complete | Provider contract, capability semantics, qualified IDs, provider-aware empty state, and focused tests added. |
+| 2026-08-10 | POMEGR-CX-02 | Complete | Accepted Windows liveness strategy: owning app-server when explicit, opt-in lifecycle bridge generally, bounded rollout heuristic as fallback. |
+| 2026-08-10 | POMEGR-CX-03 | Complete | Synthetic provider fixtures, malformed-record coverage, and serialized-state privacy sentinels added. |
+| 2026-08-10 | POMEGR-CX-04 | Complete | Claude discovery and parsing extracted behind the provider contract; shared orchestration and regression/privacy coverage retained. |
+| 2026-08-10 | POMEGR-CX-05 | Complete | Provider registry, qualified catalog merge, safe selection routing, and deterministic cross-provider priority added. |
+| 2026-08-10 | POMEGR-CX-06 | Complete | Codex catalog/history metadata reader, app-server seam, bounded rollout/index fallbacks, archive support, and privacy tests added. |
+| 2026-08-10 | POMEGR-CX-07 | Complete | Deterministic Codex primary/subagent metadata tree with safe runtime, timing, terminal, fork, resume, and missing-child handling. |
+| 2026-08-10 | POMEGR-CX-08 | Complete | Safe Codex tool/activity normalization, stable lifecycle evidence, repetition signatures, mutation scopes, deterministic recent activity, and privacy coverage added. |
+| 2026-08-10 | POMEGR-CX-09 | Complete | Safe Codex command lifecycle normalization, per-agent execution tasks, process IDs, historical stops, signal matching, and compatibility coverage added. |
+| 2026-08-10 | POMEGR-CX-10 | Complete | Latest non-zero Codex context snapshots, chronological growth timeline input, bounded explicit-trigger compactions, and metric/privacy coverage added. |
+| 2026-08-11 | POMEGR-CX-11 | Complete | Provider-neutral approval modes and latest structured plan tasks added with bounded fields, empty uninferred dependencies, neutral UI copy, and privacy coverage. |
+| 2026-08-11 | POMEGR-CX-12 | Complete | Documented Codex app-server rate-limit windows, shared request coordination/cooldown, bounded normalization, privacy filtering, failure isolation, and historical exclusion added. |
+| 2026-08-11 | POMEGR-CX-13 | Complete | Codex skill and signal evidence, provider-neutral PR creation events, monitor-side task matching, and evidence-gated shared efficiency rules added. |
+| 2026-08-11 | POMEGR-CX-14 | Complete | Owning app-server liveness, allowlisted lifecycle bridge, bounded rollout fallback, deterministic expiry/grace behavior, descendant waiting, and cached polling added. |
+| 2026-08-11 | POMEGR-CX-15 | Complete | Capability-gated provider copy and optional panels, provenance labels, unsupported-versus-zero report semantics, and mixed-provider responsive/accessibility coverage added. |
+| 2026-08-11 | POMEGR-CX-16 | Complete | API privacy audit, schema/failure compatibility QA, bounded Codex state parsing and caching, release documentation, and full-suite verification completed. |
+| 2026-08-12 | POMEGR-CX-17 | Complete | Bounded comparable cache-usage evidence and a cautious, provider-gated cache-miss-after-idle rule added with compaction/model/fork/malformed-evidence suppression. |
+| 2026-08-12 | POMEGR-CX-18 | Complete | Live per-agent Codex current activity added to Activity & Execution with strict parsing, terminal clearing, privacy isolation, and responsive UI coverage. |

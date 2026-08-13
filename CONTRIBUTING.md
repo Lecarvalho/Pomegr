@@ -1,14 +1,14 @@
-# Contributing to Threadlight
+# Contributing to Pomegr
 
-Thanks for helping improve Threadlight. Bug reports, reproducible test cases, documentation feedback, and focused design discussions are welcome through the [issue tracker](https://github.com/Lecarvalho/threadlight/issues).
+Thanks for helping improve Pomegr. Bug reports, reproducible test cases, documentation feedback, and focused design discussions are welcome through the [issue tracker](https://github.com/Lecarvalho/pomegr/issues).
 
 ## Before submitting code
 
-Open an issue before investing in a substantial change. This helps confirm that the change fits Threadlight's provider-neutral architecture, privacy boundaries, and read-only product scope.
+Open an issue before investing in a substantial change. This helps confirm that the change fits Pomegr's provider-neutral architecture, privacy boundaries, and read-only product scope.
 
-Threadlight may be offered under both the open-source AGPL and separate commercial terms. To preserve that option, the project will require an appropriate contributor license agreement before merging copyrightable contributions from outside the current copyright holder. The signing process is not yet available, so unsolicited external code contributions cannot currently be merged.
+Pomegr may be offered under both the open-source AGPL and separate commercial terms. To preserve that option, the project will require an appropriate contributor license agreement before merging copyrightable contributions from outside the current copyright holder. The signing process is not yet available, so unsolicited external code contributions cannot currently be merged.
 
-This temporary restriction does not affect anyone's rights to use, modify, or redistribute Threadlight under the AGPL. It only governs what the official project can merge. A standard contributor agreement and signing workflow should be introduced before accepting external code.
+This temporary restriction does not affect anyone's rights to use, modify, or redistribute Pomegr under the AGPL. It only governs what the official project can merge. A standard contributor agreement and signing workflow should be introduced before accepting external code.
 
 ## Engineering expectations
 

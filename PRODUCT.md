@@ -12,17 +12,17 @@ The primary user is a developer observing active and historical coding-agent ses
 
 ## Product Purpose
 
-Threadlight presents live and recorded coding-agent execution metadata in a dashboard so people can understand session state, agent activity, context usage, repository changes, usage limits, and concrete efficiency signals without exposing the underlying conversation.
+Pomegr presents live and recorded coding-agent execution metadata in a dashboard so people can understand session state, agent activity, context usage, repository changes, usage limits, and concrete efficiency signals without exposing the underlying conversation.
 
 Success means making active work and attention needs legible while keeping the observation layer local, read-only, privacy-preserving, and faithful to recorded provider state.
 
 ## Positioning
 
-Threadlight is a local, read-only observer that normalizes existing session records into a live dashboard and explainable signals.
+Pomegr is a local, read-only observer that normalizes existing session records into a live dashboard and explainable signals.
 
 ## Operating Context
 
-- Threadlight runs locally alongside a coding-agent harness and reads the provider's existing session records.
+- Pomegr runs locally alongside a coding-agent harness and reads the provider's existing session records.
 - The web dashboard is available on the local network, while the privileged monitor remains bound to loopback.
 - Live sessions refresh continuously; historical sessions show recorded session state only.
 - Users can inspect concurrent sessions, attention state, agent hierarchy, context snapshots, tool activity, Git changes, pull requests, usage limits, and deterministic insights.
@@ -34,7 +34,7 @@ Threadlight is a local, read-only observer that normalizes existing session reco
 - Monitoring is read-only. Control actions require a future explicit confirmation boundary.
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
-- Context means the latest non-zero provider usage snapshot. Threadlight does not present cumulative transcript throughput or token-spend totals.
+- Context means the latest non-zero provider usage snapshot. Pomegr does not present cumulative transcript throughput or token-spend totals.
 - Historical views must not expose current plan limits or substitute the current Git working tree for recorded state.
 - Efficiency signals and recommendations are deterministic heuristics tied to concrete events, never AI judgments or authoritative measurements.
 - Provider failures must degrade independently.
@@ -42,15 +42,15 @@ Threadlight is a local, read-only observer that normalizes existing session reco
 
 ## Brand Commitments
 
-- The product has one provider-neutral name: **Threadlight**. Use `threadlight` for package, repository, and directory identifiers.
+- The product has one provider-neutral name: **Pomegr**. Use `pomegr` for package, repository, and directory identifiers.
 - Provider names belong only in adapter-specific configuration, implementation, and documentation.
-- Product language must distinguish provider-reported estimates, agent-reported signals, and deterministic Threadlight heuristics from authoritative facts or AI judgments.
+- Product language must distinguish provider-reported estimates, agent-reported signals, and deterministic Pomegr heuristics from authoritative facts or AI judgments.
 
 ## Evidence on Hand
 
 - The working dashboard, monitor, provider adapter, normalized contract, MCP signal server, deterministic report generator, and automated test suite are present in this repository.
 - Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/METRICS.md`.
-- The current interface and brand mark are implemented under `app/`; a representative product screenshot exists at `docs/assets/threadlight-introduction.png`.
+- The current interface is implemented under `app/`.
 - No testimonials, customer logos, external benchmarks, pricing claims, or deployment claims are established in the repository and future work must not fabricate them.
 
 ## Product Principles

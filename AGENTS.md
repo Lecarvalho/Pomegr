@@ -2,13 +2,13 @@
 
 ## Product identity
 
-- The product has one name: **Threadlight**.
-- Use `threadlight` for package, repository, and directory identifiers.
+- The product has one name: **Pomegr**.
+- Use `pomegr` for package, repository, and directory identifiers.
 - Keep the name provider-neutral. Provider names belong only in adapter-specific configuration and documentation.
 
 ## Purpose
 
-Threadlight is a local-first, read-only observer for coding-agent sessions. It presents real execution metadata and deterministic efficiency signals. Never imply that a heuristic is an AI judgment or authoritative measurement.
+Pomegr is a local-first, read-only observer for coding-agent sessions. It presents real execution metadata and deterministic efficiency signals. Never imply that a heuristic is an AI judgment or authoritative measurement.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ Threadlight is a local-first, read-only observer for coding-agent sessions. It p
 - Claude status-line cost capture may persist and expose only the normalized session ID, non-negative `total_cost_usd`, USD currency label, estimate type, and local observation timestamp. Never persist other status-line fields, and always present the value as a Claude Code estimate rather than authoritative billing.
 - Execution-task metadata may expose only normalized tool/background IDs, the Bash description, shell kind, lifecycle status, timestamps, background flag, exit code, and a bounded enum-based failure category derived monitor-side. Never expose commands, stdout, stderr, matched source text, or task-notification output.
 - Plan-task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text, and always label the checklist as agent-maintained and potentially stale.
-- Session- and agent-signal metadata may expose only a bounded plain-text label, semantic tone, transcript-derived timestamp, and optional bounded, one-line plain-text description from a recognized Threadlight MCP tool call. Never expose other MCP arguments or tool-result content, and present signals as agent-reported rather than Threadlight judgments.
+- Session- and agent-signal metadata may expose only a bounded plain-text label, semantic tone, transcript-derived timestamp, and optional bounded, one-line plain-text description from a recognized Pomegr MCP tool call. Never expose other MCP arguments or tool-result content, and present signals as agent-reported rather than Pomegr judgments.
 - Task-signal metadata may attach the same bounded fields only to a matching normalized execution task resolved monitor-side from a safe tool-use or background-task ID. Never expose the MCP-supplied target separately or include unmatched task signals in the browser API.
 - Keep the monitor bound to loopback.
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
