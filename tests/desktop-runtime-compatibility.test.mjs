@@ -39,7 +39,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.ok(main.indexOf("app.disableHardwareAcceleration()") < main.indexOf("app.whenReady()"));
   assert.match(main, /disable-gpu/);
   assert.match(main, /noerrdialogs/);
-  assert.match(main, /THREADLIGHT_SMOKE_PROFILE_ROOT/);
+  assert.match(main, /POMEGR_SMOKE_PROFILE_ROOT/);
   assert.match(main, /resolveDesktopPaths\(\{/);
   assert.match(main, /DESKTOP_DATA_ROOT_NOT_ISOLATED/);
   assert.doesNotMatch(main, /recordStage\(["']FINISHED_FAIL["']\)/);
@@ -58,7 +58,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /worker\.terminate\(\)/);
   assert.match(main, /execFile\("git", \["--version"\]/);
   assert.match(main, /monitor\.ready\.gitProof !== "verified"/);
-  assert.match(main, /threadlightHydrated/);
+  assert.match(main, /pomegrHydrated/);
   assert.match(main, /getComputedStyle\(frame\)\.display === 'grid'/);
   assert.match(main, /fetch\('\/api\/state'/);
   assert.match(main, /fetch\('\/api\/sessions'/);
@@ -71,7 +71,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(runner, /unpackDir:\s*DESKTOP_UNPACK_DIRECTORIES/);
   assert.match(runner, /user-data-dir=/);
   assert.match(runner, /original-fs/);
-  assert.match(runner, /THREADLIGHT_SMOKE_MAIN_STAGE_PATH/);
+  assert.match(runner, /POMEGR_SMOKE_MAIN_STAGE_PATH/);
   assert.match(runner, /ELECTRON_EXIT_MISSING_DLL/);
   assert.match(runner, /ELECTRON_EXIT_BREAKPOINT/);
   assert.match(runner, /ELECTRON_EXIT_STACK_BUFFER/);
@@ -138,7 +138,7 @@ test("monitor diagnostics cannot overwrite an established production shell trace
 });
 
 test("ASAR policy unpacks the monitor bundle, complete production build, and Sharp native files", async () => {
-  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "threadlight-asar-policy-"));
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-asar-policy-"));
   const stagingRoot = path.join(fixtureRoot, "staging");
   const archivePath = path.join(fixtureRoot, "app.asar");
   try {
@@ -194,7 +194,7 @@ test("monitor is isolated and the in-main web host receives no provider paths or
   assert.match(main, /minimalRuntimeEnvironment\(process\.env/);
   assert.ok(main.indexOf("keepOnlyRuntimeEnvironment(process.env") < main.indexOf('import("../web/server.mjs")'));
   assert.ok(main.indexOf("assertNoSystemNodeInPath(process.env)") < main.indexOf('import("../web/server.mjs")'));
-  assert.match(main, /THREADLIGHT_MONITOR_ORIGIN:\s*monitor\.ready\.origin/);
+  assert.match(main, /POMEGR_MONITOR_ORIGIN:\s*monitor\.ready\.origin/);
   assert.match(monitorHost, /MONITOR_ENV_LOADING/);
   assert.match(monitorHost, /MONITOR_ENV_LOADED/);
 
@@ -215,14 +215,14 @@ test("monitor is isolated and the in-main web host receives no provider paths or
     OPENAI_API_KEY: "private-key",
     SERVICE_PAT: "private-pat",
     SSH_AUTH_SOCK: "private-socket",
-    THREADLIGHT_SMOKE_MAIN_STAGE_PATH: "safe-fixed-stage-path",
+    POMEGR_SMOKE_MAIN_STAGE_PATH: "safe-fixed-stage-path",
     PATH: [nodeDirectory, gitDirectory].join(path.delimiter),
     SystemRoot: "safe-system-root",
     TEMP: "safe-temp",
   };
   const runtime = minimalRuntimeEnvironment(source, {}, fileExists);
   assert.equal(runtime.PATH, gitDirectory);
-  assert.equal(runtime.THREADLIGHT_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
+  assert.equal(runtime.POMEGR_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
   assert.equal(executableOnPath(runtime, "git.exe", fileExists), true);
   assert.doesNotThrow(() => assertNoSystemNodeInPath(runtime, fileExists));
   assert.throws(() => assertNoSystemNodeInPath(source, fileExists), /DESKTOP_SYSTEM_NODE_VISIBLE/);
@@ -230,10 +230,10 @@ test("monitor is isolated and the in-main web host receives no provider paths or
     assert.equal(runtime[forbidden], undefined);
   }
   const webEnvironment = { ...source };
-  keepOnlyRuntimeEnvironment(webEnvironment, { THREADLIGHT_MONITOR_ORIGIN: "http://127.0.0.1:4317" }, fileExists);
+  keepOnlyRuntimeEnvironment(webEnvironment, { POMEGR_MONITOR_ORIGIN: "http://127.0.0.1:4317" }, fileExists);
   assert.equal(webEnvironment.PATH, gitDirectory);
-  assert.equal(webEnvironment.THREADLIGHT_MONITOR_ORIGIN, "http://127.0.0.1:4317");
-  assert.equal(webEnvironment.THREADLIGHT_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
+  assert.equal(webEnvironment.POMEGR_MONITOR_ORIGIN, "http://127.0.0.1:4317");
+  assert.equal(webEnvironment.POMEGR_SMOKE_MAIN_STAGE_PATH, "safe-fixed-stage-path");
   assert.equal(webEnvironment.SSH_AUTH_SOCK, undefined);
 
   const monitorEnvironment = monitorPrivateEnvironment(source);
@@ -303,14 +303,14 @@ test("monitor worker uses one physical bundle with fixed lifecycle stages", asyn
   assert.match(runtimeProof, /\^\(\?:MONITOR\|WEB\)_\[A-Z_\]/);
   assert.match(runtimeProof, /node\.exe/);
   assert.doesNotMatch(runtimeProof, /spawnSync\(\s*["']node/);
-  assert.match(main, /THREADLIGHT_SMOKE_MAIN_STAGE_PATH/);
+  assert.match(main, /POMEGR_SMOKE_MAIN_STAGE_PATH/);
   assert.match(main, /TARGET_PRESENT/);
   assert.match(main, /EXIT_MISSING_DLL/);
   assert.match(main, /EXIT_NONZERO/);
 });
 
 test("desktop service bundling emits only the self-contained monitor worker", async () => {
-  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "threadlight-worker-bundle-"));
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-worker-bundle-"));
   try {
     await buildDesktopServiceBundles(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), fixtureRoot);
     const outputRoot = path.join(fixtureRoot, "desktop", "workers");

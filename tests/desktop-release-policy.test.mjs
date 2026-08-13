@@ -12,7 +12,7 @@ import {
 } from "../desktop/update-signature-acceptance.mjs";
 import {
   RELEASE_LEGAL_FILES,
-  THREADLIGHT_WINDOWS_PUBLISHER,
+  POMEGR_WINDOWS_PUBLISHER,
   assertReleaseArtifactNames,
   assertReleaseTag,
   assertUpdateMetadata,
@@ -22,10 +22,10 @@ import {
   updateMetadataName,
 } from "../desktop/release-policy.mjs";
 
-const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=Threadlight, C=CA";
+const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=Pomegr, C=CA";
 
 async function updateSignatureFixture(contents = "synthetic executable fixture") {
-  const root = await mkdtemp(path.join(tmpdir(), "threadlight-update-acceptance-"));
+  const root = await mkdtemp(path.join(tmpdir(), "pomegr-update-acceptance-"));
   const filename = path.join(root, "PRIVATE_PATH_MUST_NOT_LEAK.exe");
   await writeFile(filename, contents, "utf8");
   return filename;
@@ -46,11 +46,11 @@ test("release versions keep stable and beta channels separate", () => {
 test("release artifact policy requires source, notices, update payload, notes, and checksums", () => {
   const names = releaseArtifactNames("1.2.3-beta.4");
   assert.deepEqual(names, [
-    "Threadlight-Setup-1.2.3-beta.4-x64.exe",
-    "Threadlight-Setup-1.2.3-beta.4-x64.exe.blockmap",
-    "Threadlight-Portable-1.2.3-beta.4-x64.exe",
+    "Pomegr-Setup-1.2.3-beta.4-x64.exe",
+    "Pomegr-Setup-1.2.3-beta.4-x64.exe.blockmap",
+    "Pomegr-Portable-1.2.3-beta.4-x64.exe",
     "beta.yml",
-    "Threadlight-1.2.3-beta.4-source.zip",
+    "Pomegr-1.2.3-beta.4-source.zip",
     "RELEASE_NOTES.md",
     ...RELEASE_LEGAL_FILES,
     "SHA256SUMS.txt",
@@ -63,7 +63,7 @@ test("release artifact policy requires source, notices, update payload, notes, a
 test("updater metadata is version-bound, complete, and contains no query-bearing URL", () => {
   const valid = [
     "version: 1.2.3-beta.4",
-    "path: Threadlight-Setup-1.2.3-beta.4-x64.exe",
+    "path: Pomegr-Setup-1.2.3-beta.4-x64.exe",
     "sha512: abcdef",
   ].join("\n");
   assert.equal(assertUpdateMetadata(valid, "1.2.3-beta.4"), true);
@@ -194,7 +194,7 @@ test("signature acceptance CLI parser rejects missing, unknown, and duplicate op
 });
 
 test("release preparation requires a clean exact tag and emits a closed checksummed set", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "threadlight-release-"));
+  const root = await mkdtemp(path.join(tmpdir(), "pomegr-release-"));
   const inputRoot = path.join(root, "release");
   const version = "1.2.3-beta.4";
   const legal = Object.fromEntries(RELEASE_LEGAL_FILES.map((name) => [name, `${name} fixture\n`]));
@@ -204,7 +204,7 @@ test("release preparation requires a clean exact tag and emits a closed checksum
     ...Object.entries(legal).map(([name, contents]) => writeFile(path.join(root, name), contents, "utf8")),
   ]);
   execFileSync("git", ["init", "--quiet"], { cwd: root });
-  execFileSync("git", ["config", "user.name", "Threadlight Test"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "Pomegr Test"], { cwd: root });
   execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: root });
   execFileSync("git", ["add", "."], { cwd: root });
   execFileSync("git", ["commit", "--quiet", "-m", "release fixture"], { cwd: root });
@@ -212,11 +212,11 @@ test("release preparation requires a clean exact tag and emits a closed checksum
   assert.match(assertCleanTaggedCheckout(root, `v${version}`), /^[a-f0-9]{40}$/);
 
   await mkdir(inputRoot);
-  const installer = `Threadlight-Setup-${version}-x64.exe`;
+  const installer = `Pomegr-Setup-${version}-x64.exe`;
   await Promise.all([
     writeFile(path.join(inputRoot, installer), "signed installer fixture", "utf8"),
     writeFile(path.join(inputRoot, `${installer}.blockmap`), "blockmap fixture", "utf8"),
-    writeFile(path.join(inputRoot, `Threadlight-Portable-${version}-x64.exe`), "signed portable fixture", "utf8"),
+    writeFile(path.join(inputRoot, `Pomegr-Portable-${version}-x64.exe`), "signed portable fixture", "utf8"),
     writeFile(path.join(inputRoot, "beta.yml"), `version: ${version}\npath: ${installer}\nsha512: fixture\n`, "utf8"),
     writeFile(path.join(inputRoot, "RELEASE_NOTES.md"), "Fixture release notes\n", "utf8"),
   ]);
@@ -237,7 +237,7 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
     readFile(new URL("../desktop/prepare-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
   ]);
-  assert.equal(THREADLIGHT_WINDOWS_PUBLISHER, "Leandro Carvalho");
+  assert.equal(POMEGR_WINDOWS_PUBLISHER, "Leandro Carvalho");
   assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /persist-credentials: false/);
@@ -269,7 +269,7 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(signatureVerifier, /\^CN=\.\+,\\s\*\[A-Z\]/);
   assert.match(signatureVerifier, /TimeStamperCertificate/);
   assert.match(preparer, /git", \["archive"/);
-  assert.match(preparer, /--prefix=threadlight-/);
+  assert.match(preparer, /--prefix=pomegr-/);
   assert.match(documentation, /higher beta/);
   assert.match(documentation, /never overwrite assets or reuse the broken version number/i);
   assert.match(documentation, /clean Windows VM/i);

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Agent, ExecutionTask, MonitorState, SessionSummary } from "../../shared/monitor-contract";
@@ -71,8 +71,8 @@ function repositorySession(
   return {
     id: "session-1",
     title: "Repository work",
-    project: "threadlight",
-    cwd: "C:\\Workspace\\repos\\threadlight",
+    project: "pomegr",
+    cwd: "C:\\Workspace\\repos\\pomegr",
     repository,
     pullRequests,
     startedAt: null,
@@ -259,10 +259,10 @@ describe("repository branch overview", () => {
       checkedAt: "2026-08-10T12:02:00.000Z",
       items: [{
         host: "github",
-        repository: "ThreadlightHQ/threadlight",
+        repository: "PomegrHQ/pomegr",
         number: 42,
         title: "Merge the completed feature",
-        url: "https://github.com/ThreadlightHQ/threadlight/pull/42",
+        url: "https://github.com/PomegrHQ/pomegr/pull/42",
         state: "merged",
         draft: false,
         headBranch: "feature/merged-pr",
@@ -296,10 +296,10 @@ describe("repository branch overview", () => {
       checkedAt: "2026-08-10T12:02:00.000Z",
       items: [{
         host: "github",
-        repository: "ThreadlightHQ/threadlight",
+        repository: "PomegrHQ/pomegr",
         number: 42,
         title: "Add session pull-request view",
-        url: "https://github.com/ThreadlightHQ/threadlight/pull/42",
+        url: "https://github.com/PomegrHQ/pomegr/pull/42",
         state: "open",
         draft: false,
         headBranch: "feature/pr-drawer",
@@ -316,11 +316,11 @@ describe("repository branch overview", () => {
     await user.click(screen.getByRole("button", { name: "open PR #42" }));
     const dialog = screen.getByRole("dialog", { name: "Pull requests linked to this session" });
     expect(dialog).toHaveTextContent("Add session pull-request view");
-    expect(dialog).toHaveTextContent("ThreadlightHQ/threadlight · #42 · recorded in session");
+    expect(dialog).toHaveTextContent("PomegrHQ/pomegr · #42 · recorded in session");
     expect(dialog).toHaveTextContent("feature/pr-drawer → main");
     expect(dialog).toHaveTextContent("+447");
     expect(dialog).toHaveTextContent("−22");
-    expect(screen.getByRole("link", { name: /Add session pull-request view/ })).toHaveAttribute("href", "https://github.com/ThreadlightHQ/threadlight/pull/42");
+    expect(screen.getByRole("link", { name: /Add session pull-request view/ })).toHaveAttribute("href", "https://github.com/PomegrHQ/pomegr/pull/42");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Pull requests linked to this session" })).not.toBeInTheDocument();
@@ -437,8 +437,8 @@ describe("agent detail popovers", () => {
 
 describe("session sidebar", () => {
   const sessions: SessionSummary[] = [
-    { id: "live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Threadlight", updatedAt: "2026-08-08T12:00:00.000Z", isLive: true, needsInput: true },
-    { id: "old-1", provider: "claude", source: "Claude Code", title: "Older work", project: "Threadlight", updatedAt: "2026-08-07T12:00:00.000Z", isLive: false, needsInput: false },
+    { id: "live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Pomegr", updatedAt: "2026-08-08T12:00:00.000Z", isLive: true, needsInput: true },
+    { id: "old-1", provider: "claude", source: "Claude Code", title: "Older work", project: "Pomegr", updatedAt: "2026-08-07T12:00:00.000Z", isLive: false, needsInput: false },
   ];
 
   it("selects sessions, expands history, and closes on Escape", async () => {
@@ -450,7 +450,7 @@ describe("session sidebar", () => {
     await user.click(screen.getByRole("button", { name: /Live work/ }));
     expect(onSelect).toHaveBeenCalledWith(sessions[0]);
 
-    await user.click(screen.getByRole("button", { name: /^Threadlight1$/ }));
+    await user.click(screen.getByRole("button", { name: /^Pomegr1$/ }));
     await user.click(screen.getByRole("button", { name: /Older work/ }));
     expect(onSelect).toHaveBeenLastCalledWith(sessions[1]);
 
@@ -462,16 +462,16 @@ describe("session sidebar", () => {
     const user = userEvent.setup();
     const mixedSessions: SessionSummary[] = [
       sessions[0],
-      { id: "codex:live-2", provider: "codex", source: "Codex", title: "Live work", project: "Threadlight", updatedAt: "2026-08-11T12:00:00.000Z", isLive: true, needsInput: false },
+      { id: "codex:live-2", provider: "codex", source: "Codex", title: "Live work", project: "Pomegr", updatedAt: "2026-08-11T12:00:00.000Z", isLive: true, needsInput: false },
       sessions[1],
-      { id: "codex:old-2", provider: "codex", source: "Codex", title: "Older work", project: "Threadlight", updatedAt: "2026-08-06T12:00:00.000Z", isLive: false, needsInput: false },
+      { id: "codex:old-2", provider: "codex", source: "Codex", title: "Older work", project: "Pomegr", updatedAt: "2026-08-06T12:00:00.000Z", isLive: false, needsInput: false },
     ];
 
     render(<LiveClockProvider running={false}><SessionSidebar open sessions={mixedSessions} selectedSessionId={null} currentSessionId={null} viewingHistory={false} onClose={vi.fn()} onSelect={vi.fn()} /></LiveClockProvider>);
 
     expect(screen.getByRole("button", { name: /Live workClaude Code/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Live workCodex/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^Threadlight2$/ }));
+    await user.click(screen.getByRole("button", { name: /^Pomegr2$/ }));
     expect(screen.getAllByText("Claude Code")).toHaveLength(2);
     expect(screen.getAllByText("Claude Code").every((label) => label.classList.contains("providerTag") && Boolean(label.querySelector('[data-mark="claude"]')))).toBe(true);
     expect(screen.getAllByText("Codex")).toHaveLength(2);
@@ -510,6 +510,122 @@ describe("usage-limit clock", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
     vi.useRealTimers();
+  });
+});
+
+describe("context growth area chart", () => {
+  const currentTokens = {
+    allAgents: 120,
+    input: 30,
+    output: 30,
+    cacheWrite: 30,
+    cacheRead: 30,
+    contextGrowthTimeline: { bucketMs: 60_000, buckets: [] },
+  };
+  const bucket = (start: string, total: number) => ({
+    start,
+    end: new Date(new Date(start).getTime() + 60_000).toISOString(),
+    total,
+    input: total / 4,
+    cacheWrite: total / 4,
+    cacheRead: total / 4,
+    output: total / 4,
+  });
+  const cubicSegments = (path: SVGPathElement) => {
+    const curve = path.getAttribute("d")?.split(" L ")[0] || "";
+    const values = [...curve.matchAll(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)].map(([value]) => Number(value));
+    const segments: Array<[number, number, number, number]> = [];
+    let startY = values[1];
+    for (let index = 2; index + 5 < values.length; index += 6) {
+      segments.push([startY, values[index + 1], values[index + 3], values[index + 5]]);
+      startY = values[index + 5];
+    }
+    return segments;
+  };
+  const cubicValue = ([start, firstControl, secondControl, end]: [number, number, number, number], t: number) => {
+    const inverse = 1 - t;
+    return inverse ** 3 * start
+      + 3 * inverse ** 2 * t * firstControl
+      + 3 * inverse * t ** 2 * secondControl
+      + t ** 3 * end;
+  };
+
+  it.each([
+    ["zero", [bucket("2026-08-09T12:00:00.000Z", 0)]],
+    ["single", [bucket("2026-08-09T12:00:00.000Z", 120)]],
+    ["repeated", [bucket("2026-08-09T12:00:00.000Z", 120), bucket("2026-08-09T12:01:00.000Z", 120), bucket("2026-08-09T12:02:00.000Z", 120)]],
+  ])("renders finite %s-value paths", (_, buckets) => {
+    const { container } = render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 60_000, buckets }}
+      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
+      cost={null}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    const paths = [...container.querySelectorAll<SVGPathElement>(".contextAreaChart path")];
+    expect(paths).toHaveLength(5);
+    for (const path of paths) {
+      expect(path.getAttribute("d")).not.toMatch(/NaN|Infinity/);
+      expect(path.getAttribute("d")).toMatch(/^M 0 /);
+    }
+    expect(paths.slice(0, 4).every((path) => path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
+  });
+
+  it("keeps one focusable list item and complete accessible copy per bucket", () => {
+    const buckets = [bucket("2026-08-09T12:00:00.000Z", 120), bucket("2026-08-09T12:01:00.000Z", 80)];
+    render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 60_000, buckets }}
+      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
+      cost={null}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    const list = screen.getByRole("list", { name: "2 chronological context-growth buckets" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAttribute("tabindex", "0");
+    expect(items[0]).toHaveAccessibleName(/120 net context added; 30 attributed to uncached input, 30 to cache write, 30 to cache read, 30 to generated output/);
+    expect(screen.getAllByText("120 context added")).toHaveLength(1);
+  });
+
+  it("keeps adversarial smooth cumulative layers ordered throughout every curve", () => {
+    const inputs = [28, 72, 57, 48];
+    const writes = [2, 6, 90, 75];
+    const reads = [60, 1, 4, 40];
+    const outputs = [5, 80, 2, 20];
+    const buckets = inputs.map((input, index) => ({
+      start: new Date(Date.parse("2026-08-09T12:00:00.000Z") + index * 60_000).toISOString(),
+      end: new Date(Date.parse("2026-08-09T12:01:00.000Z") + index * 60_000).toISOString(),
+      input,
+      cacheWrite: writes[index],
+      cacheRead: reads[index],
+      output: outputs[index],
+      total: input + writes[index] + reads[index] + outputs[index],
+    }));
+    const { container } = render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 60_000, buckets }}
+      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
+      cost={null}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    const paths = ["output", "cacheRead", "cacheWrite", "input", "total"].map((series) => (
+      container.querySelector<SVGPathElement>(`.contextAreaChart [data-series="${series}"]`)!
+    ));
+    const curves = paths.map(cubicSegments);
+    expect(curves.every((curve) => curve.length === curves[0].length)).toBe(true);
+    for (let segment = 0; segment < curves[0].length; segment += 1) {
+      for (let sample = 0; sample <= 100; sample += 1) {
+        const y = curves.map((curve) => cubicValue(curve[segment], sample / 100));
+        expect(y[0]).toBeLessThanOrEqual(y[1] + 1e-8);
+        expect(y[1]).toBeLessThanOrEqual(y[2] + 1e-8);
+        expect(y[2]).toBeLessThanOrEqual(y[3] + 1e-8);
+        expect(y[4]).toBeCloseTo(y[0], 8);
+      }
+    }
   });
 });
 
@@ -560,12 +676,12 @@ describe("provider capability gates", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       id,
-      project: "threadlight-observability-dashboard",
+      project: "pomegr-observability-dashboard",
     } satisfies NonNullable<MonitorState["session"]>;
 
     render(<LiveClockProvider running={false}><SessionHero session={session} source={source} capabilities={capabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("threadlight-observability-dashboard")).toBeInTheDocument();
+    expect(screen.getByText("pomegr-observability-dashboard")).toBeInTheDocument();
     expect(screen.getByText(id.slice(id.indexOf(":") + 1))).toBeInTheDocument();
     expect(screen.queryByText(id)).not.toBeInTheDocument();
   });

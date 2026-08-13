@@ -6,6 +6,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
+$devScriptPath = (Resolve-Path (Join-Path $repositoryRoot 'scripts\dev.mjs')).Path
+$nodeExecutable = (Get-Command node.exe -CommandType Application).Source
 $monitorPaths = @(
   (Join-Path $repositoryRoot 'monitor\cli.mjs')
   (Join-Path $repositoryRoot 'monitor\server.mjs')
@@ -19,6 +21,19 @@ function Get-ProcessTable {
     $table[[int]$process.ProcessId] = $process
   }
   return $table
+}
+
+function Test-ExactCommandArgument {
+  param(
+    [string]$CommandLine,
+    [string]$Argument
+  )
+
+  if ([string]::IsNullOrWhiteSpace($CommandLine) -or [string]::IsNullOrWhiteSpace($Argument)) {
+    return $false
+  }
+  $pattern = '(?i)(?:^|\s|")' + [regex]::Escape($Argument) + '(?:"|\s|$)'
+  return [regex]::IsMatch($CommandLine, $pattern)
 }
 
 function Get-AncestorIds {
@@ -72,13 +87,13 @@ foreach ($listener in $listeners) {
   $isExpectedMonitor = $false
   if ($listener.LocalPort -eq 4317) {
     foreach ($monitorPath in $monitorPaths) {
-      if ($commandLine.IndexOf($monitorPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+      if (Test-ExactCommandArgument -CommandLine $commandLine -Argument $monitorPath) {
         $isExpectedMonitor = $true
         break
       }
     }
   }
-  $isExpectedWeb = $listener.LocalPort -eq 3003 -and $commandLine.IndexOf($webCliPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and $commandLine -match '--port\s+3003\b'
+  $isExpectedWeb = $listener.LocalPort -eq 3003 -and (Test-ExactCommandArgument -CommandLine $commandLine -Argument $webCliPath) -and $commandLine -match '--port\s+3003\b'
   if (-not ($isExpectedMonitor -or $isExpectedWeb)) {
     throw "Port $($listener.LocalPort) is owned by an unrecognized process ($processId). No processes were stopped."
   }
@@ -88,13 +103,13 @@ if ($listeners.Count -gt 0) {
   $rootCandidates = foreach ($listener in $listeners) {
     foreach ($ancestorId in Get-AncestorIds -ProcessId ([int]$listener.OwningProcess) -ProcessTable $processTable) {
       $ancestor = $processTable[$ancestorId]
-      if ([string]$ancestor.CommandLine -match 'scripts[/\\]dev\.mjs(?:\s|$)') { $ancestorId }
+      if (Test-ExactCommandArgument -CommandLine ([string]$ancestor.CommandLine) -Argument $devScriptPath) { $ancestorId }
     }
   }
   $rootGroups = @($rootCandidates | Group-Object | Sort-Object Count -Descending)
   $rootId = if ($rootGroups.Count -gt 0 -and $rootGroups[0].Count -eq $listeners.Count) { [int]$rootGroups[0].Name } else { 0 }
   if ($rootId -le 0) {
-    throw 'Could not prove that all Threadlight listeners share the expected dev-process root. No processes were stopped.'
+    throw 'Could not prove that all Pomegr listeners share the expected dev-process root. No processes were stopped.'
   }
 
   $stopTargets = @(
@@ -112,7 +127,10 @@ if ($listeners.Count -gt 0) {
   }
 }
 
-$terminal = Start-Process -FilePath powershell.exe -ArgumentList '-NoLogo', '-NoExit', '-Command', 'npm run dev' -WorkingDirectory $repositoryRoot -WindowStyle Normal -PassThru
+$escapedNodeExecutable = $nodeExecutable.Replace("'", "''")
+$escapedDevScriptPath = $devScriptPath.Replace("'", "''")
+$launchCommand = "& '$escapedNodeExecutable' '$escapedDevScriptPath'"
+$terminal = Start-Process -FilePath powershell.exe -ArgumentList '-NoLogo', '-NoExit', '-Command', $launchCommand -WorkingDirectory $repositoryRoot -WindowStyle Normal -PassThru
 
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 do {
@@ -121,7 +139,7 @@ do {
 } until (($readyPorts -contains 3003 -and $readyPorts -contains 4317) -or (Get-Date) -ge $deadline)
 
 if (-not ($readyPorts -contains 3003 -and $readyPorts -contains 4317)) {
-  throw "Threadlight did not bind both ports within $TimeoutSeconds seconds. The standalone terminal remains open for inspection."
+  throw "Pomegr did not bind both ports within $TimeoutSeconds seconds. The standalone terminal remains open for inspection."
 }
 
 $monitorStatus = (Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:4317/health' -TimeoutSec 5).StatusCode

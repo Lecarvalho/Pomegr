@@ -4,7 +4,7 @@ let handle;
 try {
   handle = await startMonitorServer({ logger: console });
 } catch (error) {
-  console.error(`[threadlight] ${error?.code || "MONITOR_START_FAILED"}`);
+  console.error(`[pomegr] ${error?.code || "MONITOR_START_FAILED"}`);
   process.exitCode = 1;
 }
 

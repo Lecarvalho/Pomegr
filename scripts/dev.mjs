@@ -27,7 +27,7 @@ export async function assertDevelopmentPortsAvailable({ checkPortFn = isPortOpen
     checkPortFn(monitorPort, "127.0.0.1", 100),
     checkPortFn(webPort, "127.0.0.1", 100),
   ]);
-  if (occupied.some(Boolean)) throw new Error("A Threadlight development port is already in use.");
+  if (occupied.some(Boolean)) throw new Error("A Pomegr development port is already in use.");
 }
 
 export async function waitForPort(port, { host = "127.0.0.1", timeoutMs = 30_000, retryMs = 50 } = {}) {
@@ -172,7 +172,7 @@ export async function startDev({
       child.on("exit", failLifecycle);
     }
   } catch {
-    logger.warn("[threadlight] Development startup failed before services became ready.");
+    logger.warn("[pomegr] Development startup failed before services became ready.");
     await close(1);
     return false;
   }
@@ -183,14 +183,14 @@ export async function startDev({
   try {
     await Promise.race([prewarmFn(), lifecycleFailure]);
     if (closing) return false;
-    logger.log("[threadlight] Development services ready; API prewarmed.");
+    logger.log("[pomegr] Development services ready; API prewarmed.");
     return true;
   } catch {
     if (closing) {
       await closePromise;
       return false;
     }
-    logger.warn("[threadlight] Startup prewarm did not complete; services continue normally.");
+    logger.warn("[pomegr] Startup prewarm did not complete; services continue normally.");
     return true;
   }
 }

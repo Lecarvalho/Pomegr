@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-export const DESKTOP_AUTH_HEADER = "x-threadlight-desktop-authorization";
+export const DESKTOP_AUTH_HEADER = "x-pomegr-desktop-authorization";
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 export function requireDesktopToken(value, code = "DESKTOP_AUTH_INVALID") {

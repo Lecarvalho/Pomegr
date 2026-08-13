@@ -17,7 +17,7 @@ import {
 const record = (timestamp, type, payload) => ({ timestamp, type, payload });
 
 test("retains bounded sanitized live task history and reconciles a completion after its start leaves the tail", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-task-cache-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-task-cache-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "12");
   await mkdir(directory, { recursive: true });
@@ -87,7 +87,7 @@ test("retains bounded sanitized live task history and reconciles a completion af
 });
 
 test("invalidates live task history when a rollout is truncated, replaced, or deleted", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-task-generation-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-task-generation-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "12");
   await mkdir(directory, { recursive: true });
@@ -445,7 +445,7 @@ test("maps canonical command items with authoritative status and bounded descrip
 });
 
 test("provider keeps primary compatibility tasks consistent with per-agent task lists", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-execution-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-execution-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const startedAt = Date.parse("2026-08-10T17:00:00.000Z") / 1000;
   const completedAt = Date.parse("2026-08-10T17:00:04.000Z") / 1000;
@@ -475,7 +475,7 @@ test("provider keeps primary compatibility tasks consistent with per-agent task 
     createdAt: startedAt,
     updatedAt: completedAt,
     source: options.source || "cli",
-    cwd: "C:\\synthetic\\threadlight",
+    cwd: "C:\\synthetic\\pomegr",
     gitInfo: { branch: "codex/execution" },
     name: options.name || "Execution fixture",
     status: { type: "notLoaded" },

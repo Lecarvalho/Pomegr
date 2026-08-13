@@ -1,0 +1,4 @@
+interface:
+  display_name: "Restart Pomegr"
+  short_description: "Restart Pomegr in a detached terminal"
+  default_prompt: "Use $restart-pomegr to safely restart the local Pomegr app in a standalone terminal."

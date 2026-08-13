@@ -46,7 +46,7 @@ test("discovers Codex home from the stable environment override before the defau
 });
 
 test("prefers safe app-server thread metadata and never exposes preview, turns, or rollout paths", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-app-server-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-app-server-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const calls = [];
   const active = appThread("app-thread");
@@ -96,7 +96,7 @@ test("prefers safe app-server thread metadata and never exposes preview, turns, 
 });
 
 test("uses bounded session-index and rollout-header fallbacks for active and archived history", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-fallback-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-fallback-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const parentFile = path.join(root, "sessions", "2026", "08", "10", "rollout-parent.jsonl");
   const archivedFile = path.join(root, "archived_sessions", "rollout-archived.jsonl");

@@ -23,7 +23,7 @@ function session(localId, updatedAt, options = {}) {
   return {
     localId,
     title: options.title || localId,
-    project: options.project || "threadlight",
+    project: options.project || "pomegr",
     updatedAt,
     isLive: options.isLive ?? true,
     needsInput: options.needsInput ?? false,

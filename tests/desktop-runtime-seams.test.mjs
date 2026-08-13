@@ -132,7 +132,7 @@ test("thin monitor CLI preserves executable startup behavior", async (context) =
 
 test("production web server uses explicit runtime inputs from any working directory", async () => {
   const monitor = await startMonitorServer({ port: 0, logger: quietLogger });
-  const otherDirectory = await mkdtemp(path.join(os.tmpdir(), "threadlight-web-cwd-"));
+  const otherDirectory = await mkdtemp(path.join(os.tmpdir(), "pomegr-web-cwd-"));
   const originalCwd = process.cwd();
   let web;
   const stages = [];
@@ -153,7 +153,7 @@ test("production web server uses explicit runtime inputs from any working direct
     ]);
     assert.equal(page.status, 200);
     const html = await page.text();
-    assert.match(html, /<title>Threadlight<\/title>/i);
+    assert.match(html, /<title>Pomegr<\/title>/i);
     const assetPaths = [...new Set(
       [...html.matchAll(/(?:href|src)="(\/assets\/[^"]+\.(?:css|js))"/g)].map((match) => match[1]),
     )];
@@ -240,7 +240,7 @@ test("authorized production assets retain desktop security and no-store headers"
     responseHeaders,
     logger: quietLogger,
   });
-  const authorization = { "x-threadlight-desktop-authorization": token };
+  const authorization = { "x-pomegr-desktop-authorization": token };
   try {
     const page = await fetch(web.origin, { headers: authorization });
     const html = await page.text();
@@ -327,7 +327,7 @@ test("production web startup awaits listener cleanup after a post-bind failure",
   let server;
   let boundPort;
   let closeObserved = false;
-  const previousOrigin = process.env.THREADLIGHT_MONITOR_ORIGIN;
+  const previousOrigin = process.env.POMEGR_MONITOR_ORIGIN;
   await assert.rejects(
     startWebServer({
       host: "127.0.0.1",
@@ -351,6 +351,6 @@ test("production web startup awaits listener cleanup after a post-bind failure",
   assert.ok(boundPort > 0);
   assert.equal(closeObserved, true);
   assert.equal(server.listening, false);
-  assert.equal(process.env.THREADLIGHT_MONITOR_ORIGIN, previousOrigin);
+  assert.equal(process.env.POMEGR_MONITOR_ORIGIN, previousOrigin);
   await assertPortReusable(boundPort);
 });

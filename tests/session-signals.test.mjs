@@ -21,7 +21,8 @@ import {
   TASK_SIGNAL_MCP_TOOL,
 } from "../monitor/session-signals.mjs";
 
-const PLUGIN_MCP_PREFIX = "mcp__plugin_threadlight_threadlight__";
+const PLUGIN_MCP_PREFIX = "mcp__plugin_pomegr_pomegr__";
+const LEGACY_MCP_PREFIX = "mcp__threadlight__";
 
 function agentSignalRecord(label, tone, timestamp) {
   return {
@@ -77,7 +78,7 @@ function clearSignalRecord(scope, timestamp, input = {}, pluginNamespaced = fals
       content: [{
         type: "tool_use",
         id: `clear-${scope}-${timestamp}`,
-        name: pluginNamespaced ? `${PLUGIN_MCP_PREFIX}${tool.replace("mcp__threadlight__", "")}` : tool,
+        name: pluginNamespaced ? `${PLUGIN_MCP_PREFIX}${tool.replace("mcp__pomegr__", "")}` : tool,
         input,
       }],
     },
@@ -144,7 +145,7 @@ test("normalizes bounded plain-text signals", () => {
   assert.equal(normalizeTaskSignal({ task_id: "background_123", label: "Approved", tone: "positive", result: "private" }), null);
 });
 
-test("uses the latest valid Threadlight MCP signal and ignores other content", () => {
+test("uses the latest valid Pomegr MCP signal and ignores other content", () => {
   const records = [
     sessionSignalRecord("Needs changes", "negative", "2026-08-07T14:00:00.000Z"),
     {
@@ -185,6 +186,24 @@ test("keeps agent and session signal scopes independent", () => {
     tone: "positive",
     reportedAt: "2026-08-07T14:01:00.000Z",
   });
+});
+
+test("rejects legacy Threadlight MCP tool identifiers", () => {
+  const records = [
+    sessionSignalRecord("Pomegr accepted", "positive", "2026-08-07T14:00:00.000Z"),
+    {
+      type: "assistant",
+      timestamp: "2026-08-07T14:01:00.000Z",
+      message: { content: [{ type: "tool_use", name: `${LEGACY_MCP_PREFIX}report_session_signal`, input: { label: "Legacy accepted", tone: "negative" } }] },
+    },
+    {
+      type: "assistant",
+      timestamp: "2026-08-07T14:02:00.000Z",
+      message: { content: [{ type: "tool_use", name: "mcp__plugin_threadlight_threadlight__report_session_signal", input: { label: "Legacy plugin accepted", tone: "negative" } }] },
+    },
+  ];
+
+  assert.equal(latestSessionSignal(records)?.label, "Pomegr accepted");
 });
 
 test("accepts plugin-namespaced tools and applies report-clear-report transitions", () => {
@@ -261,7 +280,7 @@ test("keeps the latest signal for each safe task identifier", () => {
 
 test("reconstructs historical report and clear transitions outside the bounded activity tail", async () => {
   clearSessionSignalCache();
-  const directory = await mkdtemp(path.join(os.tmpdir(), "threadlight-signals-"));
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-signals-"));
   const transcript = path.join(directory, "agent-reviewer.jsonl");
   const olderAgentSignal = JSON.stringify(agentSignalRecord("Reviewer finished", "positive", "2026-08-07T13:59:00.000Z"));
   const olderSignal = JSON.stringify(sessionSignalRecord("Approved", "positive", "2026-08-07T14:00:00.000Z"));

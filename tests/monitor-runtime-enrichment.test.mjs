@@ -11,14 +11,14 @@ const provider = Object.freeze({
 function sessionEvidence({
   historical = false,
   branch = "codex/recorded",
-  cwd = "C:\\synthetic\\threadlight",
+  cwd = "C:\\synthetic\\pomegr",
   pullRequestCreations = [],
 } = {}) {
   return {
     historical,
     session: {
       title: "Runtime enrichment fixture",
-      project: "threadlight",
+      project: "pomegr",
       cwd,
       startedAt: "2026-08-11T12:00:00.000Z",
       updatedAt: "2026-08-11T12:00:01.000Z",

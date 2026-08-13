@@ -1,19 +1,19 @@
-# Threadlight reporting policy
+# Pomegr reporting policy
 
 Policy version: 1
 
 ## Session naming
 
 - Allow Claude Code to assign a concise native automatic title after the first substantive request.
-- Never ask the user to name the session and never report a title through Threadlight MCP.
+- Never ask the user to name the session and never report a title through Pomegr MCP.
 
 ## Privacy and semantics
 
 - Report only project-specific state that helps an observer understand the work.
-- Treat every signal as agent-reported and potentially stale, not as a Threadlight judgment.
+- Treat every signal as agent-reported and potentially stale, not as a Pomegr judgment.
 - Report transitions, not heartbeats. Replace a signal when a new configured state applies; clear agent or session state when none applies.
 - Never include prompts, responses, secrets, commands, stdout, stderr, tool results, credential values, or sensitive repository content.
-- Use only labels and conditions approved below. Threadlight's universal MCP validation remains the safety boundary, not this file as an application enum.
+- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.
 
 ## Session signals
 

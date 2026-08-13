@@ -1,17 +1,17 @@
 {
-  "name": "threadlight",
-  "description": "Official Claude Code plugins for the local-first Threadlight coding-agent observer.",
+  "name": "pomegr",
+  "description": "Official Claude Code plugins for the local-first Pomegr coding-agent observer.",
   "owner": {
     "name": "Leandro Carvalho"
   },
   "plugins": [
     {
-      "name": "threadlight",
-      "displayName": "Threadlight",
+      "name": "pomegr",
+      "displayName": "Pomegr",
       "source": "./plugins/claude-code",
-      "description": "Configure and report bounded, repository-specific coding-agent signals to Threadlight.",
-      "homepage": "https://github.com/Lecarvalho/threadlight",
-      "repository": "https://github.com/Lecarvalho/threadlight",
+      "description": "Configure and report bounded, repository-specific coding-agent signals to Pomegr.",
+      "homepage": "https://github.com/Lecarvalho/pomegr",
+      "repository": "https://github.com/Lecarvalho/pomegr",
       "license": "AGPL-3.0-only",
       "category": "development",
       "keywords": ["observability", "coding-agents", "signals", "local-first"]

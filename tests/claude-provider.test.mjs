@@ -44,7 +44,7 @@ function taskResult(id, toolUseResult, overrides = {}) {
 }
 
 test("Claude adapter returns sanitized provider evidence without changing normalized features", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-claude-provider-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-provider-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const projectsRoot = path.join(root, "projects");
   const registryRoot = path.join(root, "registry");
@@ -97,7 +97,7 @@ test("Claude adapter returns sanitized provider evidence without changing normal
 });
 
 test("Claude adapter rejects unsafe session IDs and degrades missing sessions independently", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-claude-missing-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-missing-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const provider = createClaudeProvider({
     homeDir: root,
@@ -112,7 +112,7 @@ test("Claude adapter rejects unsafe session IDs and degrades missing sessions in
 });
 
 test("Claude adapter reconstructs cleaned-up task stores from successful transcript lifecycle records", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-claude-transcript-tasks-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-transcript-tasks-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const projectsRoot = path.join(root, "projects");
   const tasksRoot = path.join(root, "tasks");
@@ -173,7 +173,7 @@ test("Claude adapter reconstructs cleaned-up task stores from successful transcr
 });
 
 test("Claude structured task store remains authoritative over transcript reconstruction", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-claude-task-precedence-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-task-precedence-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const projectsRoot = path.join(root, "projects");
   const tasksRoot = path.join(root, "tasks");

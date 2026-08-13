@@ -152,7 +152,7 @@ test("rejects private and unknown reasoning shapes while bounding safe one-line 
 });
 
 test("provider normalization keeps live current activity on its owning agent and omits it from history", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-current-activity-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-current-activity-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "12");
   await mkdir(directory, { recursive: true });
@@ -166,7 +166,7 @@ test("provider normalization keeps live current activity on its owning agent and
       session_id: sessionId,
       parent_thread_id: parentThreadId,
       source,
-      cwd: "C:\\synthetic\\threadlight",
+      cwd: "C:\\synthetic\\pomegr",
       instructions: "DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK",
     },
   });
@@ -183,8 +183,8 @@ test("provider normalization keeps live current activity on its owning agent and
   ].map(JSON.stringify).join("\n"), "utf8");
 
   const threads = [
-    { id: "activity-root", sessionId: "activity-root", createdAt: 1_786_536_000, updatedAt: 1_786_536_003, source: "cli", cwd: "C:\\synthetic\\threadlight", name: "Activity root", status: { type: "notLoaded" }, path: rootFile },
-    { id: "activity-child", sessionId: "activity-root", parentThreadId: "activity-root", createdAt: 1_786_536_001, updatedAt: 1_786_536_003, source: "sub_agent", cwd: "C:\\synthetic\\threadlight", name: "Activity child", status: { type: "notLoaded" }, path: childFile },
+    { id: "activity-root", sessionId: "activity-root", createdAt: 1_786_536_000, updatedAt: 1_786_536_003, source: "cli", cwd: "C:\\synthetic\\pomegr", name: "Activity root", status: { type: "notLoaded" }, path: rootFile },
+    { id: "activity-child", sessionId: "activity-root", parentThreadId: "activity-root", createdAt: 1_786_536_001, updatedAt: 1_786_536_003, source: "sub_agent", cwd: "C:\\synthetic\\pomegr", name: "Activity child", status: { type: "notLoaded" }, path: childFile },
   ];
   const appServer = {
     async listThreads() { return { data: threads }; },

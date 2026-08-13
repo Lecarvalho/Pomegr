@@ -7,7 +7,7 @@ import test from "node:test";
 import { captureClaudeStatuslineCost, readSessionCost } from "../monitor/session-cost.mjs";
 
 test("stores only normalized Claude Code cost metadata", (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "threadlight-cost-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-cost-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const now = new Date("2026-08-09T12:00:00.000Z");
 
@@ -37,7 +37,7 @@ test("stores only normalized Claude Code cost metadata", (t) => {
 });
 
 test("rejects unsafe or malformed cost snapshots", (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "threadlight-cost-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-cost-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   assert.equal(captureClaudeStatuslineCost({ session_id: "../escape", cost: { total_cost_usd: 1 } }, { root }), null);
@@ -48,14 +48,14 @@ test("rejects unsafe or malformed cost snapshots", (t) => {
 });
 
 test("the bridge preserves an existing status-line command", (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "threadlight-cost-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-cost-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const input = JSON.stringify({ session_id: "bridge-session", cost: { total_cost_usd: 0.4321 } });
   const bridge = path.resolve("scripts/claude-statusline-bridge.mjs");
   const result = spawnSync(process.execPath, [bridge, "--", process.execPath, "-e", "process.stdin.on('data', value => process.stdout.write(value))"], {
     input,
     encoding: "utf8",
-    env: { ...process.env, THREADLIGHT_COST_SNAPSHOTS_DIR: root },
+    env: { ...process.env, POMEGR_COST_SNAPSHOTS_DIR: root },
   });
 
   assert.equal(result.status, 0, result.stderr);

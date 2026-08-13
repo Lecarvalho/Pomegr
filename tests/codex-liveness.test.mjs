@@ -57,7 +57,7 @@ async function serializedFiles(root) {
 }
 
 test("lifecycle bridge deterministically starts, waits, answers, idles, and closes without private hook fields", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-bridge-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-bridge-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = START;
   const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
@@ -103,7 +103,7 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
 });
 
 test("bridge lease and needs-input expiry clear stale state deterministically", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-expiry-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-expiry-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = START;
   hook(root, now, "PermissionRequest");
@@ -136,7 +136,7 @@ test("bridge lease and needs-input expiry clear stale state deterministically", 
 });
 
 test("owning app-server status outranks bridge state and maps waiting and system errors", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-priority-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-priority-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   hook(root, START, "Stop");
   const coordinator = createCodexLivenessCoordinator({ root, now: () => START, cacheMs: 0 });
@@ -152,7 +152,7 @@ test("owning app-server status outranks bridge state and maps waiting and system
 });
 
 test("one owner lease supports concurrent sessions while a stopped subagent becomes finished", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-concurrent-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-concurrent-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = START;
   hook(root, now, "SessionStart", { sessionId: "session-a" });
@@ -201,7 +201,7 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
 });
 
 test("a growing rollout stays live when Windows reports a stale modification time", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-stale-mtime-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-stale-mtime-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout-growing.jsonl");
   await writeFile(rolloutFile, [
@@ -236,7 +236,7 @@ test("a growing rollout stays live when Windows reports a stale modification tim
 });
 
 test("liveness scans one recent pending rollout while skipping five hundred provably stale rollouts", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-window-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-window-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const recentFile = path.join(root, "rollout-recent-pending.jsonl");
   await writeFile(recentFile, [
@@ -271,7 +271,7 @@ test("liveness scans one recent pending rollout while skipping five hundred prov
 });
 
 test("authoritative app-server and lifecycle bridge state avoid rollout tail reads", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-authoritative-live-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-authoritative-live-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout-unused.jsonl");
   await writeFile(rolloutFile, JSON.stringify({
@@ -296,7 +296,7 @@ test("authoritative app-server and lifecycle bridge state avoid rollout tail rea
 });
 
 test("future-dated rollout metadata is scanned and record timestamps decide liveness", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-clock-skew-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-clock-skew-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout-future.jsonl");
   const future = new Date(START + 60_000).toISOString();
@@ -320,7 +320,7 @@ test("Windows owner identity binds a lease to process creation time", { skip: pr
 });
 
 test("the inert hook command accepts Windows lifecycle JSON and persists only its allowlist", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-hook-command-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-hook-command-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const result = spawnSync(process.execPath, [path.resolve("scripts/codex-lifecycle-bridge.mjs")], {
     input: JSON.stringify({
@@ -331,7 +331,7 @@ test("the inert hook command accepts Windows lifecycle JSON and persists only it
       transcript_path: "PRIVATE_TRANSCRIPT_MUST_NOT_LEAK",
     }),
     encoding: "utf8",
-    env: { ...process.env, THREADLIGHT_CODEX_LIVENESS_DIR: root },
+    env: { ...process.env, POMEGR_CODEX_LIVENESS_DIR: root },
     windowsHide: true,
   });
   assert.equal(result.status, 0);
@@ -341,7 +341,7 @@ test("the inert hook command accepts Windows lifecycle JSON and persists only it
 });
 
 test("archived threads never become live from current app-server or rollout evidence", () => {
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(os.tmpdir(), "missing-threadlight-liveness"), now: () => START, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(os.tmpdir(), "missing-pomegr-liveness"), now: () => START, cacheMs: 0 });
   const archived = coordinator.observe([{ ...thread("archived-root", { runtimeStatus: { type: "active", activeFlags: [] } }), archived: true }]);
   assert.equal(archived.sessions.get("archived-root").isLive, false);
   assert.equal(archived.threads[0].liveness, null);
@@ -364,7 +364,7 @@ function appThread(id, options = {}) {
 }
 
 test("active descendants keep the session live and propagate waiting through the agent tree", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-tree-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-tree-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const primary = appThread("app-root");
   const child = appThread("app-child", {
@@ -392,7 +392,7 @@ test("active descendants keep the session live and propagate waiting through the
 });
 
 test("historical reads discard current app-server liveness", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-history-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-history-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const active = appThread("history-root", { status: { type: "active", activeFlags: ["waitingOnUserInput"] } });
   const appServer = {
@@ -407,7 +407,7 @@ test("historical reads discard current app-server liveness", async (context) => 
 });
 
 test("automatic selection stops preferring an expired needs-input bridge and rollout polling stays bounded and cached", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-bounds-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-bounds-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(sessions, { recursive: true });

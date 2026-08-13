@@ -3,8 +3,8 @@
   "historical": false,
   "session": {
     "title": "Synthetic provider fixture",
-    "project": "threadlight-fixture",
-    "cwd": "C:\\synthetic\\threadlight",
+    "project": "pomegr-fixture",
+    "cwd": "C:\\synthetic\\pomegr",
     "startedAt": "2026-08-10T12:00:00.000Z",
     "updatedAt": "2026-08-10T12:00:07.000Z",
     "recordedGitBranch": "codex/synthetic-fixture",

@@ -13,7 +13,7 @@ import {
   readProviderFixture,
 } from "./helpers/provider-fixtures.mjs";
 
-const SAFE_CWD = "C:\\synthetic\\threadlight-api-fixture";
+const SAFE_CWD = "C:\\synthetic\\pomegr-api-fixture";
 
 async function writeFixture(file, fixture, replacements = []) {
   let contents = await readProviderFixture(fixture);
@@ -78,7 +78,7 @@ function rateLimitsWithPrivateFields() {
 }
 
 async function syntheticProviders(context) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-api-audit-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-api-audit-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const replacements = [["PRIVATE_PATH_MUST_NOT_LEAK", "synthetic-path"]];
 

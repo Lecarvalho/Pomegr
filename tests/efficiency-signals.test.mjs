@@ -100,7 +100,7 @@ test("manual compaction does not emit an efficiency warning", () => {
 });
 
 test("full transcript scans retain only bounded compaction events", async (context) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "threadlight-compactions-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-compactions-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   const transcript = path.join(directory, "session.jsonl");
   await fs.writeFile(transcript, [

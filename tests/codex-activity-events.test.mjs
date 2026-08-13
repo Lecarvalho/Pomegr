@@ -84,7 +84,7 @@ test("pairs rollout calls with outputs, ignores unknown records, and hashes mate
 });
 
 test("provider merges rollout and canonical duplicates while agent and grouped totals agree", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-activity-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-activity-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "10");
   await mkdir(directory, { recursive: true });

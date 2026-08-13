@@ -274,7 +274,7 @@ function usageRequest(homeDir, fetchImpl) {
         Authorization: `Bearer ${token}`,
         "anthropic-beta": "oauth-2025-04-20",
         "anthropic-version": "2023-06-01",
-        "user-agent": "threadlight/0.1",
+        "user-agent": "pomegr/0.1",
       },
       signal: AbortSignal.timeout(6000),
     });

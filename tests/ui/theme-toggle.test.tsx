@@ -7,7 +7,7 @@ describe("color theme toggle", () => {
   afterEach(() => {
     delete document.documentElement.dataset.theme;
     window.localStorage.clear();
-    delete (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop;
+    delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   });
 
   it("switches to dark mode and persists the preference", async () => {
@@ -21,7 +21,7 @@ describe("color theme toggle", () => {
     await user.click(toggle);
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(window.localStorage.getItem("threadlight-theme")).toBe("dark");
+    expect(window.localStorage.getItem("pomegr-theme")).toBe("dark");
     expect(screen.getByRole("button", { name: "Switch to light mode" })).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -33,12 +33,12 @@ describe("color theme toggle", () => {
     await user.click(await screen.findByRole("button", { name: "Switch to light mode" }));
 
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(window.localStorage.getItem("threadlight-theme")).toBe("light");
+    expect(window.localStorage.getItem("pomegr-theme")).toBe("light");
   });
 
   it("synchronizes initial and changed themes with the bounded desktop bridge", async () => {
     const setNativeTheme = vi.fn().mockResolvedValue(true);
-    (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = { setNativeTheme };
+    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = { setNativeTheme };
     document.documentElement.dataset.theme = "light";
     const user = userEvent.setup();
     render(<ThemeToggle />);

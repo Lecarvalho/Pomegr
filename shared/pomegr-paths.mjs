@@ -6,12 +6,12 @@ function environmentValue(environment, name) {
   return key ? environment[key] : undefined;
 }
 
-export function resolveThreadlightDataRoot(options = {}) {
+export function resolvePomegrDataRoot(options = {}) {
   const environment = options.environment || process.env;
-  const configured = environmentValue(environment, "THREADLIGHT_DATA_DIR");
+  const configured = environmentValue(environment, "POMEGR_DATA_DIR");
   if (configured) return path.resolve(configured);
   const platform = options.platform || process.platform;
   const appData = environmentValue(environment, "APPDATA");
-  if (platform === "win32" && appData) return path.resolve(appData, "threadlight");
-  return path.resolve(options.homeDir || os.homedir(), ".threadlight");
+  if (platform === "win32" && appData) return path.resolve(appData, "pomegr");
+  return path.resolve(options.homeDir || os.homedir(), ".pomegr");
 }

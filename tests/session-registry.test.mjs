@@ -37,7 +37,7 @@ test("prioritizes an input wait over newer active registry sessions", () => {
 });
 
 test("reads valid registry entries and ignores malformed files independently", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-registry-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-registry-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, "valid.json"), JSON.stringify({
     sessionId: "live-session",

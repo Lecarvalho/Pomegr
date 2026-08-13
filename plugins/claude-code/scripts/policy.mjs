@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-export const POLICY_RELATIVE_PATH = path.join(".threadlight", "signals.md");
+export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
 export const POLICY_VERSION = 1;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
@@ -24,14 +24,14 @@ const TABLE_HEADER = "| Label | Tone | Report when | Replace or clear when |";
 const TABLE_DIVIDER = "| --- | --- | --- | --- |";
 const CANONICAL_SESSION_NAMING = [
   "- Allow Claude Code to assign a concise native automatic title after the first substantive request.",
-  "- Never ask the user to name the session and never report a title through Threadlight MCP.",
+  "- Never ask the user to name the session and never report a title through Pomegr MCP.",
 ].join("\n");
 const CANONICAL_PRIVACY = [
   "- Report only project-specific state that helps an observer understand the work.",
-  "- Treat every signal as agent-reported and potentially stale, not as a Threadlight judgment.",
+  "- Treat every signal as agent-reported and potentially stale, not as a Pomegr judgment.",
   "- Report transitions, not heartbeats. Replace a signal when a new configured state applies; clear agent or session state when none applies.",
   "- Never include prompts, responses, secrets, commands, stdout, stderr, tool results, credential values, or sensitive repository content.",
-  "- Use only labels and conditions approved below. Threadlight's universal MCP validation remains the safety boundary, not this file as an application enum.",
+  "- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.",
 ].join("\n");
 
 function policyResult(status, fields = {}) {
@@ -54,7 +54,7 @@ function validateSignalSection(name, body, errors) {
   if (body === EMPTY_SECTION) return [];
   const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines[0] !== TABLE_HEADER || lines[1] !== TABLE_DIVIDER) {
-    errors.push(`${name} must use the four-column Threadlight signal table or the empty-section marker.`);
+    errors.push(`${name} must use the four-column Pomegr signal table or the empty-section marker.`);
     return [];
   }
   if (lines.length < 3) {
@@ -109,7 +109,7 @@ export function validatePolicyText(text) {
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > POLICY_MAX_BYTES) errors.push(`Policy exceeds the ${POLICY_MAX_BYTES}-byte limit.`);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) errors.push("Policy contains control characters.");
-  if (!/^# Threadlight reporting policy\s*$/m.test(text)) errors.push("Missing the Threadlight reporting policy title.");
+  if (!/^# Pomegr reporting policy\s*$/m.test(text)) errors.push("Missing the Pomegr reporting policy title.");
   if (!new RegExp(`^Policy version: ${POLICY_VERSION}\\s*$`, "m").test(text)) errors.push(`Policy version must be ${POLICY_VERSION}.`);
 
   for (const name of REQUIRED_SECTIONS) {
@@ -127,7 +127,7 @@ export function validatePolicyText(text) {
     errors.push("Session naming must match the canonical native-title policy.");
   }
   if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) {
-    errors.push("Privacy and semantics must match the canonical Threadlight safety policy.");
+    errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
   }
 
   const signals = {};
@@ -187,15 +187,15 @@ function hookOutput(policy) {
   if (policy.status === "missing") return "";
   if (policy.status === "invalid") {
     return JSON.stringify({
-      systemMessage: "Threadlight reporting policy is invalid. Run /threadlight:doctor; reporting remains non-blocking.",
+      systemMessage: "Pomegr reporting policy is invalid. Run /pomegr:doctor; reporting remains non-blocking.",
     });
   }
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: [
-        "[Threadlight reporting policy loaded]",
-        "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Threadlight MCP tools.",
+        "[Pomegr reporting policy loaded]",
+        "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
         "Do not ask the user to name the session; allow Claude Code to assign its native automatic title after substantive work begins.",
         "",

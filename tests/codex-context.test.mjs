@@ -219,7 +219,7 @@ test("keeps only bounded compaction evidence and warns only for an explicit auto
 });
 
 test("integrates primary and child latest snapshots into all-agent context", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-context-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-context-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "10");
   await mkdir(directory, { recursive: true });

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Threadlight Doctor"
-  short_description: "Check Threadlight reporting setup"
-  default_prompt: "Diagnose this repository's Threadlight policy and plugin connection."
+  display_name: "Pomegr Doctor"
+  short_description: "Check Pomegr reporting setup"
+  default_prompt: "Diagnose this repository's Pomegr policy and plugin connection."
