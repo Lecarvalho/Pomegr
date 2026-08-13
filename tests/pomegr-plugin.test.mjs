@@ -18,6 +18,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
 const policyScript = path.join(pluginRoot, "scripts", "policy.mjs");
 const policyTemplatePath = path.join(pluginRoot, "skills", "init", "references", "policy-template.md");
+const releaseScriptPath = path.join(repositoryRoot, "scripts", "release-claude-plugin.sh");
 const restartSkillRoot = path.join(repositoryRoot, ".codex", "skills", "restart-pomegr");
 
 async function withTemporaryDirectory(run) {
@@ -104,6 +105,8 @@ test("validates the repository policy template and extracts bounded signal rows"
     const result = validatePolicyText(candidate);
     assert.equal(result.status, "valid");
     assert.deepEqual(result.errors, []);
+    assert.match(lfTemplate, /## Delegated agent tooling/);
+    assert.match(lfTemplate, /mcp__plugin_pomegr_pomegr__\*/);
     assert.equal(result.signals["Session signals"][0].label, "Ready for review");
     assert.equal(result.signals["Agent signals"].length, 0);
     assert.equal(result.signals["Task signals"][0].label, "Checks passed");
@@ -112,9 +115,9 @@ test("validates the repository policy template and extracts bounded signal rows"
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 1", "Policy version: 2"));
+  const malformed = validatePolicyText(template.replace("Policy version: 2", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.includes("Policy version must be 1."));
+  assert.ok(malformed.errors.includes("Policy version must be 2."));
 
   const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -136,6 +139,13 @@ test("rejects policies that contradict naming, privacy, and signal-lifetime inva
   ));
   assert.equal(badPrivacy.status, "invalid");
   assert.ok(badPrivacy.errors.includes("Privacy and semantics must match the canonical Pomegr safety policy."));
+
+  const missingDelegatedTools = validatePolicyText(template.replace(
+    "- Ensure that subagent tooling includes the Pomegr MCP tools. If an agent definition has an explicit `tools` allowlist, add the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the exact Pomegr reporting and clearing tool names available in the session.",
+    "- Let restricted subagents run without the Pomegr MCP tools.",
+  ));
+  assert.equal(missingDelegatedTools.status, "invalid");
+  assert.ok(missingDelegatedTools.errors.includes("Delegated agent tooling must attach the Pomegr MCP tools to signal-owning subagents."));
 
   const permanentSession = validatePolicyText(template.replace(
     "Replace if review finds new work; clear when the session moves to unrelated work.",
@@ -250,9 +260,10 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     assert.equal(validOutput.hookSpecificOutput.hookEventName, "SessionStart");
     assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /allow Claude Code to assign/i);
+    assert.match(validOutput.hookSpecificOutput.additionalContext, /subagent's tooling includes the resolved Pomegr MCP tools/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
-    await writePolicy(repository, template.replace("Policy version: 1", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 2", "Policy version: invalid"));
     const invalid = runPolicyHook(nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
@@ -283,6 +294,10 @@ test("plugin manifests register every SessionStart transition and the bundled MC
   assert.match(doctor, /\[Pomegr reporting policy loaded\]/);
   assert.match(doctor, /\/hooks/);
   assert.match(doctor, /\/mcp/);
+
+  const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
+  assert.match(init, /Agent prompt/);
+  assert.match(init, /mcp__plugin_pomegr_pomegr__\*/);
 });
 
 test("installed plugin starts its MCP server without node_modules and lists every tool", async () => {
@@ -346,4 +361,18 @@ test("plugin MCP inventory contains only reporting and scoped clearing tools", (
   assert.equal(tools.includes("report_session_title"), false);
   assert.equal(tools.includes("ask_pomegr"), false);
   assert.ok(tools.every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
+});
+
+test("plugin release helper synchronizes versions, rebuilds, rolls back, and prints correct client commands", async () => {
+  const script = await readFile(releaseScriptPath, "utf8");
+
+  assert.match(script, /major\|minor\|patch/);
+  assert.match(script, /plugins\/claude-code\/\.claude-plugin\/plugin\.json/);
+  assert.match(script, /plugins\/claude-code\/package\.json/);
+  assert.match(script, /plugins\/claude-code\/mcp\/server\.mjs/);
+  assert.match(script, /npm run build:plugin/);
+  assert.match(script, /restore_release_files/);
+  assert.match(script, /\/plugin marketplace update pomegr/);
+  assert.match(script, /claude plugin update pomegr@pomegr --scope project/);
+  assert.doesNotMatch(script, /pomegr:pomegr/);
 });

@@ -89,7 +89,7 @@ The Claude Code plugin is the primary way to enable repository-specific reportin
 /pomegr:init
 ```
 
-The init skill inspects the repository, asks which project-specific transitions matter, previews the policy for confirmation, and creates or updates only `.pomegr/signals.md`. It leaves `AGENTS.md` and `CLAUDE.md` unchanged. A native `SessionStart` hook validates and reloads the policy on startup, resume, fork, clear, and compaction. Claude Code continues to generate native automatic session titles; Pomegr has no title-reporting tool.
+The init skill inspects the repository, asks which project-specific transitions matter, previews the policy for confirmation, and creates or updates only `.pomegr/signals.md`. It leaves `AGENTS.md` and `CLAUDE.md` unchanged. The policy instructs delegated work to carry its applicable signal rules and requires signal-owning subagents to inherit or explicitly allowlist the Pomegr MCP tools. A native `SessionStart` hook validates and reloads the policy on startup, resume, fork, clear, and compaction. Claude Code continues to generate native automatic session titles; Pomegr has no title-reporting tool.
 
 The plugin provides five stateless local MCP tools:
 

@@ -6,7 +6,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 1;
+export const POLICY_VERSION = 2;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
@@ -14,6 +14,7 @@ export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "
 const REQUIRED_SECTIONS = [
   "Session naming",
   "Privacy and semantics",
+  "Delegated agent tooling",
   "Session signals",
   "Agent signals",
   "Task signals",
@@ -32,6 +33,11 @@ const CANONICAL_PRIVACY = [
   "- Report transitions, not heartbeats. Replace a signal when a new configured state applies; clear agent or session state when none applies.",
   "- Never include prompts, responses, secrets, commands, stdout, stderr, tool results, credential values, or sensitive repository content.",
   "- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.",
+].join("\n");
+const CANONICAL_DELEGATED_AGENT_TOOLING = [
+  "- When delegating work that can produce a configured agent or execution-task signal, include the applicable signal rows and transition rules in the Agent prompt.",
+  "- Ensure that subagent tooling includes the Pomegr MCP tools. If an agent definition has an explicit `tools` allowlist, add the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the exact Pomegr reporting and clearing tool names available in the session.",
+  "- Do not assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool.",
 ].join("\n");
 
 function policyResult(status, fields = {}) {
@@ -129,6 +135,9 @@ export function validatePolicyText(text) {
   if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) {
     errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
   }
+  if (sections.get("Delegated agent tooling") !== CANONICAL_DELEGATED_AGENT_TOOLING) {
+    errors.push("Delegated agent tooling must attach the Pomegr MCP tools to signal-owning subagents.");
+  }
 
   const signals = {};
   for (const name of SIGNAL_SECTIONS) signals[name] = validateSignalSection(name, sections.get(name), errors);
@@ -197,6 +206,7 @@ function hookOutput(policy) {
         "[Pomegr reporting policy loaded]",
         "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
+        "When delegating signal-owning work, pass the applicable policy rows in the Agent prompt and ensure the subagent's tooling includes the resolved Pomegr MCP tools.",
         "Do not ask the user to name the session; allow Claude Code to assign its native automatic title after substantive work begins.",
         "",
         policy.text,

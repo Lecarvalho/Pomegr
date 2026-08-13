@@ -35,7 +35,7 @@ function rejected(text) {
 
 export function buildPomegrMcpServer() {
   const server = new McpServer(
-    { name: "pomegr", version: "0.1.1" },
+    { name: "pomegr", version: "0.2.0" },
     { instructions: "Follow .pomegr/signals.md when present. Report bounded project-specific transitions, replace older state in the same scope, and clear resolved agent or session state when no replacement applies." },
   );
 

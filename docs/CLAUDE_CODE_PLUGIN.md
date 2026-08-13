@@ -32,9 +32,11 @@ After initialization, the skill follows the policy immediately. `/pomegr:doctor`
 
 ## Repository policy
 
-`.pomegr/signals.md` uses policy version `1` and contains Session naming, Privacy and semantics, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
+`.pomegr/signals.md` uses policy version `2` and contains Session naming, Privacy and semantics, Delegated agent tooling, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
 
-The naming and privacy sections are canonical safety policy and must remain identical to the plugin template. Repository-owned customization belongs in the three signal tables. Session and agent rows must define replacement or clearing; task rows must state that their outcomes are durable and cannot be cleared.
+The delegated-agent section closes the reporting ownership gap. When work can produce a configured agent or execution-task signal, the parent includes the applicable policy rows in the Agent prompt and ensures the subagent can call Pomegr. Claude Code subagents normally inherit MCP tools from the parent, but an agent definition with an explicit `tools` allowlist must include the resolved Pomegr namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the applicable exact tool names. A subagent without those tools must not own agent- or task-signal reporting.
+
+The naming, privacy, and delegated-agent tooling sections are canonical policy and must remain identical to the plugin template. Repository-owned customization belongs in the three signal tables. Session and agent rows must define replacement or clearing; task rows must state that their outcomes are durable and cannot be cleared.
 
 The policy requires Claude Code to use its native automatic session naming after substantive work. Pomegr does not expose a title-reporting tool, does not ask the user to run `/rename`, and does not replace an explicit native title. An idle session may remain Untitled.
 
@@ -45,6 +47,8 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 The plugin registers a native Claude Code `SessionStart` hook for startup, resume, fork, clear, and compaction. `SessionStart` is a client lifecycle event, not a Pomegr signal.
 
 At each event, the hook searches upward from the working directory to the repository root for `.pomegr/signals.md`, validates its structure and size, and injects a bounded copy through `additionalContext`. This keeps the policy active in every session, including after compaction, without modifying repository-wide agent instruction files.
+
+Named subagents start with isolated context, so the parent must pass the applicable agent/task rows and transition rules in its delegation prompt. The policy also requires the parent to select a subagent whose inherited or explicitly allowlisted tooling includes the Pomegr MCP tools.
 
 - A missing policy means repository-specific reporting is inactive.
 - A malformed or oversized policy produces a safe, non-blocking warning recommending `/pomegr:doctor`.
@@ -97,6 +101,14 @@ npm run build:plugin
 claude plugin validate .
 claude --plugin-dir .\plugins\claude-code
 ```
+
+For a marketplace release, use the transactional version helper with a semantic-version increment:
+
+```bash
+./scripts/release-claude-plugin.sh patch
+```
+
+Replace `patch` with `minor` or `major` as appropriate. The helper updates both plugin manifests, synchronizes the version reported by the MCP server, rebuilds `plugins/claude-code/mcp/server.bundle.mjs`, and restores the previous files if any step fails. Commit and push the resulting release files before asking clients to update.
 
 Then initialize a clean repository, begin substantive work, verify native naming, report and clear session and agent signals, report a task outcome, compact or resume the session, and run `/pomegr:doctor`.
 
