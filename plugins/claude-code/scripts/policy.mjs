@@ -6,7 +6,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 2;
+export const POLICY_VERSION = 3;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
@@ -35,10 +35,17 @@ const CANONICAL_PRIVACY = [
   "- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.",
 ].join("\n");
 const CANONICAL_DELEGATED_AGENT_TOOLING = [
-  "- When delegating work that can produce a configured agent or execution-task signal, include the applicable signal rows and transition rules in the Agent prompt.",
-  "- Ensure that subagent tooling includes the Pomegr MCP tools. If an agent definition has an explicit `tools` allowlist, add the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the exact Pomegr reporting and clearing tool names available in the session.",
-  "- Do not assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool.",
+  "- Every agent definition that can own a configured agent or execution-task signal must carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.",
+  "- Prefer the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, and use the exact reporting and clearing tool names where allowlist wildcard support is not confirmed.",
+  "- When delegating such work, include the applicable signal rows and transition rules in the Agent prompt.",
+  "- Never assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool. Add the tool, or keep the reporting in the delegating session.",
 ].join("\n");
+
+const AGENT_DEFINITION_DIRECTORY = [".claude", "agents"];
+const AGENT_DEFINITION_FILE_LIMIT = 100;
+const AGENT_DEFINITION_HEAD_BYTES = 4096;
+const AGENT_WARNING_LIMIT = 10;
+const POMEGR_TOOL_PATTERN = /mcp__[a-z0-9_]*pomegr[a-z0-9_]*__/i;
 
 function policyResult(status, fields = {}) {
   return { status, ...fields };
@@ -144,6 +151,56 @@ export function validatePolicyText(text) {
   return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals });
 }
 
+function agentToolAllowlist(frontMatter) {
+  const inline = frontMatter.match(/^tools:[ \t]*(.*)$/m);
+  if (!inline) return null;
+  if (inline[1].trim()) return inline[1].trim();
+  const listing = frontMatter.slice(inline.index + inline[0].length).match(/^\n(?:[ \t]*-[ \t]*\S.*(?:\n|$))+/);
+  return listing ? listing[0].trim() : "";
+}
+
+function readFileHead(filePath, bytes) {
+  const handle = fs.openSync(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(bytes);
+    const read = fs.readSync(handle, buffer, 0, bytes, 0);
+    return buffer.subarray(0, read).toString("utf8");
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+export function scanAgentDefinitions(repositoryRoot) {
+  const directory = path.join(repositoryRoot, ...AGENT_DEFINITION_DIRECTORY);
+  let entries;
+  try {
+    entries = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const warnings = [];
+  const definitions = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .slice(0, AGENT_DEFINITION_FILE_LIMIT);
+  for (const definition of definitions) {
+    if (warnings.length >= AGENT_WARNING_LIMIT) break;
+    let head;
+    try {
+      head = readFileHead(path.join(directory, definition.name), AGENT_DEFINITION_HEAD_BYTES);
+    } catch {
+      continue;
+    }
+    const frontMatter = head.replace(/\r\n?/g, "\n").match(/^---\n([\s\S]*?)\n---/);
+    if (!frontMatter) continue;
+    const allowlist = agentToolAllowlist(frontMatter[1]);
+    if (!allowlist || allowlist === "*" || POMEGR_TOOL_PATTERN.test(allowlist)) continue;
+    const relativePath = [...AGENT_DEFINITION_DIRECTORY, definition.name].join("/");
+    warnings.push(`Agent definition "${relativePath}" sets an explicit tools allowlist without a Pomegr reporting tool, so it cannot own the configured agent or task signals.`);
+  }
+  return warnings;
+}
+
 export function findPolicy(startDirectory = process.cwd()) {
   let current = path.resolve(startDirectory || process.cwd());
   try {
@@ -189,7 +246,10 @@ export function readPolicy(startDirectory = process.cwd()) {
   } catch {
     return policyResult("invalid", { path: found.path, repositoryRoot: found.repositoryRoot, errors: ["Policy could not be read."] });
   }
-  return { ...validatePolicyText(text), path: found.path, repositoryRoot: found.repositoryRoot, text };
+  const validated = validatePolicyText(text);
+  const reportsDelegatedSignals = Boolean(validated.signals?.["Agent signals"]?.length || validated.signals?.["Task signals"]?.length);
+  const warnings = validated.status === "valid" && reportsDelegatedSignals ? scanAgentDefinitions(found.repositoryRoot) : [];
+  return { ...validated, warnings, path: found.path, repositoryRoot: found.repositoryRoot, text };
 }
 
 function hookOutput(policy) {
@@ -199,6 +259,9 @@ function hookOutput(policy) {
       systemMessage: "Pomegr reporting policy is invalid. Run /pomegr:doctor; reporting remains non-blocking.",
     });
   }
+  const drift = policy.warnings?.length
+    ? ["", "[Pomegr policy drift]", ...policy.warnings, "Add the Pomegr tools when you next touch these definitions, or keep their reporting in the delegating session."]
+    : [];
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "SessionStart",
@@ -208,6 +271,7 @@ function hookOutput(policy) {
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
         "When delegating signal-owning work, pass the applicable policy rows in the Agent prompt and ensure the subagent's tooling includes the resolved Pomegr MCP tools.",
         "Do not ask the user to name the session; allow Claude Code to assign its native automatic title after substantive work begins.",
+        ...drift,
         "",
         policy.text,
       ].join("\n"),
@@ -230,7 +294,7 @@ export function runPolicyCli(args = process.argv.slice(2)) {
     return 0;
   }
   if (command === "validate") {
-    const result = { status: policy.status, path: policy.path, errors: policy.errors || [], bytes: policy.bytes ?? 0 };
+    const result = { status: policy.status, path: policy.path, errors: policy.errors || [], warnings: policy.warnings || [], bytes: policy.bytes ?? 0 };
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return policy.status === "valid" ? 0 : policy.status === "missing" ? 2 : 1;
   }

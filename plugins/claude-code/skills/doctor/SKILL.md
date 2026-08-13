@@ -8,7 +8,7 @@ description: Diagnose a repository's Pomegr reporting setup without changing fil
 Perform a read-only diagnosis. Do not edit files, report signals, or call either clear tool.
 
 1. Resolve this plugin's `scripts/policy.mjs` relative to this `SKILL.md`. Run `node <script> validate --cwd <repository-root>` and interpret its JSON output:
-   - `valid`: show the path and byte size.
+   - `valid`: show the path and byte size, and list any `warnings` as agent definitions whose `tools` allowlist omits the Pomegr tools; recommend `/pomegr:init` to repair them.
    - `missing`: explain that repository-specific reporting is inactive and recommend `/pomegr:init`.
    - `invalid`: list the bounded validation errors and recommend `/pomegr:init` to review an update.
 2. Confirm that the current context contains the marker `[Pomegr reporting policy loaded]` when the policy is valid. This is the runtime proof that the hook loaded this policy. If absent, explain that this session may predate initialization or that the `SessionStart` hook did not run; direct the user to Claude Code's `/hooks` view to verify the Pomegr `SessionStart` hook, then recommend `/reload-plugins` and starting or resuming a session.

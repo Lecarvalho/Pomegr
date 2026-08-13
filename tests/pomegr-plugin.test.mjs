@@ -115,9 +115,9 @@ test("validates the repository policy template and extracts bounded signal rows"
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 2", "Policy version: 1"));
+  const malformed = validatePolicyText(template.replace("Policy version: 3", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.includes("Policy version must be 2."));
+  assert.ok(malformed.errors.includes("Policy version must be 3."));
 
   const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -141,8 +141,8 @@ test("rejects policies that contradict naming, privacy, and signal-lifetime inva
   assert.ok(badPrivacy.errors.includes("Privacy and semantics must match the canonical Pomegr safety policy."));
 
   const missingDelegatedTools = validatePolicyText(template.replace(
-    "- Ensure that subagent tooling includes the Pomegr MCP tools. If an agent definition has an explicit `tools` allowlist, add the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the exact Pomegr reporting and clearing tool names available in the session.",
-    "- Let restricted subagents run without the Pomegr MCP tools.",
+    "- Every agent definition that can own a configured agent or execution-task signal must carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.",
+    "- Restricted agent definitions may own signals without the Pomegr reporting tools.",
   ));
   assert.equal(missingDelegatedTools.status, "invalid");
   assert.ok(missingDelegatedTools.errors.includes("Delegated agent tooling must attach the Pomegr MCP tools to signal-owning subagents."));
@@ -263,13 +263,58 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     assert.match(validOutput.hookSpecificOutput.additionalContext, /subagent's tooling includes the resolved Pomegr MCP tools/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
-    await writePolicy(repository, template.replace("Policy version: 2", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 3", "Policy version: invalid"));
     const invalid = runPolicyHook(nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
     assert.match(invalidOutput.systemMessage, /\/pomegr:doctor/);
     assert.doesNotMatch(invalid.stdout, /Ready for review/);
     assert.equal(invalidOutput.hookSpecificOutput, undefined);
+  });
+});
+
+test("warns about agent definitions whose explicit allowlist cannot reach the Pomegr tools", async () => {
+  await withTemporaryDirectory(async (temporaryRoot) => {
+    const repository = path.join(temporaryRoot, "repository");
+    const agents = path.join(repository, ".claude", "agents");
+    await mkdir(path.join(repository, ".git"), { recursive: true });
+    await mkdir(agents, { recursive: true });
+    const template = await readFile(policyTemplatePath, "utf8");
+    await writePolicy(repository, template);
+
+    const definitions = {
+      "restricted.md": "---\nname: restricted\ntools: Read, Bash\n---\n\nBody.\n",
+      "listed.md": "---\nname: listed\ntools:\n  - Read\n  - Bash\nmodel: opus\n---\n\nBody.\n",
+      "inheriting.md": "---\nname: inheriting\nmodel: opus\n---\n\nBody.\n",
+      "wildcard.md": "---\nname: wildcard\ntools: *\n---\n\nBody.\n",
+      "equipped.md": "---\nname: equipped\ntools: Read, mcp__plugin_pomegr_pomegr__report_agent_signal\n---\n\nBody.\n",
+      "notes.txt": "tools: Read\n",
+    };
+    for (const [name, contents] of Object.entries(definitions)) {
+      await writeFile(path.join(agents, name), contents, "utf8");
+    }
+
+    const policy = readPolicy(repository);
+    assert.equal(policy.status, "valid");
+    assert.deepEqual(policy.warnings.map((warning) => warning.match(/"([^"]+)"/)[1]).sort(), [
+      ".claude/agents/listed.md",
+      ".claude/agents/restricted.md",
+    ]);
+    assert.ok(policy.warnings.every((warning) => !/tools:/.test(warning)));
+
+    const hook = runPolicyHook(path.join(repository, ".git"));
+    const context = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext;
+    assert.match(context, /\[Pomegr policy drift\]/);
+    assert.match(context, /restricted\.md/);
+    assert.doesNotMatch(context, /equipped\.md/);
+
+    await writePolicy(repository, template.replace(
+      /## Task signals\r?\n\r?\n[\s\S]*$/,
+      "## Task signals\n\n_No project-specific signals configured._\n",
+    ));
+    const withoutDelegatedSignals = readPolicy(repository);
+    assert.equal(withoutDelegatedSignals.status, "valid");
+    assert.deepEqual(withoutDelegatedSignals.warnings, []);
   });
 });
 
@@ -298,6 +343,8 @@ test("plugin manifests register every SessionStart transition and the bundled MC
   const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
   assert.match(init, /Agent prompt/);
   assert.match(init, /mcp__plugin_pomegr_pomegr__\*/);
+  assert.match(init, /\.claude\/agents\/\*\.md/);
+  assert.match(init, /the user confirms them at the preview step/);
 });
 
 test("installed plugin starts its MCP server without node_modules and lists every tool", async () => {

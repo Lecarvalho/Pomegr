@@ -5,7 +5,7 @@ description: Initialize or update a repository's Pomegr reporting policy. Use wh
 
 # Initialize Pomegr reporting
 
-Create or update `.pomegr/signals.md` without changing `AGENTS.md`, `CLAUDE.md`, provider settings, or application code.
+Create or update `.pomegr/signals.md`, and the `tools` allowlists of agent definitions that can own a configured signal. Change nothing else: never edit `AGENTS.md`, `CLAUDE.md`, provider settings, or application code.
 
 ## Workflow
 
@@ -15,10 +15,11 @@ Create or update `.pomegr/signals.md` without changing `AGENTS.md`, `CLAUDE.md`,
 4. Ask the user concise questions about the outcomes observers need to notice and when those outcomes cease to apply. For every proposed signal, lock its scope, label, tone, `Report when`, and `Replace or clear when` condition.
 5. Prefer a small transition vocabulary. Use session scope for the overall goal, agent scope for a particular agent's semantic role or conclusion, and task scope only for an outcome tied to a known execution-task ID.
 6. Read [the policy template](references/policy-template.md). Draft the complete file with the same title, policy version, headings, canonical delegated-agent tooling requirements, and four-column tables. Use `_No project-specific signals configured._` for an empty scope.
-7. Preview the complete proposed Markdown or a focused diff for an existing policy. Explain which signals were omitted as duplicates. Obtain explicit user confirmation before writing.
-8. Write only `.pomegr/signals.md`, creating `.pomegr/` if needed. Never blindly replace an existing policy: apply the confirmed changes while retaining unrelated user-authored guidance that remains valid.
-9. Run the validator again. Fix structural errors without changing approved semantics. Report the final path, configured scopes, and whether the five expected logical MCP tools are available: `report_session_signal`, `report_agent_signal`, `report_task_signal`, `clear_session_signal`, and `clear_agent_signal`. Claude exposes plugin tools with names such as `mcp__plugin_pomegr_pomegr__report_session_signal`; match the Pomegr namespace plus these logical suffixes, while displaying the short names to the user. If unavailable, direct the user to `/mcp`; do not emit a diagnostic signal.
-10. Follow the resulting policy immediately. Before delegating work that may own an agent or execution-task signal, include the applicable policy rows in the Agent prompt and ensure the selected subagent inherits the Pomegr MCP tools. If its definition has an explicit `tools` allowlist, require the resolved Pomegr namespace (typically `mcp__plugin_pomegr_pomegr__*`) or the applicable exact Pomegr tool names. Allow Claude Code to create its native automatic session title; never ask the user to invoke `/rename`.
+7. Resolve agent-definition repairs whenever the drafted policy configures agent or execution-task signals. Inspect the repository's own subagent definitions, such as Claude Code `.claude/agents/*.md`. A definition with an explicit `tools` allowlist that omits the Pomegr tools cannot report, so prepare an edit adding the resolved namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the exact reporting tool names. Prepare these edits as part of initialization; the user confirms them at the preview step.
+8. Preview the complete proposed Markdown or a focused diff for an existing policy, together with every prepared agent-definition edit. Explain which signals were omitted as duplicates. Obtain explicit user confirmation before writing.
+9. Write `.pomegr/signals.md`, creating `.pomegr/` if needed, and apply the confirmed agent-definition edits. Never blindly replace an existing policy: apply the confirmed changes while retaining unrelated user-authored guidance that remains valid.
+10. Run the validator again. Fix structural errors without changing approved semantics. Report any `warnings` it returns as agent definitions that still cannot report. Report the final path, configured scopes, and whether the five expected logical MCP tools are available: `report_session_signal`, `report_agent_signal`, `report_task_signal`, `clear_session_signal`, and `clear_agent_signal`. Claude exposes plugin tools with names such as `mcp__plugin_pomegr_pomegr__report_session_signal`; match the Pomegr namespace plus these logical suffixes, while displaying the short names to the user. If unavailable, direct the user to `/mcp`; do not emit a diagnostic signal.
+11. Follow the resulting policy immediately. Before delegating work that may own an agent or execution-task signal, include the applicable policy rows in the Agent prompt and confirm the selected subagent can call the Pomegr MCP tools. Allow Claude Code to create its native automatic session title; never ask the user to invoke `/rename`.
 
 ## Constraints
 

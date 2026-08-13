@@ -32,9 +32,11 @@ After initialization, the skill follows the policy immediately. `/pomegr:doctor`
 
 ## Repository policy
 
-`.pomegr/signals.md` uses policy version `2` and contains Session naming, Privacy and semantics, Delegated agent tooling, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
+`.pomegr/signals.md` uses policy version `3` and contains Session naming, Privacy and semantics, Delegated agent tooling, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
 
-The delegated-agent section closes the reporting ownership gap. When work can produce a configured agent or execution-task signal, the parent includes the applicable policy rows in the Agent prompt and ensures the subagent can call Pomegr. Claude Code subagents normally inherit MCP tools from the parent, but an agent definition with an explicit `tools` allowlist must include the resolved Pomegr namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the applicable exact tool names. A subagent without those tools must not own agent- or task-signal reporting.
+The delegated-agent section closes the reporting ownership gap. Claude Code subagents normally inherit MCP tools from the parent, but an agent definition with an explicit `tools` allowlist must include the resolved Pomegr namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the applicable exact tool names. The section states this as a repository invariant rather than a delegation-time check, so `/pomegr:init` proposes both the policy and the agent definitions it depends on in one preview, and the parent still passes the applicable policy rows in the Agent prompt. A subagent without those tools must not own agent- or task-signal reporting.
+
+Validation backs the invariant. When a policy configures agent or task signals, `scripts/policy.mjs` scans `.claude/agents/*.md` and returns a `warnings` entry for each definition whose explicit allowlist omits a Pomegr tool. Warnings name the file only, never its contents, and never change the `valid` status or the exit code. The `SessionStart` hook appends them under a `[Pomegr policy drift]` marker so a session can repair the gap in place, and `/pomegr:doctor` reports them read-only.
 
 The naming, privacy, and delegated-agent tooling sections are canonical policy and must remain identical to the plugin template. Repository-owned customization belongs in the three signal tables. Session and agent rows must define replacement or clearing; task rows must state that their outcomes are durable and cannot be cleared.
 
@@ -48,7 +50,7 @@ The plugin registers a native Claude Code `SessionStart` hook for startup, resum
 
 At each event, the hook searches upward from the working directory to the repository root for `.pomegr/signals.md`, validates its structure and size, and injects a bounded copy through `additionalContext`. This keeps the policy active in every session, including after compaction, without modifying repository-wide agent instruction files.
 
-Named subagents start with isolated context, so the parent must pass the applicable agent/task rows and transition rules in its delegation prompt. The policy also requires the parent to select a subagent whose inherited or explicitly allowlisted tooling includes the Pomegr MCP tools.
+Named subagents start with isolated context, so the parent must pass the applicable agent/task rows and transition rules in its delegation prompt. The policy also requires the parent to select a subagent whose inherited or explicitly allowlisted tooling includes the Pomegr MCP tools, and to repair a definition that lacks them.
 
 - A missing policy means repository-specific reporting is inactive.
 - A malformed or oversized policy produces a safe, non-blocking warning recommending `/pomegr:doctor`.
