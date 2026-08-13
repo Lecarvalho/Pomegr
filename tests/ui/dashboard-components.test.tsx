@@ -389,7 +389,7 @@ describe("agent detail popovers", () => {
     await user.click(screen.getByRole("button", { name: "1 shell task" }));
     const causeTrigger = screen.getByRole("button", { name: /Show failure cause/ });
     await user.hover(causeTrigger);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Cause: the command was blocked by a permissions or sandbox restriction. Exit code 1.");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("The command was blocked by a permissions or sandbox restriction. Exit code 1.");
   });
 
   it("keeps detail popovers mutually exclusive and dismisses them", async () => {
@@ -417,20 +417,20 @@ describe("agent detail popovers", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("ticks live wall time in the browser and freezes when monitoring stops", () => {
+  it("ticks live wall time by the minute and freezes when monitoring stops", () => {
     vi.useFakeTimers();
-    vi.setSystemTime("2026-08-08T12:00:05.000Z");
+    vi.setSystemTime("2026-08-08T12:00:59.000Z");
     const activeAgent = { ...agent, status: "active" as const, durationMs: 1_000 };
     const livePanel = (running: boolean) => <LiveClockProvider running={running}><AgentActivityPanel agents={[activeAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>;
     const { rerender } = render(livePanel(true));
 
-    expect(screen.getByText("5s")).toBeInTheDocument();
+    expect(screen.getByText("<1m")).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1_000));
-    expect(screen.getByText("6s")).toBeInTheDocument();
+    expect(screen.getByText("1m")).toBeInTheDocument();
 
     rerender(livePanel(false));
-    act(() => vi.advanceTimersByTime(3_000));
-    expect(screen.getByText("6s")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText("1m")).toBeInTheDocument();
     vi.useRealTimers();
   });
 });

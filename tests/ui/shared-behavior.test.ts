@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
+import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
+import { coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
 import type { SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -22,6 +22,8 @@ describe("wall-time formatting", () => {
     expect(formatWallTime(65_000)).toBe("1m 5s");
     expect(formatWallTime(3_665_000)).toBe("1h 1m");
     expect(formatAgentWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:00:05.000Z"))).toBe("5s");
+    expect(formatAgentRowWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:00:05.000Z"))).toBe("<1m");
+    expect(formatAgentRowWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:01:05.000Z"))).toBe("1m");
     expect(formatExecutionTaskWallTime({ startedAt: "2026-08-08T12:00:00.000Z", finishedAt: "2026-08-08T12:00:07.000Z" })).toBe("7s");
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", true, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(5_000);
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", false, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(1_000);
@@ -31,6 +33,9 @@ describe("wall-time formatting", () => {
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:30.000Z"))).toBe("less than a minute ago");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("1 minute ago");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:03:00.000Z"))).toBe("3 minutes ago");
+    expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:30.000Z"))).toBe("just now");
+    expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:03:00.000Z"))).toBe("3m ago");
+    expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T14:03:00.000Z"))).toBe("2h ago");
     expect(resetCountdown("2026-08-08T12:02:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Resets in 1m");
   });
 });

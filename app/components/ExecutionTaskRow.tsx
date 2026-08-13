@@ -9,22 +9,22 @@ function taskGlyph(task: ExecutionTask) {
 }
 
 const FAILURE_CAUSE_COPY: Record<NonNullable<ExecutionTask["failureCause"]>, string> = {
-  command_not_found: "the command or executable was not available",
-  invalid_path: "a path was invalid for this operating system",
-  network_error: "a network connection failed",
-  not_found: "a referenced file or directory could not be found",
-  non_zero_exit: "the shell returned a non-zero exit code",
-  permission_denied: "the command was blocked by a permissions or sandbox restriction",
-  provider_error: "the provider reported a shell error without a safe detail",
-  syntax_error: "the shell or script could not parse the command",
-  tests_failed: "one or more tests failed",
-  timed_out: "the command exceeded its allowed run time",
+  command_not_found: "The command or executable was not available",
+  invalid_path: "A path was invalid for this operating system",
+  network_error: "A network connection failed",
+  not_found: "A referenced file or directory could not be found",
+  non_zero_exit: "The shell returned a non-zero exit code",
+  permission_denied: "The command was blocked by a permissions or sandbox restriction",
+  provider_error: "The provider reported a shell error without a safe detail",
+  syntax_error: "The shell or script could not parse the command",
+  tests_failed: "One or more tests failed",
+  timed_out: "The command exceeded its allowed run time",
 };
 
 function failureTooltip(task: ExecutionTask) {
   const cause = task.failureCause || (task.exitCode !== null && task.exitCode !== 0 ? "non_zero_exit" : "provider_error");
   const exitCode = task.exitCode !== null ? ` Exit code ${task.exitCode}.` : "";
-  return `Cause: ${FAILURE_CAUSE_COPY[cause]}.${exitCode}`;
+  return `${FAILURE_CAUSE_COPY[cause]}.${exitCode}`;
 }
 
 export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {

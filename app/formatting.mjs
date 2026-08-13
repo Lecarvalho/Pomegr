@@ -22,6 +22,16 @@ export function formatAgentWallTime(agent, now = Date.now()) {
   return formatWallTime(liveWallTimeMs(agent.durationMs, agent.startedAt, running, now));
 }
 
+export function formatAgentRowWallTime(agent, now = Date.now()) {
+  const running = agent.status === "active" || agent.status === "waiting";
+  const durationMs = liveWallTimeMs(agent.durationMs, agent.startedAt, running, now);
+  if (durationMs < 60_000) return "<1m";
+  const totalMinutes = Math.floor(durationMs / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 export function formatExecutionTaskWallTime(task, now = Date.now()) {
   const startedAt = new Date(task.startedAt).getTime();
   const finishedAt = task.finishedAt ? new Date(task.finishedAt).getTime() : now;

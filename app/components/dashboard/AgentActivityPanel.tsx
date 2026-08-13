@@ -7,7 +7,7 @@ import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
 import { EmptyState } from "../EmptyState";
 import { ExecutionTaskRow } from "../ExecutionTaskRow";
-import { AgentWallTimeText, RelativeTimeText } from "../LiveTime";
+import { AgentWallTimeText, CoarseRelativeTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
 
@@ -90,7 +90,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
               <div className="agentTokens"><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "recorded context" : "current context"}</span></div>
               <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
               <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
-              <time><RelativeTimeText value={agent.lastSeen} /></time>
+              <time><CoarseRelativeTimeText value={agent.lastSeen} /></time>
             </div>
           );
         })}
