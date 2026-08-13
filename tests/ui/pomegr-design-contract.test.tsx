@@ -20,7 +20,12 @@ describe("Pomegr visual contract", () => {
 
   it("uses restrained typography, persistent chart seeds, translucent areas, and square framed controls", () => {
     expect(styles).not.toMatch(/Georgia|Times New Roman|Arial|Helvetica/);
-    expect(styles).toMatch(/\.contextTotalLine\s*\{[^}]*stroke:\s*var\(--brand\)/s);
+    expect(styles).toMatch(/--chart-area-rose:\s*#994238/);
+    expect(styles).toMatch(/--chart-line-rose:\s*#87372f/);
+    expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--chart-area-rose:\s*#972b46;[\s\S]*?--chart-line-rose:\s*#e0607d/);
+    expect(styles).toMatch(/\.cacheReadArea\s*\{\s*fill:\s*var\(--chart-area-rose\)/);
+    expect(styles).toMatch(/\.contextTotalLine\s*\{[^}]*stroke:\s*var\(--chart-line-rose\)/s);
+    expect(styles).toMatch(/\.cacheReadSwatch\s*\{\s*background:\s*var\(--chart-area-rose\)/);
     expect(styles).toMatch(/:is\(button,[\s\S]*?\)\s*\{\s*border-radius:\s*0;/);
     expect(styles).not.toMatch(/\.activityBars\s*\{[^}]*\bgap\s*:/s);
     expect(styles).toMatch(/\.contextArea\s*\{[^}]*opacity:\s*\.11/);
