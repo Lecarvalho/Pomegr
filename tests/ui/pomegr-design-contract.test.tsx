@@ -29,7 +29,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/--chart-fill-strength:\s*11%/);
     expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--chart-area-rose:\s*#972b46;[\s\S]*?--chart-line-rose:\s*#e0607d;[\s\S]*?--chart-fill-strength:\s*22%/);
     expect(styles).toMatch(/\.cacheReadArea\s*\{\s*fill:\s*color-mix\(in srgb,\s*var\(--chart-area-rose\)\s*var\(--chart-fill-strength\),\s*transparent\)/);
-    expect(styles).toMatch(/\.contextTotalLine\s*\{[^}]*stroke:\s*var\(--chart-line-rose\)/s);
+    expect(styles).toMatch(/\.contextSeriesLine\s*\{[^}]*stroke:\s*var\(--series-line\)/s);
+    expect(styles).toMatch(/\.cacheReadLine, \.cacheReadChartPoint\s*\{\s*--series-line:\s*var\(--chart-line-rose\)/);
     expect(styles).toMatch(/\.cacheReadSwatch\s*\{\s*background:\s*var\(--chart-area-rose\)/);
     expect(styles).toMatch(/:is\(button,[\s\S]*?\)\s*\{\s*border-radius:\s*0;/);
     expect(styles).not.toMatch(/\.activityBars\s*\{[^}]*\bgap\s*:/s);

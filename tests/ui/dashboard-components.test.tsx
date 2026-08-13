@@ -565,12 +565,13 @@ describe("context growth area chart", () => {
     />);
 
     const paths = [...container.querySelectorAll<SVGPathElement>(".contextAreaChart path")];
-    expect(paths).toHaveLength(5);
+    expect(paths).toHaveLength(8);
     for (const path of paths) {
       expect(path.getAttribute("d")).not.toMatch(/NaN|Infinity/);
       expect(path.getAttribute("d")).toMatch(/^M 0 /);
     }
-    expect(paths.slice(0, 4).every((path) => path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
+    expect([...container.querySelectorAll<SVGPathElement>(".contextArea")].every((path) => path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
+    expect([...container.querySelectorAll<SVGPathElement>(".contextSeriesLine")].every((path) => !path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
   });
 
   it("keeps one focusable list item and complete accessible copy per bucket", () => {
@@ -605,19 +606,28 @@ describe("context growth area chart", () => {
 
     const inputToggle = screen.getByRole("switch", { name: /Uncached input/ });
     const inputArea = container.querySelector<SVGPathElement>('[data-series="input"]');
+    const inputLine = container.querySelector<SVGPathElement>('[data-series-line="input"]');
+    const inputPoints = [...container.querySelectorAll<SVGElement>('[data-series-point="input"]')];
     expect(inputToggle).toHaveAttribute("aria-checked", "true");
     expect(inputArea).not.toHaveClass("isHidden");
+    expect(inputLine).not.toHaveClass("isHidden");
+    expect(inputPoints).toHaveLength(1);
+    expect(inputPoints[0]).not.toHaveClass("isHidden");
 
     await user.click(inputToggle);
     expect(inputToggle).toHaveAttribute("aria-checked", "false");
     expect(inputArea).toHaveClass("isHidden");
+    expect(inputLine).toHaveClass("isHidden");
+    expect(inputPoints[0]).toHaveClass("isHidden");
 
     await user.click(inputToggle);
     expect(inputToggle).toHaveAttribute("aria-checked", "true");
     expect(inputArea).not.toHaveClass("isHidden");
+    expect(inputLine).not.toHaveClass("isHidden");
+    expect(inputPoints[0]).not.toHaveClass("isHidden");
   });
 
-  it("keeps adversarial smooth cumulative layers ordered throughout every curve", () => {
+  it("keeps adversarial metric lines bounded throughout every curve", () => {
     const inputs = [28, 72, 57, 48];
     const writes = [2, 6, 90, 75];
     const reads = [60, 1, 4, 40];
@@ -639,18 +649,20 @@ describe("context growth area chart", () => {
       historical={false}
     />);
 
-    const paths = ["output", "cacheRead", "cacheWrite", "input", "total"].map((series) => (
-      container.querySelector<SVGPathElement>(`.contextAreaChart [data-series="${series}"]`)!
+    const paths = ["output", "cacheRead", "cacheWrite", "input"].map((series) => (
+      container.querySelector<SVGPathElement>(`.contextAreaChart [data-series-line="${series}"]`)!
     ));
     const curves = paths.map(cubicSegments);
     expect(curves.every((curve) => curve.length === curves[0].length)).toBe(true);
-    for (let segment = 0; segment < curves[0].length; segment += 1) {
-      for (let sample = 0; sample <= 100; sample += 1) {
-        const y = curves.map((curve) => cubicValue(curve[segment], sample / 100));
-        expect(y[0]).toBeLessThanOrEqual(y[1] + 1e-8);
-        expect(y[1]).toBeLessThanOrEqual(y[2] + 1e-8);
-        expect(y[2]).toBeLessThanOrEqual(y[3] + 1e-8);
-        expect(y[4]).toBeCloseTo(y[0], 8);
+    for (const curve of curves) {
+      for (const segment of curve) {
+        const lowerBound = Math.min(segment[0], segment[3]);
+        const upperBound = Math.max(segment[0], segment[3]);
+        for (let sample = 0; sample <= 100; sample += 1) {
+          const y = cubicValue(segment, sample / 100);
+          expect(y).toBeGreaterThanOrEqual(lowerBound - 1e-8);
+          expect(y).toBeLessThanOrEqual(upperBound + 1e-8);
+        }
       }
     }
   });

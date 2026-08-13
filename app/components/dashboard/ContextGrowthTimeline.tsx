@@ -128,6 +128,12 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
   const areaClass = (series: ContextSeries, className: string) => (
     `contextArea ${className}${visibleSeries[series] ? "" : " isHidden"}`
   );
+  const lineClass = (series: ContextSeries, className: string) => (
+    `contextSeriesLine ${className}${visibleSeries[series] ? "" : " isHidden"}`
+  );
+  const pointClass = (series: ContextSeries, className: string) => (
+    `contextChartPoint ${className}${visibleSeries[series] ? "" : " isHidden"}`
+  );
   const buckets = timeline?.buckets || [];
   const components = buckets.map((bucket) => {
     const input = finiteNonNegative(bucket.input);
@@ -136,19 +142,24 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
     const output = finiteNonNegative(bucket.output);
     return { input, cacheWrite, cacheRead, output, stackTotal: input + cacheWrite + cacheRead + output, total: finiteNonNegative(bucket.total) };
   });
-  const maximum = Math.max(0, ...components.flatMap((bucket) => [bucket.total, bucket.stackTotal]));
+  const maximum = Math.max(0, ...components.flatMap((bucket) => [bucket.input, bucket.cacheWrite, bucket.cacheRead, bucket.output]));
   const componentSeries = [
     seriesPoints(components.map((bucket) => bucket.input)),
     seriesPoints(components.map((bucket) => bucket.cacheWrite)),
     seriesPoints(components.map((bucket) => bucket.cacheRead)),
     seriesPoints(components.map((bucket) => bucket.output)),
   ];
-  const paths = {
+  const areaPaths = {
     input: stackedAreaPath(componentSeries.slice(0, 1), maximum),
-    cacheWrite: stackedAreaPath(componentSeries.slice(0, 2), maximum),
-    cacheRead: stackedAreaPath(componentSeries.slice(0, 3), maximum),
-    output: stackedAreaPath(componentSeries, maximum),
-    total: stackedPath(componentSeries, maximum),
+    cacheWrite: stackedAreaPath(componentSeries.slice(1, 2), maximum),
+    cacheRead: stackedAreaPath(componentSeries.slice(2, 3), maximum),
+    output: stackedAreaPath(componentSeries.slice(3, 4), maximum),
+  };
+  const linePaths = {
+    input: stackedPath(componentSeries.slice(0, 1), maximum),
+    cacheWrite: stackedPath(componentSeries.slice(1, 2), maximum),
+    cacheRead: stackedPath(componentSeries.slice(2, 3), maximum),
+    output: stackedPath(componentSeries.slice(3, 4), maximum),
   };
   const spansMultipleDays = buckets.length > 0
     && new Date(buckets.at(-1)?.end || 0).getTime() - new Date(buckets[0].start).getTime() >= 24 * 60 * 60_000;
@@ -172,21 +183,36 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
           <div className="histogramChart">
             <div className="histogramGrid" aria-hidden="true"><i /><i /><i /></div>
             <svg className="contextAreaChart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
-              <path className={areaClass("output", "outputArea")} data-series="output" d={paths.output} />
-              <path className={areaClass("cacheRead", "cacheReadArea")} data-series="cacheRead" d={paths.cacheRead} />
-              <path className={areaClass("cacheWrite", "cacheWriteArea")} data-series="cacheWrite" d={paths.cacheWrite} />
-              <path className={areaClass("input", "inputArea")} data-series="input" d={paths.input} />
-              <path className="contextTotalLine" data-series="total" d={paths.total} />
+              <path className={areaClass("output", "outputArea")} data-series="output" d={areaPaths.output} />
+              <path className={areaClass("cacheRead", "cacheReadArea")} data-series="cacheRead" d={areaPaths.cacheRead} />
+              <path className={areaClass("cacheWrite", "cacheWriteArea")} data-series="cacheWrite" d={areaPaths.cacheWrite} />
+              <path className={areaClass("input", "inputArea")} data-series="input" d={areaPaths.input} />
+              <path className={lineClass("output", "outputLine")} data-series-line="output" d={linePaths.output} />
+              <path className={lineClass("cacheRead", "cacheReadLine")} data-series-line="cacheRead" d={linePaths.cacheRead} />
+              <path className={lineClass("cacheWrite", "cacheWriteLine")} data-series-line="cacheWrite" d={linePaths.cacheWrite} />
+              <path className={lineClass("input", "inputLine")} data-series-line="input" d={linePaths.input} />
             </svg>
             <div className="activityBars" role="list" aria-label={`${buckets.length} chronological context-growth buckets`}>
               {buckets.map((bucket, index) => {
-                const pointY = maximum > 0 ? 100 - components[index].stackTotal / maximum * 100 : 100;
+                const pointValues: Record<ContextSeries, number> = {
+                  input: components[index].input,
+                  cacheWrite: components[index].cacheWrite,
+                  cacheRead: components[index].cacheRead,
+                  output: components[index].output,
+                };
                 const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${bucket.total.toLocaleString()} net context added; ${bucket.input.toLocaleString()} attributed to uncached input, ${bucket.cacheWrite.toLocaleString()} to cache write, ${bucket.cacheRead.toLocaleString()} to cache read, ${bucket.output.toLocaleString()} to generated output`;
                 return (
-                  <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label} style={{ "--point-y": `${pointY}%` } as CSSProperties}>
-                    <svg className="contextChartPoint" viewBox="0 0 8.7 8.7" preserveAspectRatio="none" aria-hidden="true">
-                      <circle cx="4.35" cy="4.35" r="3.5" />
-                    </svg>
+                  <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label}>
+                    {([
+                      ["output", "outputChartPoint"],
+                      ["cacheRead", "cacheReadChartPoint"],
+                      ["cacheWrite", "cacheWriteChartPoint"],
+                      ["input", "inputChartPoint"],
+                    ] as const).map(([series, className]) => (
+                      <svg className={pointClass(series, className)} data-series-point={series} key={series} style={{ "--point-y": `${maximum > 0 ? 100 - pointValues[series] / maximum * 100 : 100}%` } as CSSProperties} viewBox="0 0 8.7 8.7" preserveAspectRatio="none" aria-hidden="true">
+                        <circle cx="4.35" cy="4.35" r="3.5" />
+                      </svg>
+                    ))}
                     <TooltipPopover className="histogramTooltip">
                       <strong>{compactNumber(bucket.total)} context added</strong>
                       <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>
