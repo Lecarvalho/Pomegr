@@ -25,6 +25,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.activityBars\s*\{[^}]*\bgap\s*:/s);
     expect(styles).toMatch(/\.contextArea\s*\{[^}]*opacity:\s*\.11/);
     expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*opacity:\s*1/);
+    expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*width:\s*6px;[^}]*height:\s*9px;[^}]*border-radius:\s*65% 45% 60% 48%;[^}]*rotate\(25deg\)/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
