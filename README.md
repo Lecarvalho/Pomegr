@@ -1,21 +1,17 @@
-# Threadlight
+# Pomegr
 
-Threadlight is a privacy-first operations console for coding agents. It gives developers a live, provider-neutral view of agent activity, context usage, model settings, Git changes, usage limits, and deterministic efficiency signals.
+Pomegr is a privacy-first operations console for coding agents. It gives developers a live, provider-neutral view of agent activity, context usage, model settings, Git changes, usage limits, and deterministic efficiency signals.
 
-Threadlight ships adapters for Claude Code and Codex. Both appear in one deterministic session catalog and produce the same normalized browser state wherever equivalent provider evidence exists.
+Pomegr ships adapters for Claude Code and Codex. Both appear in one deterministic session catalog and produce the same normalized browser state wherever equivalent provider evidence exists.
 
-Threadlight is local-first and read-only. It observes provider session records already stored on the developer's machine and does not send raw prompts, responses, commands, or tool output to the browser. Its purpose is to make agent execution understandable without turning private coding transcripts into a surveillance feed.
+Pomegr is local-first and read-only. It observes provider session records already stored on the developer's machine and does not send raw prompts, responses, commands, or tool output to the browser. Its purpose is to make agent execution understandable without turning private coding transcripts into a surveillance feed.
 
-<p align="center">
-  <img src="docs/assets/threadlight-introduction.png" alt="Threadlight overview: a local view of coding-agent sessions" width="560">
-</p>
+## Why Pomegr
 
-## Why Threadlight
-
-Coding agents increasingly work in parallel, wait for input, consume context, invoke tools, and modify repositories outside the narrow view of a single terminal. Threadlight brings that operational metadata into one place while preserving clear privacy boundaries.
+Coding agents increasingly work in parallel, wait for input, consume context, invoke tools, and modify repositories outside the narrow view of a single terminal. Pomegr brings that operational metadata into one place while preserving clear privacy boundaries.
 
 - **Local-first:** session discovery and normalization happen on the developer's machine.
-- **Read-only:** Threadlight observes agent and repository state; it does not control sessions or modify source code.
+- **Read-only:** Pomegr observes agent and repository state; it does not control sessions or modify source code.
 - **Privacy-bounded:** browser APIs exclude raw prompts, responses, commands, tool results, transcripts, and credentials.
 - **Provider-neutral:** Claude Code and Codex produce the same normalized UI shapes wherever their evidence is equivalent.
 - **Deterministic:** metrics and recommendations are rule-based, reproducible, and documented rather than presented as AI judgments.
@@ -28,7 +24,7 @@ Coding agents increasingly work in parallel, wait for input, consume context, in
 - All-agent current context usage and its latest-snapshot composition
 - An opt-in session-machinery total and expandable inventory with provider-estimated category and per-item token counts after running `/context` in the observed Claude Code session
 - Parent-child agent hierarchy with descriptions, model IDs, effort levels, status, tool counts, and recognized skill-use evidence
-- Optional session-, agent-, and execution-task signal tags captured through Threadlight's MCP tools
+- Optional session-, agent-, and execution-task signal tags captured through Pomegr's MCP tools
 - The latest provider-generated session summary, when the transcript records one
 - Separate primary-agent popovers for live shell executions and the provider's structured, agent-maintained plan checklist
 - Current Git branch and every uncommitted path
@@ -38,23 +34,23 @@ Coding agents increasingly work in parallel, wait for input, consume context, in
 - Deterministic loop and agent-overlap warnings
 - Local Markdown retrospective reports for discussion with the main agent
 
-Threadlight does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
+Pomegr does not currently call an AI model. Its analysis and recommendations are rule-based and reproducible.
 
 The **Generate report** button refreshes local session data and creates a deterministic Markdown summary. In the desktop app it opens the native save dialog; browser development uses a normal download. Reports include session metrics, per-agent wall time and context snapshots, skill usage, repeated calls, tool distribution, recorded Git metadata, and retrospective questions. Live reports also include plan usage; historical reports do not. Reports never include raw prompts or responses.
 
-Session history is indexed directly from the provider's existing JSONL files; Threadlight does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Threadlight history.
+Session history is indexed directly from the provider's existing JSONL files; Pomegr does not copy transcripts into a database. Historical views contain recorded session data only, so current plan limits and the current Git working tree are excluded. If the provider removes a transcript, that session also disappears from Pomegr history.
 
-Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Threadlight detects both the Markdown table and ANSI terminal-summary formats, then shows the provider-reported machinery categories and any expanded groups present in the snapshot. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Threadlight never reconstructs the list from the current repository or configuration.
+Claude Code's `/context` command writes its rendered context snapshot to the session transcript. Pomegr detects both the Markdown table and ANSI terminal-summary formats, then shows the provider-reported machinery categories and any expanded groups present in the snapshot. Until a session has a recorded snapshot, the dashboard prompts the user to run `/context`; Pomegr never reconstructs the list from the current repository or configuration.
 
 Live-state evidence is provider-specific and explicitly bounded. Claude Code prefers its local session registry. Codex prefers an owning app-server connection, then the opt-in allowlisted lifecycle bridge, then a 120-second bounded rollout-tail heuristic. A current needs-input session takes priority during automatic selection. Historical views never inherit current lifecycle evidence.
 
 ## Install the Windows desktop app
 
-For a published Windows x64 release, the desktop app is the primary user path. Download the signed `Threadlight-Setup-X.Y.Z-x64.exe` and `SHA256SUMS.txt` from the matching [Threadlight release](https://github.com/Lecarvalho/threadlight/releases). Verify the checksum and that Windows reports a valid, timestamped signature from the expected publisher, then run the per-user installer. It does not require a repository checkout, Node.js, administrator privileges, or an open terminal. A release without those signed matching assets is not a supported desktop release.
+For a published Windows x64 release, the desktop app is the primary user path. Download the signed `Pomegr-Setup-X.Y.Z-x64.exe` and `SHA256SUMS.txt` from the matching [Pomegr release](https://github.com/Lecarvalho/pomegr/releases). Verify the checksum and that Windows reports a valid, timestamped signature from the expected publisher, then run the per-user installer. It does not require a repository checkout, Node.js, administrator privileges, or an open terminal. A release without those signed matching assets is not a supported desktop release.
 
-Threadlight discovers persisted Claude Code and Codex sessions from their normal Windows user locations. Either provider may be installed independently. The desktop monitor and web service bind only to dynamically assigned `127.0.0.1` ports; desktop LAN sharing is unavailable. Closing the window follows the selected ask, tray, or quit preference; use **Quit Threadlight** or the tray's **Quit** command to stop the app and its services.
+Pomegr discovers persisted Claude Code and Codex sessions from their normal Windows user locations. Either provider may be installed independently. The desktop monitor and web service bind only to dynamically assigned `127.0.0.1` ports; desktop LAN sharing is unavailable. Closing the window follows the selected ask, tray, or quit preference; use **Quit Pomegr** or the tray's **Quit** command to stop the app and its services.
 
-The portable beta is a separate recovery/testing option. Place `Threadlight-Portable-X.Y.Z-x64.exe` in a writable directory and run it directly. It keeps Threadlight-owned state in `ThreadlightData` beside the executable, does not register launch at login, and does not offer automatic updates. It never relocates or copies provider data.
+The portable beta is a separate recovery/testing option. Place `Pomegr-Portable-X.Y.Z-x64.exe` in a writable directory and run it directly. It keeps Pomegr-owned state in `PomegrData` beside the executable, does not register launch at login, and does not offer automatic updates. It never relocates or copies provider data.
 
 Only Windows x64 is supported for this first desktop release. There is no supported macOS, Linux, ARM64, app-store, or cloud-hosted desktop build.
 
@@ -84,16 +80,16 @@ The web server proxies `/api/state` to the loopback-only monitor, so private cre
 
 ## Agent-reported signals
 
-The Claude Code plugin is the primary way to enable repository-specific reporting. Install it from Threadlight's marketplace at project scope, reload plugins, then initialize the repository policy:
+The Claude Code plugin is the primary way to enable repository-specific reporting. Install it from Pomegr's marketplace at project scope, reload plugins, then initialize the repository policy:
 
 ```text
-/plugin marketplace add Lecarvalho/threadlight
-/plugin install threadlight@threadlight
+/plugin marketplace add Lecarvalho/pomegr
+/plugin install pomegr@pomegr
 /reload-plugins
-/threadlight:init
+/pomegr:init
 ```
 
-The init skill inspects the repository, asks which project-specific transitions matter, previews the policy for confirmation, and creates or updates only `.threadlight/signals.md`. It leaves `AGENTS.md` and `CLAUDE.md` unchanged. A native `SessionStart` hook validates and reloads the policy on startup, resume, fork, clear, and compaction. Claude Code continues to generate native automatic session titles; Threadlight has no title-reporting tool.
+The init skill inspects the repository, asks which project-specific transitions matter, previews the policy for confirmation, and creates or updates only `.pomegr/signals.md`. It leaves `AGENTS.md` and `CLAUDE.md` unchanged. A native `SessionStart` hook validates and reloads the policy on startup, resume, fork, clear, and compaction. Claude Code continues to generate native automatic session titles; Pomegr has no title-reporting tool.
 
 The plugin provides five stateless local MCP tools:
 
@@ -105,23 +101,23 @@ The plugin provides five stateless local MCP tools:
 
 A reported label such as `Idle`, `Blocked`, or `Needs input` is an explicit visible state and persists until a later report replaces it or the corresponding clear tool removes it. Clearing means no agent-reported state is currently meaningful; it does not report another label. Task outcomes cannot be cleared, although a later task report for the same recognized execution task may replace one.
 
-Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text limited to 20 characters. Session and agent reports may include a one-line plain-text description limited to 160 characters. Threadlight derives ownership and timestamps from the transcript, reconstructs report/clear/report sequences chronologically for live and historical views, and presents all signals as agent-reported rather than Threadlight judgments.
+Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text limited to 20 characters. Session and agent reports may include a one-line plain-text description limited to 160 characters. Pomegr derives ownership and timestamps from the transcript, reconstructs report/clear/report sequences chronologically for live and historical views, and presents all signals as agent-reported rather than Pomegr judgments.
 
-Task signals accept only a stable background-task ID or Bash tool-use ID. Threadlight resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown targets, MCP arguments outside the allowlist, prompts, responses, raw commands, tool output, and credentials never enter the browser API.
+Task signals accept only a stable background-task ID or Bash tool-use ID. Pomegr resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown targets, MCP arguments outside the allowlist, prompts, responses, raw commands, tool output, and credentials never enter the browser API.
 
-Run `/threadlight:doctor` for a read-only check of the policy, hook loading, packaged files, and all five MCP tools. If the server is unavailable, inspect Claude Code's `/mcp` view and run `/reload-plugins`.
+Run `/pomegr:doctor` for a read-only check of the policy, hook loading, packaged files, and all five MCP tools. If the server is unavailable, inspect Claude Code's `/mcp` view and run `/reload-plugins`.
 
-As a manual fallback for an unsupported standalone installation, register this checkout under the exact server name `threadlight`:
+As a manual fallback for an unsupported standalone installation, register this checkout under the exact server name `pomegr`:
 
 ```powershell
-claude mcp add --transport stdio --scope local threadlight -- node "C:\path\to\threadlight\mcp\server.mjs"
+claude mcp add --transport stdio --scope local pomegr -- node "C:\path\to\pomegr\mcp\server.mjs"
 ```
 
-Manual registration provides the MCP tools but not the plugin's automatic policy-loading hook. See [the Claude Code reporting plugin guide](docs/CLAUDE_CODE_PLUGIN.md) for the policy contract, installation details, troubleshooting, and deferred read-only Threadlight query milestone.
+Manual registration provides the MCP tools but not the plugin's automatic policy-loading hook. See [the Claude Code reporting plugin guide](docs/CLAUDE_CODE_PLUGIN.md) for the policy contract, installation details, troubleshooting, and deferred read-only Pomegr query milestone.
 
 ## Estimated API cost through the Claude status line
 
-Claude Code exposes its client-side session estimate only to the configured status-line command. Threadlight's bridge captures that value without replacing an existing status line: put the bridge before the current command and pass the current command after `--`.
+Claude Code exposes its client-side session estimate only to the configured status-line command. Pomegr's bridge captures that value without replacing an existing status line: put the bridge before the current command and pass the current command after `--`.
 
 For example, this preserves an existing PowerShell status line:
 
@@ -129,12 +125,12 @@ For example, this preserves an existing PowerShell status line:
 {
   "statusLine": {
     "type": "command",
-    "command": "node \"C:\\path\\to\\threadlight\\scripts\\claude-statusline-bridge.mjs\" -- powershell -ExecutionPolicy Bypass -File \"C:\\Users\\you\\.claude\\statusline.ps1\""
+    "command": "node \"C:\\path\\to\\pomegr\\scripts\\claude-statusline-bridge.mjs\" -- powershell -ExecutionPolicy Bypass -File \"C:\\Users\\you\\.claude\\statusline.ps1\""
   }
 }
 ```
 
-If there is no existing status-line command, omit `--` and everything after it. Restart Claude Code after changing `~/.claude/settings.json`. Each status-line update stores only the session ID, estimated USD amount, estimate type, and observation timestamp in `%APPDATA%\threadlight\cost-snapshots` on Windows (`~/.threadlight/cost-snapshots` elsewhere). The dashboard shows `—` until the first update arrives. Claude Code computes this number at standard API list rates, so Threadlight labels it as an estimate rather than an authoritative bill.
+If there is no existing status-line command, omit `--` and everything after it. Restart Claude Code after changing `~/.claude/settings.json`. Each status-line update stores only the session ID, estimated USD amount, estimate type, and observation timestamp in `%APPDATA%\pomegr\cost-snapshots` on Windows (`~/.pomegr/cost-snapshots` elsewhere). The dashboard shows `—` until the first update arrives. Claude Code computes this number at standard API list rates, so Pomegr labels it as an estimate rather than an authoritative bill.
 
 ## Configuration
 
@@ -145,10 +141,10 @@ The monitor merges both provider catalogs, then selects a current needs-input se
 | `CLAUDE_PROJECTS_DIR` | Override the current provider's project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Pin one primary JSONL session | Latest primary session |
 | `CODEX_HOME` | Override the Codex data root | `%USERPROFILE%\.codex` |
-| `THREADLIGHT_DATA_DIR` | Override the Threadlight-owned settings/snapshot root | `%APPDATA%\threadlight` on Windows |
-| `THREADLIGHT_CODEX_LIVENESS_DIR` | Opt in to a shared Codex lifecycle-bridge snapshot root | `%APPDATA%\threadlight\codex-liveness` on Windows |
-| `THREADLIGHT_CODEX_OWNER_PID` | Override bridge owner discovery for unusual wrappers | Nearest recognized owner process |
-| `THREADLIGHT_COST_SNAPSHOTS_DIR` | Override the Claude estimate-snapshot root | `%APPDATA%\threadlight\cost-snapshots` on Windows |
+| `POMEGR_DATA_DIR` | Override the Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
+| `POMEGR_CODEX_LIVENESS_DIR` | Opt in to a shared Codex lifecycle-bridge snapshot root | `%APPDATA%\pomegr\codex-liveness` on Windows |
+| `POMEGR_CODEX_OWNER_PID` | Override bridge owner discovery for unusual wrappers | Nearest recognized owner process |
+| `POMEGR_COST_SNAPSHOTS_DIR` | Override the Claude estimate-snapshot root | `%APPDATA%\pomegr\cost-snapshots` on Windows |
 | `SESSION_PULSE_PORT` | Change the private monitor API port | `4317` |
 
 Example:
@@ -167,14 +163,14 @@ Every displayed or reported token number uses the same latest-snapshot concept s
 - **Agent context:** latest non-zero usage snapshot for that agent
 - **All-agent context:** sum of the latest context snapshot for every visible agent
 
-Threadlight does not derive cumulative transcript-throughput or token-spend totals. Its timeline shows positive changes between all-agent context snapshots at consecutive bucket boundaries; repeated snapshots contribute zero and the result is never labeled as token spend. The separately labeled **Estimated API cost** is Claude Code's own cumulative client-side estimate captured from its status-line feed. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
+Pomegr does not derive cumulative transcript-throughput or token-spend totals. Its timeline shows positive changes between all-agent context snapshots at consecutive bucket boundaries; repeated snapshots contribute zero and the result is never labeled as token spend. The separately labeled **Estimated API cost** is Claude Code's own cumulative client-side estimate captured from its status-line feed. See [docs/METRICS.md](docs/METRICS.md) for formulas and thresholds.
 
 ## Privacy and security
 
 - Raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, and tool output are not returned by the monitor API.
 - The optional status-line bridge persists only session ID, estimated USD amount, estimate type, and observation time. It discards workspace paths and every other status-line field.
-- Session summaries are accepted only from recognized provider summary records, reduced to bounded plain text, and labeled as provider-generated; Threadlight never derives them from raw prompts, responses, or tool results.
-- Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Threadlight MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
+- Session summaries are accepted only from recognized provider summary records, reduced to bounded plain text, and labeled as provider-generated; Pomegr never derives them from raw prompts, responses, or tool results.
+- Session-, agent-, and task-signal labels are explicit, bounded metadata from recognized Pomegr MCP calls; supplied task targets, surrounding responses, and tool-result content remain private.
 - Agent launch text is used only to derive a concise fallback label.
 - Session transcripts and Git state are read-only.
 - Git commands use argument arrays rather than shell interpolation.
@@ -218,8 +214,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the shipped provider flow a
 
 ## License
 
-Current Threadlight source is licensed under the [GNU Affero General Public License version 3](LICENSE) (`AGPL-3.0-only`). If you modify Threadlight and make that version available to users over a network, the license requires you to offer those users the corresponding source code.
+Current Pomegr source is licensed under the [GNU Affero General Public License version 3](LICENSE) (`AGPL-3.0-only`). If you modify Pomegr and make that version available to users over a network, the license requires you to offer those users the corresponding source code.
 
-Revisions through commit [`95cd66c`](https://github.com/Lecarvalho/threadlight/tree/95cd66cb60831ef876421a5149d25788f9dab736) were published under the MIT License and remain available under those terms. See the [license history](docs/LICENSE_HISTORY.md) for the transition boundary.
+Revisions through commit [`95cd66c`](https://github.com/Lecarvalho/pomegr/tree/95cd66cb60831ef876421a5149d25788f9dab736) were published under the MIT License and remain available under those terms. See the [license history](docs/LICENSE_HISTORY.md) for the transition boundary.
 
-The Threadlight name and visual identity are not granted by the software license. See the [trademark policy](TRADEMARKS.md). Commercial licenses for uses incompatible with the AGPL may be offered separately; contact the maintainer through the [Threadlight repository](https://github.com/Lecarvalho/threadlight).
+The Pomegr name and visual identity are not granted by the software license. See the [trademark policy](TRADEMARKS.md). Commercial licenses for uses incompatible with the AGPL may be offered separately; contact the maintainer through the [Pomegr repository](https://github.com/Lecarvalho/pomegr).

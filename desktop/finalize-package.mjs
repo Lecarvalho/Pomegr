@@ -3,11 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { expectedArtifactNames, expectedUpdateArtifactNames } from "./artifact-policy.mjs";
-import { assertTlDt05PackagingScope } from "./tl-dt-05-scope.mjs";
+import { assertPomegrDt08PackagingScope } from "./pomegr-dt-08-scope.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
-assertTlDt05PackagingScope(packageJson);
+assertPomegrDt08PackagingScope(packageJson);
 const releaseRoot = path.resolve(repositoryRoot, packageJson.build.directories.output);
 if (!releaseRoot.startsWith(`${repositoryRoot}${path.sep}`)) throw new Error("DESKTOP_RELEASE_ROOT_INVALID");
 

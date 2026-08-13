@@ -7,6 +7,7 @@ import {
   EXTERNAL_RUNTIME_FILES,
   PUBLIC_LEGAL_FILES,
   DESKTOP_RUNTIME_FILES,
+  BRAND_ASSET_FILES,
   assertPackagedApplicationFiles,
   dependencyNoticeKeys,
   expectedArtifactNames,
@@ -22,11 +23,12 @@ import {
   ACCEPTANCE_PRIOR_OUTPUT,
   ACCEPTANCE_PRIOR_VERSION,
 } from "../desktop/acceptance-prior.mjs";
-import { TL_DT_05_PACKAGING_SCOPE, assertTlDt05PackagingScope } from "../desktop/tl-dt-05-scope.mjs";
+import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "../desktop/pomegr-dt-08-scope.mjs";
 
 const REQUIRED_FILES = [
   ...PUBLIC_LEGAL_FILES,
   ...DESKTOP_RUNTIME_FILES,
+  ...BRAND_ASSET_FILES,
   "dist/server/index.js",
   "package.json",
 ];
@@ -34,10 +36,10 @@ const REQUIRED_FILES = [
 test("desktop builder produces per-user NSIS and portable artifacts from an explicit allowlist", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const build = packageJson.build;
-  assert.equal(build.appId, "com.threadlight.desktop");
-  assert.equal(build.productName, "Threadlight");
+  assert.equal(build.appId, "com.pomegr.desktop");
+  assert.equal(build.productName, "Pomegr");
   assert.equal(build.electronDist, "node_modules/electron/dist");
-  assert.equal(build.win.executableName, "Threadlight");
+  assert.equal(build.win.executableName, "Pomegr");
   assert.equal(build.win.requestedExecutionLevel, "asInvoker");
   assert.deepEqual(build.win.target, [
     { target: "nsis", arch: ["x64"] },
@@ -53,25 +55,27 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.equal(build.nsis.createStartMenuShortcut, true);
   assert.equal(build.portable.requestExecutionLevel, "user");
   assert.deepEqual(expectedArtifactNames(packageJson.version), [
-    `Threadlight-Setup-${packageJson.version}-x64.exe`,
-    `Threadlight-Portable-${packageJson.version}-x64.exe`,
+    `Pomegr-Setup-${packageJson.version}-x64.exe`,
+    `Pomegr-Portable-${packageJson.version}-x64.exe`,
   ]);
   assert.deepEqual(expectedUpdateArtifactNames(packageJson.version), [
     "latest.yml",
-    `Threadlight-Setup-${packageJson.version}-x64.exe.blockmap`,
+    `Pomegr-Setup-${packageJson.version}-x64.exe.blockmap`,
   ]);
   assert.ok(build.files.length > 20);
   assert.equal(build.files.includes("**/*"), false);
   assert.equal(build.files.includes("desktop/**/*"), false);
   assert.equal(build.files.includes("tests/**/*"), false);
+  assert.equal(build.files.includes("assets/brand/**/*"), true);
+  assert.equal(build.files.includes("build/icon.png"), true);
   assert.deepEqual(build.extraResources.map(({ to }) => to).sort(), [...EXTERNAL_LEGAL_FILES, ...EXTERNAL_RUNTIME_FILES].sort());
   assert.match(packageJson.scripts["desktop:package"], /electron-builder --win nsis portable --x64/);
   assert.match(packageJson.scripts["desktop:package"], /finalize-package\.mjs/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release-acceptance/);
   assert.equal(build.afterPack, "desktop/after-pack.mjs");
-  assert.equal(build.extraMetadata.threadlightPackagingScope, TL_DT_05_PACKAGING_SCOPE);
-  assert.deepEqual(build.publish, [{ provider: "github", owner: "Lecarvalho", repo: "threadlight" }]);
+  assert.equal(build.extraMetadata.pomegrPackagingScope, POMEGR_DT_08_PACKAGING_SCOPE);
+  assert.deepEqual(build.publish, [{ provider: "github", owner: "Lecarvalho", repo: "pomegr" }]);
   assert.equal(build.electronUpdaterCompatibility, ">=2.16");
   assert.equal(build.win.verifyUpdateCodeSignature, true);
   assert.equal(build.win.signtoolOptions.publisherName, "Leandro Carvalho");
@@ -82,16 +86,17 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
     "node_modules/@img/sharp-win32-x64/lib/**/*",
   ]);
   assert.deepEqual(build.files.filter((filename) => /^(?:desktop|shared|web)\//.test(filename)), DESKTOP_RUNTIME_FILES);
-  assert.doesNotThrow(() => assertTlDt05PackagingScope(packageJson));
+  assert.doesNotThrow(() => assertPomegrDt08PackagingScope(packageJson));
   assert.equal(packageJson.dependencies.vinext, "0.0.50");
 });
 
 test("artifact policy accepts only required runtime roots and rejects private or development paths", () => {
   assert.deepEqual(assertPackagedApplicationFiles([
     ...REQUIRED_FILES,
+    "assets/brand/pomegr-lockup-color.svg",
     "dist/client/assets/index.js",
     "node_modules/vinext/dist/server/prod-server.js",
-  ]), { fileCount: REQUIRED_FILES.length + 2 });
+  ]), { fileCount: REQUIRED_FILES.length + 3 });
   for (const filename of [
     ".env.production",
     ".wrangler/state.json",
@@ -158,26 +163,26 @@ test("dependency notice generation excludes development tools and requires decla
 test("desktop update packaging fails closed when publishing, dependency, or signature verification drifts", () => {
   const base = {
     build: {
-      extraMetadata: { threadlightPackagingScope: TL_DT_05_PACKAGING_SCOPE },
+      extraMetadata: { pomegrPackagingScope: POMEGR_DT_08_PACKAGING_SCOPE },
       electronUpdaterCompatibility: ">=2.16",
-      publish: [{ provider: "github", owner: "Lecarvalho", repo: "threadlight" }],
+      publish: [{ provider: "github", owner: "Lecarvalho", repo: "pomegr" }],
       win: { verifyUpdateCodeSignature: true, signtoolOptions: { publisherName: "Leandro Carvalho" } },
       nsis: { differentialPackage: true },
     },
     dependencies: { "electron-updater": "6.8.9" },
     devDependencies: {},
   };
-  assert.equal(assertTlDt05PackagingScope(base), true);
-  assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
+  assert.equal(assertPomegrDt08PackagingScope(base), true);
+  assert.throws(() => assertPomegrDt08PackagingScope({ ...base, build: {
     ...base.build,
-    extraMetadata: { threadlightPackagingScope: "TL-DT-05-no-updater" },
-  } }), /DESKTOP_TL_DT_05_SCOPE_REQUIRED/);
-  assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
+    extraMetadata: { pomegrPackagingScope: "POMEGR-DT-08-no-updater" },
+  } }), /DESKTOP_POMEGR_DT_08_SCOPE_REQUIRED/);
+  assert.throws(() => assertPomegrDt08PackagingScope({ ...base, build: {
     ...base.build,
     publish: [{ provider: "github" }],
   } }), /DESKTOP_UPDATE_PUBLISH_INVALID/);
-  assert.throws(() => assertTlDt05PackagingScope({ ...base, dependencies: {} }), /DESKTOP_UPDATER_DEPENDENCY_REQUIRED/);
-  assert.throws(() => assertTlDt05PackagingScope({ ...base, build: {
+  assert.throws(() => assertPomegrDt08PackagingScope({ ...base, dependencies: {} }), /DESKTOP_UPDATER_DEPENDENCY_REQUIRED/);
+  assert.throws(() => assertPomegrDt08PackagingScope({ ...base, build: {
     ...base.build,
     win: { verifyUpdateCodeSignature: false },
   } }), /DESKTOP_UPDATE_SIGNATURE_VERIFICATION_REQUIRED/);
@@ -219,20 +224,27 @@ test("clean-VM upgrade fixture is isolated, test-only, and preserves candidate m
     readFile(new URL("../.gitignore", import.meta.url), "utf8"),
   ]);
   const packageJson = JSON.parse(packageText);
-  assert.equal(packageJson.version, "0.1.0");
+  assert.equal(packageJson.version, "0.2.0");
   assert.equal(ACCEPTANCE_PRIOR_VERSION, "0.0.9");
   assert.equal(ACCEPTANCE_PRIOR_OUTPUT, "release-acceptance");
-  assert.equal(ACCEPTANCE_PRIOR_ARTIFACT, "Threadlight-TestOnly-Prior-0.0.9-x64.exe");
+  assert.equal(ACCEPTANCE_PRIOR_ARTIFACT, "Pomegr-TestOnly-Prior-0.0.9-x64.exe");
   assert.match(packageJson.scripts["desktop:package:acceptance-prior"], /build-acceptance-prior\.mjs/);
   assert.match(packageJson.scripts["desktop:inspect:acceptance-prior"], /inspect-acceptance-prior\.mjs/);
   assert.match(builder, /Platform\.WINDOWS\.createTarget\(\["nsis"\], Arch\.x64\)/);
-  assert.match(builder, /threadlightPackagingScope/);
+  assert.match(builder, /pomegrPackagingScope/);
   assert.doesNotMatch(builder, /appId\s*:/);
   assert.match(inspector, /assertPackagedApplicationFiles/);
   assert.match(gitignore, /^\/release-acceptance\/$/m);
-  assert.match(checklist, /Threadlight-TestOnly-Prior-0\.0\.9-x64\.exe/);
-  assert.match(checklist, /Threadlight-Setup-0\.1\.0-x64\.exe/);
-  assert.match(checklist, /Threadlight-Portable-0\.1\.0-x64\.exe/);
+  assert.match(checklist, /Pomegr-TestOnly-Prior-0\.0\.9-x64\.exe/);
+  assert.match(checklist, /Pomegr-Setup-0\.2\.0-x64\.exe/);
+  assert.match(checklist, /Pomegr-Portable-0\.2\.0-x64\.exe/);
   assert.match(checklist, /SmartScreen/);
-  assert.match(checklist, /expected to be unsigned until signing is implemented in `TL-DT-08`/);
+  assert.match(checklist, /POMEGR-DT-08/);
+  assert.match(checklist, /Acceptance status\s+\*\*PENDING:/);
+  assert.match(checklist, /contains no Pomegr 0\.2\.0 PASS claim/);
+  assert.match(checklist, /prior-only input, not Pomegr 0\.2\.0 proof/);
+  assert.doesNotMatch(checklist, /- \[x\]/i);
+  assert.doesNotMatch(checklist, /\|\s*Result\s*\|\s*PASS\s*\|/i);
+  assert.doesNotMatch(checklist, /\b[A-F0-9]{64}\b/);
+  assert.doesNotMatch(checklist, /\|\s*[\d,]{6,}\s*\|/);
 });

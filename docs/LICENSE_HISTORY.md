@@ -1,6 +1,6 @@
-# Threadlight license history
+# Pomegr license history
 
-Threadlight changed from the MIT License to the GNU Affero General Public License version 3 (`AGPL-3.0-only`) for future development.
+Pomegr, formerly named Threadlight, changed from the MIT License to the GNU Affero General Public License version 3 (`AGPL-3.0-only`) for future development.
 
 ## Transition boundary
 
@@ -13,6 +13,6 @@ The license applicable to a particular revision is the license recorded in that 
 
 ## Why the project changed
 
-AGPLv3 keeps Threadlight genuinely open source while requiring modified network-facing versions to offer their corresponding source code to their users. The change supports an open-source core alongside possible commercial licensing, hosted coordination, enterprise deployment, and support.
+AGPLv3 keeps Pomegr genuinely open source while requiring modified network-facing versions to offer their corresponding source code to their users. The change supports an open-source core alongside possible commercial licensing, hosted coordination, enterprise deployment, and support.
 
-The software license does not grant rights to the Threadlight name or visual identity. See [`TRADEMARKS.md`](../TRADEMARKS.md).
+The software license does not grant rights to the Pomegr name or visual identity. See [`TRADEMARKS.md`](../TRADEMARKS.md).

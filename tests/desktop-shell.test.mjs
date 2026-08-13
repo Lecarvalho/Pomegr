@@ -153,11 +153,11 @@ test("desktop navigation denies webviews, unexpected origins, and non-allowliste
   contents.emit("will-attach-webview", webview);
   assert.equal(webview.prevented, true);
   assert.deepEqual(openHandler({ url: "https://example.com/private" }), { action: "deny" });
-  assert.deepEqual(openHandler({ url: "https://github.com/Lecarvalho/threadlight/blob/main/LICENSE" }), { action: "deny" });
+  assert.deepEqual(openHandler({ url: "https://github.com/Lecarvalho/pomegr/blob/main/LICENSE" }), { action: "deny" });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(opened, ["https://github.com/Lecarvalho/threadlight/blob/main/LICENSE"]);
-  assert.equal(isAllowedExternalUrl("https://github.com/Lecarvalho/threadlight.evil.invalid/"), false);
-  assert.equal(isAllowedExternalUrl("http://github.com/Lecarvalho/threadlight"), false);
+  assert.deepEqual(opened, ["https://github.com/Lecarvalho/pomegr/blob/main/LICENSE"]);
+  assert.equal(isAllowedExternalUrl("https://github.com/Lecarvalho/pomegr.evil.invalid/"), false);
+  assert.equal(isAllowedExternalUrl("http://github.com/Lecarvalho/pomegr"), false);
 });
 
 test("desktop web gate requires the dynamic host, same origin, read-only method, and launch token", async () => {
@@ -295,7 +295,7 @@ test("durable shell diagnostics use only fixed ordered stages and retain the wor
     readFileSync: () => content,
     writeFileSync: (_path, value) => { content = value; },
   };
-  const environment = { THREADLIGHT_SMOKE_MAIN_STAGE_PATH: "fixed-diagnostic-path" };
+  const environment = { POMEGR_SMOKE_MAIN_STAGE_PATH: "fixed-diagnostic-path" };
   for (const stage of SHELL_STARTUP_STAGES) assert.equal(recordShellStage(environment, stage, io), true);
   assert.equal(recordShellStage(environment, "SHELL_PRIVATE_PATH", io), false);
   assert.equal(isAllowedShellStage("SHELL_WEB_READY"), true);
@@ -362,7 +362,7 @@ test("second-instance focus restores only a live production window", () => {
 test("production startup error document contains only fixed bounded diagnostics", () => {
   const document = startupErrorDocument();
   assert.equal(DESKTOP_STARTUP_ERROR_CODE, "DESKTOP_START_FAILED");
-  assert.match(document, /Threadlight could not start/);
+  assert.match(document, /Pomegr could not start/);
   assert.match(document, /default-src 'none'/);
   assert.match(document, /DESKTOP_START_FAILED/);
   assert.doesNotMatch(document, /PRIVATE_PATH|stack|exception|stdout|stderr|credential/i);
@@ -383,7 +383,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(main, /requestSingleInstanceLock\(\)/);
   assert.match(main, /installDesktopAppLifecycle\(app/);
   assert.match(main, /stopChild\(monitorChild/);
-  assert.match(main, /THREADLIGHT_RESOURCE_ROOT:\s*desktopPaths\.applicationRoot/);
+  assert.match(main, /POMEGR_RESOURCE_ROOT:\s*desktopPaths\.applicationRoot/);
   assert.match(main, /resourcesPath:\s*process\.resourcesPath/);
   assert.match(main, /userDataPath:\s*app\.getPath\("userData"\)/);
   assert.ok(main.indexOf('app.setPath("userData", userDataOverride)') < main.indexOf("app.requestSingleInstanceLock()"));
@@ -397,12 +397,12 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.doesNotMatch(main, /writable:\s*false/);
   assert.match(serverBundle, /console\.error\s*=/);
   assert.doesNotMatch(main, /error\.message|error\.stack|console\.(?:error|log)/);
-  assert.match(preload, /contextBridge\.exposeInMainWorld\("threadlightDesktop"/);
-  assert.match(preload, /ipcRenderer\.invoke\("threadlight:save-report", payload\)/);
-  assert.match(preload, /ipcRenderer\.invoke\("threadlight:set-notifications", value\)/);
-  assert.match(preload, /ipcRenderer\.invoke\("threadlight:set-notification-quiet", value\)/);
-  assert.match(preload, /ipcRenderer\.on\("threadlight:desktop-state-changed", listener\)/);
-  assert.match(preload, /ipcRenderer\.removeListener\("threadlight:desktop-state-changed", listener\)/);
+  assert.match(preload, /contextBridge\.exposeInMainWorld\("pomegrDesktop"/);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:save-report", payload\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notifications", value\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notification-quiet", value\)/);
+  assert.match(preload, /ipcRenderer\.on\("pomegr:desktop-state-changed", listener\)/);
+  assert.match(preload, /ipcRenderer\.removeListener\("pomegr:desktop-state-changed", listener\)/);
   assert.match(preload, /ipcRenderer\.invoke\(DESKTOP_THEME_CHANNEL, source\)/);
   assert.match(preload, /source !== "light" && source !== "dark" && source !== "system"/);
   assert.doesNotMatch(preload, /node:(?:fs|child_process)|process\.|ipcRenderer\.(?:send|sendSync|once)|shell|webFrame/);
@@ -418,7 +418,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(main, /openNotificationSession/);
   assert.match(main, /encodeURIComponent\(sessionId\)/);
   assert.doesNotMatch(main, /notification[^\n]*(?:answer|approve|command|prompt)/i);
-  assert.match(main, /label: "Quit Threadlight"/);
+  assert.match(main, /label: "Quit Pomegr"/);
   assert.match(main, /installDesktopWindowLifecycle\(mainWindow/);
   assert.match(main, /installDesktopAppLifecycle\(app/);
   assert.match(main, /createDesktopThemeHandler\(\{/);

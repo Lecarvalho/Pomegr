@@ -456,7 +456,7 @@ export async function startMonitorServer(options = {}) {
     // Initialize provider-owned watch targets only after the listener is ready.
     // The values are intentionally neither logged nor exposed by this seam.
     await registry.watchTargets();
-    options.logger?.log?.(`[threadlight] Monitor ready on ${handle.origin}.`);
+    options.logger?.log?.(`[pomegr] Monitor ready on ${handle.origin}.`);
     return handle;
   } catch (error) {
     if (handle) await handle.close();

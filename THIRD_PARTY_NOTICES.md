@@ -1,6 +1,6 @@
 # Third-party software notices
 
-Threadlight includes the following installed Windows x64 runtime dependencies selected for the packaged application. Packages for other operating systems or CPU architectures are excluded. Each component remains subject to its own license. Package license texts are retained in the packaged dependency where supplied; Electron's distribution also includes its Electron and Chromium license files.
+Pomegr includes the following installed Windows x64 runtime dependencies selected for the packaged application. Packages for other operating systems or CPU architectures are excluded. Each component remains subject to its own license. Package license texts are retained in the packaged dependency where supplied; Electron's distribution also includes its Electron and Chromium license files.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ Threadlight includes the following installed Windows x64 runtime dependencies se
 | sax | 1.6.1 | BlueOak-1.0.0 |
 | scheduler | 0.27.0 | MIT |
 | semver | 7.7.4 | ISC |
-| semver | 7.8.0 | ISC |
+| semver | 7.8.5 | ISC |
 | sharp | 0.34.5 | Apache-2.0 |
 | source-map-js | 1.2.1 | BSD-3-Clause |
 | string.prototype.codepointat | 0.2.1 | MIT |

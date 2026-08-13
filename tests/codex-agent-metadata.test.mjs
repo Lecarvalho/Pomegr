@@ -72,7 +72,7 @@ test("uses the latest recognized turn context and keeps private settings fields 
 });
 
 test("builds a deterministic primary/subagent tree across completion, interruption, resume, fork, and missing rollout", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-agents-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-agents-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await writeAgentFixtures(root);
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 30 });

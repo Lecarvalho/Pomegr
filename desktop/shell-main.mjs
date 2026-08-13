@@ -90,10 +90,10 @@ function workerEntrypoint() {
 function createMonitorWorker(privateEnvironment) {
   const worker = new Worker(workerEntrypoint(), {
     env: minimalRuntimeEnvironment(process.env, {
-      THREADLIGHT_RESOURCE_ROOT: desktopPaths.applicationRoot,
+      POMEGR_RESOURCE_ROOT: desktopPaths.applicationRoot,
     }),
     execArgv: [],
-    name: "threadlight-monitor",
+    name: "pomegr-monitor",
     workerData: { authorizationToken, privateEnvironment, smoke: false },
   });
   const child = new EventEmitter();
@@ -221,9 +221,9 @@ async function startDesktopUpdates() {
         if (!mainWindow || mainWindow.isDestroyed()) return false;
         const result = await dialog.showMessageBox(mainWindow, {
           type: "info",
-          title: "Threadlight update ready",
-          message: `Threadlight ${version} is ready to install.`,
-          detail: "Restart Threadlight now to install the verified update, or choose Later to keep using this version.",
+          title: "Pomegr update ready",
+          message: `Pomegr ${version} is ready to install.`,
+          detail: "Restart Pomegr now to install the verified update, or choose Later to keep using this version.",
           buttons: ["Later", "Restart and install"],
           defaultId: 0,
           cancelId: 0,
@@ -241,15 +241,15 @@ async function startDesktopUpdates() {
 function updateTrayMenu(state) {
   if (!tray || tray.isDestroyed()) return;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Open Threadlight", click: showShellWindow },
+    { label: "Open Pomegr", click: showShellWindow },
     { label: state.paused ? "Resume live refresh" : "Pause live refresh", click: () => behaviorController?.togglePaused() },
     { label: "Launch at login", type: "checkbox", checked: state.launchAtLogin, enabled: state.launchAtLoginAvailable, click: (item) => {
       if (behaviorController) void applyTrayLoginToggle(behaviorController, item.checked, updateTrayMenu);
     } },
     { type: "separator" },
-    { label: "About Threadlight", click: openAbout },
+    { label: "About Pomegr", click: openAbout },
     { type: "separator" },
-    { label: "Quit Threadlight", click: () => behaviorController?.quit() },
+    { label: "Quit Pomegr", click: () => behaviorController?.quit() },
   ]));
 }
 
@@ -260,7 +260,7 @@ function createShellTray() {
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   if (icon.isEmpty()) throw new Error("DESKTOP_TRAY_ICON_MISSING");
   tray = new Tray(icon);
-  tray.setToolTip("Threadlight — local read-only observer");
+  tray.setToolTip("Pomegr — local read-only observer");
   tray.on("click", showShellWindow);
 }
 
@@ -302,7 +302,7 @@ async function showStartupError() {
   removeWindowLifecycle?.();
   removeWindowLifecycle = undefined;
   try { mainWindow?.destroy(); } catch { /* A failed renderer may already be gone. */ }
-  const errorSession = session.fromPartition(`threadlight-error-${randomUUID()}`);
+  const errorSession = session.fromPartition(`pomegr-error-${randomUUID()}`);
   installSessionSecurity(errorSession, {
     webOrigin: "http://127.0.0.1:1",
     authorizationToken,
@@ -382,7 +382,7 @@ async function startDesktop() {
     writeFile,
   }));
   let privateEnvironment = monitorPrivateEnvironment(process.env, {
-    threadlightDataRoot: desktopPaths.dataRoot,
+    pomegrDataRoot: desktopPaths.dataRoot,
   });
   runtimeState = "starting";
   try {
@@ -409,8 +409,8 @@ async function startDesktop() {
       async startWeb(monitorReady) {
         if (startupFailed || !monitorChild.pid) throw new Error("DESKTOP_MONITOR_EXITED");
         keepOnlyRuntimeEnvironment(process.env, {
-          THREADLIGHT_MONITOR_ORIGIN: monitorReady.origin,
-          THREADLIGHT_MONITOR_TOKEN: authorizationToken,
+          POMEGR_MONITOR_ORIGIN: monitorReady.origin,
+          POMEGR_MONITOR_TOKEN: authorizationToken,
         });
         assertNoSystemNodeInPath(process.env);
         recordStage("SHELL_WEB_IMPORTING");
@@ -448,7 +448,7 @@ async function startDesktop() {
       },
       createWindow({ web }) {
         if (startupFailed) throw new Error("DESKTOP_SERVICE_EXITED");
-        const browserSession = session.fromPartition(`threadlight-${randomUUID()}`, { cache: false });
+        const browserSession = session.fromPartition(`pomegr-${randomUUID()}`, { cache: false });
         installSessionSecurity(browserSession, {
           webOrigin: web.origin,
           authorizationToken,
@@ -470,10 +470,10 @@ async function startDesktop() {
           explainClose: async () => {
             const result = await dialog.showMessageBox(mainWindow, {
               type: "info",
-              title: "Keep Threadlight available?",
-              message: "Threadlight can keep observing locally after you close its window.",
-              detail: "Choose Keep running to leave it in the system tray. Monitoring stays read-only, and you can quit at any time from Threadlight or the tray.",
-              buttons: ["Keep running", "Quit Threadlight"],
+              title: "Keep Pomegr available?",
+              message: "Pomegr can keep observing locally after you close its window.",
+              detail: "Choose Keep running to leave it in the system tray. Monitoring stays read-only, and you can quit at any time from Pomegr or the tray.",
+              buttons: ["Keep running", "Quit Pomegr"],
               defaultId: 0,
               cancelId: 0,
               checkboxLabel: "Remember my choice",

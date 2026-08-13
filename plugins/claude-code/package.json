@@ -1,5 +1,5 @@
 {
-  "name": "@threadlight/claude-code-plugin",
+  "name": "@pomegr/claude-code-plugin",
   "version": "0.1.0",
   "private": true,
   "type": "module",

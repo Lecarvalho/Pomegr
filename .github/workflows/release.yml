@@ -84,9 +84,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           ./desktop/verify-signature.ps1 -Path @(
-            "release/win-unpacked/Threadlight.exe",
-            "release/Threadlight-Setup-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe",
-            "release/Threadlight-Portable-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe"
+            "release/win-unpacked/Pomegr.exe",
+            "release/Pomegr-Setup-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe",
+            "release/Pomegr-Portable-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe"
           )
 
       - name: Generate release notes
@@ -111,7 +111,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $Version = (Get-Content package.json | ConvertFrom-Json).version
           $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--latest' }
-          gh release create $env:GITHUB_REF_NAME release/publish/* --draft $Prerelease --verify-tag --title "Threadlight $Version" --notes-file release/publish/RELEASE_NOTES.md
+          gh release create $env:GITHUB_REF_NAME release/publish/* --draft $Prerelease --verify-tag --title "Pomegr $Version" --notes-file release/publish/RELEASE_NOTES.md
 
       - name: Verify draft assets and publish
         shell: pwsh

@@ -1,6 +1,6 @@
 const DEFAULT_MONITOR_ORIGIN = "http://127.0.0.1:4317";
 
-export function monitorOrigin(value = process.env.THREADLIGHT_MONITOR_ORIGIN) {
+export function monitorOrigin(value = process.env.POMEGR_MONITOR_ORIGIN) {
   if (!value) return DEFAULT_MONITOR_ORIGIN;
   try {
     const origin = new URL(value);
@@ -23,11 +23,11 @@ type MonitorProxyOptions = {
 
 export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: MonitorProxyOptions) {
   try {
-    const authorizationToken = process.env.THREADLIGHT_MONITOR_TOKEN;
+    const authorizationToken = process.env.POMEGR_MONITOR_TOKEN;
     const response = await fetch(`${monitorOrigin()}${path}`, {
       cache: "no-store",
       headers: authorizationToken
-        ? { "x-threadlight-desktop-authorization": authorizationToken }
+        ? { "x-pomegr-desktop-authorization": authorizationToken }
         : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });

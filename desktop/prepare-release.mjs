@@ -52,11 +52,11 @@ export async function prepareRelease({
   assertReleaseTag({ tag, version });
   assertCleanTaggedCheckout(repositoryRoot, tag);
 
-  const installer = `Threadlight-Setup-${version}-x64.exe`;
+  const installer = `Pomegr-Setup-${version}-x64.exe`;
   const requiredBuildFiles = [
     installer,
     `${installer}.blockmap`,
-    `Threadlight-Portable-${version}-x64.exe`,
+    `Pomegr-Portable-${version}-x64.exe`,
     updateMetadataName(version),
     "RELEASE_NOTES.md",
   ];
@@ -71,8 +71,8 @@ export async function prepareRelease({
     await copyFile(path.join(repositoryRoot, name), path.join(outputRoot, name));
   }
 
-  const sourceName = `Threadlight-${version}-source.zip`;
-  execFileSync("git", ["archive", "--format=zip", `--prefix=threadlight-${version}/`, "--output", path.join(outputRoot, sourceName), tag], {
+  const sourceName = `Pomegr-${version}-source.zip`;
+  execFileSync("git", ["archive", "--format=zip", `--prefix=pomegr-${version}/`, "--output", path.join(outputRoot, sourceName), tag], {
     cwd: repositoryRoot,
     stdio: ["ignore", "ignore", "pipe"],
   });

@@ -45,7 +45,7 @@ let watchdog;
 let runtimePaths;
 
 function recordStage(stage) {
-  const stagePath = environmentValue(process.env, "THREADLIGHT_SMOKE_MAIN_STAGE_PATH");
+  const stagePath = environmentValue(process.env, "POMEGR_SMOKE_MAIN_STAGE_PATH");
   if (!stagePath) return;
   try { writeFileSync(stagePath, stage, "utf8"); } catch { /* Fixed smoke diagnostics are best-effort. */ }
 }
@@ -74,9 +74,9 @@ function forkUtility(filename, args, environment, stagePrefix, workerData) {
   recordStage(`${stagePrefix}_TARGET_PRESENT`);
   const worker = new Worker(entrypoint, {
     argv: args,
-    env: { ...environment, THREADLIGHT_SMOKE_RESOURCE_ROOT: runtimePaths.applicationRoot },
+    env: { ...environment, POMEGR_SMOKE_RESOURCE_ROOT: runtimePaths.applicationRoot },
     execArgv: [],
-    name: `threadlight-${stagePrefix.toLowerCase()}`,
+    name: `pomegr-${stagePrefix.toLowerCase()}`,
     workerData,
   });
   const child = new EventEmitter();
@@ -158,15 +158,15 @@ async function finish(exitCode) {
     recordStage("CLEANUP_FAILED");
   }
   if (exitCode === 0) recordStage("FINISHED_PASS");
-  if (exitCode === 0) await writeResult("Threadlight desktop runtime compatibility: PASS", process.stdout);
-  else await writeResult("Threadlight desktop runtime compatibility: FAIL (DESKTOP_SMOKE_FAILED)", process.stderr);
+  if (exitCode === 0) await writeResult("Pomegr desktop runtime compatibility: PASS", process.stdout);
+  else await writeResult("Pomegr desktop runtime compatibility: FAIL (DESKTOP_SMOKE_FAILED)", process.stderr);
   setImmediate(() => process.exit(exitCode));
 }
 
 async function executeSmoke() {
   try {
     const authorizationToken = randomBytes(32).toString("base64url");
-    const expectedProfile = environmentValue(process.env, "THREADLIGHT_SMOKE_PROFILE_ROOT");
+    const expectedProfile = environmentValue(process.env, "POMEGR_SMOKE_PROFILE_ROOT");
     if (!expectedProfile || path.resolve(app.getPath("userData")) !== path.resolve(expectedProfile)) {
       throw new Error("DESKTOP_PROFILE_NOT_ISOLATED");
     }
@@ -200,13 +200,13 @@ async function executeSmoke() {
     if (!/^git version /i.test(gitVersion)) throw new Error("DESKTOP_GIT_EXEC_FAILED");
     recordStage("MAIN_GIT_VERIFIED");
 
-    const monitorEnvironmentPath = environmentValue(process.env, "THREADLIGHT_SMOKE_MONITOR_ENV_PATH");
+    const monitorEnvironmentPath = environmentValue(process.env, "POMEGR_SMOKE_MONITOR_ENV_PATH");
     if (!monitorEnvironmentPath) throw new Error("DESKTOP_MONITOR_ENV_MISSING");
     const monitor = await startService(
       "monitor-host.cjs",
       [],
       minimalRuntimeEnvironment(process.env, {
-        THREADLIGHT_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
+        POMEGR_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
       }),
       "MONITOR",
       { authorizationToken, smoke: true },
@@ -215,8 +215,8 @@ async function executeSmoke() {
     recordStage("MONITOR_READY");
 
     keepOnlyRuntimeEnvironment(process.env, {
-      THREADLIGHT_MONITOR_ORIGIN: monitor.ready.origin,
-      THREADLIGHT_MONITOR_TOKEN: authorizationToken,
+      POMEGR_MONITOR_ORIGIN: monitor.ready.origin,
+      POMEGR_MONITOR_TOKEN: authorizationToken,
     });
     assertNoSystemNodeInPath(process.env);
     recordStage("WEB_ENVIRONMENT_STRIPPED");
@@ -237,10 +237,10 @@ async function executeSmoke() {
 
     recordStage("WEB_HEALTH_CHECKING");
     const [page, sessions] = await Promise.all([
-      fetch(webHandle.origin, { headers: { "x-threadlight-desktop-authorization": authorizationToken } }),
-      fetch(`${webHandle.origin}/api/sessions`, { headers: { "x-threadlight-desktop-authorization": authorizationToken } }),
+      fetch(webHandle.origin, { headers: { "x-pomegr-desktop-authorization": authorizationToken } }),
+      fetch(`${webHandle.origin}/api/sessions`, { headers: { "x-pomegr-desktop-authorization": authorizationToken } }),
     ]);
-    if (page.status !== 200 || !/<title>Threadlight<\/title>/i.test(await page.text())) {
+    if (page.status !== 200 || !/<title>Pomegr<\/title>/i.test(await page.text())) {
       throw new Error("DESKTOP_WEB_RUNTIME_FAILED");
     }
     if (sessions.status !== 200 || !Array.isArray((await sessions.json()).sessions)) {
@@ -248,7 +248,7 @@ async function executeSmoke() {
     }
     recordStage("WEB_HEALTH_VERIFIED");
     recordStage("WINDOW_CREATING");
-    const browserSession = session.fromPartition("threadlight-smoke", { cache: false });
+    const browserSession = session.fromPartition("pomegr-smoke", { cache: false });
     installSessionSecurity(browserSession, {
       webOrigin: webHandle.origin,
       authorizationToken,
@@ -266,7 +266,7 @@ async function executeSmoke() {
       const deadline = Date.now() + 15000;
       while (Date.now() < deadline) {
         const frame = document.querySelector('.appFrame');
-        const hydrated = document.documentElement.dataset.threadlightHydrated === 'true';
+        const hydrated = document.documentElement.dataset.pomegrHydrated === 'true';
         if (frame && hydrated && getComputedStyle(frame).display === 'grid') {
           const [response, sessionsResponse] = await Promise.all([
             fetch('/api/state', { cache: 'no-store' }),
@@ -294,7 +294,7 @@ async function executeSmoke() {
       }
       return { title: document.title, styled: false, hydrated: false, stateReady: false };
     })()`, true);
-    if (rendererBoundary?.title !== "Threadlight"
+    if (rendererBoundary?.title !== "Pomegr"
       || rendererBoundary.hasNodeProcess !== false
       || rendererBoundary.hasRequire !== false
       || rendererBoundary.styled !== true

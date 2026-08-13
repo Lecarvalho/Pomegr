@@ -11,14 +11,14 @@ function git(cwd, ...args) {
 }
 
 async function repositoryFixture(context) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight Git José -"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr Git José -"));
   const repository = path.join(root, "repository with spaces");
   const remote = path.join(root, "origin é.git");
   context.after(() => rm(root, { recursive: true, force: true }));
   execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
   execFileSync("git", ["init", "--initial-branch=main", repository], { stdio: "ignore" });
-  git(repository, "config", "user.name", "Threadlight Test");
-  git(repository, "config", "user.email", "threadlight@example.test");
+  git(repository, "config", "user.name", "Pomegr Test");
+  git(repository, "config", "user.email", "pomegr@example.test");
   await writeFile(path.join(repository, "tracked.txt"), "first\n");
   git(repository, "add", "tracked.txt");
   git(repository, "commit", "-m", "Initial commit");
@@ -66,7 +66,7 @@ test("shows only commits unique to a feature branch", async (context) => {
 
   const publisher = path.join(root, "publisher");
   execFileSync("git", ["clone", "--quiet", remote, publisher], { stdio: "ignore" });
-  git(publisher, "config", "user.name", "Threadlight Publisher");
+  git(publisher, "config", "user.name", "Pomegr Publisher");
   git(publisher, "config", "user.email", "publisher@example.test");
   await writeFile(path.join(publisher, "remote.txt"), "remote\n");
   git(publisher, "add", "remote.txt");
@@ -107,7 +107,7 @@ test("treats squash-merged branch changes as integrated instead of ahead", async
 
   const publisher = path.join(root, "squash-publisher");
   execFileSync("git", ["clone", "--quiet", remote, publisher], { stdio: "ignore" });
-  git(publisher, "config", "user.name", "Threadlight Publisher");
+  git(publisher, "config", "user.name", "Pomegr Publisher");
   git(publisher, "config", "user.email", "publisher@example.test");
   await writeFile(path.join(publisher, "first-feature.txt"), "first\n");
   await writeFile(path.join(publisher, "second-feature.txt"), "second\n");

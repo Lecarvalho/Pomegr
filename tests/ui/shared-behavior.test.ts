@@ -42,8 +42,8 @@ describe("wall-time formatting", () => {
 
 describe("session attention", () => {
   const sessions: SessionSummary[] = [
-    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true },
-    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Threadlight", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false },
+    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true },
+    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false },
   ];
 
   it("shows attention only while viewing the live session that needs input", () => {
@@ -59,7 +59,7 @@ describe("session catalog order", () => {
     provider: "claude",
     source: "Claude Code",
     title: id,
-    project: "Threadlight",
+    project: "Pomegr",
     updatedAt,
     isLive: true,
     needsInput: false,
@@ -104,7 +104,7 @@ describe("monitor proxy", () => {
   });
 
   it("never proxies an ambient non-loopback monitor origin", async () => {
-    vi.stubEnv("THREADLIGHT_MONITOR_ORIGIN", "https://private.example.invalid:8443/metadata");
+    vi.stubEnv("POMEGR_MONITOR_ORIGIN", "https://private.example.invalid:8443/metadata");
     const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 

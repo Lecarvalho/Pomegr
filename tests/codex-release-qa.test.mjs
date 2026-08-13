@@ -34,7 +34,7 @@ function appThread(id, options = {}) {
 }
 
 test("two rollout and app-server compatibility shapes normalize without private or cumulative data", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-schemas-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-schemas-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await writeFixture(path.join(sessions, "rollout-schema-v1.jsonl"), "codex/schema-rollout-v1.jsonl");
@@ -86,7 +86,7 @@ test("two rollout and app-server compatibility shapes normalize without private 
 });
 
 test("missing child rollouts, unavailable app-server, malformed records, and deleted history fail independently", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-failures-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-failures-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await writeFixture(path.join(sessions, "rollout-schema-v1.jsonl"), "codex/schema-rollout-v1.jsonl");
@@ -147,7 +147,7 @@ test("fresh direct thread metadata wins catalog timestamp ties and trusted ances
   });
   const unrelated = appThread("unrelated-root");
   const provider = createCodexProvider({
-    codexHome: path.join(os.tmpdir(), "threadlight-codex-fresh-tree-missing"),
+    codexHome: path.join(os.tmpdir(), "pomegr-codex-fresh-tree-missing"),
     includeArchived: false,
     cacheMs: 10_000,
     appServer: {
@@ -167,7 +167,7 @@ test("fresh direct thread metadata wins catalog timestamp ties and trusted ances
   assert.equal(evidence.agents.some((agent) => agent.id === `agent-${unrelated.id}`), false);
 
   const ignoredFilterProvider = createCodexProvider({
-    codexHome: path.join(os.tmpdir(), "threadlight-codex-ignored-ancestor-missing"),
+    codexHome: path.join(os.tmpdir(), "pomegr-codex-ignored-ancestor-missing"),
     includeArchived: false,
     cacheMs: 10_000,
     appServer: {
@@ -182,7 +182,7 @@ test("fresh direct thread metadata wins catalog timestamp ties and trusted ances
 });
 
 test("fresh app-server descendants read authoritative in-home rollouts before the catalog cache refreshes", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-fresh-runtime-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-fresh-runtime-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(sessions, { recursive: true });
@@ -270,7 +270,7 @@ test("fresh app-server descendants read authoritative in-home rollouts before th
 });
 
 test("multiple large live rollouts use one bounded read each and reuse provider caches", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-performance-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-performance-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(sessions, { recursive: true });
@@ -325,7 +325,7 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
 });
 
 test("selected session parsing ignores unrelated rollouts and follows collaboration-only descendants", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-selected-tree-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-selected-tree-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(sessions, { recursive: true });
@@ -431,7 +431,7 @@ test("concurrent catalog polls share one app-server request and one cache entry"
   const gate = new Promise((resolve) => { release = resolve; });
   const thread = appThread("coalesced-catalog");
   const provider = createCodexProvider({
-    codexHome: path.join(os.tmpdir(), "threadlight-codex-coalesced-missing"),
+    codexHome: path.join(os.tmpdir(), "pomegr-codex-coalesced-missing"),
     includeArchived: false,
     cacheMs: 10_000,
     appServer: {

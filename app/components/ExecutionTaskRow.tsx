@@ -38,7 +38,7 @@ export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
       <div>
         <div className="executionTaskTitleLine">
           <strong>{task.label}</strong>
-          {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Threadlight MCP tool">{task.signal.label}</AgentChip>}
+          {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Pomegr MCP tool">{task.signal.label}</AgentChip>}
         </div>
         <small>
           Shell · {running && task.background ? "background · " : ""}<ExecutionTaskWallTimeText task={task} />

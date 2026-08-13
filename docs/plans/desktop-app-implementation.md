@@ -1,10 +1,10 @@
-# Threadlight desktop app implementation plan
+# Pomegr desktop app implementation plan
 
 ## Objective
 
-Distribute Threadlight as a one-click Windows desktop application without requiring users to clone the repository, install Node.js, or keep a terminal open. Preserve the existing local-first, read-only architecture, normalized browser API, provider isolation, deterministic metrics, and privacy boundaries.
+Distribute Pomegr as a one-click Windows desktop application without requiring users to clone the repository, install Node.js, or keep a terminal open. Preserve the existing local-first, read-only architecture, normalized browser API, provider isolation, deterministic metrics, and privacy boundaries.
 
-The first release target is a signed Windows installer that opens Threadlight, discovers existing Claude Code and Codex sessions, runs in the system tray, and can notify the user when a session needs input. Browser-based development remains supported.
+The first release target is a signed Windows installer that opens Pomegr, discovers existing Claude Code and Codex sessions, runs in the system tray, and can notify the user when a session needs input. Browser-based development remains supported.
 
 This plan is divided into tasks intended to be completed in separate coding sessions. Each task must leave the repository buildable and tested and must not pull later desktop features into its scope.
 
@@ -12,7 +12,7 @@ This plan is divided into tasks intended to be completed in separate coding sess
 
 Start a new session with a request such as:
 
-> Implement `TL-DT-03` from `docs/plans/desktop-app-implementation.md`. Preserve unrelated working-tree changes and stop when that task's acceptance criteria are met.
+> Implement `POMEGR-DT-03` from `docs/plans/desktop-app-implementation.md`. Preserve unrelated working-tree changes and stop when that task's acceptance criteria are met.
 
 Before starting any task:
 
@@ -35,7 +35,7 @@ Before starting any task:
 - Keep the open-source desktop application under `AGPL-3.0-only`; include the license, notice, source offer, and trademark policy in distributions.
 - Retain `npm run dev` as the contributor workflow.
 
-Electron is preferred over Tauri because Threadlight's monitor, provider adapters, Git inspection, and production server are already Node.js modules. Tauri would still require a bundled Node sidecar unless the monitor were rewritten in Rust, adding a second runtime and target-specific sidecar packaging before the product has validated desktop distribution.
+Electron is preferred over Tauri because Pomegr's monitor, provider adapters, Git inspection, and production server are already Node.js modules. Tauri would still require a bundled Node sidecar unless the monitor were rewritten in Rust, adding a second runtime and target-specific sidecar packaging before the product has validated desktop distribution.
 
 ## Target architecture
 
@@ -89,7 +89,7 @@ flowchart LR
 - Use `spawn`/`execFile` argument arrays or Electron utility-process APIs; never construct shell commands from session-derived values.
 - Bind desktop services to loopback by default. LAN access is out of scope for the first desktop release.
 - Use dynamically allocated ports obtained from the actual listener rather than check-then-bind port probing.
-- Add a per-launch local authorization boundary or equivalent origin restriction so another local webpage cannot read Threadlight metadata merely by guessing a port.
+- Add a per-launch local authorization boundary or equivalent origin restriction so another local webpage cannot read Pomegr metadata merely by guessing a port.
 - Desktop logs may include bounded lifecycle states, fixed error codes, versions, and timestamps only. They must not contain transcripts, prompts, responses, commands, stdout, stderr, credentials, repository file contents, or provider-local private paths.
 - Clean shutdown must stop every child or utility process. Crashes must not leave a monitor or web server running indefinitely.
 - Signing credentials, updater credentials, and certificates must exist only in CI secrets or the signing environment and must never enter the repository.
@@ -121,14 +121,14 @@ flowchart LR
 
 ## Milestones
 
-- **Runtime feasibility:** `TL-DT-01` through `TL-DT-03`
-- **Installable Windows alpha:** `TL-DT-04` and `TL-DT-05`
-- **Desktop beta:** `TL-DT-06` through `TL-DT-08`
-- **Release readiness:** `TL-DT-09` and `TL-DT-10`
+- **Runtime feasibility:** `POMEGR-DT-01` through `POMEGR-DT-03`
+- **Installable Windows alpha:** `POMEGR-DT-04` and `POMEGR-DT-05`
+- **Desktop beta:** `POMEGR-DT-06` through `POMEGR-DT-08`
+- **Release readiness:** `POMEGR-DT-09` and `POMEGR-DT-10`
 
 ---
 
-## TL-DT-01 — Extract production runtime seams
+## POMEGR-DT-01 — Extract production runtime seams
 
 - [x] Complete
 - **Depends on:** none
@@ -168,17 +168,17 @@ npm run test:node
 
 ---
 
-## TL-DT-02 — Prove packaged Node runtime compatibility
+## POMEGR-DT-02 — Prove packaged Node runtime compatibility
 
 - [x] Complete
-- **Depends on:** `TL-DT-01`
+- **Depends on:** `POMEGR-DT-01`
 - **Target size:** 1 session
 - **Completed:** 2026-08-11
 - **Implementation notes:** Added Electron 43.3.0 and a hardened real-ASAR smoke fixture using Electron's bundled Node runtime. The accepted feasibility fallback runs the provider-owning monitor in one self-contained physical worker and the provider-neutral web lifecycle in Electron main. Main/web use a strict keep-only environment and a `PATH` with every system-Node directory removed while preserving Git; provider/home paths reach only the monitor through a temporary allowlisted snapshot. The accepted unpack boundary is the monitor bundle, the complete generated `dist/` tree required by Vinext's physical `outDir`, and the three Sharp Windows native files. The final post-hardening `npm.cmd run desktop:smoke` passed manually in normal PowerShell with bounded cleanup.
 
 ### Goal
 
-Verify that Threadlight's production monitor and web server can run under Electron's packaged Node environment without requiring system Node.js.
+Verify that Pomegr's production monitor and web server can run under Electron's packaged Node environment without requiring system Node.js.
 
 ### Work
 
@@ -193,7 +193,7 @@ Verify that Threadlight's production monitor and web server can run under Electr
 ### Acceptance criteria
 
 - A minimal Electron process starts the monitor and web runtime using Electron's bundled runtime.
-- Threadlight opens no external terminal window.
+- Pomegr opens no external terminal window.
 - The experiment leaves no background processes after exit.
 - The accepted ASAR/unpacked-resource boundary is documented and minimal.
 - No provider data or credentials are copied into application resources.
@@ -208,17 +208,17 @@ npm run desktop:smoke
 
 ---
 
-## TL-DT-03 — Build the secure Electron shell and service supervisor
+## POMEGR-DT-03 — Build the secure Electron shell and service supervisor
 
 - [x] Complete
-- **Depends on:** `TL-DT-02`
+- **Depends on:** `POMEGR-DT-02`
 - **Target size:** 1–2 sessions
 - **Completed:** 2026-08-11
-- **Implementation notes:** Added the single-instance Electron shell, sandboxed dashboard window, fixed external-link allowlist, restrictive CSP, denied permissions/downloads/webviews/navigation/window creation, dynamic loopback services, and an ephemeral launch-token boundary with strict Host/Origin/read-only-method checks. Startup and shutdown use bounded injectable orchestration with fixed safe errors and supervised cleanup. The preload was initially empty and TL-DT-04 later added only a validated report-save method. The accepted TL-DT-02 fallback remains one credential-owning monitor worker plus the provider-neutral web lifecycle in Electron main; a monitor-worker Git probe and the upgraded hidden-`BrowserWindow` packaged smoke passed in normal PowerShell.
+- **Implementation notes:** Added the single-instance Electron shell, sandboxed dashboard window, fixed external-link allowlist, restrictive CSP, denied permissions/downloads/webviews/navigation/window creation, dynamic loopback services, and an ephemeral launch-token boundary with strict Host/Origin/read-only-method checks. Startup and shutdown use bounded injectable orchestration with fixed safe errors and supervised cleanup. The preload was initially empty and POMEGR-DT-04 later added only a validated report-save method. The accepted POMEGR-DT-02 fallback remains one credential-owning monitor worker plus the provider-neutral web lifecycle in Electron main; a monitor-worker Git probe and the upgraded hidden-`BrowserWindow` packaged smoke passed in normal PowerShell.
 
 ### Goal
 
-Open the production Threadlight dashboard in a secure desktop window and supervise its local services for the full application lifecycle.
+Open the production Pomegr dashboard in a secure desktop window and supervise its local services for the full application lifecycle.
 
 ### Work
 
@@ -235,7 +235,7 @@ Open the production Threadlight dashboard in a secure desktop window and supervi
 
 ### Acceptance criteria
 
-- Launching Electron opens the Threadlight dashboard without a separate browser or terminal.
+- Launching Electron opens the Pomegr dashboard without a separate browser or terminal.
 - A second launch focuses the first instance.
 - The renderer has no Node.js or unrestricted Electron access.
 - Unexpected local origins and external navigation are blocked.
@@ -256,24 +256,24 @@ npm run lint
 
 ---
 
-## TL-DT-04 — Make installed-path discovery reliable
+## POMEGR-DT-04 — Make installed-path discovery reliable
 
 - [x] Complete
-- **Depends on:** `TL-DT-03`
+- **Depends on:** `POMEGR-DT-03`
 - **Target size:** 1 session
 - **Completed:** 2026-08-11
-- **Implementation notes:** Added cwd-independent installed/portable resource and user-data resolution, early portable Electron data redirection, stable allowlisted Threadlight settings/snapshot roots, preserved provider-owned Claude/Codex discovery and Git paths, and a trusted bounded native report-save flow. Desktop settings persist only the versioned window/login/notification/update schema; missing files may be created, while malformed, unreadable, or newer-version files cannot be overwritten on close and explicit recovery quarantines the original. Windows space/non-ASCII/different-cwd coverage, full tests/lint, and the final normal-PowerShell packaged smoke passed.
+- **Implementation notes:** Added cwd-independent installed/portable resource and user-data resolution, early portable Electron data redirection, stable allowlisted Pomegr settings/snapshot roots, preserved provider-owned Claude/Codex discovery and Git paths, and a trusted bounded native report-save flow. Desktop settings persist only the versioned window/login/notification/update schema; missing files may be created, while malformed, unreadable, or newer-version files cannot be overwritten on close and explicit recovery quarantines the original. Windows space/non-ASCII/different-cwd coverage, full tests/lint, and the final normal-PowerShell packaged smoke passed.
 
 ### Goal
 
-Make provider discovery, Git inspection, configuration, reports, and Threadlight-owned state work from an installed or portable application path.
+Make provider discovery, Git inspection, configuration, reports, and Pomegr-owned state work from an installed or portable application path.
 
 ### Work
 
 - Audit uses of `process.cwd()`, source-relative paths, executable paths, and development-only directories.
 - Resolve packaged resources through Electron's application/resource paths rather than the launch directory.
-- Resolve user-owned Threadlight data through a stable application-data directory while preserving documented override variables where appropriate.
-- Keep provider transcripts in their provider-owned locations; never copy them into Threadlight storage.
+- Resolve user-owned Pomegr data through a stable application-data directory while preserving documented override variables where appropriate.
+- Keep provider transcripts in their provider-owned locations; never copy them into Pomegr storage.
 - Ensure cost snapshots, Codex liveness snapshots, caches, and desktop settings retain their current privacy allowlists.
 - Define a bounded desktop settings schema for window state, launch-at-login preference, notification preference, and update preference.
 - Do not store OAuth tokens or provider credentials in desktop settings.
@@ -297,17 +297,17 @@ npm run desktop:smoke
 
 ---
 
-## TL-DT-05 — Produce the Windows installer and portable build
+## POMEGR-DT-05 — Produce the Windows installer and portable build
 
 - [x] Complete
-- **Depends on:** `TL-DT-04`
+- **Depends on:** `POMEGR-DT-04`
 - **Target size:** 1–2 sessions
 - **Completed:** 2026-08-11
 - **Implementation notes:** Added an explicit electron-builder allowlist, per-user NSIS installer, portable build, packaged legal/source/dependency notices, artifact inspection, and a test-only 0.0.9 upgrade fixture. Installed startup no longer requires Git, generated Vinext entries can install bounded console-warning filters, and a Windows-safe static fallback serves authorized CSS/JavaScript with the desktop no-store and security headers. The strengthened packaged smoke verifies CSS application, React hydration, normalized state/catalog delivery, and renderer isolation. A clean Windows Sandbox without system Node.js or Git passed install, first launch, 0.0.9-to-0.1.0 in-place upgrade, portable launch and storage, clean shutdown, and uninstall/data-preservation checks. Accepted SHA-256 values: prior `F3C70717DB2CA3A586176EA216A2A747B3D04CBB4713CAF700DB43E55A3CC1FF`, setup `CE79013A31EE2461748665F4DA9776A8F260EBF4E19B4C5A9D474036A4BD9597`, portable `39DB7D6D011A4EC273EB8F93588A61CFE32D69845E3521EE1746053FB8B971FA`.
 
 ### Goal
 
-Produce installable Windows artifacts that include everything required to run Threadlight without Node.js or a repository checkout.
+Produce installable Windows artifacts that include everything required to run Pomegr without Node.js or a repository checkout.
 
 ### Work
 
@@ -322,7 +322,7 @@ Produce installable Windows artifacts that include everything required to run Th
 
 ### Acceptance criteria
 
-- A clean Windows machine can install and open Threadlight without Node.js.
+- A clean Windows machine can install and open Pomegr without Node.js.
 - The installer does not require administrator privileges for normal per-user installation.
 - Uninstall removes application files but does not delete provider data or unrelated user data.
 - The packaged legal/source notices are accessible from the About page.
@@ -336,29 +336,29 @@ npm run desktop:inspect
 npm test
 ```
 
-- Perform a clean-VM install/uninstall checklist and record only versions, paths owned by Threadlight, and pass/fail results.
+- Perform a clean-VM install/uninstall checklist and record only versions, paths owned by Pomegr, and pass/fail results.
 
 ---
 
-## TL-DT-06 — Add tray, window, and launch-at-login behavior
+## POMEGR-DT-06 — Add tray, window, and launch-at-login behavior
 
 - [x] Complete
-- **Depends on:** `TL-DT-05`
+- **Depends on:** `POMEGR-DT-05`
 - **Target size:** 1 session
 - **Completed:** 2026-08-11
 - **Implementation notes:** Added a bounded system tray and accessible in-app controls for open, UI-refresh pause/resume, About, launch at login, close behavior, and explicit quit. Close-to-tray is explained on first use and safely remembered; explicit quit, OS shutdown, and second-instance activation have deterministic cleanup/focus behavior. Launch at login remains opt-in, settings mutations serialize without resurrecting rejected values, and window bounds restore and re-clamp on live display changes. Pause affects only renderer polling, never provider state. A trusted allowlisted theme bridge synchronizes the standard Windows title bar with light/dark mode. Full build, Node/UI tests, lint, packaging inspection, the normal-PowerShell packaged smoke, and installed dark/light title-bar and native-control checks passed.
 
 ### Goal
 
-Let Threadlight remain available in the background without surprising the user or leaving ambiguous process state.
+Let Pomegr remain available in the background without surprising the user or leaving ambiguous process state.
 
 ### Work
 
-- Add a system tray icon with actions to open Threadlight, pause live refresh, open About, and quit.
+- Add a system tray icon with actions to open Pomegr, pause live refresh, open About, and quit.
 - Make window-close behavior explicit: minimize to tray only after informing the user, with a setting to change the behavior.
 - Add optional launch at login, disabled by default for the first release.
 - Restore bounded window size and position while ensuring the window remains visible after display changes.
-- Keep “Quit Threadlight” as an explicit action that stops all services.
+- Keep “Quit Pomegr” as an explicit action that stops all services.
 - Ensure pause affects UI polling only and does not mutate provider state.
 - Add keyboard and screen-reader accessible equivalents for tray-only actions where applicable.
 
@@ -379,10 +379,10 @@ npm run lint
 
 ---
 
-## TL-DT-07 — Add privacy-bounded native notifications
+## POMEGR-DT-07 — Add privacy-bounded native notifications
 
 - [x] Complete
-- **Depends on:** `TL-DT-06`
+- **Depends on:** `POMEGR-DT-06`
 - **Target size:** 1 session
 - **Completed:** 2026-08-12
 - **Implementation notes:** Added native needs-input notifications derived only from the normalized session catalog, with transition deduplication, deterministic clearing, fixed privacy-bounded payloads, safe click-through session selection, a persistent notification preference, and temporary one-hour quiet mode. Focused Node/UI coverage, the production build, lint, and packaged desktop smoke pass.
@@ -398,7 +398,7 @@ Notify the user when an observed session newly needs input without exposing priv
 - Never include the question, choices, prompt, command, tool input, repository file content, stdout, stderr, or approval details.
 - Deduplicate by normalized session ID and state transition so polling does not repeat notifications.
 - Clear notification eligibility when the request resolves, the session stops being live, or notifications are disabled.
-- Clicking a notification focuses Threadlight and selects the matching safe session ID; it must not answer or control the session.
+- Clicking a notification focuses Pomegr and selects the matching safe session ID; it must not answer or control the session.
 - Add per-app notification preference and a temporary quiet mode.
 
 ### Acceptance criteria
@@ -418,10 +418,10 @@ npm run desktop:smoke
 
 ---
 
-## TL-DT-08 — Add signed releases and automatic updates
+## POMEGR-DT-08 — Add signed releases and automatic updates
 
 - [ ] Complete
-- **Depends on:** `TL-DT-05`, `TL-DT-06`
+- **Depends on:** `POMEGR-DT-05`, `POMEGR-DT-06`
 - **Target size:** 1–2 sessions
 - **Acceptance status:** Repository implementation and automated release gates are in place. Completion remains blocked on external evidence from two real signed beta releases: clean-Windows-VM upgrade, invalid-signer rejection, checksum/signature re-verification, and CI log inspection. See `docs/DESKTOP_RELEASES.md`.
 
@@ -457,15 +457,15 @@ Publish verifiable Windows releases and update installed copies safely through G
 
 ---
 
-## TL-DT-09 — Complete desktop privacy and security QA
+## POMEGR-DT-09 — Complete desktop privacy and security QA
 
 - [ ] Complete
-- **Depends on:** `TL-DT-03` through `TL-DT-08`
+- **Depends on:** `POMEGR-DT-03` through `POMEGR-DT-08`
 - **Target size:** 1–2 sessions
 
 ### Goal
 
-Prove that desktop packaging and native integrations do not weaken Threadlight's security, privacy, read-only behavior, or failure isolation.
+Prove that desktop packaging and native integrations do not weaken Pomegr's security, privacy, read-only behavior, or failure isolation.
 
 ### Work
 
@@ -499,7 +499,7 @@ npm run lint
 
 ---
 
-## TL-DT-10 — Run beta acceptance and publish desktop documentation
+## POMEGR-DT-10 — Run beta acceptance and publish desktop documentation
 
 - [ ] Complete
 - **Depends on:** all previous tasks
@@ -551,10 +551,10 @@ npm run lint
 
 ## Definition of done
 
-The first Threadlight desktop release is complete when:
+The first Pomegr desktop release is complete when:
 
 - A signed Windows installer runs on a clean supported machine without system Node.js.
-- Threadlight opens in a secure Electron window and discovers supported local sessions.
+- Pomegr opens in a secure Electron window and discovers supported local sessions.
 - The monitor and web services bind only to loopback and stop with the application.
 - The renderer, IPC, notifications, logs, and artifacts contain no forbidden private content.
 - Tray, reopen, explicit quit, optional login startup, and needs-input notifications behave deterministically.
@@ -570,13 +570,13 @@ Add short entries only after completing a task.
 
 | Date | Task | Result | Notes |
 |---|---|---|---|
-| 2026-08-11 | TL-DT-01 | Complete | Added programmatic monitor/web startup and shutdown, dynamic loopback ports, safe lifecycle failures, cwd-independent production startup, and lifecycle regression coverage. `npm test` and `npm run lint` pass. |
-| 2026-08-11 | TL-DT-02 | Complete | Final normal-PowerShell packaged smoke passed with strict main/web environment isolation, system-Node-free PATH with Git retained, one monitor worker, physical Vinext output, Sharp native loading, dynamic loopback ports, and bounded cleanup. |
-| 2026-08-11 | TL-DT-03 | Complete | Added the secure single-instance shell, launch-token and local-origin gates, sandboxed renderer with no native API, bounded service supervision and failure UI, strict navigation/permission/download denial, and focused lifecycle/security coverage. The upgraded normal-PowerShell packaged dashboard smoke passed. |
-| 2026-08-11 | TL-DT-04 | Complete | Added installed/portable path resolution, isolated Threadlight-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
-| 2026-08-11 | TL-DT-05 | Complete | Produced and inspected the per-user installer, portable build, and test-only upgrade fixture; fixed Git-independent startup and Windows static delivery; all clean-Sandbox install, upgrade, portable, shutdown, uninstall, and data-boundary checks passed with the recorded artifact hashes. |
-| 2026-08-11 | TL-DT-06 | Complete | Added deterministic tray/window/quit/second-instance behavior, opt-in launch at login, UI-only pause controls, serialized bounded settings, live display re-clamping, and trusted native title-bar theme sync. Packaged smoke and installed dark/light native-chrome checks passed. |
-| 2026-08-12 | TL-DT-07 | Complete | Added privacy-bounded needs-input transition notifications, deterministic deduplication/clearing, safe observation-only click navigation, persistent enablement, temporary quiet mode, and sentinel coverage. Build, lint, focused tests, and packaged smoke pass. |
+| 2026-08-11 | POMEGR-DT-01 | Complete | Added programmatic monitor/web startup and shutdown, dynamic loopback ports, safe lifecycle failures, cwd-independent production startup, and lifecycle regression coverage. `npm test` and `npm run lint` pass. |
+| 2026-08-11 | POMEGR-DT-02 | Complete | Final normal-PowerShell packaged smoke passed with strict main/web environment isolation, system-Node-free PATH with Git retained, one monitor worker, physical Vinext output, Sharp native loading, dynamic loopback ports, and bounded cleanup. |
+| 2026-08-11 | POMEGR-DT-03 | Complete | Added the secure single-instance shell, launch-token and local-origin gates, sandboxed renderer with no native API, bounded service supervision and failure UI, strict navigation/permission/download denial, and focused lifecycle/security coverage. The upgraded normal-PowerShell packaged dashboard smoke passed. |
+| 2026-08-11 | POMEGR-DT-04 | Complete | Added installed/portable path resolution, isolated Pomegr-owned storage, preserved provider roots, bounded settings with safe read-failure/quarantine recovery, explicit validated report saving, Windows path coverage, and a passing normal-PowerShell packaged smoke. |
+| 2026-08-11 | POMEGR-DT-05 | Complete | Produced and inspected the per-user installer, portable build, and test-only upgrade fixture; fixed Git-independent startup and Windows static delivery; all clean-Sandbox install, upgrade, portable, shutdown, uninstall, and data-boundary checks passed with the recorded artifact hashes. |
+| 2026-08-11 | POMEGR-DT-06 | Complete | Added deterministic tray/window/quit/second-instance behavior, opt-in launch at login, UI-only pause controls, serialized bounded settings, live display re-clamping, and trusted native title-bar theme sync. Packaged smoke and installed dark/light native-chrome checks passed. |
+| 2026-08-12 | POMEGR-DT-07 | Complete | Added privacy-bounded needs-input transition notifications, deterministic deduplication/clearing, safe observation-only click navigation, persistent enablement, temporary quiet mode, and sentinel coverage. Build, lint, focused tests, and packaged smoke pass. |
 
 ## Reference documentation
 

@@ -23,7 +23,7 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
             : historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary.")}</p>}
         {summary && <small className="heroSummarySource">Provider summary</small>}
         {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
-          <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Threadlight MCP tool"}>{session.signal.label}</AgentChip>
+          <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
         </div>}
       </div>
       {session && <div className="sessionMeta" aria-label="Session status">

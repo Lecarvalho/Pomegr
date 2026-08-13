@@ -22,8 +22,8 @@ const state = {
   session: {
     id: "session-1234-abcd",
     title: "Repair the parser",
-    project: "threadlight",
-    cwd: "C:\\Users\\private-machine\\threadlight",
+    project: "pomegr",
+    cwd: "C:\\Users\\private-machine\\pomegr",
     startedAt: "2026-08-05T17:00:00.000Z",
     updatedAt: "2026-08-05T17:30:00.000Z",
     durationMs: 1_800_000,
@@ -72,7 +72,7 @@ const state = {
 test("builds a deterministic retrospective without private raw state", () => {
   const report = buildSessionReport(state, generatedAt);
 
-  assert.match(report, /^# Threadlight Session Report/m);
+  assert.match(report, /^# Pomegr Session Report/m);
   assert.match(report, /Session ID:\*\* `session-1234-abcd`/);
   assert.match(report, /Repair the parser/);
   assert.match(report, /Primary agent.*30m 0s/);
@@ -88,7 +88,7 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.match(report, /Retrospective questions/);
   assert.doesNotMatch(report, /private-machine|RAW PROMPT MUST NOT APPEAR|PRIVATE EXECUTION LABEL MUST NOT APPEAR|PRIVATE PLAN SUBJECT MUST NOT APPEAR|PRIVATE COMMAND|PRIVATE OUTPUT/);
   assert.doesNotMatch(report, /Cumulative|Primary current context|token spend/i);
-  assert.equal(sessionReportFilename(state, generatedAt), "threadlight-repair-the-parser-2026-08-05.md");
+  assert.equal(sessionReportFilename(state, generatedAt), "pomegr-repair-the-parser-2026-08-05.md");
 });
 
 test("omits live-only data from historical reports", () => {
@@ -151,6 +151,6 @@ test("reports squash-integrated changes without an ahead count", () => {
 test("bounds report filenames for native desktop save dialogs", () => {
   const title = `A very long session ${"with repeated words ".repeat(20)}`;
   const filename = sessionReportFilename({ session: { title } }, new Date("2026-08-11T12:00:00.000Z"));
-  assert.match(filename, /^threadlight-[a-z0-9-]+-2026-08-11\.md$/);
+  assert.match(filename, /^pomegr-[a-z0-9-]+-2026-08-11\.md$/);
   assert.ok(filename.length <= 111);
 });

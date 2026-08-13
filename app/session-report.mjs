@@ -63,7 +63,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   const limits = state.usageLimits?.limits || [];
   const capabilities = state.capabilities || {};
   const lines = [
-    "# Threadlight Session Report",
+    "# Pomegr Session Report",
     "",
     "> Deterministic, read-only summary generated locally from execution metadata. No AI inference, prompts, or responses are included.",
     "",
@@ -192,5 +192,5 @@ export function sessionReportFilename(state, generatedAt = new Date()) {
   const title = state?.session?.title || state?.session?.project || "session";
   const slug = title.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 80).replace(/-$/, "") || "session";
   const date = generatedAt.toISOString().slice(0, 10);
-  return `threadlight-${slug}-${date}.md`;
+  return `pomegr-${slug}-${date}.md`;
 }

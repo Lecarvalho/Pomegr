@@ -92,7 +92,7 @@ test("keeps only the latest valid context snapshot", async (context) => {
   const newer = contextRecord("2026-08-06T20:05:00.000Z", "~95");
   assert.equal(latestContextMachinery([older, { type: "user", message: { content: "PRIVATE PROMPT" } }, newer]).groups[0].items[0].tokens, "~95");
 
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-context-machinery-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-context-machinery-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "session.jsonl");
   await writeFile(file, [JSON.stringify(older), "not-json", JSON.stringify(newer)].join("\n"), "utf8");

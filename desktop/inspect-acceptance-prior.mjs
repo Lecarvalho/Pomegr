@@ -19,7 +19,7 @@ import {
   recursiveFiles,
 } from "./artifact-policy.mjs";
 import { SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "./asar-policy.mjs";
-import { TL_DT_05_PACKAGING_SCOPE } from "./tl-dt-05-scope.mjs";
+import { POMEGR_DT_08_PACKAGING_SCOPE } from "./pomegr-dt-08-scope.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputRoot = path.join(repositoryRoot, ACCEPTANCE_PRIOR_OUTPUT);
@@ -30,7 +30,7 @@ const readArchiveFile = (filename) => extractFile(archivePath, filename.split("/
 
 try {
   await assertNonemptyFile(path.join(outputRoot, ACCEPTANCE_PRIOR_ARTIFACT));
-  await assertNonemptyFile(path.join(unpackedRoot, "Threadlight.exe"));
+  await assertNonemptyFile(path.join(unpackedRoot, "Pomegr.exe"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
@@ -40,7 +40,7 @@ try {
   const result = assertPackagedApplicationFiles(applicationFiles);
   const packagedMetadata = JSON.parse(readArchiveFile("package.json").toString("utf8"));
   if (packagedMetadata.version !== ACCEPTANCE_PRIOR_VERSION
-    || packagedMetadata.threadlightPackagingScope !== TL_DT_05_PACKAGING_SCOPE) {
+    || packagedMetadata.pomegrPackagingScope !== POMEGR_DT_08_PACKAGING_SCOPE) {
     throw new Error("DESKTOP_ACCEPTANCE_PRIOR_METADATA_INVALID");
   }
 
@@ -81,9 +81,9 @@ try {
     !== JSON.stringify([ACCEPTANCE_PRIOR_ARTIFACT, "win-unpacked"].sort())) {
     throw new Error("DESKTOP_ACCEPTANCE_OUTPUT_NOT_ALLOWLISTED");
   }
-  console.log(`Threadlight test-only prior installer inspection: PASS (${result.fileCount} packaged files; ${unpackedFiles.length} unpacked files).`);
+  console.log(`Pomegr test-only prior installer inspection: PASS (${result.fileCount} packaged files; ${unpackedFiles.length} unpacked files).`);
 } catch (error) {
   const code = /^DESKTOP_[A-Z_]+$/.test(error?.message) ? error.message : "DESKTOP_ACCEPTANCE_INSPECTION_FAILED";
-  console.error(`Threadlight test-only prior installer inspection: FAIL (${code})`);
+  console.error(`Pomegr test-only prior installer inspection: FAIL (${code})`);
   process.exitCode = 1;
 }

@@ -98,14 +98,14 @@ async function localDefaultBranchAsync(cwd, currentBranch) {
 }
 
 function ensureRemoteCacheRoot() {
-  if (!remoteCacheRoot) remoteCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "threadlight-git-remote-"));
+  if (!remoteCacheRoot) remoteCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-git-remote-"));
   return remoteCacheRoot;
 }
 
 async function ensureRemoteCacheRootAsync() {
   if (remoteCacheRoot) return remoteCacheRoot;
   if (!remoteCacheRootSetup) {
-    remoteCacheRootSetup = mkdtemp(path.join(os.tmpdir(), "threadlight-git-remote-"))
+    remoteCacheRootSetup = mkdtemp(path.join(os.tmpdir(), "pomegr-git-remote-"))
       .then((directory) => {
         remoteCacheRoot = directory;
         return directory;
@@ -169,11 +169,11 @@ function parseCounts(output) {
 function branchChangesIntegrated(cwd, gitDirectory, head) {
   const mergedTree = tryGit(cwd, [
     "--git-dir", gitDirectory,
-    "merge-tree", "--write-tree", "--no-messages", "refs/threadlight/default", head,
+    "merge-tree", "--write-tree", "--no-messages", "refs/pomegr/default", head,
   ], 5_000).trim();
   const remoteTree = tryGit(cwd, [
     "--git-dir", gitDirectory,
-    "rev-parse", "refs/threadlight/default^{tree}",
+    "rev-parse", "refs/pomegr/default^{tree}",
   ]).trim();
   return Boolean(mergedTree && remoteTree && mergedTree === remoteTree);
 }
@@ -182,11 +182,11 @@ async function branchChangesIntegratedAsync(cwd, gitDirectory, head) {
   const [mergedTree, remoteTree] = await Promise.all([
     tryGitAsync(cwd, [
       "--git-dir", gitDirectory,
-      "merge-tree", "--write-tree", "--no-messages", "refs/threadlight/default", head,
+      "merge-tree", "--write-tree", "--no-messages", "refs/pomegr/default", head,
     ], 5_000),
     tryGitAsync(cwd, [
       "--git-dir", gitDirectory,
-      "rev-parse", "refs/threadlight/default^{tree}",
+      "rev-parse", "refs/pomegr/default^{tree}",
     ], 1_500),
   ]);
   return Boolean(mergedTree.trim() && remoteTree.trim() && mergedTree.trim() === remoteTree.trim());
@@ -254,9 +254,9 @@ export async function refreshRemoteGitState(cwd, options = {}) {
       if (!remoteUrl.trim() || !branch) throw new Error("Remote default branch unavailable");
       await runGitAsync(cwd, [
         "--git-dir", cache.directory,
-        "-c", `remote.threadlight.url=${remoteUrl.trim()}`,
+        "-c", `remote.pomegr.url=${remoteUrl.trim()}`,
         "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance",
-        "threadlight", `+refs/heads/${branch}:refs/threadlight/default`,
+        "pomegr", `+refs/heads/${branch}:refs/pomegr/default`,
       ]);
       cache.remoteBranch = branch;
       cache.checkedAt = new Date().toISOString();
@@ -299,7 +299,7 @@ async function remoteRepositoryStateAsync(cwd, currentBranch, head) {
 
   const counts = parseCounts(await tryGitAsync(cwd, [
     "--git-dir", cache.directory,
-    "rev-list", "--left-right", "--count", `refs/threadlight/default...${head}`,
+    "rev-list", "--left-right", "--count", `refs/pomegr/default...${head}`,
   ], 2_500));
   if (!counts) return { isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } };
 
@@ -316,7 +316,7 @@ async function remoteRepositoryStateAsync(cwd, currentBranch, head) {
     },
     commits: isMain
       ? await commitHistoryAsync(cwd, "HEAD")
-      : integrated ? [] : await commitHistoryAsync(cwd, `refs/threadlight/default..${head}`, cache.directory),
+      : integrated ? [] : await commitHistoryAsync(cwd, `refs/pomegr/default..${head}`, cache.directory),
     remote: { status: "ready", checkedAt: cache.checkedAt },
   };
 }
@@ -347,7 +347,7 @@ function remoteRepositoryState(cwd, currentBranch, head) {
 
   const counts = parseCounts(tryGit(cwd, [
     "--git-dir", cache.directory,
-    "rev-list", "--left-right", "--count", `refs/threadlight/default...${head}`,
+    "rev-list", "--left-right", "--count", `refs/pomegr/default...${head}`,
   ], 2_500));
   if (!counts) return { isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } };
 
@@ -364,7 +364,7 @@ function remoteRepositoryState(cwd, currentBranch, head) {
     },
     commits: isMain
       ? commitHistory(cwd, "HEAD")
-      : integrated ? [] : commitHistory(cwd, `refs/threadlight/default..${head}`, cache.directory),
+      : integrated ? [] : commitHistory(cwd, `refs/pomegr/default..${head}`, cache.directory),
     remote: { status: "ready", checkedAt: cache.checkedAt },
   };
 }

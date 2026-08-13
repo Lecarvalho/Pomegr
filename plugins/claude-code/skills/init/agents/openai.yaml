@@ -1,4 +1,4 @@
 interface:
-  display_name: "Initialize Threadlight"
+  display_name: "Initialize Pomegr"
   short_description: "Configure repository signal reporting"
-  default_prompt: "Initialize or update the Threadlight reporting policy for this repository."
+  default_prompt: "Initialize or update the Pomegr reporting policy for this repository."

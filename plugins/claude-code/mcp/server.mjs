@@ -33,14 +33,14 @@ function rejected(text) {
   return { isError: true, content: [{ type: "text", text }] };
 }
 
-export function buildThreadlightMcpServer() {
+export function buildPomegrMcpServer() {
   const server = new McpServer(
-    { name: "threadlight", version: "0.1.0" },
-    { instructions: "Follow .threadlight/signals.md when present. Report bounded project-specific transitions, replace older state in the same scope, and clear resolved agent or session state when no replacement applies." },
+    { name: "pomegr", version: "0.1.0" },
+    { instructions: "Follow .pomegr/signals.md when present. Report bounded project-specific transitions, replace older state in the same scope, and clear resolved agent or session state when no replacement applies." },
   );
 
   server.registerTool("report_agent_signal", {
-    title: "Report Threadlight agent signal",
+    title: "Report Pomegr agent signal",
     description: "Report one current project-specific status for the calling agent. A later report or clear from this agent replaces it. Never include prompts, responses, secrets, commands, or tool output.",
     inputSchema: describedSchema(), annotations, _meta: { "anthropic/alwaysLoad": true },
   }, async (input) => {
@@ -49,7 +49,7 @@ export function buildThreadlightMcpServer() {
   });
 
   server.registerTool("report_session_signal", {
-    title: "Report Threadlight session signal",
+    title: "Report Pomegr session signal",
     description: "Report one current project-specific status for the overall session. The latest session report or clear replaces it. Never include prompts, responses, secrets, commands, or tool output.",
     inputSchema: describedSchema(), annotations, _meta: { "anthropic/alwaysLoad": true },
   }, async (input) => {
@@ -58,7 +58,7 @@ export function buildThreadlightMcpServer() {
   });
 
   server.registerTool("report_task_signal", {
-    title: "Report Threadlight task signal",
+    title: "Report Pomegr task signal",
     description: "Report a durable outcome for a recognized execution task. Use the background task ID or Bash tool-use ID. Later reports for the same task replace it; task signals cannot be cleared.",
     inputSchema: z.object({
       task_id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).describe("Stable execution-task identifier returned by Claude Code."),
@@ -73,13 +73,13 @@ export function buildThreadlightMcpServer() {
   });
 
   server.registerTool("clear_agent_signal", {
-    title: "Clear Threadlight agent signal",
+    title: "Clear Pomegr agent signal",
     description: "Remove the calling agent's current project-specific status when it has resolved and no replacement state applies. Does not affect the session or tasks.",
     inputSchema: z.object({}).strict(), annotations, _meta: { "anthropic/alwaysLoad": true },
   }, async () => success("Agent signal cleared."));
 
   server.registerTool("clear_session_signal", {
-    title: "Clear Threadlight session signal",
+    title: "Clear Pomegr session signal",
     description: "Remove the overall session's current project-specific status when it has resolved and no replacement state applies. Does not affect agents or tasks.",
     inputSchema: z.object({}).strict(), annotations, _meta: { "anthropic/alwaysLoad": true },
   }, async () => success("Session signal cleared."));
@@ -88,5 +88,5 @@ export function buildThreadlightMcpServer() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  serveStdio(() => buildThreadlightMcpServer());
+  serveStdio(() => buildPomegrMcpServer());
 }

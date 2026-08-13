@@ -20,7 +20,7 @@ export function boundedNotificationTitle(value) {
 
 export function needsInputNotificationPayload() {
   return Object.freeze({
-    title: "Threadlight",
+    title: "Pomegr",
     body: NEEDS_INPUT_NOTIFICATION_COPY,
   });
 }

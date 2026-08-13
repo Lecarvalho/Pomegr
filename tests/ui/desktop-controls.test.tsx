@@ -10,7 +10,7 @@ function response(body: object) {
 }
 
 afterEach(() => {
-  delete (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop;
+  delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -26,7 +26,7 @@ describe("desktop controls", () => {
     const setNotifications = vi.fn(async (value: boolean) => (state = { ...state, notifications: value }));
     const setNotificationQuiet = vi.fn(async (value: boolean) => (state = { ...state, notificationQuietUntil: value ? "2026-08-12T13:00:00.000Z" : null }));
     const quit = vi.fn(async () => true);
-    (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
+    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
       saveReport: vi.fn(),
       getDesktopState: async () => state,
       setPaused,
@@ -46,7 +46,7 @@ describe("desktop controls", () => {
     await user.click(screen.getByText("Desktop"));
     const controls = screen.getByRole("group", { name: "Desktop controls" });
     expect(controls).toBeInTheDocument();
-    expect(within(controls).getByRole("link", { name: "About Threadlight" })).toHaveAttribute("href", "/about");
+    expect(within(controls).getByRole("link", { name: "About Pomegr" })).toHaveAttribute("href", "/about");
 
     await user.click(screen.getByRole("button", { name: "Pause live refresh" }));
     expect(setPaused).toHaveBeenCalledWith(true);
@@ -61,7 +61,7 @@ describe("desktop controls", () => {
     act(() => stateListener?.({ ...state, notifications: true }));
     await user.click(screen.getByRole("button", { name: "Quiet notifications for 1 hour" }));
     expect(setNotificationQuiet).toHaveBeenCalledWith(true);
-    await user.click(screen.getByRole("button", { name: "Quit Threadlight" }));
+    await user.click(screen.getByRole("button", { name: "Quit Pomegr" }));
     expect(quit).toHaveBeenCalledOnce();
 
     act(() => stateListener?.({ ...state, paused: false }));
@@ -72,7 +72,7 @@ describe("desktop controls", () => {
     vi.useFakeTimers();
     let listener: ((next: DesktopState) => void) | undefined;
     const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null };
-    (window as Window & { threadlightDesktop?: unknown }).threadlightDesktop = {
+    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
       saveReport: vi.fn(),
       getDesktopState: async () => state,
       setPaused: vi.fn(),
@@ -94,6 +94,6 @@ describe("desktop controls", () => {
     const pausedRequestCount = fetchMock.mock.calls.length;
     act(() => vi.advanceTimersByTime(10_000));
     expect(fetchMock).toHaveBeenCalledTimes(pausedRequestCount);
-    expect(JSON.stringify((window as Window & { threadlightDesktop?: unknown }).threadlightDesktop)).not.toMatch(/provider|command|prompt|response/i);
+    expect(JSON.stringify((window as Window & { pomegrDesktop?: unknown }).pomegrDesktop)).not.toMatch(/provider|command|prompt|response/i);
   });
 });

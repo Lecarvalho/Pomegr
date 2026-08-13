@@ -17,8 +17,8 @@ function liveState(id: string, title: string): MonitorState {
     session: {
       id,
       title,
-      project: "Threadlight",
-      cwd: "C:\\Workspace\\repos\\threadlight",
+      project: "Pomegr",
+      cwd: "C:\\Workspace\\repos\\pomegr",
       repository: { available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } },
       pullRequests: { status: "unavailable", checkedAt: null, items: [] },
       startedAt: "2026-08-11T12:00:00.000Z",

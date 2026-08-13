@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-export const THREADLIGHT_WINDOWS_PUBLISHER = "Leandro Carvalho";
+export const POMEGR_WINDOWS_PUBLISHER = "Leandro Carvalho";
 export const RELEASE_LEGAL_FILES = Object.freeze([
   "LICENSE",
   "NOTICE",
@@ -34,13 +34,13 @@ export function updateMetadataName(version) {
 
 export function releaseArtifactNames(version, { includeChecksums = true } = {}) {
   parseReleaseVersion(version);
-  const installer = `Threadlight-Setup-${version}-x64.exe`;
+  const installer = `Pomegr-Setup-${version}-x64.exe`;
   const names = [
     installer,
     `${installer}.blockmap`,
-    `Threadlight-Portable-${version}-x64.exe`,
+    `Pomegr-Portable-${version}-x64.exe`,
     updateMetadataName(version),
-    `Threadlight-${version}-source.zip`,
+    `Pomegr-${version}-source.zip`,
     "RELEASE_NOTES.md",
     ...RELEASE_LEGAL_FILES,
   ];
@@ -61,7 +61,7 @@ export function assertReleaseArtifactNames(actualNames, version) {
 }
 
 export function assertUpdateMetadata(text, version) {
-  const installer = `Threadlight-Setup-${version}-x64.exe`;
+  const installer = `Pomegr-Setup-${version}-x64.exe`;
   if (!new RegExp(`^version:\\s*["']?${version.replaceAll(".", "\\.")}["']?\\s*$`, "m").test(text)) {
     throw new Error("DESKTOP_RELEASE_METADATA_VERSION_INVALID");
   }

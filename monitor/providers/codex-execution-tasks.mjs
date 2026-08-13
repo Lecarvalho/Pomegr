@@ -85,7 +85,7 @@ function quotedLiteral(source, start) {
 function safeCommandDescription(command) {
   const value = String(command || "").toLowerCase();
   if (!value) return "Shell command";
-  if (/restart-threadlight/.test(value)) return "Restart Threadlight";
+  if (/restart-pomegr/.test(value)) return "Restart Pomegr";
   if (/\b(?:npm(?:\.cmd)?\s+(?:run\s+)?test|node\s+--test|vitest)\b/.test(value)) return "Run tests";
   if (/\b(?:npm(?:\.cmd)?\s+run\s+build|vinext\s+build)\b/.test(value)) return "Build project";
   if (/\b(?:npm(?:\.cmd)?\s+run\s+lint|eslint)\b/.test(value)) return "Run lint";

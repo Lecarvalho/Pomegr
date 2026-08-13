@@ -1,4 +1,4 @@
-import { ThreadlightBrand } from "../ThreadlightBrand";
+import { PomegrBrand } from "../PomegrBrand";
 import { ThemeToggle } from "../ThemeToggle";
 import { DesktopControls, type DesktopState } from "../DesktopControls";
 
@@ -22,7 +22,7 @@ export function DashboardHeader({ connected, connecting, historical, paused, des
 }) {
   return (
     <header className="topbar">
-      <ThreadlightBrand href="#top" />
+      <PomegrBrand href="#top" />
       <div className="topActions">
         <button className="sessionMenuButton" type="button" onClick={onOpenSessions} aria-expanded={sessionsOpen} aria-controls="session-navigation">Sessions</button>
         <span className={`connection ${connecting ? "connecting" : connected ? "online" : "offline"}`}><i /> {connecting ? "Connecting to monitor" : historical ? "Historical snapshot" : connected ? "Monitor connected" : "Monitor offline"}</span>

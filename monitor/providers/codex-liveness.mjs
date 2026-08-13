@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveThreadlightDataRoot } from "../../shared/threadlight-paths.mjs";
+import { resolvePomegrDataRoot } from "../../shared/pomegr-paths.mjs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { codexTimestamp, isSafeCodexSessionId } from "./codex-session-metadata.mjs";
 
@@ -98,8 +98,8 @@ function leaseFile(root, ownerPid, ownerStartedAt) {
 
 export function resolveCodexLivenessRoot(options = {}) {
   const environment = options.env ?? process.env;
-  return path.resolve(options.root || environment.THREADLIGHT_CODEX_LIVENESS_DIR || path.join(
-    resolveThreadlightDataRoot({ environment, homeDir: options.homeDir || os.homedir(), platform: options.platform }),
+  return path.resolve(options.root || environment.POMEGR_CODEX_LIVENESS_DIR || path.join(
+    resolvePomegrDataRoot({ environment, homeDir: options.homeDir || os.homedir(), platform: options.platform }),
     "codex-liveness",
   ));
 }
@@ -136,7 +136,7 @@ function processAncestors(startingPid, options = {}) {
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class ThreadlightParentProcess {
+public static class PomegrParentProcess {
   [StructLayout(LayoutKind.Sequential)]
   private struct PROCESS_BASIC_INFORMATION {
     public IntPtr Reserved1;
@@ -169,7 +169,7 @@ for ($index = 0; $index -lt 12 -and $current -gt 0; $index++) {
   if ($null -eq $item) { break }
   $started = $item.StartTime
   if ($null -eq $started) { break }
-  $parent = [ThreadlightParentProcess]::GetParentProcessId($current)
+  $parent = [PomegrParentProcess]::GetParentProcessId($current)
   $items += [pscustomobject]@{ pid = [int]$item.Id; parentPid = [int]$parent; name = [string]$item.ProcessName; startedAt = $started.ToUniversalTime().ToString('o') }
   $current = [int]$parent
 }
@@ -208,7 +208,7 @@ $items | ConvertTo-Json -Compress
 
 export function codexOwnerIdentity(options = {}) {
   const environment = options.env ?? process.env;
-  const configuredPid = Number(environment.THREADLIGHT_CODEX_OWNER_PID);
+  const configuredPid = Number(environment.POMEGR_CODEX_OWNER_PID);
   const startingPid = Number.isInteger(configuredPid) && configuredPid > 0
     ? configuredPid
     : Number.isInteger(options.startingPid) && options.startingPid > 0 ? options.startingPid : process.ppid;

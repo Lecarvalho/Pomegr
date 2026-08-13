@@ -20,17 +20,17 @@ function acceptedRecord(version = "1.2.3-beta.4", olderVersion = "1.2.3-beta.3")
   template.evidence.releases.older = {
     version: olderVersion,
     tag: `v${olderVersion}`,
-    releaseUrl: `https://github.com/Lecarvalho/threadlight/releases/tag/v${olderVersion}`,
-    workflowRunUrl: "https://github.com/Lecarvalho/threadlight/actions/runs/123455",
+    releaseUrl: `https://github.com/Lecarvalho/pomegr/releases/tag/v${olderVersion}`,
+    workflowRunUrl: "https://github.com/Lecarvalho/pomegr/actions/runs/123455",
     installerSha256: "1".repeat(64),
     installerSignature: { status: "valid", publisher: "match", timestamp: "valid" },
   };
-  template.evidence.releases.newer.workflowRunUrl = "https://github.com/Lecarvalho/threadlight/actions/runs/123456";
+  template.evidence.releases.newer.workflowRunUrl = "https://github.com/Lecarvalho/pomegr/actions/runs/123456";
   template.evidence.releases.newer.artifacts = Object.fromEntries(releaseArtifactNames(version).map((name, index) => [name, String(index + 1).padStart(64, "a").slice(-64)]));
   template.evidence.releases.newer.installerSignature = { status: "valid", publisher: "match", timestamp: "valid" };
   template.evidence.updateVerification = {
     signedUpdate: {
-      downloadedUpdateSha256: template.evidence.releases.newer.artifacts[`Threadlight-Setup-${version}-x64.exe`],
+      downloadedUpdateSha256: template.evidence.releases.newer.artifacts[`Pomegr-Setup-${version}-x64.exe`],
       downloadedSignature: { status: "valid", publisher: "match", timestamp: "valid" },
       installedExecutableSha256: "3".repeat(64),
       installedSignature: { status: "valid", publisher: "match", timestamp: "valid" },
@@ -78,13 +78,13 @@ test("beta acceptance requires two monotonically ordered beta releases with the 
 
 test("beta acceptance rejects unsafe release links and absent Node-free evidence", () => {
   for (const [releaseName, field, value] of [
-    ["older", "releaseUrl", "https://github.com/attacker/threadlight/releases/tag/v1.2.3-beta.3"],
+    ["older", "releaseUrl", "https://github.com/attacker/pomegr/releases/tag/v1.2.3-beta.3"],
     ["newer", "releaseUrl", "https://github.com/Lecarvalho/other/releases/tag/v1.2.3-beta.4"],
-    ["newer", "releaseUrl", "https://github.com/Lecarvalho/threadlight/releases/tag/v1.2.3-beta.5"],
-    ["older", "workflowRunUrl", "https://github.com/attacker/threadlight/actions/runs/123456"],
+    ["newer", "releaseUrl", "https://github.com/Lecarvalho/pomegr/releases/tag/v1.2.3-beta.5"],
+    ["older", "workflowRunUrl", "https://github.com/attacker/pomegr/actions/runs/123456"],
     ["newer", "workflowRunUrl", "https://github.com/Lecarvalho/other/actions/runs/123456"],
-    ["newer", "workflowRunUrl", "https://github.com/Lecarvalho/threadlight/actions/runs/123456?token=secret"],
-    ["newer", "workflowRunUrl", "https://github.com/Lecarvalho/threadlight/actions/runs/not-a-run"],
+    ["newer", "workflowRunUrl", "https://github.com/Lecarvalho/pomegr/actions/runs/123456?token=secret"],
+    ["newer", "workflowRunUrl", "https://github.com/Lecarvalho/pomegr/actions/runs/not-a-run"],
   ]) {
     const unsafe = acceptedRecord();
     unsafe.evidence.releases[releaseName][field] = value;
@@ -166,7 +166,7 @@ test("beta acceptance rejects every unknown key at every object level", () => {
 });
 
 test("beta acceptance file verification is bounded and returns a content hash", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "threadlight-beta-acceptance-"));
+  const root = await mkdtemp(path.join(tmpdir(), "pomegr-beta-acceptance-"));
   const filename = path.join(root, "record.json");
   const record = acceptedRecord();
   await writeFile(filename, `${JSON.stringify(record)}\n`, "utf8");
@@ -207,11 +207,11 @@ test("desktop user, contributor, architecture, and release documentation stays e
   assert.match(configuration, /Windows x64 only/);
   assert.match(configuration, /dynamic `127\.0\.0\.1` ports/);
   assert.match(configuration, /Quiet for one hour.*temporary/i);
-  assert.match(configuration, /only the fixed generic Threadlight title and body/);
+  assert.match(configuration, /only the fixed generic Pomegr title and body/);
   assert.doesNotMatch(configuration, /optional bounded session title/);
   assert.match(architecture, /monitor worker \(provider files, credentials, Git, normalization\)/);
   assert.match(architecture, /renderer receives normalized API state/);
-  assert.match(architecture, /fixed generic Threadlight copy/);
+  assert.match(architecture, /fixed generic Pomegr copy/);
   assert.doesNotMatch(architecture, /fixed copy may add only a bounded title/);
   for (const value of ["source.zip", "SHA256SUMS.txt", "TRADEMARKS.md", "desktop:security", "clean-VM"]) {
     assert.match(releases, new RegExp(value.replaceAll(".", "\\."), "i"));

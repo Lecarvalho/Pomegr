@@ -102,7 +102,7 @@ async function copyRuntime(stagingRoot) {
     );
   }
   await writeFile(path.join(stagingRoot, "package.json"), JSON.stringify({
-    name: "threadlight-desktop-smoke",
+    name: "pomegr-desktop-smoke",
     version: "0.0.0",
     private: true,
     type: "module",
@@ -140,9 +140,9 @@ async function createFixture(fixtureRoot) {
 
 async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath) {
   const environment = minimalRuntimeEnvironment(process.env, {
-    THREADLIGHT_SMOKE_MAIN_STAGE_PATH: mainStagePath,
-    THREADLIGHT_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
-    THREADLIGHT_SMOKE_PROFILE_ROOT: profileRoot,
+    POMEGR_SMOKE_MAIN_STAGE_PATH: mainStagePath,
+    POMEGR_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
+    POMEGR_SMOKE_PROFILE_ROOT: profileRoot,
   });
   if (!executableOnPath(environment, "git.exe")) throw new Error("DESKTOP_GIT_PATH_MISSING");
   const child = spawn(process.execPath, [
@@ -179,7 +179,7 @@ async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvir
     }
   }
   childExitKind = classifyElectronExit(result);
-  if (result.kind !== "exit" || result.code !== 0 || !output.includes("Threadlight desktop runtime compatibility: PASS")) {
+  if (result.kind !== "exit" || result.code !== 0 || !output.includes("Pomegr desktop runtime compatibility: PASS")) {
     throw new Error("DESKTOP_CHILD_FAILED");
   }
 }
@@ -204,7 +204,7 @@ try {
   if (!process.versions.electron || process.env.ELECTRON_RUN_AS_NODE !== "1") {
     throw new Error("DESKTOP_BUNDLED_NODE_REQUIRED");
   }
-  fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "threadlight-desktop-smoke-"));
+  fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-desktop-smoke-"));
   const profileRoot = path.join(fixtureRoot, "profile");
   const mainStagePath = path.join(fixtureRoot, "main-stage");
   const monitorEnvironmentPath = path.join(fixtureRoot, "monitor-environment.json");
@@ -220,7 +220,7 @@ try {
   await writeStage("ASAR_VERIFIED");
   await runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath);
   await writeStage("CHILD_EXITED");
-  console.log("Threadlight packaged desktop smoke: PASS");
+  console.log("Pomegr packaged desktop smoke: PASS");
 } catch {
   if (fixtureRoot) {
     try {
@@ -228,14 +228,14 @@ try {
       if (/^[A-Z_]{1,40}$/.test(recorded)) failureStage = recorded;
     } catch { /* Retain the last runner-owned fixed stage. */ }
   }
-  console.error(`Threadlight packaged desktop smoke: FAIL (DESKTOP_SMOKE_FAILED_${failureStage}_${childExitKind})`);
+  console.error(`Pomegr packaged desktop smoke: FAIL (DESKTOP_SMOKE_FAILED_${failureStage}_${childExitKind})`);
   process.exitCode = 1;
 } finally {
   if (fixtureRoot) {
     try {
       await removeFixture(fixtureRoot);
     } catch {
-      console.error("Threadlight packaged desktop smoke: FAIL (DESKTOP_FIXTURE_CLEANUP_FAILED)");
+      console.error("Pomegr packaged desktop smoke: FAIL (DESKTOP_FIXTURE_CLEANUP_FAILED)");
       process.exitCode = 1;
     }
   }

@@ -81,7 +81,7 @@ test("supports documented canonical skill tool calls and attaches rollout usage 
     items: [{ type: "dynamicToolCall", tool: "invoke_skill", arguments: { skill: "pdf:pdf", private: "MCP_ARGUMENT_MUST_NOT_LEAK" } }],
   }]), [{ name: "pdf:pdf", calls: 1, lastUsed: "2026-08-11T16:30:00.000Z" }]);
 
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-skills-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-skills-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(directory, { recursive: true });

@@ -35,7 +35,7 @@ test("keeps the activity fallback when the provider registry is unavailable", ()
 });
 
 test("uses the repository root instead of a working subdirectory as the project", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-project-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-project-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const repository = path.join(root, "Clapline");
   const frontend = path.join(repository, "frontend");
@@ -46,7 +46,7 @@ test("uses the repository root instead of a working subdirectory as the project"
 });
 
 test("keeps a session selected while one of its subagents is newest", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-session-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-session-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const project = path.join(root, "project");
   const first = path.join(project, "first.jsonl");
@@ -72,7 +72,7 @@ test("keeps a session selected while one of its subagents is newest", async (con
 });
 
 test("respects an explicitly selected session", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-explicit-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-explicit-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const session = path.join(root, "chosen.jsonl");
   await writeFile(session, "{}\n");

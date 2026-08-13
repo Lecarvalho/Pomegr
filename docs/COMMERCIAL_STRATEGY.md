@@ -1,14 +1,14 @@
-# Threadlight commercial strategy
+# Pomegr commercial strategy
 
 > Working document: these are business hypotheses to validate, not shipped features or public roadmap commitments.
 
 ## Product thesis
 
-Threadlight can become the privacy-first operations console for teams using coding agents. Its commercial advantage is not generic AI tracing. It is useful execution visibility without collecting raw prompts, responses, commands, tool output, or source code.
+Pomegr can become the privacy-first operations console for teams using coding agents. Its commercial advantage is not generic AI tracing. It is useful execution visibility without collecting raw prompts, responses, commands, tool output, or source code.
 
 The local, single-user observer should remain useful and open source. Revenue should come from convenience, coordination, governance, and support around the open-source core.
 
-Current licensing decision: future Threadlight development uses `AGPL-3.0-only`, with the option to offer separate commercial terms. Previously published MIT revisions remain MIT. The Threadlight name and visual identity are governed separately by the repository's trademark policy.
+Current licensing decision: future Pomegr development uses `AGPL-3.0-only`, with the option to offer separate commercial terms. Previously published MIT revisions remain MIT. The Pomegr name and visual identity are governed separately by the repository's trademark policy.
 
 ## Target customer
 
@@ -47,7 +47,7 @@ Initial pricing hypothesis: annual contracts starting around USD 10,000, subject
 
 Do not build billing or a multi-tenant service before validating the buyer and pain.
 
-1. Package Threadlight so a new user can install and see value quickly.
+1. Package Pomegr so a new user can install and see value quickly.
 2. Publish a short demo centered on concurrent sessions, attention state, context, and Git changes.
 3. Interview at least 15 teams already using coding agents.
 4. Offer three paid, four-week design-partner engagements.
@@ -77,13 +77,13 @@ Working one-liner:
 
 > See what your coding agents are doing without collecting prompts or source code.
 
-Threadlight should not position itself as an authoritative evaluator of developer or agent quality. Metrics and recommendations remain deterministic signals tied to concrete execution evidence.
+Pomegr should not position itself as an authoritative evaluator of developer or agent quality. Metrics and recommendations remain deterministic signals tied to concrete execution evidence.
 
 ## Open questions
 
 - Is the first paying buyer an individual developer, engineering manager, platform team, or security team?
 - Is packaging alone valuable enough for Pro, or is team coordination the first durable paid product?
-- Which normalized fields can organizations safely aggregate while preserving Threadlight's privacy promise?
+- Which normalized fields can organizations safely aggregate while preserving Pomegr's privacy promise?
 - Is hosted coordination acceptable, or do target customers require self-hosting from the beginning?
 - Which notification or repository integration creates the strongest recurring use?
 - What usage or outcome should pricing track: developers, active machines, retained sessions, or organization size?

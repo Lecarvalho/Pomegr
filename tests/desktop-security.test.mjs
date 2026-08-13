@@ -108,10 +108,10 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
   ];
   const source = (await Promise.all(files.map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
   for (const sentinel of PRIVATE_FIXTURE_SENTINELS) assert.equal(source.includes(`\"${sentinel}\"`), false);
-  assert.match(source, /contextBridge\.exposeInMainWorld\("threadlightDesktop", Object\.freeze\(/);
+  assert.match(source, /contextBridge\.exposeInMainWorld\("pomegrDesktop", Object\.freeze\(/);
   assert.doesNotMatch(await readFile(preloadPath, "utf8"), /node:(?:fs|child_process)|process\.|ipcRenderer\.(?:send|sendSync)|shell|webFrame/);
   assert.match(source, /body: NEEDS_INPUT_NOTIFICATION_COPY/);
-  assert.match(source, /setToolTip\("Threadlight .* local read-only observer"\)/);
+  assert.match(source, /setToolTip\("Pomegr .* local read-only observer"\)/);
   assert.match(source, /installQuietConsole\(\)/);
   assert.match(source, /DESKTOP_START_FAILED/);
   assert.match(source, /updater\.logger = Object\.freeze/);
@@ -120,7 +120,7 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
 });
 
 test("artifact privacy scans extracted payloads and the exact final publish allowlist", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-artifact-security-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-artifact-security-"));
   const extracted = path.join(root, "extracted");
   const publish = path.join(root, "publish");
   await mkdir(extracted);
@@ -136,13 +136,13 @@ test("artifact privacy scans extracted payloads and the exact final publish allo
   await assert.rejects(assertDirectoryHasNoPrivacySentinel(extracted, { maximumFileBytes: 16 }), /DESKTOP_ARTIFACT_PRIVACY_BOUND_EXCEEDED/);
 
   const source = path.join(root, "source");
-  await mkdir(path.join(source, "threadlight-1.0.0", "tests"), { recursive: true });
-  await mkdir(path.join(source, "threadlight-1.0.0", "desktop"), { recursive: true });
-  await writeFile(path.join(source, "threadlight-1.0.0", "tests", "fixture.txt"), "PROMPT_MUST_NOT_LEAK", "utf8");
+  await mkdir(path.join(source, "pomegr-1.0.0", "tests"), { recursive: true });
+  await mkdir(path.join(source, "pomegr-1.0.0", "desktop"), { recursive: true });
+  await writeFile(path.join(source, "pomegr-1.0.0", "tests", "fixture.txt"), "PROMPT_MUST_NOT_LEAK", "utf8");
   await assertDirectoryHasNoPrivacySentinel(source, {
     allowedSentinelPath: (relativePath) => /^[^/]+\/tests\//.test(relativePath),
   });
-  await writeFile(path.join(source, "threadlight-1.0.0", "desktop", "runtime.txt"), "COMMAND_MUST_NOT_LEAK", "utf8");
+  await writeFile(path.join(source, "pomegr-1.0.0", "desktop", "runtime.txt"), "COMMAND_MUST_NOT_LEAK", "utf8");
   await assert.rejects(assertDirectoryHasNoPrivacySentinel(source, {
     allowedSentinelPath: (relativePath) => /^[^/]+\/tests\//.test(relativePath),
   }), /DESKTOP_ARTIFACT_PRIVACY_SENTINEL/);
@@ -257,4 +257,19 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     assert.equal(await handlers.get(channel)({}, true), null);
   }
   assert.equal(handlers.get(DESKTOP_BEHAVIOR_CHANNELS.quit)(trustedEvent), false);
+});
+
+test("desktop bridge and runtime reject the removed legacy namespace", async () => {
+  const legacy = ["thread", "light"].join("");
+  const [preload, behavior, environment, shell] = await Promise.all([
+    readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/desktop-behavior.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/environment-policy.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/shell-main.mjs", import.meta.url), "utf8"),
+  ]);
+  const sources = `${preload}\n${behavior}\n${environment}\n${shell}`.toLowerCase();
+  assert.equal(sources.includes(legacy), false);
+  assert.match(preload, /exposeInMainWorld\("pomegrDesktop"/);
+  assert.match(behavior, /pomegr:desktop-state/);
+  assert.match(environment, /POMEGR_DATA_DIR/);
 });

@@ -48,7 +48,7 @@ export function isAllowedShellStage(stage) {
 
 export function recordShellStage(environment, stage, io = {}) {
   if (!isAllowedShellStage(stage)) return false;
-  const stagePath = environmentValue(environment, "THREADLIGHT_SMOKE_MAIN_STAGE_PATH");
+  const stagePath = environmentValue(environment, "POMEGR_SMOKE_MAIN_STAGE_PATH");
   if (!stagePath) return false;
   const read = io.readFileSync || readFileSync;
   const write = io.writeFileSync || writeFileSync;

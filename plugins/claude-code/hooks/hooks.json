@@ -1,5 +1,5 @@
 {
-  "description": "Load a repository's bounded Threadlight reporting policy into every Claude Code session.",
+  "description": "Load a repository's bounded Pomegr reporting policy into every Claude Code session.",
   "hooks": {
     "SessionStart": [
       {

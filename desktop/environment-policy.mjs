@@ -16,8 +16,8 @@ export const RUNTIME_ENVIRONMENT_NAMES = Object.freeze([
   "SystemDrive",
   "SystemRoot",
   "TEMP",
-  "THREADLIGHT_SMOKE_MAIN_STAGE_PATH",
-  "THREADLIGHT_SMOKE_PROFILE_ROOT",
+  "POMEGR_SMOKE_MAIN_STAGE_PATH",
+  "POMEGR_SMOKE_PROFILE_ROOT",
   "TMP",
   "TZ",
   "WINDIR",
@@ -32,10 +32,10 @@ export const MONITOR_PRIVATE_ENVIRONMENT_NAMES = Object.freeze([
   "HOMEDRIVE",
   "HOMEPATH",
   "LOCALAPPDATA",
-  "THREADLIGHT_CODEX_LIVENESS_DIR",
-  "THREADLIGHT_CODEX_OWNER_PID",
-  "THREADLIGHT_COST_SNAPSHOTS_DIR",
-  "THREADLIGHT_DATA_DIR",
+  "POMEGR_CODEX_LIVENESS_DIR",
+  "POMEGR_CODEX_OWNER_PID",
+  "POMEGR_COST_SNAPSHOTS_DIR",
+  "POMEGR_DATA_DIR",
   "USERPROFILE",
 ]);
 
@@ -69,7 +69,7 @@ export function minimalRuntimeEnvironment(source, overrides = {}, fileExists = e
     ELECTRON_NO_ATTACH_CONSOLE: "1",
     NODE_ENV: "production",
     PATH: withoutSystemNode(environmentValue(source, "PATH") || "", fileExists),
-    THREADLIGHT_SMOKE_NO_SYSTEM_NODE: "1",
+    POMEGR_SMOKE_NO_SYSTEM_NODE: "1",
   };
   for (const name of RUNTIME_ENVIRONMENT_NAMES) {
     const value = environmentValue(source, name);
@@ -91,8 +91,8 @@ export function monitorPrivateEnvironment(source, options = {}) {
     const value = environmentValue(source, name);
     if (typeof value === "string" && value) environment[name] = value;
   }
-  if (options.threadlightDataRoot) {
-    environment.THREADLIGHT_DATA_DIR = options.threadlightDataRoot;
+  if (options.pomegrDataRoot) {
+    environment.POMEGR_DATA_DIR = options.pomegrDataRoot;
   }
   return environment;
 }

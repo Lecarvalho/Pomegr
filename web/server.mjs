@@ -157,8 +157,8 @@ export async function startWebServer(options = {}) {
   }
   recordStartupStage(options, "SHELL_WEB_ENTRY_READY");
 
-  const previousMonitorOrigin = process.env.THREADLIGHT_MONITOR_ORIGIN;
-  process.env.THREADLIGHT_MONITOR_ORIGIN = monitorOrigin;
+  const previousMonitorOrigin = process.env.POMEGR_MONITOR_ORIGIN;
+  process.env.POMEGR_MONITOR_ORIGIN = monitorOrigin;
   let result;
   let handle;
   let requestGate;
@@ -183,8 +183,8 @@ export async function startWebServer(options = {}) {
       normalExitCode: "WEB_CLOSED",
       unexpectedExitCode: "WEB_EXIT_UNEXPECTED",
       onClose() {
-        if (previousMonitorOrigin === undefined) delete process.env.THREADLIGHT_MONITOR_ORIGIN;
-        else process.env.THREADLIGHT_MONITOR_ORIGIN = previousMonitorOrigin;
+        if (previousMonitorOrigin === undefined) delete process.env.POMEGR_MONITOR_ORIGIN;
+        else process.env.POMEGR_MONITOR_ORIGIN = previousMonitorOrigin;
       },
     });
     let closePromise;
@@ -199,14 +199,14 @@ export async function startWebServer(options = {}) {
       },
     });
     recordStartupStage(options, "SHELL_WEB_HANDLE_READY");
-    options.logger?.log?.(`[threadlight] Web server ready on ${handle.origin}.`);
+    options.logger?.log?.(`[pomegr] Web server ready on ${handle.origin}.`);
     return handle;
   } catch (error) {
     if (handle) await handle.close();
     else await closeServer(result?.server);
     if (!handle) {
-      if (previousMonitorOrigin === undefined) delete process.env.THREADLIGHT_MONITOR_ORIGIN;
-      else process.env.THREADLIGHT_MONITOR_ORIGIN = previousMonitorOrigin;
+      if (previousMonitorOrigin === undefined) delete process.env.POMEGR_MONITOR_ORIGIN;
+      else process.env.POMEGR_MONITOR_ORIGIN = previousMonitorOrigin;
     }
     throw safeServiceError(error, "WEB_START_FAILED");
   }

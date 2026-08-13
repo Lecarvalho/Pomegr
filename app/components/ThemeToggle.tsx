@@ -5,8 +5,8 @@ import { useEffect, useSyncExternalStore } from "react";
 type Theme = "light" | "dark";
 type DesktopThemeBridge = { setNativeTheme?: (source: Theme) => Promise<unknown> };
 
-const THEME_STORAGE_KEY = "threadlight-theme";
-const THEME_CHANGE_EVENT = "threadlight-theme-change";
+const THEME_STORAGE_KEY = "pomegr-theme";
+const THEME_CHANGE_EVENT = "pomegr:theme-change";
 
 function currentTheme(): Theme {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -27,7 +27,7 @@ export function ThemeToggle() {
   );
 
   useEffect(() => {
-    const bridge = (window as Window & { threadlightDesktop?: DesktopThemeBridge }).threadlightDesktop;
+    const bridge = (window as Window & { pomegrDesktop?: DesktopThemeBridge }).pomegrDesktop;
     void bridge?.setNativeTheme?.(theme).catch(() => {});
   }, [theme]);
 

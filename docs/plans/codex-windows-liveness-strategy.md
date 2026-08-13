@@ -1,30 +1,30 @@
 # ADR: Codex liveness and needs-input on Windows
 
-- **Status:** Accepted for `TL-CX-02`
+- **Status:** Accepted for `POMEGR-CX-02`
 - **Date:** 2026-08-10
-- **Scope:** Design only; implementation belongs to `TL-CX-14`
+- **Scope:** Design only; implementation belongs to `POMEGR-CX-14`
 
 ## Implementation status
 
-Implemented by `TL-CX-14` in `monitor/providers/codex-liveness.mjs`, `scripts/codex-lifecycle-bridge.mjs`, and `scripts/codex-lifecycle-owner.mjs`. The Codex adapter applies the source priority below to current views, retains the normalized evidence source and observation timestamp, and strips all current liveness evidence from historical reads.
+Implemented by `POMEGR-CX-14` in `monitor/providers/codex-liveness.mjs`, `scripts/codex-lifecycle-bridge.mjs`, and `scripts/codex-lifecycle-owner.mjs`. The Codex adapter applies the source priority below to current views, retains the normalized evidence source and observation timestamp, and strips all current liveness evidence from historical reads.
 
 ## Context
 
-Threadlight needs to classify Codex threads as active, idle, waiting for input, or no longer live without controlling Codex or exposing conversation content. On Windows, the classification must work for both CLI and desktop-owned threads.
+Pomegr needs to classify Codex threads as active, idle, waiting for input, or no longer live without controlling Codex or exposing conversation content. On Windows, the classification must work for both CLI and desktop-owned threads.
 
 The documented Codex app-server protocol exposes the best lifecycle evidence. A loaded thread has runtime status `idle`, `systemError`, or `active`; an active status may carry `waitingOnApproval` or `waitingOnUserInput`. `thread/status/changed` streams transitions, and `serverRequest/resolved` clears a user-input or approval request after it is answered or otherwise removed. `thread/read` and `thread/list` can also return `notLoaded`, which means only that the queried app-server process has not loaded the thread. It is not evidence that the owning Codex process exited. See the [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
 
 That status is process-local. The documented transports require a connection to the owning app-server. There is no documented Windows discovery contract for attaching to the private stdio transport of an already-running desktop or CLI process. The installed CLI's managed app-server daemon command reports that daemon lifecycle is supported only on Unix.
 
-Codex lifecycle hooks provide a cross-surface observation point. Relevant events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, and `SessionEnd`. Local function tools, including `request_user_input`, use the pre/post tool hook path. Hooks receive sensitive fields, so a Threadlight bridge must discard all non-allowlisted input before persistence. See the [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks).
+Codex lifecycle hooks provide a cross-surface observation point. Relevant events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, and `SessionEnd`. Local function tools, including `request_user_input`, use the pre/post tool hook path. Hooks receive sensitive fields, so a Pomegr bridge must discard all non-allowlisted input before persistence. See the [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks).
 
 ## Decision
 
 ### Primary Windows strategy: opt-in lifecycle bridge
 
-Use a small, opt-in Codex hook command that writes only Threadlight-owned, allowlisted lifecycle snapshots. This is the general Windows strategy because it runs in the Codex process that owns the thread and applies to CLI and desktop surfaces that support hooks.
+Use a small, opt-in Codex hook command that writes only Pomegr-owned, allowlisted lifecycle snapshots. This is the general Windows strategy because it runs in the Codex process that owns the thread and applies to CLI and desktop surfaces that support hooks.
 
-The bridge is observational. It must emit no hook decision, add no model context, answer no request, and modify no Codex transcript or state. It writes snapshots atomically to a Threadlight-specific local directory. One lightweight owner watcher records a lease while the originating Codex process is alive; it identifies that process with a PID plus process-creation time so PID reuse cannot extend a lease.
+The bridge is observational. It must emit no hook decision, add no model context, answer no request, and modify no Codex transcript or state. It writes snapshots atomically to a Pomegr-specific local directory. One lightweight owner watcher records a lease while the originating Codex process is alive; it identifies that process with a PID plus process-creation time so PID reuse cannot extend a lease.
 
 Use these bridge transitions:
 
@@ -39,9 +39,9 @@ Use these bridge transitions:
 | `Stop` | live, idle; clear needs-input |
 | `SessionEnd` | not live; clear needs-input |
 
-Subagent start/stop events follow the same rule when a safe child-agent ID is present. Parent waiting-on-descendant behavior remains a shared Threadlight normalization concern, not a Codex-specific inference.
+Subagent start/stop events follow the same rule when a safe child-agent ID is present. Parent waiting-on-descendant behavior remains a shared Pomegr normalization concern, not a Codex-specific inference.
 
-When Threadlight has an explicitly configured, authenticated connection to the app-server that owns a thread, the app-server runtime status supersedes the bridge for that thread. This is a higher-confidence source, but it is not the general Windows strategy because Threadlight cannot discover or attach to private desktop/CLI transports reliably.
+When Pomegr has an explicitly configured, authenticated connection to the app-server that owns a thread, the app-server runtime status supersedes the bridge for that thread. This is a higher-confidence source, but it is not the general Windows strategy because Pomegr cannot discover or attach to private desktop/CLI transports reliably.
 
 ### Fallback: bounded rollout-tail heuristic
 
@@ -71,7 +71,7 @@ Evidence is applied in this order:
 
 App-server mapping is exact:
 
-| App-server status | Threadlight interpretation |
+| App-server status | Pomegr interpretation |
 |---|---|
 | `active` plus `waitingOnApproval` | live, needs input (`approval`) |
 | `active` plus `waitingOnUserInput` | live, needs input (`user_input`) |
@@ -80,7 +80,7 @@ App-server mapping is exact:
 | `systemError` | live, system error |
 | `notLoaded` | unknown; never proof of exit or completion |
 
-If both waiting flags appear, needs-input remains true and the safe kind is `multiple`; Threadlight does not guess which prompt has priority.
+If both waiting flags appear, needs-input remains true and the safe kind is `multiple`; Pomegr does not guess which prompt has priority.
 
 ## Clearing stale state
 
@@ -113,7 +113,7 @@ The bridge must never persist, log, or return prompts, answers, questions, choic
 - A separately spawned app-server cannot be assumed to know another process's in-memory threads. `notLoaded` is local to the queried server.
 - The managed app-server daemon lifecycle is unavailable on the tested Windows CLI, so Unix control-socket assumptions are invalid.
 - Desktop and CLI versions may differ, and app-server transports/status schemas may evolve. Validate recognized enums and fail closed on unknown values.
-- Hook availability can be disabled by configuration or policy, and non-managed hooks require trust. In that case Threadlight degrades to the explicitly labeled rollout heuristic.
+- Hook availability can be disabled by configuration or policy, and non-managed hooks require trust. In that case Pomegr degrades to the explicitly labeled rollout heuristic.
 - Owner-process association and heartbeat timing are operational evidence, not proof that a particular OS window is visible or focused.
 - Sleep, abrupt termination, hook failure, and long unanswered prompts create the bounded false-positive/false-negative windows documented above.
 

@@ -44,14 +44,14 @@ try {
   for (const artifactName of expectedUpdateArtifactNames(packageJson.version)) {
     artifactSizes.push(await assertNonemptyFile(path.join(releaseRoot, artifactName)));
   }
-  await assertNonemptyFile(path.join(unpackedRoot, "Threadlight.exe"));
+  await assertNonemptyFile(path.join(unpackedRoot, "Pomegr.exe"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSE.electron.txt"));
   await assertNonemptyFile(path.join(unpackedRoot, "LICENSES.chromium.html"));
   await assertNonemptyFile(archivePath);
   await assertDirectoryHasNoPrivacySentinel(unpackedRoot);
   for (const filename of EXTERNAL_RUNTIME_FILES) await assertNonemptyFile(path.join(resourcesRoot, filename));
   const updateConfiguration = await readFile(path.join(resourcesRoot, "app-update.yml"), "utf8");
-  for (const expected of ["provider: github", "owner: Lecarvalho", "repo: threadlight"]) {
+  for (const expected of ["provider: github", "owner: Lecarvalho", "repo: pomegr"]) {
     if (!updateConfiguration.includes(expected)) throw new Error("DESKTOP_UPDATE_CONFIGURATION_INVALID");
   }
   if (/(?:token|authorization|password|credential|private[-_ ]?key)\s*:/i.test(updateConfiguration)) {
@@ -150,17 +150,17 @@ try {
 
   const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version), ...expectedUpdateArtifactNames(packageJson.version)]);
   const releaseEntries = await readdir(releaseRoot);
-  if (releaseEntries.includes("ThreadlightData")) {
-    const portableData = await lstat(path.join(releaseRoot, "ThreadlightData"));
+  if (releaseEntries.includes("PomegrData")) {
+    const portableData = await lstat(path.join(releaseRoot, "PomegrData"));
     if (!portableData.isDirectory() || portableData.isSymbolicLink()) throw new Error("DESKTOP_RELEASE_OUTPUT_NOT_ALLOWLISTED");
   }
-  if (releaseEntries.some((filename) => filename !== "ThreadlightData" && !expectedReleaseFiles.has(filename))) {
+  if (releaseEntries.some((filename) => filename !== "PomegrData" && !expectedReleaseFiles.has(filename))) {
     throw new Error("DESKTOP_RELEASE_OUTPUT_NOT_ALLOWLISTED");
   }
 
-  console.log(`Threadlight desktop artifacts: PASS (${packageResult.fileCount} packaged files; ${unpackedFiles.length} unpacked runtime files; ${artifactSizes.length} Windows artifacts).`);
+  console.log(`Pomegr desktop artifacts: PASS (${packageResult.fileCount} packaged files; ${unpackedFiles.length} unpacked runtime files; ${artifactSizes.length} Windows artifacts).`);
 } catch (error) {
   const code = /^DESKTOP_[A-Z_]+$/.test(error?.message) ? error.message : "DESKTOP_ARTIFACT_INSPECTION_FAILED";
-  console.error(`Threadlight desktop artifacts: FAIL (${code})`);
+  console.error(`Pomegr desktop artifacts: FAIL (${code})`);
   process.exitCode = 1;
 }

@@ -53,8 +53,8 @@ test("release channels accept stable or beta only and never cross streams", () =
 });
 
 test("downloaded Windows installers require the exact full certificate Subject DN", async () => {
-  const expected = "CN=Leandro Carvalho, O=Threadlight, C=CA";
-  const updatePath = path.resolve("Threadlight-Setup.exe");
+  const expected = "CN=Leandro Carvalho, O=Pomegr, C=CA";
+  const updatePath = path.resolve("Pomegr-Setup.exe");
   const calls = [];
   const verifier = createWindowsUpdateSignatureVerifier({
     environment: { SystemRoot: "C:\\Windows", PRIVATE_TOKEN: "MUST_NOT_LEAK" },
@@ -71,12 +71,12 @@ test("downloaded Windows installers require the exact full certificate Subject D
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, "powershell.exe");
   assert.deepEqual(calls[0].args.slice(0, 5), ["-NoLogo", "-NoProfile", "-NonInteractive", "-InputFormat", "None"]);
-  assert.equal(calls[0].options.env.THREADLIGHT_UPDATE_VERIFY_PATH, updatePath);
+  assert.equal(calls[0].options.env.POMEGR_UPDATE_VERIFY_PATH, updatePath);
   assert.equal(calls[0].options.env.PRIVATE_TOKEN, undefined);
 
   const wrongSubject = createWindowsUpdateSignatureVerifier({
     execFile(_command, _args, _options, callback) {
-      callback(null, JSON.stringify({ Status: "Valid", Path: updatePath, Subject: "CN=Other, O=Threadlight, C=CA" }), "");
+      callback(null, JSON.stringify({ Status: "Valid", Path: updatePath, Subject: "CN=Other, O=Pomegr, C=CA" }), "");
     },
   });
   assert.equal(await wrongSubject([expected], updatePath), "DESKTOP_UPDATE_SIGNATURE_INVALID");

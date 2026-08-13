@@ -87,7 +87,7 @@ export function renderThirdPartyNotices(lock, options = {}) {
     .join("\n");
   return `# Third-party software notices
 
-Threadlight includes the following installed Windows x64 runtime dependencies selected for the packaged application. Packages for other operating systems or CPU architectures are excluded. Each component remains subject to its own license. Package license texts are retained in the packaged dependency where supplied; Electron's distribution also includes its Electron and Chromium license files.
+Pomegr includes the following installed Windows x64 runtime dependencies selected for the packaged application. Packages for other operating systems or CPU architectures are excluded. Each component remains subject to its own license. Package license texts are retained in the packaged dependency where supplied; Electron's distribution also includes its Electron and Chromium license files.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -130,5 +130,5 @@ export async function generateLegalNotices(root = repositoryRoot) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = await generateLegalNotices();
-  console.log(`Threadlight legal notices: ${result.dependencyCount} runtime dependencies documented.`);
+  console.log(`Pomegr legal notices: ${result.dependencyCount} runtime dependencies documented.`);
 }

@@ -49,9 +49,9 @@ test("Claude fixtures cover current normalized extraction inputs", async () => {
     "Bash",
     "Skill",
     "Write",
-    "mcp__threadlight__report_agent_signal",
-    "mcp__threadlight__report_session_signal",
-    "mcp__threadlight__report_task_signal",
+    "mcp__pomegr__report_agent_signal",
+    "mcp__pomegr__report_session_signal",
+    "mcp__pomegr__report_task_signal",
   ]);
   assert.equal(records.some((record) => record.type === "queue-operation"), true);
   assert.equal(records.some((record) => record.subtype === "away_summary"), true);
@@ -74,7 +74,7 @@ test("Codex rollout fixtures cover metadata, usage, and supported item lifecycle
   assert.equal(records.some((record) => record.payload?.type === "token_count" && record.payload.info.last_token_usage), true);
   assert.equal(calls.has("shell_command"), true);
   assert.equal(calls.has("apply_patch"), true);
-  assert.equal(calls.has("mcp__threadlight__report_session_signal"), true);
+  assert.equal(calls.has("mcp__pomegr__report_session_signal"), true);
   assert.equal(calls.has("synthetic_dynamic_tool"), true);
   assert.equal(calls.has("spawn_agent"), true);
   assert.equal(calls.has("request_user_input"), true);

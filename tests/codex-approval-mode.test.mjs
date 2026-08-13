@@ -50,7 +50,7 @@ test("uses the latest recognized Codex mode across rollout and app-server settin
 });
 
 test("integrates only primary-rollout approval metadata and advertises the bounded capability", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-approval-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-approval-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(directory, { recursive: true });

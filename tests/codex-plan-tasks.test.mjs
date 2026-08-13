@@ -101,7 +101,7 @@ test("extracts current Codex plans nested in exec without evaluating source or a
 });
 
 test("retains the latest sanitized live plan after its exec record leaves the rollout tail", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-live-plan-cache-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-plan-cache-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "12");
   await mkdir(directory, { recursive: true });
@@ -161,7 +161,7 @@ test("retains the latest sanitized live plan after its exec record leaves the ro
 });
 
 test("integrates the latest primary plan snapshot through provider evidence", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-codex-plan-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-plan-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "11");
   await mkdir(directory, { recursive: true });

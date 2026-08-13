@@ -23,12 +23,12 @@ async function sourceTree(directoryUrl) {
   return sources.join("\n");
 }
 
-test("server-renders the composed Threadlight dashboard", async () => {
+test("server-renders the composed Pomegr dashboard", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Threadlight<\/title>/i);
+  assert.match(html, /<title>Pomegr<\/title>/i);
   assert.match(html, /No live sessions/);
   assert.match(html, /Connecting to local monitor/);
   assert.doesNotMatch(html, /Local monitor offline/);
@@ -43,9 +43,9 @@ test("keeps the privacy explanation on the about page", async () => {
   const response = await render("/about");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /About .* Threadlight/);
+  assert.match(html, /About .* Pomegr/);
   assert.match(html, /Observe coding-agent sessions without exposing prompts or responses/);
-  assert.match(html, /Threadlight analyzes execution metadata only/);
+  assert.match(html, /Pomegr analyzes execution metadata only/);
   assert.match(html, /What the estimate means/);
   assert.match(html, /cost\.total_cost_usd/);
   assert.match(html, /may differ from an actual API bill/);

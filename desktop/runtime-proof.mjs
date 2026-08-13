@@ -7,8 +7,8 @@ import { parentPort as workerParentPort, workerData } from "node:worker_threads"
 export { workerData };
 
 export const parentPort = process.parentPort;
-export const resourceRoot = process.env.THREADLIGHT_RESOURCE_ROOT
-  || process.env.THREADLIGHT_SMOKE_RESOURCE_ROOT
+export const resourceRoot = process.env.POMEGR_RESOURCE_ROOT
+  || process.env.POMEGR_SMOKE_RESOURCE_ROOT
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function send(message) {
@@ -22,7 +22,7 @@ export function containsShellStageTrace(value) {
 }
 
 export function recordUtilityStage(stage) {
-  const stagePath = process.env.THREADLIGHT_SMOKE_MAIN_STAGE_PATH;
+  const stagePath = process.env.POMEGR_SMOKE_MAIN_STAGE_PATH;
   if (!stagePath || !/^(?:MONITOR|WEB)_[A-Z_]{1,30}$/.test(stage)) return;
   try {
     if (containsShellStageTrace(readFileSync(stagePath, "utf8"))) return;
@@ -34,7 +34,7 @@ export async function assertPackagedElectronRuntime(options = {}) {
   if (!process.versions.electron || (options.smoke && !resourceRoot.includes(`${path.sep}app.asar`))) {
     throw new Error("DESKTOP_PACKAGED_ELECTRON_REQUIRED");
   }
-  if (process.env.THREADLIGHT_SMOKE_NO_SYSTEM_NODE !== "1") {
+  if (process.env.POMEGR_SMOKE_NO_SYSTEM_NODE !== "1") {
     throw new Error("DESKTOP_NODE_GUARD_MISSING");
   }
   const searchPath = process.env.PATH || process.env.Path || "";
@@ -43,7 +43,7 @@ export async function assertPackagedElectronRuntime(options = {}) {
   }
 
   const packageMetadata = JSON.parse(await readFile(path.join(resourceRoot, "package.json"), "utf8"));
-  if (!['threadlight', 'threadlight-desktop-smoke'].includes(packageMetadata.name)) {
+  if (!['pomegr', 'pomegr-desktop-smoke'].includes(packageMetadata.name)) {
     throw new Error("DESKTOP_RESOURCE_READ_FAILED");
   }
 }
