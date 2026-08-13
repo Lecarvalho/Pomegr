@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -109,6 +109,46 @@ test("Claude adapter rejects unsafe session IDs and degrades missing sessions in
   assert.equal(await provider.readSession("../private", { historical: true }), null);
   assert.equal(await provider.readSession("missing", { historical: true }), null);
   assert.deepEqual(await provider.listSessions(), []);
+});
+
+test("Claude adapter retires a stale registry file whose owner process exited", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-orphaned-registry-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const registryRoot = path.join(root, "registry");
+  const localId = "orphaned-session";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const startedAt = "2026-08-10T15:44:00.000Z";
+  const updatedAt = "2026-08-10T16:36:00.000Z";
+  await writeRecords(mainFile, [
+    { type: "user", timestamp: startedAt, cwd: root, message: { content: "PRIVATE_PROMPT_MUST_NOT_LEAK" } },
+    { type: "assistant", timestamp: updatedAt, message: { model: "claude-test", content: [] } },
+  ]);
+  await utimes(mainFile, new Date(updatedAt), new Date(updatedAt));
+  await mkdir(registryRoot, { recursive: true });
+  await writeFile(path.join(registryRoot, `${localId}.json`), JSON.stringify({
+    sessionId: localId,
+    status: "idle",
+    updatedAt: Date.parse(updatedAt),
+    pid: 4242,
+    procStart: "owner-that-exited",
+  }));
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot,
+    tasksRoot: path.join(root, "tasks"),
+    registryProcessIdentities: () => new Map(),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+
+  const catalog = await provider.listSessions();
+  assert.equal(catalog[0].isLive, false);
+  const evidence = await provider.readSession(localId, { historical: true });
+  assert.equal(evidence.historical, true);
+  assert.equal(Date.parse(evidence.session.updatedAt) - Date.parse(evidence.session.startedAt), 52 * 60_000);
+  assert.doesNotMatch(JSON.stringify(evidence), /PRIVATE_PROMPT_MUST_NOT_LEAK|owner-that-exited|4242/);
 });
 
 test("Claude adapter reconstructs cleaned-up task stores from successful transcript lifecycle records", async (context) => {

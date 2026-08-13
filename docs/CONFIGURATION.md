@@ -32,7 +32,7 @@ Reports are written only after the user clicks **Generate report** and selects a
 
 ### Claude Code
 
-No extra setup is required when Claude Code persists sessions under `%USERPROFILE%\.claude\projects`. The local session registry supplies the strongest live and needs-input evidence. `CLAUDE_PROJECTS_DIR` can select a different session root, and `CLAUDE_SESSION_FILE` can pin one synthetic or explicitly selected primary rollout.
+No extra setup is required when Claude Code persists sessions under `%USERPROFILE%\.claude\projects`. The local session registry supplies the strongest live and needs-input evidence. When the registry provides an owner PID and process-start identity, Pomegr validates both monitor-side so orphaned registry files cannot keep exited sessions live; those owner fields are never exposed to the browser. `CLAUDE_PROJECTS_DIR` can select a different session root, and `CLAUDE_SESSION_FILE` can pin one synthetic or explicitly selected primary rollout.
 
 Estimated API cost is optional. Configure `scripts/claude-statusline-bridge.mjs` as described in the README to capture Claude Code's own client-side estimate. The bridge persists only normalized session ID, non-negative USD amount, estimate type, and observation time.
 

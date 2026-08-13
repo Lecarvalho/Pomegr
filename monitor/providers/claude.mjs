@@ -17,7 +17,7 @@ import { latestContextMachinery, readLatestContextMachinery } from "../context-m
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "../session-discovery.mjs";
-import { preferredRegisteredSessionId, readSessionRegistry } from "../session-registry.mjs";
+import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, readSessionRegistry } from "../session-registry.mjs";
 import { normalizeSessionTask, readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
 import { latestSessionSummary } from "../session-summary.mjs";
@@ -294,13 +294,19 @@ export function createClaudeProvider(options = {}) {
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
   const transcriptPlanTasksCache = new Map();
+  const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
+    env: environment,
+    now,
+    platform: options.platform,
+    processIdentities: options.registryProcessIdentities,
+  });
   const usageLimits = createUsageLimitsCoordinator({
     request: options.usageRequest || usageRequest(homeDir, options.fetch || globalThis.fetch),
   }).get;
 
   function discoveredSessions() {
     const files = listSessionFiles(projectsRoot);
-    const registry = readSessionRegistry(registryRoot);
+    const registry = readSessionRegistry(registryRoot, { validateOwners: validateRegistryOwners });
     const explicitFile = explicitSession && fs.existsSync(explicitSession) ? explicitSession : null;
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });

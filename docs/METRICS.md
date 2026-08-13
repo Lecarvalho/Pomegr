@@ -98,7 +98,7 @@ Each agent's wall time is measured from its earliest to latest recorded transcri
 
 ## Session state
 
-When Claude's local session registry is available, its entries are the primary liveness signal. A registered session remains live even while idle. An unregistered transcript receives a 15-second grace window for startup ordering and final exit-time writes, then moves to history. The browser refreshes the local session catalog every two seconds, so registry-backed exits normally appear within a few seconds after that grace expires. No external API is called.
+When Claude's local session registry is available, its entries are the primary liveness signal. For current registry records, Pomegr validates the bounded owner PID and process-start identity before accepting the entry; this prevents an orphaned JSON file or a reused PID from keeping an exited session live. The owner fields remain monitor-side and are never returned to the browser. A process-backed registered session remains live even while idle. Registry formats without owner identity retain the compatibility behavior. An unregistered transcript receives a 15-second grace window for startup ordering and final exit-time writes, then moves to history. The browser refreshes the local session catalog every two seconds, so registry-backed exits normally appear within a few seconds after that grace expires. No external API is called.
 
 When the provider registry is unavailable, Pomegr falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 
