@@ -638,7 +638,6 @@ export function createCodexProvider(options = {}) {
       summaries,
       historical,
     });
-    if (!historical) applyWaitingStatus(agents);
     const startedAt = agents.map((agent) => agent.startedAt).filter(Boolean).sort()[0] || metadata.createdAt;
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
@@ -671,6 +670,7 @@ export function createCodexProvider(options = {}) {
     ]));
     const rolloutTasksByActor = new Map();
     const rolloutActivityByActor = new Map();
+    const rolloutHeuristicIdleActors = new Set();
     const rolloutSignalsByActor = new Map();
     const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
@@ -703,9 +703,14 @@ export function createCodexProvider(options = {}) {
           liveExecutionTaskCache.delete(liveExecutionTaskCache.keys().next().value);
         }
       }
+      const agentStatus = agents.find((agent) => agent.id === actor.id)?.status;
+      const rolloutHeuristicIdle = agentStatus === "idle"
+        && thread.liveness?.source === "rollout_activity_heuristic";
+      if (rolloutHeuristicIdle) rolloutHeuristicIdleActors.add(actor.id);
       rolloutActivityByActor.set(actor.id, parseCodexCurrentActivityRecords(records, {
         historical,
-        agentStatus: agents.find((agent) => agent.id === actor.id)?.status,
+        agentStatus,
+        rolloutHeuristicIdle,
       }));
       rolloutSignalsByActor.set(actor.id, parseCodexSignalRecords(records));
       rolloutSkillsByActor.set(actor.id, parseCodexSkillUsageRecords(records));
@@ -753,7 +758,10 @@ export function createCodexProvider(options = {}) {
       const signals = signalsByActor.get(agent.id) || { agent: null, session: null, tasks: new Map() };
       agent.signal = signals.agent;
       const currentActivity = rolloutActivityByActor.get(agent.id);
-      if (currentActivity) agent.currentActivity = currentActivity;
+      if (currentActivity) {
+        agent.currentActivity = currentActivity;
+        if (agent.status === "idle" && rolloutHeuristicIdleActors.has(agent.id)) agent.status = "active";
+      }
       const rolloutSkills = rolloutSkillsByActor.get(agent.id) || [];
       agent.skills = mergeSkillUsage([rolloutSkills.length ? rolloutSkills : canonicalByActor.get(agent.id)?.skills || []]);
       agent.toolCalls = callsByActor.get(agent.id) || 0;
@@ -762,6 +770,7 @@ export function createCodexProvider(options = {}) {
         canonicalTasksByActor.get(agent.id) || [],
       ], { historical, sessionUpdatedAt: updatedAt, taskSignals: allSignals.tasks });
     }
+    if (!historical) applyWaitingStatus(agents);
     pullRequestCreationGroups.push(...canonicalEvidence.map((item) => item.pullRequestCreations));
     usageSnapshots.sort((left, right) => (
       Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)

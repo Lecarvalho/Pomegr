@@ -64,6 +64,24 @@ test("keeps activity scoped to an open live turn and clears every recognized ter
   ], { historical: true, agentStatus: "active" }), null);
 });
 
+test("keeps an open-turn heading stable across heuristic idle gaps and unrelated later records", () => {
+  const records = [
+    { timestamp: "2026-08-12T12:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    eventSummary("2026-08-12T12:00:01.000Z", "**Adjusting node positions and labels**"),
+    { timestamp: "2026-08-12T12:01:24.000Z", type: "event_msg", payload: { type: "token_count" } },
+  ];
+  const expected = {
+    label: "Adjusting node positions and labels",
+    observedAt: "2026-08-12T12:00:01.000Z",
+  };
+
+  assert.deepEqual(parseCodexCurrentActivityRecords(records, { agentStatus: "active" }), expected);
+  assert.deepEqual(parseCodexCurrentActivityRecords(records, {
+    agentStatus: "idle",
+    rolloutHeuristicIdle: true,
+  }), expected);
+});
+
 test("keeps the live heading across interim agent commentary until genuine turn completion", () => {
   const interimMessage = {
     timestamp: "2026-08-12T12:00:02.000Z",
@@ -165,8 +183,8 @@ test("provider normalization keeps live current activity on its owning agent and
   ].map(JSON.stringify).join("\n"), "utf8");
 
   const threads = [
-    { id: "activity-root", sessionId: "activity-root", createdAt: 1_786_536_000, updatedAt: 1_786_536_003, source: "cli", cwd: "C:\\synthetic\\threadlight", name: "Activity root", status: { type: "active" }, path: rootFile },
-    { id: "activity-child", sessionId: "activity-root", parentThreadId: "activity-root", createdAt: 1_786_536_001, updatedAt: 1_786_536_003, source: "sub_agent", cwd: "C:\\synthetic\\threadlight", name: "Activity child", status: { type: "active" }, path: childFile },
+    { id: "activity-root", sessionId: "activity-root", createdAt: 1_786_536_000, updatedAt: 1_786_536_003, source: "cli", cwd: "C:\\synthetic\\threadlight", name: "Activity root", status: { type: "notLoaded" }, path: rootFile },
+    { id: "activity-child", sessionId: "activity-root", parentThreadId: "activity-root", createdAt: 1_786_536_001, updatedAt: 1_786_536_003, source: "sub_agent", cwd: "C:\\synthetic\\threadlight", name: "Activity child", status: { type: "notLoaded" }, path: childFile },
   ];
   const appServer = {
     async listThreads() { return { data: threads }; },
@@ -175,13 +193,22 @@ test("provider normalization keeps live current activity on its owning agent and
       return thread ? { thread: { ...thread, turns: includeTurns ? [] : undefined } } : null;
     },
   };
-  const provider = createCodexProvider({ codexHome: root, appServer, cacheMs: 0, includeArchived: false });
+  const provider = createCodexProvider({
+    codexHome: root,
+    appServer,
+    cacheMs: 0,
+    includeArchived: false,
+    now: () => Date.parse("2026-08-12T12:00:20.000Z"),
+  });
   const liveEvidence = await provider.readSession("activity-root", { historical: false });
   const liveState = monitorStateFromProviderEvidence("codex", liveEvidence);
   const liveAgents = new Map(liveState.agents.map((agent) => [agent.id, agent]));
 
   assert.deepEqual(liveAgents.get("primary").currentActivity, { label: "Root activity", observedAt: "2026-08-12T12:00:01.000Z" });
   assert.deepEqual(liveAgents.get("agent-activity-child").currentActivity, { label: "Child activity", observedAt: "2026-08-12T12:00:02.000Z" });
+  assert.equal(liveAgents.get("primary").status, "active");
+  assert.equal(liveAgents.get("agent-activity-child").status, "active");
+  assert.equal(liveState.metrics.activeAgents, 2);
   assert.equal(liveState.executionTasks.length, 0);
   assert.equal(liveState.activity.length, 0);
   assert.doesNotMatch(JSON.stringify(liveState), /MUST_NOT_LEAK|encrypted_content|agent_reasoning|summary_text|instructions/iu);

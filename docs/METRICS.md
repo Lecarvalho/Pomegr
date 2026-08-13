@@ -104,6 +104,8 @@ When the provider registry is unavailable, Threadlight falls back to the five-mi
 
 Codex uses a separate evidence order: owning app-server status, a current allowlisted lifecycle-bridge lease, then a rollout-tail heuristic. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly. Bridge leases use a 15-second heartbeat and 45-second expiry; needs-input also has a 30-minute safety expiry. Rollout-only activity is active for 15 seconds, idle/recent through 120 seconds, and unavailable after 120 seconds. On Windows, Codex can append fresh records while the open rollout's reported modification time remains stale, so Threadlight also tracks bounded file-size/stat changes before applying that expiry gate. Rollout-only approval waiting is unsupported. These windows are liveness heuristics, not token metrics or operating-system certainty.
 
+A recognized provider-authored Codex activity heading is scoped to its open turn, not to the 15-second rollout activity window. When only the rollout fallback has gone idle, an open heading keeps that agent active; explicit app-server and lifecycle-bridge idle states remain authoritative. The heading clears when a newer heading replaces it, a recognized terminal turn record arrives, the agent finishes or stops, or the view becomes historical. Threadlight preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
+
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
 ## User attention

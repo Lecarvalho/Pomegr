@@ -6,7 +6,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
-$monitorPath = Join-Path $repositoryRoot 'monitor\server.mjs'
+$monitorPaths = @(
+  (Join-Path $repositoryRoot 'monitor\cli.mjs')
+  (Join-Path $repositoryRoot 'monitor\server.mjs')
+)
 $webCliPath = Join-Path $repositoryRoot 'node_modules\vinext\dist\cli.js'
 $ports = 3003, 4317
 
@@ -66,7 +69,15 @@ foreach ($listener in $listeners) {
   }
 
   $commandLine = [string]$processTable[$processId].CommandLine
-  $isExpectedMonitor = $listener.LocalPort -eq 4317 -and $commandLine.IndexOf($monitorPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+  $isExpectedMonitor = $false
+  if ($listener.LocalPort -eq 4317) {
+    foreach ($monitorPath in $monitorPaths) {
+      if ($commandLine.IndexOf($monitorPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $isExpectedMonitor = $true
+        break
+      }
+    }
+  }
   $isExpectedWeb = $listener.LocalPort -eq 3003 -and $commandLine.IndexOf($webCliPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and $commandLine -match '--port\s+3003\b'
   if (-not ($isExpectedMonitor -or $isExpectedWeb)) {
     throw "Port $($listener.LocalPort) is owned by an unrecognized process ($processId). No processes were stopped."

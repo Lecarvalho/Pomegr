@@ -14,7 +14,7 @@ const TERMINAL_EVENT_TYPES = new Set([
   "turn_interrupted",
 ]);
 
-const TERMINAL_AGENT_STATUSES = new Set(["finished", "stopped", "idle"]);
+const TERMINAL_AGENT_STATUSES = new Set(["finished", "stopped"]);
 
 function boundedActivityLabel(value) {
   if (typeof value !== "string" || /[\r\n]/.test(value)) return null;
@@ -62,7 +62,9 @@ function turnStartRecord(record) {
  * its visible one-line reasoning heading. Arbitrary reasoning remains private.
  */
 export function parseCodexCurrentActivityRecords(records, options = {}) {
-  if (options.historical || TERMINAL_AGENT_STATUSES.has(options.agentStatus)) return null;
+  if (options.historical
+    || TERMINAL_AGENT_STATUSES.has(options.agentStatus)
+    || (options.agentStatus === "idle" && !options.rolloutHeuristicIdle)) return null;
   let current = null;
   let turnOpen = true;
   for (const record of Array.isArray(records) ? records : []) {
