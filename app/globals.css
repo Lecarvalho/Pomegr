@@ -10,6 +10,7 @@
   --line: #cfcfc9;
   --line-strong: #b8b8b1;
   --brand: #994238;
+  --brand-soft: #eee0dc;
   --green: #547a64;
   --green-soft: #e1e9e3;
   --blue: #64719b;
@@ -29,6 +30,7 @@ html[data-theme="dark"] {
   --line: #29252b;
   --line-strong: #39333a;
   --brand: #d85f78;
+  --brand-soft: #35131d;
   --green: #79bf9b;
   --green-soft: #182a22;
   --blue: #9aa9dd;
@@ -214,11 +216,11 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .histogramChart { min-width: 0; flex: 1; position: relative; }
 .histogramGrid { position: absolute; inset: 0 0 auto; height: 140px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }.histogramGrid i { display: block; width: 100%; border-top: 1px dashed #deddd6; }.histogramGrid i:last-child { border-top-style: solid; }
 .contextAreaChart { position: absolute; z-index: 1; inset: 0 0 auto; width: 100%; height: 140px; overflow: visible; }
-.contextArea { stroke: none; opacity: .82; }
+.contextArea { stroke: none; opacity: .11; }
 .outputArea { fill: var(--amber); }.cacheReadArea { fill: var(--green); }.cacheWriteArea { fill: color-mix(in srgb, var(--green) 52%, var(--panel)); }.inputArea { fill: var(--blue); }
 .contextTotalLine { fill: none; stroke: var(--brand); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .activityBars { position: relative; z-index: 2; height: 140px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4px, 1fr); }
-.activityBar { position: relative; height: 100%; outline: none; }.contextChartPoint { position: absolute; left: 50%; top: var(--point-y); width: 7px; height: 7px; border: 2px solid var(--panel); border-radius: 50%; background: var(--brand); opacity: 0; transform: translate(-50%, -50%); transition: opacity .15s ease, transform .15s ease; }.activityBar:hover .contextChartPoint, .activityBar:focus .contextChartPoint { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }.activityBar:focus-visible { outline: 1px solid var(--brand); outline-offset: 2px; }
+.activityBar { position: relative; height: 100%; outline: none; }.contextChartPoint { position: absolute; left: 50%; top: var(--point-y); width: 7px; height: 7px; border: 1.7px solid var(--brand); border-radius: 50%; background: var(--panel); opacity: 1; transform: translate(-50%, -50%); transition: background-color .15s ease, transform .15s ease; }.activityBar:hover .contextChartPoint, .activityBar:focus .contextChartPoint { background: var(--brand); transform: translate(-50%, -50%) scale(1.35); }.activityBar:focus-visible { outline: 1px solid var(--brand); outline-offset: 2px; }
 .histogramTooltip { display: none; position: absolute; z-index: 4; left: 50%; top: 8px; width: 190px; transform: translateX(-50%); padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); color: #fff; box-shadow: 0 8px 24px rgba(25,32,29,.2); pointer-events: none; text-align: left; }.activityBar:first-child .histogramTooltip { left: 0; transform: none; }.activityBar:last-child .histogramTooltip { left: auto; right: 0; transform: none; }.activityBar:hover .histogramTooltip, .activityBar:focus .histogramTooltip { display: block; }.histogramTooltip strong, .histogramTooltip small, .histogramTooltip em { display: block; }.histogramTooltip strong { font: 400 16px/1 var(--font-inter), sans-serif; }.histogramTooltip small { margin-top: 4px; color: #c8d1cc; font-size: 9px; }.histogramTooltip em { margin-top: 7px; color: #a9bbb1; font-size: 8px; font-style: normal; line-height: 1.35; }
 .histogramAxis { display: flex; justify-content: space-between; padding-top: 8px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }.histogramAxis span { flex: 1; }.histogramAxis span:nth-child(2) { text-align: center; }.histogramAxis span:last-child { text-align: right; }
 .histogramFooter { min-height: 68px; margin-top: 3px; padding: 10px 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; border-top: 1px solid #eceae4; color: var(--muted); font-size: 9px; }.histogramLegend { display: grid; grid-template-columns: repeat(4, max-content); align-items: center; gap: 10px 20px; }.histogramLegendItem { display: flex; align-items: center; gap: 7px; white-space: nowrap; }.histogramLegendItem > i { width: 8px; height: 24px; flex: 0 0 auto; border-radius: 2px; }.histogramLegendItem > span { display: flex; flex-direction: column; gap: 3px; }.histogramLegendItem small { color: var(--muted); font-size: 8px; }.histogramLegendItem strong { color: var(--ink); font: 400 15px/1 var(--font-inter), sans-serif; }.histogramLegend .inputSwatch { background: var(--blue); }.histogramLegend .cacheWriteSwatch { background: #8fc5a9; }.histogramLegend .cacheReadSwatch { background: var(--green); }.histogramLegend .outputSwatch { background: var(--amber); }.histogramMethod { margin-left: auto; }
@@ -516,13 +518,31 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
 .outputArea { fill: var(--amber); }.cacheReadArea { fill: var(--green); }
 .cacheWriteArea { fill: color-mix(in srgb, var(--green) 52%, var(--panel)); }.inputArea { fill: var(--blue); }
 
-/* Keep dense data labels readable without changing the established geometry. */
+/* Pomegr type scale: restrained hierarchy, medium weights, and mono only for data. */
+body { font-size: 14px; line-height: 1.55; font-weight: 400; }
+.brand { font-size: 13px; font-weight: 660; letter-spacing: -.02em; }
+.connection { font-size: 10px; font-weight: 600; letter-spacing: .08em; }
+.hero h1 { font-size: clamp(30px, 3.5vw, 46px); font-weight: 520; letter-spacing: -.035em; }
+.hero p { font-size: 13px; }
+.sessionTiming > strong, .sessionApprovalModeValue { font-size: 20px; font-weight: 480; }
+.panelHeader h2, .gitSummary h2, .limitsHeader h2, .cacheLead h2 { font-size: 13px; font-weight: 610; letter-spacing: 0; }
+.panelHeader .quiet, .panelHeader > small { font-size: 10px; }
+.summaryItem > span { font-size: 10.5px; font-weight: 520; }
+.summaryItem > strong { font-size: 26px; font-weight: 480; }
+.summaryItem p, .metricFooter, .metricFooter button { font-size: 10.5px; }
+.agentTitleLine > strong { font-size: 12px; font-weight: 590; }
+.agentMeta, .agentTokens span, .agentDuration span, .statusPill, .agentRow time { font-size: 10px; }
+.agentTokens strong { font-size: 14px; font-weight: 500; }
+.agentDuration strong { font-size: 12px; font-weight: 500; }
+.statusPill { font-weight: 650; }
+.histogramSummary strong { font-size: 19px; font-weight: 480; }
+.histogramSummary span, .histogramCost, .histogramScale, .histogramAxis,
+.histogramFooter, .histogramLegendItem small, .histogramMethod { font-size: 10px; }
+.histogramLegendItem strong { font-size: 14px; font-weight: 500; }
 .liveHeading, .historyHeading, .liveHeading small, .historyHeading small,
 .providerBadge.compact, .historyProjectHeader strong, .historyProjectHeader small,
-.historyProjectSessions button time, .heroSignalRow > small, .pullRequestBadge,
-.pullRequestTitle em, .branchComparison, .gitStatus, .agentPopoverIntro,
-.metricPopoverRow span, .histogramSummary span, .histogramCost, .histogramScale,
-.histogramAxis, .histogramFooter, .histogramLegendItem small, .machineryStat > small,
+.historyProjectSessions button time, .heroSignalRow > small, .pullRequestTitle em,
+.agentPopoverIntro, .metricPopoverRow span, .machineryStat > small,
 .machineryPopoverTrigger, .machineryUnavailable, .machineryMeta, .machineryCategory span,
 .machineryCategory small, .machineryItem span, .machineryCaution, .skillPopoverRow small,
 .executionTaskSection h3, .executionTaskRow small, .currentActivityRow small,
@@ -530,20 +550,56 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
 .sidebarAboutLink, .label, .sessionIdentity, .sessionIdentity code, .heroSummarySource,
 .sessionMetaLabel, .sessionMetaGroup > small, .pullRequestBody small, .pullRequestBody code,
 .pullRequestStats b, .gitListHeader > span:last-child, .gitCommit code, .gitCommit strong,
-.gitCommit time, .gitFile code, .limitTop div > span, .limitBottom, .summaryItem > span,
-.summaryItem p, .metricFooter, .metricFooter button, .cacheLead p,
-.machineryStat > span:first-child, .machineryGroup summary span, .machineryItem strong,
-.agentMeta, .agentTokens span, .agentDuration span, .statusPill, .agentRow time,
-.agentChip { font-size: 11px; }
+.gitCommit time, .gitFile code, .limitTop div > span, .limitBottom, .cacheLead p,
+.machineryStat > span:first-child, .machineryGroup summary span, .machineryItem strong {
+  font-size: 10px;
+}
 .liveSessionLink small, .liveSessionEmpty small, .attentionNotice small,
 .gitSummary p, .gitEmpty, .metricPopover > .agentPopoverIntro,
-.machineryMeta strong, .sessionDetails > summary small { font-size: 11px; }
-.machineryUnavailable { font-size: 11px !important; }
-.histogramTooltip small, .histogramTooltip em, .histogramMethod,
-footer { font-size: 10px; }
-.agentChip { min-height: 20px; line-height: 14px; }
+.machineryMeta strong, .sessionDetails > summary small { font-size: 10.5px; }
+.machineryUnavailable { font-size: 10px !important; }
+.histogramTooltip small, .histogramTooltip em, footer { font-size: 10px; }
+
+/* Controls and chips share the same thin, square, low-emphasis frame language. */
+.ghostButton, .desktopControls > summary {
+  min-height: 31px;
+  padding: 0 10px;
+  border-color: var(--line-strong);
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.themeToggle { width: 31px; height: 31px; }
+.ghostButton:hover, .desktopControls > summary:hover { border-color: var(--ink); background: var(--panel-2); }
+.reportButton, .reportButton:hover:not(:disabled) { border-color: var(--ink); background: var(--ink); color: var(--panel); }
+.desktopControlsPanel > button, .desktopControlsPanel > a,
+.desktopToggle, .desktopSelect { font-size: 10.5px; font-weight: 450; }
+.textButton, .machineryPopoverTrigger { font-size: 10.5px; font-weight: 560; }
+.agentChip, .pullRequestBadge, .pullRequestTitle em, .branchComparison, .gitStatus {
+  min-height: 20px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.agentChipButton:hover, .agentChipButton[aria-expanded="true"], .pullRequestBadge:hover {
+  border-color: var(--line-strong);
+  background: var(--panel);
+  box-shadow: none;
+}
+.aboutBrandMark { display: block; width: 64px; height: 64px; margin: 0 0 26px; }
+.aboutPage > h1 { font-size: clamp(44px, 6vw, 68px); font-weight: 480; }
+.aboutLead { font-size: clamp(18px, 2vw, 24px); }
+.aboutGrid h2, .aboutNote h2 { font-size: 18px; font-weight: 520; }
 
 html[data-theme="dark"] .sessionSidebar { background: var(--sidebar); scrollbar-color: var(--line-strong) transparent; }
+html[data-theme="dark"] .contextArea { opacity: .22; }
 html[data-theme="dark"] .panel, html[data-theme="dark"] .aboutGrid > div,
 html[data-theme="dark"] .aboutNote { background: var(--panel); }
 html[data-theme="dark"] .ghostButton, html[data-theme="dark"] .themeToggle,
@@ -560,4 +616,9 @@ html[data-theme="dark"] .agentRow, html[data-theme="dark"] .skillPopoverRow,
 html[data-theme="dark"] .executionTaskSection + .executionTaskSection,
 html[data-theme="dark"] .activityRow { border-color: var(--line); }
 html[data-theme="dark"] .reportButton,
-html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: var(--brand); background: var(--brand); color: var(--paper); }
+html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: #713047; background: var(--brand-soft); color: #f1dbe1; }
+
+@media (max-width: 720px) {
+  .ghostButton, .sessionMenuButton, .themeToggle { min-height: 40px; }
+  .themeToggle { width: 40px; }
+}

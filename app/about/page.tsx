@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { PomegrBrand } from "../components/PomegrBrand";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -25,6 +26,7 @@ export default function About() {
       </header>
 
       <article className="aboutPage">
+        <Image className="aboutBrandMark" src="/favicon.svg" alt="Pomegr pomegranate mark" width={64} height={64} priority />
         <div className="eyebrow"><span /> ABOUT POMEGR</div>
         <h1>A quiet view into active work.</h1>
         <p className="aboutLead">Observe coding-agent sessions without exposing prompts or responses. Pomegr analyzes execution metadata only.</p>
