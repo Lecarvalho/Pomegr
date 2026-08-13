@@ -13,6 +13,8 @@ const exports = [
   ["pomegr-mark-color.svg", "pomegr-mark-color.png", 2048, 2048],
   ["pomegr-mark-dark.svg", "pomegr-mark-dark.png", 2048, 2048],
   ["pomegr-mark-white.svg", "pomegr-mark-white.png", 2048, 2048],
+  ["pomegr-mark-outline-dark.svg", "pomegr-mark-outline-dark.png", 2048, 2048],
+  ["pomegr-mark-outline-light.svg", "pomegr-mark-outline-light.png", 2048, 2048],
 ];
 
 await mkdir(brandDir, { recursive: true });

@@ -12,9 +12,12 @@ describe("Pomegr visual contract", () => {
   it("renders the wordmark-only header identity and the product mark on About", () => {
     const { container } = render(<AboutPage />);
 
-    expect(screen.getByRole("link", { name: "Pomegr dashboard" })).toHaveTextContent("Pomegr");
+    expect(screen.getByRole("link", { name: "Pomegr dashboard" })).toHaveTextContent("POMEGR");
     expect(screen.getByText("ABOUT POMEGR")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Pomegr pomegranate mark" })).toHaveAttribute("src", expect.stringContaining("favicon.svg"));
+    expect(screen.getByRole("img", { name: "Pomegr pomegranate mark" })).toContainElement(document.querySelector(".aboutBrandMarkLight"));
+    expect(document.querySelector(".aboutBrandMarkDark")).toHaveAttribute("src", expect.stringContaining("pomegr-mark-outline-dark.svg"));
+    expect(document.querySelector(".aboutBrandMarkLight")).toHaveAttribute("src", expect.stringContaining("pomegr-mark-outline-light.svg"));
+    expect(container.querySelector(".brandWordmark path")).toBeInTheDocument();
     expect(container.querySelector(".brandMark")).not.toBeInTheDocument();
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.svg/);
   });
