@@ -4,6 +4,84 @@ import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboa
 import { EmptyState } from "../EmptyState";
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
+type Point = { x: number; y: number };
+type CubicSegment = { start: Point; firstControl: Point; secondControl: Point; end: Point };
+
+const CHART_WIDTH = 1000;
+const CHART_HEIGHT = 140;
+
+function finiteNonNegative(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function seriesPoints(values: number[]): Point[] {
+  if (values.length === 0) return [];
+  const bucketPoints = values.map((value, index) => ({ x: (index + .5) * CHART_WIDTH / values.length, y: finiteNonNegative(value) }));
+  return [{ x: 0, y: bucketPoints[0].y }, ...bucketPoints, { x: CHART_WIDTH, y: bucketPoints.at(-1)?.y ?? CHART_HEIGHT }];
+}
+
+/** A monotone cubic Hermite spline. Harmonic-mean tangents keep every segment inside its data bounds. */
+function monotoneSegments(points: Point[]): CubicSegment[] {
+  if (points.length < 2) return [];
+  const slopes = points.slice(0, -1).map((point, index) => {
+    const width = points[index + 1].x - point.x;
+    return width > 0 ? (points[index + 1].y - point.y) / width : 0;
+  });
+  const tangents = points.map((_, index) => {
+    if (index === 0) return slopes[0];
+    if (index === points.length - 1) return slopes.at(-1) || 0;
+    const before = slopes[index - 1];
+    const after = slopes[index];
+    return before === 0 || after === 0 || Math.sign(before) !== Math.sign(after)
+      ? 0
+      : 2 / (1 / before + 1 / after);
+  });
+
+  return points.slice(0, -1).map((point, index) => {
+    const next = points[index + 1];
+    const width = next.x - point.x;
+    return {
+      start: point,
+      firstControl: { x: point.x + width / 3, y: point.y + tangents[index] * width / 3 },
+      secondControl: { x: next.x - width / 3, y: next.y - tangents[index + 1] * width / 3 },
+      end: next,
+    };
+  });
+}
+
+export function monotonePath(points: Point[]) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return monotoneSegments(points).reduce((path, segment) => (
+    `${path} C ${segment.firstControl.x} ${segment.firstControl.y}, ${segment.secondControl.x} ${segment.secondControl.y}, ${segment.end.x} ${segment.end.y}`
+  ), `M ${points[0].x} ${points[0].y}`);
+}
+
+function chartY(value: number, maximum: number) {
+  return CHART_HEIGHT - (maximum > 0 ? finiteNonNegative(value) / maximum * CHART_HEIGHT : 0);
+}
+
+// Each component is interpolated as a bounded non-negative curve. Summing matching
+// Bezier controls produces smooth cumulative boundaries whose layers cannot cross.
+function stackedPath(componentSeries: Point[][], maximum: number) {
+  const firstSeries = componentSeries[0];
+  if (!firstSeries?.length) return "";
+  const geometries = componentSeries.map(monotoneSegments);
+  const initial = componentSeries.reduce((total, series) => total + series[0].y, 0);
+  if (firstSeries.length === 1) return `M ${firstSeries[0].x} ${chartY(initial, maximum)}`;
+  return geometries[0].reduce((path, segment, index) => {
+    const firstControl = geometries.reduce((total, geometry) => total + geometry[index].firstControl.y, 0);
+    const secondControl = geometries.reduce((total, geometry) => total + geometry[index].secondControl.y, 0);
+    const end = geometries.reduce((total, geometry) => total + geometry[index].end.y, 0);
+    return `${path} C ${segment.firstControl.x} ${chartY(firstControl, maximum)}, ${segment.secondControl.x} ${chartY(secondControl, maximum)}, ${segment.end.x} ${chartY(end, maximum)}`;
+  }, `M ${firstSeries[0].x} ${chartY(initial, maximum)}`);
+}
+
+function stackedAreaPath(componentSeries: Point[][], maximum: number) {
+  const firstSeries = componentSeries[0];
+  if (!firstSeries?.length) return "";
+  return `${stackedPath(componentSeries, maximum)} L ${firstSeries.at(-1)?.x || 0} ${CHART_HEIGHT} L ${firstSeries[0].x} ${CHART_HEIGHT} Z`;
+}
 
 function HistogramLegendItem({ swatch, label, value }: { swatch: string; label: string; value: number }) {
   return <div className="histogramLegendItem"><i className={swatch} /><span><small>{label}</small><strong>{compactNumber(value)}</strong></span></div>;
@@ -26,7 +104,27 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
   historical: boolean;
 }) {
   const buckets = timeline?.buckets || [];
-  const maximum = Math.max(0, ...buckets.map((bucket) => bucket.total));
+  const components = buckets.map((bucket) => {
+    const input = finiteNonNegative(bucket.input);
+    const cacheWrite = finiteNonNegative(bucket.cacheWrite);
+    const cacheRead = finiteNonNegative(bucket.cacheRead);
+    const output = finiteNonNegative(bucket.output);
+    return { input, cacheWrite, cacheRead, output, stackTotal: input + cacheWrite + cacheRead + output, total: finiteNonNegative(bucket.total) };
+  });
+  const maximum = Math.max(0, ...components.flatMap((bucket) => [bucket.total, bucket.stackTotal]));
+  const componentSeries = [
+    seriesPoints(components.map((bucket) => bucket.input)),
+    seriesPoints(components.map((bucket) => bucket.cacheWrite)),
+    seriesPoints(components.map((bucket) => bucket.cacheRead)),
+    seriesPoints(components.map((bucket) => bucket.output)),
+  ];
+  const paths = {
+    input: stackedAreaPath(componentSeries.slice(0, 1), maximum),
+    cacheWrite: stackedAreaPath(componentSeries.slice(0, 2), maximum),
+    cacheRead: stackedAreaPath(componentSeries.slice(0, 3), maximum),
+    output: stackedAreaPath(componentSeries, maximum),
+    total: stackedPath(componentSeries, maximum),
+  };
   const spansMultipleDays = buckets.length > 0
     && new Date(buckets.at(-1)?.end || 0).getTime() - new Date(buckets[0].start).getTime() >= 24 * 60 * 60_000;
   const middle = buckets[Math.floor((buckets.length - 1) / 2)];
@@ -48,19 +146,20 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
           <div className="histogramScale" aria-hidden="true"><span>{compactNumber(maximum)}</span><span>{compactNumber(Math.round(maximum / 2))}</span><span>0</span></div>
           <div className="histogramChart">
             <div className="histogramGrid" aria-hidden="true"><i /><i /><i /></div>
+            <svg className="contextAreaChart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+              <path className="contextArea outputArea" data-series="output" d={paths.output} />
+              <path className="contextArea cacheReadArea" data-series="cacheRead" d={paths.cacheRead} />
+              <path className="contextArea cacheWriteArea" data-series="cacheWrite" d={paths.cacheWrite} />
+              <path className="contextArea inputArea" data-series="input" d={paths.input} />
+              <path className="contextTotalLine" data-series="total" d={paths.total} />
+            </svg>
             <div className="activityBars" role="list" aria-label={`${buckets.length} chronological context-growth buckets`}>
-              {buckets.map((bucket) => {
-                const height = maximum > 0 ? (bucket.total / maximum) * 100 : 0;
-                const segmentSize = (value: number) => bucket.total > 0 ? `${(value / bucket.total) * 100}%` : "0%";
+              {buckets.map((bucket, index) => {
+                const pointY = maximum > 0 ? 100 - components[index].stackTotal / maximum * 100 : 100;
                 const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${bucket.total.toLocaleString()} net context added; ${bucket.input.toLocaleString()} attributed to uncached input, ${bucket.cacheWrite.toLocaleString()} to cache write, ${bucket.cacheRead.toLocaleString()} to cache read, ${bucket.output.toLocaleString()} to generated output`;
                 return (
-                  <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label} style={{ "--bar-height": `${height}%` } as CSSProperties}>
-                    <i className="activityStack" aria-hidden="true">
-                      <b className="activitySegment inputSegment" style={{ "--segment-size": segmentSize(bucket.input) } as CSSProperties} />
-                      <b className="activitySegment cacheWriteSegment" style={{ "--segment-size": segmentSize(bucket.cacheWrite) } as CSSProperties} />
-                      <b className="activitySegment cacheReadSegment" style={{ "--segment-size": segmentSize(bucket.cacheRead) } as CSSProperties} />
-                      <b className="activitySegment outputSegment" style={{ "--segment-size": segmentSize(bucket.output) } as CSSProperties} />
-                    </i>
+                  <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label} style={{ "--point-y": `${pointY}%` } as CSSProperties}>
+                    <i className="contextChartPoint" aria-hidden="true" />
                     <span className="histogramTooltip">
                       <strong>{compactNumber(bucket.total)} context added</strong>
                       <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>

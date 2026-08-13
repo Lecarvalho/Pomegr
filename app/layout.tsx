@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Threadlight",
+  title: "Pomegr",
   description: "A quiet, local observer for coding-agent sessions.",
 };
 
 const themeBootScript = `
   try {
-    const savedTheme = localStorage.getItem("threadlight-theme");
+    const savedTheme = localStorage.getItem("pomegr-theme");
     const theme = savedTheme === "light" || savedTheme === "dark"
       ? savedTheme
       : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -38,7 +38,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }} /></head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${geistMono.variable} antialiased`}
       >
         {children}
       </body>

@@ -38,11 +38,11 @@ export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSe
           <select value={state.closeBehavior} onChange={(event) => onSetCloseBehavior(event.currentTarget.value as DesktopState["closeBehavior"])}>
             <option value="ask">Ask me</option>
             <option value="tray">Keep running in tray</option>
-            <option value="quit">Quit Threadlight</option>
+            <option value="quit">Quit Pomegr</option>
           </select>
         </label>
-        <a href="/about">About Threadlight</a>
-        <button className="desktopQuit" type="button" onClick={onQuit}>Quit Threadlight</button>
+        <a href="/about">About Pomegr</a>
+        <button className="desktopQuit" type="button" onClick={onQuit}>Quit Pomegr</button>
       </div>
     </details>
   );

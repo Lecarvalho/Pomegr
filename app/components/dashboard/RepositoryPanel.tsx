@@ -98,7 +98,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
               )}
             </div>
           )}
-          {repository.available && !repository.historical && comparison && !mergedPullRequestCoversComparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Threadlight's isolated cache.">{comparison}</span>}
+          {repository.available && !repository.historical && comparison && !mergedPullRequestCoversComparison && <span className="branchComparison" title="Compared with a remote snapshot fetched into Pomegr's isolated cache.">{comparison}</span>}
           {repository.available && !repository.historical && remote.status === "checking" && <span className="branchComparison pending">Checking remote…</span>}
           {repository.available && !repository.historical && remote.status === "unavailable" && <span className="branchComparison unavailable">Remote comparison unavailable</span>}
         </div>

@@ -48,7 +48,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
               <div className="agentIdentity">
                 <div className="agentTitleLine">
                   <strong>{agent.label}</strong>
-                  {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Threadlight MCP tool"}>{agent.signal.label}</AgentChip>}
+                  {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Pomegr MCP tool"}>{agent.signal.label}</AgentChip>}
                   {agent.skills.length > 0 && (
                     <div className="agentPopoverAnchor skillPopoverAnchor" ref={isOpen("skills", agent.id) ? popoverAnchorRef : undefined}>
                       <AgentChip as="button" className="skillPopoverTrigger" onClick={() => toggle("skills", agent.id)} expanded={isOpen("skills", agent.id)} controls={`agent-skills-${agent.id}`}>{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</AgentChip>

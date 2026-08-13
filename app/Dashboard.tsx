@@ -33,7 +33,7 @@ type DesktopBridge = {
 };
 
 function desktopBridge() {
-  return (window as Window & { threadlightDesktop?: DesktopBridge }).threadlightDesktop;
+  return (window as Window & { pomegrDesktop?: DesktopBridge }).pomegrDesktop;
 }
 
 function notificationNavigationSessionId() {
@@ -57,8 +57,8 @@ export function Dashboard() {
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
   useEffect(() => {
-    document.documentElement.dataset.threadlightHydrated = "true";
-    return () => { delete document.documentElement.dataset.threadlightHydrated; };
+    document.documentElement.dataset.pomegrHydrated = "true";
+    return () => { delete document.documentElement.dataset.pomegrHydrated; };
   }, []);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function Dashboard() {
       });
     } catch {
       if (signal?.aborted) return;
-      setData((current) => ({ ...current, connected: false, error: "Local monitor unavailable. Run npm run dev in this project; Threadlight will reconnect automatically." }));
+      setData((current) => ({ ...current, connected: false, error: "Local monitor unavailable. Run npm run dev in this project; Pomegr will reconnect automatically." }));
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -275,7 +275,7 @@ function AwaitingSession({ connected, connecting, loadingSession }: { connected:
       : "Loading the latest session state. Prompts and responses stay private."
     : connected
       ? "Start a coding-agent session and it will appear here automatically. Prompts and responses stay private."
-      : "Run npm run dev in this project. Threadlight will reconnect automatically.";
+      : "Run npm run dev in this project. Pomegr will reconnect automatically.";
   return (
     <section className="awaitingSession" aria-label="Session discovery status" aria-live="polite">
       <h1>{heading}</h1>
@@ -287,7 +287,7 @@ function AwaitingSession({ connected, connecting, loadingSession }: { connected:
 function DashboardFooter({ connected, connecting, viewingHistory, paused, lastRefresh }: { connected: boolean; connecting: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
   return (
     <footer>
-      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"} · <a href="https://github.com/Lecarvalho/threadlight" target="_blank" rel="noreferrer">Source</a> · <a href="/about#license">AGPL-3.0-only</a></span>
+      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"} · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <a href="/about#license">AGPL-3.0-only</a></span>
       <span>{connecting ? "Connecting…" : viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
     </footer>
   );

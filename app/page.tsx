@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Dashboard } from "./Dashboard";
 
 export const metadata: Metadata = {
-  title: "Threadlight",
+  title: "Pomegr",
   description: "A quiet, local observer for coding-agent sessions.",
 };
 
