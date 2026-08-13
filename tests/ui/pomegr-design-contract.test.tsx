@@ -42,6 +42,7 @@ describe("Pomegr visual contract", () => {
     expect(timelineSource).toMatch(/viewBox="0 0 8\.7 8\.7" preserveAspectRatio="none"[\s\S]*?<circle cx="4\.35" cy="4\.35" r="3\.5"/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
+    expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
   });
 });
