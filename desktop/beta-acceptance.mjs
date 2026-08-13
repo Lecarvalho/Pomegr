@@ -26,7 +26,7 @@ export const BETA_ACCEPTANCE_MANUAL_GATES = Object.freeze([
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const SAFE_TEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._()+,:/-]{0,255}$/;
-const THREADLIGHT_WORKFLOW_RUN_URL = /^https:\/\/github\.com\/Lecarvalho\/threadlight\/actions\/runs\/[1-9]\d*$/;
+const POMEGR_WORKFLOW_RUN_URL = /^https:\/\/github\.com\/Lecarvalho\/pomegr\/actions\/runs\/[1-9]\d*$/;
 const RECORD_KEYS = Object.freeze(["schemaVersion", "completedOn", "evidence"]);
 const EVIDENCE_KEYS = Object.freeze([
   "windowsVersion",
@@ -98,8 +98,8 @@ function assertReleaseIdentity(release, expectedKeys, code) {
   assertExactKeys(release, expectedKeys, `${code}_KEYS_INVALID`);
   parseBetaCoordinates(release.version, `${code}_VERSION_INVALID`);
   if (release.tag !== `v${release.version}`) throw new Error(`${code}_TAG_INVALID`);
-  if (release.releaseUrl !== `https://github.com/Lecarvalho/threadlight/releases/tag/${release.tag}`
-    || !THREADLIGHT_WORKFLOW_RUN_URL.test(release.workflowRunUrl || "")) {
+  if (release.releaseUrl !== `https://github.com/Lecarvalho/pomegr/releases/tag/${release.tag}`
+    || !POMEGR_WORKFLOW_RUN_URL.test(release.workflowRunUrl || "")) {
     throw new Error(`${code}_URL_INVALID`);
   }
 }
@@ -150,7 +150,7 @@ function assertEvidence(evidence, expectedVersion) {
   assertSha256(signedUpdate.installedExecutableSha256, "DESKTOP_BETA_INSTALLED_EXECUTABLE_HASH_INVALID");
   assertMatchedSignature(signedUpdate.downloadedSignature, "DESKTOP_BETA_DOWNLOADED_UPDATE_SIGNATURE");
   assertMatchedSignature(signedUpdate.installedSignature, "DESKTOP_BETA_INSTALLED_EXECUTABLE_SIGNATURE");
-  const newerInstallerName = `Threadlight-Setup-${newer.version}-x64.exe`;
+  const newerInstallerName = `Pomegr-Setup-${newer.version}-x64.exe`;
   if (signedUpdate.downloadedUpdateSha256.toLowerCase() !== newer.artifacts[newerInstallerName].toLowerCase()) {
     throw new Error("DESKTOP_BETA_DOWNLOADED_UPDATE_HASH_MISMATCH");
   }
@@ -213,8 +213,8 @@ export function betaAcceptanceTemplate(version) {
         newer: {
           version,
           tag: `v${version}`,
-          releaseUrl: `https://github.com/Lecarvalho/threadlight/releases/tag/v${version}`,
-          workflowRunUrl: "https://github.com/Lecarvalho/threadlight/actions/runs/REPLACE_WITH_NEWER_RUN_ID",
+          releaseUrl: `https://github.com/Lecarvalho/pomegr/releases/tag/v${version}`,
+          workflowRunUrl: "https://github.com/Lecarvalho/pomegr/actions/runs/REPLACE_WITH_NEWER_RUN_ID",
           artifacts: Object.fromEntries(releaseArtifactNames(version).map((name) => [name, "REPLACE_WITH_SHA256"])),
           installerSignature: {
             status: "pending",
@@ -286,7 +286,7 @@ async function runCli() {
   }
   if (command === "verify") {
     const result = await verifyBetaAcceptanceFile(filename, version);
-    process.stdout.write(`Threadlight desktop beta acceptance: PASS (${result.version}; ${result.manualGateCount} manual gates; sha256 ${result.sha256})\n`);
+    process.stdout.write(`Pomegr desktop beta acceptance: PASS (${result.version}; ${result.manualGateCount} manual gates; sha256 ${result.sha256})\n`);
     return;
   }
   throw new Error("DESKTOP_BETA_COMMAND_INVALID");
@@ -295,7 +295,7 @@ async function runCli() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   runCli().catch((error) => {
     const code = /^DESKTOP_[A-Z0-9_]+$/.test(error?.message) ? error.message : "DESKTOP_BETA_ACCEPTANCE_FAILED";
-    process.stderr.write(`Threadlight desktop beta acceptance: FAIL (${code})\n`);
+    process.stderr.write(`Pomegr desktop beta acceptance: FAIL (${code})\n`);
     process.exitCode = 1;
   });
 }

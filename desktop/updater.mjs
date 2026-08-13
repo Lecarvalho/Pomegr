@@ -27,7 +27,7 @@ export function createWindowsUpdateSignatureVerifier(options = {}) {
       return;
     }
     const script = [
-      "$signature = Get-AuthenticodeSignature -LiteralPath $env:THREADLIGHT_UPDATE_VERIFY_PATH",
+      "$signature = Get-AuthenticodeSignature -LiteralPath $env:POMEGR_UPDATE_VERIFY_PATH",
       "[PSCustomObject]@{ Status = [string]$signature.Status; Path = $signature.Path; Subject = $signature.SignerCertificate.Subject } | ConvertTo-Json -Compress",
     ].join("; ");
     execFile("powershell.exe", [
@@ -40,7 +40,7 @@ export function createWindowsUpdateSignatureVerifier(options = {}) {
       encoding: "utf8",
       windowsHide: true,
       timeout: SIGNATURE_TIMEOUT_MS,
-      env: minimalRuntimeEnvironment(sourceEnvironment, { THREADLIGHT_UPDATE_VERIFY_PATH: updatePath }),
+      env: minimalRuntimeEnvironment(sourceEnvironment, { POMEGR_UPDATE_VERIFY_PATH: updatePath }),
     }, (error, stdout, stderr) => {
       if (error || stderr) {
         resolve("DESKTOP_UPDATE_SIGNATURE_CHECK_FAILED");

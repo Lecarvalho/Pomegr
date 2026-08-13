@@ -1,13 +1,13 @@
 export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
-  getState: "threadlight:desktop-state",
-  setPaused: "threadlight:set-paused",
-  setLaunchAtLogin: "threadlight:set-launch-at-login",
-  setCloseBehavior: "threadlight:set-close-behavior",
-  setNotifications: "threadlight:set-notifications",
-  setNotificationQuiet: "threadlight:set-notification-quiet",
-  quit: "threadlight:quit",
-  setTheme: "threadlight:set-native-theme",
-  stateChanged: "threadlight:desktop-state-changed",
+  getState: "pomegr:desktop-state",
+  setPaused: "pomegr:set-paused",
+  setLaunchAtLogin: "pomegr:set-launch-at-login",
+  setCloseBehavior: "pomegr:set-close-behavior",
+  setNotifications: "pomegr:set-notifications",
+  setNotificationQuiet: "pomegr:set-notification-quiet",
+  quit: "pomegr:quit",
+  setTheme: "pomegr:set-native-theme",
+  stateChanged: "pomegr:desktop-state-changed",
 });
 
 export const CLOSE_BEHAVIORS = Object.freeze(["ask", "tray", "quit"]);

@@ -50,13 +50,19 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/workers/monitor-host.cjs",
   "shared/local-auth.mjs",
   "shared/local-service.mjs",
-  "shared/threadlight-paths.mjs",
+  "shared/pomegr-paths.mjs",
   "web/server.mjs",
+]);
+
+export const BRAND_ASSET_FILES = Object.freeze([
+  "assets/brand/pomegr-icon-color.svg",
+  "build/icon.png",
 ]);
 
 const REQUIRED_APPLICATION_FILES = Object.freeze([
   ...PUBLIC_LEGAL_FILES,
   ...DESKTOP_RUNTIME_FILES,
+  ...BRAND_ASSET_FILES,
   "dist/server/index.js",
   "package.json",
 ]);
@@ -65,9 +71,13 @@ const EXACT_APPLICATION_FILES = new Set([
   ...PACKAGED_LEGAL_FILES,
   "package.json",
   ...DESKTOP_RUNTIME_FILES,
+  ...BRAND_ASSET_FILES,
 ]);
 
 const APPLICATION_DIRECTORIES = new Set([
+  "assets",
+  "assets/brand",
+  "build",
   "desktop",
   "desktop/workers",
   "dist",
@@ -114,8 +124,8 @@ export function expectedArtifactNames(version) {
     throw new Error("DESKTOP_ARTIFACT_VERSION_INVALID");
   }
   return Object.freeze([
-    `Threadlight-Setup-${version}-x64.exe`,
-    `Threadlight-Portable-${version}-x64.exe`,
+    `Pomegr-Setup-${version}-x64.exe`,
+    `Pomegr-Portable-${version}-x64.exe`,
   ]);
 }
 
@@ -126,7 +136,7 @@ export function expectedUpdateArtifactNames(version) {
   }
   return Object.freeze([
     match[1] === "beta" ? "beta.yml" : "latest.yml",
-    `Threadlight-Setup-${version}-x64.exe.blockmap`,
+    `Pomegr-Setup-${version}-x64.exe.blockmap`,
   ]);
 }
 
@@ -134,6 +144,7 @@ export function isAllowedApplicationPath(value) {
   const filename = normalizeArtifactPath(value);
   return APPLICATION_DIRECTORIES.has(filename)
     || EXACT_APPLICATION_FILES.has(filename)
+    || filename.startsWith("assets/brand/")
     || filename.startsWith("dist/")
     || filename.startsWith("node_modules/");
 }

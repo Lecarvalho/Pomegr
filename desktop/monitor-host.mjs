@@ -28,7 +28,7 @@ async function installMonitorPrivateEnvironment() {
     }
     return;
   }
-  const snapshotPath = environmentValue(process.env, "THREADLIGHT_SMOKE_MONITOR_ENV_PATH");
+  const snapshotPath = environmentValue(process.env, "POMEGR_SMOKE_MONITOR_ENV_PATH");
   if (!snapshotPath) throw new Error("DESKTOP_MONITOR_ENV_MISSING");
   const snapshot = JSON.parse(await readFile(snapshotPath, "utf8"));
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
@@ -71,7 +71,7 @@ async function main() {
     });
     const health = await fetch(`${handle.origin}/health`, {
       headers: workerData?.authorizationToken
-        ? { "x-threadlight-desktop-authorization": workerData.authorizationToken }
+        ? { "x-pomegr-desktop-authorization": workerData.authorizationToken }
         : undefined,
     });
     if (health.status !== 204) throw new Error("DESKTOP_MONITOR_FETCH_FAILED");

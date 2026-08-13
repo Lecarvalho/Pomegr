@@ -7,12 +7,12 @@ import {
   ACCEPTANCE_PRIOR_OUTPUT,
   ACCEPTANCE_PRIOR_VERSION,
 } from "./acceptance-prior.mjs";
-import { TL_DT_05_PACKAGING_SCOPE, assertTlDt05PackagingScope } from "./tl-dt-05-scope.mjs";
+import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "./pomegr-dt-08-scope.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
-assertTlDt05PackagingScope(packageJson);
-if (packageJson.version !== "0.1.0" || ACCEPTANCE_PRIOR_VERSION !== "0.0.9") {
+assertPomegrDt08PackagingScope(packageJson);
+if (packageJson.version !== "0.2.0" || ACCEPTANCE_PRIOR_VERSION !== "0.0.9") {
   throw new Error("DESKTOP_ACCEPTANCE_PRIOR_VERSION_PAIR_INVALID");
 }
 
@@ -27,7 +27,7 @@ await build({
   config: {
     directories: { output: ACCEPTANCE_PRIOR_OUTPUT },
     extraMetadata: {
-      threadlightPackagingScope: TL_DT_05_PACKAGING_SCOPE,
+      pomegrPackagingScope: POMEGR_DT_08_PACKAGING_SCOPE,
       version: ACCEPTANCE_PRIOR_VERSION,
     },
     nsis: { artifactName: ACCEPTANCE_PRIOR_ARTIFACT },
@@ -48,4 +48,4 @@ const expected = new Set(["win-unpacked", ACCEPTANCE_PRIOR_ARTIFACT]);
 if ((await readdir(outputRoot)).some((filename) => !expected.has(filename))) {
   throw new Error("DESKTOP_ACCEPTANCE_OUTPUT_NOT_ALLOWLISTED");
 }
-console.log(`Threadlight test-only prior installer: ${ACCEPTANCE_PRIOR_ARTIFACT}`);
+console.log(`Pomegr test-only prior installer: ${ACCEPTANCE_PRIOR_ARTIFACT}`);

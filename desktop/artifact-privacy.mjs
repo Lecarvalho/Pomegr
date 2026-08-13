@@ -102,7 +102,7 @@ function runExtractor(extractorPath, archivePath, outputRoot) {
 
 export async function assertExtractedArtifactHasNoPrivacySentinel(archivePath, extractorPath, options = {}) {
   if (!(await stat(extractorPath)).isFile()) throw new Error("DESKTOP_ARTIFACT_EXTRACTOR_MISSING");
-  const root = await mkdtemp(path.join(os.tmpdir(), "threadlight-artifact-privacy-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-artifact-privacy-"));
   try {
     await runExtractor(extractorPath, archivePath, root);
     await assertDirectoryHasNoPrivacySentinel(root, options);
@@ -118,11 +118,11 @@ export async function assertReleasePublishPrivacy(outputRoot, expectedNames, opt
   for (const name of actual) {
     const filename = path.join(outputRoot, name);
     await assertFileHasNoPrivacySentinel(filename);
-    if (/^Threadlight-(?:Setup|Portable)-.+\.exe$/i.test(name) && options.extractorPath !== false) {
+    if (/^Pomegr-(?:Setup|Portable)-.+\.exe$/i.test(name) && options.extractorPath !== false) {
       const extractorPath = options.extractorPath || await resolveArtifactExtractor(options.environment);
       await assertExtractedArtifactHasNoPrivacySentinel(filename, extractorPath);
     }
-    if (/^Threadlight-.+-source\.zip$/i.test(name) && options.extractorPath !== false) {
+    if (/^Pomegr-.+-source\.zip$/i.test(name) && options.extractorPath !== false) {
       const extractorPath = options.extractorPath || await resolveArtifactExtractor(options.environment);
       await assertExtractedArtifactHasNoPrivacySentinel(filename, extractorPath, {
         allowedSentinelPath: (relativePath) => /^[^/]+\/tests\//.test(relativePath),

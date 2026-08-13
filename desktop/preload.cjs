@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require("electron");
 
-const DESKTOP_THEME_CHANNEL = "threadlight:set-native-theme";
+const DESKTOP_THEME_CHANNEL = "pomegr:set-native-theme";
 
 function setNativeTheme(source) {
   if (source !== "light" && source !== "dark" && source !== "system") return Promise.resolve(false);
@@ -14,36 +14,36 @@ window.addEventListener("DOMContentLoaded", () => {
   if (source === "light" || source === "dark") void setNativeTheme(source).catch(() => {});
 }, { once: true });
 
-contextBridge.exposeInMainWorld("threadlightDesktop", Object.freeze({
+contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   saveReport(payload) {
-    return ipcRenderer.invoke("threadlight:save-report", payload);
+    return ipcRenderer.invoke("pomegr:save-report", payload);
   },
   getDesktopState() {
-    return ipcRenderer.invoke("threadlight:desktop-state");
+    return ipcRenderer.invoke("pomegr:desktop-state");
   },
   setPaused(value) {
-    return ipcRenderer.invoke("threadlight:set-paused", value);
+    return ipcRenderer.invoke("pomegr:set-paused", value);
   },
   setLaunchAtLogin(value) {
-    return ipcRenderer.invoke("threadlight:set-launch-at-login", value);
+    return ipcRenderer.invoke("pomegr:set-launch-at-login", value);
   },
   setCloseBehavior(value) {
-    return ipcRenderer.invoke("threadlight:set-close-behavior", value);
+    return ipcRenderer.invoke("pomegr:set-close-behavior", value);
   },
   setNotifications(value) {
-    return ipcRenderer.invoke("threadlight:set-notifications", value);
+    return ipcRenderer.invoke("pomegr:set-notifications", value);
   },
   setNotificationQuiet(value) {
-    return ipcRenderer.invoke("threadlight:set-notification-quiet", value);
+    return ipcRenderer.invoke("pomegr:set-notification-quiet", value);
   },
   setNativeTheme,
   quit() {
-    return ipcRenderer.invoke("threadlight:quit");
+    return ipcRenderer.invoke("pomegr:quit");
   },
   onDesktopStateChanged(callback) {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, state) => callback(state);
-    ipcRenderer.on("threadlight:desktop-state-changed", listener);
-    return () => ipcRenderer.removeListener("threadlight:desktop-state-changed", listener);
+    ipcRenderer.on("pomegr:desktop-state-changed", listener);
+    return () => ipcRenderer.removeListener("pomegr:desktop-state-changed", listener);
   },
 }));

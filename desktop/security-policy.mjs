@@ -18,7 +18,7 @@ export const DESKTOP_CSP = [
 ].join("; ");
 
 const ALLOWED_EXTERNAL_PREFIXES = Object.freeze([
-  "https://github.com/Lecarvalho/threadlight",
+  "https://github.com/Lecarvalho/pomegr",
 ]);
 
 export function isAllowedExternalUrl(value) {

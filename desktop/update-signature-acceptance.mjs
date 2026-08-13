@@ -31,7 +31,7 @@ async function boundedRegularFile(filename) {
 export function inspectWindowsAuthenticode(filename, options = {}) {
   const execFile = options.execFile || defaultExecFile;
   const script = [
-    "$signature = Get-AuthenticodeSignature -LiteralPath $env:THREADLIGHT_UPDATE_VERIFY_PATH",
+    "$signature = Get-AuthenticodeSignature -LiteralPath $env:POMEGR_UPDATE_VERIFY_PATH",
     "[PSCustomObject]@{ Status = [string]$signature.Status; Subject = [string]$signature.SignerCertificate.Subject; Timestamped = $null -ne $signature.TimeStamperCertificate } | ConvertTo-Json -Compress",
   ].join("; ");
   return new Promise((resolve, reject) => {
@@ -45,7 +45,7 @@ export function inspectWindowsAuthenticode(filename, options = {}) {
       encoding: "utf8",
       windowsHide: true,
       timeout: INSPECTION_TIMEOUT_MS,
-      env: minimalRuntimeEnvironment(options.environment || process.env, { THREADLIGHT_UPDATE_VERIFY_PATH: filename }),
+      env: minimalRuntimeEnvironment(options.environment || process.env, { POMEGR_UPDATE_VERIFY_PATH: filename }),
     }, (error, stdout, stderr) => {
       if (error || stderr) {
         reject(new Error("DESKTOP_UPDATE_ACCEPTANCE_INSPECTION_FAILED"));
@@ -93,7 +93,7 @@ export async function verifyUpdateSignatureAcceptance({
 
   const sourceBefore = await boundedRegularFile(filename);
   const sourceHash = await hashFile(filename);
-  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), "threadlight-signature-acceptance-"));
+  const stagingRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-signature-acceptance-"));
   const stagedFile = path.join(stagingRoot, "update-fixture.exe");
   try {
     await copyFile(filename, stagedFile, constants.COPYFILE_EXCL);
@@ -146,7 +146,7 @@ async function runCli() {
     publisherSubject: process.env.WINDOWS_PUBLISHER_SUBJECT,
     expected: parsed.expected,
   });
-  process.stdout.write(`Threadlight update signature acceptance: PASS (${result.result}; sha256 ${result.sha256})\n`);
+  process.stdout.write(`Pomegr update signature acceptance: PASS (${result.result}; sha256 ${result.sha256})\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -154,7 +154,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const code = /^DESKTOP_UPDATE_ACCEPTANCE_[A-Z_]+$/.test(error?.message)
       ? error.message
       : "DESKTOP_UPDATE_ACCEPTANCE_FAILED";
-    process.stderr.write(`Threadlight update signature acceptance: FAIL (${code})\n`);
+    process.stderr.write(`Pomegr update signature acceptance: FAIL (${code})\n`);
     process.exitCode = 1;
   });
 }

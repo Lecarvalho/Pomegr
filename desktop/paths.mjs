@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { resolveThreadlightDataRoot } from "../shared/threadlight-paths.mjs";
+import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { environmentValue } from "./environment-policy.mjs";
 
 function absolute(value, code) {
@@ -34,11 +34,11 @@ export function resolveDesktopPaths(options) {
 
 export function desktopUserDataOverride(environment = {}) {
   const portableRoot = environmentValue(environment, "PORTABLE_EXECUTABLE_DIR");
-  if (portableRoot) return path.resolve(portableRoot, "ThreadlightData");
-  const configuredDataRoot = environmentValue(environment, "THREADLIGHT_DATA_DIR");
+  if (portableRoot) return path.resolve(portableRoot, "PomegrData");
+  const configuredDataRoot = environmentValue(environment, "POMEGR_DATA_DIR");
   return configuredDataRoot ? path.resolve(configuredDataRoot) : null;
 }
 
 export function defaultDesktopDataRoot(options = {}) {
-  return resolveThreadlightDataRoot(options);
+  return resolvePomegrDataRoot(options);
 }

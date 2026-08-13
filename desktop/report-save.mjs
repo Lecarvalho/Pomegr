@@ -1,14 +1,14 @@
 import path from "node:path";
 
-export const DESKTOP_REPORT_CHANNEL = "threadlight:save-report";
-const REPORT_FILENAME = /^threadlight-[a-z0-9](?:[a-z0-9-]{0,118}[a-z0-9])?-\d{4}-\d{2}-\d{2}\.md$/;
+export const DESKTOP_REPORT_CHANNEL = "pomegr:save-report";
+const REPORT_FILENAME = /^pomegr-[a-z0-9](?:[a-z0-9-]{0,118}[a-z0-9])?-\d{4}-\d{2}-\d{2}\.md$/;
 const MAX_REPORT_BYTES = 2 * 1024 * 1024;
 
 export function normalizeReportSaveRequest(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (Object.keys(value).some((key) => !["filename", "content"].includes(key))) return null;
   if (typeof value.filename !== "string" || !REPORT_FILENAME.test(value.filename)) return null;
-  if (typeof value.content !== "string" || !value.content.startsWith("# Threadlight Session Report\n")) return null;
+  if (typeof value.content !== "string" || !value.content.startsWith("# Pomegr Session Report\n")) return null;
   if (Buffer.byteLength(value.content, "utf8") > MAX_REPORT_BYTES) return null;
   return { filename: value.filename, content: value.content };
 }
@@ -25,7 +25,7 @@ export function createReportSaveHandler(options) {
     if (!request) return { status: "rejected" };
     try {
       const result = await options.showSaveDialog({
-        title: "Save Threadlight report",
+        title: "Save Pomegr report",
         defaultPath: path.join(options.defaultDirectory, request.filename),
         filters: [{ name: "Markdown", extensions: ["md"] }],
         properties: ["showOverwriteConfirmation", "createDirectory"],
