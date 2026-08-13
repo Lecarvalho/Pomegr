@@ -6,6 +6,7 @@ import AboutPage from "../../app/about/page";
 
 const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
+const timelineSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextGrowthTimeline.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("renders the wordmark-only header identity and the product mark on About", () => {
@@ -31,8 +32,11 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.activityBars\s*\{[^}]*\bgap\s*:/s);
     expect(styles).toMatch(/\.contextArea\s*\{[^}]*opacity:\s*1/);
     expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*opacity:\s*1/);
-    expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*width:\s*9px;[^}]*height:\s*6px;[^}]*border-radius:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\)/);
+    expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*width:\s*11px;[^}]*height:\s*9px;[^}]*transform:\s*translate\(-50%, -50%\)/);
+    expect(styles).toMatch(/\.contextChartPoint circle\s*\{[^}]*stroke-width:\s*1\.7;[^}]*vector-effect:\s*non-scaling-stroke/);
+    expect(styles).toMatch(/\.activityBar:hover \.contextChartPoint,[^}]*scale\(1\.57\)/);
     expect(styles).not.toMatch(/\.contextChartPoint\s*\{[^}]*rotate\(/);
+    expect(timelineSource).toMatch(/viewBox="0 0 8\.7 8\.7" preserveAspectRatio="none"[\s\S]*?<circle cx="4\.35" cy="4\.35" r="3\.5"/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);

@@ -159,7 +159,9 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
                 const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${bucket.total.toLocaleString()} net context added; ${bucket.input.toLocaleString()} attributed to uncached input, ${bucket.cacheWrite.toLocaleString()} to cache write, ${bucket.cacheRead.toLocaleString()} to cache read, ${bucket.output.toLocaleString()} to generated output`;
                 return (
                   <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label} style={{ "--point-y": `${pointY}%` } as CSSProperties}>
-                    <i className="contextChartPoint" aria-hidden="true" />
+                    <svg className="contextChartPoint" viewBox="0 0 8.7 8.7" preserveAspectRatio="none" aria-hidden="true">
+                      <circle cx="4.35" cy="4.35" r="3.5" />
+                    </svg>
                     <span className="histogramTooltip">
                       <strong>{compactNumber(bucket.total)} context added</strong>
                       <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>
