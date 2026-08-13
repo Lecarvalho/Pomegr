@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "desktop/workers/**",
+    "plugins/claude-code/mcp/server.bundle.mjs",
     "next-env.d.ts",
   ]),
   {

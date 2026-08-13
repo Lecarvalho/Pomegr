@@ -20,7 +20,7 @@ For local development from a Pomegr checkout, start Claude Code with:
 claude --plugin-dir .\plugins\claude-code
 ```
 
-The plugin's MCP process runs locally over stdio. Its packaged runtime and dependencies do not import from the rest of the Pomegr checkout.
+The plugin's MCP process runs locally over stdio. Its generated single-file runtime includes its npm dependencies and does not import from the client repository, a plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
 ## Initialize a repository
 
@@ -90,9 +90,10 @@ A separately scoped milestone may add authenticated, structured read-only querie
 
 The marketplace metadata lives in `.claude-plugin/marketplace.json`; the installable package lives in `plugins/claude-code/` with its own manifest, MCP configuration, skills, hooks, scripts, and runtime.
 
-Before publishing a change, validate and exercise the package from the repository root:
+Before publishing a change, regenerate the self-contained MCP runtime, then validate and exercise the package from the repository root:
 
 ```powershell
+npm run build:plugin
 claude plugin validate .
 claude --plugin-dir .\plugins\claude-code
 ```

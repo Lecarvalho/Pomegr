@@ -41,7 +41,7 @@ function policyResult(status, fields = {}) {
 function sectionBody(text, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = text.match(new RegExp(`^## ${escaped}\\s*$([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, "m"));
-  return match?.[1]?.trim() ?? null;
+  return match?.[1]?.trim().replace(/\r\n?/g, "\n") ?? null;
 }
 
 function splitTableRow(line) {

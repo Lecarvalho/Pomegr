@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { access, cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -42,15 +42,72 @@ function runPolicyHook(cwd) {
   });
 }
 
+async function readMcpToolInventory(server, cwd) {
+  const child = spawn(process.execPath, [server], {
+    cwd,
+    env: { ...process.env, NODE_PATH: "" },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const messages = [];
+  let stdout = "";
+  let stderr = "";
+
+  try {
+    const inventory = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for MCP tools/list. stderr: ${stderr}`)), 5_000);
+      child.once("error", reject);
+      child.once("exit", (code) => {
+        if (!messages.some((message) => message.id === 2)) {
+          reject(new Error(`MCP server exited with ${code}. stderr: ${stderr}`));
+        }
+      });
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+        const lines = stdout.split("\n");
+        stdout = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const message = JSON.parse(line);
+          messages.push(message);
+          if (message.id === 2) {
+            clearTimeout(timer);
+            resolve(message.result?.tools || []);
+          }
+        }
+      });
+
+      const requests = [
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "pomegr-plugin-test", version: "1.0.0" } } },
+        { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      ];
+      child.stdin.write(`${requests.map((request) => JSON.stringify(request)).join("\n")}\n`);
+    });
+    return inventory;
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null) {
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill();
+      await exited;
+    }
+  }
+}
+
 test("validates the repository policy template and extracts bounded signal rows", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const result = validatePolicyText(template);
-
-  assert.equal(result.status, "valid");
-  assert.deepEqual(result.errors, []);
-  assert.equal(result.signals["Session signals"][0].label, "Ready for review");
-  assert.equal(result.signals["Agent signals"].length, 0);
-  assert.equal(result.signals["Task signals"][0].label, "Checks passed");
+  const lfTemplate = template.replace(/\r\n?/g, "\n");
+  for (const candidate of [lfTemplate, lfTemplate.replaceAll("\n", "\r\n")]) {
+    const result = validatePolicyText(candidate);
+    assert.equal(result.status, "valid");
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.signals["Session signals"][0].label, "Ready for review");
+    assert.equal(result.signals["Agent signals"].length, 0);
+    assert.equal(result.signals["Task signals"][0].label, "Checks passed");
+  }
 });
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
@@ -205,7 +262,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
   });
 });
 
-test("plugin manifests register every SessionStart transition and the self-contained MCP server", async () => {
+test("plugin manifests register every SessionStart transition and the bundled MCP server", async () => {
   const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".claude-plugin", "marketplace.json"), "utf8"));
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   const hooks = JSON.parse(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
@@ -219,12 +276,32 @@ test("plugin manifests register every SessionStart transition and the self-conta
   assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
   assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
   assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
+  assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
   assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@modelcontextprotocol/server", "zod"]);
 
   const doctor = await readFile(path.join(pluginRoot, "skills", "doctor", "SKILL.md"), "utf8");
   assert.match(doctor, /\[Pomegr reporting policy loaded\]/);
   assert.match(doctor, /\/hooks/);
   assert.match(doctor, /\/mcp/);
+});
+
+test("installed plugin starts its MCP server without node_modules and lists every tool", async () => {
+  await withTemporaryDirectory(async (temporaryRoot) => {
+    const isolatedPlugin = path.join(temporaryRoot, "installed-pomegr");
+    const clientRepository = path.join(temporaryRoot, "client-repository");
+    await cp(pluginRoot, isolatedPlugin, { recursive: true });
+    await mkdir(clientRepository, { recursive: true });
+    await assert.rejects(access(path.join(isolatedPlugin, "node_modules")), { code: "ENOENT" });
+
+    const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+      "clear_agent_signal",
+      "clear_session_signal",
+      "report_agent_signal",
+      "report_session_signal",
+      "report_task_signal",
+    ]);
+  });
 });
 
 test("plugin namespace rejects every legacy Threadlight identifier", async () => {
