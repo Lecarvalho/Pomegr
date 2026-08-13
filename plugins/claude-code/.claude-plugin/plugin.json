@@ -1,0 +1,12 @@
+{
+  "name": "threadlight",
+  "version": "0.1.0",
+  "description": "Configure and report bounded, repository-specific coding-agent signals to the local Threadlight observer.",
+  "author": {
+    "name": "Leandro Carvalho"
+  },
+  "homepage": "https://github.com/Lecarvalho/threadlight",
+  "repository": "https://github.com/Lecarvalho/threadlight",
+  "license": "AGPL-3.0-only",
+  "keywords": ["observability", "coding-agents", "signals", "local-first"]
+}

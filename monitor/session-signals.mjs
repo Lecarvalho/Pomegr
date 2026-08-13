@@ -7,6 +7,16 @@ export const SESSION_SIGNAL_TOOL = "report_session_signal";
 export const SESSION_SIGNAL_MCP_TOOL = `mcp__threadlight__${SESSION_SIGNAL_TOOL}`;
 export const TASK_SIGNAL_TOOL = "report_task_signal";
 export const TASK_SIGNAL_MCP_TOOL = `mcp__threadlight__${TASK_SIGNAL_TOOL}`;
+export const CLEAR_AGENT_SIGNAL_TOOL = "clear_agent_signal";
+export const CLEAR_AGENT_SIGNAL_MCP_TOOL = `mcp__threadlight__${CLEAR_AGENT_SIGNAL_TOOL}`;
+export const CLEAR_SESSION_SIGNAL_TOOL = "clear_session_signal";
+export const CLEAR_SESSION_SIGNAL_MCP_TOOL = `mcp__threadlight__${CLEAR_SESSION_SIGNAL_TOOL}`;
+const CLAUDE_PLUGIN_MCP_PREFIX = "mcp__plugin_threadlight_threadlight__";
+export const AGENT_SIGNAL_MCP_TOOLS = new Set([AGENT_SIGNAL_MCP_TOOL, `${CLAUDE_PLUGIN_MCP_PREFIX}${AGENT_SIGNAL_TOOL}`]);
+export const SESSION_SIGNAL_MCP_TOOLS = new Set([SESSION_SIGNAL_MCP_TOOL, `${CLAUDE_PLUGIN_MCP_PREFIX}${SESSION_SIGNAL_TOOL}`]);
+export const TASK_SIGNAL_MCP_TOOLS = new Set([TASK_SIGNAL_MCP_TOOL, `${CLAUDE_PLUGIN_MCP_PREFIX}${TASK_SIGNAL_TOOL}`]);
+export const CLEAR_AGENT_SIGNAL_MCP_TOOLS = new Set([CLEAR_AGENT_SIGNAL_MCP_TOOL, `${CLAUDE_PLUGIN_MCP_PREFIX}${CLEAR_AGENT_SIGNAL_TOOL}`]);
+export const CLEAR_SESSION_SIGNAL_MCP_TOOLS = new Set([CLEAR_SESSION_SIGNAL_MCP_TOOL, `${CLAUDE_PLUGIN_MCP_PREFIX}${CLEAR_SESSION_SIGNAL_TOOL}`]);
 export const SIGNAL_MAX_LABEL_LENGTH = 20;
 export const SIGNAL_MAX_DESCRIPTION_LENGTH = 160;
 export const SESSION_SIGNAL_TONES = ["neutral", "info", "positive", "warning", "negative"];
@@ -16,6 +26,7 @@ const sessionSignalKeys = new Set(["label", "tone", "description"]);
 const agentSignalKeys = new Set(["label", "tone", "description"]);
 const taskSignalKeys = new Set(["task_id", "label", "tone"]);
 const signalCache = new Map();
+const signalStateMetadata = new WeakMap();
 const MAX_RECENT_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
 const SAFE_TASK_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 
@@ -39,6 +50,38 @@ export function normalizeSessionSignal(input, reportedAt = null) {
   return normalizedDescribedSignal(input, sessionSignalKeys, reportedAt);
 }
 
+function isPlainEmptyObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return (prototype === Object.prototype || prototype === null) && Object.keys(value).length === 0;
+}
+
+function signalState(agent = null, session = null, tasks = new Map()) {
+  const state = { agent, session, tasks };
+  signalStateMetadata.set(state, {
+    agentAt: agent?.reportedAt || null,
+    sessionAt: session?.reportedAt || null,
+  });
+  return state;
+}
+
+function signalTimestamp(state, scope) {
+  const signal = state?.[scope];
+  return signal?.reportedAt || signalStateMetadata.get(state)?.[`${scope}At`] || null;
+}
+
+function timestampValue(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+function setScopedSignal(state, scope, signal, reportedAt) {
+  state[scope] = signal;
+  const metadata = signalStateMetadata.get(state) || { agentAt: null, sessionAt: null };
+  metadata[`${scope}At`] = reportedAt || signal?.reportedAt || null;
+  signalStateMetadata.set(state, metadata);
+}
+
 function normalizedDescribedSignal(input, allowedKeys, reportedAt) {
   const signal = normalizedSignal(input, allowedKeys, reportedAt);
   if (!signal || input.description === undefined) return signal;
@@ -60,20 +103,28 @@ export function normalizeTaskSignal(input, reportedAt = null) {
 }
 
 function signalsFromRecord(record) {
-  const found = { agent: null, session: null, tasks: new Map() };
+  const found = signalState();
   if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return found;
   for (const content of record.message.content) {
     if (content?.type !== "tool_use") continue;
     const reportedAt = record.timestamp || record.message?.timestamp;
-    if (content.name === AGENT_SIGNAL_MCP_TOOL) {
+    if (AGENT_SIGNAL_MCP_TOOLS.has(content.name)) {
       const signal = normalizeAgentSignal(content.input, reportedAt);
-      if (signal) found.agent = signal;
+      if (signal) setScopedSignal(found, "agent", signal, signal.reportedAt);
     }
-    if (content.name === SESSION_SIGNAL_MCP_TOOL) {
+    if (SESSION_SIGNAL_MCP_TOOLS.has(content.name)) {
       const signal = normalizeSessionSignal(content.input, reportedAt);
-      if (signal) found.session = signal;
+      if (signal) setScopedSignal(found, "session", signal, signal.reportedAt);
     }
-    if (content.name === TASK_SIGNAL_MCP_TOOL) {
+    if (CLEAR_AGENT_SIGNAL_MCP_TOOLS.has(content.name) && isPlainEmptyObject(content.input)) {
+      const timestamp = normalizedTimestamp(reportedAt);
+      if (timestamp) setScopedSignal(found, "agent", null, timestamp);
+    }
+    if (CLEAR_SESSION_SIGNAL_MCP_TOOLS.has(content.name) && isPlainEmptyObject(content.input)) {
+      const timestamp = normalizedTimestamp(reportedAt);
+      if (timestamp) setScopedSignal(found, "session", null, timestamp);
+    }
+    if (TASK_SIGNAL_MCP_TOOLS.has(content.name)) {
       const taskSignal = normalizeTaskSignal(content.input, reportedAt);
       if (taskSignal) {
         const { taskId, ...signal } = taskSignal;
@@ -84,16 +135,25 @@ function signalsFromRecord(record) {
   return found;
 }
 
-function mergeSignals(target, source) {
-  if (source.agent) target.agent = source.agent;
-  if (source.session) target.session = source.session;
-  for (const [taskId, signal] of source.tasks) target.tasks.set(taskId, signal);
+export function mergeTranscriptSignals(target, source) {
+  for (const scope of ["agent", "session"]) {
+    const sourceAt = signalTimestamp(source, scope);
+    if (sourceAt && timestampValue(sourceAt) >= timestampValue(signalTimestamp(target, scope))) {
+      setScopedSignal(target, scope, source[scope], sourceAt);
+    }
+  }
+  for (const [taskId, signal] of source.tasks) {
+    const previous = target.tasks.get(taskId);
+    if (!previous || timestampValue(signal.reportedAt) >= timestampValue(previous.reportedAt)) {
+      target.tasks.set(taskId, signal);
+    }
+  }
   return target;
 }
 
 export function latestTranscriptSignals(records) {
-  const latest = { agent: null, session: null, tasks: new Map() };
-  for (const record of records || []) mergeSignals(latest, signalsFromRecord(record));
+  const latest = signalState();
+  for (const record of records || []) mergeTranscriptSignals(latest, signalsFromRecord(record));
   return latest;
 }
 
@@ -110,12 +170,12 @@ export function latestTaskSignals(records) {
 }
 
 async function scanCompleteTranscript(file) {
-  const latest = { agent: null, session: null, tasks: new Map() };
+  const latest = signalState();
   const input = fs.createReadStream(file, { encoding: "utf8" });
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
   for await (const line of lines) {
     try {
-      mergeSignals(latest, signalsFromRecord(JSON.parse(line)));
+      mergeTranscriptSignals(latest, signalsFromRecord(JSON.parse(line)));
     } catch {
       // Ignore malformed or partially written JSONL records.
     }
@@ -126,14 +186,17 @@ async function scanCompleteTranscript(file) {
 export async function readTranscriptSignals(file, recentRecords = []) {
   let stat;
   try { stat = fs.statSync(file); }
-  catch { return { agent: null, session: null, tasks: new Map() }; }
+  catch { return signalState(); }
 
   const cached = signalCache.get(file);
   if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.signals;
 
   let signals;
   if (cached && stat.size > cached.size && stat.size - cached.size <= MAX_RECENT_TRANSCRIPT_BYTES) {
-    signals = mergeSignals({ agent: cached.signals.agent, session: cached.signals.session, tasks: new Map(cached.signals.tasks) }, latestTranscriptSignals(recentRecords));
+    signals = mergeTranscriptSignals(
+      mergeTranscriptSignals(signalState(), cached.signals),
+      latestTranscriptSignals(recentRecords),
+    );
   } else {
     signals = await scanCompleteTranscript(file);
   }

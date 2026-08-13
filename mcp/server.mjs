@@ -6,6 +6,8 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
   AGENT_SIGNAL_TOOL,
+  CLEAR_AGENT_SIGNAL_TOOL,
+  CLEAR_SESSION_SIGNAL_TOOL,
   normalizeAgentSignal,
   normalizeSessionSignal,
   normalizeTaskSignal,
@@ -35,7 +37,7 @@ const signalAnnotations = {
 export function buildThreadlightMcpServer() {
   const server = new McpServer(
     { name: "threadlight", version: "0.1.0" },
-    { instructions: "Use report_agent_signal for a short status on the calling agent, report_session_signal for a status on the overall session, and report_task_signal for a status or outcome tied to a specific execution task." },
+    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal or clear_session_signal when the corresponding current state is no longer meaningful and no replacement applies." },
   );
 
   server.registerTool(
@@ -63,6 +65,30 @@ export function buildThreadlightMcpServer() {
         content: [{ type: "text", text: `Agent signal reported: ${signal.label} (${signal.tone}). Threadlight will read this call from the session transcript.` }],
       };
     },
+  );
+
+  server.registerTool(
+    CLEAR_AGENT_SIGNAL_TOOL,
+    {
+      title: "Clear Threadlight agent signal",
+      description: "Remove the calling agent's current Threadlight status tag when no project-specific state remains meaningful. This does not affect the overall session tag.",
+      inputSchema: z.object({}).strict(),
+      annotations: signalAnnotations,
+      _meta: { "anthropic/alwaysLoad": true },
+    },
+    async () => ({ content: [{ type: "text", text: "Agent signal cleared. Threadlight will read this call from the session transcript." }] }),
+  );
+
+  server.registerTool(
+    CLEAR_SESSION_SIGNAL_TOOL,
+    {
+      title: "Clear Threadlight session signal",
+      description: "Remove the overall session's current Threadlight status tag when no project-specific state remains meaningful. This does not clear agent or task tags.",
+      inputSchema: z.object({}).strict(),
+      annotations: signalAnnotations,
+      _meta: { "anthropic/alwaysLoad": true },
+    },
+    async () => ({ content: [{ type: "text", text: "Session signal cleared. Threadlight will read this call from agent transcripts." }] }),
   );
 
   server.registerTool(

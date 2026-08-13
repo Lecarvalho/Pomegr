@@ -19,7 +19,7 @@ import { buildExecutionTasks } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "../session-discovery.mjs";
 import { preferredRegisteredSessionId, readSessionRegistry } from "../session-registry.mjs";
 import { normalizeSessionTask, readSessionTasks } from "../session-tasks.mjs";
-import { readTranscriptSignals } from "../session-signals.mjs";
+import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
 import { latestSessionSummary } from "../session-summary.mjs";
 import { readSessionCost } from "../session-cost.mjs";
 import { latestSessionApprovalMode } from "../session-approval-mode.mjs";
@@ -360,17 +360,10 @@ export function createClaudeProvider(options = {}) {
       file,
       await readTranscriptSignals(file, recordsByFile.get(file) || []),
     ])));
-    const taskSignals = new Map();
-    let sessionSignal = null;
-    for (const signals of signalsByFile.values()) {
-      if (signals.session && (!sessionSignal || new Date(signals.session.reportedAt || 0) >= new Date(sessionSignal.reportedAt || 0))) {
-        sessionSignal = signals.session;
-      }
-      for (const [taskId, signal] of signals.tasks) {
-        const previous = taskSignals.get(taskId);
-        if (!previous || new Date(signal.reportedAt || 0) >= new Date(previous.reportedAt || 0)) taskSignals.set(taskId, signal);
-      }
-    }
+    const combinedSignals = { agent: null, session: null, tasks: new Map() };
+    for (const signals of signalsByFile.values()) mergeTranscriptSignals(combinedSignals, signals);
+    const taskSignals = combinedSignals.tasks;
+    const sessionSignal = combinedSignals.session;
     let contextMachinery = contextMachineryCache.get(mainFile);
     if (contextMachinery === undefined) {
       contextMachinery = await readLatestContextMachinery(mainFile);

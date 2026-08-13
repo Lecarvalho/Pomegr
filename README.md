@@ -82,53 +82,42 @@ The development command starts:
 
 The web server proxies `/api/state` to the loopback-only monitor, so private credentials and raw transcripts are never sent to the browser.
 
-## Reported signals through MCP
+## Agent-reported signals
 
-Threadlight includes a stateless local MCP server with three tools. `report_session_signal` attaches a short label and semantic tone to the overall session header and accepts an optional short `description` shown as the tag tooltip. `report_agent_signal` attaches the same metadata to the calling agent. `report_task_signal` attaches a label and tone to a specific execution task by its background task ID or Bash tool-use ID. Threadlight reads the recorded tool calls from agent transcripts and decorates the matching dashboard locations. The transcript is the source of truth for live and historical sessions.
+The Claude Code plugin is the primary way to enable repository-specific reporting. Install it from Threadlight's marketplace at project scope, reload plugins, then initialize the repository policy:
 
-Register this checkout as a local stdio MCP server in the provider that should report signals. Keep the server name exactly `threadlight`, because both transcript parsers use that namespace. For Claude Code, a local-scoped registration is:
+```text
+/plugin marketplace add Lecarvalho/threadlight
+/plugin install threadlight@threadlight
+/reload-plugins
+/threadlight:init
+```
+
+The init skill inspects the repository, asks which project-specific transitions matter, previews the policy for confirmation, and creates or updates only `.threadlight/signals.md`. It leaves `AGENTS.md` and `CLAUDE.md` unchanged. A native `SessionStart` hook validates and reloads the policy on startup, resume, fork, clear, and compaction. Claude Code continues to generate native automatic session titles; Threadlight has no title-reporting tool.
+
+The plugin provides five stateless local MCP tools:
+
+- `report_session_signal` reports or replaces the overall session state.
+- `report_agent_signal` reports or replaces the calling agent's state.
+- `report_task_signal` records a durable outcome for a recognized execution-task ID.
+- `clear_session_signal` removes the current overall session state.
+- `clear_agent_signal` removes the calling agent's current state.
+
+A reported label such as `Idle`, `Blocked`, or `Needs input` is an explicit visible state and persists until a later report replaces it or the corresponding clear tool removes it. Clearing means no agent-reported state is currently meaningful; it does not report another label. Task outcomes cannot be cleared, although a later task report for the same recognized execution task may replace one.
+
+Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text limited to 20 characters. Session and agent reports may include a one-line plain-text description limited to 160 characters. Threadlight derives ownership and timestamps from the transcript, reconstructs report/clear/report sequences chronologically for live and historical views, and presents all signals as agent-reported rather than Threadlight judgments.
+
+Task signals accept only a stable background-task ID or Bash tool-use ID. Threadlight resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown targets, MCP arguments outside the allowlist, prompts, responses, raw commands, tool output, and credentials never enter the browser API.
+
+Run `/threadlight:doctor` for a read-only check of the policy, hook loading, packaged files, and all five MCP tools. If the server is unavailable, inspect Claude Code's `/mcp` view and run `/reload-plugins`.
+
+As a manual fallback for an unsupported standalone installation, register this checkout under the exact server name `threadlight`:
 
 ```powershell
 claude mcp add --transport stdio --scope local threadlight -- node "C:\path\to\threadlight\mcp\server.mjs"
 ```
 
-Local scope makes the server available only to you in that repository and keeps the machine-specific path out of its source tree. Use `--scope user` to make it available in all of your repositories. Project scope writes a shared `.mcp.json`, which is appropriate only when its command can be made portable for everyone using the repository.
-
-Check the connection inside Claude Code with `/mcp`. Custom subagents can reference the configured server in their agent frontmatter and instruct themselves when to report:
-
-```yaml
----
-name: code-reviewer
-mcpServers:
-  - threadlight
----
-
-Review the requested code. Before returning, call `report_agent_signal` once with a concise outcome such as `Approved` or `Rejected` and the corresponding `positive` or `negative` tone. Never include prompts, responses, secrets, commands, or tool output in the label.
-```
-
-Supported tones are `neutral`, `info`, `positive`, `warning`, and `negative`. Labels are plain text and limited to 20 characters. The optional `report_session_signal` and `report_agent_signal` descriptions are one line of plain text limited to 160 characters. The latest `report_session_signal` call across all agents replaces the earlier session tag. Calling `report_agent_signal` again replaces the earlier tag for that agent. Calling `report_task_signal` again with the same `task_id` replaces the earlier task tag. Threadlight derives the reporting agent and report time from the transcript.
-
-For a session-wide milestone or state:
-
-```text
-report_session_signal({
-  label: "Review complete",
-  tone: "positive",
-  description: "All requested review checks passed."
-})
-```
-
-For a task-specific outcome, pass the stable background task ID returned by Claude Code, or the corresponding Bash tool-use ID when it is available:
-
-```text
-report_task_signal({
-  task_id: "review123",
-  label: "Approved w/ notes",
-  tone: "info"
-})
-```
-
-Threadlight resolves the supplied ID monitor-side and exposes only the bounded signal on a matching normalized execution task. Unknown or unsafe task identifiers produce no dashboard tag.
+Manual registration provides the MCP tools but not the plugin's automatic policy-loading hook. See [the Claude Code reporting plugin guide](docs/CLAUDE_CODE_PLUGIN.md) for the policy contract, installation details, troubleshooting, and deferred read-only Threadlight query milestone.
 
 ## Estimated API cost through the Claude status line
 

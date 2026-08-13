@@ -5,10 +5,14 @@ import path from "node:path";
 import test from "node:test";
 import {
   AGENT_SIGNAL_MCP_TOOL,
+  CLEAR_AGENT_SIGNAL_MCP_TOOL,
+  CLEAR_SESSION_SIGNAL_MCP_TOOL,
   clearSessionSignalCache,
   latestAgentSignal,
   latestSessionSignal,
   latestTaskSignals,
+  latestTranscriptSignals,
+  mergeTranscriptSignals,
   normalizeSessionSignal,
   normalizeAgentSignal,
   normalizeTaskSignal,
@@ -16,6 +20,8 @@ import {
   SESSION_SIGNAL_MCP_TOOL,
   TASK_SIGNAL_MCP_TOOL,
 } from "../monitor/session-signals.mjs";
+
+const PLUGIN_MCP_PREFIX = "mcp__plugin_threadlight_threadlight__";
 
 function agentSignalRecord(label, tone, timestamp) {
   return {
@@ -60,6 +66,28 @@ function taskSignalRecord(taskId, label, tone, timestamp) {
       }],
     },
   };
+}
+
+function clearSignalRecord(scope, timestamp, input = {}, pluginNamespaced = false) {
+  const tool = scope === "agent" ? CLEAR_AGENT_SIGNAL_MCP_TOOL : CLEAR_SESSION_SIGNAL_MCP_TOOL;
+  return {
+    type: "assistant",
+    timestamp,
+    message: {
+      content: [{
+        type: "tool_use",
+        id: `clear-${scope}-${timestamp}`,
+        name: pluginNamespaced ? `${PLUGIN_MCP_PREFIX}${tool.replace("mcp__threadlight__", "")}` : tool,
+        input,
+      }],
+    },
+  };
+}
+
+function clearSignalRecordWithoutInput(scope, timestamp) {
+  const record = clearSignalRecord(scope, timestamp);
+  delete record.message.content[0].input;
+  return record;
 }
 
 test("normalizes bounded plain-text signals", () => {
@@ -159,6 +187,60 @@ test("keeps agent and session signal scopes independent", () => {
   });
 });
 
+test("accepts plugin-namespaced tools and applies report-clear-report transitions", () => {
+  const pluginAgentReport = agentSignalRecord("Reviewing", "info", "2026-08-07T14:00:00.000Z");
+  pluginAgentReport.message.content[0].name = `${PLUGIN_MCP_PREFIX}report_agent_signal`;
+  const pluginAgentRestore = agentSignalRecord("Ready", "positive", "2026-08-07T14:02:00.000Z");
+  pluginAgentRestore.message.content[0].name = `${PLUGIN_MCP_PREFIX}report_agent_signal`;
+  const pluginSessionReport = sessionSignalRecord("Needs input", "warning", "2026-08-07T14:00:30.000Z");
+  pluginSessionReport.message.content[0].name = `${PLUGIN_MCP_PREFIX}report_session_signal`;
+
+  const signals = latestTranscriptSignals([
+    pluginAgentReport,
+    clearSignalRecord("agent", "2026-08-07T14:01:00.000Z", {}, true),
+    pluginAgentRestore,
+    pluginSessionReport,
+    clearSignalRecord("session", "2026-08-07T14:03:00.000Z", {}, true),
+    clearSignalRecord("agent", "2026-08-07T14:04:00.000Z", { reason: "must not be accepted" }, true),
+    clearSignalRecord("agent", "2026-08-07T14:05:00.000Z", null, true),
+    clearSignalRecordWithoutInput("agent", "2026-08-07T14:06:00.000Z"),
+  ]);
+
+  assert.deepEqual(signals.agent, {
+    label: "Ready",
+    tone: "positive",
+    reportedAt: "2026-08-07T14:02:00.000Z",
+  });
+  assert.equal(signals.session, null);
+});
+
+test("orders session reports and clears across agent transcripts by timestamp", () => {
+  const parent = latestTranscriptSignals([
+    sessionSignalRecord("Implementing", "info", "2026-08-07T14:02:00.000Z"),
+  ]);
+  const child = latestTranscriptSignals([
+    clearSignalRecord("session", "2026-08-07T14:03:00.000Z", {}, true),
+  ]);
+  const staleChild = latestTranscriptSignals([
+    sessionSignalRecord("Stale", "warning", "2026-08-07T14:01:00.000Z"),
+  ]);
+
+  const combined = { agent: null, session: null, tasks: new Map() };
+  mergeTranscriptSignals(combined, child);
+  mergeTranscriptSignals(combined, parent);
+  mergeTranscriptSignals(combined, staleChild);
+  assert.equal(combined.session, null);
+
+  mergeTranscriptSignals(combined, latestTranscriptSignals([
+    sessionSignalRecord("Ready", "positive", "2026-08-07T14:04:00.000Z"),
+  ]));
+  assert.deepEqual(combined.session, {
+    label: "Ready",
+    tone: "positive",
+    reportedAt: "2026-08-07T14:04:00.000Z",
+  });
+});
+
 test("keeps the latest signal for each safe task identifier", () => {
   const signals = latestTaskSignals([
     taskSignalRecord("background_123", "Reviewing", "info", "2026-08-07T14:00:00.000Z"),
@@ -177,28 +259,27 @@ test("keeps the latest signal for each safe task identifier", () => {
   ]);
 });
 
-test("reconstructs historical session and task signals outside the bounded activity tail", async () => {
+test("reconstructs historical report and clear transitions outside the bounded activity tail", async () => {
   clearSessionSignalCache();
   const directory = await mkdtemp(path.join(os.tmpdir(), "threadlight-signals-"));
   const transcript = path.join(directory, "agent-reviewer.jsonl");
   const olderAgentSignal = JSON.stringify(agentSignalRecord("Reviewer finished", "positive", "2026-08-07T13:59:00.000Z"));
   const olderSignal = JSON.stringify(sessionSignalRecord("Approved", "positive", "2026-08-07T14:00:00.000Z"));
   const olderTaskSignal = JSON.stringify(taskSignalRecord("background_123", "Approved w/ notes", "info", "2026-08-07T14:01:00.000Z"));
+  const olderAgentClear = JSON.stringify(clearSignalRecord("agent", "2026-08-07T14:02:00.000Z", {}, true));
+  const restoredAgentSignal = JSON.stringify(agentSignalRecord("Handoff ready", "info", "2026-08-07T14:03:00.000Z"));
+  const olderSessionClear = JSON.stringify(clearSignalRecord("session", "2026-08-07T14:04:00.000Z"));
   const filler = JSON.stringify({ type: "system", payload: "x".repeat(2 * 1024 * 1024 + 32) });
-  await writeFile(transcript, `${olderAgentSignal}\n${olderSignal}\n${olderTaskSignal}\n${filler}\n`, "utf8");
+  await writeFile(transcript, `${olderAgentSignal}\n${olderSignal}\n${olderTaskSignal}\n${olderAgentClear}\n${restoredAgentSignal}\n${olderSessionClear}\n${filler}\n`, "utf8");
 
   try {
     const signals = await readTranscriptSignals(transcript, []);
     assert.deepEqual(signals.agent, {
-      label: "Reviewer finished",
-      tone: "positive",
-      reportedAt: "2026-08-07T13:59:00.000Z",
+      label: "Handoff ready",
+      tone: "info",
+      reportedAt: "2026-08-07T14:03:00.000Z",
     });
-    assert.deepEqual(signals.session, {
-      label: "Approved",
-      tone: "positive",
-      reportedAt: "2026-08-07T14:00:00.000Z",
-    });
+    assert.equal(signals.session, null);
     assert.deepEqual([...signals.tasks], [["background_123", {
       label: "Approved w/ notes",
       tone: "info",

@@ -1,0 +1,17 @@
+{
+  "description": "Load a repository's bounded Threadlight reporting policy into every Claude Code session.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|fork|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" hook --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
