@@ -232,7 +232,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .contextTotalLine { fill: none; stroke: var(--chart-line-rose); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .activityBars { position: relative; z-index: 2; height: 140px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4px, 1fr); }
 .activityBar { position: relative; height: 100%; outline: none; }.contextChartPoint { position: absolute; left: 50%; top: var(--point-y); width: 11px; height: 9px; overflow: visible; opacity: 1; transform: translate(-50%, -50%); transition: transform .16s ease; }.contextChartPoint circle { fill: var(--panel); stroke: var(--chart-line-rose); stroke-width: 1.7; vector-effect: non-scaling-stroke; transition: fill .16s ease; }.activityBar:hover .contextChartPoint, .activityBar:focus .contextChartPoint { transform: translate(-50%, -50%) scale(1.57); }.activityBar:hover .contextChartPoint circle, .activityBar:focus .contextChartPoint circle { fill: var(--chart-line-rose); }.activityBar:focus-visible { outline: 1px solid var(--chart-line-rose); outline-offset: 2px; }
-.histogramTooltip { display: none; position: absolute; z-index: 4; left: 50%; top: 8px; width: 190px; transform: translateX(-50%); padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); color: #fff; box-shadow: 0 8px 24px rgba(25,32,29,.2); pointer-events: none; text-align: left; }.activityBar:first-child .histogramTooltip { left: 0; transform: none; }.activityBar:last-child .histogramTooltip { left: auto; right: 0; transform: none; }.activityBar:hover .histogramTooltip, .activityBar:focus .histogramTooltip { display: block; }.histogramTooltip strong, .histogramTooltip small, .histogramTooltip em { display: block; }.histogramTooltip strong { font: 400 16px/1 var(--font-inter), sans-serif; }.histogramTooltip small { margin-top: 4px; color: #c8d1cc; font-size: 9px; }.histogramTooltip em { margin-top: 7px; color: #a9bbb1; font-size: 8px; font-style: normal; line-height: 1.35; }
+.tooltipPopover { padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); color: #fff; box-shadow: 0 8px 24px rgba(25,32,29,.2); pointer-events: none; text-align: left; white-space: normal; }.tooltipPopover strong, .tooltipPopover small, .tooltipPopover em, .tooltipPopoverText { display: block; }.tooltipPopover strong { font: 400 16px/1 var(--font-inter), sans-serif; }.tooltipPopover small { margin-top: 4px; color: #c8d1cc; font-size: 9px; }.tooltipPopover em { margin-top: 7px; color: #a9bbb1; font-size: 8px; font-style: normal; line-height: 1.35; }.tooltipPopoverText { font-size: 10px; font-weight: 500; letter-spacing: 0; line-height: 1.45; text-transform: none; }
+.histogramTooltip { display: none; position: absolute; z-index: 4; left: 50%; top: 8px; width: 190px; transform: translateX(-50%); }.activityBar:first-child .histogramTooltip { left: 0; transform: none; }.activityBar:last-child .histogramTooltip { left: auto; right: 0; transform: none; }.activityBar:hover .histogramTooltip, .activityBar:focus .histogramTooltip { display: block; }
 .histogramAxis { display: flex; justify-content: space-between; padding-top: 8px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }.histogramAxis span { flex: 1; }.histogramAxis span:nth-child(2) { text-align: center; }.histogramAxis span:last-child { text-align: right; }
 .histogramFooter { min-height: 68px; margin-top: 3px; padding: 10px 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; border-top: 1px solid #eceae4; color: var(--muted); font-size: 9px; }.histogramLegend { display: grid; grid-template-columns: repeat(4, max-content); align-items: center; gap: 10px 20px; }.histogramLegendItem { display: flex; align-items: center; gap: 7px; white-space: nowrap; }.histogramLegendItem > i { width: 8px; height: 24px; flex: 0 0 auto; border-radius: 2px; }.histogramLegendItem > span { display: flex; flex-direction: column; gap: 3px; }.histogramLegendItem small { color: var(--muted); font-size: 8px; }.histogramLegendItem strong { color: var(--ink); font: 400 15px/1 var(--font-inter), sans-serif; }.histogramLegend .inputSwatch { background: var(--blue); }.histogramLegend .cacheWriteSwatch { background: #8fc5a9; }.histogramLegend .cacheReadSwatch { background: var(--chart-area-rose); }.histogramLegend .outputSwatch { background: var(--amber); }.histogramMethod { margin-left: auto; }
 .cachePanel { position: relative; margin-bottom: 12px; min-height: 96px; display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); overflow: visible; }.cachePanel.machineryPopoverOpen { z-index: 12; }
@@ -276,7 +277,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .agentChipButton { cursor: pointer; }
 .agentChipTooltipTrigger { position: relative; overflow: visible; cursor: help; }
 .agentChipTooltipTrigger::before { content: ""; position: absolute; inset: -5px -4px; }
-.signalTooltip { position: fixed; z-index: 100; width: max-content; max-width: min(260px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: #19201d; color: #fbfaf6; box-shadow: 0 10px 28px rgba(25,32,29,.22); font-size: 11px; font-weight: 500; letter-spacing: 0; line-height: 1.45; text-align: left; text-transform: none; white-space: normal; pointer-events: none; animation: signalTooltipIn .14s cubic-bezier(.2,.8,.2,1); }
+.signalTooltip { position: fixed; z-index: 100; width: max-content; max-width: min(260px, calc(100vw - 24px)); animation: signalTooltipIn .14s cubic-bezier(.2,.8,.2,1); }
 .signalTooltip::after { content: ""; position: absolute; left: calc(var(--signal-tooltip-arrow-left) - 5px); width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
 .signalTooltip[data-placement="top"]::after { bottom: -4px; }
 .signalTooltip[data-placement="bottom"]::after { top: -4px; }
@@ -330,7 +331,7 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
 @media (hover: none), (pointer: coarse) {
   .agentChipTooltipTrigger { cursor: pointer; }
   .agentChipTooltipTrigger::before { inset: -13px -8px; }
-  .signalTooltip { max-width: min(280px, calc(100vw - 24px)); padding: 10px 12px; font-size: 12px; }
+  .signalTooltip { max-width: min(280px, calc(100vw - 24px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -423,7 +424,6 @@ html[data-theme="dark"] .branchComparison.pending,
 html[data-theme="dark"] .agentSignal,
 html[data-theme="dark"] .executionTaskSignal,
 html[data-theme="dark"] .sessionSignal { background: #252c28; }
-html[data-theme="dark"] .signalTooltip { background: #e6ece8; color: #101412; box-shadow: 0 12px 30px rgba(0,0,0,.38); }
 html[data-theme="dark"] .currentActivitySection { background: rgba(155,172,232,.075); }
 html[data-theme="dark"] .pullRequestBody code { color: var(--muted); }
 html[data-theme="dark"] .branchComparison { background: #222d31; }
@@ -445,9 +445,9 @@ html[data-theme="dark"] .executionTaskSection + .executionTaskSection,
 html[data-theme="dark"] .activityRow { border-color: #29312d; }
 html[data-theme="dark"] .histogramGrid i { border-color: #323b36; }
 html[data-theme="dark"] .activityBar > .activityStack { background: #24362d; }
-html[data-theme="dark"] .histogramTooltip { background: #080b0a; color: #f1f5f2; box-shadow: 0 10px 28px rgba(0,0,0,.48); }
-html[data-theme="dark"] .histogramTooltip small { color: #c3cec8; }
-html[data-theme="dark"] .histogramTooltip em { color: #95a69d; }
+html[data-theme="dark"] .tooltipPopover { background: #080b0a; color: #f1f5f2; box-shadow: 0 10px 28px rgba(0,0,0,.48); }
+html[data-theme="dark"] .tooltipPopover small { color: #c3cec8; }
+html[data-theme="dark"] .tooltipPopover em { color: #95a69d; }
 html[data-theme="dark"] .machineryStat { background: rgba(228,163,100,.055); }
 html[data-theme="dark"] .agentRow.idleAgent,
 html[data-theme="dark"] .agentRow.finishedAgent { background: rgba(154,166,160,.025); }
@@ -506,8 +506,8 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
   .attentionNotice, .desktopControlsPanel, .desktopControlsPanel > button,
   .desktopControlsPanel > a, .desktopControls > summary, .ghostButton, .aboutGrid,
   .aboutNote, .notice, .pullRequestBadge, .pullRequestTitle em, .branchComparison,
-  .gitStatus, .limitTrack, .limitTrack i, .agentPopover, .histogramTooltip,
-  .histogramLegendItem > i, .agentChip, .signalTooltip, .insight) { border-radius: 0; }
+  .gitStatus, .limitTrack, .limitTrack i, .agentPopover, .tooltipPopover,
+  .histogramLegendItem > i, .agentChip, .insight) { border-radius: 0; }
 
 :where(a, button, summary):focus-visible { outline-color: var(--brand); }
 .brand { color: var(--brand); }
@@ -565,7 +565,7 @@ body { font-size: 14px; line-height: 1.55; font-weight: 400; }
 .gitSummary p, .gitEmpty, .metricPopover > .agentPopoverIntro,
 .machineryMeta strong, .sessionDetails > summary small { font-size: 10.5px; }
 .machineryUnavailable { font-size: 10px !important; }
-.histogramTooltip small, .histogramTooltip em, footer { font-size: 10px; }
+.tooltipPopover small, .tooltipPopover em, .tooltipPopoverText, footer { font-size: 10px; }
 
 /* Controls and chips share the same thin, square, low-emphasis frame language. */
 .ghostButton, .desktopControls > summary {

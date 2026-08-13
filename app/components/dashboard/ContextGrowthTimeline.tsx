@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { MonitorState } from "../../../shared/monitor-contract";
 import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
+import { TooltipPopover } from "../TooltipPopover";
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 type Point = { x: number; y: number };
@@ -162,11 +163,11 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
                     <svg className="contextChartPoint" viewBox="0 0 8.7 8.7" preserveAspectRatio="none" aria-hidden="true">
                       <circle cx="4.35" cy="4.35" r="3.5" />
                     </svg>
-                    <span className="histogramTooltip">
+                    <TooltipPopover className="histogramTooltip">
                       <strong>{compactNumber(bucket.total)} context added</strong>
                       <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>
                       <em>{compactNumber(bucket.input)} input · {compactNumber(bucket.cacheWrite)} write · {compactNumber(bucket.cacheRead)} read · {compactNumber(bucket.output)} output</em>
-                    </span>
+                    </TooltipPopover>
                   </div>
                 );
               })}

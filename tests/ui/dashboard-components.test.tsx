@@ -345,6 +345,7 @@ describe("reported signal tooltips", () => {
     const trigger = screen.getByRole("button", { name: "Review complete" });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     await user.hover(trigger);
+    expect(screen.getByRole("tooltip")).toHaveClass("tooltipPopover", "signalTooltip");
     expect(screen.getByRole("tooltip")).toHaveTextContent("All requested checks passed.");
     await user.unhover(trigger);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
@@ -587,6 +588,7 @@ describe("context growth area chart", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveAttribute("tabindex", "0");
     expect(items[0]).toHaveAccessibleName(/120 net context added; 30 attributed to uncached input, 30 to cache write, 30 to cache read, 30 to generated output/);
+    expect(within(items[0]).getByRole("tooltip")).toHaveClass("tooltipPopover", "histogramTooltip");
     expect(screen.getAllByText("120 context added")).toHaveLength(1);
   });
 

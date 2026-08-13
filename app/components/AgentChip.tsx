@@ -3,6 +3,7 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
+import { TooltipPopover } from "./TooltipPopover";
 
 type AgentChipProps = {
   as?: "span" | "button";
@@ -106,14 +107,15 @@ function TooltippedAgentChip({ children, classes, tooltip, ariaLabel }: { childr
       <span className="agentChipLabel">{children}</span>
     </button>
     {open && typeof document !== "undefined" && createPortal(
-      <span
+      <TooltipPopover
         ref={tooltipRef}
         id={tooltipId}
         className="signalTooltip"
-        data-placement={position?.placement || "top"}
-        role="tooltip"
+        placement={position?.placement || "top"}
         style={tooltipStyle}
-      >{tooltip}</span>,
+      >
+        <span className="tooltipPopoverText">{tooltip}</span>
+      </TooltipPopover>,
       document.body,
     )}
   </>;
