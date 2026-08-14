@@ -1,0 +1,46 @@
+{
+  "name": "pomegr-landing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The independently deployed public site and waitlist for Pomegr.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vinext dev --hostname 127.0.0.1 --port 8788",
+    "build": "npm run audit:source && vinext build",
+    "build:audit": "npm run build && npm run audit:artifact",
+    "audit:source": "node scripts/assert-artifact-boundary.mjs --source-only",
+    "audit:artifact": "node scripts/assert-artifact-boundary.mjs",
+    "deploy": "node scripts/assert-production-config.mjs && npm run audit:artifact && node scripts/run-wrangler.mjs deploy --config dist/server/wrangler.json",
+    "release": "npm run build:audit && npm run deploy",
+    "db:migrate:local": "node scripts/run-wrangler.mjs d1 migrations apply pomegr-waitlist --local",
+    "db:migrate:remote": "node scripts/run-wrangler.mjs d1 migrations apply pomegr-waitlist --remote",
+    "types:cloudflare": "node scripts/run-wrangler.mjs types cloudflare-env.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.mjs --configLoader runner"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "vinext": "0.0.50",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "jsdom": "^29.1.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.13",
+    "vitest": "^4.1.10",
+    "wrangler": "4.92.0"
+  }
+}

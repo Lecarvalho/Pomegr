@@ -1,5 +1,9 @@
 # Pomegr
 
+<p align="center">
+  <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
+</p>
+
 Pomegr is a privacy-first operations console for coding agents. It gives developers a live, provider-neutral view of agent activity, context usage, model settings, Git changes, usage limits, and deterministic efficiency signals.
 
 Pomegr ships adapters for Claude Code and Codex. Both appear in one deterministic session catalog and produce the same normalized browser state wherever equivalent provider evidence exists.

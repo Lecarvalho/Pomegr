@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+
+html {
+  min-width: 320px;
+  background: #f0ece2;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: #f0ece2;
+  color: #171715;
+  font-family: var(--font-inter), Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input { font: inherit; }
+
+button { color: inherit; }
+
+::selection { background: #a63c32; color: #fff8ec; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
