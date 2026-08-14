@@ -1,9 +1,5 @@
 # Pomegr
 
-<p align="center">
-  <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
-</p>
-
 Pomegr is a local-first, read-only observer that makes coding-agent activity and efficiency signals easier to understand without exposing private session content.
 
 ## How to run
@@ -18,6 +14,10 @@ npm run dev
 ```
 
 Then open [http://localhost:3003](http://localhost:3003).
+
+<p align="center">
+  <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
+</p>
 
 ## How to contribute
 
