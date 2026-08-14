@@ -588,7 +588,7 @@ describe("context growth area chart", () => {
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveAttribute("tabindex", "0");
-    expect(items[0]).toHaveAccessibleName(/120 net context added; 30 attributed to uncached input, 30 to cache write, 30 to cache read, 30 to generated output/);
+    expect(items[0]).toHaveAccessibleName(/30 attributed to uncached input, 30 attributed to cache write, 30 attributed to cache read, 30 attributed to generated output/);
     expect(within(items[0]).getByRole("tooltip")).toHaveClass("tooltipPopover", "histogramTooltip");
     expect(screen.getAllByText("120 context added")).toHaveLength(1);
   });
@@ -625,6 +625,35 @@ describe("context growth area chart", () => {
     expect(inputArea).not.toHaveClass("isHidden");
     expect(inputLine).not.toHaveClass("isHidden");
     expect(inputPoints[0]).not.toHaveClass("isHidden");
+  });
+
+  it("derives the scale and tooltip summary from only the selected metrics", async () => {
+    const user = userEvent.setup();
+    const buckets = [{
+      start: "2026-08-09T12:00:00.000Z",
+      end: "2026-08-09T12:01:00.000Z",
+      total: 117_000,
+      input: 2,
+      cacheWrite: 4_229,
+      cacheRead: 107_206,
+      output: 5_563,
+    }];
+    const { container } = render(<ContextGrowthTimeline
+      timeline={{ bucketMs: 60_000, buckets }}
+      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
+      cost={null}
+      estimatedCostSupported={false}
+      historical={false}
+    />);
+
+    await user.click(screen.getByRole("switch", { name: /Uncached input/ }));
+    await user.click(screen.getByRole("switch", { name: /Cache write/ }));
+    await user.click(screen.getByRole("switch", { name: /Cache read/ }));
+
+    expect(container.querySelector(".histogramScale span")).toHaveTextContent("5,563");
+    expect(screen.getByText("5,563 generated output")).toBeInTheDocument();
+    expect(screen.queryByText("117k context added")).not.toBeInTheDocument();
+    expect(screen.getByRole("listitem")).toHaveAccessibleName(/5,563 attributed to generated output/);
   });
 
   it("keeps adversarial metric lines bounded throughout every curve", () => {

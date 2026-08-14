@@ -9,6 +9,14 @@ type Point = { x: number; y: number };
 type CubicSegment = { start: Point; firstControl: Point; secondControl: Point; end: Point };
 type ContextSeries = "input" | "cacheWrite" | "cacheRead" | "output";
 
+const CONTEXT_SERIES: ContextSeries[] = ["input", "cacheWrite", "cacheRead", "output"];
+const CONTEXT_SERIES_LABELS: Record<ContextSeries, { accessible: string; short: string }> = {
+  input: { accessible: "uncached input", short: "input" },
+  cacheWrite: { accessible: "cache write", short: "write" },
+  cacheRead: { accessible: "cache read", short: "read" },
+  output: { accessible: "generated output", short: "output" },
+};
+
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 140;
 
@@ -142,7 +150,8 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
     const output = finiteNonNegative(bucket.output);
     return { input, cacheWrite, cacheRead, output, stackTotal: input + cacheWrite + cacheRead + output, total: finiteNonNegative(bucket.total) };
   });
-  const maximum = Math.max(0, ...components.flatMap((bucket) => [bucket.input, bucket.cacheWrite, bucket.cacheRead, bucket.output]));
+  const selectedSeries = CONTEXT_SERIES.filter((series) => visibleSeries[series]);
+  const maximum = Math.max(0, ...components.flatMap((bucket) => selectedSeries.map((series) => bucket[series])));
   const componentSeries = [
     seriesPoints(components.map((bucket) => bucket.input)),
     seriesPoints(components.map((bucket) => bucket.cacheWrite)),
@@ -200,7 +209,18 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
                   cacheRead: components[index].cacheRead,
                   output: components[index].output,
                 };
-                const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${bucket.total.toLocaleString()} net context added; ${bucket.input.toLocaleString()} attributed to uncached input, ${bucket.cacheWrite.toLocaleString()} to cache write, ${bucket.cacheRead.toLocaleString()} to cache read, ${bucket.output.toLocaleString()} to generated output`;
+                const selectedTotal = selectedSeries.reduce((total, series) => total + pointValues[series], 0);
+                const selectedBreakdown = selectedSeries.map((series) => (
+                  `${pointValues[series].toLocaleString()} attributed to ${CONTEXT_SERIES_LABELS[series].accessible}`
+                ));
+                const selectedSummary = selectedSeries.length === 1
+                  ? `${compactNumber(selectedTotal)} ${CONTEXT_SERIES_LABELS[selectedSeries[0]].accessible}`
+                  : selectedSeries.length === CONTEXT_SERIES.length
+                    ? `${compactNumber(selectedTotal)} context added`
+                    : selectedSeries.length > 0
+                      ? `${compactNumber(selectedTotal)} selected context added`
+                      : "No metrics selected";
+                const label = `${timelineTime(bucket.start, spansMultipleDays)} to ${timelineTime(bucket.end, spansMultipleDays)}: ${selectedSeries.length > 0 ? selectedBreakdown.join(", ") : "no context metrics selected"}`;
                 return (
                   <div className={`activityBar ${bucket.total === 0 ? "emptyBar" : ""}`} key={bucket.start} role="listitem" tabIndex={0} aria-label={label}>
                     {([
@@ -214,9 +234,9 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
                       </svg>
                     ))}
                     <TooltipPopover className="histogramTooltip">
-                      <strong>{compactNumber(bucket.total)} context added</strong>
+                      <strong>{selectedSummary}</strong>
                       <small>{timelineTime(bucket.start, spansMultipleDays)}–{timelineTime(bucket.end, spansMultipleDays)}</small>
-                      <em>{compactNumber(bucket.input)} input · {compactNumber(bucket.cacheWrite)} write · {compactNumber(bucket.cacheRead)} read · {compactNumber(bucket.output)} output</em>
+                      {selectedSeries.length > 0 && <em>{selectedSeries.map((series) => `${compactNumber(pointValues[series])} ${CONTEXT_SERIES_LABELS[series].short}`).join(" · ")}</em>}
                     </TooltipPopover>
                   </div>
                 );
