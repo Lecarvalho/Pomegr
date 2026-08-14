@@ -276,6 +276,7 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
   await mkdir(sessions, { recursive: true });
   const count = 8;
   const maximumTailBytes = 16 * 1024;
+  const maximumTaskHistoryBytes = 64 * 1024;
   const largePrivatePadding = "x".repeat(1_100_000);
   for (let index = 0; index < count; index += 1) {
     const id = index === 0 ? "large-root" : `large-child-${index}`;
@@ -299,6 +300,7 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
     includeArchived: false,
     cacheMs: 10_000,
     maximumStateTailBytes: maximumTailBytes,
+    maximumTaskHistoryBytes,
   });
   provider.qaStats(true);
   const first = await provider.readSession("large-root", { historical: false });
@@ -306,12 +308,16 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
   assert.equal(first.agents.length, count);
   assert.equal(firstStats.reads, count);
   assert.equal(firstStats.bytes <= count * maximumTailBytes, true);
+  assert.equal(firstStats.taskHydrationReads, count);
+  assert.equal(firstStats.taskHydrationBytes <= count * maximumTaskHistoryBytes, true);
   assert.equal(firstStats.cacheEntries, count);
 
   await provider.readSession("large-root", { historical: false });
   const secondStats = provider.qaStats();
   assert.equal(secondStats.reads, firstStats.reads);
   assert.equal(secondStats.cacheHits >= count, true);
+  assert.equal(secondStats.taskHydrationReads, firstStats.taskHydrationReads);
+  assert.equal(secondStats.taskHydrationBytes, firstStats.taskHydrationBytes);
 
   await appendFile(path.join(sessions, "rollout-large-root.jsonl"), `\n${JSON.stringify({
     timestamp: new Date(AT + 3).toISOString(),
@@ -322,6 +328,7 @@ test("multiple large live rollouts use one bounded read each and reuse provider 
   const thirdStats = provider.qaStats();
   assert.equal(thirdStats.reads, firstStats.reads + 1);
   assert.equal(thirdStats.bytes <= (count + 1) * maximumTailBytes, true);
+  assert.equal(thirdStats.taskHydrationReads, firstStats.taskHydrationReads);
 });
 
 test("selected session parsing ignores unrelated rollouts and follows collaboration-only descendants", async (context) => {

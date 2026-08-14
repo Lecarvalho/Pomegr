@@ -87,10 +87,12 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
                 </div>
                 <div className="agentMeta"><span className="agentMetaKind">{agent.kind}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span></div>
               </div>
-              <div className="agentTokens"><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "recorded context" : "current context"}</span></div>
+              <div className="agentTokens"><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "recorded context" : "context"}</span></div>
               <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
-              <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
-              <time><CoarseRelativeTimeText value={agent.lastSeen} /></time>
+              <div className="agentState">
+                <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
+                <time dateTime={agent.lastSeen || undefined}>updated <CoarseRelativeTimeText value={agent.lastSeen} /></time>
+              </div>
             </div>
           );
         })}

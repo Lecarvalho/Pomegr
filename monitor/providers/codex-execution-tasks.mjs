@@ -125,16 +125,16 @@ function safeCommandDescription(command) {
 function execCellShellEvidence(payload) {
   if (payload?.type !== "custom_tool_call" || normalizedFunctionName(payload.name) !== "exec") return [];
   if (typeof payload.input !== "string") return [];
-  const matches = [...payload.input.matchAll(/\btools\s*\.\s*shell_command\s*\(/g)].slice(0, MAX_TASKS);
+  const matches = [...payload.input.matchAll(/\btools\s*\.\s*(?:shell_command|exec_command)\s*\(/g)].slice(0, MAX_TASKS);
   return matches.map((match, index) => {
     const end = matches[index + 1]?.index ?? payload.input.length;
     const segment = payload.input.slice(match.index, end);
-    const property = /\bcommand\s*:\s*/.exec(segment);
+    const property = /\b(?:command|cmd)\s*:\s*/.exec(segment);
     const literalStart = property ? property.index + property[0].length : -1;
     let command = literalStart >= 0 ? quotedLiteral(segment, literalStart) : "";
     if (!command) {
       const prefix = payload.input.slice(0, match.index);
-      const assignments = [...prefix.matchAll(/\b(?:const|let|var)\s+command\s*=\s*/g)];
+      const assignments = [...prefix.matchAll(/\b(?:const|let|var)\s+(?:command|cmd)\s*=\s*/g)];
       const assignment = assignments.at(-1);
       if (assignment) command = quotedLiteral(prefix, assignment.index + assignment[0].length);
     }

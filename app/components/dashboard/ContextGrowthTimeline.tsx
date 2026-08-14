@@ -182,7 +182,7 @@ export function ContextGrowthTimeline({ timeline, currentTokens, cost, estimated
         </div>
         <div className="histogramSummary">
           <strong>{compactNumber(currentTokens.allAgents)}</strong>
-          <span>{historical ? "recorded context" : "current context"}</span>
+          <span>{historical ? "recorded context" : "context"}</span>
           {estimatedCostSupported && cost && <small className="histogramCost" title="Claude Code's client-side session estimate at standard API list rates; it may differ from the actual bill.">Claude Code estimate {estimatedCostLabel(cost)}</small>}
         </div>
       </div>

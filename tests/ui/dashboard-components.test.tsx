@@ -418,6 +418,17 @@ describe("agent detail popovers", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("labels the live snapshot as context and keeps its last-updated time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:03:05.000Z");
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
+
+    expect(screen.getByText("context")).toBeInTheDocument();
+    expect(container.querySelector(".agentRow time")).toHaveTextContent("updated 3m ago");
+    expect(container.querySelector(".agentRow time")).toHaveAttribute("dateTime", agent.lastSeen);
+    vi.useRealTimers();
+  });
+
   it("ticks live wall time by the minute and freezes when monitoring stops", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-08T12:00:59.000Z");
@@ -698,7 +709,7 @@ describe("context growth area chart", () => {
 });
 
 describe("estimated session cost", () => {
-  it("shows the estimate beneath current context", () => {
+  it("shows the estimate beneath context", () => {
     render(<ContextGrowthTimeline
       timeline={{ bucketMs: 0, buckets: [] }}
       currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
@@ -707,7 +718,7 @@ describe("estimated session cost", () => {
       historical={false}
     />);
 
-    expect(screen.getByText("current context")).toBeInTheDocument();
+    expect(screen.getByText("context")).toBeInTheDocument();
     expect(screen.getByText("Claude Code estimate $1.23")).toBeInTheDocument();
   });
 

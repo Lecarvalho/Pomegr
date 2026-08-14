@@ -43,6 +43,8 @@ import {
 
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
+export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 2 * 1024 * 1024;
+const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 const ALL_SOURCE_KINDS = [
   ...TOP_LEVEL_SOURCE_KINDS,
   "subAgent",
@@ -225,6 +227,9 @@ export function createCodexProvider(options = {}) {
   const maximumLiveTailBytes = Number.isInteger(options.maximumStateTailBytes)
     ? Math.max(1, Math.min(4 * 1024 * 1024, options.maximumStateTailBytes))
     : CODEX_LIVE_STATE_MAX_TAIL_BYTES;
+  const maximumLiveTaskHistoryBytes = Number.isInteger(options.maximumTaskHistoryBytes)
+    ? Math.max(maximumLiveTailBytes, Math.min(8 * 1024 * 1024, options.maximumTaskHistoryBytes))
+    : Math.max(maximumLiveTailBytes, CODEX_LIVE_TASK_HISTORY_MAX_BYTES);
   const liveness = createCodexLivenessCoordinator({
     root: livenessRoot,
     now,
@@ -246,7 +251,7 @@ export function createCodexProvider(options = {}) {
   const rolloutCache = new Map();
   const liveExecutionTaskCache = new Map();
   const livePlanTaskCache = new Map();
-  const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0 };
+  const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0 };
 
   const invalidateRolloutFile = (file) => {
     rolloutCache.delete(file);
@@ -287,7 +292,15 @@ export function createCodexProvider(options = {}) {
 
   function reusableLiveTaskState(file, threadId, generation) {
     const cached = liveExecutionTaskCache.get(file);
-    if (!cached || cached.threadId !== threadId || !generation) return null;
+    if (
+      !cached
+      || cached.schemaVersion !== CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA
+      || cached.threadId !== threadId
+      || !generation
+    ) {
+      if (cached) liveExecutionTaskCache.delete(file);
+      return null;
+    }
     const previous = cached.generation;
     const monotonic = previous
       && previous.identity === generation.identity
@@ -299,6 +312,51 @@ export function createCodexProvider(options = {}) {
       return null;
     }
     return cached.state;
+  }
+
+  function hydrateLiveTaskState(file, generation, fallbackTimestamp) {
+    if (!generation || generation.size <= maximumLiveTailBytes) return null;
+    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
+    const position = generation.size - bytes;
+    let descriptor;
+    let buffer;
+    try {
+      descriptor = fs.openSync(file, "r");
+      buffer = Buffer.alloc(bytes);
+      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
+      if (read !== bytes) return null;
+    } catch {
+      return null;
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    let confirmed;
+    try { confirmed = fs.statSync(file); } catch { return null; }
+    if (
+      !confirmed.isFile()
+      || confirmed.size !== generation.size
+      || confirmed.mtimeMs !== generation.mtimeMs
+      || rolloutIdentity(confirmed) !== generation.identity
+    ) return null;
+
+    let text = buffer.toString("utf8");
+    if (position > 0) {
+      const newline = text.indexOf("\n");
+      text = newline >= 0 ? text.slice(newline + 1) : "";
+    }
+    const records = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+      } catch {
+        // Task hydration ignores malformed and partially read records independently.
+      }
+    }
+    rolloutStats.taskHydrationReads += 1;
+    rolloutStats.taskHydrationBytes += bytes;
+    return parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp });
   }
 
   function reusableLivePlanTasks(file, threadId, generation) {
@@ -684,9 +742,12 @@ export function createCodexProvider(options = {}) {
       const records = recordsByThreadId.get(thread.localId) || [];
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       const generation = generationsByThreadId.get(thread.localId) || null;
-      const existingState = historical
+      let existingState = historical
         ? null
         : reusableLiveTaskState(thread.rolloutFile, thread.localId, generation);
+      if (!historical && !existingState) {
+        existingState = hydrateLiveTaskState(thread.rolloutFile, generation, fallbackTimestamp);
+      }
       const rolloutTaskState = parseCodexExecutionTaskStateRecords(records, {
         fallbackTimestamp,
         existingState,
@@ -695,6 +756,7 @@ export function createCodexProvider(options = {}) {
       if (!historical && generation) {
         liveExecutionTaskCache.delete(thread.rolloutFile);
         liveExecutionTaskCache.set(thread.rolloutFile, {
+          schemaVersion: CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA,
           threadId: thread.localId,
           generation,
           state: rolloutTaskState,
@@ -840,7 +902,13 @@ export function createCodexProvider(options = {}) {
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,
       };
-      if (reset) Object.assign(rolloutStats, { reads: 0, bytes: 0, cacheHits: 0 });
+      if (reset) Object.assign(rolloutStats, {
+        reads: 0,
+        bytes: 0,
+        cacheHits: 0,
+        taskHydrationReads: 0,
+        taskHydrationBytes: 0,
+      });
       return value;
     },
     watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot],

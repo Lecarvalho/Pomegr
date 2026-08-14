@@ -80,10 +80,79 @@ test("retains bounded sanitized live task history and reconciles a completion af
   assert.equal(provider.qaStats().liveExecutionTaskEntries, 1);
   assertNoPrivateFixtureSentinels(second, "cached live Codex execution tasks");
 
+  const coldProvider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 16 * 1024,
+    maximumTaskHistoryBytes: 64 * 1024,
+  });
+  const cold = await coldProvider.readSession("live-task-cache", { historical: false });
+  assert.equal(cold.agents[0].executionTasks.length, 30);
+  assert.equal(cold.agents[0].executionTasks.find((task) => task.id === "cached-running")?.status, "completed");
+  assert.equal(coldProvider.qaStats().taskHydrationReads, 1);
+  assertNoPrivateFixtureSentinels(cold, "cold-hydrated live Codex execution tasks");
+
   const historical = await provider.readSession("live-task-cache", { historical: true });
   assert.equal(historical.agents[0].executionTasks.length, 30);
   assert.equal(historical.agents[0].executionTasks.find((task) => task.id === "cached-running")?.status, "completed");
   assertNoPrivateFixtureSentinels(historical, "authoritative historical Codex execution tasks");
+});
+
+test("cold live reads hydrate bounded task history for primary and subagents", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-task-tree-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const timestamp = "2026-08-12T12:00:00.000Z";
+  const taskRecords = (id) => [
+    record(timestamp, "response_item", {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: `${id}-exec`,
+      input: `const result = await tools.exec_command({ cmd: "npm.cmd test COMMAND_MUST_NOT_LEAK" }); text(result);`,
+    }),
+    record("2026-08-12T12:00:01.000Z", "response_item", {
+      type: "custom_tool_call_output",
+      call_id: `${id}-exec`,
+      output: [
+        { type: "input_text", text: "Script completed\nWall time: 0.1 seconds" },
+        { type: "input_text", text: "Exit code: 0\nSTDOUT_MUST_NOT_LEAK" },
+      ],
+    }),
+    record("2026-08-12T12:00:02.000Z", "future_record", { padding: "x".repeat(8 * 1024) }),
+  ];
+  const rootRecords = [record(timestamp, "session_meta", {
+    id: "cold-task-root",
+    session_id: "cold-task-root",
+    source: "cli",
+    cwd: "C:\\synthetic\\cold-task-tree",
+  }), ...taskRecords("root")];
+  const childRecords = [record(timestamp, "session_meta", {
+    id: "cold-task-child",
+    session_id: "cold-task-root",
+    parent_thread_id: "cold-task-root",
+    source: { subagent: { thread_spawn: { parent_thread_id: "cold-task-root" } } },
+    cwd: "C:\\synthetic\\cold-task-tree",
+  }), ...taskRecords("child")];
+  await writeFile(path.join(directory, "rollout-cold-task-root.jsonl"), `${rootRecords.map(JSON.stringify).join("\n")}\n`, "utf8");
+  await writeFile(path.join(directory, "rollout-cold-task-child.jsonl"), `${childRecords.map(JSON.stringify).join("\n")}\n`, "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 1024,
+    maximumTaskHistoryBytes: 32 * 1024,
+  });
+  const evidence = await provider.readSession("cold-task-root", { historical: false });
+  const primary = evidence.agents.find((agent) => agent.id === "primary");
+  const child = evidence.agents.find((agent) => agent.id === "agent-cold-task-child");
+
+  assert.deepEqual(primary.executionTasks.map((task) => task.id), ["root-exec-shell-1"]);
+  assert.deepEqual(child.executionTasks.map((task) => task.id), ["child-exec-shell-1"]);
+  assert.equal(provider.qaStats().taskHydrationReads, 2);
+  assertNoPrivateFixtureSentinels(evidence, "cold-hydrated Codex task tree");
 });
 
 test("invalidates live task history when a rollout is truncated, replaced, or deleted", async (context) => {
@@ -199,7 +268,7 @@ test("maps current Codex exec cells to safe shell tasks without exposing cell so
       type: "custom_tool_call",
       name: "exec",
       call_id: "exec-success",
-      input: `const result = await tools.shell_command({ command: "COMMAND_MUST_NOT_LEAK" }); text(result);`,
+      input: `const result = await tools.exec_command({ cmd: "npm.cmd test COMMAND_MUST_NOT_LEAK" }); text(result);`,
       status: "completed",
     }),
     record("2026-08-11T15:00:02.000Z", "response_item", {
@@ -267,7 +336,7 @@ test("maps current Codex exec cells to safe shell tasks without exposing cell so
     { id: "exec-categorized-shell-5", label: "Run project script", status: "completed", exitCode: 0 },
     { id: "exec-categorized-shell-6", label: "Run .NET tool", status: "completed", exitCode: 0 },
     { id: "exec-failed-shell-1", label: "Shell command", status: "failed", exitCode: null },
-    { id: "exec-success-shell-1", label: "Shell command", status: "completed", exitCode: 0 },
+    { id: "exec-success-shell-1", label: "Run tests", status: "completed", exitCode: 0 },
   ]);
   assertNoPrivateFixtureSentinels(tasks, "current Codex exec-cell tasks");
   assert.equal(tasks.find((task) => task.id === "exec-failed-shell-1").failureCause, "permission_denied");
