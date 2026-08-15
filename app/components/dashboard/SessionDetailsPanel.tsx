@@ -14,18 +14,16 @@ function changeLabel(count: number) {
   return `${count} ${count === 1 ? "change" : "changes"}`;
 }
 
-function maximumUsagePercent(state: MonitorState) {
-  const percentages = state.usageLimits.limits
-    .map((limit) => limit.percent)
-    .filter((percent) => Number.isFinite(percent));
-  return percentages.length > 0 ? Math.max(...percentages) : null;
+function fiveHourUsagePercent(state: MonitorState) {
+  const limit = state.usageLimits.limits.find((candidate) => candidate.window === "5 hours");
+  return typeof limit?.percent === "number" && Number.isFinite(limit.percent) ? limit.percent : null;
 }
 
 function SessionDetailsSummary({ state, historical }: { state: MonitorState; historical: boolean }) {
   if (!state.session) return null;
   const capabilities = state.capabilities || createEmptyProviderCapabilities();
   const repository = state.session.repository;
-  const maximumUsage = maximumUsagePercent(state);
+  const fiveHourUsage = fiveHourUsagePercent(state);
   const machinery = state.session.contextMachinery;
 
   return (
@@ -39,7 +37,7 @@ function SessionDetailsSummary({ state, historical }: { state: MonitorState; his
         </span>
       ) : <span><b>Git</b> Unavailable</span>}
       {!historical && capabilities.usageLimits && (
-        <span><b>Usage</b> {state.usageLimits.available && maximumUsage !== null ? `${Math.round(maximumUsage)}%` : "unavailable"}</span>
+        <span><b>Usage 5h</b> {state.usageLimits.available && fiveHourUsage !== null ? `${Math.round(fiveHourUsage)}%` : "unavailable"}</span>
       )}
       {capabilities.contextMachinery && machinery && (
         <span><b>Loaded</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>

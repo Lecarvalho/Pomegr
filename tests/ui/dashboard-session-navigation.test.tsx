@@ -158,7 +158,7 @@ describe("dashboard session navigation", () => {
     expect(contextPanel?.nextElementSibling).toBe(sessionDetails);
   });
 
-  it("summarizes changed Git state, highest usage, and loaded context only while collapsed", async () => {
+  it("summarizes changed Git state, five-hour usage, and loaded context only while collapsed", async () => {
     window.localStorage.setItem("pomegr-session-details-open", "false");
     mockDashboardState(detailedState());
 
@@ -176,7 +176,8 @@ describe("dashboard session navigation", () => {
     expect(compact).toHaveTextContent("Git");
     expect(compact).toHaveTextContent("feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title");
     expect(compact).toHaveTextContent("2 changes");
-    expect(compact).toHaveTextContent("Usage 82%");
+    expect(compact).toHaveTextContent("Usage 5h 64%");
+    expect(compact).not.toHaveTextContent("82%");
     expect(compact).toHaveTextContent(/Loaded ≈12(?:\.3)?K/i);
     expect(compact).not.toHaveTextContent(/Latest|activity|ago/i);
     expect(branch).toBeInTheDocument();
@@ -234,7 +235,7 @@ describe("dashboard session navigation", () => {
       expect(element).toBeInTheDocument();
       return element;
     });
-    expect(compact).toHaveTextContent("Usage unavailable");
+    expect(compact).toHaveTextContent("Usage 5h unavailable");
     expect(compact).not.toHaveTextContent("Loaded");
   });
 
