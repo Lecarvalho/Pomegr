@@ -2,14 +2,24 @@
 
 Pomegr is a local-first, read-only observer that makes coding-agent activity and efficiency signals easier to understand without exposing private session content.
 
-## How to run
+## Install the Windows desktop app
 
 On Windows x64, download and run the installer from the [latest release](https://github.com/Lecarvalho/pomegr/releases/latest).
+
+LAN sharing is unavailable in the Windows desktop app.
+
+## Run the portable beta
+
+Download the [latest release](https://github.com/Lecarvalho/pomegr/releases/latest) and run it.
+
+
+## Or run the web version
+
+### Contributor development
 
 To run from source with Node.js 22.13 or newer:
 
 ```powershell
-npm ci
 npm run dev
 ```
 

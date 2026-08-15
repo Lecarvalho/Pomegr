@@ -48,7 +48,7 @@ The collector reads one operating-system process snapshot for all currently attr
 
 The normalized `metrics.resources` value exposes:
 
-- **CPU** — recent process-tree CPU-time change as equivalent occupied cores and as a percentage of the machine's logical processors
+- **CPU** — recent process-tree CPU-time change normalized as a percentage of the machine's total logical-processor capacity; the normalized API also retains the equivalent occupied-core value, but the dashboard presents the whole-machine percentage
 - **Memory** — current summed working set and the highest working set observed by Pomegr during the current ownership window
 - **Disk I/O** — recent process-tree read and write transfer rates in bytes per second
 

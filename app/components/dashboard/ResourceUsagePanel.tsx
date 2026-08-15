@@ -27,16 +27,11 @@ function finiteMetric(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null;
 }
 
-function formatCores(value: number | null | undefined) {
+function formatCpuPercent(value: number | null | undefined) {
   const finite = finiteMetric(value);
   if (finite === null) return "Unavailable";
-  return `${finite.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} cores`;
-}
-
-function formatPercent(value: number | null | undefined) {
-  const finite = finiteMetric(value);
-  if (finite === null) return "Machine share unavailable";
-  return `${finite.toLocaleString(undefined, { maximumFractionDigits: finite < 10 ? 1 : 0 })}% of machine`;
+  if (finite > 0 && finite < 0.01) return "<0.01%";
+  return `${finite.toLocaleString(undefined, { maximumFractionDigits: finite < 1 ? 2 : finite < 10 ? 1 : 0 })}%`;
 }
 
 function formatBytes(value: number | null | undefined) {
@@ -160,7 +155,7 @@ function currentSummary(resources: ResourceUsage | undefined) {
   const current = resources?.current;
   return (
     <span className="disclosureSummaryMetrics">
-      <span><b>CPU</b> {formatCores(current?.cpuCores)}</span>
+      <span><b>CPU</b> {formatCpuPercent(current?.cpuMachinePercent)}</span>
       <span><b>Memory</b> {formatBytes(current?.memoryBytes)}</span>
       <span><b>I/O</b> {formatRate(totalIo(current?.readBytesPerSecond, current?.writeBytesPerSecond))}</span>
     </span>
@@ -171,7 +166,7 @@ function inaccessibleSampleSummary(sample: TimedSample | undefined) {
   if (!sample) return "No resource sample selected.";
   return [
     `${sampleTimeLabel(sample.timestamp)}.`,
-    `CPU ${formatCores(sample.cpuCores)}, ${formatPercent(sample.cpuMachinePercent)}.`,
+    `CPU ${formatCpuPercent(sample.cpuMachinePercent)} overall across all logical processors.`,
     `Memory ${formatBytes(sample.memoryBytes)}.`,
     `Disk read ${formatRate(sample.readBytesPerSecond)} and write ${formatRate(sample.writeBytesPerSecond)}.`,
   ].join(" ");
@@ -189,10 +184,10 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
   const activeSample = samples[activeIndex];
   const activeX = activeSample ? chartX(activeSample.time, windowStart, windowEnd) : null;
 
-  const cpuMaximum = metricMaximum(samples, [(sample) => sample.cpuCores]);
+  const cpuMaximum = metricMaximum(samples, [(sample) => sample.cpuMachinePercent]);
   const memoryMaximum = metricMaximum(samples, [(sample) => sample.memoryBytes]);
   const ioMaximum = metricMaximum(samples, [(sample) => sample.readBytesPerSecond, (sample) => sample.writeBytesPerSecond]);
-  const cpuPath = straightPath(samples, (sample) => sample.cpuCores, cpuMaximum, windowStart, windowEnd);
+  const cpuPath = straightPath(samples, (sample) => sample.cpuMachinePercent, cpuMaximum, windowStart, windowEnd);
   const memoryPath = straightPath(samples, (sample) => sample.memoryBytes, memoryMaximum, windowStart, windowEnd);
   const readPath = straightPath(samples, (sample) => sample.readBytesPerSecond, ioMaximum, windowStart, windowEnd);
   const writePath = straightPath(samples, (sample) => sample.writeBytesPerSecond, ioMaximum, windowStart, windowEnd);
@@ -250,7 +245,7 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
         ) : (
           <>
             <div className="resourceStatStrip">
-              <ResourceStat label="CPU" value={formatCores(current?.cpuCores)} detail={formatPercent(current?.cpuMachinePercent)} />
+              <ResourceStat label="CPU" value={formatCpuPercent(current?.cpuMachinePercent)} detail="Overall share across all logical processors" />
               <ResourceStat label="Memory" value={formatBytes(current?.memoryBytes)} detail={`Observed peak ${formatBytes(resources.observedPeak?.memoryBytes)}`} />
               <ResourceStat label="Disk I/O" value={formatRate(totalIo(current?.readBytesPerSecond, current?.writeBytesPerSecond))} detail={`${formatRate(current?.readBytesPerSecond)} read \u00b7 ${formatRate(current?.writeBytesPerSecond)} write`} />
             </div>
@@ -266,17 +261,17 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
             >
               {activeSample && <div className="resourceChartReadout" aria-hidden="true">
                 <time dateTime={activeSample.timestamp}>{sampleTimeLabel(activeSample.timestamp)}</time>
-                <span><b>CPU</b> {formatCores(activeSample.cpuCores)}</span>
+                <span><b>CPU</b> {formatCpuPercent(activeSample.cpuMachinePercent)}</span>
                 <span><b>Memory</b> {formatBytes(activeSample.memoryBytes)}</span>
                 <span><b>Read</b> {formatRate(activeSample.readBytesPerSecond)}</span>
                 <span><b>Write</b> {formatRate(activeSample.writeBytesPerSecond)}</span>
               </div>}
               <ChartLane
                 label="CPU"
-                maximumLabel={formatCores(cpuMaximum)}
+                maximumLabel={formatCpuPercent(cpuMaximum)}
                 paths={[{ className: "resourceCpuLine", path: cpuPath }]}
                 activeX={activeX}
-                activeValues={[{ className: "resourceCpuPoint", value: finiteMetric(activeSample?.cpuCores), maximum: cpuMaximum }]}
+                activeValues={[{ className: "resourceCpuPoint", value: finiteMetric(activeSample?.cpuMachinePercent), maximum: cpuMaximum }]}
               />
               <ChartLane
                 label="Memory"

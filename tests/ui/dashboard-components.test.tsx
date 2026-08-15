@@ -735,8 +735,8 @@ describe("live resource usage panel", () => {
     const { container } = render(<ResourceUsagePanel resources={readyResources} />);
 
     expect(container.querySelector(".disclosureSummaryMetrics")).not.toBeInTheDocument();
-    expect(screen.getAllByText("1.8 cores")).toHaveLength(2);
-    expect(screen.getByText("11% of machine")).toBeInTheDocument();
+    expect(screen.getAllByText("11%")).toHaveLength(2);
+    expect(screen.getByText("Overall share across all logical processors")).toBeInTheDocument();
     expect(screen.getAllByText("3.0 GiB")).toHaveLength(2);
     expect(screen.getByText("Observed peak 4.3 GiB")).toBeInTheDocument();
     expect(screen.getAllByText("3.0 MiB/s")).toHaveLength(1);
@@ -763,7 +763,7 @@ describe("live resource usage panel", () => {
     }} />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Collecting resource samples");
-    expect(screen.queryByText(/0\.0 cores|0 B\/s/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\b0(?:\.0+)?%|0 B\/s/)).not.toBeInTheDocument();
 
     rerender(<ResourceUsagePanel resources={{
       status: "unavailable",
@@ -774,7 +774,7 @@ describe("live resource usage panel", () => {
     }} />);
     expect(screen.getByRole("status")).toHaveTextContent("Resource use unavailable");
     expect(screen.getByRole("status")).toHaveTextContent("shares a process owner");
-    expect(screen.queryByText(/0\.0 cores|0 B\/s/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\b0(?:\.0+)?%|0 B\/s/)).not.toBeInTheDocument();
   });
 
   it("starts open, stores collapse preference, and restores it on remount", async () => {
@@ -788,7 +788,7 @@ describe("live resource usage panel", () => {
     await user.click(screen.getByText("Resource use"));
     expect(disclosure).not.toHaveAttribute("open");
     const compactSummary = disclosure?.querySelector(".disclosureSummaryMetrics");
-    expect(compactSummary).toHaveTextContent("CPU 1.8 cores");
+    expect(compactSummary).toHaveTextContent("CPU 11%");
     expect(compactSummary).toHaveTextContent("Memory 3.0 GiB");
     expect(compactSummary).toHaveTextContent("I/O 3.0 MiB/s");
     expect(window.localStorage.getItem("pomegr-resource-panel-open")).toBe("false");
@@ -796,7 +796,7 @@ describe("live resource usage panel", () => {
     unmount();
     const restored = render(<ResourceUsagePanel resources={readyResources} />).container.querySelector("details.resourceUsagePanel");
     expect(restored).not.toHaveAttribute("open");
-    expect(restored?.querySelector(".disclosureSummaryMetrics")).toHaveTextContent("CPU 1.8 cores");
+    expect(restored?.querySelector(".disclosureSummaryMetrics")).toHaveTextContent("CPU 11%");
   });
 
   it("retains disclosure changes in memory when preference storage rejects writes", async () => {
@@ -826,8 +826,8 @@ describe("live resource usage panel", () => {
 
     expect(charts).toHaveAttribute("tabindex", "0");
     expect(charts.querySelectorAll("[tabindex]")).toHaveLength(0);
-    expect(announcement).toHaveTextContent("CPU 1.8 cores");
-    expect(readout).toHaveTextContent("CPU 1.8 cores");
+    expect(announcement).toHaveTextContent("CPU 11% overall across all logical processors");
+    expect(readout).toHaveTextContent("CPU 11%");
     expect(readout?.querySelector("time")).toHaveAttribute("dateTime", "2026-08-14T12:02:00.000Z");
 
     fireEvent.keyDown(charts, { key: "ArrowLeft" });
@@ -837,10 +837,10 @@ describe("live resource usage panel", () => {
     expect(readout).toHaveTextContent("Memory 2.5 GiB");
 
     fireEvent.keyDown(charts, { key: "Home" });
-    expect(announcement).toHaveTextContent("CPU 0.5 cores");
+    expect(announcement).toHaveTextContent("CPU 3.1% overall across all logical processors");
 
     fireEvent.keyDown(charts, { key: "End" });
-    expect(announcement).toHaveTextContent("CPU 1.8 cores");
+    expect(announcement).toHaveTextContent("CPU 11% overall across all logical processors");
   });
 
   it("synchronizes the visible chart readout to pointer position", () => {
@@ -862,11 +862,11 @@ describe("live resource usage panel", () => {
     });
 
     fireEvent.pointerMove(cpuChart, { clientX: 0 });
-    expect(readout).toHaveTextContent("CPU 0.5 cores");
+    expect(readout).toHaveTextContent("CPU 3.1%");
     expect(readout?.querySelector("time")).toHaveAttribute("dateTime", "2026-08-14T12:00:00.000Z");
 
     fireEvent.pointerLeave(charts);
-    expect(readout).toHaveTextContent("CPU 1.8 cores");
+    expect(readout).toHaveTextContent("CPU 11%");
   });
 
   it("renders finite straight paths and gaps missing measurements", () => {
