@@ -15,8 +15,6 @@ Download the [latest release](https://github.com/Lecarvalho/pomegr/releases/late
 
 ## Or run the web version
 
-### Contributor development
-
 To run from source with Node.js 22.13 or newer:
 
 ```powershell

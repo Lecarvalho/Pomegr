@@ -201,7 +201,6 @@ test("desktop user, contributor, architecture, and release documentation stays e
     readFile(new URL("../docs/DESKTOP_BETA_ACCEPTANCE.md", import.meta.url), "utf8"),
   ]);
   assert.match(readme, /Install the Windows desktop app/);
-  assert.match(readme, /Contributor development/);
   assert.match(readme, /portable beta/i);
   assert.match(readme, /LAN sharing is unavailable/);
   assert.match(configuration, /Windows x64 only/);
