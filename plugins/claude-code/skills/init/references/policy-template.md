@@ -1,6 +1,6 @@
 # Pomegr reporting policy
 
-Policy version: 3
+Policy version: 4
 
 ## Session naming
 
@@ -17,10 +17,15 @@ Policy version: 3
 
 ## Delegated agent tooling
 
-- Every agent definition that can own a configured agent or execution-task signal must carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.
+- A subagent inherits the parent's MCP tools but not the parent's context, so it never sees this policy on its own. Declare every signal-owning subagent type under `Delegated agents`; the plugin's `PreToolUse` delegation hook then appends the applicable rows to that subagent's prompt.
+- Never rely on the delegating session remembering to paste the rows. Injection is the mechanism; a pasted copy is only a fallback, and the hook does not append a second copy when the prompt already carries one.
+- Every agent definition that can own a configured agent or execution-task signal must also carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.
 - Prefer the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, and use the exact reporting and clearing tool names where allowlist wildcard support is not confirmed.
-- When delegating such work, include the applicable signal rows and transition rules in the Agent prompt.
 - Never assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool. Add the tool, or keep the reporting in the delegating session.
+
+## Delegated agents
+
+_No delegated agent types configured._
 
 ## Session signals
 

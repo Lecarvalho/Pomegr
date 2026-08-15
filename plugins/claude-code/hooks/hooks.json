@@ -1,5 +1,5 @@
 {
-  "description": "Load a repository's bounded Pomegr reporting policy into every Claude Code session.",
+  "description": "Load a repository's bounded Pomegr reporting policy into every Claude Code session, inject the applicable rows into declared subagent prompts, and report a delegated agent that finished without reporting.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,29 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" hook --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" delegate --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" subagent-stop --cwd \"${CLAUDE_PROJECT_DIR}\"",
             "timeout": 5
           }
         ]

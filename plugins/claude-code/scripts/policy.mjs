@@ -3,26 +3,40 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 3;
+export const POLICY_VERSION = 4;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
+export const DELEGATION_MARKER = "[Pomegr delegated reporting policy]";
+export const DELEGATION_TOOL_NAMES = new Set(["Task", "Agent"]);
 
 const REQUIRED_SECTIONS = [
   "Session naming",
   "Privacy and semantics",
   "Delegated agent tooling",
+  "Delegated agents",
   "Session signals",
   "Agent signals",
   "Task signals",
 ];
 const SIGNAL_SECTIONS = ["Session signals", "Agent signals", "Task signals"];
 const EMPTY_SECTION = "_No project-specific signals configured._";
+const EMPTY_DELEGATED_AGENTS = "_No delegated agent types configured._";
 const TABLE_HEADER = "| Label | Tone | Report when | Replace or clear when |";
 const TABLE_DIVIDER = "| --- | --- | --- | --- |";
+const DELEGATED_TABLE_HEADER = "| Agent type | Owns |";
+const DELEGATED_TABLE_DIVIDER = "| --- | --- |";
+const DELEGATED_OWNERSHIP = new Map([
+  ["agent", ["Agent signals"]],
+  ["task", ["Task signals"]],
+  ["agent and task", ["Agent signals", "Task signals"]],
+]);
+const DELEGATED_AGENT_TYPE_PATTERN = /^(?:\*|[a-z0-9][a-z0-9._:-]{0,63})$/;
+const FORK_AGENT_TYPE = "fork";
 const CANONICAL_SESSION_NAMING = [
   "- Allow Claude Code to assign a concise native automatic title after the first substantive request.",
   "- Never ask the user to name the session and never report a title through Pomegr MCP.",
@@ -35,9 +49,10 @@ const CANONICAL_PRIVACY = [
   "- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.",
 ].join("\n");
 const CANONICAL_DELEGATED_AGENT_TOOLING = [
-  "- Every agent definition that can own a configured agent or execution-task signal must carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.",
+  "- A subagent inherits the parent's MCP tools but not the parent's context, so it never sees this policy on its own. Declare every signal-owning subagent type under `Delegated agents`; the plugin's `PreToolUse` delegation hook then appends the applicable rows to that subagent's prompt.",
+  "- Never rely on the delegating session remembering to paste the rows. Injection is the mechanism; a pasted copy is only a fallback, and the hook does not append a second copy when the prompt already carries one.",
+  "- Every agent definition that can own a configured agent or execution-task signal must also carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.",
   "- Prefer the resolved Pomegr MCP namespace, typically `mcp__plugin_pomegr_pomegr__*`, and use the exact reporting and clearing tool names where allowlist wildcard support is not confirmed.",
-  "- When delegating such work, include the applicable signal rows and transition rules in the Agent prompt.",
   "- Never assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool. Add the tool, or keep the reporting in the delegating session.",
 ].join("\n");
 
@@ -46,6 +61,9 @@ const AGENT_DEFINITION_FILE_LIMIT = 100;
 const AGENT_DEFINITION_HEAD_BYTES = 4096;
 const AGENT_WARNING_LIMIT = 10;
 const POMEGR_TOOL_PATTERN = /mcp__[a-z0-9_]*pomegr[a-z0-9_]*__/i;
+const DELEGATED_REPORT_TOOL_PATTERN = /^mcp__[a-z0-9_]*pomegr[a-z0-9_]*__(?:report_agent_signal|report_task_signal|clear_agent_signal)$/i;
+const TRANSCRIPT_SCAN_MAX_BYTES = 32 * 1024 * 1024;
+const TRANSCRIPT_CHUNK_BYTES = 64 * 1024;
 
 function policyResult(status, fields = {}) {
   return { status, ...fields };
@@ -57,10 +75,53 @@ function sectionBody(text, name) {
   return match?.[1]?.trim().replace(/\r\n?/g, "\n") ?? null;
 }
 
-function splitTableRow(line) {
+function splitTableRow(line, expectedCells = 4) {
   if (!line.startsWith("|") || !line.endsWith("|")) return null;
   const cells = line.slice(1, -1).split("|").map((cell) => cell.trim());
-  return cells.length === 4 ? cells : null;
+  return cells.length === expectedCells ? cells : null;
+}
+
+function validateDelegatedAgentsSection(body, signals, errors) {
+  if (body === EMPTY_DELEGATED_AGENTS) return [];
+  const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines[0] !== DELEGATED_TABLE_HEADER || lines[1] !== DELEGATED_TABLE_DIVIDER) {
+    errors.push("Delegated agents must use the two-column Pomegr delegation table or the empty-section marker.");
+    return [];
+  }
+  if (lines.length < 3) {
+    errors.push("Delegated agents must contain at least one agent row or the empty-section marker.");
+    return [];
+  }
+
+  const rows = [];
+  const declared = new Set();
+  for (const [index, line] of lines.slice(2).entries()) {
+    const cells = splitTableRow(line, 2);
+    if (!cells) {
+      errors.push(`Delegated agents row ${index + 1} must contain exactly two cells; pipe characters are not supported in policy cells.`);
+      continue;
+    }
+    const [rawAgentType, rawOwns] = cells;
+    const agentType = rawAgentType.toLowerCase();
+    if (!DELEGATED_AGENT_TYPE_PATTERN.test(agentType)) {
+      errors.push(`Delegated agents row ${index + 1} has an invalid agent type; use a subagent type name of at most 64 characters or "*".`);
+      continue;
+    }
+    if (declared.has(agentType)) errors.push(`Delegated agents contains the duplicate agent type "${rawAgentType}".`);
+    declared.add(agentType);
+    const owns = DELEGATED_OWNERSHIP.get(rawOwns.toLowerCase());
+    if (!owns) {
+      errors.push(`Delegated agents row ${index + 1} must own "agent", "task", or "agent and task".`);
+      continue;
+    }
+    for (const section of owns) {
+      if (!signals[section]?.length) {
+        errors.push(`Delegated agents row ${index + 1} owns "${section}", but that section configures no rows to delegate.`);
+      }
+    }
+    rows.push({ agentType, owns });
+  }
+  return rows;
 }
 
 function validateSignalSection(name, body, errors) {
@@ -118,7 +179,9 @@ function validateSignalSection(name, body, errors) {
 
 export function validatePolicyText(text) {
   const errors = [];
-  if (typeof text !== "string") return policyResult("invalid", { errors: ["Policy content is not text."], signals: {} });
+  if (typeof text !== "string") {
+    return policyResult("invalid", { errors: ["Policy content is not text."], signals: {}, delegatedAgents: [] });
+  }
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > POLICY_MAX_BYTES) errors.push(`Policy exceeds the ${POLICY_MAX_BYTES}-byte limit.`);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) errors.push("Policy contains control characters.");
@@ -143,12 +206,13 @@ export function validatePolicyText(text) {
     errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
   }
   if (sections.get("Delegated agent tooling") !== CANONICAL_DELEGATED_AGENT_TOOLING) {
-    errors.push("Delegated agent tooling must attach the Pomegr MCP tools to signal-owning subagents.");
+    errors.push("Delegated agent tooling must declare signal-owning subagent types and attach the Pomegr MCP tools to them.");
   }
 
   const signals = {};
   for (const name of SIGNAL_SECTIONS) signals[name] = validateSignalSection(name, sections.get(name), errors);
-  return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals });
+  const delegatedAgents = validateDelegatedAgentsSection(sections.get("Delegated agents"), signals, errors);
+  return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals, delegatedAgents });
 }
 
 function agentToolAllowlist(frontMatter) {
@@ -170,7 +234,12 @@ function readFileHead(filePath, bytes) {
   }
 }
 
-export function scanAgentDefinitions(repositoryRoot) {
+function agentDefinitionName(frontMatter, fileName) {
+  const declared = frontMatter.match(/^name:[ \t]*["']?([^"'\r\n]+?)["']?[ \t]*$/m);
+  return (declared?.[1] || fileName.replace(/\.md$/, "")).trim().toLowerCase();
+}
+
+export function scanAgentDefinitions(repositoryRoot, delegatedAgents = []) {
   const directory = path.join(repositoryRoot, ...AGENT_DEFINITION_DIRECTORY);
   let entries;
   try {
@@ -179,6 +248,8 @@ export function scanAgentDefinitions(repositoryRoot) {
     return [];
   }
 
+  const declared = new Set(delegatedAgents.map((row) => row.agentType));
+  const declaresEveryAgent = declared.has("*");
   const warnings = [];
   const definitions = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -193,10 +264,18 @@ export function scanAgentDefinitions(repositoryRoot) {
     }
     const frontMatter = head.replace(/\r\n?/g, "\n").match(/^---\n([\s\S]*?)\n---/);
     if (!frontMatter) continue;
-    const allowlist = agentToolAllowlist(frontMatter[1]);
-    if (!allowlist || allowlist === "*" || POMEGR_TOOL_PATTERN.test(allowlist)) continue;
     const relativePath = [...AGENT_DEFINITION_DIRECTORY, definition.name].join("/");
-    warnings.push(`Agent definition "${relativePath}" sets an explicit tools allowlist without a Pomegr reporting tool, so it cannot own the configured agent or task signals.`);
+    const allowlist = agentToolAllowlist(frontMatter[1]);
+    const reachesPomegr = !allowlist || allowlist === "*" || POMEGR_TOOL_PATTERN.test(allowlist);
+    const isDelegated = declaresEveryAgent || declared.has(agentDefinitionName(frontMatter[1], definition.name));
+
+    if (isDelegated && !reachesPomegr) {
+      warnings.push(`Agent definition "${relativePath}" is declared under Delegated agents but sets an explicit tools allowlist without a Pomegr reporting tool, so it receives the policy rows and still cannot report them.`);
+      continue;
+    }
+    if (!isDelegated && allowlist && allowlist !== "*" && POMEGR_TOOL_PATTERN.test(allowlist)) {
+      warnings.push(`Agent definition "${relativePath}" carries the Pomegr reporting tools but no Delegated agents row matches it, so the delegation hook never injects the applicable rows into its prompt.`);
+    }
   }
   return warnings;
 }
@@ -248,7 +327,9 @@ export function readPolicy(startDirectory = process.cwd()) {
   }
   const validated = validatePolicyText(text);
   const reportsDelegatedSignals = Boolean(validated.signals?.["Agent signals"]?.length || validated.signals?.["Task signals"]?.length);
-  const warnings = validated.status === "valid" && reportsDelegatedSignals ? scanAgentDefinitions(found.repositoryRoot) : [];
+  const warnings = validated.status === "valid" && reportsDelegatedSignals
+    ? scanAgentDefinitions(found.repositoryRoot, validated.delegatedAgents)
+    : [];
   return { ...validated, warnings, path: found.path, repositoryRoot: found.repositoryRoot, text };
 }
 
@@ -260,7 +341,7 @@ function hookOutput(policy) {
     });
   }
   const drift = policy.warnings?.length
-    ? ["", "[Pomegr policy drift]", ...policy.warnings, "Add the Pomegr tools when you next touch these definitions, or keep their reporting in the delegating session."]
+    ? ["", "[Pomegr policy drift]", ...policy.warnings, "Repair the declaration or the allowlist when you next touch these definitions, or keep their reporting in the delegating session."]
     : [];
   return JSON.stringify({
     hookSpecificOutput: {
@@ -269,13 +350,149 @@ function hookOutput(policy) {
         "[Pomegr reporting policy loaded]",
         "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
-        "When delegating signal-owning work, pass the applicable policy rows in the Agent prompt and ensure the subagent's tooling includes the resolved Pomegr MCP tools.",
+        "Delegation is mechanized: the Pomegr PreToolUse hook appends the applicable rows to the prompt of any subagent type declared under Delegated agents, so you do not have to remember to paste them. Keep the resolved Pomegr MCP tools in those subagents' allowlists.",
         "Do not ask the user to name the session; allow Claude Code to assign its native automatic title after substantive work begins.",
         ...drift,
         "",
         policy.text,
       ].join("\n"),
     },
+  });
+}
+
+function normalizedAgentType(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+export function delegationPlan(policy, agentType) {
+  if (!policy || policy.status !== "valid") return null;
+  const type = normalizedAgentType(agentType);
+  if (!type || type === FORK_AGENT_TYPE) return null;
+
+  const owned = new Set();
+  for (const row of policy.delegatedAgents || []) {
+    if (row.agentType !== "*" && row.agentType !== type) continue;
+    for (const section of row.owns) owned.add(section);
+  }
+  const sections = SIGNAL_SECTIONS
+    .filter((name) => owned.has(name) && policy.signals?.[name]?.length)
+    .map((name) => ({ name, rows: policy.signals[name] }));
+  if (!sections.length) return null;
+
+  const labels = sections.flatMap((section) => section.rows.map((row) => row.label));
+  const lines = [
+    DELEGATION_MARKER,
+    "This repository's Pomegr policy configures the rows below for your agent type. Report them through the Pomegr MCP tools, typically the `mcp__plugin_pomegr_pomegr__*` namespace.",
+    "A signal is current project-specific state, not a heartbeat or a Pomegr judgment. Replace one when a new configured state applies, clear agent state when none applies, and treat execution-task outcomes as durable.",
+    "Never put prompts, responses, secrets, commands, stdout, stderr, tool results, or credential values in a signal.",
+    "If no row below applies when you finish, report nothing.",
+  ];
+  for (const section of sections) {
+    lines.push("", `### ${section.name}`, TABLE_HEADER, TABLE_DIVIDER);
+    for (const row of section.rows) lines.push(`| ${row.label} | ${row.tone} | ${row.reportWhen} | ${row.replaceWhen} |`);
+  }
+  return { agentType: type, sections, labels, block: lines.join("\n") };
+}
+
+export function promptCarriesPolicy(prompt, plan) {
+  if (typeof prompt !== "string" || !plan) return false;
+  if (prompt.includes(DELEGATION_MARKER)) return true;
+  return /pomegr/i.test(prompt) && plan.labels.every((label) => prompt.includes(label));
+}
+
+function transcriptRecordReports(line) {
+  if (!line || !/pomegr/i.test(line)) return false;
+  let record;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    return false;
+  }
+  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return false;
+  return record.message.content.some((content) => content?.type === "tool_use"
+    && typeof content.name === "string"
+    && DELEGATED_REPORT_TOOL_PATTERN.test(content.name));
+}
+
+export function transcriptReportsDelegatedSignal(transcriptPath) {
+  let handle;
+  try {
+    handle = fs.openSync(transcriptPath, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const buffer = Buffer.alloc(TRANSCRIPT_CHUNK_BYTES);
+    const decoder = new StringDecoder("utf8");
+    let remainder = "";
+    let scanned = 0;
+    let read = 0;
+    while ((read = fs.readSync(handle, buffer, 0, buffer.length, null)) > 0) {
+      scanned += read;
+      if (scanned > TRANSCRIPT_SCAN_MAX_BYTES) return null;
+      const lines = (remainder + decoder.write(buffer.subarray(0, read))).split("\n");
+      remainder = lines.pop() || "";
+      for (const line of lines) if (transcriptRecordReports(line)) return true;
+    }
+    return transcriptRecordReports(remainder + decoder.end());
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+function readHookPayload() {
+  if (process.stdin.isTTY) return null;
+  let raw;
+  try {
+    raw = fs.readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
+  if (!raw.trim()) return null;
+  try {
+    const payload = JSON.parse(raw);
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function payloadDirectory(payload, fallback) {
+  return typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : fallback;
+}
+
+function delegateOutput(payload, fallbackDirectory) {
+  if (!DELEGATION_TOOL_NAMES.has(payload?.tool_name)) return "";
+  const input = payload.tool_input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
+  if (typeof input.prompt !== "string" || !input.prompt.trim()) return "";
+
+  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), input.subagent_type);
+  if (!plan || promptCarriesPolicy(input.prompt, plan)) return "";
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      updatedInput: { ...input, prompt: `${input.prompt}\n\n${plan.block}\n` },
+    },
+  });
+}
+
+function subagentStopOutput(payload, fallbackDirectory) {
+  if (!payload || payload.stop_hook_active === true) return "";
+  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), payload.agent_type);
+  if (!plan) return "";
+  if (typeof payload.transcript_path !== "string" || !payload.transcript_path) return "";
+  if (transcriptReportsDelegatedSignal(payload.transcript_path) !== false) return "";
+
+  const scopes = plan.sections.map((section) => section.name.toLowerCase()).join(" and ");
+  return JSON.stringify({
+    systemMessage: [
+      `Pomegr: delegated agent "${plan.agentType}" owns ${scopes} but finished without calling a Pomegr reporting tool.`,
+      `Configured rows: ${plan.labels.join(", ")}.`,
+      "Pomegr never infers a signal from a transcript. Report one from this session only if you can confirm the outcome; otherwise leave the scope unreported.",
+    ].join(" "),
   });
 }
 
@@ -287,6 +504,14 @@ function argumentValue(args, name, fallback) {
 export function runPolicyCli(args = process.argv.slice(2)) {
   const command = args[0] || "validate";
   const cwd = argumentValue(args, "--cwd", process.cwd());
+
+  if (command === "delegate" || command === "subagent-stop") {
+    const payload = readHookPayload();
+    const output = command === "delegate" ? delegateOutput(payload, cwd) : subagentStopOutput(payload, cwd);
+    if (output) process.stdout.write(`${output}\n`);
+    return 0;
+  }
+
   const policy = readPolicy(cwd);
   if (command === "hook") {
     const output = hookOutput(policy);
@@ -294,11 +519,18 @@ export function runPolicyCli(args = process.argv.slice(2)) {
     return 0;
   }
   if (command === "validate") {
-    const result = { status: policy.status, path: policy.path, errors: policy.errors || [], warnings: policy.warnings || [], bytes: policy.bytes ?? 0 };
+    const result = {
+      status: policy.status,
+      path: policy.path,
+      errors: policy.errors || [],
+      warnings: policy.warnings || [],
+      delegatedAgents: (policy.delegatedAgents || []).map((row) => ({ agentType: row.agentType, owns: row.owns })),
+      bytes: policy.bytes ?? 0,
+    };
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return policy.status === "valid" ? 0 : policy.status === "missing" ? 2 : 1;
   }
-  process.stderr.write("Usage: policy.mjs <validate|hook> [--cwd <directory>]\n");
+  process.stderr.write("Usage: policy.mjs <validate|hook|delegate|subagent-stop> [--cwd <directory>]\n");
   return 64;
 }
 

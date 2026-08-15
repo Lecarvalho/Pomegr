@@ -1,6 +1,6 @@
 # Pomegr reporting plugin for Claude Code
 
-Pomegr ships a self-contained Claude Code plugin for configuring and reporting bounded, repository-specific signals. The plugin installs two skills, a stateless local MCP server, and a `SessionStart` hook as one unit. Pomegr remains provider-neutral; this package is the Claude Code distribution adapter.
+Pomegr ships a self-contained Claude Code plugin for configuring and reporting bounded, repository-specific signals. The plugin installs two skills, a stateless local MCP server, and three hooks — `SessionStart`, `PreToolUse`, and `SubagentStop` — as one unit. Pomegr remains provider-neutral; this package is the Claude Code distribution adapter.
 
 ## Install
 
@@ -32,11 +32,15 @@ After initialization, the skill follows the policy immediately. `/pomegr:doctor`
 
 ## Repository policy
 
-`.pomegr/signals.md` uses policy version `3` and contains Session naming, Privacy and semantics, Delegated agent tooling, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
+`.pomegr/signals.md` uses policy version `4` and contains Session naming, Privacy and semantics, Delegated agent tooling, Delegated agents, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
 
-The delegated-agent section closes the reporting ownership gap. Claude Code subagents normally inherit MCP tools from the parent, but an agent definition with an explicit `tools` allowlist must include the resolved Pomegr namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the applicable exact tool names. The section states this as a repository invariant rather than a delegation-time check, so `/pomegr:init` proposes both the policy and the agent definitions it depends on in one preview, and the parent still passes the applicable policy rows in the Agent prompt. A subagent without those tools must not own agent- or task-signal reporting.
+The `Delegated agents` table is the declaration that drives delegation. Each row names a subagent type and what it owns — `agent`, `task`, or `agent and task` — and `*` covers every subagent type. A row may only own a scope that configures at least one signal row, and an empty table means the delegating session keeps all reporting for itself. The table is the sole scope input for both delegation hooks, so a repository that configures no delegated agents pays no per-spawn cost.
 
-Validation backs the invariant. When a policy configures agent or task signals, `scripts/policy.mjs` scans `.claude/agents/*.md` and returns a `warnings` entry for each definition whose explicit allowlist omits a Pomegr tool. Warnings name the file only, never its contents, and never change the `valid` status or the exit code. The `SessionStart` hook appends them under a `[Pomegr policy drift]` marker so a session can repair the gap in place, and `/pomegr:doctor` reports them read-only.
+The delegated-agent tooling section states the capability half of the invariant. Claude Code subagents inherit MCP tools from the parent, but an agent definition with an explicit `tools` allowlist must include the resolved Pomegr namespace, typically `mcp__plugin_pomegr_pomegr__*`, or the applicable exact tool names. A subagent without those tools must not own agent- or task-signal reporting, and `/pomegr:init` proposes the policy and the agent definitions it depends on in one preview.
+
+Validation backs both halves. When a policy configures agent or task signals, `scripts/policy.mjs` scans `.claude/agents/*.md` and returns a bounded `warnings` entry in either direction: a declared agent type whose explicit allowlist omits a Pomegr tool receives the injected rows and still cannot report, and a definition carrying those tools that no `Delegated agents` row matches never receives them. Warnings name the file only, never its contents, and never change the `valid` status or the exit code. The `SessionStart` hook appends them under a `[Pomegr policy drift]` marker so a session can repair the gap in place, and `/pomegr:doctor` reports them read-only.
+
+Instruction, unlike capability, is not checked in the definition at all. A definition is commonly a thin frontmatter wrapper over a canonical body elsewhere, so a scan of the wrapper proves nothing about what the agent was told. The delegation hook supplies the instruction at spawn time instead, which makes the wrapper question moot.
 
 The naming, privacy, and delegated-agent tooling sections are canonical policy and must remain identical to the plugin template. Repository-owned customization belongs in the three signal tables. Session and agent rows must define replacement or clearing; task rows must state that their outcomes are durable and cannot be cleared.
 
@@ -50,11 +54,26 @@ The plugin registers a native Claude Code `SessionStart` hook for startup, resum
 
 At each event, the hook searches upward from the working directory to the repository root for `.pomegr/signals.md`, validates its structure and size, and injects a bounded copy through `additionalContext`. This keeps the policy active in every session, including after compaction, without modifying repository-wide agent instruction files.
 
-Named subagents start with isolated context, so the parent must pass the applicable agent/task rows and transition rules in its delegation prompt. The policy also requires the parent to select a subagent whose inherited or explicitly allowlisted tooling includes the Pomegr MCP tools, and to repair a definition that lacks them.
-
 - A missing policy means repository-specific reporting is inactive.
 - A malformed or oversized policy produces a safe, non-blocking warning recommending `/pomegr:doctor`.
 - An unavailable MCP server never blocks the coding session.
+
+## Delegation
+
+`SessionStart` context does not reach a subagent. A subagent inherits the parent's MCP tools and starts with its own context, so a delegated agent could hold the Pomegr tools, match a configured row, and have no idea it was supposed to report. Asking the delegating session to paste the rows made that a per-call discipline requirement with no trigger and no feedback, so the plugin mechanizes it in two layers.
+
+**Injection.** A `PreToolUse` hook matching `Task|Agent` — the subagent-spawning tool is named differently across harnesses — reads the spawn's `subagent_type`, resolves the policy from the hook's `cwd`, and returns the prompt with the applicable rows appended through `updatedInput`. The appended block opens with the marker `[Pomegr delegated reporting policy]` and carries only the owned signal tables plus the privacy and transition rules. It is:
+
+- **Scoped.** Nothing is appended unless a `Delegated agents` row matches the spawned type, so an uninvolved repository or agent type is untouched.
+- **Idempotent.** The hook skips a prompt that already carries the marker, and also one that mentions Pomegr and already contains every applicable label, so a manually pasted copy is not duplicated.
+- **Silent on forks.** A fork inherits the parent's context and already has the policy.
+- **Non-escalating.** The hook returns `updatedInput` only. It sets no `permissionDecision`, so subagent spawns keep their normal permission behavior.
+
+**Detection.** A `SubagentStop` hook receives `agent_type` and `transcript_path`. When the stopping agent's type is declared and its transcript contains no `report_agent_signal`, `report_task_signal`, or `clear_agent_signal` call in the Pomegr namespace, the hook emits a `systemMessage` naming the agent type and the configured labels it did not use.
+
+The detector reports a miss; it never infers the verdict. Pomegr's signals are current state rather than guesses, so a wrong signal is worse than a missing one. The hook does not block the subagent's stop either: a subagent's final message is its return value, and forcing an extra turn could corrupt it. An unreadable or oversized transcript, and a re-entrant `stop_hook_active` invocation, both stay silent.
+
+Both hooks exit `0` with no output on a missing, invalid, or unrelated policy, and a malformed hook payload is ignored.
 
 ## MCP tools and signal lifetime
 
@@ -81,6 +100,7 @@ Start with `/pomegr:doctor`. Its checklist distinguishes these common cases:
 - **Policy missing:** run `/pomegr:init`. Reporting remains inactive until a policy exists.
 - **Policy invalid or oversized:** review the bounded validation errors with `/pomegr:init`; the hook does not inject invalid content.
 - **Policy not loaded in the current context:** run `/reload-plugins`, then start or resume a session so the `SessionStart` hook runs.
+- **A subagent finished without reporting:** confirm its type has a `Delegated agents` row and that its `tools` allowlist reaches the Pomegr namespace. `/pomegr:doctor` lists the declared rows and the drift warnings for both gaps.
 - **One or more MCP tools missing:** inspect Claude Code's `/mcp` view and reload the plugin. Doctor does not call a reporting tool merely to test connectivity.
 - **Session remains Untitled:** native naming occurs after substantive interaction; an idle session is allowed to remain Untitled.
 
