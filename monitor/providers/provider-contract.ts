@@ -21,6 +21,11 @@ export type ProviderSessionReference = {
   updatedAt: string;
   isLive: boolean;
   needsInput: boolean;
+  /** Monitor-private verified process identity. Never expose it in browser session catalogs. */
+  resourceOwner?: {
+    pid: number;
+    processStartIdentity: string;
+  } | null;
 };
 
 /** Latest non-zero provider context snapshot for one agent at one point in time. */

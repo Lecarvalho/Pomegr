@@ -52,6 +52,7 @@ export function createEmptyMonitorState(options = {}) {
       activeAgents: 0,
       toolCalls: 0,
       repeatedCalls: 0,
+      resources: null,
       tokens: {
         allAgents: 0,
         input: 0,

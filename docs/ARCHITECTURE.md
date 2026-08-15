@@ -16,7 +16,7 @@ Safe cost snapshots ────┘            │
                            Pomegr web UI (:3003)
 ```
 
-The browser receives normalized metadata only. The monitor owns privileged access to local transcripts, Git, and OAuth-backed plan data.
+The browser receives normalized metadata only. The monitor owns privileged access to local transcripts, Git, OAuth-backed plan data, and operating-system process measurements.
 
 ## Runtime components
 
@@ -44,9 +44,12 @@ Needs-input notifications are produced from the normalized session catalog on a 
 1. Discovers Claude Code and Codex session trees through provider adapters and deterministically selects current or historical sessions.
 2. Reads provider session metadata, bounded live tails, and cached historical evidence.
 3. Normalizes agents, activity, context snapshots, opt-in lifecycle/context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
-4. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
-5. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
-6. Retrieves and caches provider plan usage for the live view only.
+4. Uses verified, unique provider ownership evidence to sample live Windows process trees and retain bounded resource timelines in memory.
+5. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
+6. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
+7. Retrieves and caches provider plan usage for the live view only.
+
+Resource collection is driven by live catalog requests and limited by a fixed monitor-private cadence. One Windows process snapshot supplies numeric CPU-time, working-set, and read/write transfer counters for every attributable live session. The monitor verifies each PID against its process-start identity, expands it to the current descendant tree, and refuses attribution when owners or trees are shared. It retains only rolling samples and an observed memory peak for the current ownership window; nothing is persisted or reconstructed for history.
 
 It listens only on `127.0.0.1`.
 
@@ -107,6 +110,8 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 
 The UI depends on normalized shapes rather than raw provider records.
 
+Live `metrics.resources` contains only a bounded status/reason enum, CPU cores and whole-machine percentage, current and observed-peak working-set bytes, read/write bytes per second, and timestamped samples. Historical state sets it to `null`. Process IDs, process-start identities, process names, commands, paths, environment values, collector configuration, and sampling cadence never cross the serialization boundary. Resource telemetry is not consumed by reports, scoring, insights, signals, or recommendation rules.
+
 Reported signals use the transcript as their only durable source. The local MCP server validates and acknowledges `report_session_signal`, `report_agent_signal`, `report_task_signal`, `clear_session_signal`, and `clear_agent_signal`, but stores nothing. For live and historical views alike, the monitor reconstructs valid report and clear calls chronologically across every agent transcript and applies the shared signal normalizer. The latest session report across all agents decorates the session header, and an agent report decorates only its reporting agent; a later matching clear call produces `null` in the existing normalized shape until another report applies. Session and agent signals may expose a bounded, one-line plain-text description as the tag tooltip. Task signals are durable and cannot be cleared: a report is resolved monitor-side against a normalized Bash tool-use or background-task ID and is exposed only when that execution task matches. Historical full-file signal scans are cached; raw target arguments, unmatched signals, tool results, and surrounding response content are never exposed.
 
 When the provider records a recognized session summary, `session.summary` carries only the latest bounded, whitespace-normalized plain-text summary, its transcript timestamp, and provider provenance. Pomegr does not derive a summary from prompts, responses, or tool results. The dashboard labels the text as provider-generated and falls back to static privacy copy when no summary is available.
@@ -125,7 +130,7 @@ monitor/providers/
 └── provider-contract.mjs
 ```
 
-Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
+Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. For live resource attribution, an adapter may additionally return a current owner PID and process-start identity through the private provider contract; the provider registry removes both before catalog serialization and marks duplicate owners unavailable. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
 
 ### Provider flow and serialization boundary
 
@@ -169,6 +174,8 @@ Without a current authoritative source, the adapter reads at most 128 KiB and 25
 - Git failure: repository unavailable without failing the session
 - GitHub CLI or network failure: recorded pull-request links remain visible with unavailable live metadata, and branch association degrades independently
 - Usage failure: expose a fixed provider-safe unavailable message while the remaining dashboard stays available
+- Resource owner missing, shared, stale, or unsupported: expose a fixed unavailable reason while the remaining dashboard stays available
+- Resource snapshot failure: record a gap for attributable live sessions without failing discovery or state serialization
 - Missing or deleted historical transcript: selected historical view explains that the session is no longer available and receives no current Git or usage data
 - Malformed JSONL, unknown future record, or truncated final write: skip the individual record/line and retain other recognized evidence
 - Synthetic or zero usage: exclude from latest-context selection

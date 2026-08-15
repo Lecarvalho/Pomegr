@@ -7,6 +7,7 @@ import {
   providerSource,
   qualifyProviderSessionId,
 } from "../monitor/providers/provider-contract.mjs";
+import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
 
 test("qualifies provider-local session IDs without accepting paths", () => {
@@ -50,6 +51,52 @@ test("validates provider declarations and optional usage readers", () => {
   assert.throws(() => defineProvider({ ...base, capabilities: { usageLimits: true } }), /must implement readUsageLimits/);
   assert.throws(() => defineProvider({ ...base, watchTargets: [""] }), /watchTargets/);
   assert.throws(() => defineProvider({ ...base, unavailableMessage: "private" }), /unavailableMessage/);
+});
+
+test("keeps optional resource ownership private while passing it to the monitor", async () => {
+  const provider = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilities: { liveSessions: true },
+    async listSessions() {
+      return [{
+        localId: "resource-session",
+        title: "Resource session",
+        project: "pomegr",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+        isLive: true,
+        needsInput: false,
+        resourceOwner: {
+          pid: 987_654_321,
+          processStartIdentity: "ProcessStartMustNotLeak",
+        },
+      }];
+    },
+    async readSession() { return null; },
+  });
+  const registry = createProviderRegistry([provider]);
+
+  const inspected = await registry.inspectSessions();
+  assert.deepEqual(inspected.resourceTargets, [{
+    sessionId: "codex:resource-session",
+    pid: 987_654_321,
+    processStartIdentity: "ProcessStartMustNotLeak",
+  }]);
+  assert.deepEqual(inspected.sessions, [{
+    id: "codex:resource-session",
+    provider: "codex",
+    source: "Codex",
+    title: "Resource session",
+    project: "pomegr",
+    updatedAt: "2026-08-14T12:00:00.000Z",
+    isLive: true,
+    needsInput: false,
+  }]);
+  assert.deepEqual(await registry.listSessions(), inspected.sessions);
+  assert.doesNotMatch(
+    JSON.stringify(inspected.sessions),
+    /987654321|ProcessStartMustNotLeak|resourceOwner|processStartIdentity|"pid"/,
+  );
 });
 
 test("creates provider-aware empty state while preserving the Claude default", () => {

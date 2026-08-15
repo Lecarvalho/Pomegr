@@ -27,6 +27,7 @@ function session(localId, updatedAt, options = {}) {
     updatedAt,
     isLive: options.isLive ?? true,
     needsInput: options.needsInput ?? false,
+    ...(options.resourceOwner ? { resourceOwner: options.resourceOwner } : {}),
   };
 }
 
@@ -54,6 +55,45 @@ test("merges provider catalogs with qualified IDs and deterministic ordering", a
     "claude:claude-old",
   ]);
   assert.doesNotMatch(JSON.stringify(catalog), /PRIVATE_PATH_MUST_NOT_LEAK|localId|providerIndex/);
+});
+
+test("keeps resource ownership internal while classifying live inspection targets", async () => {
+  const uniqueOwner = { pid: 101, processStartIdentity: "unique-start" };
+  const sharedOwner = { pid: 202, processStartIdentity: "shared-start" };
+  const registry = createProviderRegistry([
+    provider("claude", [
+      session("unique", "2026-08-10T15:00:00.000Z", { resourceOwner: uniqueOwner }),
+      session("shared-a", "2026-08-10T14:00:00.000Z", { resourceOwner: sharedOwner }),
+      session("missing", "2026-08-10T12:00:00.000Z"),
+      session("history", "2026-08-10T11:00:00.000Z", { isLive: false, resourceOwner: uniqueOwner }),
+    ], new Map([
+      ["unique", evidence("unique")],
+      ["shared-a", evidence("shared-a")],
+    ])),
+    provider("codex", [
+      session("shared-b", "2026-08-10T13:00:00.000Z", { resourceOwner: sharedOwner }),
+      session("invalid", "2026-08-10T10:00:00.000Z", {
+        resourceOwner: { pid: 303, processStartIdentity: "unsafe identity" },
+      }),
+    ], new Map()),
+  ]);
+
+  const inspected = await registry.inspectSessions();
+  assert.deepEqual(inspected.resourceTargets, [
+    { sessionId: "claude:unique", pid: 101, processStartIdentity: "unique-start" },
+    { sessionId: "claude:shared-a", status: "shared" },
+    { sessionId: "codex:shared-b", status: "shared" },
+    { sessionId: "claude:missing", status: "unavailable" },
+    { sessionId: "codex:invalid", status: "unavailable" },
+  ]);
+  assert.equal(inspected.sessions.some(({ id }) => id === "claude:history"), true);
+  assert.equal(inspected.resourceTargets.some(({ sessionId }) => sessionId === "claude:history"), false);
+  assert.doesNotMatch(JSON.stringify(inspected.sessions), /resourceOwner|processStartIdentity|\"pid\"/);
+
+  const catalog = await registry.listSessions();
+  const selected = await registry.readSession("claude:unique");
+  assert.doesNotMatch(JSON.stringify(catalog), /resourceOwner|processStartIdentity|\"pid\"/);
+  assert.doesNotMatch(JSON.stringify(selected), /resourceOwner|processStartIdentity|\"pid\"/);
 });
 
 test("automatic selection prefers needs-input, then live recency, then history", async () => {

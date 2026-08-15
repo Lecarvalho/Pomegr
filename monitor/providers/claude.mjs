@@ -329,7 +329,12 @@ export function createClaudeProvider(options = {}) {
       const cacheKey = `${stat.size}:${stat.mtimeMs}:${activityMs}`;
       const cached = sessionSummaryCache.get(file);
       const registryEntry = registry.get(path.basename(file, ".jsonl"));
-      const liveState = { isLive: liveFiles.has(file), needsInput: Boolean(registryEntry?.needsInput) };
+      const isLive = liveFiles.has(file);
+      const liveState = {
+        isLive,
+        needsInput: Boolean(registryEntry?.needsInput),
+        ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
+      };
       if (cached?.key === cacheKey) return [{ ...cached.value, ...liveState }];
       const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
       const value = {

@@ -87,6 +87,7 @@ function runtimeFixture(options = {}) {
     async readSession() { return { evidence: readEvidence(), provider, sessionId: normalizedSessionId }; },
     async readUsageLimits(...args) { return usageReader(...args); },
     async listSessions() { return []; },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
     providerForSessionId() { return provider; },
     unavailableMessage() { return "Session unavailable"; },
   };
@@ -346,4 +347,157 @@ test("historical analysis uses recorded Git and historical pull-request semantic
   assert.equal(pullRequestOptions.length, 1);
   assert.equal(pullRequestOptions[0].historical, true);
   assert.equal(pullRequestOptions[0].branch, "codex/recorded-branch");
+});
+
+test("session catalog samples private live targets and returns only sanitized catalog entries", async () => {
+  const sessions = [{
+    id: "codex:live",
+    provider: "codex",
+    source: "Codex",
+    title: "Live",
+    project: "pomegr",
+    updatedAt: "2026-08-11T12:00:01.000Z",
+    isLive: true,
+    needsInput: false,
+  }];
+  const resourceTargets = [{
+    sessionId: "codex:live",
+    pid: 41,
+    processStartIdentity: "private-start",
+  }];
+  const sampled = [];
+  const runtime = createMonitorRuntime({
+    providerRegistry: {
+      defaultProvider: provider,
+      async inspectSessions() { return { sessions, resourceTargets }; },
+    },
+    resourceUsageSampler: {
+      async sample(targets) { sampled.push(targets); },
+      get() { return null; },
+    },
+  });
+
+  const catalog = await runtime.sessionCatalog();
+  assert.deepEqual(catalog, sessions);
+  assert.deepEqual(sampled, [resourceTargets]);
+  assert.doesNotMatch(JSON.stringify(catalog), /private-start|processStartIdentity|"pid"|interval|cadence/i);
+});
+
+test("live analysis reads cached resource usage through a strict public allowlist", async () => {
+  const cached = {
+    status: "ready",
+    reason: null,
+    current: {
+      cpuCores: 1.25,
+      cpuMachinePercent: 15.625,
+      memoryBytes: 2_048,
+      readBytesPerSecond: 400,
+      writeBytesPerSecond: 200,
+      pid: 41,
+    },
+    observedPeak: { memoryBytes: 4_096, processStartIdentity: "private-start" },
+    samples: [{
+      timestamp: "2026-08-11T12:00:01.000Z",
+      cpuCores: 1.25,
+      cpuMachinePercent: 15.625,
+      memoryBytes: 2_048,
+      readBytesPerSecond: 400,
+      writeBytesPerSecond: 200,
+      command: "PRIVATE_COMMAND",
+    }],
+    intervalMs: 5_000,
+  };
+  let sampled = false;
+  const runtime = runtimeFixture({
+    resourceUsageSampler: {
+      async sample() { sampled = true; },
+      get(sessionId) {
+        assert.equal(sessionId, "codex:normalized-session");
+        return cached;
+      },
+    },
+  });
+
+  const state = await runtime.analyze("codex:live");
+  assert.equal(sampled, false, "analysis reads the request-driven cache without sampling");
+  assert.deepEqual(state.metrics.resources, {
+    status: "ready",
+    reason: null,
+    current: {
+      cpuCores: 1.25,
+      cpuMachinePercent: 15.625,
+      memoryBytes: 2_048,
+      readBytesPerSecond: 400,
+      writeBytesPerSecond: 200,
+    },
+    observedPeak: { memoryBytes: 4_096 },
+    samples: [{
+      timestamp: "2026-08-11T12:00:01.000Z",
+      cpuCores: 1.25,
+      cpuMachinePercent: 15.625,
+      memoryBytes: 2_048,
+      readBytesPerSecond: 400,
+      writeBytesPerSecond: 200,
+    }],
+  });
+  assert.doesNotMatch(JSON.stringify(state.metrics.resources), /PRIVATE|processStartIdentity|"pid"|interval|cadence/i);
+});
+
+test("resource sampler failures cannot break catalog, analysis, scoring, or enrichment", async () => {
+  const scheduler = controlledScheduler();
+  const sessions = [{ id: "codex:live", isLive: true }];
+  const runtime = runtimeFixture({
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState() { return repository("codex/live"); },
+    async readPullRequests() { return pullRequests("codex/live"); },
+    resourceUsageSampler: {
+      async sample() { throw new Error("PRIVATE_SAMPLER_FAILURE"); },
+      get() { throw new Error("PRIVATE_CACHE_FAILURE"); },
+    },
+  });
+
+  const catalogRuntime = createMonitorRuntime({
+    providerRegistry: {
+      defaultProvider: provider,
+      async inspectSessions() {
+        return {
+          sessions,
+          resourceTargets: [{ sessionId: "codex:live", pid: 41, processStartIdentity: "private-start" }],
+        };
+      },
+    },
+    resourceUsageSampler: {
+      async sample() { throw new Error("PRIVATE_SAMPLER_FAILURE"); },
+      get() { throw new Error("PRIVATE_CACHE_FAILURE"); },
+    },
+  });
+  assert.deepEqual(await catalogRuntime.sessionCatalog(), sessions);
+
+  const state = await runtime.analyze();
+  assert.equal(state.score, 100);
+  assert.deepEqual(state.metrics.resources, {
+    status: "unavailable",
+    reason: "collection_failed",
+    current: null,
+    observedPeak: null,
+    samples: [],
+  });
+  assert.equal(scheduler.jobs.length, 1);
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE_SAMPLER|PRIVATE_CACHE/);
+});
+
+test("historical analysis never reads or exposes cached live resources", async () => {
+  let gets = 0;
+  const runtime = runtimeFixture({
+    evidence: sessionEvidence({ historical: true }),
+    async readPullRequests() { return pullRequests("codex/recorded"); },
+    resourceUsageSampler: {
+      async sample() {},
+      get() { gets += 1; throw new Error("must not read historical resources"); },
+    },
+  });
+
+  const state = await runtime.analyze("codex:historical");
+  assert.equal(state.metrics.resources, null);
+  assert.equal(gets, 0);
 });

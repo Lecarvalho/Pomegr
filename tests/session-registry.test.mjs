@@ -99,7 +99,7 @@ test("reads valid registry entries and ignores malformed files independently", a
   assert.equal(registry.get("live-session").needsInput, true);
 });
 
-test("retires an orphaned registry entry while retaining a matching live owner", async (context) => {
+test("exposes only validated owners, retires PID reuse, and tolerates unavailable inspection", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-registry-owner-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, "owned.json"), JSON.stringify({
@@ -116,7 +116,16 @@ test("retires an orphaned registry entry while retaining a matching live owner",
   const orphaned = readSessionRegistry(root, {
     validateOwners: () => new Map([["owned-session", false]]),
   });
+  const unavailable = readSessionRegistry(root, {
+    validateOwners: () => new Map(),
+  });
 
   assert.equal(live.get("owned-session").status, "active");
+  assert.deepEqual(live.get("owned-session").resourceOwner, {
+    pid: 42,
+    processStartIdentity: "owner-start",
+  });
   assert.equal(orphaned.size, 0);
+  assert.equal(unavailable.get("owned-session").status, "active");
+  assert.equal(unavailable.get("owned-session").resourceOwner, undefined);
 });

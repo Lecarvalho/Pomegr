@@ -557,6 +557,7 @@ export function createCodexProvider(options = {}) {
         updatedAt: [thread.updatedAt, thread.createdAt, state.observedAt].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
         isLive: state.isLive,
         needsInput: state.needsInput,
+        resourceOwner: state.resourceOwner || null,
       };
     }).sort(compareMetadata).slice(0, catalogLimit);
   }

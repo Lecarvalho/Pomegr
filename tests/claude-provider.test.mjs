@@ -111,6 +111,51 @@ test("Claude adapter rejects unsafe session IDs and degrades missing sessions in
   assert.deepEqual(await provider.listSessions(), []);
 });
 
+test("Claude adapter exposes a resource owner only for a verified live registry owner", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-resource-owner-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const registryRoot = path.join(root, "registry");
+  const localId = "owned-session";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const owner = { pid: 4242, procStart: "verified-owner-start" };
+  await writeRecords(mainFile, [
+    { type: "user", timestamp: "2026-08-14T12:00:00.000Z", cwd: root, message: { content: "PRIVATE_PROMPT_MUST_NOT_LEAK" } },
+  ]);
+  await mkdir(registryRoot, { recursive: true });
+  await writeFile(path.join(registryRoot, `${localId}.json`), JSON.stringify({
+    sessionId: localId,
+    status: "active",
+    updatedAt: Date.parse("2026-08-14T12:00:01.000Z"),
+    ...owner,
+  }), "utf8");
+
+  const providerOptions = {
+    homeDir: root,
+    projectsRoot,
+    registryRoot,
+    tasksRoot: path.join(root, "tasks"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  };
+  const verifiedProvider = createClaudeProvider({
+    ...providerOptions,
+    registryProcessIdentities: () => new Map([[owner.pid, owner.procStart]]),
+  });
+  assert.deepEqual((await verifiedProvider.listSessions()).map(({ localId: id, isLive, resourceOwner }) => ({ id, isLive, resourceOwner })), [{
+    id: localId,
+    isLive: true,
+    resourceOwner: { pid: owner.pid, processStartIdentity: owner.procStart },
+  }]);
+
+  const unavailableProvider = createClaudeProvider({
+    ...providerOptions,
+    registryProcessIdentities: () => null,
+  });
+  const unavailable = (await unavailableProvider.listSessions())[0];
+  assert.equal(unavailable.isLive, true);
+  assert.equal(Object.hasOwn(unavailable, "resourceOwner"), false);
+});
+
 test("Claude adapter retires a stale registry file whose owner process exited", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-orphaned-registry-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -145,6 +190,7 @@ test("Claude adapter retires a stale registry file whose owner process exited", 
 
   const catalog = await provider.listSessions();
   assert.equal(catalog[0].isLive, false);
+  assert.equal(Object.hasOwn(catalog[0], "resourceOwner"), false);
   const evidence = await provider.readSession(localId, { historical: true });
   assert.equal(evidence.historical, true);
   assert.equal(Date.parse(evidence.session.updatedAt) - Date.parse(evidence.session.startedAt), 52 * 60_000);

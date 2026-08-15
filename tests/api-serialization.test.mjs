@@ -14,6 +14,45 @@ import {
 } from "./helpers/provider-fixtures.mjs";
 
 const SAFE_CWD = "C:\\synthetic\\pomegr-api-fixture";
+const PRIVATE_RESOURCE_PID = 987_654_321;
+const PRIVATE_RESOURCE_START = "PROCESS_START_MUST_NOT_LEAK";
+
+function resourceUsageSamplerWithPrivateFields() {
+  return {
+    async sample() {},
+    get() {
+      return {
+        status: "ready",
+        reason: null,
+        current: {
+          cpuCores: 1.25,
+          cpuMachinePercent: 15.625,
+          memoryBytes: 2_048,
+          readBytesPerSecond: 400,
+          writeBytesPerSecond: 200,
+          pid: PRIVATE_RESOURCE_PID,
+          processStartIdentity: PRIVATE_RESOURCE_START,
+          processName: "PROCESS_NAME_MUST_NOT_LEAK",
+        },
+        observedPeak: {
+          memoryBytes: 4_096,
+          pid: PRIVATE_RESOURCE_PID,
+          processStartIdentity: PRIVATE_RESOURCE_START,
+        },
+        samples: [{
+          timestamp: "2026-08-10T13:00:18.000Z",
+          cpuCores: 1.25,
+          cpuMachinePercent: 15.625,
+          memoryBytes: 2_048,
+          readBytesPerSecond: 400,
+          writeBytesPerSecond: 200,
+          command: "PROCESS_COMMAND_MUST_NOT_LEAK",
+        }],
+        intervalMs: 5_000,
+      };
+    },
+  };
+}
 
 async function writeFixture(file, fixture, replacements = []) {
   let contents = await readProviderFixture(fixture);
@@ -128,6 +167,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   const providerRegistry = createProviderRegistry([claude, codex]);
   const origin = await startSyntheticMonitor(context, {
     providerRegistry,
+    resourceUsageSampler: resourceUsageSamplerWithPrivateFields(),
     readGitState() { throw new Error("PRIVATE_PATH_MUST_NOT_LEAK ENV_SECRET_MUST_NOT_LEAK"); },
     async readPullRequests() { throw new Error("OAUTH_TOKEN_MUST_NOT_LEAK TOOL_OUTPUT_MUST_NOT_LEAK"); },
   });
@@ -141,6 +181,10 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   const serialized = await Promise.all(responses.map((response) => response.text()));
   serialized.forEach((body, index) => assertNoPrivateFixtureSentinels(body, `API response ${index + 1}`));
   assert.doesNotMatch(serialized.join("\n"), /AUTH_FILE_MUST_NOT_LEAK/);
+  assert.doesNotMatch(
+    serialized.join("\n"),
+    /987654321|PROCESS_START_MUST_NOT_LEAK|PROCESS_NAME_MUST_NOT_LEAK|PROCESS_COMMAND_MUST_NOT_LEAK|processStartIdentity|"pid"|intervalMs/,
+  );
 
   const catalog = JSON.parse(serialized[0]);
   assert.deepEqual(catalog.sessions.map(({ id, source }) => ({ id, source })).sort((left, right) => left.id.localeCompare(right.id)), [
@@ -155,6 +199,28 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(codexState.usageLimits.available, true);
   assert.equal(codexState.metrics.tokens.allAgents, 2_000);
   assert.equal(codexState.metrics.tokens.allAgents < 9_800, true, "cumulative total_token_usage is not exposed");
+  for (const state of [claudeState, codexState]) {
+    assert.deepEqual(state.metrics.resources, {
+      status: "ready",
+      reason: null,
+      current: {
+        cpuCores: 1.25,
+        cpuMachinePercent: 15.625,
+        memoryBytes: 2_048,
+        readBytesPerSecond: 400,
+        writeBytesPerSecond: 200,
+      },
+      observedPeak: { memoryBytes: 4_096 },
+      samples: [{
+        timestamp: "2026-08-10T13:00:18.000Z",
+        cpuCores: 1.25,
+        cpuMachinePercent: 15.625,
+        memoryBytes: 2_048,
+        readBytesPerSecond: 400,
+        writeBytesPerSecond: 200,
+      }],
+    });
+  }
 });
 
 test("missing and deleted history stays historical without current Git or usage data", async (context) => {
@@ -176,6 +242,7 @@ test("missing and deleted history stays historical without current Git or usage 
   assert.equal(state.view, "history");
   assert.equal(state.error, "The selected session is no longer available.");
   assert.equal(state.session, null);
+  assert.equal(state.metrics.resources, null);
   assert.deepEqual(state.usageLimits.limits, []);
   assert.equal(gitCalls, 0);
   assert.equal(usageCalls, 0);

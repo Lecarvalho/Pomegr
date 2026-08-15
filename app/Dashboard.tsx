@@ -10,6 +10,7 @@ import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { MachineryPanel } from "./components/dashboard/MachineryPanel";
 import { RepositoryPanel } from "./components/dashboard/RepositoryPanel";
+import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
@@ -249,6 +250,7 @@ export function Dashboard() {
 
           <SummaryMetrics state={data} historical={viewingHistory} />
           <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} estimatedCostSupported={capabilities.estimatedCost} historical={viewingHistory} />
+          {!viewingHistory && <ResourceUsagePanel resources={data.metrics.resources} />}
 
           <details className="sessionDetails">
             <summary><span>Session details</span><small>Repository, usage limits, loaded context, and activity</small></summary>

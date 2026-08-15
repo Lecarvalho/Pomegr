@@ -19,7 +19,7 @@ import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 
 const START = Date.parse("2026-08-11T12:00:00.000Z");
-const OWNER = { ownerPid: 4242, ownerStartedAt: "owner-start-identity", startWatcher: false };
+const OWNER = { ownerPid: 4242, ownerStartedAt: "134000000000000000", startWatcher: false };
 
 function thread(localId = "live-root", options = {}) {
   return {
@@ -43,7 +43,7 @@ function hook(root, now, hook_event_name, options = {}) {
     prompt: "PROMPT_MUST_NOT_LEAK",
     tool_input: { command: "COMMAND_MUST_NOT_LEAK", question: "QUESTION_MUST_NOT_LEAK" },
     tool_response: "TOOL_OUTPUT_MUST_NOT_LEAK",
-  }, { root, now, ...OWNER });
+  }, { root, now, ...(options.owner || OWNER) });
 }
 
 async function serializedFiles(root) {
@@ -69,6 +69,10 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
     isLive: true,
     needsInput: false,
     observedAt: new Date(now).toISOString(),
+    resourceOwner: {
+      pid: OWNER.ownerPid,
+      processStartIdentity: OWNER.ownerStartedAt,
+    },
   });
   assert.equal(observed.threads[0].liveStatus, "idle");
 
@@ -115,6 +119,7 @@ test("bridge lease and needs-input expiry clear stale state deterministically", 
   assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, true);
   now += 2;
   assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, true, "first failed lease poll receives shutdown grace");
+  assert.equal(coordinator.observe(threads).sessions.get("live-root").resourceOwner, null, "stale bridge grace never preserves resource ownership");
   assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, false, "second failed lease poll clears liveness");
 
   now = START;
@@ -145,6 +150,17 @@ test("owning app-server status outranks bridge state and maps waiting and system
   })]);
   assert.equal(waiting.threads[0].liveStatus, "needs_input");
   assert.equal(waiting.threads[0].liveness.source, "owning_app_server");
+  assert.deepEqual(waiting.sessions.get("live-root").resourceOwner, {
+    pid: OWNER.ownerPid,
+    processStartIdentity: OWNER.ownerStartedAt,
+  });
+
+  const appOnly = createCodexLivenessCoordinator({
+    root: path.join(root, "missing-app-only-bridge"),
+    now: () => START,
+    cacheMs: 0,
+  }).observe([thread("app-only", { runtimeStatus: { type: "idle" } })]);
+  assert.equal(appOnly.sessions.get("app-only").resourceOwner, null);
 
   const failed = coordinator.observe([thread("live-root", { runtimeStatus: { type: "systemError" } })]);
   assert.equal(failed.threads[0].liveStatus, "stopped");
@@ -231,6 +247,7 @@ test("a growing rollout stays live when Windows reports a stale modification tim
     updatedAt: staleTime.toISOString(),
   })]);
   assert.equal(observed.sessions.get("growing-root").isLive, true);
+  assert.equal(observed.sessions.get("growing-root").resourceOwner, null);
   assert.equal(observed.threads[0].liveStatus, "active");
   assert.equal(observed.threads[0].liveness.observedAt, new Date(now).toISOString());
 });
@@ -295,6 +312,28 @@ test("authoritative app-server and lifecycle bridge state avoid rollout tail rea
   assert.equal(observed.threads.find((item) => item.localId === "bridge-root").liveness.source, "lifecycle_bridge");
 });
 
+test("conflicting current bridge owners keep a live session resource-ownerless", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-conflicting-owners-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  hook(root, START, "SessionStart", { sessionId: "conflict-root" });
+  hook(root, START, "SubagentStart", {
+    sessionId: "conflict-root",
+    agentId: "conflict-child",
+    owner: { ownerPid: 4343, ownerStartedAt: "134000000000000001", startWatcher: false },
+  });
+  const coordinator = createCodexLivenessCoordinator({ root, now: () => START + 1_000, cacheMs: 0 });
+  const observed = coordinator.observe([
+    thread("conflict-root"),
+    thread("conflict-child", { sessionId: "conflict-root", parentThreadId: "conflict-root" }),
+  ]);
+  assert.deepEqual(observed.sessions.get("conflict-root"), {
+    isLive: true,
+    needsInput: false,
+    observedAt: new Date(START).toISOString(),
+    resourceOwner: null,
+  });
+});
+
 test("future-dated rollout metadata is scanned and record timestamps decide liveness", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-clock-skew-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -316,7 +355,14 @@ test("future-dated rollout metadata is scanned and record timestamps decide live
 });
 
 test("Windows owner identity binds a lease to process creation time", { skip: process.platform !== "win32" }, () => {
-  assert.match(processStartIdentity(process.pid), /^\d{4}-\d{2}-\d{2}T/);
+  const identity = processStartIdentity(process.pid);
+  assert.match(identity, /^\d{17,20}$/);
+  assert.equal(BigInt(identity) > 0n, true);
+});
+
+test("process start identities accept the sampler format and reject unsafe values", () => {
+  assert.equal(processStartIdentity(4242, { processStartIdentity: () => OWNER.ownerStartedAt }), OWNER.ownerStartedAt);
+  assert.equal(processStartIdentity(4242, { processStartIdentity: () => "../../unsafe" }), null);
 });
 
 test("the inert hook command accepts Windows lifecycle JSON and persists only its allowlist", async (context) => {
@@ -441,6 +487,10 @@ test("automatic selection stops preferring an expired needs-input bridge and rol
 
   hook(path.join(root, "liveness"), now, "PermissionRequest", { sessionId: "session-0" });
   const provider = createCodexProvider({ codexHome: root, livenessRoot: path.join(root, "liveness"), cacheMs: 0, now: () => now, maximumTailBytes: 4_096 });
+  assert.deepEqual((await provider.listSessions()).find((item) => item.localId === "session-0")?.resourceOwner, {
+    pid: OWNER.ownerPid,
+    processStartIdentity: OWNER.ownerStartedAt,
+  });
   const registry = createProviderRegistry([provider]);
   assert.equal((await registry.readSession()).sessionId, "codex:session-0");
   now += CODEX_ROLLOUT_LIVE_WINDOW_MS + 1;

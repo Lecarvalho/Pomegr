@@ -23,6 +23,54 @@ function automaticCandidates(entries) {
   return [...needsInput, ...otherLive, ...historical];
 }
 
+function publicCatalogEntry(entry) {
+  return {
+    id: entry.id,
+    provider: entry.provider.id,
+    source: entry.provider.source,
+    title: entry.title,
+    project: entry.project,
+    updatedAt: entry.updatedAt,
+    isLive: Boolean(entry.isLive),
+    needsInput: Boolean(entry.needsInput),
+  };
+}
+
+function normalizedResourceOwner(value) {
+  if (!Number.isInteger(value?.pid) || value.pid <= 0) return null;
+  if (typeof value.processStartIdentity !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9.:+-]{0,79}$/.test(value.processStartIdentity)) return null;
+  return { pid: value.pid, processStartIdentity: value.processStartIdentity };
+}
+
+function resourceOwnerKey(owner) {
+  return `${owner.pid}\0${owner.processStartIdentity}`;
+}
+
+function inspectCatalogEntries(entries) {
+  const liveEntries = entries.filter((entry) => entry.isLive);
+  const ownersBySessionId = new Map(liveEntries.map((entry) => [
+    entry.id,
+    normalizedResourceOwner(entry.resourceOwner),
+  ]));
+  const ownerCounts = new Map();
+  for (const owner of ownersBySessionId.values()) {
+    if (!owner) continue;
+    const key = resourceOwnerKey(owner);
+    ownerCounts.set(key, (ownerCounts.get(key) || 0) + 1);
+  }
+  const resourceTargets = liveEntries.map((entry) => {
+    const owner = ownersBySessionId.get(entry.id);
+    if (!owner) return { sessionId: entry.id, status: "unavailable" };
+    if (ownerCounts.get(resourceOwnerKey(owner)) > 1) return { sessionId: entry.id, status: "shared" };
+    return { sessionId: entry.id, pid: owner.pid, processStartIdentity: owner.processStartIdentity };
+  });
+  return {
+    sessions: entries.map(publicCatalogEntry),
+    resourceTargets,
+  };
+}
+
 /**
  * Register provider adapters behind the provider-neutral monitor boundary.
  * Browser session IDs are parsed only as opaque provider-qualified IDs; they
@@ -84,6 +132,10 @@ export function createProviderRegistry(adapters) {
     return load;
   }
 
+  async function inspectSessions() {
+    return inspectCatalogEntries(await catalogEntries());
+  }
+
   async function readCandidate(entry, historical) {
     try {
       const evidence = await entry.provider.readSession(entry.localId, { historical });
@@ -104,18 +156,10 @@ export function createProviderRegistry(adapters) {
     },
 
     async listSessions() {
-      const entries = await catalogEntries();
-      return entries.map((entry) => ({
-        id: entry.id,
-        provider: entry.provider.id,
-        source: entry.provider.source,
-        title: entry.title,
-        project: entry.project,
-        updatedAt: entry.updatedAt,
-        isLive: Boolean(entry.isLive),
-        needsInput: Boolean(entry.needsInput),
-      }));
+      return (await inspectSessions()).sessions;
     },
+
+    inspectSessions,
 
     async readSession(requestedSessionId = "") {
       if (requestedSessionId) {

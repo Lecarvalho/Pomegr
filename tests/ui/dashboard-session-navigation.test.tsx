@@ -33,12 +33,62 @@ function liveState(id: string, title: string): MonitorState {
   };
 }
 
+function historicalState(id: string, title: string): MonitorState {
+  const state = liveState(id, title);
+  return {
+    ...state,
+    view: "history",
+    session: state.session ? {
+      ...state.session,
+      repository: { ...state.session.repository, historical: true },
+    } : null,
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   window.history.replaceState(null, "", "/");
 });
 
 describe("dashboard session navigation", () => {
+  it("places live resource use after context growth and before session details", async () => {
+    const state = liveState("claude:live-1", "Live resource session");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
+      if (url === "/api/state" || url === "/api/state?sessionId=claude%3Alive-1") return Promise.resolve(jsonResponse(state));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    render(<Dashboard />);
+
+    const resourcePanel = (await screen.findByText("Resource use")).closest("details");
+    const contextPanel = screen.getByRole("heading", { name: "Context added over time" }).closest("section");
+    const sessionDetails = screen.getByText("Session details").closest("details");
+
+    expect(contextPanel?.nextElementSibling).toBe(resourcePanel);
+    expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
+  });
+
+  it("omits resource use from historical sessions", async () => {
+    const state = historicalState("claude:history-1", "Historical session");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
+      if (url === "/api/state" || url === "/api/state?sessionId=claude%3Ahistory-1") return Promise.resolve(jsonResponse(state));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
+    const contextPanel = screen.getByRole("heading", { name: "Context added over time" }).closest("section");
+    const sessionDetails = screen.getByText("Session details").closest("details");
+
+    expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
+    expect(contextPanel?.nextElementSibling).toBe(sessionDetails);
+  });
+
   it("pins the first displayed session so live polling cannot navigate elsewhere", async () => {
     const firstSession = liveState("claude:live-1", "First live session");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {

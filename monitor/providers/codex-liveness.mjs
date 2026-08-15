@@ -21,6 +21,7 @@ const CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS = 2_000;
 
 const SAFE_LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
+const SAFE_PROCESS_START_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9.:+-]{0,79}$/;
 const TERMINAL_BRIDGE_STATES = new Set(["ended", "finished", "stopped", "interrupted"]);
 const BRIDGE_STATES = new Set(["idle", "active", "needs_input", "ended", "finished", "stopped", "interrupted", "system_error"]);
 const BRIDGE_EVENTS = new Set([
@@ -46,6 +47,11 @@ function safeId(value) {
 
 function safeTurnId(value) {
   return typeof value === "string" && SAFE_TURN_ID.test(value) ? value : null;
+}
+
+function normalizedProcessStartIdentity(value) {
+  const identity = String(value ?? "").trim();
+  return SAFE_PROCESS_START_IDENTITY.test(identity) ? identity : null;
 }
 
 function hash(value) {
@@ -106,22 +112,24 @@ export function resolveCodexLivenessRoot(options = {}) {
 
 export function processStartIdentity(pid, options = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
-  if (typeof options.processStartIdentity === "function") return options.processStartIdentity(pid);
+  if (typeof options.processStartIdentity === "function") {
+    return normalizedProcessStartIdentity(options.processStartIdentity(pid));
+  }
   try {
     if ((options.platform || process.platform) === "win32") {
       const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-      const script = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`;
+      const script = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToFileTimeUtc().ToString()`;
       const value = execFileSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", script], {
         encoding: "utf8",
         windowsHide: true,
         timeout: 3_000,
       }).trim();
-      return codexTimestamp(value);
+      return normalizedProcessStartIdentity(value);
     }
     const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
     const close = stat.lastIndexOf(")");
     const fields = close >= 0 ? stat.slice(close + 2).split(" ") : [];
-    return /^\d+$/.test(fields[19] || "") ? `proc-${fields[19]}` : null;
+    return normalizedProcessStartIdentity(/^\d+$/.test(fields[19] || "") ? `proc-${fields[19]}` : null);
   } catch {
     return null;
   }
@@ -170,7 +178,7 @@ for ($index = 0; $index -lt 12 -and $current -gt 0; $index++) {
   $started = $item.StartTime
   if ($null -eq $started) { break }
   $parent = [PomegrParentProcess]::GetParentProcessId($current)
-  $items += [pscustomobject]@{ pid = [int]$item.Id; parentPid = [int]$parent; name = [string]$item.ProcessName; startedAt = $started.ToUniversalTime().ToString('o') }
+  $items += [pscustomobject]@{ pid = [int]$item.Id; parentPid = [int]$parent; name = [string]$item.ProcessName; startedAt = $started.ToUniversalTime().ToFileTimeUtc().ToString() }
   $current = [int]$parent
 }
 $items | ConvertTo-Json -Compress
@@ -182,8 +190,8 @@ $items | ConvertTo-Json -Compress
       }).trim();
       const parsed = JSON.parse(output || "[]");
       return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => (
-        Number.isInteger(item?.pid) && item.pid > 0 && codexTimestamp(item.startedAt)
-          ? [{ pid: item.pid, parentPid: Number(item.parentPid) || 0, name: String(item.name || ""), startedAt: codexTimestamp(item.startedAt) }]
+        Number.isInteger(item?.pid) && item.pid > 0 && normalizedProcessStartIdentity(item.startedAt)
+          ? [{ pid: item.pid, parentPid: Number(item.parentPid) || 0, name: String(item.name || ""), startedAt: normalizedProcessStartIdentity(item.startedAt) }]
           : []
       ));
     }
@@ -194,7 +202,7 @@ $items | ConvertTo-Json -Compress
       const close = stat.lastIndexOf(")");
       const fields = close >= 0 ? stat.slice(close + 2).split(" ") : [];
       const parentPid = Number(fields[1]);
-      const startedAt = /^\d+$/.test(fields[19] || "") ? `proc-${fields[19]}` : null;
+      const startedAt = normalizedProcessStartIdentity(/^\d+$/.test(fields[19] || "") ? `proc-${fields[19]}` : null);
       const name = fs.readFileSync(`/proc/${current}/comm`, "utf8").trim();
       if (!startedAt) break;
       ancestors.push({ pid: current, parentPid: Number.isInteger(parentPid) ? parentPid : 0, name, startedAt });
@@ -279,7 +287,7 @@ function currentLeaseForPid(root, ownerPid, nowMs) {
     if (lease?.version === 1
       && lease.provider === "codex"
       && lease.ownerPid === ownerPid
-      && typeof lease.ownerStartedAt === "string"
+      && normalizedProcessStartIdentity(lease.ownerStartedAt)
       && /^[a-f0-9]{32}$/.test(lease.bridgeInstance || "")
       && timestampValue(lease.expiresAt) > nowMs) return lease;
   }
@@ -313,11 +321,12 @@ export function captureCodexLifecycleHook(input, options = {}) {
   const nowMs = options.now instanceof Date ? options.now.getTime() : Number.isFinite(options.now) ? options.now : Date.now();
   const rootSnapshot = agentId ? readJson(snapshotFile(root, sessionId, sessionId)) : null;
   const hintedOwner = [previous, rootSnapshot].find((value) => (
-    Number.isInteger(value?.ownerPid) && value.ownerPid > 0 && typeof value.ownerStartedAt === "string"
+    Number.isInteger(value?.ownerPid) && value.ownerPid > 0 && normalizedProcessStartIdentity(value.ownerStartedAt)
   ));
   const existingOwner = hintedOwner ? currentLeaseForPid(root, hintedOwner.ownerPid, nowMs) : null;
-  const discoveredOwner = Number.isInteger(options.ownerPid) && options.ownerPid > 0 && options.ownerStartedAt
-    ? { ownerPid: options.ownerPid, ownerStartedAt: options.ownerStartedAt }
+  const configuredOwnerStartedAt = normalizedProcessStartIdentity(options.ownerStartedAt);
+  const discoveredOwner = Number.isInteger(options.ownerPid) && options.ownerPid > 0 && configuredOwnerStartedAt
+    ? { ownerPid: options.ownerPid, ownerStartedAt: configuredOwnerStartedAt }
     : existingOwner && existingOwner.ownerStartedAt === hintedOwner?.ownerStartedAt
       ? { ownerPid: existingOwner.ownerPid, ownerStartedAt: existingOwner.ownerStartedAt }
       : codexOwnerIdentity(options);
@@ -353,9 +362,9 @@ export function captureCodexLifecycleHook(input, options = {}) {
 export function renewCodexOwnerLease(options = {}) {
   const root = resolveCodexLivenessRoot(options);
   const ownerPid = Number(options.ownerPid);
-  const ownerStartedAt = options.ownerStartedAt;
+  const ownerStartedAt = normalizedProcessStartIdentity(options.ownerStartedAt);
   const bridgeInstance = options.bridgeInstance;
-  if (!Number.isInteger(ownerPid) || ownerPid <= 0 || typeof ownerStartedAt !== "string" || !/^[a-f0-9]{32}$/.test(bridgeInstance || "")) return false;
+  if (!Number.isInteger(ownerPid) || ownerPid <= 0 || !ownerStartedAt || !/^[a-f0-9]{32}$/.test(bridgeInstance || "")) return false;
   if (processStartIdentity(ownerPid, options) !== ownerStartedAt) return false;
   const file = leaseFile(root, ownerPid, ownerStartedAt);
   const lease = readJson(file);
@@ -499,7 +508,7 @@ function validBridgeSnapshot(value) {
     && Number.isSafeInteger(value.sequence)
     && Number.isInteger(value.ownerPid)
     && value.ownerPid > 0
-    && typeof value.ownerStartedAt === "string"
+    && normalizedProcessStartIdentity(value.ownerStartedAt)
     && /^[a-f0-9]{32}$/.test(value.bridgeInstance || "");
 }
 
@@ -508,7 +517,7 @@ function readBridgeRecords(root, maximumFiles) {
   for (const file of boundedFiles(path.join(root, "leases"), ".json", maximumFiles)) {
     const lease = readJson(file);
     if (lease?.version !== 1 || lease.provider !== "codex" || !Number.isInteger(lease.ownerPid)
-      || typeof lease.ownerStartedAt !== "string" || !/^[a-f0-9]{32}$/.test(lease.bridgeInstance || "")
+      || !normalizedProcessStartIdentity(lease.ownerStartedAt) || !/^[a-f0-9]{32}$/.test(lease.bridgeInstance || "")
       || !codexTimestamp(lease.expiresAt)) continue;
     leases.set(`${lease.ownerPid}\0${lease.ownerStartedAt}\0${lease.bridgeInstance}`, lease);
   }
@@ -560,6 +569,20 @@ function descendantsFor(rootId, threads) {
     }
   }
   return included;
+}
+
+function currentBridgeResourceOwner(record, nowMs) {
+  if (!record?.lease || TERMINAL_BRIDGE_STATES.has(record.snapshot.lifecycle)) return null;
+  if (timestampValue(record.lease.expiresAt) <= nowMs) return null;
+  return {
+    pid: record.snapshot.ownerPid,
+    processStartIdentity: record.snapshot.ownerStartedAt,
+  };
+}
+
+function uniqueResourceOwner(owners) {
+  const unique = new Map(owners.map((owner) => [`${owner.pid}\0${owner.processStartIdentity}`, owner]));
+  return unique.size === 1 ? [...unique.values()][0] : null;
 }
 
 export function createCodexLivenessCoordinator(options = {}) {
@@ -635,6 +658,7 @@ export function createCodexLivenessCoordinator(options = {}) {
         bridgeByActor.set(key, record);
       }
     }
+    const resourceOwnersByThreadId = new Map();
     const observedThreads = threads.map((thread) => {
       if (thread.archived) return { ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false, suppressFallbackLive: false };
       const app = appServerLiveness(thread.runtimeStatus, thread.updatedAt);
@@ -644,6 +668,8 @@ export function createCodexLivenessCoordinator(options = {}) {
       if (bridgeRecord) {
         const staleKey = `${bridgeRecord.snapshot.ownerPid}\0${bridgeRecord.snapshot.ownerStartedAt}\0${bridgeRecord.snapshot.bridgeInstance}`;
         const leaseCurrent = timestampValue(bridgeRecord.lease?.expiresAt) > checkedAt;
+        const resourceOwner = currentBridgeResourceOwner(bridgeRecord, checkedAt);
+        if (resourceOwner) resourceOwnersByThreadId.set(thread.localId, resourceOwner);
         if (leaseCurrent) stalePolls.delete(staleKey);
         else stalePolls.set(staleKey, (stalePolls.get(staleKey) || 0) + 1);
         const keepStale = checkedAt < resumeGraceUntil || (stalePolls.get(staleKey) || 0) < 2;
@@ -668,10 +694,14 @@ export function createCodexLivenessCoordinator(options = {}) {
       const rootTerminal = related.find((thread) => thread.localId === rootThread.localId)?.suppressFallbackLive;
       const live = rootTerminal ? [] : related.filter((thread) => thread.livenessLive);
       const newest = live.map((thread) => thread.liveness).filter(Boolean).sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
+      const resourceOwner = live.length > 0
+        ? uniqueResourceOwner(related.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean))
+        : null;
       sessions.set(rootThread.localId, {
         isLive: live.length > 0,
         needsInput: live.some((thread) => thread.liveStatus === "needs_input"),
         observedAt: newest?.observedAt || null,
+        resourceOwner,
       });
     }
     const value = { threads: observedThreads, sessions };

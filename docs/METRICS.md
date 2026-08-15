@@ -40,6 +40,20 @@ Bucket sizes are selected from fixed, human-readable intervals to target roughly
 
 This is a change in observed context snapshots, not throughput, billing, or token spend. The normalized API names it `contextGrowthTimeline`; generated reports intentionally omit it.
 
+## Live resource use
+
+For a live session on Windows, Pomegr can measure the verified owner process and its descendants. Provider adapters supply the monitor with a PID and process-start identity only when current ownership evidence is available. The monitor rejects reused identities, owners shared by more than one session, and process trees that overlap another session's tree rather than attributing the same work twice. Ownership identifiers, process names, commands, paths, and environment data remain monitor-side and never enter the browser API.
+
+The collector reads one operating-system process snapshot for all currently attributable sessions. Collection is request-driven and rate-limited by a fixed internal cadence that is intentionally hidden in the V1 interface. Each session keeps a rolling in-memory window of timestamped samples; samples and observed peaks are discarded when the session leaves the live catalog or its verified owner changes, and they are never persisted.
+
+The normalized `metrics.resources` value exposes:
+
+- **CPU** — recent process-tree CPU-time change as equivalent occupied cores and as a percentage of the machine's logical processors
+- **Memory** — current summed working set and the highest working set observed by Pomegr during the current ownership window
+- **Disk I/O** — recent process-tree read and write transfer rates in bytes per second
+
+The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`, and resource data is excluded from persistence, generated reports, Flow score, efficiency signals, and recommendations.
+
 ## Context machinery snapshot
 
 Claude Code records the rendered result of a user-invoked `/context` command in the session JSONL. Pomegr treats this as an opt-in point-in-time snapshot: if no valid result has been recorded, the dashboard asks the user to run `/context`; when one or more results exist, it shows the latest one.

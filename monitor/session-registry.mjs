@@ -152,7 +152,13 @@ export function readSessionRegistry(root, options = {}) {
     try {
       const validation = options.validateOwners([...registry.values()]);
       for (const [sessionId, entry] of registry) {
-        if (entry.pid && entry.procStart && validation.get(sessionId) === false) registry.delete(sessionId);
+        if (!entry.pid || !entry.procStart) continue;
+        const ownerIsCurrent = validation.get(sessionId);
+        if (ownerIsCurrent === false) registry.delete(sessionId);
+        else if (ownerIsCurrent === true) entry.resourceOwner = {
+          pid: entry.pid,
+          processStartIdentity: entry.procStart,
+        };
       }
     } catch {
       // Owner inspection is an optional strengthening signal. Registry parsing
