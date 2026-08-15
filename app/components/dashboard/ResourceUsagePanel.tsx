@@ -1,14 +1,14 @@
 "use client";
 
-import { useId, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { MonitorState, ResourceUsageSample, ResourceUsageUnavailableReason } from "../../../shared/monitor-contract";
+import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 
 type ResourceUsage = MonitorState["metrics"]["resources"];
 type TimedSample = ResourceUsageSample & { time: number };
 type MetricReader = (sample: TimedSample) => number | null;
 
 const STORAGE_KEY = "pomegr-resource-panel-open";
-const STORAGE_EVENT = "pomegr-resource-panel-preference";
 const WINDOW_MS = 15 * 60_000;
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 96;
@@ -22,37 +22,6 @@ const unavailableMessages: Record<ResourceUsageUnavailableReason, string> = {
   owner_identity_mismatch: "The process owner changed before usage could be verified.",
   collection_failed: "Resource collection is temporarily unavailable.",
 };
-
-let inMemoryDisclosureOpen = true;
-
-function disclosureSnapshot() {
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "true" || stored === "false") inMemoryDisclosureOpen = stored === "true";
-  } catch {
-    // Retain the in-memory preference when storage is unavailable.
-  }
-  return inMemoryDisclosureOpen;
-}
-
-function subscribeToDisclosurePreference(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(STORAGE_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(STORAGE_EVENT, onChange);
-  };
-}
-
-function setDisclosurePreference(open: boolean) {
-  inMemoryDisclosureOpen = open;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, String(open));
-  } catch {
-    // The in-memory preference keeps the disclosure functional.
-  }
-  window.dispatchEvent(new Event(STORAGE_EVENT));
-}
 
 function finiteMetric(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null;
@@ -187,10 +156,10 @@ function ChartLane({ label, maximumLabel, legend, paths, activeX, activeValues }
 }
 
 function currentSummary(resources: ResourceUsage | undefined) {
-  if (resources?.status === "unavailable") return <span className="resourceSummaryUnavailable">Unavailable</span>;
+  if (resources?.status === "unavailable") return <span className="disclosureSummaryUnavailable">Unavailable</span>;
   const current = resources?.current;
   return (
-    <span className="resourceSummaryMetrics">
+    <span className="disclosureSummaryMetrics">
       <span><b>CPU</b> {formatCores(current?.cpuCores)}</span>
       <span><b>Memory</b> {formatBytes(current?.memoryBytes)}</span>
       <span><b>I/O</b> {formatRate(totalIo(current?.readBytesPerSecond, current?.writeBytesPerSecond))}</span>
@@ -209,7 +178,6 @@ function inaccessibleSampleSummary(sample: TimedSample | undefined) {
 }
 
 export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | undefined }) {
-  const open = useSyncExternalStore(subscribeToDisclosurePreference, disclosureSnapshot, () => true);
   const [activeTimestamp, setActiveTimestamp] = useState<string | null>(null);
   const announcementId = useId();
 
@@ -230,11 +198,6 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
   const writePath = straightPath(samples, (sample) => sample.writeBytesPerSecond, ioMaximum, windowStart, windowEnd);
   const ready = resources?.status === "ready" && samples.length > 0;
   const current = resources?.current;
-
-  const handleToggle = (event: SyntheticEvent<HTMLDetailsElement>) => {
-    const nextOpen = event.currentTarget.open;
-    setDisclosurePreference(nextOpen);
-  };
 
   const handleChartKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (samples.length === 0) return;
@@ -266,17 +229,15 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
   };
 
   return (
-    <details className="resourceUsagePanel panel" open={open} onToggle={handleToggle}>
-      <summary>
-        <svg className="resourceDisclosureIcon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 12h12" />
-          <path className="resourceDisclosureIconVertical" d="M12 6v12" />
-        </svg>
-        <span className="resourceDisclosureTitle">Resource use</span>
-        {currentSummary(resources)}
-      </summary>
-      <div className="resourceUsageBody">
-        {resources?.status === "unavailable" ? (
+    <DashboardDisclosurePanel
+      bodyClassName="resourceUsageBody"
+      className="resourceUsagePanel"
+      defaultOpen
+      storageKey={STORAGE_KEY}
+      summary={currentSummary(resources)}
+      title="Resource use"
+    >
+      {resources?.status === "unavailable" ? (
           <div className="resourceUsageState" role="status">
             <strong>Resource use unavailable</strong>
             <p>{resources.reason ? unavailableMessages[resources.reason] : "Resource collection is unavailable for this session."}</p>
@@ -359,8 +320,7 @@ export function ResourceUsagePanel({ resources }: { resources: ResourceUsage | u
               </p>
             </div>
           </>
-        )}
-      </div>
-    </details>
+      )}
+    </DashboardDisclosurePanel>
   );
 }

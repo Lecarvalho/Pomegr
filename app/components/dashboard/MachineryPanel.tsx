@@ -11,14 +11,21 @@ export function MachineryPanel({ machinery, supported, historical }: { machinery
   const rootRef = useRef<HTMLDivElement | null>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismissibleLayer(open, rootRef, close);
+  if (!supported) return null;
+  if (!machinery) {
+    return (
+      <p className="machineryNotice">
+        <span>{historical ? "No context snapshot was recorded for this session." : <>Run{" "}<code>/context</code>{" "}on the session to load this panel</>}</span>
+      </p>
+    );
+  }
   return (
     <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Loaded session context">
       <div className="cacheLead"><h2>Loaded context</h2><p>Provider-estimated context used by tools, instructions, and other session components.</p></div>
       <div className="machineryStat" ref={rootRef}>
         <span>Estimated token load</span>
-        {supported && machinery ? <>
-          <strong title="Sum of the provider-estimated context categories in the latest /context snapshot. Messages and free space are excluded.">{compactNumber(machinery.machineryTokens)}</strong>
-          <small>Estimated tokens across {machinery.categories.length} {machinery.categories.length === 1 ? "category" : "categories"}</small>
+        <strong title="Sum of the provider-estimated context categories in the latest /context snapshot. Messages and free space are excluded.">{compactNumber(machinery.machineryTokens)}</strong>
+        <small>Estimated tokens across {machinery.categories.length} {machinery.categories.length === 1 ? "category" : "categories"}</small>
           <button className="machineryPopoverTrigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="loaded-machinery-popover">View context breakdown <span aria-hidden="true">▸</span></button>
           {open && (
             <PopoverFrame id="loaded-machinery-popover" ariaLabel="Loaded context breakdown" eyebrow="CONTEXT BREAKDOWN" title="Estimated token inventory" closeLabel="Close context breakdown" onClose={close} className="metricPopover machineryPopover">
@@ -37,9 +44,6 @@ export function MachineryPanel({ machinery, supported, historical }: { machinery
               </div>
             </PopoverFrame>
           )}
-        </> : <><strong>—</strong><small>{!supported
-          ? "Loaded context details are not available for this provider"
-          : historical ? "No context snapshot was recorded" : "Run /context in the active session to measure the loaded context"}</small></>}
       </div>
     </section>
   );

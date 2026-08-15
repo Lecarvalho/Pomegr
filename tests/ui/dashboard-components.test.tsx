@@ -732,13 +732,14 @@ describe("live resource usage panel", () => {
 
   it("renders current values, observed memory peak, and separate read/write telemetry", () => {
     window.localStorage.setItem("pomegr-resource-panel-open", "true");
-    render(<ResourceUsagePanel resources={readyResources} />);
+    const { container } = render(<ResourceUsagePanel resources={readyResources} />);
 
-    expect(screen.getAllByText("1.8 cores")).toHaveLength(3);
+    expect(container.querySelector(".disclosureSummaryMetrics")).not.toBeInTheDocument();
+    expect(screen.getAllByText("1.8 cores")).toHaveLength(2);
     expect(screen.getByText("11% of machine")).toBeInTheDocument();
-    expect(screen.getAllByText("3.0 GiB")).toHaveLength(3);
+    expect(screen.getAllByText("3.0 GiB")).toHaveLength(2);
     expect(screen.getByText("Observed peak 4.3 GiB")).toBeInTheDocument();
-    expect(screen.getAllByText("3.0 MiB/s")).toHaveLength(2);
+    expect(screen.getAllByText("3.0 MiB/s")).toHaveLength(1);
     expect(screen.getByText(/2.0 MiB\/s read/)).toHaveTextContent(/1.0 MiB\/s write/);
     expect(screen.getAllByText("Read")).toHaveLength(2);
     expect(screen.getAllByText("Write")).toHaveLength(2);
@@ -783,13 +784,37 @@ describe("live resource usage panel", () => {
     const disclosure = container.querySelector("details.resourceUsagePanel");
 
     expect(disclosure).toHaveAttribute("open");
+    expect(disclosure?.querySelector(".disclosureSummaryMetrics")).not.toBeInTheDocument();
     await user.click(screen.getByText("Resource use"));
     expect(disclosure).not.toHaveAttribute("open");
+    const compactSummary = disclosure?.querySelector(".disclosureSummaryMetrics");
+    expect(compactSummary).toHaveTextContent("CPU 1.8 cores");
+    expect(compactSummary).toHaveTextContent("Memory 3.0 GiB");
+    expect(compactSummary).toHaveTextContent("I/O 3.0 MiB/s");
     expect(window.localStorage.getItem("pomegr-resource-panel-open")).toBe("false");
 
     unmount();
     const restored = render(<ResourceUsagePanel resources={readyResources} />).container.querySelector("details.resourceUsagePanel");
     expect(restored).not.toHaveAttribute("open");
+    expect(restored?.querySelector(".disclosureSummaryMetrics")).toHaveTextContent("CPU 1.8 cores");
+  });
+
+  it("retains disclosure changes in memory when preference storage rejects writes", async () => {
+    window.localStorage.removeItem("pomegr-resource-panel-open");
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage unavailable", "QuotaExceededError");
+    });
+    const user = userEvent.setup();
+    const first = render(<ResourceUsagePanel resources={readyResources} />);
+
+    expect(first.container.querySelector("details.resourceUsagePanel")).toHaveAttribute("open");
+    await user.click(screen.getByText("Resource use"));
+    expect(first.container.querySelector("details.resourceUsagePanel")).not.toHaveAttribute("open");
+
+    first.unmount();
+    const restored = render(<ResourceUsagePanel resources={readyResources} />);
+    expect(restored.container.querySelector("details.resourceUsagePanel")).not.toHaveAttribute("open");
+    setItem.mockRestore();
   });
 
   it("uses one chart tab stop and navigates all lanes with arrow keys", () => {
@@ -938,15 +963,25 @@ describe("provider capability gates", () => {
   });
 
   it("never gives an unsupported provider the Claude /context instruction", () => {
-    render(<MachineryPanel machinery={null} supported={false} historical={false} />);
+    const { container } = render(<MachineryPanel machinery={null} supported={false} historical={false} />);
 
-    expect(screen.getByText("Loaded context details are not available for this provider")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText(/\/context/)).not.toBeInTheDocument();
   });
 
-  it("preserves the Claude /context setup copy when the capability is supported", () => {
-    render(<MachineryPanel machinery={null} supported historical={false} />);
+  it("replaces a missing live context panel with one actionable inline notice", () => {
+    const { container } = render(<MachineryPanel machinery={null} supported historical={false} />);
 
-    expect(screen.getByText("Run /context in the active session to measure the loaded context")).toBeInTheDocument();
+    expect(container.querySelector(".machineryNotice")).toHaveTextContent("Run /context on the session to load this panel");
+    expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("—");
+  });
+
+  it("uses a factual inline notice when a historical context snapshot was not recorded", () => {
+    const { container } = render(<MachineryPanel machinery={null} supported historical />);
+
+    expect(screen.getByText("No context snapshot was recorded for this session.")).toBeInTheDocument();
+    expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent("—");
   });
 });

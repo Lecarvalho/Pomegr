@@ -3,18 +3,15 @@
 import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
-import { ActivityPanel } from "./components/dashboard/ActivityPanel";
 import { AgentActivityPanel } from "./components/dashboard/AgentActivityPanel";
 import { ContextGrowthTimeline } from "./components/dashboard/ContextGrowthTimeline";
 import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
-import { MachineryPanel } from "./components/dashboard/MachineryPanel";
-import { RepositoryPanel } from "./components/dashboard/RepositoryPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
+import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
-import { UsageLimitsPanel } from "./components/dashboard/UsageLimitsPanel";
 import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
@@ -252,15 +249,7 @@ export function Dashboard() {
           <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} estimatedCostSupported={capabilities.estimatedCost} historical={viewingHistory} />
           {!viewingHistory && <ResourceUsagePanel resources={data.metrics.resources} />}
 
-          <details className="sessionDetails">
-            <summary><span>Session details</span><small>Repository, usage limits, loaded context, and activity</small></summary>
-            <div className="sessionDetailsBody">
-              <RepositoryPanel session={data.session} />
-              {!viewingHistory && capabilities.usageLimits && <UsageLimitsPanel usageLimits={data.usageLimits} />}
-              <MachineryPanel machinery={data.session.contextMachinery} supported={capabilities.contextMachinery} historical={viewingHistory} />
-              <ActivityPanel activity={data.activity} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />
-            </div>
-          </details>
+          <SessionDetailsPanel state={data} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />
         </div> : <>
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} />
