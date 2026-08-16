@@ -5,7 +5,7 @@ import type { Agent, ExecutionTask, MonitorState, SessionSummary } from "../../s
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
-import { ContextGrowthTimeline } from "../../app/components/dashboard/ContextGrowthTimeline";
+import { ContextHistoryPanel } from "../../app/components/dashboard/ContextHistoryPanel";
 import { ResourceUsagePanel } from "../../app/components/dashboard/ResourceUsagePanel";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
@@ -421,12 +421,13 @@ describe("agent detail popovers", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("labels the live snapshot as context and keeps its last-updated time", () => {
+  it("labels the live snapshot as latest context and keeps its provenance and last-updated time", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-08T12:03:05.000Z");
     const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("context")).toBeInTheDocument();
+    expect(screen.getByText("latest context")).toBeInTheDocument();
+    expect(container.querySelector(".agentTokens")).toHaveAttribute("title", "Latest non-zero provider usage snapshot for this agent; not cumulative token use.");
     expect(container.querySelector(".agentRow time")).toHaveTextContent("updated 3m ago");
     expect(container.querySelector(".agentRow time")).toHaveAttribute("dateTime", agent.lastSeen);
     vi.useRealTimers();
@@ -528,186 +529,94 @@ describe("usage-limit clock", () => {
   });
 });
 
-describe("context growth area chart", () => {
-  const currentTokens = {
-    allAgents: 120,
-    input: 30,
-    output: 30,
-    cacheWrite: 30,
-    cacheRead: 30,
-    contextGrowthTimeline: { bucketMs: 60_000, buckets: [] },
-  };
-  const bucket = (start: string, total: number) => ({
-    start,
-    end: new Date(new Date(start).getTime() + 60_000).toISOString(),
-    total,
-    input: total / 4,
-    cacheWrite: total / 4,
-    cacheRead: total / 4,
-    output: total / 4,
+describe("context history and cache evidence", () => {
+  const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", tokens: { ...agent.tokens, total: 220_000 } };
+  const buckets = [
+    { start: "2026-08-09T12:00:00.000Z", end: "2026-08-09T12:01:00.000Z", total: 100_000, agents: [{ agentId: "primary", total: 100_000 }] },
+    { start: "2026-08-09T12:01:00.000Z", end: "2026-08-09T12:02:00.000Z", total: 300_000, agents: [{ agentId: "child", total: 220_000 }, { agentId: "primary", total: 80_000 }] },
+  ];
+  const cacheEvent = (index: number) => ({
+    id: `cache-${index}`,
+    agentId: "primary",
+    kind: index === 0 ? "miss_refill" as const : index === 1 ? "reuse" as const : "refill" as const,
+    observedAt: new Date(Date.parse("2026-08-09T12:03:00.000Z") + index * 60_000).toISOString(),
+    promptInputTokens: 10_000 + index,
+    cacheReadPercent: index === 0 ? 5 : 90,
+    cacheWriteTokens: index === 1 ? 0 : 8_500,
+    previousCacheReadPercent: index === 0 ? 90 : null,
+    gapMs: index <= 1 ? 30 * 60_000 : null,
+    relatedEventId: index === 1 ? "cache-0" : null,
   });
-  const cubicSegments = (path: SVGPathElement) => {
-    const curve = path.getAttribute("d")?.split(" L ")[0] || "";
-    const values = [...curve.matchAll(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)].map(([value]) => Number(value));
-    const segments: Array<[number, number, number, number]> = [];
-    let startY = values[1];
-    for (let index = 2; index + 5 < values.length; index += 6) {
-      segments.push([startY, values[index + 1], values[index + 3], values[index + 5]]);
-      startY = values[index + 5];
-    }
-    return segments;
-  };
-  const cubicValue = ([start, firstControl, secondControl, end]: [number, number, number, number], t: number) => {
-    const inverse = 1 - t;
-    return inverse ** 3 * start
-      + 3 * inverse ** 2 * t * firstControl
-      + 3 * inverse * t ** 2 * secondControl
-      + t ** 3 * end;
+  const tokens = {
+    allAgents: 300_000,
+    input: 0,
+    output: 0,
+    cacheWrite: 0,
+    cacheRead: 0,
+    contextHistory: { bucketMs: 60_000, buckets, boundaries: [{ id: "boundary-1", agentId: "primary", timestamp: "2026-08-09T12:01:30.000Z", kind: "snapshot_drop" as const, preTokens: 100_000 }] },
+    cacheEvents: { status: "ready" as const, items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)) },
   };
 
-  it.each([
-    ["zero", [bucket("2026-08-09T12:00:00.000Z", 0)]],
-    ["single", [bucket("2026-08-09T12:00:00.000Z", 120)]],
-    ["repeated", [bucket("2026-08-09T12:00:00.000Z", 120), bucket("2026-08-09T12:01:00.000Z", 120), bucket("2026-08-09T12:02:00.000Z", 120)]],
-  ])("renders finite %s-value paths", (_, buckets) => {
-    const { container } = render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 60_000, buckets }}
-      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
-      cost={null}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
-
-    const paths = [...container.querySelectorAll<SVGPathElement>(".contextAreaChart path")];
-    expect(paths).toHaveLength(8);
-    for (const path of paths) {
-      expect(path.getAttribute("d")).not.toMatch(/NaN|Infinity/);
-      expect(path.getAttribute("d")).toMatch(/^M 0 /);
-    }
-    expect([...container.querySelectorAll<SVGPathElement>(".contextArea")].every((path) => path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
-    expect([...container.querySelectorAll<SVGPathElement>(".contextSeriesLine")].every((path) => !path.getAttribute("d")?.includes("L 1000 140"))).toBe(true);
-  });
-
-  it("keeps one focusable list item and complete accessible copy per bucket", () => {
-    const buckets = [bucket("2026-08-09T12:00:00.000Z", 120), bucket("2026-08-09T12:01:00.000Z", 80)];
-    render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 60_000, buckets }}
-      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
-      cost={null}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
-
-    const list = screen.getByRole("list", { name: "2 chronological context-growth buckets" });
-    const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveAttribute("tabindex", "0");
-    expect(items[0]).toHaveAccessibleName(/30 attributed to uncached input, 30 attributed to cache write, 30 attributed to cache read, 30 attributed to generated output/);
-    expect(within(items[0]).getByRole("tooltip")).toHaveClass("tooltipPopover", "histogramTooltip");
-    expect(screen.getAllByText("120 context added")).toHaveLength(1);
-  });
-
-  it("lets the legend toggle each context area independently", async () => {
+  it("defaults to primary context levels and keeps one fixed scale across scopes", async () => {
     const user = userEvent.setup();
-    const buckets = [bucket("2026-08-09T12:00:00.000Z", 120)];
-    const { container } = render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 60_000, buckets }}
-      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
-      cost={null}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
+    const { container } = render(<ContextHistoryPanel agents={[agent, childAgent]} tokens={tokens} historical={false} />);
 
-    const inputToggle = screen.getByRole("switch", { name: /Uncached input/ });
-    const inputArea = container.querySelector<SVGPathElement>('[data-series="input"]');
-    const inputLine = container.querySelector<SVGPathElement>('[data-series-line="input"]');
-    const inputPoints = [...container.querySelectorAll<SVGElement>('[data-series-point="input"]')];
-    expect(inputToggle).toHaveAttribute("aria-checked", "true");
-    expect(inputArea).not.toHaveClass("isHidden");
-    expect(inputLine).not.toHaveClass("isHidden");
-    expect(inputPoints).toHaveLength(1);
-    expect(inputPoints[0]).not.toHaveClass("isHidden");
+    expect(screen.getByText("Latest request snapshot over time for Primary agent. Not cumulative token use.")).toBeInTheDocument();
+    expect(container.querySelector(".contextHistoryLine")?.getAttribute("d")).toMatch(/^M /);
+    expect(container.querySelector(".contextHistoryLine")?.getAttribute("d")).not.toMatch(/NaN|Infinity/);
+    expect(container.querySelector(".contextHistoryScale span")).toHaveTextContent("500K");
+    expect(container.querySelectorAll(".contextBoundary.snapshot_drop")).toHaveLength(1);
+    expect(screen.getAllByText("Snapshot decrease").length).toBeGreaterThan(0);
+    expect(screen.getByText("Snapshot decrease · 100K before")).toBeInTheDocument();
 
-    await user.click(inputToggle);
-    expect(inputToggle).toHaveAttribute("aria-checked", "false");
-    expect(inputArea).toHaveClass("isHidden");
-    expect(inputLine).toHaveClass("isHidden");
-    expect(inputPoints[0]).toHaveClass("isHidden");
-
-    await user.click(inputToggle);
-    expect(inputToggle).toHaveAttribute("aria-checked", "true");
-    expect(inputArea).not.toHaveClass("isHidden");
-    expect(inputLine).not.toHaveClass("isHidden");
-    expect(inputPoints[0]).not.toHaveClass("isHidden");
+    await user.selectOptions(screen.getByLabelText("Scope"), "all-agents");
+    expect(screen.getByText(/Sum of each agent’s latest carried-forward snapshot/)).toBeInTheDocument();
+    expect(screen.getByText("300K context")).toBeInTheDocument();
+    expect(container.querySelector(".contextHistoryScale span")).toHaveTextContent("500K");
   });
 
-  it("derives the scale and tooltip summary from only the selected metrics", async () => {
+  it("uses one keyboard-inspectable chart surface with arrow, Home, and End navigation", () => {
+    const { container } = render(<ContextHistoryPanel agents={[agent, childAgent]} tokens={tokens} historical={false} />);
+    const chart = screen.getByRole("group", { name: /Primary agent context history/ });
+
+    expect(chart).toHaveAttribute("tabindex", "0");
+    expect(container.querySelectorAll('.contextHistoryChart [tabindex="0"]')).toHaveLength(0);
+    fireEvent.keyDown(chart, { key: "Home" });
+    expect(container.querySelector(".contextHistoryAnnouncement")).toHaveTextContent("100,000 context");
+    expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument();
+    fireEvent.keyDown(chart, { key: "End" });
+    expect(container.querySelector(".contextHistoryAnnouncement")).toHaveTextContent("80,000 context");
+    expect(screen.queryByRole("button", { name: "Latest" })).not.toBeInTheDocument();
+  });
+
+  it("shows bounded chronological cache evidence without duplicating current context", async () => {
     const user = userEvent.setup();
-    const buckets = [{
-      start: "2026-08-09T12:00:00.000Z",
-      end: "2026-08-09T12:01:00.000Z",
-      total: 117_000,
-      input: 2,
-      cacheWrite: 4_229,
-      cacheRead: 107_206,
-      output: 5_563,
-    }];
-    const { container } = render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 60_000, buckets }}
-      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
-      cost={null}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
+    render(<ContextHistoryPanel agents={[agent, childAgent]} tokens={tokens} historical={false} />);
 
-    await user.click(screen.getByRole("switch", { name: /Uncached input/ }));
-    await user.click(screen.getByRole("switch", { name: /Cache write/ }));
-    await user.click(screen.getByRole("switch", { name: /Cache read/ }));
+    const list = screen.getByRole("list");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.getAllByText("Cache read").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Prompt input").length).toBeGreaterThan(0);
+    expect(list).not.toHaveTextContent("latest context");
 
-    expect(container.querySelector(".histogramScale span")).toHaveTextContent("5,563");
-    expect(screen.getByText("5,563 generated output")).toBeInTheDocument();
-    expect(screen.queryByText("117k context added")).not.toBeInTheDocument();
-    expect(screen.getByRole("listitem")).toHaveAccessibleName(/5,563 attributed to generated output/);
+    await user.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
+    expect(within(list).getAllByRole("listitem")).toHaveLength(7);
+    expect(screen.getByText("Possible cache miss · refill recorded")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show recent 5" })).toHaveAttribute("aria-expanded", "true");
+
+    await user.selectOptions(screen.getByLabelText("Scope"), "child");
+    expect(screen.getByText("Watching for meaningful cache transitions for Builder…")).toBeInTheDocument();
   });
 
-  it("keeps adversarial metric lines bounded throughout every curve", () => {
-    const inputs = [28, 72, 57, 48];
-    const writes = [2, 6, 90, 75];
-    const reads = [60, 1, 4, 40];
-    const outputs = [5, 80, 2, 20];
-    const buckets = inputs.map((input, index) => ({
-      start: new Date(Date.parse("2026-08-09T12:00:00.000Z") + index * 60_000).toISOString(),
-      end: new Date(Date.parse("2026-08-09T12:01:00.000Z") + index * 60_000).toISOString(),
-      input,
-      cacheWrite: writes[index],
-      cacheRead: reads[index],
-      output: outputs[index],
-      total: input + writes[index] + reads[index] + outputs[index],
-    }));
-    const { container } = render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 60_000, buckets }}
-      currentTokens={{ ...currentTokens, contextGrowthTimeline: { bucketMs: 60_000, buckets } }}
-      cost={null}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
+  it("uses factual empty and unavailable states for live and recorded views", () => {
+    const emptyTokens = { ...tokens, contextHistory: { bucketMs: 0, buckets: [], boundaries: [] }, cacheEvents: { status: "unavailable" as const, items: [] } };
+    const { rerender } = render(<ContextHistoryPanel agents={[agent]} tokens={emptyTokens} historical={false} />);
+    expect(screen.getByText("Context history will appear after the first model response.")).toBeInTheDocument();
+    expect(screen.getByText("Comparable cache snapshots are not available yet for this session.")).toBeInTheDocument();
 
-    const paths = ["output", "cacheRead", "cacheWrite", "input"].map((series) => (
-      container.querySelector<SVGPathElement>(`.contextAreaChart [data-series-line="${series}"]`)!
-    ));
-    const curves = paths.map(cubicSegments);
-    expect(curves.every((curve) => curve.length === curves[0].length)).toBe(true);
-    for (const curve of curves) {
-      for (const segment of curve) {
-        const lowerBound = Math.min(segment[0], segment[3]);
-        const upperBound = Math.max(segment[0], segment[3]);
-        for (let sample = 0; sample <= 100; sample += 1) {
-          const y = cubicValue(segment, sample / 100);
-          expect(y).toBeGreaterThanOrEqual(lowerBound - 1e-8);
-          expect(y).toBeLessThanOrEqual(upperBound + 1e-8);
-        }
-      }
-    }
+    rerender(<ContextHistoryPanel agents={[agent]} tokens={emptyTokens} historical />);
+    expect(screen.getByText("No context snapshots were recorded for Primary agent.")).toBeInTheDocument();
+    expect(screen.getByText("No comparable cache snapshots were recorded for this session.")).toBeInTheDocument();
   });
 });
 
@@ -887,41 +796,40 @@ describe("live resource usage panel", () => {
 });
 
 describe("estimated session cost", () => {
-  it("shows the estimate beneath context", () => {
-    render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 0, buckets: [] }}
-      currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
-      cost={{ amount: 1.2345, currency: "USD", type: "estimated", observedAt: "2026-08-09T12:00:00.000Z" }}
-      estimatedCostSupported
-      historical={false}
-    />);
+  it("shows a captured provider estimate at session scope with visible provenance", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      cost: { amount: 1.2345, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
+    };
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("context")).toBeInTheDocument();
-    expect(screen.getByText("Claude Code estimate $1.23")).toBeInTheDocument();
+    expect(screen.getByText("SESSION COST ESTIMATE")).toBeInTheDocument();
+    expect(screen.getByText("$1.23")).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code estimate · observed/)).toBeInTheDocument();
+    expect(screen.getByText("May differ from actual billing.")).toBeInTheDocument();
   });
 
-  it("omits the estimate when Claude Code has not supplied one", () => {
-    render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 0, buckets: [] }}
-      currentTokens={{ allAgents: 1_200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
-      cost={null}
-      estimatedCostSupported
-      historical={false}
-    />);
+  it("distinguishes an unobserved live estimate from an unrecorded historical estimate", () => {
+    const session = { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), updatedAt: "2026-08-09T12:00:00.000Z" };
+    const { rerender } = render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.queryByText(/Est\. cost/)).not.toBeInTheDocument();
+    expect(screen.getByText("Not observed")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for a provider status-line estimate.")).toBeInTheDocument();
+    rerender(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical /></LiveClockProvider>);
+    expect(document.querySelector(".sessionCost")).toHaveTextContent("Not recorded");
+    expect(screen.getByText("No estimate was captured for this session.")).toBeInTheDocument();
   });
 
-  it("does not show Claude estimate copy when the selected provider lacks cost support", () => {
-    render(<ContextGrowthTimeline
-      timeline={{ bucketMs: 0, buckets: [] }}
-      currentTokens={{ allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, contextGrowthTimeline: { bucketMs: 0, buckets: [] } }}
-      cost={{ amount: 0, currency: "USD", type: "estimated", observedAt: "2026-08-11T12:00:00.000Z" }}
-      estimatedCostSupported={false}
-      historical={false}
-    />);
+  it("shows an explicit unsupported state and ignores any inapplicable cost value", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      cost: { amount: 9, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-11T12:00:00.000Z" },
+    };
+    render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.queryByText(/Claude Code estimate|status-line|API cost/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Unsupported")).toBeInTheDocument();
+    expect(screen.getByText("This provider does not report a session estimate.")).toBeInTheDocument();
+    expect(screen.queryByText("$9.00")).not.toBeInTheDocument();
   });
 });
 
@@ -974,7 +882,7 @@ describe("provider capability gates", () => {
   it("replaces a missing live context panel with one actionable inline notice", () => {
     const { container } = render(<MachineryPanel machinery={null} supported historical={false} />);
 
-    expect(container.querySelector(".machineryNotice")).toHaveTextContent("Run /context on the session to load this panel");
+    expect(container.querySelector(".machineryNotice")).toHaveTextContent("Run /context in this session to capture a diagnostic inventory.");
     expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
     expect(container).not.toHaveTextContent("—");
   });
@@ -982,7 +890,7 @@ describe("provider capability gates", () => {
   it("uses a factual inline notice when a historical context snapshot was not recorded", () => {
     const { container } = render(<MachineryPanel machinery={null} supported historical />);
 
-    expect(screen.getByText("No context snapshot was recorded for this session.")).toBeInTheDocument();
+    expect(container.querySelector(".machineryNotice")).toHaveTextContent("No /context inventory was recorded for this session.");
     expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
     expect(container).not.toHaveTextContent("—");
   });

@@ -4,7 +4,7 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel } from "./components/dashboard/AgentActivityPanel";
-import { ContextGrowthTimeline } from "./components/dashboard/ContextGrowthTimeline";
+import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
 import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
@@ -250,7 +250,7 @@ export function Dashboard() {
           </section>
 
           <SummaryMetrics state={data} historical={viewingHistory} />
-          <ContextGrowthTimeline timeline={data.metrics.tokens.contextGrowthTimeline} currentTokens={data.metrics.tokens} cost={data.session.cost || null} estimatedCostSupported={capabilities.estimatedCost} historical={viewingHistory} />
+          <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />
           {!viewingHistory && <ResourceUsagePanel resources={data.metrics.resources} />}
 
           <SessionDetailsPanel state={data} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />

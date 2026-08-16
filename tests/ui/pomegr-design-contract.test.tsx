@@ -6,7 +6,7 @@ import AboutPage from "../../app/about/page";
 
 const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
-const timelineSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextGrowthTimeline.tsx"), "utf8");
+const contextHistorySource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextHistoryPanel.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("renders the wordmark-only header identity and the product mark on About", () => {
@@ -22,25 +22,15 @@ describe("Pomegr visual contract", () => {
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.svg/);
   });
 
-  it("uses restrained typography, persistent chart seeds, translucent areas, and square framed controls", () => {
+  it("uses restrained typography, a single inspectable context line, and square framed controls", () => {
     expect(styles).not.toMatch(/Georgia|Times New Roman|Arial|Helvetica/);
-    expect(styles).toMatch(/--chart-area-rose:\s*#994238/);
-    expect(styles).toMatch(/--chart-line-rose:\s*#87372f/);
-    expect(styles).toMatch(/--chart-fill-strength:\s*11%/);
-    expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--chart-area-rose:\s*#972b46;[\s\S]*?--chart-line-rose:\s*#e0607d;[\s\S]*?--chart-fill-strength:\s*22%/);
-    expect(styles).toMatch(/\.cacheReadArea\s*\{\s*fill:\s*color-mix\(in srgb,\s*var\(--chart-area-rose\)\s*var\(--chart-fill-strength\),\s*transparent\)/);
-    expect(styles).toMatch(/\.contextSeriesLine\s*\{[^}]*stroke:\s*var\(--series-line\)/s);
-    expect(styles).toMatch(/\.cacheReadLine, \.cacheReadChartPoint\s*\{\s*--series-line:\s*var\(--chart-line-rose\)/);
-    expect(styles).toMatch(/\.cacheReadSwatch\s*\{\s*background:\s*var\(--chart-area-rose\)/);
     expect(styles).toMatch(/:is\(button,[\s\S]*?\)\s*\{\s*border-radius:\s*0;/);
-    expect(styles).not.toMatch(/\.activityBars\s*\{[^}]*\bgap\s*:/s);
-    expect(styles).toMatch(/\.contextArea\s*\{[^}]*opacity:\s*1/);
-    expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*opacity:\s*1/);
-    expect(styles).toMatch(/\.contextChartPoint\s*\{[^}]*width:\s*11px;[^}]*height:\s*9px;[^}]*transform:\s*translate\(-50%, -50%\)/);
-    expect(styles).toMatch(/\.contextChartPoint circle\s*\{[^}]*stroke-width:\s*1\.7;[^}]*vector-effect:\s*non-scaling-stroke/);
-    expect(styles).toMatch(/\.activityBar:hover \.contextChartPoint,[^}]*scale\(1\.57\)/);
-    expect(styles).not.toMatch(/\.contextChartPoint\s*\{[^}]*rotate\(/);
-    expect(timelineSource).toMatch(/viewBox="0 0 8\.7 8\.7" preserveAspectRatio="none"[\s\S]*?<circle cx="4\.35" cy="4\.35" r="3\.5"/);
+    expect(styles).toMatch(/\.contextHistoryLine\s*\{[^}]*stroke:\s*var\(--blue\);[^}]*stroke-width:\s*2\.25/);
+    expect(styles).toMatch(/\.contextBoundary line\s*\{[^}]*stroke-dasharray:\s*3 4/);
+    expect(styles).toMatch(/\.contextHistoryChart:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--brand\)/);
+    expect(contextHistorySource).toMatch(/role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?Use Left and Right arrow keys/);
+    expect(contextHistorySource).not.toMatch(/role="listitem"[\s\S]*?tabIndex=\{0\}/);
+    expect(contextHistorySource).not.toMatch(/ContextGrowthTimeline|cacheReadArea|context added/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);

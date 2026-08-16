@@ -15,22 +15,22 @@ export function MachineryPanel({ machinery, supported, historical }: { machinery
   if (!machinery) {
     return (
       <p className="machineryNotice">
-        <span>{historical ? "No context snapshot was recorded for this session." : <>Run{" "}<code>/context</code>{" "}on the session to load this panel</>}</span>
+        <span>{historical ? <>No <code>/context</code> inventory was recorded for this session.</> : <>Run <code>/context</code> in this session to capture a diagnostic inventory.</>}</span>
       </p>
     );
   }
   return (
-    <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Loaded session context">
-      <div className="cacheLead"><h2>Loaded context</h2><p>Provider-estimated context used by tools, instructions, and other session components.</p></div>
+    <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Loaded context inventory">
+      <div className="cacheLead"><h2>Loaded context inventory</h2><p>Provider <code>/context</code> estimate of instructions, tools, skills, and other loaded components. Separate from agent request context.</p></div>
       <div className="machineryStat" ref={rootRef}>
-        <span>Estimated token load</span>
+        <span>Estimated loaded components</span>
         <strong title="Sum of the provider-estimated context categories in the latest /context snapshot. Messages and free space are excluded.">{compactNumber(machinery.machineryTokens)}</strong>
         <small>Estimated tokens across {machinery.categories.length} {machinery.categories.length === 1 ? "category" : "categories"}</small>
-          <button className="machineryPopoverTrigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="loaded-machinery-popover">View context breakdown <span aria-hidden="true">▸</span></button>
+          <button className="machineryPopoverTrigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="loaded-machinery-popover">View inventory breakdown <span aria-hidden="true">▸</span></button>
           {open && (
             <PopoverFrame id="loaded-machinery-popover" ariaLabel="Loaded context breakdown" eyebrow="CONTEXT BREAKDOWN" title="Estimated token inventory" closeLabel="Close context breakdown" onClose={close} className="metricPopover machineryPopover">
               <div className="machineryPopoverBody">
-                <div className="machineryMeta"><span>Provider <code>/context</code> estimate</span><strong>{machinery.model}</strong></div>
+                <div className="machineryMeta"><span>Diagnostic · provider <code>/context</code> snapshot</span><strong>{machinery.model}</strong></div>
                 <div className="machineryCategories" role="list" aria-label="Estimated context categories">{machinery.categories.map((category) => (
                   <div className="machineryCategory" role="listitem" key={category.name}><span>{category.name}</span><strong>{category.tokens}</strong><small>{category.percentage}%</small></div>
                 ))}</div>

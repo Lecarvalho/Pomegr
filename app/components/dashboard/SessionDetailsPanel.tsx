@@ -40,7 +40,7 @@ function SessionDetailsSummary({ state, historical }: { state: MonitorState; his
         <span><b>Usage 5h</b> {state.usageLimits.available && fiveHourUsage !== null ? `${Math.round(fiveHourUsage)}%` : "unavailable"}</span>
       )}
       {capabilities.contextMachinery && machinery && (
-        <span><b>Loaded</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>
+        <span><b>Loaded inventory</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>
       )}
     </span>
   );

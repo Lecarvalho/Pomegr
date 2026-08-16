@@ -11,9 +11,6 @@
   --line-strong: #b8b8b1;
   --brand: #994238;
   --brand-soft: #eee0dc;
-  --chart-area-rose: #994238;
-  --chart-line-rose: #87372f;
-  --chart-fill-strength: 11%;
   --green: #547a64;
   --green-soft: #e1e9e3;
   --blue: #64719b;
@@ -38,9 +35,6 @@ html[data-theme="dark"] {
   --line-strong: #39333a;
   --brand: #d85f78;
   --brand-soft: #35131d;
-  --chart-area-rose: #972b46;
-  --chart-line-rose: #e0607d;
-  --chart-fill-strength: 22%;
   --green: #79bf9b;
   --green-soft: #182a22;
   --blue: #9aa9dd;
@@ -151,14 +145,17 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .heroSummarySource { display: block; margin-top: 8px; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .heroSignalRow { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .heroSignalRow > small { color: var(--muted); font-size: 9px; }
-.sessionMeta { width: fit-content; min-width: 0; flex: 0 1 auto; display: grid; grid-template-columns: max-content max-content; grid-template-areas: "timing approval"; align-items: start; gap: 30px; text-align: left; }
+.sessionMeta { width: fit-content; min-width: 0; flex: 0 1 auto; display: flex; align-items: flex-start; gap: 30px; text-align: left; }
 .sessionMetaGroup { min-width: 0; }
 .sessionTiming { grid-area: timing; }
 .sessionApprovalMode { grid-area: approval; }
+.sessionCost { grid-area: cost; max-width: 230px; }
 .sessionMetaLabel, .sessionMetaGroup > small { display: block; }
 .sessionMetaLabel { margin-bottom: 7px; color: var(--muted); font-size: 8px; font-weight: 600; letter-spacing: .1em; }
-.sessionTiming > strong, .sessionApprovalModeValue { display: block; margin: 0 0 4px; font-family: var(--font-inter), sans-serif; font-size: 23px; font-weight: 400; }
+.sessionTiming > strong, .sessionApprovalModeValue, .sessionCost > strong { display: block; margin: 0 0 4px; font-family: var(--font-inter), sans-serif; font-size: 23px; font-weight: 400; }
 .sessionApprovalModeUnavailable { color: var(--muted); }
+.sessionCostUnavailable { color: var(--muted); }
+.sessionCost > small span { display: block; }
 .sessionMetaGroup > small { margin-top: 5px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
 .notice { display: flex; gap: 10px; align-items: center; border: 1px solid #e0c3ad; background: var(--amber-soft); padding: 11px 14px; border-radius: 8px; color: #805024; font-size: 13px; margin-bottom: 18px; }
 .notice span { font-weight: 900; }
@@ -226,26 +223,65 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .metricPopoverList { max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
 .metricPopoverRow { min-height: 54px; padding: 10px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; border-bottom: 1px solid #eceae4; }.metricPopoverRow:last-child { border-bottom: 0; }.metricPopoverRow > div:first-child { min-width: 0; }.metricPopoverRow > div:first-child strong, .metricPopoverRow > div:first-child span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.metricPopoverRow strong, .metricPopoverRow span { display: block; }.metricPopoverRow > div:first-child strong { margin: 0 0 4px; font: 700 11px/1.2 var(--font-inter), sans-serif; }.metricPopoverRow span { color: var(--muted); font-size: 9px; }.metricPopoverRow > div:last-child { text-align: right; }.metricPopoverRow > div:last-child strong { margin: 0 0 3px; font: 400 17px/1 var(--font-inter), sans-serif; }
 
-.tokenHistogramPanel { position: relative; z-index: 2; margin-bottom: 12px; overflow: visible; }
-.tokenHistogramPanel:focus-within { z-index: 6; }
-.tokenHistogramHeader { padding-top: 17px; padding-bottom: 14px; }
-.tokenHistogramTitle { min-width: 0; display: flex; align-items: center; gap: 14px; }.tokenHistogramTitle > div:last-child { min-width: 0; }
-.histogramSummary { flex: 0 0 auto; text-align: right; }.histogramSummary strong { display: block; font: 400 20px/1 var(--font-inter), sans-serif; }.histogramSummary span { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; letter-spacing: .09em; text-transform: uppercase; }
-.histogramCost { display: block; margin-top: 7px; color: var(--amber); font-size: 9px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-.histogramContent { display: flex; gap: 12px; min-height: 187px; padding: 21px 22px 0; }
-.histogramScale { width: 42px; height: 140px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding: 0 2px 1px 0; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
-.histogramChart { min-width: 0; flex: 1; position: relative; }
-.histogramGrid { position: absolute; inset: 0 0 auto; height: 140px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }.histogramGrid i { display: block; width: 100%; border-top: 1px dashed #deddd6; }.histogramGrid i:last-child { border-top-style: solid; }
-.contextAreaChart { position: absolute; z-index: 1; inset: 0 0 auto; width: 100%; height: 140px; overflow: visible; }
-.contextArea { stroke: none; opacity: 1; transition: opacity .16s ease-out; }.contextArea.isHidden { opacity: 0; }
-.outputArea { fill: color-mix(in srgb, var(--amber) var(--chart-fill-strength), transparent); }.cacheReadArea { fill: color-mix(in srgb, var(--chart-area-rose) var(--chart-fill-strength), transparent); }.cacheWriteArea { fill: color-mix(in srgb, var(--green) var(--chart-fill-strength), transparent); }.inputArea { fill: color-mix(in srgb, var(--blue) var(--chart-fill-strength), transparent); }
-.contextSeriesLine { fill: none; stroke: var(--series-line); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; opacity: 1; vector-effect: non-scaling-stroke; transition: opacity .16s ease-out; }.contextSeriesLine.isHidden { opacity: 0; }.outputLine, .outputChartPoint { --series-line: var(--amber); }.cacheReadLine, .cacheReadChartPoint { --series-line: var(--chart-line-rose); }.cacheWriteLine, .cacheWriteChartPoint { --series-line: #8fc5a9; }.inputLine, .inputChartPoint { --series-line: var(--blue); }
-.activityBars { position: relative; z-index: 2; height: 140px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4px, 1fr); }
-.activityBar { position: relative; height: 100%; outline: none; }.contextChartPoint { position: absolute; left: 50%; top: var(--point-y); width: 11px; height: 9px; overflow: visible; opacity: 1; transform: translate(-50%, -50%); transition: transform .16s ease, opacity .16s ease-out; }.contextChartPoint.isHidden { opacity: 0; }.contextChartPoint circle { fill: var(--panel); stroke: var(--series-line); stroke-width: 1.7; vector-effect: non-scaling-stroke; transition: fill .16s ease; }.activityBar:hover .contextChartPoint, .activityBar:focus .contextChartPoint { transform: translate(-50%, -50%) scale(1.57); }.activityBar:hover .contextChartPoint circle, .activityBar:focus .contextChartPoint circle { fill: var(--series-line); }.activityBar:focus-visible { outline: 1px solid var(--chart-line-rose); outline-offset: 2px; }
-.tooltipPopover { padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); color: #fff; box-shadow: 0 8px 24px rgba(25,32,29,.2); pointer-events: none; text-align: left; white-space: normal; }.tooltipPopover strong, .tooltipPopover small, .tooltipPopover em, .tooltipPopoverText { display: block; }.tooltipPopover strong { font: 400 16px/1 var(--font-inter), sans-serif; }.tooltipPopover small { margin-top: 4px; color: #c8d1cc; font-size: 9px; }.tooltipPopover em { margin-top: 7px; color: #a9bbb1; font-size: 8px; font-style: normal; line-height: 1.35; }.tooltipPopoverText { font-size: 10px; font-weight: 500; letter-spacing: 0; line-height: 1.45; text-transform: none; }
-.histogramTooltip { display: none; position: absolute; z-index: 4; left: 50%; top: 8px; width: 190px; transform: translateX(-50%); }.activityBar:first-child .histogramTooltip { left: 0; transform: none; }.activityBar:last-child .histogramTooltip { left: auto; right: 0; transform: none; }.activityBar:hover .histogramTooltip, .activityBar:focus .histogramTooltip { display: block; }
-.histogramAxis { display: flex; justify-content: space-between; padding-top: 8px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }.histogramAxis span { flex: 1; }.histogramAxis span:nth-child(2) { text-align: center; }.histogramAxis span:last-child { text-align: right; }
-.histogramFooter { min-height: 68px; margin-top: 3px; padding: 10px 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; border-top: 1px solid #eceae4; color: var(--muted); font-size: 9px; }.histogramLegend { display: grid; grid-template-columns: repeat(4, max-content); align-items: center; gap: 6px 10px; }.histogramLegendItem { min-height: 38px; padding: 5px 7px; border: 0; background: transparent; color: inherit; cursor: pointer; display: flex; align-items: center; gap: 7px; text-align: left; white-space: nowrap; transition: background .16s ease-out, opacity .16s ease-out; }.histogramLegendItem:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }.histogramLegendItem:focus-visible { outline: 1px solid var(--chart-line-rose); outline-offset: 1px; }.histogramLegendItem[aria-checked="false"] { opacity: .48; }.histogramLegendItem > i { position: relative; width: 8px; height: 24px; flex: 0 0 auto; border-radius: 2px; transition: background .16s ease-out, box-shadow .16s ease-out; }.histogramLegendItem[aria-checked="false"] > i { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }.histogramLegendItem[aria-checked="false"] > i::after { content: ""; position: absolute; left: -2px; top: 50%; width: 12px; height: 1px; background: currentColor; transform: rotate(-55deg); }.histogramLegendItem > span { display: flex; flex-direction: column; gap: 3px; }.histogramLegendItem small { color: var(--muted); font-size: 8px; }.histogramLegendItem strong { color: var(--ink); font: 400 15px/1 var(--font-inter), sans-serif; }.histogramLegend .inputSwatch { background: var(--blue); }.histogramLegend .cacheWriteSwatch { background: #8fc5a9; }.histogramLegend .cacheReadSwatch { background: var(--chart-area-rose); }.histogramLegend .outputSwatch { background: var(--amber); }.histogramMethod { margin-left: auto; }
+.contextHistoryPanel { margin-bottom: 12px; overflow: hidden; }
+.contextHistoryHeader { min-width: 0; padding: 17px 21px; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); }
+.contextHistoryHeader > div { min-width: 0; }
+.contextHistoryHeader h2, .cacheEvidenceHeader h3 { margin: 0; font-size: 13px; font-weight: 610; line-height: 1.2; }
+.contextHistoryHeader p, .cacheEvidenceHeader p { max-width: 68ch; margin: 6px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.contextScopeControl { width: min(250px, 34vw); flex: 0 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; }
+.contextScopeControl > span { color: var(--muted); font-size: 10px; font-weight: 560; }
+.contextScopeControl select { width: 100%; min-height: 36px; padding: 7px 28px 7px 9px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); font-size: 10.5px; cursor: pointer; }
+.contextHistoryBody { position: relative; padding: 16px 21px 14px; }
+.contextHistoryReadout { min-height: 34px; margin: 0 0 12px 55px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px; color: var(--muted); font: 10px/1.3 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
+.contextHistoryReadout strong { color: var(--ink); font-family: var(--font-inter), sans-serif; font-size: 13px; font-weight: 590; }
+.contextHistoryReadout em { color: var(--amber); font-family: var(--font-inter), sans-serif; font-size: 10px; font-style: normal; font-weight: 610; }
+.contextHistoryReadout button, .cacheEvidenceExpand { min-height: 36px; margin-inline-start: auto; padding: 0 10px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink); cursor: pointer; font-size: 10.5px; font-weight: 560; }
+.contextHistoryPlot { min-width: 0; display: flex; gap: 12px; }
+.contextHistoryScale { width: 43px; height: 154px; flex: 0 0 auto; padding: 1px 2px 1px 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; color: var(--muted); font: 10px/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
+.contextHistoryChart { min-width: 0; height: 154px; flex: 1; position: relative; outline: none; cursor: crosshair; }
+.contextHistoryChart:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.contextHistoryChart svg { width: 100%; height: 154px; overflow: visible; }
+.contextHistoryGrid line { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 5; vector-effect: non-scaling-stroke; }
+.contextHistoryGrid line:last-child { stroke-dasharray: none; }
+.contextHistoryLine { stroke: var(--blue); stroke-width: 2.25; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.contextBoundary line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 4; opacity: .68; vector-effect: non-scaling-stroke; }
+.contextBoundary rect, .contextBoundary path { fill: var(--panel); stroke: var(--amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.contextBoundary.snapshot_drop line { stroke: var(--brand); }
+.contextBoundary.snapshot_drop path { stroke: var(--brand); }
+.contextHistoryCursor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 3; opacity: .55; vector-effect: non-scaling-stroke; }
+.contextHistoryCursorPoint { fill: var(--panel); stroke: var(--blue); stroke-width: 2.25; vector-effect: non-scaling-stroke; }
+.contextHistoryAxis { margin-inline-start: 55px; padding-top: 9px; display: flex; color: var(--muted); font: 10px/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
+.contextHistoryAxis span { flex: 1; }
+.contextHistoryAxis span:nth-child(2) { text-align: center; }
+.contextHistoryAxis span:last-child { text-align: end; }
+.contextHistoryMethod { margin: 12px 0 0 55px; padding-top: 11px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 10px; }
+.contextBoundaryLegend { margin: 9px 0 0 55px; display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 10px; }
+.contextBoundaryLegend span { display: inline-flex; align-items: center; gap: 6px; }
+.contextBoundaryLegend i { width: 8px; height: 8px; border: 1px solid var(--amber); background: var(--panel); }
+.contextBoundaryLegend .manual_compaction i { transform: rotate(45deg); }
+.contextBoundaryLegend .snapshot_drop i { border-color: var(--brand); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.contextHistoryAnnouncement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.cacheEvidenceSection { border-top: 1px solid var(--line); }
+.cacheEvidenceHeader { min-width: 0; padding: 16px 21px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.cacheEvidenceHeader > div { min-width: 0; }
+.cacheEvidenceHeader > span { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.cacheEvidenceState { min-height: 76px; margin: 0; padding: 20px 21px; border-top: 1px solid var(--line); display: flex; align-items: center; color: var(--muted); font-size: 10.5px; }
+.cacheEvidenceExpand { min-height: 40px; width: calc(100% - 42px); margin: 0 21px 10px; text-align: left; }
+.cacheEvidenceList { margin: 0; padding: 0; border-top: 1px solid var(--line); list-style: none; }
+.cacheEvidenceRow { min-width: 0; min-height: 84px; padding: 13px 21px; display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(280px, .65fr); align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.cacheEvidenceRow:last-child { border-bottom: 0; }
+.cacheEvidenceMark { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--line-strong); color: var(--amber); }
+.cacheEvidenceRow.reuse .cacheEvidenceMark { color: var(--green); }
+.cacheEvidenceMark svg { width: 14px; height: 14px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.cacheEvidenceBody { min-width: 0; }
+.cacheEvidenceTitle { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cacheEvidenceTitle strong { min-width: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 610; }
+.cacheEvidenceTitle span { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.cacheEvidenceBody p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.cacheEvidenceMetrics { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cacheEvidenceMetrics div { min-width: 0; }
+.cacheEvidenceMetrics dt { color: var(--muted); font-size: 9px; }
+.cacheEvidenceMetrics dd { margin: 4px 0 0; color: var(--ink); font: 500 11px/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
 .cachePanel { position: relative; margin-bottom: 12px; min-height: 96px; display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); overflow: visible; }.cachePanel.machineryPopoverOpen { z-index: 12; }
 .cacheLead { padding: 18px 21px; border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; }
 .cacheLead h2 { margin: 0 0 5px; font: 400 18px/1.1 var(--font-inter), sans-serif; }.cacheLead p { margin: 0; color: var(--muted); font-size: 9px; }
@@ -456,7 +492,7 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .brand > span:last-child { display: inline; }
 }
 @media (max-width: 640px) {
-  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.topbarLead { gap: 6px; }.connection { display: none; }.topActions { gap: 6px; }.ghostButton { min-height: 40px; padding: 7px 10px; font-size: 11px; white-space: nowrap; }.desktopActionLabel { display: none; }.mobileActionLabel { display: inline; }.brandWordmark { width: 84px; }.brand > span:last-child { display: inline; }.hero h1 { font-size: 42px; }.sessionMeta { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "signal signal" "timing approval"; gap: 22px 28px; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.gitSummary { align-items: flex-start; flex-direction: column; }.gitBadges { justify-content: flex-start; }.gitCommit { grid-template-columns: 56px minmax(0, 1fr); }.gitCommit time { display: none; }.gitFile { grid-template-columns: 44px minmax(0, 1fr); align-items: start; padding: 10px 12px; }.gitFile code { display: grid; gap: 4px; }.gitPathDirectory { display: block; }.gitPathName { display: block; max-width: none; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }.gitStatus { margin-top: 1px; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.contentGrid, .agentsPanel, .insightPanel { width: 100%; max-width: 100%; }.agentList { overflow: visible; padding-right: 12px; padding-left: 12px; }.agentRow { width: 100%; min-width: 0; grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-items: start; row-gap: 12px; padding: 14px 0; }.agentRow .treeRail { grid-column: 1; grid-row: 1 / 4; margin-left: calc(6px + min(var(--agent-indent), 40px)); }.agentIdentity { grid-column: 2 / 4; grid-row: 1; }.agentTitleLine > strong { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }.agentTokens { grid-column: 2; grid-row: 2; padding-right: 0; text-align: left; }.agentDuration { grid-column: 3; grid-row: 2; padding-right: 0; text-align: right; }.agentState { grid-column: 2 / 4; grid-row: 3; padding-right: 10px; display: grid; grid-template-columns: minmax(0, 1fr) 72px; grid-template-rows: 15px; align-items: center; gap: 0; }.agentState .statusPill { align-self: center; justify-self: start; }.agentState time { min-width: 0; justify-self: end; text-align: right; font-size: 9px; }.agentRow .agentPopover { left: 0; width: calc(100vw - 54px); } footer { gap: 10px; }
+  .shell { width: min(100% - 28px, 1400px); }.topbar { height: 62px; }.topbarLead { gap: 6px; }.connection { display: none; }.topActions { gap: 6px; }.ghostButton { min-height: 40px; padding: 7px 10px; font-size: 11px; white-space: nowrap; }.desktopActionLabel { display: none; }.mobileActionLabel { display: inline; }.brandWordmark { width: 84px; }.brand > span:last-child { display: inline; }.hero h1 { font-size: 42px; }.sessionMeta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 28px; }.sessionTiming, .sessionApprovalMode, .sessionCost { grid-area: auto; }.sessionCost { grid-column: 1 / -1; max-width: none; }.limitCards { grid-template-columns: 1fr; }.limitCard { border-right: 0; border-bottom: 1px solid var(--line); }.limitCard:last-child { border-bottom: 0; }.summaryGrid { grid-template-columns: 1fr; }.scoreCard { grid-column: auto; }.metric { min-height: 105px; }.gitSummary { align-items: flex-start; flex-direction: column; }.gitBadges { justify-content: flex-start; }.gitCommit { grid-template-columns: 56px minmax(0, 1fr); }.gitCommit time { display: none; }.gitFile { grid-template-columns: 44px minmax(0, 1fr); align-items: start; padding: 10px 12px; }.gitFile code { display: grid; gap: 4px; }.gitPathDirectory { display: block; }.gitPathName { display: block; max-width: none; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }.gitStatus { margin-top: 1px; }.activityHead { display: none; }.activityRow { grid-template-columns: 76px 1fr 1fr; }.activityRow .target { display: none; }.contentGrid, .agentsPanel, .insightPanel { width: 100%; max-width: 100%; }.agentList { overflow: visible; padding-right: 12px; padding-left: 12px; }.agentRow { width: 100%; min-width: 0; grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-items: start; row-gap: 12px; padding: 14px 0; }.agentRow .treeRail { grid-column: 1; grid-row: 1 / 4; margin-left: calc(6px + min(var(--agent-indent), 40px)); }.agentIdentity { grid-column: 2 / 4; grid-row: 1; }.agentTitleLine > strong { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }.agentTokens { grid-column: 2; grid-row: 2; padding-right: 0; text-align: left; }.agentDuration { grid-column: 3; grid-row: 2; padding-right: 0; text-align: right; }.agentState { grid-column: 2 / 4; grid-row: 3; padding-right: 10px; display: grid; grid-template-columns: minmax(0, 1fr) 72px; grid-template-rows: 15px; align-items: center; gap: 0; }.agentState .statusPill { align-self: center; justify-self: start; }.agentState time { min-width: 0; justify-self: end; text-align: right; font-size: 9px; }.agentRow .agentPopover { left: 0; width: calc(100vw - 54px); } footer { gap: 10px; }
   .sessionIdentityPart:last-child { flex-basis: 100%; }.sessionIdentityPart:last-child > span { display: none; }
   .agentMeta { display: grid; grid-template-areas: "kind tools" "runtime runtime"; grid-template-columns: auto minmax(0, 1fr); margin-top: 6px; overflow: visible; line-height: 1.35; }.agentMeta span { overflow: visible; white-space: normal; text-overflow: clip; }.agentMetaKind { grid-area: kind; }.agentMetaRuntime { grid-area: runtime; margin-top: 3px; }.agentMetaTools { grid-area: tools; }.agentMeta .agentMetaRuntime::before { content: none; }.agentMeta .agentMetaTools::before { content: " · "; }
   .agentRow { grid-template-columns: calc(25px + min(var(--agent-indent), 40px)) minmax(0, 1fr) minmax(88px, auto); grid-template-rows: auto auto; }
@@ -465,11 +501,23 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .agentState { display: contents; }
   .agentState .statusPill { grid-column: 2; grid-row: 2; align-self: end; justify-self: start; }
   .agentState time { grid-column: 3; grid-row: 2; align-self: end; justify-self: end; margin-right: 12px; }
-  .sessionMeta { grid-template-areas: "timing approval"; gap: 28px; }
+  .sessionMeta { gap: 28px; }
   .cachePanel { grid-template-columns: 1fr; }.cacheLead, .machineryStat { grid-column: 1 / -1; }.cacheLead { border-right: 0; border-bottom: 1px solid var(--line); }.machineryStat { position: relative; border-right: 0; }.machineryPopover { left: 50%; width: calc(100vw - 54px); transform: translateX(-50%); }
   .machineryMeta { align-items: flex-start; flex-direction: column; gap: 5px; }.machineryMeta > span { margin-right: 0; }.machineryCategories, .machineryGroups { grid-template-columns: 1fr; }.machineryCategory { border-right: 0; border-bottom: 1px solid #eceae4; }.machineryCategory:last-child { border-bottom: 0; }.machineryGroup { border-right: 0; }
-  .tokenHistogramTitle { gap: 9px; }.tokenHistogramTitle .pulseBars { width: 25px; height: 36px; gap: 2px; }.tokenHistogramTitle .pulseBars i { width: 3px; }
-  .histogramContent { gap: 7px; padding-right: 12px; padding-left: 10px; }.histogramScale { width: 34px; }.histogramFooter { align-items: flex-start; flex-direction: column; justify-content: center; gap: 12px; padding-top: 12px; padding-bottom: 12px; }.histogramLegend { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }.histogramLegendItem > i { height: 28px; }.histogramLegendItem strong { font-size: 17px; }.histogramMethod { margin-left: 0; }.histogramTooltip { width: min(190px, calc(100vw - 28px)); }.activityBar:nth-child(-n+8) .histogramTooltip { left: 0; right: auto; transform: none; }.activityBar:nth-last-child(-n+8) .histogramTooltip { left: auto; right: 0; transform: none; }
+  .contextHistoryHeader { align-items: stretch; flex-direction: column; gap: 14px; padding: 16px 14px; }
+  .contextScopeControl { width: 100%; grid-template-columns: 42px minmax(0, 1fr); }
+  .contextHistoryBody { padding: 14px 14px 12px; }
+  .contextHistoryReadout { margin-left: 42px; }
+  .contextHistoryPlot { gap: 7px; }
+  .contextHistoryScale { width: 35px; }
+  .contextHistoryAxis, .contextHistoryMethod, .contextBoundaryLegend { margin-left: 42px; }
+  .contextHistoryMethod { align-items: flex-start; flex-direction: column; }
+  .cacheEvidenceHeader { padding: 15px 14px 13px; }
+  .cacheEvidenceExpand { width: calc(100% - 28px); margin-right: 14px; margin-left: 14px; }
+  .cacheEvidenceRow { min-height: 0; padding: 14px; grid-template-columns: 26px minmax(0, 1fr); align-items: start; }
+  .cacheEvidenceMetrics { grid-column: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cacheEvidenceTitle { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .cacheEvidenceState { padding-right: 14px; padding-left: 14px; }
   .aboutShell { width: min(100% - 28px, 1120px); }.aboutPage { padding: 58px 0 60px; }.aboutPage > h1 { font-size: 48px; }.aboutLead { font-size: 21px; }.aboutGrid { margin-top: 50px; }.aboutGrid > div { padding: 23px; }
   .pullRequestPopover { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100vh - 28px); border-radius: 14px; box-shadow: 0 24px 70px rgba(25,32,29,.28); }.pullRequestList { max-height: min(58vh, 420px); }.pullRequestRow { grid-template-columns: 36px minmax(0, 1fr); }.pullRequestTitle { align-items: flex-start; flex-direction: column; gap: 5px; }.pullRequestTitle strong { overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.35; }.pullRequestStats { grid-column: 2; display: flex; justify-content: flex-start; min-width: 0; }.pullRequestStats i { margin: 0 0 0 auto; }
   .hero { padding: 36px 0 24px; }.hero h1 { font-size: 40px; }.sessionMeta { margin-top: 23px; }
@@ -564,7 +612,6 @@ html[data-theme="dark"] .gitCommit,
 html[data-theme="dark"] .gitFile,
 html[data-theme="dark"] .agentPopoverIntro,
 html[data-theme="dark"] .metricPopoverRow,
-html[data-theme="dark"] .histogramFooter,
 html[data-theme="dark"] .machineryMeta,
 html[data-theme="dark"] .machineryCategory,
 html[data-theme="dark"] .machineryItems,
@@ -573,8 +620,6 @@ html[data-theme="dark"] .agentRow,
 html[data-theme="dark"] .skillPopoverRow,
 html[data-theme="dark"] .executionTaskSection + .executionTaskSection,
 html[data-theme="dark"] .activityRow { border-color: #29312d; }
-html[data-theme="dark"] .histogramGrid i { border-color: #323b36; }
-html[data-theme="dark"] .activityBar > .activityStack { background: #24362d; }
 html[data-theme="dark"] .tooltipPopover { background: #080b0a; color: #f1f5f2; box-shadow: 0 10px 28px rgba(0,0,0,.48); }
 html[data-theme="dark"] .tooltipPopover small { color: #c3cec8; }
 html[data-theme="dark"] .tooltipPopover em { color: #95a69d; }
@@ -637,7 +682,7 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
   .desktopControlsPanel > a, .desktopControls > summary, .ghostButton, .aboutGrid,
   .aboutNote, .notice, .pullRequestBadge, .pullRequestTitle em, .branchComparison,
   .gitStatus, .limitTrack, .limitTrack i, .agentPopover, .tooltipPopover,
-  .histogramLegendItem > i, .agentChip, .insight) { border-radius: 0; }
+  .agentChip, .insight) { border-radius: 0; }
 
 :where(a, button, summary):focus-visible { outline-color: var(--brand); }
 .brand { color: var(--brand); }
@@ -652,8 +697,7 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
 .themeToggle:hover, .ghostButton:hover { border-color: var(--line-strong); color: var(--ink); }
 .reportButton, .reportButton:hover:not(:disabled) { border-color: var(--brand); background: var(--brand); color: var(--panel); }
 .textButton, .machineryPopoverTrigger, .sessionMenuButton, .aboutNote a, footer a:hover { color: var(--brand); }
-.histogramGrid i { border-color: var(--line); }
-.histogramFooter, .pullRequestRow, .gitListHeader, .gitCommit, .gitFile, .agentPopoverIntro,
+.pullRequestRow, .gitListHeader, .gitCommit, .gitFile, .agentPopoverIntro,
 .metricPopoverRow, .machineryMeta, .machineryCategory, .machineryItems, .machineryItem,
 .agentRow, .skillPopoverRow, .executionTaskSection + .executionTaskSection, .activityRow { border-color: var(--line); }
 /* Pomegr type scale: restrained hierarchy, medium weights, and mono only for data. */
@@ -661,7 +705,7 @@ body { font-size: 14px; line-height: 1.55; font-weight: 400; }
 .connection { font-size: 10px; font-weight: 600; letter-spacing: .08em; }
 .hero h1 { font-size: clamp(30px, 3.5vw, 46px); font-weight: 520; letter-spacing: -.035em; }
 .hero p { font-size: 13px; }
-.sessionTiming > strong, .sessionApprovalModeValue { font-size: 20px; font-weight: 480; }
+.sessionTiming > strong, .sessionApprovalModeValue, .sessionCost > strong { font-size: 20px; font-weight: 480; }
 .panelHeader h2, .gitSummary h2, .limitsHeader h2, .cacheLead h2 { font-size: 13px; font-weight: 610; letter-spacing: 0; }
 .panelHeader .quiet, .panelHeader > small { font-size: 10px; }
 .summaryItem > span { font-size: 10.5px; font-weight: 520; }
@@ -671,10 +715,6 @@ body { font-size: 14px; line-height: 1.55; font-weight: 400; }
 .agentMeta, .agentTokens span, .agentDuration span, .statusPill, .agentState time { font-size: 10px; }
 .agentTokens strong, .agentDuration strong { font-size: 11px; font-weight: 500; }
 .statusPill { font-weight: 500; }
-.histogramSummary strong { font-size: 19px; font-weight: 480; }
-.histogramSummary span, .histogramCost, .histogramScale, .histogramAxis,
-.histogramFooter, .histogramLegendItem small, .histogramMethod { font-size: 10px; }
-.histogramLegendItem strong { font-size: 14px; font-weight: 500; }
 .liveHeading, .historyHeading, .liveHeading small, .historyHeading small,
 .providerBadge.compact, .historyProjectHeader strong, .historyProjectHeader small,
 .historyProjectSessions button time, .heroSignalRow > small, .pullRequestTitle em,
@@ -745,10 +785,10 @@ html[data-theme="dark"] .ghostButton, html[data-theme="dark"] .themeToggle,
 html[data-theme="dark"] .desktopControls > summary { background: var(--panel-2); }
 html[data-theme="dark"] .liveSessionLink:hover,
 html[data-theme="dark"] .historyProjectSessions button:hover { background: var(--panel-2); }
-html[data-theme="dark"] .histogramGrid i, html[data-theme="dark"] .pullRequestRow,
+html[data-theme="dark"] .pullRequestRow,
 html[data-theme="dark"] .gitListHeader, html[data-theme="dark"] .gitCommit,
 html[data-theme="dark"] .gitFile, html[data-theme="dark"] .agentPopoverIntro,
-html[data-theme="dark"] .metricPopoverRow, html[data-theme="dark"] .histogramFooter,
+html[data-theme="dark"] .metricPopoverRow,
 html[data-theme="dark"] .machineryMeta, html[data-theme="dark"] .machineryCategory,
 html[data-theme="dark"] .machineryItems, html[data-theme="dark"] .machineryItem,
 html[data-theme="dark"] .agentRow, html[data-theme="dark"] .skillPopoverRow,
@@ -760,6 +800,7 @@ html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: #7130
 @media (max-width: 720px) {
   .ghostButton, .sessionMenuButton, .themeToggle { min-height: 40px; }
   .themeToggle { width: 40px; }
+  .contextScopeControl select, .contextHistoryReadout button, .cacheEvidenceExpand { min-height: 44px; }
 }
 
 @media (max-width: 420px) {

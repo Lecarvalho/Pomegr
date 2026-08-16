@@ -94,7 +94,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
                 </div>
                 <div className="agentMeta"><span className="agentMetaKind">{agent.kind}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span></div>
               </div>
-              <div className="agentTokens"><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "recorded context" : "context"}</span></div>
+              <div className="agentTokens" title="Latest non-zero provider usage snapshot for this agent; not cumulative token use."><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "final context" : "latest context"}</span></div>
               <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
               <div className="agentState">
                 <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>

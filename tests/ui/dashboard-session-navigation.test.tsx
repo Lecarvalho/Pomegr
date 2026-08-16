@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe("dashboard session navigation", () => {
-  it("places live resource use after context growth and before session details", async () => {
+  it("places live resource use after context history and before session details", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -126,7 +126,7 @@ describe("dashboard session navigation", () => {
     render(<Dashboard />);
 
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
-    const contextPanel = screen.getByRole("heading", { name: "Context added over time" }).closest("section");
+    const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(contextPanel?.nextElementSibling).toBe(resourcePanel);
@@ -151,7 +151,7 @@ describe("dashboard session navigation", () => {
     render(<Dashboard />);
 
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
-    const contextPanel = screen.getByRole("heading", { name: "Context added over time" }).closest("section");
+    const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
@@ -178,7 +178,7 @@ describe("dashboard session navigation", () => {
     expect(compact).toHaveTextContent("2 changes");
     expect(compact).toHaveTextContent("Usage 5h 64%");
     expect(compact).not.toHaveTextContent("82%");
-    expect(compact).toHaveTextContent(/Loaded ≈12(?:\.3)?K/i);
+    expect(compact).toHaveTextContent(/Loaded inventory ≈12(?:\.3)?K/i);
     expect(compact).not.toHaveTextContent(/Latest|activity|ago/i);
     expect(branch).toBeInTheDocument();
     expect(branch).toHaveAttribute("title", "feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title");
@@ -188,7 +188,7 @@ describe("dashboard session navigation", () => {
     expect(summary.querySelector(".disclosureSummaryMetrics")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Loaded context" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Loaded context inventory" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
   });
 
@@ -253,14 +253,14 @@ describe("dashboard session navigation", () => {
     expect(compact).not.toHaveTextContent("Loaded");
   });
 
-  it("omits Loaded context entirely when the selected provider does not support it", async () => {
+  it("omits Loaded context inventory entirely when the selected provider does not support it", async () => {
     window.localStorage.setItem("pomegr-session-details-open", "true");
     mockDashboardState(detailedState({ contextSupported: false }));
     const { container } = render(<Dashboard />);
 
     await screen.findByText("Session details");
     expect(container.querySelector(".sessionDetails .cachePanel")).not.toBeInTheDocument();
-    expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("Loaded context");
+    expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("Loaded context inventory");
     expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("/context");
   });
 
