@@ -20,8 +20,12 @@ function validTimestamp(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
+function assistantRecord(record) {
+  return record?.type === "assistant";
+}
+
 function usageRecord(record) {
-  return record?.type === "assistant"
+  return assistantRecord(record)
     && record.message
     && typeof record.message === "object"
     && !Array.isArray(record.message)
@@ -61,7 +65,7 @@ export function parseClaudeContextRecords(records, options = {}) {
   let ordinal = 0;
 
   for (const record of Array.isArray(records) ? records : []) {
-    if (!usageRecord(record)) continue;
+    if (!assistantRecord(record)) continue;
     ordinal += 1;
     const usage = normalizedUsage(record);
     const observedTimestamp = validTimestamp(record.timestamp ?? record.message?.timestamp);

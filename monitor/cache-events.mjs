@@ -156,10 +156,15 @@ export function buildCacheEvents({
     previousByActor.set(snapshot.actorId, { observedAt, group, model, parts });
   }
 
+  const capped = events
+    .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt) || left.id.localeCompare(right.id))
+    .slice(0, CACHE_EVENT_RULES.maximumSessionEvents);
+  const retainedIds = new Set(capped.map((event) => event.id));
   return {
     status: "ready",
-    items: events
-      .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt) || left.id.localeCompare(right.id))
-      .slice(0, CACHE_EVENT_RULES.maximumSessionEvents),
+    items: capped.filter((event) => (
+      event.kind !== "reuse"
+      || (event.relatedEventId !== null && retainedIds.has(event.relatedEventId))
+    )),
   };
 }

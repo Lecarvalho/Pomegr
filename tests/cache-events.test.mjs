@@ -97,3 +97,23 @@ test("returns unavailable without classifiable evidence and caps newest session 
   assert.equal(feed.items.length, 20);
   assert.equal(feed.items[0].observedAt, usageSnapshots.at(-1).timestamp);
 });
+
+test("never retains a reuse whose related refill falls outside the event cap", () => {
+  const startedAt = Date.parse("2026-08-10T10:00:00.000Z");
+  const usageSnapshots = [
+    snapshot("paired-refill", new Date(startedAt).toISOString(), { input: 1_000, cacheWrite: 8_000 }),
+    snapshot("paired-reuse", new Date(startedAt + 60_000).toISOString(), { input: 1_000, cacheRead: 9_000 }),
+    ...Array.from({ length: 19 }, (_, index) => snapshot(
+      `later-refill-${index}`,
+      new Date(startedAt + (index + 2) * 60_000).toISOString(),
+      { input: 1_000, cacheWrite: 8_000 },
+    )),
+  ];
+
+  const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
+  assert.equal(feed.items.length, 19);
+  assert.equal(feed.items.some((event) => event.kind === "reuse"), false);
+  assert.equal(feed.items.every((event) => (
+    event.kind !== "reuse" || feed.items.some((related) => related.id === event.relatedEventId)
+  )), true);
+});
