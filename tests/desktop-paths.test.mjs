@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { monitorPrivateEnvironment } from "../desktop/environment-policy.mjs";
+import {
+  MONITOR_PRIVATE_ENVIRONMENT_NAMES,
+  monitorPrivateEnvironment,
+} from "../desktop/environment-policy.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "../desktop/paths.mjs";
 import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/report-save.mjs";
 import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings, settingsForWindowClose } from "../desktop/settings.mjs";
@@ -63,13 +66,23 @@ test("provider defaults and overrides remain provider-owned", () => {
   assert.equal(codex.watchTargets[1], "D:\\Codex Records\\archived_sessions");
 });
 
-test("monitor environment keeps provider roots private and defaults only Pomegr-owned state", () => {
-  const source = { APPDATA: "private-app-data", CLAUDE_PROJECTS_DIR: "D:\\provider-owned\\claude", CODEX_HOME: "D:\\provider-owned\\codex", POMEGR_COST_SNAPSHOTS_DIR: "D:\\explicit-cost" };
+test("monitor environment keeps only allowlisted provider configuration and defaults Pomegr-owned state", () => {
+  const source = {
+    APPDATA: "private-app-data",
+    CLAUDE_PROJECTS_DIR: "D:\\provider-owned\\claude",
+    CODEX_HOME: "D:\\provider-owned\\codex",
+    POMEGR_CODEX_EXECUTABLE: "D:\\Codex CLI\\codex.exe",
+    POMEGR_COST_SNAPSHOTS_DIR: "D:\\explicit-cost",
+    CODEX_AUTH_TOKEN: "MUST_NOT_PROPAGATE",
+  };
   const snapshot = monitorPrivateEnvironment(source, { pomegrDataRoot: "D:\\PomegrData" });
   assert.equal(snapshot.CLAUDE_PROJECTS_DIR, source.CLAUDE_PROJECTS_DIR);
   assert.equal(snapshot.CODEX_HOME, source.CODEX_HOME);
+  assert.equal(snapshot.POMEGR_CODEX_EXECUTABLE, source.POMEGR_CODEX_EXECUTABLE);
+  assert.equal(MONITOR_PRIVATE_ENVIRONMENT_NAMES.includes("POMEGR_CODEX_EXECUTABLE"), true);
   assert.equal(snapshot.POMEGR_COST_SNAPSHOTS_DIR, source.POMEGR_COST_SNAPSHOTS_DIR);
   assert.equal(snapshot.POMEGR_DATA_DIR, "D:\\PomegrData");
+  assert.equal(Object.hasOwn(snapshot, "CODEX_AUTH_TOKEN"), false);
 });
 
 test("desktop settings persist only the bounded allowlist", async () => {

@@ -22,22 +22,26 @@ function sanitizedUsageError(error) {
 }
 
 function normalizedUsageLimits(body) {
+  const severity = (limit) => {
+    if (limit?.is_active || limit?.severity === "danger" || limit?.severity === "critical") return "critical";
+    return limit?.severity === "warning" ? "warning" : "normal";
+  };
   const normalized = (Array.isArray(body?.limits) ? body.limits : []).flatMap((limit) => {
     if (limit.kind === "session") return [{
       id: "current-session", label: "Current session", window: "5 hours",
       percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-      severity: limit.severity || "normal", active: Boolean(limit.is_active),
+      severity: severity(limit), active: Boolean(limit.is_active),
     }];
     if (limit.kind === "weekly_all") return [{
       id: "all-models", label: "All models", window: "7 days",
       percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-      severity: limit.severity || "normal", active: Boolean(limit.is_active),
+      severity: severity(limit), active: Boolean(limit.is_active),
     }];
     if (limit.kind === "weekly_scoped" && limit.scope?.model?.display_name) return [{
       id: `model-${String(limit.scope.model.display_name).toLowerCase()}`,
       label: String(limit.scope.model.display_name), window: "7 days",
       percent: Number(limit.percent || 0), resetsAt: limit.resets_at || null,
-      severity: limit.severity || "normal", active: Boolean(limit.is_active),
+      severity: severity(limit), active: Boolean(limit.is_active),
     }];
     return [];
   });

@@ -1,5 +1,9 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
-import { parseProviderSessionId, qualifyProviderSessionId } from "./provider-contract.mjs";
+import {
+  createProviderCapabilities,
+  parseProviderSessionId,
+  qualifyProviderSessionId,
+} from "./provider-contract.mjs";
 
 /** @typedef {import("./provider-contract").ProviderAdapter} ProviderAdapter */
 
@@ -136,6 +140,17 @@ export function createProviderRegistry(adapters) {
     return inspectCatalogEntries(await catalogEntries());
   }
 
+  async function resolveCapabilities(provider, options = {}) {
+    const declared = provider?.capabilities || createProviderCapabilities();
+    if (options.historical || typeof provider?.resolveCapabilities !== "function") return declared;
+    try {
+      const resolved = await provider.resolveCapabilities();
+      return createProviderCapabilities({ ...declared, ...(resolved || {}) });
+    } catch {
+      return createProviderCapabilities({ ...declared, usageLimits: false });
+    }
+  }
+
   async function readCandidate(entry, historical) {
     try {
       const evidence = await entry.provider.readSession(entry.localId, { historical });
@@ -161,6 +176,8 @@ export function createProviderRegistry(adapters) {
 
     inspectSessions,
 
+    resolveCapabilities,
+
     async readSession(requestedSessionId = "") {
       if (requestedSessionId) {
         const parsed = parseProviderSessionId(requestedSessionId);
@@ -184,7 +201,8 @@ export function createProviderRegistry(adapters) {
 
     async readUsageLimits(provider, options = {}) {
       if (options.historical) return createEmptyUsageLimits();
-      if (!provider?.capabilities.usageLimits || typeof provider.readUsageLimits !== "function") {
+      const capabilities = options.capabilities || await resolveCapabilities(provider, options);
+      if (!capabilities.usageLimits || typeof provider?.readUsageLimits !== "function") {
         return createEmptyUsageLimits();
       }
       try {

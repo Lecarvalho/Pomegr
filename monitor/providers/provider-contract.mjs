@@ -26,8 +26,22 @@ export const PROVIDER_CAPABILITY_KEYS = Object.freeze([
   "workflows",
 ]);
 
+export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
+  "id",
+  "source",
+  "capabilities",
+  "resolveCapabilities",
+  "listSessions",
+  "readSession",
+  "readUsageLimits",
+  "unavailableMessage",
+  "qaStats",
+  "watchTargets",
+]);
+
 const providerIdSet = new Set(PROVIDER_IDS);
 const capabilityKeySet = new Set(PROVIDER_CAPABILITY_KEYS);
+const providerObservationApiKeySet = new Set(PROVIDER_OBSERVATION_API_KEYS);
 const SAFE_LOCAL_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** @param {unknown} value @returns {value is ProviderId} */
@@ -102,10 +116,16 @@ export function parseProviderSessionId(value) {
 export function defineProvider(adapter) {
   if (!adapter || typeof adapter !== "object") throw new TypeError("Provider adapter must be an object");
   if (!isProviderId(adapter.id)) throw new TypeError(`Unknown provider: ${String(adapter.id)}`);
+  for (const key of Object.keys(adapter)) {
+    if (!providerObservationApiKeySet.has(key)) throw new TypeError(`Unknown provider observation API: ${key}`);
+  }
   const expectedSource = providerSource(adapter.id);
   if (adapter.source !== expectedSource) throw new TypeError(`Provider ${adapter.id} source must be ${expectedSource}`);
   if (typeof adapter.listSessions !== "function") throw new TypeError("Provider adapter must implement listSessions");
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
+  if (adapter.resolveCapabilities !== undefined && typeof adapter.resolveCapabilities !== "function") {
+    throw new TypeError("Provider resolveCapabilities must be a function");
+  }
   if (adapter.unavailableMessage !== undefined && typeof adapter.unavailableMessage !== "function") {
     throw new TypeError("Provider unavailableMessage must be a function");
   }

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { USAGE_REFRESH_INTERVAL_MS } from "../monitor/usage-limits.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { normalizeCodexRateLimits } from "../monitor/providers/codex-usage-limits.mjs";
+import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 
 const RESET_A = Date.parse("2026-08-11T18:00:00.000Z") / 1000;
@@ -81,7 +82,7 @@ test("normalizes deterministic Codex primary and secondary rate-limit windows", 
       window: "1 hour",
       percent: 12,
       resetsAt: "2026-08-11T18:00:00.000Z",
-      severity: "danger",
+      severity: "critical",
       active: true,
     },
   ]);
@@ -89,6 +90,55 @@ test("normalizes deterministic Codex primary and secondary rate-limit windows", 
   for (const sentinel of [
     "ACCOUNT", "WORKSPACE", "CREDIT", "ENTITLEMENT", "PLAN_MUST_NOT_LEAK", "AUTH_MUST_NOT_LEAK",
   ]) assert.doesNotMatch(serialized, new RegExp(sentinel));
+});
+
+test("keeps a seven-day-only Codex response as a usable normalized window", () => {
+  const limits = normalizeCodexRateLimits({
+    rateLimitsByLimitId: {
+      codex: {
+        limitId: "codex",
+        limitName: "Codex",
+        primary: { usedPercent: 64, windowDurationMins: 10_080, resetsAt: RESET_B },
+        secondary: null,
+        rateLimitReachedType: null,
+      },
+    },
+  });
+
+  assert.deepEqual(limits, [{
+    id: "codex-primary",
+    label: "Codex",
+    window: "7 days",
+    percent: 64,
+    resetsAt: "2026-08-18T13:00:00.000Z",
+    severity: "normal",
+    active: false,
+  }]);
+});
+
+test("bounds final normalized Codex windows after primary and secondary expansion", () => {
+  const rateLimitsByLimitId = Object.fromEntries(Array.from({ length: 8 }, (_, index) => {
+    const id = `bucket-${String(index + 1).padStart(2, "0")}`;
+    return [id, {
+      limitId: id,
+      limitName: `Bucket ${index + 1}`,
+      primary: { usedPercent: index, windowDurationMins: 300, resetsAt: RESET_A },
+      secondary: { usedPercent: index + 10, windowDurationMins: 10_080, resetsAt: RESET_B },
+      rateLimitReachedType: null,
+    }];
+  }));
+
+  const limits = normalizeCodexRateLimits({ rateLimitsByLimitId });
+
+  assert.equal(limits.length, 12);
+  assert.deepEqual(limits.map((limit) => limit.id), [
+    "bucket-01-primary", "bucket-01-secondary",
+    "bucket-02-primary", "bucket-02-secondary",
+    "bucket-03-primary", "bucket-03-secondary",
+    "bucket-04-primary", "bucket-04-secondary",
+    "bucket-05-primary", "bucket-05-secondary",
+    "bucket-06-primary", "bucket-06-secondary",
+  ]);
 });
 
 test("validates and bounds percentages, durations, reset timestamps, IDs, and labels", () => {
@@ -115,16 +165,14 @@ test("validates and bounds percentages, durations, reset timestamps, IDs, and la
   assert.equal(normalizeCodexRateLimits({ result: { credits: { balance: "secret" } } }), null);
 });
 
-test("shares one Codex app-server read across concurrent polls and enforces cooldown", async () => {
+test("shares one separate Codex account read across concurrent polls and enforces cooldown", async () => {
   let currentTime = Date.parse("2026-08-11T13:00:00.000Z");
   let calls = 0;
   let finishRequest;
   const provider = createCodexProvider({
     now: () => currentTime,
-    appServer: {
-      request(method, params) {
-        assert.equal(method, "account/rateLimits/read");
-        assert.equal(params, undefined);
+    rateLimitsReader: {
+      readRateLimits() {
         calls += 1;
         return new Promise((resolve) => { finishRequest = resolve; });
       },
@@ -148,15 +196,23 @@ test("shares one Codex app-server read across concurrent polls and enforces cool
   finishRequest(rateLimitResponse());
 });
 
-test("sanitizes Codex rate-limit failure independently from session discovery", async () => {
-  let calls = 0;
+test("sanitizes separate Codex rate-limit failure independently from session discovery", async () => {
+  let limitCalls = 0;
+  let catalogCalls = 0;
   const provider = createCodexProvider({
     codexHome: MISSING_CODEX_HOME,
+    rateLimitsReader: {
+      async readRateLimits() {
+        limitCalls += 1;
+        throw new Error("AUTH_TOKEN_AND_BACKEND_DETAILS_MUST_NOT_LEAK");
+      },
+    },
     appServer: {
       async request(method) {
-        calls += 1;
-        if (method === "account/rateLimits/read") throw new Error("AUTH_TOKEN_AND_BACKEND_DETAILS_MUST_NOT_LEAK");
-        if (method === "thread/list") return { result: { data: [] } };
+        if (method === "thread/list") {
+          catalogCalls += 1;
+          return { result: { data: [] } };
+        }
         return null;
       },
     },
@@ -172,14 +228,86 @@ test("sanitizes Codex rate-limit failure independently from session discovery", 
   });
   assert.doesNotMatch(JSON.stringify(limits), /AUTH_TOKEN|BACKEND_DETAILS/);
   assert.deepEqual(await provider.listSessions(), []);
-  assert.equal(calls >= 2, true);
+  assert.equal(limitCalls, 1);
+  assert.equal(catalogCalls, 2);
+});
+
+test("disables only the usage-limit capability when the native Codex CLI is unavailable", async () => {
+  let availabilityCalls = 0;
+  let limitCalls = 0;
+  const provider = createCodexProvider({
+    rateLimitsReader: {
+      async isAvailable() { availabilityCalls += 1; return false; },
+      async readRateLimits() { limitCalls += 1; return rateLimitResponse(); },
+    },
+  });
+  const registry = createProviderRegistry([provider]);
+
+  const capabilities = await registry.resolveCapabilities(provider);
+  assert.equal(capabilities.usageLimits, false);
+  assert.equal(capabilities.liveSessions, true);
+  assert.equal(capabilities.planTasks, true);
+  assert.deepEqual(await registry.readUsageLimits(provider, { capabilities }), {
+    available: false,
+    fetchedAt: null,
+    attemptedAt: null,
+    limits: [],
+    error: "",
+  });
+  assert.equal(availabilityCalls, 1);
+  assert.equal(limitCalls, 0);
+});
+
+test("keeps usage-limit capability enabled when the CLI exists but the account read fails", async () => {
+  const provider = createCodexProvider({
+    rateLimitsReader: {
+      async isAvailable() { return true; },
+      async readRateLimits() { throw new Error("PRIVATE_AUTH_FAILURE_MUST_NOT_LEAK"); },
+    },
+  });
+  const registry = createProviderRegistry([provider]);
+
+  const capabilities = await registry.resolveCapabilities(provider);
+  const limits = await registry.readUsageLimits(provider, { capabilities });
+  assert.equal(capabilities.usageLimits, true);
+  assert.equal(limits.available, false);
+  assert.equal(limits.error, "Codex usage limits are temporarily unavailable.");
+  assert.doesNotMatch(JSON.stringify(limits), /PRIVATE_AUTH_FAILURE/);
+});
+
+test("default registry injects the account-only reader without routing it through the owning app-server seam", async () => {
+  let rateLimitCalls = 0;
+  let owningAppServerCalls = 0;
+  const registry = createDefaultProviderRegistry({
+    codexRateLimitsReader: {
+      async readRateLimits() {
+        rateLimitCalls += 1;
+        return rateLimitResponse();
+      },
+    },
+    codexOptions: {
+      appServer: {
+        async request() {
+          owningAppServerCalls += 1;
+          throw new Error("The account reader must not use the owning app-server seam");
+        },
+      },
+    },
+  });
+  const codex = registry.providers.find((provider) => provider.id === "codex");
+
+  const limits = await registry.readUsageLimits(codex);
+  assert.equal(rateLimitCalls, 1);
+  assert.equal(owningAppServerCalls, 0);
+  assert.equal(limits.available, true);
+  assert.equal(limits.limits.length, 3);
 });
 
 test("provider registry never reads current Codex limits for historical state", async () => {
   let calls = 0;
   const provider = createCodexProvider({
-    appServer: {
-      async request() {
+    rateLimitsReader: {
+      async readRateLimits() {
         calls += 1;
         return rateLimitResponse();
       },

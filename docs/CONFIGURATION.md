@@ -40,6 +40,8 @@ Estimated API cost is optional. Configure `scripts/claude-statusline-bridge.mjs`
 
 No extra setup is required for persisted history under `%USERPROFILE%\.codex`. `CODEX_HOME` can select a different Codex root. Pomegr reads bounded rollout metadata and `session_index.jsonl`; it does not read Codex private SQLite tables.
 
+To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables and hides only the usage-limit panel. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability but produces the fixed sanitized unavailable state.
+
 For higher-confidence Windows live state, register this inert hook command for the supported Codex lifecycle events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`, and supported subagent transitions):
 
 ```powershell
@@ -48,7 +50,7 @@ node "C:\path\to\pomegr\scripts\codex-lifecycle-bridge.mjs"
 
 Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. On Windows, the default snapshot root is `%APPDATA%\pomegr\codex-liveness`. Set `POMEGR_CODEX_LIVENESS_DIR` in both the hook environment and the Pomegr monitor only when a shared override is needed.
 
-An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status and account rate limits. The standalone Windows monitor does not attempt to discover or attach to another process's private stdio transport. Without that connection it uses the lifecycle bridge, then a bounded and explicitly heuristic rollout fallback.
+An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status. The standalone Windows monitor does not attempt to discover or attach to another process's private stdio transport. Its transient account-only usage reader is not an owning app-server and is never used as live-state evidence. Without an owning connection it uses the lifecycle bridge, then a bounded and explicitly heuristic rollout fallback.
 
 ## Capability availability
 
@@ -60,7 +62,7 @@ An authenticated connection to the app-server process that owns a Codex thread i
 | Live and needs-input state | Registry-backed with transcript fallback | Owning app-server or lifecycle bridge; rollout fallback is heuristic |
 | Approval mode | Supported | Supported for recognized policies |
 | Structured plan checklist | Supported | Best effort; no natural-language plan inference |
-| Usage-limit windows | Supported with provider authentication | Supported only through an owning app-server connection |
+| Usage-limit windows | Supported with provider authentication | Supported through an installed, authenticated native Codex CLI |
 | Automatic-compaction warning | Supported for explicit automatic records | Best effort; requires an explicit automatic trigger |
 | Estimated API cost | Optional Claude status-line estimate | Unavailable |
 | Context-machinery snapshot | Optional recorded Claude `/context` output | Unavailable |
@@ -75,6 +77,7 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 | `CLAUDE_PROJECTS_DIR` | Monitor | Claude project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Monitor | Pin one Claude primary JSONL session | Automatic selection |
 | `CODEX_HOME` | Monitor | Codex sessions, archive, and index root | `%USERPROFILE%\.codex` |
+| `POMEGR_CODEX_EXECUTABLE` | Monitor | Absolute path to a supported native Codex CLI for account-only limit reads | Native CLI discovered on `PATH` or the official npm installation |
 | `POMEGR_DATA_DIR` | Desktop, monitor, and local bridges | Override Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
 | `POMEGR_CODEX_LIVENESS_DIR` | Monitor and Codex hook bridge | Shared allowlisted lifecycle snapshot root | `%APPDATA%\pomegr\codex-liveness` on Windows |
 | `POMEGR_CODEX_OWNER_PID` | Codex hook bridge | Explicit owner PID for unusual process-wrapper topologies | Automatic owner discovery |
@@ -141,7 +144,7 @@ This is expected in the desktop app: both services bind to dynamic `127.0.0.1` p
 
 - Historical views always omit current usage limits.
 - Claude failures can indicate missing/expired provider authentication or provider cooldown; the browser receives only a sanitized error.
-- Codex limits require an explicitly connected owning app-server. The default standalone Windows process cannot attach to a private desktop/CLI transport.
+- Codex limits require a supported native Codex CLI authenticated with ChatGPT. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native executable if automatic discovery cannot find it; Pomegr does not attach to an existing desktop or CLI stdio transport. If no valid CLI is found, only the usage-limit panel is hidden. Authentication or temporary read failures keep the panel available with a fixed sanitized unavailable state.
 - Concurrent tabs share one in-flight request and a five-minute cooldown, so repeated refreshes do not force another provider call.
 
 ### Git or GitHub metadata is unavailable

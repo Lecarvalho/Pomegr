@@ -219,6 +219,9 @@ export function createCodexProvider(options = {}) {
     homeDir: options.homeDir,
   });
   const appServer = options.appServer || null;
+  // This reader is intentionally account-only. Unlike `appServer`, it must
+  // never supply session, catalog, liveness, or canonical-turn evidence.
+  const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
   const includeArchived = options.includeArchived ?? true;
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
@@ -240,6 +243,16 @@ export function createCodexProvider(options = {}) {
   const usageLimits = createCodexUsageLimitsCoordinator({
     now,
     request: async () => {
+      if (rateLimitsReader) {
+        if (typeof rateLimitsReader.readRateLimits !== "function") {
+          throw new Error("Codex rate limits are unavailable");
+        }
+        const response = await rateLimitsReader.readRateLimits();
+        if (response === null || response === undefined) throw new Error("Codex rate limits are unavailable");
+        return response;
+      }
+      // Preserve the explicitly supplied owning-app-server test seam. The
+      // production registry injects the separate account-only reader above.
       if (!appServer) throw new Error("Codex app-server is unavailable");
       const response = await appServerCall("account/rateLimits/read");
       if (response === null || response === undefined) throw new Error("Codex rate limits are unavailable");
@@ -876,19 +889,30 @@ export function createCodexProvider(options = {}) {
     };
   }
 
+  const capabilities = {
+    approvalMode: true,
+    automaticCompactions: true,
+    liveSessions: true,
+    needsInput: true,
+    planTasks: true,
+    cacheWriteUsage: false,
+    cacheUsageClassification: false,
+    signals: true,
+    usageLimits: true,
+  };
+
   return defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: {
-      approvalMode: true,
-      automaticCompactions: true,
-      liveSessions: true,
-      needsInput: true,
-      planTasks: true,
-      cacheWriteUsage: false,
-      cacheUsageClassification: false,
-      signals: true,
-      usageLimits: true,
+    capabilities,
+    async resolveCapabilities() {
+      let usageLimitsAvailable = Boolean(appServer);
+      if (rateLimitsReader) {
+        usageLimitsAvailable = typeof rateLimitsReader.isAvailable === "function"
+          ? await rateLimitsReader.isAvailable()
+          : typeof rateLimitsReader.readRateLimits === "function";
+      }
+      return { ...capabilities, usageLimits: Boolean(usageLimitsAvailable) };
     },
     listSessions,
     readSession,

@@ -284,7 +284,7 @@ export type UsageLimits = {
     window: string;
     percent: number;
     resetsAt: string | null;
-    severity: string;
+    severity: "normal" | "warning" | "critical";
     active: boolean;
   }>;
 };

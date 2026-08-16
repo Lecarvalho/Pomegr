@@ -330,18 +330,24 @@ export function createMonitorRuntime(options = {}) {
     const provider = requestedSessionId
       ? registry.providerForSessionId(requestedSessionId)
       : registry.defaultProvider;
+    const capabilities = typeof registry.resolveCapabilities === "function"
+      ? await registry.resolveCapabilities(provider, { historical })
+      : provider?.capabilities || registry.defaultProvider.capabilities;
     return createEmptyMonitorState({
       connected: true,
       source: provider?.source || registry.defaultProvider.source,
-      capabilities: provider?.capabilities || registry.defaultProvider.capabilities,
+      capabilities,
       view: historical ? "history" : "live",
-      usageLimits: await registry.readUsageLimits(provider, { historical }),
+      usageLimits: await registry.readUsageLimits(provider, { historical, capabilities }),
       error: registry.unavailableMessage(requestedSessionId),
     });
   }
 
   const { evidence, provider, sessionId } = selection;
   const historical = evidence.historical;
+  const capabilities = typeof registry.resolveCapabilities === "function"
+    ? await registry.resolveCapabilities(provider, { historical })
+    : provider.capabilities;
   const agents = evidence.agents.map((agent) => ({
     workflowId: null,
     workflowPhaseId: null,
@@ -432,7 +438,7 @@ export function createMonitorRuntime(options = {}) {
     ({ repository, pullRequests } = live.value);
     enqueueLiveEnrichment = live.enqueue;
   }
-  const currentUsageLimits = await registry.readUsageLimits(provider, { historical });
+  const currentUsageLimits = await registry.readUsageLimits(provider, { historical, capabilities });
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
@@ -440,7 +446,7 @@ export function createMonitorRuntime(options = {}) {
   const state = {
     connected: true,
     source: provider.source,
-    capabilities: provider.capabilities,
+    capabilities,
     view: historical ? "history" : "live",
     session: {
       id: sessionId,

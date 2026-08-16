@@ -82,17 +82,43 @@ function runtimeFixture(options = {}) {
   const readEvidence = options.readEvidence || (() => evidence);
   const usageReader = options.readUsageLimits || (() => createEmptyUsageLimits());
   const normalizedSessionId = options.normalizedSessionId || "codex:normalized-session";
+  const selectedProvider = options.provider || provider;
   const registry = {
-    defaultProvider: provider,
-    async readSession() { return { evidence: readEvidence(), provider, sessionId: normalizedSessionId }; },
+    defaultProvider: selectedProvider,
+    async readSession() { return { evidence: readEvidence(), provider: selectedProvider, sessionId: normalizedSessionId }; },
     async readUsageLimits(...args) { return usageReader(...args); },
     async listSessions() { return []; },
     async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
-    providerForSessionId() { return provider; },
+    providerForSessionId() { return selectedProvider; },
     unavailableMessage() { return "Session unavailable"; },
+    ...(options.resolveCapabilities ? { resolveCapabilities: options.resolveCapabilities } : {}),
   };
   return createMonitorRuntime({ ...options, providerRegistry: registry });
 }
+
+test("state assembly uses resolved capabilities without mutating provider declarations", async () => {
+  const declared = Object.freeze({
+    ...createEmptyProviderCapabilities(),
+    liveSessions: true,
+    usageLimits: true,
+  });
+  const dynamicProvider = Object.freeze({ source: "Codex", capabilities: declared });
+  let resolutionCalls = 0;
+  const runtime = runtimeFixture({
+    provider: dynamicProvider,
+    async resolveCapabilities(received) {
+      resolutionCalls += 1;
+      assert.equal(received, dynamicProvider);
+      return { ...declared, usageLimits: false };
+    },
+  });
+
+  const state = await runtime.analyze("codex:live");
+  assert.equal(state.capabilities.usageLimits, false);
+  assert.equal(state.capabilities.liveSessions, true);
+  assert.equal(declared.usageLimits, true);
+  assert.equal(resolutionCalls, 1);
+});
 
 function controlledScheduler() {
   const jobs = [];

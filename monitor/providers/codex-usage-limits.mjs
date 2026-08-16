@@ -60,7 +60,7 @@ function normalizedWindow(window, { id, label, kind, reached }) {
     window: windowLabel(window.windowDurationMins),
     percent,
     resetsAt: resetTimestamp(window.resetsAt),
-    severity: active ? "danger" : percent >= 80 ? "warning" : "normal",
+    severity: active ? "critical" : percent >= 80 ? "warning" : "normal",
     active,
   };
 }
@@ -93,7 +93,7 @@ export function normalizeCodexRateLimits(response) {
       normalizedWindow(snapshot.primary, { id, label, kind: "primary", reached }),
       normalizedWindow(snapshot.secondary, { id, label, kind: "secondary", reached }),
     ].filter(Boolean);
-  });
+  }).slice(0, MAX_BUCKETS);
 }
 
 export function createCodexUsageLimitsCoordinator({ request, now = () => Date.now() }) {

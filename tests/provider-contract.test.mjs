@@ -53,6 +53,8 @@ test("validates provider declarations and optional usage readers", () => {
   assert.throws(() => defineProvider({ ...base, capabilities: { usageLimits: true } }), /must implement readUsageLimits/);
   assert.throws(() => defineProvider({ ...base, watchTargets: [""] }), /watchTargets/);
   assert.throws(() => defineProvider({ ...base, unavailableMessage: "private" }), /unavailableMessage/);
+  assert.throws(() => defineProvider({ ...base, resolveCapabilities: true }), /resolveCapabilities/);
+  assert.throws(() => defineProvider({ ...base, controlSession() {} }), /Unknown provider observation API/);
 });
 
 test("keeps optional resource ownership private while passing it to the monitor", async () => {

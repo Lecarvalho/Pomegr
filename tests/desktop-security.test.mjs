@@ -20,6 +20,7 @@ import {
   startOptionalDesktopIntegration,
 } from "../desktop/native-security.mjs";
 import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
+import { PROVIDER_OBSERVATION_API_KEYS } from "../monitor/providers/provider-contract.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import { installLocalRequestGate, startWebServer } from "../web/server.mjs";
 import { PRIVATE_FIXTURE_SENTINELS } from "./helpers/provider-fixtures.mjs";
@@ -165,10 +166,12 @@ test("ASAR privacy inspection never follows link metadata", () => {
 
 test("desktop monitor provider surface is observation-only", () => {
   const registry = createDefaultProviderRegistry();
-  const allowed = ["id", "source", "capabilities", "listSessions", "readSession", "readUsageLimits", "unavailableMessage", "qaStats", "watchTargets"];
   for (const provider of registry.providers) {
     assert.equal(Object.isFrozen(provider), true);
-    for (const key of Object.keys(provider)) assert.ok(allowed.includes(key), `${provider.id}.${key} is not an observation API`);
+    for (const key of Object.keys(provider)) assert.ok(PROVIDER_OBSERVATION_API_KEYS.includes(key), `${provider.id}.${key} is not an observation API`);
+    if (provider.resolveCapabilities) {
+      assert.equal(provider.resolveCapabilities.length, 0);
+    }
     assert.equal(Object.keys(provider).some((key) => /(?:write|send|control|approve|reject|execute|command|kill|interrupt|resume|delete|update)/i.test(key)), false);
   }
 });

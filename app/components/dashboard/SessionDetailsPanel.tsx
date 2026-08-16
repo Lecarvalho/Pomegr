@@ -14,16 +14,27 @@ function changeLabel(count: number) {
   return `${count} ${count === 1 ? "change" : "changes"}`;
 }
 
-function fiveHourUsagePercent(state: MonitorState) {
-  const limit = state.usageLimits.limits.find((candidate) => candidate.window === "5 hours");
-  return typeof limit?.percent === "number" && Number.isFinite(limit.percent) ? limit.percent : null;
+function usageSummaryLimit(state: MonitorState) {
+  return state.usageLimits.limits.find((candidate) => candidate.active) || state.usageLimits.limits[0] || null;
+}
+
+function compactUsageWindow(window: string) {
+  return window
+    .replace(/\s+minutes?\b/gi, "m")
+    .replace(/\s+hours?\b/gi, "h")
+    .replace(/\s+days?\b/gi, "d")
+    .replace(/\s+weeks?\b/gi, "w")
+    .replace(/\s+months?\b/gi, "mo");
 }
 
 function SessionDetailsSummary({ state, historical }: { state: MonitorState; historical: boolean }) {
   if (!state.session) return null;
   const capabilities = state.capabilities || createEmptyProviderCapabilities();
   const repository = state.session.repository;
-  const fiveHourUsage = fiveHourUsagePercent(state);
+  const usageLimit = usageSummaryLimit(state);
+  const usagePercent = typeof usageLimit?.percent === "number" && Number.isFinite(usageLimit.percent)
+    ? usageLimit.percent
+    : null;
   const machinery = state.session.contextMachinery;
 
   return (
@@ -37,7 +48,7 @@ function SessionDetailsSummary({ state, historical }: { state: MonitorState; his
         </span>
       ) : <span><b>Git</b> Unavailable</span>}
       {!historical && capabilities.usageLimits && (
-        <span><b>Usage 5h</b> {state.usageLimits.available && fiveHourUsage !== null ? `${Math.round(fiveHourUsage)}%` : "unavailable"}</span>
+        <span><b>Usage {usageLimit ? compactUsageWindow(usageLimit.window) : "5h"}</b> {state.usageLimits.available && usagePercent !== null ? `${Math.round(usagePercent)}%` : "unavailable"}</span>
       )}
       {capabilities.contextMachinery && machinery && (
         <span><b>Loaded inventory</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>

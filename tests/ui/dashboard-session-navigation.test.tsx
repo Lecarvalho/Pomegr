@@ -196,6 +196,34 @@ describe("dashboard session navigation", () => {
     expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
   });
 
+  it("summarizes the first returned usage window when five-hour usage is absent", async () => {
+    window.localStorage.setItem("pomegr-session-details-open", "false");
+    const state = detailedState();
+    state.usageLimits = {
+      ...state.usageLimits,
+      limits: [{
+        id: "weekly",
+        label: "Weekly window",
+        window: "7 days",
+        percent: 64.4,
+        resetsAt: null,
+        severity: "normal",
+        active: false,
+      }],
+    };
+    mockDashboardState(state);
+
+    const { container } = render(<Dashboard />);
+    const compact = await waitFor(() => {
+      const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
+      expect(element).toBeInTheDocument();
+      return element!;
+    });
+
+    expect(compact).toHaveTextContent("Usage 7d 64%");
+    expect(compact).not.toHaveTextContent("Usage 5h");
+  });
+
   it("persists Resource use and Session details independently across remounts", async () => {
     window.localStorage.setItem("pomegr-resource-panel-open", "true");
     window.localStorage.setItem("pomegr-session-details-open", "false");
@@ -229,9 +257,12 @@ describe("dashboard session navigation", () => {
     expect(restored.querySelector("details.sessionDetails")).toHaveAttribute("open");
   });
 
-  it("shows unavailable usage but omits missing loaded context from a live collapsed summary", async () => {
+  it("shows sanitized unavailable Codex usage when the capability remains enabled", async () => {
     window.localStorage.setItem("pomegr-session-details-open", "false");
-    mockDashboardState(detailedState({ withContext: false, usageAvailable: false }));
+    const state = detailedState({ withContext: false, usageAvailable: false });
+    state.source = "Codex";
+    state.usageLimits.error = "Codex usage limits are temporarily unavailable.";
+    mockDashboardState(state);
     const { container } = render(<Dashboard />);
 
     const compact = await waitFor(() => {
@@ -241,6 +272,32 @@ describe("dashboard session navigation", () => {
     });
     expect(compact).toHaveTextContent("Usage 5h unavailable");
     expect(compact).not.toHaveTextContent("Loaded");
+
+    await userEvent.click(screen.getByText("Session details"));
+    expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
+    expect(screen.getByText("Codex usage limits are temporarily unavailable.")).toBeInTheDocument();
+  });
+
+  it("omits Codex usage UI when the provider capability is disabled", async () => {
+    window.localStorage.setItem("pomegr-session-details-open", "false");
+    const state = detailedState({ contextSupported: false });
+    state.capabilities.usageLimits = false;
+    mockDashboardState(state);
+    const { container } = render(<Dashboard />);
+
+    const details = await waitFor(() => {
+      const element = container.querySelector("details.sessionDetails");
+      expect(element).toBeInTheDocument();
+      return element!;
+    });
+    const compact = details.querySelector(".disclosureSummaryMetrics");
+    expect(compact).toHaveTextContent("Git");
+    expect(compact).not.toHaveTextContent("Usage");
+
+    await userEvent.click(screen.getByText("Session details"));
+    expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
   });
 
   it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {

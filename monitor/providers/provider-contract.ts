@@ -146,6 +146,7 @@ export interface ProviderAdapter {
   readonly watchTargets?: readonly string[];
   listSessions(): Promise<ProviderSessionReference[]>;
   readSession(localSessionId: string, options: ProviderReadOptions): Promise<ProviderSessionEvidence | null>;
+  resolveCapabilities?(): Promise<Partial<ProviderCapabilities>>;
   readUsageLimits?(): Promise<UsageLimits>;
   unavailableMessage?(localSessionId: string): string;
 }

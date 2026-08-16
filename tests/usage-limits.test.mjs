@@ -117,3 +117,28 @@ test("does not let a short Retry-After reduce the five-minute cooldown", async (
   await coordinator.get();
   assert.equal(calls, 2);
 });
+
+test("canonicalizes provider severity values and active limits", async () => {
+  const coordinator = createUsageLimitsCoordinator({
+    request: async () => new Response(JSON.stringify({
+      limits: [
+        { kind: "session", percent: 20, severity: "danger", is_active: false },
+        { kind: "weekly_all", percent: 30, severity: "warning", is_active: false },
+        {
+          kind: "weekly_scoped",
+          percent: 40,
+          severity: "future-private-value",
+          is_active: true,
+          scope: { model: { display_name: "Fable" } },
+        },
+      ],
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+  });
+
+  const result = await coordinator.get();
+  assert.deepEqual(result.limits.map(({ severity, active }) => ({ severity, active })), [
+    { severity: "critical", active: false },
+    { severity: "warning", active: false },
+    { severity: "critical", active: true },
+  ]);
+});

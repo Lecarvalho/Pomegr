@@ -505,7 +505,7 @@ describe("usage-limit clock", () => {
       available: true,
       fetchedAt: "2026-08-08T12:00:00.000Z",
       attemptedAt: "2026-08-08T12:00:00.000Z",
-      limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: "2026-08-08T12:02:00.000Z", severity: "normal", active: true }],
+      limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: "2026-08-08T12:02:00.000Z", severity: "normal" as const, active: true }],
     };
     const panelRender = vi.fn();
     const UsagePanelProbe = () => {
@@ -544,6 +544,23 @@ describe("usage-limit clock", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Re-authentication needed");
     expect(screen.getByRole("status")).toHaveTextContent("Sign in to Claude Code again. Pomegr will retry automatically.");
     expect(screen.getByText("20%")).toBeInTheDocument();
+  });
+
+  it("renders arbitrary usage buckets and critical reached styling", () => {
+    const limits = [
+      { id: "one", label: "One", window: "1 hour", percent: 100, resetsAt: null, severity: "critical" as const, active: true },
+      { id: "two", label: "Two", window: "5 hours", percent: 92, resetsAt: null, severity: "warning" as const, active: false },
+      { id: "three", label: "Three", window: "7 days", percent: 40, resetsAt: null, severity: "normal" as const, active: false },
+      { id: "four", label: "Four", window: "30 days", percent: 10, resetsAt: null, severity: "normal" as const, active: false },
+    ];
+
+    const { container } = render(<LiveClockProvider running><UsageLimitsPanel
+      source="Codex"
+      usageLimits={{ available: true, fetchedAt: null, attemptedAt: null, limits }}
+    /></LiveClockProvider>);
+
+    expect(container.querySelectorAll(".limitCard")).toHaveLength(4);
+    expect(container.querySelector(".limitCard.critical")).toHaveTextContent("Active limit");
   });
 });
 
