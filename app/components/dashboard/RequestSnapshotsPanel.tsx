@@ -32,8 +32,10 @@ function niceMaximum(value: number) {
   return rounded * magnitude;
 }
 
-function snapshotEventKey(agentId: string, observedAt: string) {
-  return `${agentId}\u0000${observedAt}`;
+export function snapshotEventKey(agentId: string, observedAt: string) {
+  const timestamp = Date.parse(observedAt);
+  if (!Number.isFinite(timestamp)) return null;
+  return `${agentId}\u0000${new Date(timestamp).toISOString()}`;
 }
 
 function eventTitle(kind: CacheEvent["kind"]) {
@@ -122,15 +124,22 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const eventsBySnapshot = new Map<string, CacheEvent[]>();
   for (const event of cacheEvents?.items || []) {
     const key = snapshotEventKey(event.agentId, event.observedAt);
+    if (key === null) continue;
     eventsBySnapshot.set(key, [...(eventsBySnapshot.get(key) || []), event]);
   }
-  const snapshotsByEvent = new Map(snapshots.map((snapshot) => [
-    snapshotEventKey(snapshot.agentId, snapshot.observedAt),
-    snapshot,
-  ]));
-  const activeEvents = activeSnapshot
-    ? eventsBySnapshot.get(snapshotEventKey(activeSnapshot.agentId, activeSnapshot.observedAt)) || []
-    : [];
+  const snapshotsByEvent = new Map<string, RequestSnapshot>();
+  for (const snapshot of snapshots) {
+    const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
+    if (key !== null) snapshotsByEvent.set(key, snapshot);
+  }
+  const matchingSnapshot = (event: CacheEvent) => {
+    const key = snapshotEventKey(event.agentId, event.observedAt);
+    return key === null ? null : snapshotsByEvent.get(key) || null;
+  };
+  const activeSnapshotKey = activeSnapshot
+    ? snapshotEventKey(activeSnapshot.agentId, activeSnapshot.observedAt)
+    : null;
+  const activeEvents = activeSnapshotKey === null ? [] : eventsBySnapshot.get(activeSnapshotKey) || [];
   const activeAgentLabel = activeSnapshot
     ? agentById.get(activeSnapshot.agentId)?.label || "Agent"
     : scopeLabel;
@@ -239,7 +248,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
                 <div className="requestSnapshotGrid" aria-hidden="true"><i /><i /><i /></div>
                 <div className="requestSnapshotBars" style={{ "--snapshot-count": scopedSnapshots.length } as CSSProperties} aria-hidden="true">
                   {scopedSnapshots.map((snapshot, index) => {
-                    const events = eventsBySnapshot.get(snapshotEventKey(snapshot.agentId, snapshot.observedAt)) || [];
+                    const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
+                    const events = key === null ? [] : eventsBySnapshot.get(key) || [];
                     return (
                       <div className={`requestSnapshotBar${index === resolvedActiveIndex ? " active" : ""}${events.length ? " hasCacheEvent" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
                         {events.length > 0 && <i className={`requestSnapshotEventMarker ${events[0].kind}`} />}
@@ -283,7 +293,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
           <ol className="cacheEvidenceList">
             {visibleEvents.map((event) => <CacheEventRow
               event={event}
-              snapshot={snapshotsByEvent.get(snapshotEventKey(event.agentId, event.observedAt)) || null}
+              snapshot={matchingSnapshot(event)}
               agentLabel={agentById.get(event.agentId)?.label || "Agent"}
               key={event.id}
             />)}

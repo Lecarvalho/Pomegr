@@ -6,7 +6,7 @@ import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivity
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { ContextHistoryPanel } from "../../app/components/dashboard/ContextHistoryPanel";
-import { RequestSnapshotsPanel } from "../../app/components/dashboard/RequestSnapshotsPanel";
+import { RequestSnapshotsPanel, snapshotEventKey } from "../../app/components/dashboard/RequestSnapshotsPanel";
 import { ResourceUsagePanel } from "../../app/components/dashboard/ResourceUsagePanel";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
@@ -601,7 +601,9 @@ describe("request snapshots and cache evidence", () => {
     id: `cache-${index}`,
     agentId: "primary",
     kind: index === 0 ? "miss_refill" as const : index === 1 ? "reuse" as const : "refill" as const,
-    observedAt: new Date(Date.parse("2026-08-09T12:03:00.000Z") + index * 60_000).toISOString(),
+    observedAt: index === 1
+      ? "2026-08-09T08:04:00.000-04:00"
+      : new Date(Date.parse("2026-08-09T12:03:00.000Z") + index * 60_000).toISOString(),
     promptInputTokens: 147_282 + index,
     cacheReadPercent: index === 0 ? 5 : 90,
     cacheWriteTokens: index === 0 ? 146_282 : index === 1 ? 759 : 8_500,
@@ -611,6 +613,16 @@ describe("request snapshots and cache evidence", () => {
   });
   const requestSnapshots = { status: "ready" as const, items: snapshots };
   const cacheEvents = { status: "ready" as const, items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)) };
+
+  it("canonicalizes equivalent timestamp offsets and rejects invalid join keys", () => {
+    expect(snapshotEventKey("primary", "2026-08-09T08:04:00.000-04:00")).toBe(
+      snapshotEventKey("primary", "2026-08-09T12:04:00.000Z"),
+    );
+    expect(snapshotEventKey("primary", "not-a-timestamp")).toBeNull();
+    expect(snapshotEventKey("primary", "not-a-timestamp")).not.toBe(
+      snapshotEventKey("primary", "2026-08-09T12:04:00.000Z"),
+    );
+  });
 
   it("renders independent equal-spaced request bars with exact non-cumulative values and a fixed scale", async () => {
     const user = userEvent.setup();
