@@ -7,6 +7,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $devScriptPath = (Resolve-Path (Join-Path $repositoryRoot 'scripts\dev.mjs')).Path
+$devScriptArguments = @(
+  $devScriptPath
+  'scripts\dev.mjs'
+  'scripts/dev.mjs'
+  '.\scripts\dev.mjs'
+  './scripts/dev.mjs'
+)
 $nodeExecutable = (Get-Command node.exe -CommandType Application).Source
 $monitorPaths = @(
   (Join-Path $repositoryRoot 'monitor\cli.mjs')
@@ -34,6 +41,17 @@ function Test-ExactCommandArgument {
   }
   $pattern = '(?i)(?:^|\s|")' + [regex]::Escape($Argument) + '(?:"|\s|$)'
   return [regex]::IsMatch($CommandLine, $pattern)
+}
+
+function Test-DevProcessRoot {
+  param([string]$CommandLine)
+
+  foreach ($argument in $devScriptArguments) {
+    if (Test-ExactCommandArgument -CommandLine $CommandLine -Argument $argument) {
+      return $true
+    }
+  }
+  return $false
 }
 
 function Get-AncestorIds {
@@ -103,7 +121,11 @@ if ($listeners.Count -gt 0) {
   $rootCandidates = foreach ($listener in $listeners) {
     foreach ($ancestorId in Get-AncestorIds -ProcessId ([int]$listener.OwningProcess) -ProcessTable $processTable) {
       $ancestor = $processTable[$ancestorId]
-      if (Test-ExactCommandArgument -CommandLine ([string]$ancestor.CommandLine) -Argument $devScriptPath) { $ancestorId }
+      # Existing Pomegr sessions may have been started from the repository with
+      # `node scripts/dev.mjs`; replacements launched by this skill use the
+      # absolute path. Listener ownership is already proven above by absolute
+      # repository paths, so either dev-root spelling is safe here.
+      if (Test-DevProcessRoot -CommandLine ([string]$ancestor.CommandLine)) { $ancestorId }
     }
   }
   $rootGroups = @($rootCandidates | Group-Object | Sort-Object Count -Descending)
