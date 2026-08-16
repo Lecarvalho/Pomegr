@@ -108,6 +108,8 @@ Externally stopped subagents are detected from the parent transcript by matching
 
 The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
 
+Workflow workers are ordinary normalized agents for metrics. They contribute exactly once to agent counts, tool-call counts, and all-agent context. A workflow's displayed context is the sum of its linked agents' latest non-zero context snapshots; Pomegr never uses workflow-manifest token totals, tool totals, transcript throughput, or inferred spend. Workflow phase groupings are presentation metadata and do not add another metric contribution.
+
 Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
 
 ## Session state

@@ -26,6 +26,10 @@ export const PRIVATE_FIXTURE_SENTINELS = Object.freeze([
   "PLAN_PROSE_MUST_NOT_LEAK",
   "PLAN_DESCRIPTION_MUST_NOT_LEAK",
   "ACTIVE_FORM_MUST_NOT_LEAK",
+  "WORKFLOW_SCRIPT_MUST_NOT_LEAK",
+  "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK",
+  "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK",
+  "WORKFLOW_PATH_MUST_NOT_LEAK",
 ]);
 
 export async function readProviderFixture(relativePath) {
@@ -75,6 +79,8 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
   const agents = evidence.agents.map((agent) => {
     const snapshot = latestUsage.get(agent.id) || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
     return {
+      workflowId: null,
+      workflowPhaseId: null,
       ...agent,
       tokens: {
         total: snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead,
@@ -125,6 +131,7 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
       tokens: { ...tokenTotals, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
     },
     agents,
+    workflows: evidence.workflows || [],
     toolPatterns: evidence.toolCalls.map((call) => ({
       id: call.id,
       agent: call.actor.label,

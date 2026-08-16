@@ -25,6 +25,7 @@ export function createEmptyProviderCapabilities() {
     sessionSummary: false,
     signals: false,
     usageLimits: false,
+    workflows: false,
   };
 }
 
@@ -63,6 +64,7 @@ export function createEmptyMonitorState(options = {}) {
       },
     },
     agents: [],
+    workflows: [],
     toolPatterns: [],
     loops: [],
     activity: [],

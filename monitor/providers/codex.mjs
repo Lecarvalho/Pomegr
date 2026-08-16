@@ -818,6 +818,8 @@ export function createCodexProvider(options = {}) {
       mergeCodexSignals(allSignals, signals);
     }
     for (const agent of agents) {
+      agent.workflowId = null;
+      agent.workflowPhaseId = null;
       const signals = signalsByActor.get(agent.id) || { agent: null, session: null, tasks: new Map() };
       agent.signal = signals.agent;
       const currentActivity = rolloutActivityByActor.get(agent.id);
@@ -856,6 +858,7 @@ export function createCodexProvider(options = {}) {
         signal: allSignals.session,
       },
       agents,
+      workflows: [],
       usageSnapshots,
       toolCalls,
       activity: [],

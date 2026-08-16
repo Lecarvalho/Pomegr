@@ -27,6 +27,7 @@ test("keeps optional provider capabilities deny-by-default", () => {
   assert.equal(capabilities.needsInput, true);
   assert.equal(capabilities.estimatedCost, false);
   assert.equal(capabilities.contextMachinery, false);
+  assert.equal(capabilities.workflows, false);
   assert.equal(Object.isFrozen(capabilities), true);
   assert.throws(() => createProviderCapabilities({ futureCapability: true }), /Unknown provider capability/);
   assert.throws(() => createProviderCapabilities({ liveSessions: "yes" }), /must be boolean/);
@@ -104,4 +105,6 @@ test("creates provider-aware empty state while preserving the Claude default", (
   assert.equal(createEmptyMonitorState({ source: "Codex", connected: true }).source, "Codex");
   assert.equal(createEmptyMonitorState().capabilities.estimatedCost, false);
   assert.equal(createEmptyMonitorState().capabilities.contextMachinery, false);
+  assert.equal(createEmptyMonitorState().capabilities.workflows, false);
+  assert.deepEqual(createEmptyMonitorState().workflows, []);
 });

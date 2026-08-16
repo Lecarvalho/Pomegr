@@ -49,6 +49,8 @@ const task: ExecutionTask = {
 const agent: Agent = {
   id: "primary",
   parentId: null,
+  workflowId: null,
+  workflowPhaseId: null,
   label: "Primary agent",
   kind: "primary",
   model: "test-model",

@@ -324,7 +324,7 @@ export function createMonitorRuntime(options = {}) {
 
   const { evidence, provider, sessionId } = selection;
   const historical = evidence.historical;
-  const agents = evidence.agents.map((agent) => ({ ...agent }));
+  const agents = evidence.agents.map((agent) => ({ workflowId: null, workflowPhaseId: null, ...agent }));
   const tokenUsage = applyLatestUsage(agents, evidence.usageSnapshots, evidence.session.startedAt, evidence.session.updatedAt);
   const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
   const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
@@ -438,6 +438,7 @@ export function createMonitorRuntime(options = {}) {
       tokens: tokenUsage,
     },
     agents,
+    workflows: evidence.workflows || [],
     toolPatterns,
     loops: loopPatterns,
     activity: recentActivityEvents(allEvents),

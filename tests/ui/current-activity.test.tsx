@@ -13,6 +13,8 @@ const activity = {
 const baseAgent: Agent = {
   id: "primary",
   parentId: null,
+  workflowId: null,
+  workflowPhaseId: null,
   label: "Primary agent",
   kind: "orchestrator",
   model: "gpt-synthetic",

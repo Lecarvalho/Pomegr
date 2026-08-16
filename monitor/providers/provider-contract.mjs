@@ -22,6 +22,7 @@ export const PROVIDER_CAPABILITY_KEYS = Object.freeze([
   "sessionSummary",
   "signals",
   "usageLimits",
+  "workflows",
 ]);
 
 const providerIdSet = new Set(PROVIDER_IDS);

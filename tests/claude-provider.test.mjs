@@ -6,6 +6,7 @@ import test from "node:test";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import {
   assertNoPrivateFixtureSentinels,
+  monitorStateFromProviderEvidence,
   readProviderFixture,
 } from "./helpers/provider-fixtures.mjs";
 
@@ -41,6 +42,70 @@ function taskResult(id, toolUseResult, overrides = {}) {
     }] },
     toolUseResult,
   };
+}
+
+function workflowLaunchRecord(runId, timestamp = "2026-08-15T18:00:00.000Z") {
+  return {
+    type: "user",
+    timestamp,
+    message: { content: [{
+      type: "tool_result",
+      tool_use_id: `launch-${runId}`,
+      content: "WORKFLOW_PATH_MUST_NOT_LEAK",
+      is_error: false,
+    }] },
+    toolUseResult: {
+      status: "async_launched",
+      taskType: "local_workflow",
+      taskId: "PRIVATE_WORKFLOW_TASK_ID",
+      workflowName: "fixture-workflow",
+      runId,
+      summary: "Implement and verify the fixture",
+      transcriptDir: "WORKFLOW_PATH_MUST_NOT_LEAK",
+      scriptPath: "WORKFLOW_PATH_MUST_NOT_LEAK",
+    },
+  };
+}
+
+function workflowWorkerRecords(messageId, timestamp = "2026-08-15T18:01:00.000Z") {
+  return [
+    { type: "user", timestamp, message: { content: "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" } },
+    {
+      type: "assistant",
+      timestamp,
+      message: {
+        id: messageId,
+        model: "claude-test",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 20 },
+        content: [],
+      },
+    },
+  ];
+}
+
+function workflowStopRecords(agentId, timestamp = "2026-08-15T18:01:20.000Z") {
+  return [
+    {
+      type: "assistant",
+      timestamp,
+      message: { model: "claude-test", content: [{
+        type: "tool_use",
+        id: `stop-${agentId}`,
+        name: "TaskStop",
+        input: { task_id: agentId },
+      }] },
+    },
+    {
+      type: "user",
+      timestamp,
+      message: { content: [{
+        type: "tool_result",
+        tool_use_id: `stop-${agentId}`,
+        content: "Agent stopped successfully",
+        is_error: false,
+      }] },
+    },
+  ];
 }
 
 test("Claude adapter returns sanitized provider evidence without changing normalized features", async (context) => {
@@ -109,6 +174,216 @@ test("Claude adapter rejects unsafe session IDs and degrades missing sessions in
   assert.equal(await provider.readSession("../private", { historical: true }), null);
   assert.equal(await provider.readSession("missing", { historical: true }), null);
   assert.deepEqual(await provider.listSessions(), []);
+});
+
+test("Claude adapter discovers live workflow workers without treating journals as agents", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-live-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-live";
+  const runIds = ["wf_fixture-1", "wf_fixture-2"];
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await writeRecords(mainFile, [
+    { type: "user", timestamp: "2026-08-15T18:00:00.000Z", cwd: root, message: { content: "PROMPT_MUST_NOT_LEAK" } },
+    workflowLaunchRecord(runIds[0]),
+    workflowLaunchRecord(runIds[1], "2026-08-15T18:00:10.000Z"),
+    ...workflowStopRecords("shared"),
+  ]);
+  const workflowRoot = path.join(projectsRoot, "fixture-project", localId, "subagents", "workflows");
+  const workerFiles = runIds.map((runId) => path.join(workflowRoot, runId, "agent-shared.jsonl"));
+  await writeRecords(workerFiles[0], workflowWorkerRecords("same-provider-message"));
+  await writeRecords(workerFiles[1], workflowWorkerRecords("same-provider-message", "2026-08-15T18:01:10.000Z"));
+  await writeFixture(path.join(workflowRoot, runIds[0], "journal.jsonl"), "claude/workflow/journal.jsonl");
+  await Promise.all(workerFiles.map((file) => utimes(file, new Date("2026-08-15T18:01:30.000Z"), new Date("2026-08-15T18:01:30.000Z"))));
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    now: () => Date.parse("2026-08-15T18:02:00.000Z"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  assert.equal(provider.capabilities.workflows, true);
+  assert.equal(evidence.agents.length, 3);
+  assert.equal(evidence.agents.some((agent) => agent.id.includes("journal")), false);
+  assert.equal(new Set(evidence.agents.map((agent) => agent.id)).size, 3);
+  assert.equal(new Set(evidence.usageSnapshots.map((snapshot) => snapshot.dedupeId)).size, 2);
+  assert.equal(evidence.agents.filter((agent) => agent.workflowId).some((agent) => agent.status === "stopped"), false);
+  assert.deepEqual(evidence.workflows.map(({ id, status, agentIds, phases }) => ({ id, status, agentIds, phases })), [
+    { id: runIds[0], status: "running", agentIds: [`workflow-${runIds[0]}-agent-shared`], phases: [] },
+    { id: runIds[1], status: "running", agentIds: [`workflow-${runIds[1]}-agent-shared`], phases: [] },
+  ]);
+  assert.equal(evidence.agents.filter((agent) => agent.workflowId).every((agent) => agent.parentId === "primary"), true);
+  const state = monitorStateFromProviderEvidence("claude", evidence);
+  assert.equal(state.metrics.agents, 3);
+  assert.equal(state.metrics.tokens.allAgents, 70);
+  assert.deepEqual(state.workflows, evidence.workflows);
+  assertNoPrivateFixtureSentinels(evidence, "live Claude workflow evidence");
+});
+
+test("Claude adapter maps a stopped workflow worker by its provider-local agent ID", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-stopped-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-stopped";
+  const runId = "wf_fixture-1";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await writeRecords(mainFile, [
+    workflowLaunchRecord(runId),
+    ...workflowStopRecords("shared"),
+  ]);
+  const workerFile = path.join(
+    projectsRoot,
+    "fixture-project",
+    localId,
+    "subagents",
+    "workflows",
+    runId,
+    "agent-shared.jsonl",
+  );
+  await writeRecords(workerFile, workflowWorkerRecords("worker-one"));
+  await utimes(workerFile, new Date("2026-08-15T18:01:30.000Z"), new Date("2026-08-15T18:01:30.000Z"));
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    now: () => Date.parse("2026-08-15T18:02:00.000Z"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  const worker = evidence.agents.find((agent) => agent.workflowId === runId);
+  assert.equal(worker.status, "stopped");
+  assert.equal(worker.lastSeen, "2026-08-15T18:01:20.000Z");
+  assert.equal(evidence.workflows[0].status, "unknown");
+});
+
+test("Claude adapter allowlists completed workflow phases and worker linkage", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-completed-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-completed";
+  const runId = "wf_fixture-1";
+  const sessionRoot = path.join(projectsRoot, "fixture-project", localId);
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await writeRecords(mainFile, [
+    { type: "user", timestamp: "2026-08-15T18:00:00.000Z", cwd: root, message: { content: "PROMPT_MUST_NOT_LEAK" } },
+    workflowLaunchRecord(runId),
+  ]);
+  await writeRecords(path.join(sessionRoot, "subagents", "workflows", runId, "agent-shared.jsonl"), workflowWorkerRecords("worker-one"));
+  await writeRecords(path.join(sessionRoot, "subagents", "workflows", runId, "agent-reviewer.jsonl"), workflowWorkerRecords("worker-two", "2026-08-15T18:04:00.000Z"));
+  await writeFixture(path.join(sessionRoot, "subagents", "workflows", runId, "journal.jsonl"), "claude/workflow/journal.jsonl");
+  await writeFixture(path.join(sessionRoot, "workflows", `${runId}.json`), "claude/workflow/completed.json");
+  await writeFixture(path.join(sessionRoot, "workflows", "scripts", "private.js"), "claude/workflow/script.js");
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  assert.deepEqual(evidence.workflows, [{
+    id: runId,
+    name: "fixture-workflow",
+    summary: "Implement and verify the fixture",
+    status: "completed",
+    startedAt: "2026-08-15T18:00:00.000Z",
+    updatedAt: "2026-08-15T18:05:00.000Z",
+    durationMs: 300_000,
+    agentIds: [`workflow-${runId}-agent-reviewer`, `workflow-${runId}-agent-shared`],
+    phases: [
+      { id: `${runId}-phase-1`, label: "Implement", agentIds: [`workflow-${runId}-agent-shared`] },
+      { id: `${runId}-phase-2`, label: "Review", agentIds: [`workflow-${runId}-agent-reviewer`] },
+    ],
+  }]);
+  const workflowAgents = evidence.agents.filter((agent) => agent.workflowId === runId);
+  assert.deepEqual(workflowAgents.map(({ label, workflowPhaseId }) => ({ label, workflowPhaseId })), [
+    { label: "review:backend", workflowPhaseId: `${runId}-phase-2` },
+    { label: "impl:backend", workflowPhaseId: `${runId}-phase-1` },
+  ]);
+  assertNoPrivateFixtureSentinels(evidence, "completed Claude workflow evidence");
+  assert.doesNotMatch(JSON.stringify(evidence), /totalTokens|totalToolCalls|taskId|scriptPath|promptPreview|resultPreview|journal|PRIVATE_WORKFLOW_TASK_ID/);
+});
+
+test("Claude adapter never marks incomplete historical or malformed workflows as running", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-unknown-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const registryRoot = path.join(root, "registry");
+  const localId = "workflow-unknown";
+  const runId = "wf_fixture-1";
+  const sessionRoot = path.join(projectsRoot, "fixture-project", localId);
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await mkdir(registryRoot, { recursive: true });
+  await writeRecords(mainFile, [
+    { type: "user", timestamp: "2026-08-10T18:00:00.000Z", cwd: root, message: { content: "PROMPT_MUST_NOT_LEAK" } },
+    workflowLaunchRecord(runId, "2026-08-10T18:00:01.000Z"),
+  ]);
+  const workerFile = path.join(sessionRoot, "subagents", "workflows", runId, "agent-shared.jsonl");
+  await writeRecords(workerFile, workflowWorkerRecords("worker-one", "2026-08-10T18:01:00.000Z"));
+  await mkdir(path.join(sessionRoot, "workflows"), { recursive: true });
+  await writeFile(path.join(sessionRoot, "workflows", `${runId}.json`), "{malformed WORKFLOW_SCRIPT_MUST_NOT_LEAK", "utf8");
+  await utimes(mainFile, new Date("2026-08-10T18:01:00.000Z"), new Date("2026-08-10T18:01:00.000Z"));
+  await utimes(workerFile, new Date("2026-08-10T18:01:00.000Z"), new Date("2026-08-10T18:01:00.000Z"));
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot,
+    tasksRoot: path.join(root, "tasks"),
+    now: () => Date.parse("2026-08-15T18:00:00.000Z"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId, { historical: true });
+  assert.equal(evidence.historical, true);
+  assert.equal(evidence.workflows[0].status, "unknown");
+  assert.deepEqual(evidence.workflows[0].phases, []);
+  assertNoPrivateFixtureSentinels(evidence, "unknown historical Claude workflow evidence");
+});
+
+test("Claude adapter ignores oversized completion manifests while retaining live worker evidence", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-oversized-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-oversized";
+  const runId = "wf_fixture-1";
+  const sessionRoot = path.join(projectsRoot, "fixture-project", localId);
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await writeRecords(mainFile, [workflowLaunchRecord(runId)]);
+  const workerFile = path.join(sessionRoot, "subagents", "workflows", runId, "agent-shared.jsonl");
+  await writeRecords(workerFile, workflowWorkerRecords("worker-one"));
+  await mkdir(path.join(sessionRoot, "workflows"), { recursive: true });
+  await writeFile(path.join(sessionRoot, "workflows", `${runId}.json`), JSON.stringify({
+    runId,
+    status: "completed",
+    workflowName: "OVERSIZED_NAME_MUST_NOT_APPEAR",
+    phases: [{ title: "OVERSIZED_PHASE_MUST_NOT_APPEAR" }],
+    script: `WORKFLOW_SCRIPT_MUST_NOT_LEAK${"x".repeat(600 * 1024)}`,
+  }), "utf8");
+  await utimes(workerFile, new Date("2026-08-15T18:01:30.000Z"), new Date("2026-08-15T18:01:30.000Z"));
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    now: () => Date.parse("2026-08-15T18:02:00.000Z"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  assert.equal(evidence.workflows[0].status, "running");
+  assert.equal(evidence.workflows[0].name, "fixture-workflow");
+  assert.deepEqual(evidence.workflows[0].phases, []);
+  assert.doesNotMatch(JSON.stringify(evidence), /OVERSIZED_|WORKFLOW_SCRIPT_MUST_NOT_LEAK/);
 });
 
 test("Claude adapter exposes a resource owner only for a verified live registry owner", async (context) => {

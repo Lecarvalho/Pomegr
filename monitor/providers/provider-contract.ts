@@ -11,6 +11,7 @@ import type {
   SessionApprovalMode,
   SessionReportedSignal,
   UsageLimits,
+  Workflow,
 } from "../../shared/monitor-contract";
 
 /** Provider-local catalog item. The monitor qualifies `localId` before exposing it. */
@@ -121,6 +122,7 @@ export type ProviderSessionEvidence = {
     signal: SessionReportedSignal | null;
   };
   agents: ProviderAgentEvidence[];
+  workflows: Workflow[];
   usageSnapshots: ProviderUsageSnapshot[];
   toolCalls: ProviderToolCallEvidence[];
   activity: Activity[];

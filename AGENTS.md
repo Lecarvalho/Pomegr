@@ -10,6 +10,10 @@
 
 Pomegr is a local-first, read-only observer for coding-agent sessions. It presents real execution metadata and deterministic efficiency signals. Never imply that a heuristic is an AI judgment or authoritative measurement.
 
+## Collaboration
+
+- The user grants standing permission to use subagents for repository work whenever parallel or independent assessment would improve the result. Do not ask for subagent permission again.
+
 ## Architecture
 
 - `monitor/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.

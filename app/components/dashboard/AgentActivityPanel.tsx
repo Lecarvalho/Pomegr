@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, type CSSProperties } from "react";
-import type { Agent, ExecutionTask, PlanTask } from "../../../shared/monitor-contract";
+import type { Agent, ExecutionTask, PlanTask, Workflow } from "../../../shared/monitor-contract";
 import { agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
@@ -13,10 +13,11 @@ import { PopoverFrame } from "../PopoverFrame";
 
 type OpenAgentPopover = { kind: "skills" | "execution" | "plan"; agentId: string } | null;
 
-export function AgentActivityPanel({ agents, executionTasks, planTasks, historical }: {
+export function AgentActivityPanel({ agents, executionTasks, planTasks, workflows = [], historical }: {
   agents: Agent[];
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
+  workflows?: Workflow[];
   historical: boolean;
 }) {
   const [openPopover, setOpenPopover] = useState<OpenAgentPopover>(null);
@@ -25,6 +26,8 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
   useDismissibleLayer(Boolean(openPopover), popoverAnchorRef, closePopover);
   const agentRows = agentTreeRows(agents);
   const executionTasksByAgent = new Map(agents.map((agent) => [agent.id, agent.executionTasks || (agent.id === "primary" ? executionTasks : [])]));
+  const workflowsById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
+  const phasesByWorkflowId = new Map(workflows.map((workflow) => [workflow.id, new Map(workflow.phases.map((phase) => [phase.id, phase]))]));
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
   const openPlanTasks = planTasks.length - completedPlanTasks - activePlanTasks;
@@ -48,6 +51,10 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, historic
               <div className="agentIdentity">
                 <div className="agentTitleLine">
                   <strong>{agent.label}</strong>
+                  {agent.workflowId && workflowsById.has(agent.workflowId) && <AgentChip className="workflowAgentChip" title={`Worker in ${workflowsById.get(agent.workflowId)!.name}`}>Workflow</AgentChip>}
+                  {agent.workflowId && agent.workflowPhaseId && phasesByWorkflowId.get(agent.workflowId)?.has(agent.workflowPhaseId) && (
+                    <AgentChip className="workflowPhaseChip" title="Verified workflow phase">{phasesByWorkflowId.get(agent.workflowId)!.get(agent.workflowPhaseId)!.label}</AgentChip>
+                  )}
                   {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Pomegr MCP tool"}>{agent.signal.label}</AgentChip>}
                   {agent.skills.length > 0 && (
                     <div className="agentPopoverAnchor skillPopoverAnchor" ref={isOpen("skills", agent.id) ? popoverAnchorRef : undefined}>

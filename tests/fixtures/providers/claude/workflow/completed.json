@@ -1,0 +1,25 @@
+{
+  "runId": "wf_fixture-1",
+  "timestamp": "2026-08-15T18:05:00.000Z",
+  "startTime": "2026-08-15T18:00:00.000Z",
+  "status": "completed",
+  "workflowName": "fixture-workflow",
+  "summary": "Implement and verify the fixture",
+  "durationMs": 300000,
+  "totalTokens": 999999,
+  "totalToolCalls": 999,
+  "script": "WORKFLOW_SCRIPT_MUST_NOT_LEAK",
+  "scriptPath": "WORKFLOW_PATH_MUST_NOT_LEAK",
+  "result": "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK",
+  "logs": ["WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK"],
+  "phases": [
+    { "title": "Implement", "detail": "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" },
+    { "title": "Review", "detail": "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" }
+  ],
+  "workflowProgress": [
+    { "type": "workflow_phase", "index": 1, "title": "Implement" },
+    { "type": "workflow_phase", "index": 2, "title": "Review" },
+    { "type": "workflow_agent", "index": 1, "label": "impl:backend", "phaseIndex": 1, "phaseTitle": "Implement", "agentId": "shared", "state": "done", "promptPreview": "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK", "resultPreview": "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK", "tokens": 888888, "toolCalls": 888 },
+    { "type": "workflow_agent", "index": 2, "label": "review:backend", "phaseIndex": 2, "phaseTitle": "Review", "agentId": "reviewer", "state": "error", "promptPreview": "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK", "resultPreview": "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK", "tokens": 777777, "toolCalls": 777 }
+  ]
+}

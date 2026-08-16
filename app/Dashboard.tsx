@@ -12,6 +12,7 @@ import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel"
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
+import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
 import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
@@ -240,8 +241,11 @@ export function Dashboard() {
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
+          {capabilities.workflows && (data.workflows || []).length > 0 && (
+            <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} workflows={data.workflows || []} />
+          )}
           <section className="contentGrid">
-            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} historical={viewingHistory} />
+            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} workflows={data.workflows || []} historical={viewingHistory} />
             <InsightsPanel insights={data.insights} />
           </section>
 

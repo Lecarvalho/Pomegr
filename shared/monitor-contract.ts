@@ -35,6 +35,10 @@ export type ExecutionTask = {
 export type Agent = {
   id: string;
   parentId: string | null;
+  /** Normalized workflow association. Provider task IDs never cross this boundary. */
+  workflowId: string | null;
+  /** Present only when a structured provider artifact verifies the phase association. */
+  workflowPhaseId: string | null;
   label: string;
   kind: string;
   model: string;
@@ -102,6 +106,25 @@ export type ContextMachinery = {
     label: string;
     items: Array<{ name: string; detail: string; tokens: string }>;
   }>;
+};
+
+export type WorkflowPhase = {
+  id: string;
+  label: string;
+  agentIds: string[];
+};
+
+/** Sanitized provider-authored workflow metadata; no executable or transcript content. */
+export type Workflow = {
+  id: string;
+  name: string;
+  summary: string | null;
+  status: "running" | "completed" | "unknown";
+  startedAt: string | null;
+  updatedAt: string | null;
+  durationMs: number;
+  agentIds: string[];
+  phases: WorkflowPhase[];
 };
 
 export type ResourceUsageUnavailableReason =
@@ -182,6 +205,7 @@ export type ProviderCapabilities = {
   sessionSummary: boolean;
   signals: boolean;
   usageLimits: boolean;
+  workflows: boolean;
 };
 
 export type SessionApprovalMode = {
@@ -287,6 +311,7 @@ export type MonitorState = {
     };
   };
   agents: Agent[];
+  workflows: Workflow[];
   toolPatterns: ToolPattern[];
   loops: LoopPattern[];
   activity: Activity[];

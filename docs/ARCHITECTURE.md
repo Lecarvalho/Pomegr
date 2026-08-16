@@ -53,6 +53,14 @@ Resource collection is driven by live catalog requests and limited by a fixed mo
 
 It listens only on `127.0.0.1`.
 
+### Workflow evidence boundary
+
+Workflow visibility is provider-neutral in normalized state and provider-specific only inside adapters. A provider advertises the optional `workflows` capability and returns a bounded workflow ID, provider-authored name and one-line summary, `running`/`completed`/`unknown` lifecycle, timestamps, linked normalized agent IDs, and optional ordered phase labels with verified agent associations.
+
+The Claude adapter discovers workflow workers only at `subagents/workflows/<safe-run-id>/agent-*.jsonl`; it never treats the neighboring workflow journal as an agent transcript. Worker IDs are namespaced by workflow run so repeated provider-local agent IDs cannot collide. A structured `local_workflow` launch result establishes identity. A size-bounded completed manifest may establish completion and phase associations, but is parsed through an allowlist and cached only after sanitization. Executable scripts are never evaluated or interpreted.
+
+Workflow scripts, filesystem paths, task IDs, arguments, prompts, phase details, previews, results, logs, journals, provider cumulative token totals, and provider cumulative tool totals remain monitor-private. A live workflow is marked `running` only while a linked worker supplies strong non-terminal evidence. Missing, malformed, oversized, or incomplete evidence degrades to `unknown`; a historical workflow without a recognized completion manifest is never presented as running. Unsupported providers return an empty workflow collection and deny the capability by default.
+
 ### Web application
 
 The React dashboard polls `/api/state` approximately every 1.8 seconds for live session data and loads `/api/sessions` for the history sidebar. A selected historical session is read once because its transcript is immutable for dashboard purposes. Every live-state read asks the monitor for plan usage, but only the monitor decides whether a provider request is due. It shares one in-flight request and one cache across every browser connected to that service process, refreshes at most once every five minutes, and extends the cooldown when the provider returns `Retry-After`. Cached values are returned immediately while a refresh is already running. The server routes proxy to the private monitor so remote browsers never receive credentials or raw transcripts.
