@@ -40,6 +40,8 @@ Context history derives each interval from the same snapshots used by All-agent 
 
 Bucket sizes are selected from fixed, human-readable intervals to target roughly 28 points across the recorded session wall time. Cache reads and writes are not plotted as historical context categories; significant request-local cache behavior is exposed separately as bounded cache events.
 
+`contextHistory.boundaries` labels at most the newest 100 normalized context boundaries, returned in chronological order. A recognized provider compaction becomes `automatic_compaction` or `manual_compaction` with its normalized agent ID, transcript timestamp, and non-negative pre-compaction token count when supplied. When adjacent snapshots for one agent decrease without a recognized compaction between them, Pomegr emits `snapshot_drop` at the newer snapshot with the preceding context total. A recognized boundary suppresses the duplicate inferred drop. Boundary IDs are monitor-generated opaque hashes; provider event IDs, summaries, compacted content, and all other compaction metadata remain private.
+
 This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`; generated reports intentionally omit it.
 
 ## Cache events

@@ -55,5 +55,5 @@ test("ignores invalid observations", () => {
     { actorId: "primary", timestamp: "not-a-date", input: 500 },
     { actorId: "primary", timestamp: "2026-08-05T12:00:00.000Z", input: 0 },
     { timestamp: "2026-08-05T12:01:00.000Z", input: 500 },
-  ]), { bucketMs: 0, buckets: [] });
+  ]), { bucketMs: 0, buckets: [], boundaries: [] });
 });

@@ -109,7 +109,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 
 - `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
-- `metrics` — agents, tools, repetition, latest/final context usage, per-agent/all-agent actual-level `contextHistory`, and bounded `cacheEvents`
+- `metrics` — agents, tools, repetition, latest/final context usage, per-agent/all-agent actual-level `contextHistory` with bounded normalized compaction/drop boundaries, and bounded `cacheEvents`
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
 - `activity` — sanitized tool, failed shell-completion, and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata and optional enum-based failure category, retained for API compatibility
@@ -141,6 +141,8 @@ monitor/providers/
 Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. For live resource attribution, an adapter may additionally return a current owner PID and process-start identity through the private provider contract; the provider registry removes both before catalog serialization and marks duplicate owners unavailable. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
 
 Usage observations remain provider-private evidence until the monitor derives normalized state. Claude uses a strict dedicated parser for per-assistant-message usage; Codex accepts only `last_token_usage` and categorically excludes cumulative `total_token_usage`. Each provider retains at most 100 observations per agent. The monitor carries the latest observation per agent into actual context levels and separately derives no more than 20 cache events. Provider message/event IDs, models used for comparison, raw usage objects, cache prefixes/keys/configuration, TTL, routing, service tier, cumulative totals, and billing assumptions never enter cache-event state.
+
+Recognized provider compaction evidence crosses the provider boundary only as normalized agent ID, timestamp, fixed automatic/manual trigger, and optional non-negative pre-compaction count. The monitor turns that evidence into opaque context-history boundaries and deterministically labels otherwise-unexplained per-agent snapshot decreases as `snapshot_drop`. At most 100 newest boundaries enter normalized state in chronological order. Compacted summaries, provider event IDs, raw content, and unrecognized metadata remain private.
 
 ### Provider flow and serialization boundary
 

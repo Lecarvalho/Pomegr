@@ -60,7 +60,7 @@ export function createEmptyMonitorState(options = {}) {
         output: 0,
         cacheWrite: 0,
         cacheRead: 0,
-        contextHistory: { bucketMs: 0, buckets: [] },
+        contextHistory: { bucketMs: 0, buckets: [], boundaries: [] },
         cacheEvents: { status: "unavailable", items: [] },
       },
     },

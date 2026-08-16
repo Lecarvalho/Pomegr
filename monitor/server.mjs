@@ -156,7 +156,7 @@ function groupToolEvidence(toolCalls) {
   };
 }
 
-function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
+function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionId, compactions) {
   const snapshotsById = new Map(usageSnapshots.map((snapshot) => [snapshot.dedupeId, snapshot]));
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const boundedByAgent = new Map();
@@ -195,7 +195,13 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
     output: agents.reduce((total, agent) => total + agent.tokens.output, 0),
     cacheWrite: agents.reduce((total, agent) => total + agent.tokens.cacheWrite, 0),
     cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
-    contextHistory: buildContextHistory(snapshots, { startedAt, updatedAt }),
+    contextHistory: buildContextHistory(snapshots, {
+      startedAt,
+      updatedAt,
+      sessionId,
+      agentIds: agents.map((agent) => agent.id),
+      compactions,
+    }),
     cacheEvents: { status: "unavailable", items: [] },
   };
 }
@@ -335,9 +341,6 @@ export function createMonitorRuntime(options = {}) {
   const { evidence, provider, sessionId } = selection;
   const historical = evidence.historical;
   const agents = evidence.agents.map((agent) => ({ workflowId: null, workflowPhaseId: null, ...agent }));
-  const tokenUsage = applyLatestUsage(agents, evidence.usageSnapshots, evidence.session.startedAt, evidence.session.updatedAt);
-  const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
-  const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
   const compactions = evidence.compactions.map((compaction) => ({
     ...compaction,
     actor: {
@@ -345,6 +348,16 @@ export function createMonitorRuntime(options = {}) {
       label: agents.find((agent) => agent.id === compaction.actorId)?.label || "Agent",
     },
   }));
+  const tokenUsage = applyLatestUsage(
+    agents,
+    evidence.usageSnapshots,
+    evidence.session.startedAt,
+    evidence.session.updatedAt,
+    sessionId,
+    compactions,
+  );
+  const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
+  const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
   tokenUsage.cacheEvents = buildCacheEvents({
     sessionId,
     agents,

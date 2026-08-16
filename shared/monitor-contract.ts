@@ -92,6 +92,14 @@ export type ContextHistoryBucket = {
   agents: Array<{ agentId: string; total: number }>;
 };
 
+export type ContextHistoryBoundary = {
+  id: string;
+  agentId: string;
+  timestamp: string;
+  kind: "automatic_compaction" | "manual_compaction" | "snapshot_drop";
+  preTokens: number | null;
+};
+
 export type CacheEvent = {
   id: string;
   agentId: string;
@@ -323,7 +331,11 @@ export type MonitorState = {
       output: number;
       cacheWrite: number;
       cacheRead: number;
-      contextHistory: { bucketMs: number; buckets: ContextHistoryBucket[] };
+      contextHistory: {
+        bucketMs: number;
+        buckets: ContextHistoryBucket[];
+        boundaries: ContextHistoryBoundary[];
+      };
       cacheEvents: CacheEventFeed;
     };
   };

@@ -58,5 +58,79 @@ test("ignores invalid timestamps, unknown actors, and zero-valued snapshots", ()
     { actorId: "primary", timestamp: "2026-08-05T12:02:00.000Z", input: Number.POSITIVE_INFINITY },
   ]);
 
-  assert.deepEqual(timeline, { bucketMs: 0, buckets: [] });
+  assert.deepEqual(timeline, { bucketMs: 0, buckets: [], boundaries: [] });
+});
+
+test("emits recognized compaction boundaries and suppresses duplicate inferred drops", () => {
+  const history = buildContextHistory([
+    { actorId: "primary", timestamp: "2026-08-05T12:00:05.000Z", input: 100 },
+    { actorId: "primary", timestamp: "2026-08-05T12:00:15.000Z", input: 80 },
+  ], {
+    sessionId: "claude:private-provider-id",
+    agentIds: ["primary"],
+    compactions: [
+      {
+        actorId: "primary",
+        timestamp: "2026-08-05T12:00:10.000Z",
+        trigger: "auto",
+        preTokens: 100,
+        summary: "PRIVATE_MUST_NOT_LEAK",
+      },
+      {
+        actorId: "primary",
+        timestamp: "2026-08-05T12:00:20.000Z",
+        trigger: "manual",
+        preTokens: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(history.boundaries.map(({ agentId, timestamp, kind, preTokens }) => ({ agentId, timestamp, kind, preTokens })), [
+    {
+      agentId: "primary",
+      timestamp: "2026-08-05T12:00:10.000Z",
+      kind: "automatic_compaction",
+      preTokens: 100,
+    },
+    {
+      agentId: "primary",
+      timestamp: "2026-08-05T12:00:20.000Z",
+      kind: "manual_compaction",
+      preTokens: null,
+    },
+  ]);
+  assert.match(history.boundaries[0].id, /^boundary-[a-f0-9]{16}$/);
+  assert.doesNotMatch(JSON.stringify(history.boundaries), /private-provider-id|PRIVATE/);
+});
+
+test("bounds context boundaries to the newest 100 while returning chronological items", () => {
+  const start = Date.parse("2026-08-05T12:00:00.000Z");
+  const history = buildContextHistory([], {
+    sessionId: "session",
+    agentIds: ["primary"],
+    compactions: Array.from({ length: 105 }, (_, index) => ({
+      actorId: "primary",
+      timestamp: new Date(start + index * 1_000).toISOString(),
+      trigger: "manual",
+      preTokens: null,
+    })),
+  });
+
+  assert.equal(history.boundaries.length, 100);
+  assert.equal(history.boundaries[0].timestamp, new Date(start + 5_000).toISOString());
+  assert.equal(history.boundaries.at(-1).timestamp, new Date(start + 104_000).toISOString());
+});
+
+test("emits a deterministic snapshot-drop boundary when no compaction explains a decrease", () => {
+  const history = buildContextHistory([
+    { actorId: "primary", timestamp: "2026-08-05T12:00:05.000Z", input: 100 },
+    { actorId: "primary", timestamp: "2026-08-05T12:00:15.000Z", input: 70 },
+  ], { sessionId: "session", agentIds: ["primary"] });
+
+  assert.deepEqual(history.boundaries.map(({ agentId, timestamp, kind, preTokens }) => ({ agentId, timestamp, kind, preTokens })), [{
+    agentId: "primary",
+    timestamp: "2026-08-05T12:00:15.000Z",
+    kind: "snapshot_drop",
+    preTokens: 100,
+  }]);
 });
