@@ -35,6 +35,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
 - Context means the latest non-zero provider usage snapshot. Context history carries those snapshots forward at bounded bucket boundaries to show actual per-agent levels or an explicitly labeled sum of agent snapshots; it is not throughput, unique shared memory, or spend.
+- Request snapshots are a separate bounded chronological view of independent provider usage observations. Each row is one request and is never carried forward, differenced, bucketed, or summed into session throughput.
 - Cache events are bounded, monitor-derived, agent-attributed observations from provider-comparable usage evidence. They expose only normalized refill, reuse, and cautious miss-refill metadata; they never expose raw usage records or claim a cause, bill, charge, or savings amount.
 - Pomegr does not present cumulative transcript throughput, token-spend totals, or recent token rates.
 - Historical views must not expose current plan limits or substitute the current Git working tree for recorded state.

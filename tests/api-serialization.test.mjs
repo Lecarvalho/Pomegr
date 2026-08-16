@@ -207,6 +207,15 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(Array.isArray(state.metrics.tokens.contextHistory.boundaries), true);
     assert.equal(state.metrics.tokens.cacheEvents.status, "ready");
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
+    assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
+    assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
+    for (const item of state.metrics.tokens.requestSnapshots.items) {
+      assert.deepEqual(Object.keys(item).sort(), [
+        "agentId", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
+      ]);
+      assert.equal(item.totalTokens, item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens);
+      assert.match(item.id, /^request-[a-f0-9]{16}$/);
+    }
     assert.equal(Object.hasOwn(state.metrics.tokens, "contextGrowthTimeline"), false);
     assert.deepEqual(state.metrics.resources, {
       status: "ready",

@@ -106,5 +106,6 @@ test("creates provider-aware empty state while preserving the Claude default", (
   assert.equal(createEmptyMonitorState().capabilities.estimatedCost, false);
   assert.equal(createEmptyMonitorState().capabilities.contextMachinery, false);
   assert.equal(createEmptyMonitorState().capabilities.workflows, false);
+  assert.deepEqual(createEmptyMonitorState().metrics.tokens.requestSnapshots, { status: "unavailable", items: [] });
   assert.deepEqual(createEmptyMonitorState().workflows, []);
 });

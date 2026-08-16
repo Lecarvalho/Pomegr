@@ -119,6 +119,22 @@ export type CacheEventFeed = {
   items: CacheEvent[];
 };
 
+export type RequestSnapshot = {
+  id: string;
+  agentId: string;
+  observedAt: string;
+  uncachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+export type RequestSnapshotFeed = {
+  status: "ready" | "unavailable";
+  items: RequestSnapshot[];
+};
+
 export type ContextMachinery = {
   observedAt: string | null;
   model: string;
@@ -337,6 +353,7 @@ export type MonitorState = {
         boundaries: ContextHistoryBoundary[];
       };
       cacheEvents: CacheEventFeed;
+      requestSnapshots: RequestSnapshotFeed;
     };
   };
   agents: Agent[];

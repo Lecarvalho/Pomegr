@@ -7,6 +7,7 @@ import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { readGitStateAsync } from "./git-state.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
+import { buildRequestSnapshots } from "./request-snapshots.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -203,6 +204,7 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionI
       compactions,
     }),
     cacheEvents: { status: "unavailable", items: [] },
+    requestSnapshots: buildRequestSnapshots({ sessionId, agents, usageSnapshots }),
   };
 }
 

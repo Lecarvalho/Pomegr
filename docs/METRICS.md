@@ -32,7 +32,15 @@ The value is cumulative for the Claude Code session and is the only cumulative s
 
 The initial Codex adapter has no cost source. Cost is capability-gated and omitted rather than inferred from token snapshots or displayed as zero.
 
-All-agent context is the only context total Pomegr presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
+All-agent context is the only aggregated context total Pomegr presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
+
+## Request snapshots
+
+`metrics.tokens.requestSnapshots` is a separate bounded feed of valid provider usage observations. Every item represents exactly one request and exposes only an opaque monitor-generated ID, normalized agent ID, normalized observation timestamp, request-local uncached input, cache write, cache read, output, and `totalTokens` recomputed from those four parts. It does not use a provider-reported total.
+
+The monitor deduplicates observations privately, keeps at most the latest 100 valid requests per visible agent, and returns the merged items chronologically. Invalid timestamps or counts, all-zero observations, unknown agents, missing internal dedupe evidence, and cumulative-only provider records are rejected. Status is `ready` when at least one valid item remains and `unavailable` otherwise.
+
+Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Generated reports intentionally omit this feed.
 
 ## Context history
 
