@@ -594,6 +594,7 @@ describe("context history and cache evidence", () => {
     render(<ContextHistoryPanel agents={[agent, childAgent]} tokens={tokens} historical={false} />);
 
     const list = screen.getByRole("list");
+    expect(screen.getByText("Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.")).toBeInTheDocument();
     expect(within(list).getAllByRole("listitem")).toHaveLength(5);
     expect(screen.getAllByText("Cache read").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Prompt input").length).toBeGreaterThan(0);

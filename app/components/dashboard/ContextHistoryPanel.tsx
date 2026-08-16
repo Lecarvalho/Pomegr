@@ -81,9 +81,9 @@ function eventDetail(event: CacheEvent) {
   if (event.kind === "reuse") {
     return event.relatedEventId && event.gapMs !== null
       ? `Cache reuse was recorded ${formatDuration(event.gapMs)} after its linked refill.`
-      : "A provider-reported cache reuse was recorded for this request.";
+      : "Pomegr derived cache reuse from the reported token counts for this request.";
   }
-  return "A large provider-reported cache write was recorded for this request.";
+  return "Pomegr derived a large cache refill from the reported token counts for this request.";
 }
 
 function CacheEventRow({ event, agentLabel }: { event: CacheEvent; agentLabel: string }) {
@@ -284,7 +284,7 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
 
       <div className="cacheEvidenceSection">
         <div className="cacheEvidenceHeader">
-          <div><h3>Cache evidence</h3><p>Meaningful provider-reported request transitions. Cache reads and writes are evidence, not cost.</p></div>
+          <div><h3>Cache evidence</h3><p>Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.</p></div>
           {tokens.cacheEvents?.status === "ready" && <span>{allEvents.length} {allEvents.length === 1 ? "event" : "events"}</span>}
         </div>
         {tokens.cacheEvents?.status !== "ready" ? (
