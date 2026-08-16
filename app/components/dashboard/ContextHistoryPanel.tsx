@@ -1,8 +1,8 @@
 "use client";
 
 import { useId, useState, type KeyboardEvent, type PointerEvent } from "react";
-import type { Agent, CacheEvent, ContextHistoryBoundary, MonitorState } from "../../../shared/monitor-contract";
-import { compactNumber, formatBucketDuration, formatDuration, timelineTime } from "../../dashboard-utils";
+import type { Agent, ContextHistoryBoundary, MonitorState } from "../../../shared/monitor-contract";
+import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
@@ -13,7 +13,6 @@ const ALL_AGENTS_SCOPE = "all-agents";
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 154;
 const CHART_INSET = 5;
-const RECENT_EVENT_COUNT = 5;
 
 function initialScope(agents: Agent[], buckets: HistoryBucket[]) {
   const observed = new Set(buckets.flatMap((bucket) => bucket.agents.map((agent) => agent.agentId)));
@@ -68,50 +67,6 @@ function scopedPoints(buckets: HistoryBucket[], scope: string): HistoryPoint[] {
   });
 }
 
-function eventTitle(kind: CacheEvent["kind"]) {
-  if (kind === "miss_refill") return "Possible cache miss · refill recorded";
-  if (kind === "reuse") return "Cache reuse recorded";
-  return "Cache refill recorded";
-}
-
-function eventDetail(event: CacheEvent) {
-  if (event.kind === "miss_refill" && event.previousCacheReadPercent !== null && event.gapMs !== null) {
-    return `Cached input fell from ${event.previousCacheReadPercent}% to ${event.cacheReadPercent}% after ${formatDuration(event.gapMs)}; a large refill was recorded.`;
-  }
-  if (event.kind === "reuse") {
-    return event.relatedEventId && event.gapMs !== null
-      ? `Cache reuse was recorded ${formatDuration(event.gapMs)} after its linked refill.`
-      : "Pomegr derived cache reuse from the reported token counts for this request.";
-  }
-  return "Pomegr derived a large cache refill from the reported token counts for this request.";
-}
-
-function CacheEventRow({ event, agentLabel }: { event: CacheEvent; agentLabel: string }) {
-  return (
-    <li className={`cacheEvidenceRow ${event.kind}`}>
-      <span className="cacheEvidenceMark" aria-hidden="true">
-        <svg viewBox="0 0 16 16">
-          {event.kind === "reuse"
-            ? <path d="M3 9.5a5 5 0 0 0 8.7 1.5M13 6.5A5 5 0 0 0 4.3 5M3 3v3h3M13 13v-3h-3" />
-            : <><path d="M8 2v8" /><path d="m4.5 7 3.5 3.5L11.5 7" /><path d="M3 13h10" /></>}
-        </svg>
-      </span>
-      <div className="cacheEvidenceBody">
-        <div className="cacheEvidenceTitle">
-          <strong>{eventTitle(event.kind)}</strong>
-          <span>{agentLabel} · <time dateTime={event.observedAt}>{timelineTime(event.observedAt)}</time></span>
-        </div>
-        <p>{eventDetail(event)}</p>
-      </div>
-      <dl className="cacheEvidenceMetrics">
-        <div><dt>Cache read</dt><dd>{event.cacheReadPercent}%</dd></div>
-        <div><dt>Cache write</dt><dd>{compactNumber(event.cacheWriteTokens)}</dd></div>
-        <div><dt>Prompt input</dt><dd>{compactNumber(event.promptInputTokens)}</dd></div>
-      </dl>
-    </li>
-  );
-}
-
 export function ContextHistoryPanel({ agents, tokens, historical }: {
   agents: Agent[];
   tokens: TokenMetrics;
@@ -120,7 +75,6 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
   const buckets = tokens.contextHistory?.buckets || [];
   const [scope, setScope] = useState(() => initialScope(agents, buckets));
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
-  const [showAllEvents, setShowAllEvents] = useState(false);
   const announcementId = useId();
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const scopeAvailable = scope === ALL_AGENTS_SCOPE || agentById.has(scope);
@@ -162,12 +116,6 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
     return `${agentPrefix}${boundaryLabel(boundary.kind)}${previousLevel}`;
   };
 
-  const allEvents = [...(tokens.cacheEvents?.items || [])]
-    .filter((event) => resolvedScope === ALL_AGENTS_SCOPE || event.agentId === resolvedScope)
-    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
-  const visibleEvents = showAllEvents ? allEvents : allEvents.slice(-RECENT_EVENT_COUNT);
-  const hiddenEventCount = Math.max(0, allEvents.length - RECENT_EVENT_COUNT);
-
   const handleChartKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (points.length === 0) return;
     let next = resolvedActiveIndex;
@@ -194,7 +142,7 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
   };
 
   return (
-    <section className={`panel contextHistoryPanel ${historical ? "historical" : ""}`} aria-label="Context history and cache evidence">
+    <section className={`panel contextHistoryPanel ${historical ? "historical" : ""}`} aria-label="Context history">
       <div className="contextHistoryHeader">
         <div>
           <h2>Context history</h2>
@@ -202,10 +150,9 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
         </div>
         <label className="contextScopeControl">
           <span>Scope</span>
-          <select value={resolvedScope} onChange={(event) => {
+          <select aria-label="Context scope" value={resolvedScope} onChange={(event) => {
             setScope(event.target.value);
             setActivePointIndex(null);
-            setShowAllEvents(false);
           }}>
             {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.label}</option>)}
             <option value={ALL_AGENTS_SCOPE}>All agents (snapshot sum)</option>
@@ -282,26 +229,6 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
         </div>
       )}
 
-      <div className="cacheEvidenceSection">
-        <div className="cacheEvidenceHeader">
-          <div><h3>Cache evidence</h3><p>Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.</p></div>
-          {tokens.cacheEvents?.status === "ready" && <span>{allEvents.length} {allEvents.length === 1 ? "event" : "events"}</span>}
-        </div>
-        {tokens.cacheEvents?.status !== "ready" ? (
-          <p className="cacheEvidenceState">{historical ? "No comparable cache snapshots were recorded for this session." : "Comparable cache snapshots are not available yet for this session."}</p>
-        ) : allEvents.length === 0 ? (
-          <p className="cacheEvidenceState">{historical ? `No cache transitions were recorded for ${scopeLabel}.` : `Watching for meaningful cache transitions for ${scopeLabel}…`}</p>
-        ) : <>
-          {hiddenEventCount > 0 && (
-            <button className="cacheEvidenceExpand" type="button" onClick={() => setShowAllEvents((current) => !current)} aria-expanded={showAllEvents}>
-              {showAllEvents ? `Show recent ${RECENT_EVENT_COUNT}` : `Show ${hiddenEventCount} earlier ${hiddenEventCount === 1 ? "event" : "events"}`}
-            </button>
-          )}
-          <ol className="cacheEvidenceList">
-            {visibleEvents.map((event) => <CacheEventRow event={event} agentLabel={agentById.get(event.agentId)?.label || "Agent"} key={event.id} />)}
-          </ol>
-        </>}
-      </div>
     </section>
   );
 }

@@ -8,6 +8,7 @@ import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel"
 import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
+import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionSidebar } from "./components/dashboard/SessionSidebar";
@@ -250,6 +251,7 @@ export function Dashboard() {
           </section>
 
           <SummaryMetrics state={data} historical={viewingHistory} />
+          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} historical={viewingHistory} />
           <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />
           {!viewingHistory && <ResourceUsagePanel resources={data.metrics.resources} />}
 

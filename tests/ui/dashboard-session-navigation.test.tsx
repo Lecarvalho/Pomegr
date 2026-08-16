@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe("dashboard session navigation", () => {
-  it("places live resource use after context history and before session details", async () => {
+  it("places request snapshots immediately before context history and live resources", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -126,9 +126,11 @@ describe("dashboard session navigation", () => {
     render(<Dashboard />);
 
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
+    const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
     const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
+    expect(requestPanel?.nextElementSibling).toBe(contextPanel);
     expect(contextPanel?.nextElementSibling).toBe(resourcePanel);
     expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
     expect(resourcePanel).toHaveClass("dashboardDisclosurePanel", "panel");
@@ -151,10 +153,12 @@ describe("dashboard session navigation", () => {
     render(<Dashboard />);
 
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
+    const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
     const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
+    expect(requestPanel?.nextElementSibling).toBe(contextPanel);
     expect(contextPanel?.nextElementSibling).toBe(sessionDetails);
   });
 

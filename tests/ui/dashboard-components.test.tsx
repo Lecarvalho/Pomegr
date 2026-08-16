@@ -6,6 +6,7 @@ import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivity
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { ContextHistoryPanel } from "../../app/components/dashboard/ContextHistoryPanel";
+import { RequestSnapshotsPanel } from "../../app/components/dashboard/RequestSnapshotsPanel";
 import { ResourceUsagePanel } from "../../app/components/dashboard/ResourceUsagePanel";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
@@ -529,24 +530,12 @@ describe("usage-limit clock", () => {
   });
 });
 
-describe("context history and cache evidence", () => {
+describe("context history", () => {
   const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", tokens: { ...agent.tokens, total: 220_000 } };
   const buckets = [
     { start: "2026-08-09T12:00:00.000Z", end: "2026-08-09T12:01:00.000Z", total: 100_000, agents: [{ agentId: "primary", total: 100_000 }] },
     { start: "2026-08-09T12:01:00.000Z", end: "2026-08-09T12:02:00.000Z", total: 300_000, agents: [{ agentId: "child", total: 220_000 }, { agentId: "primary", total: 80_000 }] },
   ];
-  const cacheEvent = (index: number) => ({
-    id: `cache-${index}`,
-    agentId: "primary",
-    kind: index === 0 ? "miss_refill" as const : index === 1 ? "reuse" as const : "refill" as const,
-    observedAt: new Date(Date.parse("2026-08-09T12:03:00.000Z") + index * 60_000).toISOString(),
-    promptInputTokens: 10_000 + index,
-    cacheReadPercent: index === 0 ? 5 : 90,
-    cacheWriteTokens: index === 1 ? 0 : 8_500,
-    previousCacheReadPercent: index === 0 ? 90 : null,
-    gapMs: index <= 1 ? 30 * 60_000 : null,
-    relatedEventId: index === 1 ? "cache-0" : null,
-  });
   const tokens = {
     allAgents: 300_000,
     input: 0,
@@ -554,7 +543,8 @@ describe("context history and cache evidence", () => {
     cacheWrite: 0,
     cacheRead: 0,
     contextHistory: { bucketMs: 60_000, buckets, boundaries: [{ id: "boundary-1", agentId: "primary", timestamp: "2026-08-09T12:01:30.000Z", kind: "snapshot_drop" as const, preTokens: 100_000 }] },
-    cacheEvents: { status: "ready" as const, items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)) },
+    cacheEvents: { status: "ready" as const, items: [] },
+    requestSnapshots: { status: "ready" as const, items: [] },
   };
 
   it("defaults to primary context levels and keeps one fixed scale across scopes", async () => {
@@ -569,7 +559,7 @@ describe("context history and cache evidence", () => {
     expect(screen.getAllByText("Snapshot decrease").length).toBeGreaterThan(0);
     expect(screen.getByText("Snapshot decrease · 100K before")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Scope"), "all-agents");
+    await user.selectOptions(screen.getByLabelText("Context scope"), "all-agents");
     expect(screen.getByText(/Sum of each agent’s latest carried-forward snapshot/)).toBeInTheDocument();
     expect(screen.getByText("300K context")).toBeInTheDocument();
     expect(container.querySelector(".contextHistoryScale span")).toHaveTextContent("500K");
@@ -589,34 +579,120 @@ describe("context history and cache evidence", () => {
     expect(screen.queryByRole("button", { name: "Latest" })).not.toBeInTheDocument();
   });
 
-  it("shows bounded chronological cache evidence without duplicating current context", async () => {
-    const user = userEvent.setup();
-    render(<ContextHistoryPanel agents={[agent, childAgent]} tokens={tokens} historical={false} />);
-
-    const list = screen.getByRole("list");
-    expect(screen.getByText("Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.")).toBeInTheDocument();
-    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
-    expect(screen.getAllByText("Cache read").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Prompt input").length).toBeGreaterThan(0);
-    expect(list).not.toHaveTextContent("latest context");
-
-    await user.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
-    expect(within(list).getAllByRole("listitem")).toHaveLength(7);
-    expect(screen.getByText("Possible cache miss · refill recorded")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show recent 5" })).toHaveAttribute("aria-expanded", "true");
-
-    await user.selectOptions(screen.getByLabelText("Scope"), "child");
-    expect(screen.getByText("Watching for meaningful cache transitions for Builder…")).toBeInTheDocument();
-  });
-
-  it("uses factual empty and unavailable states for live and recorded views", () => {
-    const emptyTokens = { ...tokens, contextHistory: { bucketMs: 0, buckets: [], boundaries: [] }, cacheEvents: { status: "unavailable" as const, items: [] } };
+  it("has no cache evidence content and uses factual history empty states", () => {
+    const emptyTokens = { ...tokens, contextHistory: { bucketMs: 0, buckets: [], boundaries: [] } };
     const { rerender } = render(<ContextHistoryPanel agents={[agent]} tokens={emptyTokens} historical={false} />);
     expect(screen.getByText("Context history will appear after the first model response.")).toBeInTheDocument();
-    expect(screen.getByText("Comparable cache snapshots are not available yet for this session.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cache evidence" })).not.toBeInTheDocument();
 
     rerender(<ContextHistoryPanel agents={[agent]} tokens={emptyTokens} historical />);
     expect(screen.getByText("No context snapshots were recorded for Primary agent.")).toBeInTheDocument();
+  });
+});
+
+describe("request snapshots and cache evidence", () => {
+  const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", tokens: { ...agent.tokens, total: 5_000 } };
+  const snapshots = [
+    { id: "snapshot-write", agentId: "primary", observedAt: "2026-08-09T12:03:00.000Z", uncachedInputTokens: 1_000, cacheWriteTokens: 146_282, cacheReadTokens: 0, outputTokens: 2_000, totalTokens: 149_282 },
+    { id: "snapshot-read", agentId: "primary", observedAt: "2026-08-09T12:04:00.000Z", uncachedInputTokens: 1_000, cacheWriteTokens: 759, cacheReadTokens: 146_282, outputTokens: 2_000, totalTokens: 150_041 },
+    { id: "snapshot-child", agentId: "child", observedAt: "2026-08-09T12:05:00.000Z", uncachedInputTokens: 4_000, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 1_000, totalTokens: 5_000 },
+  ];
+  const cacheEvent = (index: number) => ({
+    id: `cache-${index}`,
+    agentId: "primary",
+    kind: index === 0 ? "miss_refill" as const : index === 1 ? "reuse" as const : "refill" as const,
+    observedAt: new Date(Date.parse("2026-08-09T12:03:00.000Z") + index * 60_000).toISOString(),
+    promptInputTokens: 147_282 + index,
+    cacheReadPercent: index === 0 ? 5 : 90,
+    cacheWriteTokens: index === 0 ? 146_282 : index === 1 ? 759 : 8_500,
+    previousCacheReadPercent: index === 0 ? 90 : null,
+    gapMs: index <= 1 ? 30 * 60_000 : null,
+    relatedEventId: index === 1 ? "cache-0" : null,
+  });
+  const requestSnapshots = { status: "ready" as const, items: snapshots };
+  const cacheEvents = { status: "ready" as const, items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)) };
+
+  it("renders independent equal-spaced request bars with exact non-cumulative values and a fixed scale", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+
+    expect(screen.getByText("Each bar is one provider usage snapshot. Equal spacing; timestamps appear in the readout. Not cumulative.")).toBeInTheDocument();
+    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(2);
+    expect(container.querySelector(".requestSnapshotScale span")).toHaveTextContent("200K");
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("150,041 total");
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("146,282");
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("759");
+    expect(container.querySelector(".requestSnapshotLegend")).toHaveTextContent("Uncached inputCache writeCache readOutput");
+
+    await user.selectOptions(screen.getByLabelText("Request scope"), "child");
+    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(1);
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("Builder");
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("5,000 total");
+    expect(container.querySelector(".requestSnapshotScale span")).toHaveTextContent("200K");
+
+    await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
+    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(3);
+  });
+
+  it("uses one keyboard chart stop, pointer inspection, and exact agent-timestamp cache markers", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+    const chart = screen.getByRole("group", { name: /Primary agent request snapshots/ });
+
+    expect(chart).toHaveAttribute("tabindex", "0");
+    expect(container.querySelectorAll('.requestSnapshotChart [tabindex="0"]')).toHaveLength(0);
+    expect(container.querySelectorAll(".requestSnapshotBar.hasCacheEvent")).toHaveLength(2);
+    expect(container.querySelector('[data-snapshot-id="snapshot-write"]')).toHaveClass("hasCacheEvent");
+    expect(container.querySelector('[data-snapshot-id="snapshot-read"]')).toHaveClass("hasCacheEvent");
+
+    vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({ left: 0, right: 200, top: 0, bottom: 156, width: 200, height: 156, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerMove(chart, { clientX: 0 });
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("146,282 cache write, 0 cache read");
+    fireEvent.pointerMove(chart, { clientX: 200 });
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("759 cache write, 146,282 cache read");
+
+    fireEvent.keyDown(chart, { key: "Home" });
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("146,282 cache write, 0 cache read");
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("Possible cache miss · refill recorded");
+    expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument();
+    fireEvent.keyDown(chart, { key: "End" });
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("759 cache write, 146,282 cache read");
+    expect(screen.queryByRole("button", { name: "Latest" })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
+    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(3);
+    expect(container.querySelectorAll(".requestSnapshotBar.hasCacheEvent")).toHaveLength(2);
+  });
+
+  it("owns the bounded cache evidence list and exposes exact joined counts", async () => {
+    const user = userEvent.setup();
+    render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+
+    const list = screen.getByRole("list");
+    expect(screen.getByRole("heading", { name: "Cache evidence" })).toBeInTheDocument();
+    expect(screen.getByText("Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.")).toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+
+    await user.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
+    expect(within(list).getAllByRole("listitem")).toHaveLength(7);
+    expect(screen.getByText("0 (5%)")).toBeInTheDocument();
+    expect(screen.getByText("146,282 (90%)")).toBeInTheDocument();
+    expect(within(list).getByText("146,282")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show recent 5" })).toHaveAttribute("aria-expanded", "true");
+
+    await user.selectOptions(screen.getByLabelText("Request scope"), "child");
+    expect(screen.getByText("Watching for meaningful cache transitions for Builder…")).toBeInTheDocument();
+  });
+
+  it("uses factual request and cache empty states in live and recorded views", () => {
+    const emptySnapshots = { status: "unavailable" as const, items: [] };
+    const emptyEvents = { status: "unavailable" as const, items: [] };
+    const { rerender } = render(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} historical={false} />);
+    expect(screen.getByText("Independent request snapshots are not available yet for this session.")).toBeInTheDocument();
+    expect(screen.getByText("Comparable cache snapshots are not available yet for this session.")).toBeInTheDocument();
+
+    rerender(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} historical />);
+    expect(screen.getByText("No independent request snapshots were recorded for this session.")).toBeInTheDocument();
     expect(screen.getByText("No comparable cache snapshots were recorded for this session.")).toBeInTheDocument();
   });
 });

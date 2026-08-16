@@ -7,6 +7,7 @@ import AboutPage from "../../app/about/page";
 const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
 const contextHistorySource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextHistoryPanel.tsx"), "utf8");
+const requestSnapshotsSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestSnapshotsPanel.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("renders the wordmark-only header identity and the product mark on About", () => {
@@ -30,7 +31,14 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.contextHistoryChart:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--brand\)/);
     expect(contextHistorySource).toMatch(/role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?Use Left and Right arrow keys/);
     expect(contextHistorySource).not.toMatch(/role="listitem"[\s\S]*?tabIndex=\{0\}/);
-    expect(contextHistorySource).not.toMatch(/ContextGrowthTimeline|cacheReadArea|context added/);
+    expect(contextHistorySource).not.toMatch(/ContextGrowthTimeline|cacheReadArea|context added|Cache evidence|cacheEvents/);
+    expect(requestSnapshotsSource).toMatch(/role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?Use Left and Right arrow keys/);
+    expect(requestSnapshotsSource).toMatch(/snapshotEventKey\(event\.agentId, event\.observedAt\)/);
+    expect(styles).toMatch(/\.requestSnapshotViewport\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/);
+    expect(styles).toMatch(/\.requestSnapshotStack > \.cacheWrite\s*\{\s*background:\s*var\(--green\)/);
+    expect(styles).toMatch(/\.requestSnapshotStack > \.cacheRead\s*\{\s*background:\s*var\(--brand\)/);
+    expect(styles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.requestSnapshotReadout dl\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(styles).toMatch(/@media \(max-width: 420px\)[\s\S]*?\.requestSnapshotReadout\s*\{\s*margin-left:\s*0/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);
