@@ -47,6 +47,8 @@ export type ProviderUsageSnapshot = {
   model?: string;
   /** Changes when recognized missing/malformed usage makes adjacent comparison unsafe. */
   comparisonGroup?: number;
+  /** True only when this observation can safely classify cache behavior. */
+  cacheComparable?: boolean;
 };
 
 /**

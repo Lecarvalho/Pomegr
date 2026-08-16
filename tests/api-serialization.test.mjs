@@ -200,6 +200,10 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(codexState.metrics.tokens.allAgents, 2_000);
   assert.equal(codexState.metrics.tokens.allAgents < 9_800, true, "cumulative total_token_usage is not exposed");
   for (const state of [claudeState, codexState]) {
+    assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, state.metrics.tokens.allAgents);
+    assert.equal(state.metrics.tokens.cacheEvents.status, "ready");
+    assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
+    assert.equal(Object.hasOwn(state.metrics.tokens, "contextGrowthTimeline"), false);
     assert.deepEqual(state.metrics.resources, {
       status: "ready",
       reason: null,

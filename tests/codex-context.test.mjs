@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildContextGrowthTimeline } from "../monitor/context-growth-timeline.mjs";
+import { buildContextHistory } from "../monitor/context-history.mjs";
 import { evaluateEfficiencySignals } from "../monitor/efficiency-signals.mjs";
 import { parseCodexContextRecords } from "../monitor/providers/codex-context.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
@@ -59,6 +59,7 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     modelContextWindow: 200_000,
     model: "",
     comparisonGroup: 0,
+    cacheComparable: true,
   }]);
   assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_670);
   assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);
@@ -176,12 +177,12 @@ test("deduplicates stable event identities, ignores cumulative-only and zero sna
   assert.equal(usageSnapshots.length, 2);
   assert.equal(usageSnapshots[0].timestamp, "2026-08-10T13:00:05.000Z");
   assert.equal(usageSnapshots[1].timestamp, "2026-08-10T13:00:08.000Z");
-  const timeline = buildContextGrowthTimeline(usageSnapshots, {
+  const history = buildContextHistory(usageSnapshots, {
     startedAt: "2026-08-10T13:00:00.000Z",
     updatedAt: "2026-08-10T13:00:10.000Z",
     targetBuckets: 1,
   });
-  assert.equal(timeline.buckets.reduce((sum, bucket) => sum + bucket.total, 0), 330);
+  assert.equal(history.buckets.at(-1).total, 330);
 });
 
 test("keeps only bounded compaction evidence and warns only for an explicit automatic trigger", () => {

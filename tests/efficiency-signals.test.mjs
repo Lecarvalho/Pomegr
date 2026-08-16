@@ -175,46 +175,22 @@ test("missing provider evidence disables dependent rules and the healthy fallbac
   assert.deepEqual(insights, []);
 });
 
-function cacheSnapshot({
-  id,
-  timestamp,
-  input,
-  cacheRead,
-  cacheWrite = 0,
-  model = "gpt-5.6",
-  group = 0,
-  actorId = "primary",
-}) {
-  return {
-    dedupeId: id,
-    actorId,
-    timestamp,
-    input,
-    output: 10,
-    cacheWrite,
-    cacheRead,
-    model,
-    comparisonGroup: group,
+test("normalized miss-refill events produce cautious bounded insights", () => {
+  const missRefill = {
+    id: "cache-opaque",
+    agentId: "primary",
+    kind: "miss_refill",
+    observedAt: "2026-08-11T11:00:00.000Z",
+    promptInputTokens: 16_000,
+    cacheReadPercent: 5,
+    cacheWriteTokens: 8_000,
+    previousCacheReadPercent: 80,
+    gapMs: 25 * 60 * 60 * 1_000,
+    relatedEventId: null,
   };
-}
-
-test("prompt cache miss after idle uses centralized boundaries and cautious bounded copy", () => {
-  const previous = cacheSnapshot({
-    id: "previous",
-    timestamp: "2026-08-10T10:00:00.000Z",
-    input: 2_000,
-    cacheRead: 8_000,
-  });
-  const current = cacheSnapshot({
-    id: "current",
-    timestamp: "2026-08-11T11:00:00.000Z",
-    input: 7_200,
-    cacheRead: 800,
-    cacheWrite: 8_000,
-  });
   const { insights } = evaluateEfficiencySignals({
     agents: [primary({ toolCalls: 0, tokens: { total: 8_000 } })],
-    usageSnapshots: [current, previous, current],
+    cacheEvents: [missRefill, missRefill],
     availableEvidence: {
       repetition: false,
       concurrentMutation: false,
@@ -227,52 +203,33 @@ test("prompt cache miss after idle uses centralized boundaries and cautious boun
   assert.deepEqual(insights, [{
     id: "prompt-cache-miss-primary",
     level: "warning",
-    title: "Prompt cache miss after idle gap",
-    detail: "Primary agent's current input context was 8K with 10% read from cache after 25 hours. The preceding comparable request read 80% from cache. The provider also recorded a large cache refill on the current request. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.",
+    title: "Prompt cache miss and refill after idle gap",
+    detail: "Primary agent's prompt input was 16K with 5% read from cache after 25 hours. The preceding comparable request read 80% from cache, and the provider recorded an 8K cache refill. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.",
   }]);
   assert.doesNotMatch(JSON.stringify(insights), /charged|price|billing|paid|cache key value/i);
 });
 
-test("prompt cache classification suppresses short gaps and incomparable observations", () => {
-  const base = cacheSnapshot({
-    id: "previous",
-    timestamp: "2026-08-10T10:00:00.000Z",
-    input: 1_000,
-    cacheRead: 9_000,
-  });
-  const qualifying = cacheSnapshot({
-    id: "current",
-    timestamp: "2026-08-10T10:30:00.000Z",
-    input: 9_500,
-    cacheRead: 500,
-  });
-  const cases = [
-    [cacheSnapshot({ ...qualifying, id: "short", timestamp: "2026-08-10T10:29:59.999Z" }), [], primary()],
-    [cacheSnapshot({ ...qualifying, id: "model", model: "gpt-5.7" }), [], primary()],
-    [cacheSnapshot({ ...qualifying, id: "missing", group: 1 }), [], primary()],
-    [qualifying, [{ actor: { id: "primary", label: "Primary agent" }, timestamp: "2026-08-10T10:15:00.000Z", trigger: "manual", preTokens: null }], primary()],
-    [qualifying, [], primary({ kind: "fork" })],
-  ];
-
-  const boundary = evaluateEfficiencySignals({
-    agents: [primary({ toolCalls: 0, tokens: { total: 10_000 } })],
-    usageSnapshots: [base, qualifying],
+test("refill and reuse facts do not produce warnings and provider evidence gates misses", () => {
+  const base = {
+    id: "cache-opaque",
+    agentId: "primary",
+    observedAt: "2026-08-10T10:00:00.000Z",
+    promptInputTokens: 10_000,
+    cacheReadPercent: 0,
+    cacheWriteTokens: 8_000,
+    previousCacheReadPercent: null,
+    gapMs: null,
+    relatedEventId: null,
+  };
+  const facts = evaluateEfficiencySignals({
+    agents: [primary()],
+    cacheEvents: [{ ...base, kind: "refill" }, { ...base, id: "reuse", kind: "reuse", cacheReadPercent: 90 }],
     availableEvidence: { cacheUsageClassification: true },
   });
-  assert.equal(boundary.insights.filter((insight) => insight.id === "prompt-cache-miss-primary").length, 1);
-  for (const [current, compactions, agent] of cases) {
-    const { insights } = evaluateEfficiencySignals({
-      agents: [agent],
-      usageSnapshots: [base, current],
-      compactions,
-      availableEvidence: { cacheUsageClassification: true },
-    });
-    assert.equal(insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
-  }
-
+  assert.equal(facts.insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
   const disabled = evaluateEfficiencySignals({
     agents: [primary()],
-    usageSnapshots: [base, qualifying],
+    cacheEvents: [{ ...base, kind: "miss_refill", previousCacheReadPercent: 90, gapMs: 1_800_000 }],
     availableEvidence: { cacheUsageClassification: false },
   });
   assert.equal(disabled.insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);

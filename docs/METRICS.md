@@ -15,10 +15,12 @@ input_tokens
 
 Zero-valued synthetic messages are ignored.
 
+Claude usage is normalized by a dedicated strict parser. It accepts only non-negative safe-integer request counts, retains at most the latest 100 valid observations per agent, and requires an explicitly valid cache-read field before an observation can classify cache behavior. Missing or malformed cache evidence breaks adjacent comparison without exposing the raw usage object or making the rest of the session unavailable.
+
 For Codex, Pomegr reads only each token-count event's `last_token_usage`; it never uses `total_token_usage`. Codex input includes cached input, so the adapter maps uncached input as `input_tokens - cached_input_tokens`, maps cached input to cache read, and maps recognized cache-creation input to cache write. Codex `output_tokens` already includes `reasoning_output_tokens`; reasoning is retained as bounded snapshot metadata but is not added to output a second time. The per-snapshot provider total and model context window are retained only as bounded latest-snapshot metadata. They are not accumulated, converted to spend, or used to derive a recent rate. Missing, invalid, and all-zero snapshots remain unavailable.
 
-- **Agent context** — latest snapshot for that agent
-- **All-agent context** — sum of every visible agent's latest snapshot
+- **Agent context** — latest live snapshot, or final recorded snapshot in history, for that agent
+- **All-agent context** — sum of every visible agent's latest live or final recorded snapshot
 
 Codex rollout parsing accepts the recognized snake_case and camelCase token-count shapes. Unknown future shapes are unavailable rather than interpreted as cumulative usage. Live files are read from a bounded tail, so a burst that pushes the latest recognized snapshot beyond that tail can temporarily make context unavailable; Pomegr never substitutes `total_token_usage`.
 
@@ -32,13 +34,25 @@ The initial Codex adapter has no cost source. Cost is capability-gated and omitt
 
 All-agent context is the only context total Pomegr presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
 
-## Context-growth timeline
+## Context history
 
-The context-growth timeline derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Pomegr carries forward each agent's latest non-zero snapshot, sums those snapshots, and compares that sum with the preceding boundary. A bar shows only a positive net increase. Repeated snapshots contribute zero, and context reductions caused by compaction or agent resets are not presented as new context.
+Context history derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Pomegr carries forward each agent's latest non-zero snapshot and exposes both the per-agent level and their all-agent sum. Repeated snapshots produce a flat level, while context reductions caused by compaction or agent resets remain visible. The final all-agent level equals the current or final All-agent context derived from those observations.
 
-Bucket sizes are selected from fixed, human-readable intervals to target roughly 28 bars across the recorded session wall time. Each bar is attributed across uncached input, cache write, cache read, and generated output. Because components can move between cache categories, positive component changes are scaled to the net context increase so their stack can never exceed the bar total. Hovering or focusing a bar shows the exact time range and attributed composition.
+Bucket sizes are selected from fixed, human-readable intervals to target roughly 28 points across the recorded session wall time. Cache reads and writes are not plotted as historical context categories; significant request-local cache behavior is exposed separately as bounded cache events.
 
-This is a change in observed context snapshots, not throughput, billing, or token spend. The normalized API names it `contextGrowthTimeline`; generated reports intentionally omit it.
+This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`; generated reports intentionally omit it.
+
+## Cache events
+
+`metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. It reports only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest events enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities.
+
+- **Refill** — the provider records at least 8,000 cache-write tokens on one request.
+- **Reuse** — after a tracked refill or miss-refill for the same agent, model, and comparison group, the first comparable request with at least 8,000 prompt-input tokens and at least an 80% cache-read share. Later high-read requests do not flood the feed.
+- **Miss-refill** — adjacent comparable requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, the current request has at most a 10% share after at least 30 minutes, and the provider simultaneously records at least 8,000 cache-write tokens. A low-read transition without a recorded large write is not classified or warned on.
+
+Automatic or manual compaction, a fork boundary for miss classification, a model or comparison-group change, invalid timestamps, or missing/malformed intermediate usage makes observations incomparable. A normal resume does not. The feed status is `unavailable` when no cache-classifiable observation exists and `ready` when an observed bounded window contains valid evidence, including when no event meets the thresholds.
+
+Cache events expose only their fixed kind, normalized agent ID, observation time, prompt-input count, cache-read percentage, cache-write count, optional preceding percentage and elapsed gap, and an opaque relation from reuse to its tracked refill. They never expose prompts, cached prefixes, cache keys, TTL/configuration, routing, service tier, provider-private fields, raw usage, cumulative usage, price, charges, or claimed savings. An event is deterministic evidence, not proof of expiration, eviction, causation, quality, or billing impact.
 
 ## Live resource use
 
@@ -140,7 +154,7 @@ Elapsed wall time is the difference between the earliest and latest recorded tim
 
 ## Efficiency signals
 
-`monitor/efficiency-signals.mjs` is the executable catalog for every rule shown in the **Efficiency signals** panel. It owns each rule's fixed thresholds, evidence requirements, severity, display limit, and user-facing explanation. New rules and adjustments should be made there, covered by `tests/efficiency-signals.test.mjs`, and reflected in this section. Supporting modules may derive evidence, but they do not decide whether the panel emits a signal.
+`monitor/efficiency-signals.mjs` is the executable catalog for rules shown in the **Efficiency signals** panel. Cache evidence thresholds live in `monitor/cache-events.mjs`; the efficiency catalog consumes normalized miss-refill events rather than reinterpreting provider snapshots. Rule changes remain covered by focused tests and reflected here.
 
 The current catalog contains these deterministic rules:
 
@@ -149,7 +163,7 @@ The current catalog contains these deterministic rules:
 - **Repeated tool call** — appears when an agent makes the same scoped call with unchanged inputs at least three times. At most three repetition signals are shown.
 - **Concurrent mutation** — appears when at least two agents mutate the same edit anchor, whole-file target, or notebook cell within 30 seconds. At most two overlap signals are shown.
 - **Unshared context pressure** — appears when the primary agent's latest context snapshot is at least 150,000 tokens, the primary agent has made at least 40 observed tool calls, and no subagent transcript has been observed. Finished and stopped subagents still count as observed delegation. The signal describes a possible delegation opportunity; it does not claim that the work was parallelizable, that delegation would have reduced total context, or that a project instruction was violated.
-- **Prompt cache miss after idle gap** — appears at most once per affected Codex agent when adjacent comparable `last_token_usage` observations show at least 8,000 current input tokens, at least an 80% cached-input share previously, at most a 10% cached-input share currently, and at least a 30-minute gap. The signal reports only bounded context size, cached-input share, and elapsed time. It says expiration or eviction may have reduced efficiency; it never assigns a cause, cost, charge, or savings amount.
+- **Prompt cache miss and refill after idle gap** — appears at most once per affected Claude or Codex agent from a normalized `miss_refill` event. It requires the cache-read transition, 30-minute gap, and a simultaneous recorded refill described above. The signal reports only bounded evidence and never assigns a cause, cost, charge, or savings amount.
 - **Healthy fallback** — appears only when none of the warning rules emit a signal.
 
 The automatic-compaction parser allows only the normalized agent identity, recognized trigger, non-negative pre-compaction token count, and event timestamp into the rule engine. The compacted summary, provider event content, and all other compaction metadata remain monitor-side and never enter browser state. On first observation Pomegr scans each selected agent transcript for these bounded events, then merges new tail records into an in-memory cache so an earlier compaction remains visible as the transcript grows. Automatic compaction is evidence that context pressure caused the provider to summarize earlier conversation detail; it is not a quality judgment or proof that the session failed.
@@ -158,7 +172,7 @@ Codex compaction records follow the same bounded evidence contract, but a warnin
 
 Codex repetition, concurrent-mutation, unshared-context, and healthy-fallback rules run only when recognized rollout or canonical tool evidence is available. Missing app-server turns or rollout history disables the affected rule; Pomegr does not silently substitute timestamps, prose, file modification times, or cumulative token totals. Provider-generated summaries, estimated cost, and context machinery are unavailable for Codex and therefore contribute no metrics or efficiency evidence.
 
-Prompt-cache classification uses bounded chronological `last_token_usage` observations for the same normalized Codex agent; it never reads or exposes cumulative `total_token_usage`. Missing, malformed, synthetic, cumulative-only, duplicate-only, or provider-unsupported usage disables the rule. Known automatic or manual compaction, a fork boundary, a model or provider/session identity change, or unavailable intermediate usage makes observations incomparable. A normal resume of the same thread is not itself a suppression condition. A simultaneous recognized cache-write count may corroborate a cold refill but is never fabricated or required.
+Codex cache classification uses bounded chronological `last_token_usage` observations for the same normalized agent; it never reads or exposes cumulative `total_token_usage`. Claude uses per-assistant-message usage with explicit cache-read evidence. Missing, malformed, synthetic, cumulative-only, duplicate-only, or unsupported usage disables comparison. Codex cache-write evidence remains optional at the parser boundary, but a large recorded write is required before the shared classifier emits `refill` or `miss_refill`; it is never fabricated.
 
 OpenAI's current [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching) defines `prompt_cache_options.ttl = "30m"` for GPT-5.6-family and later models as a minimum cache lifetime, not an exact expiration time or maximum retention period; a prefix may remain eligible longer. Cache misses can also follow a changed exact prefix, breakpoint or key behavior, routing, eviction, model changes, or a prefix that was never written. Pomegr therefore keeps the same cautious cache-miss wording even beyond 24 hours for GPT-5.6-family evidence. Older model families have different in-memory and extended-retention policies, so elapsed time alone never proves expiration. Codex subscription usage is not translated into API list-price billing.
 

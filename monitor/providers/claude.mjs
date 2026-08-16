@@ -28,6 +28,7 @@ import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
+import { parseClaudeContextRecords } from "./claude-context.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
@@ -657,6 +658,11 @@ export function createClaudeProvider(options = {}) {
       const actor = actorFor(file, mainFile, agentMetadata, workflowFiles);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
+      usageSnapshots.push(...parseClaudeContextRecords(records, {
+        actorId: actor.id,
+        sourceKey: actor.id,
+        fallbackTimestamp: stat.mtime.toISOString(),
+      }));
       let observedCompactions = contextCompactionsCache.get(file);
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
@@ -684,19 +690,6 @@ export function createClaudeProvider(options = {}) {
           detail: userInputType,
           status: null,
         });
-        if (record.type === "assistant" && record.message?.usage) {
-          const usage = record.message.usage;
-          const messageId = record.message.id || record.requestId || record.uuid;
-          if (messageId) usageSnapshots.push({
-            dedupeId: `${actor.id}|${messageId}`,
-            actorId: actor.id,
-            timestamp: timestamp || stat.mtime.toISOString(),
-            input: Number(usage.input_tokens || 0),
-            output: Number(usage.output_tokens || 0),
-            cacheWrite: Number(usage.cache_creation_input_tokens || 0),
-            cacheRead: Number(usage.cache_read_input_tokens || 0),
-          });
-        }
         if (record.type !== "assistant" || !Array.isArray(record.message?.content)) continue;
         for (const content of record.message.content) {
           if (content.type !== "tool_use") continue;
@@ -813,7 +806,7 @@ export function createClaudeProvider(options = {}) {
         concurrentMutation: true,
         unsharedContext: true,
         healthyFallback: true,
-        cacheUsageClassification: false,
+        cacheUsageClassification: usageSnapshots.some((snapshot) => snapshot.cacheComparable === true),
       },
       pullRequestCreations: await readClaudePullRequestCreations([...recordsByFile].map(([file, records]) => ({
         file,
@@ -838,6 +831,7 @@ export function createClaudeProvider(options = {}) {
       signals: true,
       usageLimits: true,
       workflows: true,
+      cacheUsageClassification: true,
     },
     listSessions,
     readSession,

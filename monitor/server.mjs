@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
-import { buildContextGrowthTimeline } from "./context-growth-timeline.mjs";
+import { buildCacheEvents } from "./cache-events.mjs";
+import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { readGitStateAsync } from "./git-state.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
@@ -157,7 +158,15 @@ function groupToolEvidence(toolCalls) {
 
 function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
   const snapshotsById = new Map(usageSnapshots.map((snapshot) => [snapshot.dedupeId, snapshot]));
-  const snapshots = [...snapshotsById.values()];
+  const visibleAgentIds = new Set(agents.map((agent) => agent.id));
+  const boundedByAgent = new Map();
+  for (const snapshot of snapshotsById.values()) {
+    if (!visibleAgentIds.has(snapshot.actorId)) continue;
+    boundedByAgent.set(snapshot.actorId, [...(boundedByAgent.get(snapshot.actorId) || []), snapshot]);
+  }
+  const snapshots = [...boundedByAgent.values()].flatMap((items) => items
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
+    .slice(-100));
   const latestByAgent = new Map();
   for (const usage of snapshots) {
     const usageTime = new Date(usage.timestamp).getTime();
@@ -186,7 +195,8 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt) {
     output: agents.reduce((total, agent) => total + agent.tokens.output, 0),
     cacheWrite: agents.reduce((total, agent) => total + agent.tokens.cacheWrite, 0),
     cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
-    contextGrowthTimeline: buildContextGrowthTimeline(snapshots, { startedAt, updatedAt }),
+    contextHistory: buildContextHistory(snapshots, { startedAt, updatedAt }),
+    cacheEvents: { status: "unavailable", items: [] },
   };
 }
 
@@ -335,12 +345,19 @@ export function createMonitorRuntime(options = {}) {
       label: agents.find((agent) => agent.id === compaction.actorId)?.label || "Agent",
     },
   }));
+  tokenUsage.cacheEvents = buildCacheEvents({
+    sessionId,
+    agents,
+    usageSnapshots: evidence.usageSnapshots,
+    compactions,
+    enabled: evidence.efficiencyRuleEvidence.cacheUsageClassification,
+  });
   const { insights, loops } = evaluateEfficiencySignals({
     agents,
     repetitionCandidates,
     overlaps,
     compactions,
-    usageSnapshots: evidence.usageSnapshots,
+    cacheEvents: tokenUsage.cacheEvents.items,
     availableEvidence: evidence.efficiencyRuleEvidence,
   });
   const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);

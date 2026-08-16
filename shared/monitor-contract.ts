@@ -85,14 +85,30 @@ export type PlanTask = {
   blockedBy: string[];
 };
 
-export type ContextGrowthBucket = {
+export type ContextHistoryBucket = {
   start: string;
   end: string;
   total: number;
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
+  agents: Array<{ agentId: string; total: number }>;
+};
+
+export type CacheEvent = {
+  id: string;
+  agentId: string;
+  kind: "miss_refill" | "refill" | "reuse";
+  observedAt: string;
+  promptInputTokens: number;
+  cacheReadPercent: number;
+  cacheWriteTokens: number;
+  previousCacheReadPercent: number | null;
+  gapMs: number | null;
+  /** A reuse points to the tracked refill or miss-refill it follows. */
+  relatedEventId: string | null;
+};
+
+export type CacheEventFeed = {
+  status: "ready" | "unavailable";
+  items: CacheEvent[];
 };
 
 export type ContextMachinery = {
@@ -307,7 +323,8 @@ export type MonitorState = {
       output: number;
       cacheWrite: number;
       cacheRead: number;
-      contextGrowthTimeline: { bucketMs: number; buckets: ContextGrowthBucket[] };
+      contextHistory: { bucketMs: number; buckets: ContextHistoryBucket[] };
+      cacheEvents: CacheEventFeed;
     };
   };
   agents: Agent[];

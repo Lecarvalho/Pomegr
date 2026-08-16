@@ -128,7 +128,11 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
       activeAgents: agents.filter((agent) => agent.status === "active" || agent.status === "waiting").length,
       toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0),
       repeatedCalls: 0,
-      tokens: { ...tokenTotals, contextGrowthTimeline: { bucketMs: 0, buckets: [] } },
+      tokens: {
+        ...tokenTotals,
+        contextHistory: { bucketMs: 0, buckets: [] },
+        cacheEvents: { status: "unavailable", items: [] },
+      },
     },
     agents,
     workflows: evidence.workflows || [],

@@ -2,14 +2,6 @@ export const EFFICIENCY_SIGNAL_RULES = Object.freeze({
   repetition: Object.freeze({ minimumCalls: 3, maximumSignals: 3 }),
   concurrentMutation: Object.freeze({ windowMs: 30_000, maximumSignals: 2 }),
   automaticCompaction: Object.freeze({ trigger: "auto", maximumSignals: 3 }),
-  promptCacheMissAfterIdle: Object.freeze({
-    minimumInputContext: 8_000,
-    minimumPreviousCacheReadShare: 0.8,
-    maximumCurrentCacheReadShare: 0.1,
-    minimumIdleMs: 30 * 60 * 1_000,
-    minimumColdRefillTokens: 8_000,
-    maximumSignalsPerAgent: 1,
-  }),
   unsharedContextPressure: Object.freeze({
     minimumPrimaryContext: 150_000,
     minimumPrimaryToolCalls: 40,
@@ -28,11 +20,6 @@ function compactContext(tokens) {
   return `${(tokens / 1_000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
 }
 
-function cacheReadShare(snapshot) {
-  const inputContext = snapshot.input + snapshot.cacheRead;
-  return inputContext > 0 ? snapshot.cacheRead / inputContext : null;
-}
-
 function compactElapsed(milliseconds) {
   const minutes = Math.round(milliseconds / 60_000);
   if (minutes < 120) return `${minutes.toLocaleString("en-US")} minutes`;
@@ -45,68 +32,19 @@ function compactionActorId(compaction) {
   return typeof value === "string" ? value : "";
 }
 
-function promptCacheMissSignals({ agents, usageSnapshots, compactions, enabled }) {
+function cacheMissSignals(agents, cacheEvents, enabled) {
   if (!enabled) return [];
-  const rule = EFFICIENCY_SIGNAL_RULES.promptCacheMissAfterIdle;
-  const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-  const uniqueSnapshots = new Map();
-  for (const snapshot of usageSnapshots) {
-    if (!snapshot || typeof snapshot.dedupeId !== "string") continue;
-    const previous = uniqueSnapshots.get(snapshot.dedupeId);
-    if (!previous || Date.parse(snapshot.timestamp) >= Date.parse(previous.timestamp)) {
-      uniqueSnapshots.set(snapshot.dedupeId, snapshot);
-    }
-  }
-  const byAgent = new Map();
-  for (const snapshot of uniqueSnapshots.values()) {
-    if (!agentsById.has(snapshot.actorId)) continue;
-    byAgent.set(snapshot.actorId, [...(byAgent.get(snapshot.actorId) || []), snapshot]);
-  }
-
+  const labels = new Map(agents.map((agent) => [agent.id, agent.label]));
+  const emittedAgents = new Set();
   const signals = [];
-  for (const agent of agents) {
-    if (agent.kind === "fork") continue;
-    const snapshots = (byAgent.get(agent.id) || []).sort((left, right) => (
-      Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
-    ));
-    let latestMatch = null;
-    for (let index = 1; index < snapshots.length; index += 1) {
-      const previous = snapshots[index - 1];
-      const current = snapshots[index];
-      const previousTime = Date.parse(previous.timestamp);
-      const currentTime = Date.parse(current.timestamp);
-      const elapsed = currentTime - previousTime;
-      const currentInputContext = current.input + current.cacheRead;
-      const previousShare = cacheReadShare(previous);
-      const currentShare = cacheReadShare(current);
-      const comparable = Number.isFinite(previousTime)
-        && Number.isFinite(currentTime)
-        && elapsed >= rule.minimumIdleMs
-        && Number.isSafeInteger(previous.comparisonGroup)
-        && previous.comparisonGroup === current.comparisonGroup
-        && typeof previous.model === "string"
-        && previous.model.length > 0
-        && previous.model === current.model
-        && !compactions.some((compaction) => (
-          compactionActorId(compaction) === agent.id
-          && Date.parse(compaction.timestamp) > previousTime
-          && Date.parse(compaction.timestamp) <= currentTime
-        ));
-      if (!comparable
-        || currentInputContext < rule.minimumInputContext
-        || previousShare < rule.minimumPreviousCacheReadShare
-        || currentShare > rule.maximumCurrentCacheReadShare) continue;
-      latestMatch = { current, currentInputContext, currentShare, elapsed, previousShare };
-    }
-    if (!latestMatch) continue;
-    const refill = latestMatch.current.cacheWrite >= rule.minimumColdRefillTokens
-      ? " The provider also recorded a large cache refill on the current request."
-      : "";
+  for (const event of cacheEvents) {
+    if (event?.kind !== "miss_refill" || emittedAgents.has(event.agentId) || !labels.has(event.agentId)) continue;
+    emittedAgents.add(event.agentId);
     signals.push({
-      id: `prompt-cache-miss-${agent.id}`,
+      id: `prompt-cache-miss-${event.agentId}`,
       level: "warning",
-      title: "Prompt cache miss after idle gap",
-      detail: `${agent.label}'s current input context was ${compactContext(latestMatch.currentInputContext)} with ${Math.round(latestMatch.currentShare * 100)}% read from cache after ${compactElapsed(latestMatch.elapsed)}. The preceding comparable request read ${Math.round(latestMatch.previousShare * 100)}% from cache.${refill} Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.`,
+      title: "Prompt cache miss and refill after idle gap",
+      detail: `${labels.get(event.agentId)}'s prompt input was ${compactContext(event.promptInputTokens)} with ${event.cacheReadPercent}% read from cache after ${compactElapsed(event.gapMs)}. The preceding comparable request read ${event.previousCacheReadPercent}% from cache, and the provider recorded an ${compactContext(event.cacheWriteTokens)} cache refill. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.`,
     });
   }
   return signals;
@@ -120,7 +58,7 @@ export function evaluateEfficiencySignals({
   repetitionCandidates = [],
   overlaps = [],
   compactions = [],
-  usageSnapshots = [],
+  cacheEvents = [],
   availableEvidence,
 } = {}) {
   const evidence = availableEvidence === undefined
@@ -168,12 +106,7 @@ export function evaluateEfficiencySignals({
     automaticCompactionSignals += 1;
   }
 
-  insights.push(...promptCacheMissSignals({
-    agents,
-    usageSnapshots,
-    compactions,
-    enabled: evidence.cacheUsageClassification,
-  }));
+  insights.push(...cacheMissSignals(agents, cacheEvents, evidence.cacheUsageClassification));
 
   const primary = agents.find((agent) => agent.id === "primary");
   const hasObservedSubagent = agents.some((agent) => agent.id !== "primary");

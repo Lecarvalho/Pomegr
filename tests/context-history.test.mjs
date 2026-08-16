@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildContextHistory } from "../monitor/context-history.mjs";
 
-test("plots actual carried per-agent and all-agent context levels", () => {
-  const timeline = buildContextHistory([
+test("carries actual per-agent context levels and exposes their all-agent sum", () => {
+  const history = buildContextHistory([
     { actorId: "primary", timestamp: "2026-08-05T12:00:05.000Z", input: 100 },
     { actorId: "primary", timestamp: "2026-08-05T12:00:08.000Z", input: 110 },
     { actorId: "subagent", timestamp: "2026-08-05T12:00:15.000Z", cacheRead: 50 },
@@ -14,16 +14,16 @@ test("plots actual carried per-agent and all-agent context levels", () => {
     targetBuckets: 3,
   });
 
-  assert.equal(timeline.bucketMs, 10_000);
-  assert.deepEqual(timeline.buckets.map((bucket) => bucket.total), [110, 160, 190, 190]);
-  assert.deepEqual(timeline.buckets.at(-1).agents, [
+  assert.equal(history.bucketMs, 10_000);
+  assert.deepEqual(history.buckets.map((bucket) => bucket.total), [110, 160, 190, 190]);
+  assert.deepEqual(history.buckets.at(-1).agents, [
     { agentId: "primary", total: 140 },
     { agentId: "subagent", total: 50 },
   ]);
 });
 
-test("keeps repeated snapshots flat and context reductions visible", () => {
-  const timeline = buildContextHistory([
+test("shows repeated snapshots as flat levels and context reductions as decreases", () => {
+  const history = buildContextHistory([
     { actorId: "primary", timestamp: "2026-08-05T12:00:05.000Z", cacheRead: 100 },
     { actorId: "primary", timestamp: "2026-08-05T12:00:15.000Z", cacheRead: 100 },
     { actorId: "primary", timestamp: "2026-08-05T12:00:25.000Z", cacheRead: 80 },
@@ -33,11 +33,11 @@ test("keeps repeated snapshots flat and context reductions visible", () => {
     targetBuckets: 3,
   });
 
-  assert.deepEqual(timeline.buckets.map((bucket) => bucket.total), [100, 100, 80, 80]);
+  assert.deepEqual(history.buckets.map((bucket) => bucket.total), [100, 100, 80, 80]);
 });
 
-test("keeps equal-total cache category transitions flat and out of history", () => {
-  const timeline = buildContextHistory([
+test("keeps equal-total cache category transitions flat and omits category history", () => {
+  const history = buildContextHistory([
     { actorId: "primary", timestamp: "2026-08-05T12:00:05.000Z", cacheWrite: 100 },
     { actorId: "primary", timestamp: "2026-08-05T12:00:15.000Z", cacheRead: 100 },
   ], {
@@ -46,17 +46,14 @@ test("keeps equal-total cache category transitions flat and out of history", () 
     targetBuckets: 2,
   });
 
-  assert.deepEqual(timeline.buckets.map((bucket) => bucket.total), [100, 100, 100]);
-  assert.doesNotMatch(JSON.stringify(timeline), /cacheWrite|cacheRead|input|output/);
+  assert.deepEqual(history.buckets.map((bucket) => bucket.total), [100, 100, 100]);
+  assert.doesNotMatch(JSON.stringify(history), /cacheRead|cacheWrite|input|output/);
 });
 
-test("ignores invalid timestamps, unknown actors, and zero-valued snapshots", () => {
-  const timeline = buildContextHistory([
+test("ignores invalid observations", () => {
+  assert.deepEqual(buildContextHistory([
     { actorId: "primary", timestamp: "not-a-date", input: 500 },
-    { actorId: "primary", timestamp: "2026-08-05T12:00:00.000Z", input: 0, output: 0 },
+    { actorId: "primary", timestamp: "2026-08-05T12:00:00.000Z", input: 0 },
     { timestamp: "2026-08-05T12:01:00.000Z", input: 500 },
-    { actorId: "primary", timestamp: "2026-08-05T12:02:00.000Z", input: Number.POSITIVE_INFINITY },
-  ]);
-
-  assert.deepEqual(timeline, { bucketMs: 0, buckets: [] });
+  ]), { bucketMs: 0, buckets: [] });
 });

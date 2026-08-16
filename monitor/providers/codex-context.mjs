@@ -197,6 +197,7 @@ export function parseCodexContextRecords(records, options = {}) {
         modelContextWindow: normalizedUsage.modelContextWindow,
         model,
         comparisonGroup,
+        cacheComparable: true,
       };
       snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
     } else if (isTokenCountRecord(record)) {

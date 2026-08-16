@@ -43,7 +43,7 @@ Needs-input notifications are produced from the normalized session catalog on a 
 
 1. Discovers Claude Code and Codex session trees through provider adapters and deterministically selects current or historical sessions.
 2. Reads provider session metadata, bounded live tails, and cached historical evidence.
-3. Normalizes agents, activity, context snapshots, opt-in lifecycle/context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
+3. Normalizes agents, activity, latest/final context snapshots, actual-level context history, bounded cache events, opt-in lifecycle/context-machinery snapshots, provider-estimated cost snapshots, session metadata, and insights.
 4. Uses verified, unique provider ownership evidence to sample live Windows process trees and retain bounded resource timelines in memory.
 5. Builds a bounded, cached catalog of existing session transcripts for concurrent live navigation and history, grouping nested working directories by repository root.
 6. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
@@ -109,7 +109,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 
 - `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
-- `metrics` — agents, tools, repetition, context usage
+- `metrics` — agents, tools, repetition, latest/final context usage, per-agent/all-agent actual-level `contextHistory`, and bounded `cacheEvents`
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
 - `activity` — sanitized tool, failed shell-completion, and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata and optional enum-based failure category, retained for API compatibility
@@ -139,6 +139,8 @@ monitor/providers/
 ```
 
 Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. For live resource attribution, an adapter may additionally return a current owner PID and process-start identity through the private provider contract; the provider registry removes both before catalog serialization and marks duplicate owners unavailable. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
+
+Usage observations remain provider-private evidence until the monitor derives normalized state. Claude uses a strict dedicated parser for per-assistant-message usage; Codex accepts only `last_token_usage` and categorically excludes cumulative `total_token_usage`. Each provider retains at most 100 observations per agent. The monitor carries the latest observation per agent into actual context levels and separately derives no more than 20 cache events. Provider message/event IDs, models used for comparison, raw usage objects, cache prefixes/keys/configuration, TTL, routing, service tier, cumulative totals, and billing assumptions never enter cache-event state.
 
 ### Provider flow and serialization boundary
 
