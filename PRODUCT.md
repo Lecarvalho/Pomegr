@@ -25,7 +25,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 - Pomegr runs locally alongside a coding-agent harness and reads the provider's existing session records.
 - The web dashboard is available on the local network, while the privileged monitor remains bound to loopback.
 - Live sessions refresh continuously; historical sessions show recorded session state only.
-- Users can inspect concurrent sessions, attention state, agent hierarchy, context snapshots, tool activity, Git changes, pull requests, usage limits, and deterministic insights.
+- Users can inspect concurrent sessions, attention state, agent hierarchy, latest context snapshots, bounded actual-level context history, bounded normalized cache events, tool activity, Git changes, pull requests, usage limits, and deterministic insights.
 - Users can download deterministic Markdown retrospective reports assembled from normalized state.
 
 ## Capabilities and Constraints
@@ -34,7 +34,9 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 - Monitoring is read-only. Control actions require a future explicit confirmation boundary.
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
-- Context means the latest non-zero provider usage snapshot. Pomegr does not present cumulative transcript throughput or token-spend totals.
+- Context means the latest non-zero provider usage snapshot. Context history carries those snapshots forward at bounded bucket boundaries to show actual per-agent levels or an explicitly labeled sum of agent snapshots; it is not throughput, unique shared memory, or spend.
+- Cache events are bounded, monitor-derived, agent-attributed observations from provider-comparable usage evidence. They expose only normalized refill, reuse, and cautious miss-refill metadata; they never expose raw usage records or claim a cause, bill, charge, or savings amount.
+- Pomegr does not present cumulative transcript throughput, token-spend totals, or recent token rates.
 - Historical views must not expose current plan limits or substitute the current Git working tree for recorded state.
 - Efficiency signals and recommendations are deterministic heuristics tied to concrete events, never AI judgments or authoritative measurements.
 - Provider failures must degrade independently.

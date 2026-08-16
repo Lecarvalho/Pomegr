@@ -30,6 +30,8 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Plan-task metadata may expose only normalized task ID, subject, status, and dependency IDs from the structured task store. Never expose task descriptions or active-form text, and always label the checklist as agent-maintained and potentially stale.
 - Session- and agent-signal metadata may expose only a bounded plain-text label, semantic tone, transcript-derived timestamp, and optional bounded, one-line plain-text description from a recognized Pomegr MCP tool call. Never expose other MCP arguments or tool-result content, and present signals as agent-reported rather than Pomegr judgments.
 - Task-signal metadata may attach the same bounded fields only to a matching normalized execution task resolved monitor-side from a safe tool-use or background-task ID. Never expose the MCP-supplied target separately or include unmatched task signals in the browser API.
+- Context-history metadata may expose only bounded bucket timestamps, actual context totals, and normalized visible-agent IDs with their actual context totals. Never expose raw usage records, provider message IDs, or cache-category history through this surface.
+- Cache-event metadata may expose only a bounded normalized event ID, normalized agent ID, recognized event kind, observation timestamp, prompt-input token count, cache-read percentages, cache-write token count, elapsed gap, and a normalized related-event ID. Never expose raw usage records, provider message/session IDs, model identifiers, cache keys, prompts, or inferred cost and savings.
 - Keep the monitor bound to loopback.
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.
@@ -42,7 +44,8 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - “Context” means the latest non-zero usage snapshot, not historical throughput.
 - “All-agent context” is the sum of each visible agent's latest context snapshot.
 - Present only latest context snapshots or sums derived from them. Never derive or present cumulative transcript throughput, token-spend totals, or recent token rates. A provider-reported cumulative session-cost estimate captured from Claude Code's status-line feed is the sole exception and must remain explicitly labeled as an estimate.
-- Context-growth timelines must carry each agent's latest snapshot to each bucket boundary and plot only the positive change from the preceding boundary. Repeated snapshots contribute zero; never sum full usage snapshots or label the result as token spend.
+- Context-history timelines must carry each visible agent's latest non-zero snapshot to each bucket boundary and plot the bounded actual context level for the selected agent or the explicit sum of agent snapshots. Repeated snapshots stay flat and context reductions remain visible; never reinterpret the series as throughput, unique shared memory, token spend, or cumulative usage.
+- Cache-event views must be built monitor-side from bounded, provider-comparable usage observations and expose only recognized refill, reuse, or cautious miss-refill evidence. Missing, malformed, incomparable, or unsupported evidence must degrade to unavailable; never infer a cause, bill, charge, or savings amount.
 - Label elapsed duration as wall time because it includes idle gaps.
 - Document heuristic changes in `docs/METRICS.md`.
 - Rule-generated recommendations must trace to concrete events.
