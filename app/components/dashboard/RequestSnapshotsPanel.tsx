@@ -7,10 +7,15 @@ import { EmptyState } from "../EmptyState";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
 type SnapshotComponent = "uncachedInputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens";
+type Point = { x: number; y: number };
+type CubicSegment = { start: Point; firstControl: Point; secondControl: Point; end: Point };
 
 const ALL_AGENTS_SCOPE = "all-agents";
 const RECENT_EVENT_COUNT = 5;
-const MINIMUM_BAR_STEP = 26;
+const MINIMUM_POINT_STEP = 28;
+const CHART_WIDTH = 1000;
+const CHART_HEIGHT = 146;
+const CHART_INSET = 5;
 const SNAPSHOT_COMPONENTS: Array<{ key: SnapshotComponent; className: string; label: string }> = [
   { key: "uncachedInputTokens", className: "uncachedInput", label: "Uncached input" },
   { key: "cacheWriteTokens", className: "cacheWrite", label: "Cache write" },
@@ -30,6 +35,60 @@ function niceMaximum(value: number) {
   const normalized = value / magnitude;
   const rounded = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
   return rounded * magnitude;
+}
+
+function finiteNonNegative(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+/** A monotone cubic Hermite spline. Harmonic-mean tangents keep every segment inside its data bounds. */
+function monotoneSegments(points: Point[]): CubicSegment[] {
+  if (points.length < 2) return [];
+  const slopes = points.slice(0, -1).map((point, index) => {
+    const width = points[index + 1].x - point.x;
+    return width > 0 ? (points[index + 1].y - point.y) / width : 0;
+  });
+  const tangents = points.map((_, index) => {
+    if (index === 0) return slopes[0];
+    if (index === points.length - 1) return slopes.at(-1) || 0;
+    const before = slopes[index - 1];
+    const after = slopes[index];
+    return before === 0 || after === 0 || Math.sign(before) !== Math.sign(after)
+      ? 0
+      : 2 / (1 / before + 1 / after);
+  });
+
+  return points.slice(0, -1).map((point, index) => {
+    const next = points[index + 1];
+    const width = next.x - point.x;
+    return {
+      start: point,
+      firstControl: { x: point.x + width / 3, y: point.y + tangents[index] * width / 3 },
+      secondControl: { x: next.x - width / 3, y: next.y - tangents[index + 1] * width / 3 },
+      end: next,
+    };
+  });
+}
+
+export function monotonePath(points: Point[]) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return monotoneSegments(points).reduce((path, segment) => (
+    `${path} C ${segment.firstControl.x} ${segment.firstControl.y}, ${segment.secondControl.x} ${segment.secondControl.y}, ${segment.end.x} ${segment.end.y}`
+  ), `M ${points[0].x} ${points[0].y}`);
+}
+
+function snapshotSeriesPoints(snapshots: RequestSnapshot[], component: SnapshotComponent, maximum: number): Point[] {
+  return snapshots.map((snapshot, index) => {
+    const x = (index + 0.5) * CHART_WIDTH / snapshots.length;
+    const value = maximum > 0 ? finiteNonNegative(snapshot[component]) / maximum : 0;
+    return { x, y: CHART_HEIGHT - CHART_INSET - value * (CHART_HEIGHT - CHART_INSET * 2) };
+  });
+}
+
+function areaPath(points: Point[]) {
+  if (points.length === 0) return "";
+  return `${monotonePath(points)} L ${points.at(-1)?.x || 0} ${CHART_HEIGHT - CHART_INSET} L ${points[0].x} ${CHART_HEIGHT - CHART_INSET} Z`;
 }
 
 export function snapshotEventKey(agentId: string, observedAt: string) {
@@ -98,6 +157,12 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const [scope, setScope] = useState(() => initialScope(agents, snapshots));
   const [activeSnapshotIndex, setActiveSnapshotIndex] = useState<number | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [visibleSeries, setVisibleSeries] = useState<Record<SnapshotComponent, boolean>>({
+    uncachedInputTokens: true,
+    cacheWriteTokens: true,
+    cacheReadTokens: true,
+    outputTokens: true,
+  });
   const announcementId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -108,7 +173,10 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const scopedSnapshots = snapshots.filter((snapshot) => (
     resolvedScope === ALL_AGENTS_SCOPE || snapshot.agentId === resolvedScope
   ));
-  const maximum = niceMaximum(Math.max(0, ...snapshots.map((snapshot) => snapshot.totalTokens)));
+  const maximum = niceMaximum(Math.max(0, ...snapshots.flatMap((snapshot) => [
+    snapshot.totalTokens,
+    ...SNAPSHOT_COMPONENTS.map((component) => snapshot[component.key]),
+  ])));
   const resolvedActiveIndex = activeSnapshotIndex === null
     ? scopedSnapshots.length - 1
     : Math.max(0, Math.min(activeSnapshotIndex, scopedSnapshots.length - 1));
@@ -143,6 +211,13 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const activeAgentLabel = activeSnapshot
     ? agentById.get(activeSnapshot.agentId)?.label || "Agent"
     : scopeLabel;
+  const pointsBySeries = Object.fromEntries(SNAPSHOT_COMPONENTS.map((component) => (
+    [component.key, snapshotSeriesPoints(scopedSnapshots, component.key, maximum)]
+  ))) as Record<SnapshotComponent, Point[]>;
+  const activeX = scopedSnapshots.length === 1
+    ? CHART_WIDTH / 2
+    : (resolvedActiveIndex + 0.5) * CHART_WIDTH / scopedSnapshots.length;
+  const anySeriesVisible = SNAPSHOT_COMPONENTS.some((component) => visibleSeries[component.key]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -151,12 +226,12 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
 
   useEffect(() => {
     if (activeSnapshotIndex === null) return;
-    const activeBar = chartRef.current?.querySelector<HTMLElement>(`[data-snapshot-index="${resolvedActiveIndex}"]`);
+    const activePoint = chartRef.current?.querySelector<HTMLElement>(`[data-snapshot-index="${resolvedActiveIndex}"]`);
     const viewport = viewportRef.current;
-    if (!activeBar || !viewport) return;
-    if (activeBar.offsetLeft < viewport.scrollLeft) viewport.scrollLeft = activeBar.offsetLeft;
-    else if (activeBar.offsetLeft + activeBar.offsetWidth > viewport.scrollLeft + viewport.clientWidth) {
-      viewport.scrollLeft = activeBar.offsetLeft + activeBar.offsetWidth - viewport.clientWidth;
+    if (!activePoint || !viewport) return;
+    if (activePoint.offsetLeft < viewport.scrollLeft) viewport.scrollLeft = activePoint.offsetLeft;
+    else if (activePoint.offsetLeft + activePoint.offsetWidth > viewport.scrollLeft + viewport.clientWidth) {
+      viewport.scrollLeft = activePoint.offsetLeft + activePoint.offsetWidth - viewport.clientWidth;
     }
   }, [activeSnapshotIndex, resolvedActiveIndex]);
 
@@ -190,7 +265,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
       <div className="requestSnapshotsHeader">
         <div>
           <h2>Request snapshots</h2>
-          <p>Each bar is one provider usage snapshot. Equal spacing; timestamps appear in the readout. Not cumulative.</p>
+          <p>Each point is one provider usage snapshot. Equal spacing; curves only connect recorded points. Not cumulative.</p>
         </div>
         <label className="contextScopeControl">
           <span>Scope</span>
@@ -243,33 +318,64 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
                 onKeyDown={handleChartKeyDown}
                 onPointerMove={handleChartPointerMove}
                 onPointerLeave={(event) => { if (document.activeElement !== event.currentTarget) setActiveSnapshotIndex(null); }}
-                style={{ minWidth: `${scopedSnapshots.length * MINIMUM_BAR_STEP}px` }}
+                style={{ minWidth: `${scopedSnapshots.length * MINIMUM_POINT_STEP}px` }}
               >
                 <div className="requestSnapshotGrid" aria-hidden="true"><i /><i /><i /></div>
-                <div className="requestSnapshotBars" style={{ "--snapshot-count": scopedSnapshots.length } as CSSProperties} aria-hidden="true">
+                <svg className="contextAreaChart requestSnapshotAreaChart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+                  {[...SNAPSHOT_COMPONENTS].reverse().map((component) => (
+                    <path
+                      className={`contextArea ${component.className}Area${visibleSeries[component.key] ? "" : " isHidden"}`}
+                      d={areaPath(pointsBySeries[component.key])}
+                      key={`${component.key}-area`}
+                    />
+                  ))}
+                  {SNAPSHOT_COMPONENTS.map((component) => (
+                    <path
+                      className={`contextSeriesLine ${component.className}Line${visibleSeries[component.key] ? "" : " isHidden"}`}
+                      d={monotonePath(pointsBySeries[component.key])}
+                      key={`${component.key}-line`}
+                    />
+                  ))}
+                  <line className="requestSnapshotCursor" x1={activeX} x2={activeX} y1={0} y2={CHART_HEIGHT} />
+                </svg>
+                <div className="requestSnapshotPoints" style={{ "--snapshot-count": scopedSnapshots.length } as CSSProperties} aria-hidden="true">
                   {scopedSnapshots.map((snapshot, index) => {
                     const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
                     const events = key === null ? [] : eventsBySnapshot.get(key) || [];
                     return (
-                      <div className={`requestSnapshotBar${index === resolvedActiveIndex ? " active" : ""}${events.length ? " hasCacheEvent" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
+                      <div className={`requestSnapshotPointColumn${index === resolvedActiveIndex ? " active" : ""}${events.length ? " hasCacheEvent" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
                         {events.length > 0 && <i className={`requestSnapshotEventMarker ${events[0].kind}`} />}
-                        <div className="requestSnapshotStack">
-                          {SNAPSHOT_COMPONENTS.map((component) => (
-                            <i className={component.className} key={component.key} style={{ height: `${snapshot[component.key] / maximum * 100}%` }} />
-                          ))}
-                        </div>
+                        {SNAPSHOT_COMPONENTS.map((component) => (
+                          <i
+                            className={`contextChartPoint ${component.className}ChartPoint${visibleSeries[component.key] ? "" : " isHidden"}`}
+                            key={component.key}
+                            style={{ "--point-y": `${pointsBySeries[component.key][index].y / CHART_HEIGHT * 100}%` } as CSSProperties}
+                          />
+                        ))}
                       </div>
                     );
                   })}
                 </div>
+                {!anySeriesVisible && <p className="requestSnapshotHiddenState">All series hidden. Use the legend to show a metric.</p>}
               </div>
             </div>
           </div>
           <div className="requestSnapshotFooter">
             <div className="requestSnapshotLegend" aria-label="Request snapshot components">
-              {SNAPSHOT_COMPONENTS.map((component) => <span className={component.className} key={component.key}><i aria-hidden="true" />{component.label}</span>)}
+              {SNAPSHOT_COMPONENTS.map((component) => (
+                <button
+                  className={`requestSnapshotLegendItem ${component.className}`}
+                  type="button"
+                  role="switch"
+                  aria-checked={visibleSeries[component.key]}
+                  onClick={() => setVisibleSeries((current) => ({ ...current, [component.key]: !current[component.key] }))}
+                  key={component.key}
+                >
+                  <i aria-hidden="true" />{component.label}
+                </button>
+              ))}
             </div>
-            <span>Scale fixed across scopes · {compactNumber(maximum)} max</span>
+            <span>Scale fixed across scopes and toggles · {compactNumber(maximum)} max</span>
           </div>
           <p className="instrumentAnnouncement" id={announcementId} aria-live="polite" aria-atomic="true">{announcement}</p>
         </div>

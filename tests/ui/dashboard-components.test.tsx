@@ -6,7 +6,7 @@ import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivity
 import { SessionSidebar } from "../../app/components/dashboard/SessionSidebar";
 import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { ContextHistoryPanel } from "../../app/components/dashboard/ContextHistoryPanel";
-import { RequestSnapshotsPanel, snapshotEventKey } from "../../app/components/dashboard/RequestSnapshotsPanel";
+import { monotonePath, RequestSnapshotsPanel, snapshotEventKey } from "../../app/components/dashboard/RequestSnapshotsPanel";
 import { ResourceUsagePanel } from "../../app/components/dashboard/ResourceUsagePanel";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
@@ -624,26 +624,69 @@ describe("request snapshots and cache evidence", () => {
     );
   });
 
-  it("renders independent equal-spaced request bars with exact non-cumulative values and a fixed scale", async () => {
+  it("keeps monotone request curves inside each pair of recorded values", () => {
+    const recorded = [120, 10, 115, 15];
+    const path = monotonePath(recorded.map((y, index) => ({ x: index * 100, y })));
+    const segments = [...path.matchAll(/C [-\d.]+ ([-\d.]+), [-\d.]+ ([-\d.]+), [-\d.]+ ([-\d.]+)/g)];
+
+    expect(segments).toHaveLength(recorded.length - 1);
+    segments.forEach((segment, index) => {
+      const lower = Math.min(recorded[index], recorded[index + 1]);
+      const upper = Math.max(recorded[index], recorded[index + 1]);
+      expect(Number(segment[1])).toBeGreaterThanOrEqual(lower);
+      expect(Number(segment[1])).toBeLessThanOrEqual(upper);
+      expect(Number(segment[2])).toBeGreaterThanOrEqual(lower);
+      expect(Number(segment[2])).toBeLessThanOrEqual(upper);
+      expect(Number(segment[3])).toBe(recorded[index + 1]);
+    });
+  });
+
+  it("renders independent equal-spaced request waves with exact non-cumulative values and a fixed scale", async () => {
     const user = userEvent.setup();
     const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
 
-    expect(screen.getByText("Each bar is one provider usage snapshot. Equal spacing; timestamps appear in the readout. Not cumulative.")).toBeInTheDocument();
-    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(2);
+    expect(screen.getByText("Each point is one provider usage snapshot. Equal spacing; curves only connect recorded points. Not cumulative.")).toBeInTheDocument();
+    expect(container.querySelectorAll(".contextArea")).toHaveLength(4);
+    expect(container.querySelectorAll(".contextSeriesLine")).toHaveLength(4);
+    for (const line of container.querySelectorAll(".contextSeriesLine")) {
+      expect(line.getAttribute("d")).toContain(" C ");
+      expect(line.getAttribute("d")).not.toContain("NaN");
+    }
+    expect(container.querySelectorAll(".requestSnapshotPointColumn")).toHaveLength(2);
+    expect(container.querySelectorAll(".contextChartPoint")).toHaveLength(8);
+    expect(container.querySelector(".requestSnapshotBar")).not.toBeInTheDocument();
+    expect(container.querySelector(".requestSnapshotStack")).not.toBeInTheDocument();
     expect(container.querySelector(".requestSnapshotScale span")).toHaveTextContent("200K");
     expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("150,041 total");
     expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("146,282");
     expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("759");
     expect(container.querySelector(".requestSnapshotLegend")).toHaveTextContent("Uncached inputCache writeCache readOutput");
+    expect(screen.getAllByRole("switch")).toHaveLength(4);
+    const cacheReadSwitch = screen.getByRole("switch", { name: "Cache read" });
+    expect(cacheReadSwitch).toHaveAttribute("aria-checked", "true");
+    cacheReadSwitch.focus();
+    await user.keyboard(" ");
+    expect(cacheReadSwitch).toHaveAttribute("aria-checked", "false");
+    expect(container.querySelector(".cacheReadLine")).toHaveClass("isHidden");
+    expect(container.querySelectorAll(".cacheReadChartPoint.isHidden")).toHaveLength(2);
+    expect(container.querySelector(".requestSnapshotScale span")).toHaveTextContent("200K");
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("146,282");
+    await user.click(screen.getByRole("switch", { name: "Uncached input" }));
+    await user.click(screen.getByRole("switch", { name: "Cache write" }));
+    await user.click(screen.getByRole("switch", { name: "Output" }));
+    expect(screen.getByText("All series hidden. Use the legend to show a metric.")).toBeInTheDocument();
+    expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("150,041 total");
 
     await user.selectOptions(screen.getByLabelText("Request scope"), "child");
-    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(1);
+    expect(container.querySelectorAll(".requestSnapshotPointColumn")).toHaveLength(1);
+    expect(container.querySelectorAll(".contextChartPoint")).toHaveLength(4);
     expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("Builder");
     expect(container.querySelector(".requestSnapshotReadout")).toHaveTextContent("5,000 total");
     expect(container.querySelector(".requestSnapshotScale span")).toHaveTextContent("200K");
 
     await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
-    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(3);
+    expect(container.querySelectorAll(".requestSnapshotPointColumn")).toHaveLength(3);
+    expect(container.querySelectorAll(".contextChartPoint")).toHaveLength(12);
   });
 
   it("uses one keyboard chart stop, pointer inspection, and exact agent-timestamp cache markers", async () => {
@@ -653,7 +696,7 @@ describe("request snapshots and cache evidence", () => {
 
     expect(chart).toHaveAttribute("tabindex", "0");
     expect(container.querySelectorAll('.requestSnapshotChart [tabindex="0"]')).toHaveLength(0);
-    expect(container.querySelectorAll(".requestSnapshotBar.hasCacheEvent")).toHaveLength(2);
+    expect(container.querySelectorAll(".requestSnapshotPointColumn.hasCacheEvent")).toHaveLength(2);
     expect(container.querySelector('[data-snapshot-id="snapshot-write"]')).toHaveClass("hasCacheEvent");
     expect(container.querySelector('[data-snapshot-id="snapshot-read"]')).toHaveClass("hasCacheEvent");
 
@@ -672,8 +715,8 @@ describe("request snapshots and cache evidence", () => {
     expect(screen.queryByRole("button", { name: "Latest" })).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
-    expect(container.querySelectorAll(".requestSnapshotBar")).toHaveLength(3);
-    expect(container.querySelectorAll(".requestSnapshotBar.hasCacheEvent")).toHaveLength(2);
+    expect(container.querySelectorAll(".requestSnapshotPointColumn")).toHaveLength(3);
+    expect(container.querySelectorAll(".requestSnapshotPointColumn.hasCacheEvent")).toHaveLength(2);
   });
 
   it("owns the bounded cache evidence list and exposes exact joined counts", async () => {
