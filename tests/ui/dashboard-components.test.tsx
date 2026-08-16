@@ -643,7 +643,7 @@ describe("request snapshots and cache evidence", () => {
 
   it("renders independent equal-spaced request waves with exact non-cumulative values and a fixed scale", async () => {
     const user = userEvent.setup();
-    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} cacheWriteAvailable historical={false} />);
 
     expect(screen.getByText("Each point is one provider usage snapshot. Equal spacing; curves only connect recorded points. Not cumulative.")).toBeInTheDocument();
     expect(container.querySelectorAll(".contextArea")).toHaveLength(4);
@@ -691,7 +691,7 @@ describe("request snapshots and cache evidence", () => {
 
   it("uses one keyboard chart stop, pointer inspection, and exact agent-timestamp cache markers", async () => {
     const user = userEvent.setup();
-    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+    const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} cacheWriteAvailable historical={false} />);
     const chart = screen.getByRole("group", { name: /Primary agent request snapshots/ });
 
     expect(chart).toHaveAttribute("tabindex", "0");
@@ -721,7 +721,7 @@ describe("request snapshots and cache evidence", () => {
 
   it("owns the bounded cache evidence list and exposes exact joined counts", async () => {
     const user = userEvent.setup();
-    render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} historical={false} />);
+    render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} cacheWriteAvailable historical={false} />);
 
     const list = screen.getByRole("list");
     expect(screen.getByRole("heading", { name: "Cache evidence" })).toBeInTheDocument();
@@ -739,14 +739,31 @@ describe("request snapshots and cache evidence", () => {
     expect(screen.getByText("Watching for meaningful cache transitions for Builder…")).toBeInTheDocument();
   });
 
+  it("omits unsupported cache-write metrics and classifications for Codex", () => {
+    const { container } = render(<RequestSnapshotsPanel
+      agents={[agent, childAgent]}
+      requestSnapshots={requestSnapshots}
+      cacheEvents={cacheEvents}
+      cacheWriteAvailable={false}
+      historical={false}
+    />);
+
+    expect(container.querySelectorAll(".contextSeriesLine")).toHaveLength(3);
+    expect(container.querySelectorAll(".contextChartPoint")).toHaveLength(6);
+    expect(container.querySelector(".requestSnapshotLegend")).toHaveTextContent("Uncached inputCache readOutput");
+    expect(screen.queryByRole("switch", { name: "Cache write" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cache evidence" })).not.toBeInTheDocument();
+    expect(container.querySelector(".instrumentAnnouncement")).not.toHaveTextContent("cache write");
+  });
+
   it("uses factual request and cache empty states in live and recorded views", () => {
     const emptySnapshots = { status: "unavailable" as const, items: [] };
     const emptyEvents = { status: "unavailable" as const, items: [] };
-    const { rerender } = render(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} historical={false} />);
+    const { rerender } = render(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} cacheWriteAvailable historical={false} />);
     expect(screen.getByText("Independent request snapshots are not available yet for this session.")).toBeInTheDocument();
     expect(screen.getByText("Comparable cache snapshots are not available yet for this session.")).toBeInTheDocument();
 
-    rerender(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} historical />);
+    rerender(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} cacheWriteAvailable historical />);
     expect(screen.getByText("No independent request snapshots were recorded for this session.")).toBeInTheDocument();
     expect(screen.getByText("No comparable cache snapshots were recorded for this session.")).toBeInTheDocument();
   });

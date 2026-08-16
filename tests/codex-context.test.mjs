@@ -39,10 +39,10 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     tokenCount("2026-08-10T13:00:02.000Z", {
       input_tokens: 1_500,
       cached_input_tokens: 500,
-      cache_creation_input_tokens: 50,
+      cache_write_input_tokens: 50,
       output_tokens: 120,
       reasoning_output_tokens: 40,
-      total_tokens: 1_670,
+      total_tokens: 1_620,
     }, { event_id: "usage-1" }),
   ], { actorId: "primary", sourceKey: "thread-1" });
 
@@ -50,18 +50,18 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     dedupeId: "thread-1:token-count:usage-1",
     actorId: "primary",
     timestamp: "2026-08-10T13:00:02.000Z",
-    input: 1_000,
+    input: 950,
     output: 120,
     cacheWrite: 50,
     cacheRead: 500,
     reasoningOutput: 40,
-    totalTokens: 1_670,
+    totalTokens: 1_620,
     modelContextWindow: 200_000,
     model: "",
     comparisonGroup: 0,
     cacheComparable: true,
   }]);
-  assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_670);
+  assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_620);
   assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);
 });
 
@@ -236,20 +236,21 @@ test("integrates primary and child latest snapshots into all-agent context", asy
 
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 10 });
   const evidence = await provider.readSession("codex-fixture-parent", { historical: true });
-  assert.equal(provider.capabilities.cacheUsageClassification, true);
-  assert.equal(evidence.efficiencyRuleEvidence.cacheUsageClassification, true);
+  assert.equal(provider.capabilities.cacheWriteUsage, false);
+  assert.equal(provider.capabilities.cacheUsageClassification, false);
+  assert.equal(evidence.efficiencyRuleEvidence.cacheUsageClassification, false);
   assert.deepEqual(evidence.usageSnapshots.map(({ actorId, input, output, cacheWrite, cacheRead }) => ({
     actorId, input, output, cacheWrite, cacheRead,
   })), [
-    { actorId: "primary", input: 1_000, output: 120, cacheWrite: 50, cacheRead: 500 },
+    { actorId: "primary", input: 950, output: 120, cacheWrite: 50, cacheRead: 500 },
     { actorId: "agent-codex-fixture-child", input: 200, output: 30, cacheWrite: 0, cacheRead: 100 },
   ]);
 
   const state = monitorStateFromProviderEvidence("codex", evidence);
-  assert.equal(state.agents.find((agent) => agent.id === "primary").tokens.total, 1_670);
+  assert.equal(state.agents.find((agent) => agent.id === "primary").tokens.total, 1_620);
   assert.equal(state.agents.find((agent) => agent.id === "agent-codex-fixture-child").tokens.total, 330);
-  assert.equal(state.metrics.tokens.allAgents, 2_000);
-  assert.equal(state.metrics.tokens.input, 1_200);
+  assert.equal(state.metrics.tokens.allAgents, 1_950);
+  assert.equal(state.metrics.tokens.input, 1_150);
   assert.equal(state.metrics.tokens.output, 150);
   assert.equal(state.metrics.tokens.cacheWrite, 50);
   assert.equal(state.metrics.tokens.cacheRead, 600);

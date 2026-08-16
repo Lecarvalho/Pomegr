@@ -207,6 +207,7 @@ test("Claude adapter discovers live workflow workers without treating journals a
   });
   const evidence = await provider.readSession(localId);
   assert.equal(provider.capabilities.workflows, true);
+  assert.equal(provider.capabilities.cacheWriteUsage, true);
   assert.equal(evidence.agents.length, 3);
   assert.equal(evidence.agents.some((agent) => agent.id.includes("journal")), false);
   assert.equal(new Set(evidence.agents.map((agent) => agent.id)).size, 3);

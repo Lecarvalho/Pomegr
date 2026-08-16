@@ -197,15 +197,16 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(codexState.session.repository.available, false, "Git failure degrades independently");
   assert.equal(claudeState.session.pullRequests.status, "unavailable");
   assert.equal(codexState.usageLimits.available, true);
-  assert.equal(codexState.metrics.tokens.allAgents, 2_000);
+  assert.equal(codexState.metrics.tokens.allAgents, 1_950);
   assert.equal(codexState.metrics.tokens.allAgents < 9_800, true, "cumulative total_token_usage is not exposed");
   assert.deepEqual(claudeState.metrics.tokens.contextHistory.boundaries.map(({ agentId, kind, preTokens }) => ({
     agentId, kind, preTokens,
   })), [{ agentId: "primary", kind: "automatic_compaction", preTokens: 180_000 }]);
+  assert.equal(claudeState.metrics.tokens.cacheEvents.status, "ready");
+  assert.equal(codexState.metrics.tokens.cacheEvents.status, "unavailable");
   for (const state of [claudeState, codexState]) {
     assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, state.metrics.tokens.allAgents);
     assert.equal(Array.isArray(state.metrics.tokens.contextHistory.boundaries), true);
-    assert.equal(state.metrics.tokens.cacheEvents.status, "ready");
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
     assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);

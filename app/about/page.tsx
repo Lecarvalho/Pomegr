@@ -43,6 +43,16 @@ export default function About() {
           <p>When the optional status-line bridge is connected, Pomegr displays Claude Code&apos;s client-side <code>cost.total_cost_usd</code> session estimate. Claude Code calculates it using standard API list rates, so it can help compare session consumption but may differ from an actual API bill and does not represent the marginal cost of subscription usage. Pomegr does not reconstruct this value from transcript tokens.</p>
         </section>
 
+        <section id="known-issues" className="aboutNote" aria-labelledby="known-issues-title">
+          <div><span className="label">KNOWN ISSUES</span><h2 id="known-issues-title">Known issues</h2></div>
+          <ul className="aboutIssueList">
+            <li>
+              <h3>Codex cache-write usage is not available</h3>
+              <p>Subscription-backed Codex session records currently report cache-write token counts as zero, so Pomegr omits the Cache write metric and cache-write classifications for Codex. Cache-read counts remain available. Follow <a href="https://github.com/openai/codex/issues/35300" target="_blank" rel="noreferrer">openai/codex#35300</a> for the upstream limitation.</p>
+            </li>
+          </ul>
+        </section>
+
         <section id="license" className="aboutNote" aria-labelledby="license-title">
           <div><span className="label">OPEN SOURCE</span><h2 id="license-title">Source and license</h2></div>
           <div className="legalCopy">

@@ -251,7 +251,7 @@ export function Dashboard() {
           </section>
 
           <SummaryMetrics state={data} historical={viewingHistory} />
-          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} historical={viewingHistory} />
+          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} />
           <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />
           {!viewingHistory && <ResourceUsagePanel resources={data.metrics.resources} />}
 

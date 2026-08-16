@@ -20,6 +20,8 @@ describe("Pomegr visual contract", () => {
     expect(document.querySelector(".aboutBrandMarkLight")).toHaveAttribute("src", expect.stringContaining("pomegr-mark-outline-light.svg"));
     expect(container.querySelector(".brandWordmark path")).toBeInTheDocument();
     expect(container.querySelector(".brandMark")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "openai/codex#35300" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.svg/);
   });
 

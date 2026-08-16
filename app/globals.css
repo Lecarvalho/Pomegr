@@ -133,6 +133,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .aboutGrid p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .aboutNote { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 36px; margin-top: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: rgba(251,250,246,.94); }.aboutNote h2 { margin: 10px 0 0; font: 400 23px/1.15 var(--font-inter), sans-serif; }.aboutNote p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }.aboutNote a { color: var(--green); text-underline-offset: 3px; }.aboutNote code { color: var(--ink); font: 11px/1.5 var(--font-geist-mono), monospace; }.legalCopy { min-width: 0; }.legalCopy nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0; font-size: 12px; line-height: 1.6; }.legalCopy a { overflow-wrap: anywhere; }
 
+.aboutIssueList { min-width: 0; margin: 0; padding: 0; list-style: none; }.aboutIssueList li + li { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }.aboutIssueList h3 { margin: 0 0 8px; color: var(--ink); font-size: 13px; font-weight: 620; line-height: 1.35; }
+
 .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 48px; padding: 46px 0 30px; }
 .hero > div:first-child { min-width: 0; flex: 1 1 auto; }
 .label { font-size: 10px; font-weight: 800; letter-spacing: .15em; color: var(--muted); }
@@ -237,7 +239,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .requestSnapshotReadout > div:first-child span, .requestSnapshotReadout > div:first-child strong { display: block; }
 .requestSnapshotReadout > div:first-child span { color: var(--muted); font: 9px/1.35 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
 .requestSnapshotReadout > div:first-child strong { margin-top: 5px; color: var(--ink); font: 590 14px/1.1 var(--font-inter), sans-serif; }
-.requestSnapshotReadout dl { min-width: 0; flex: 1; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(75px, 1fr)); gap: 8px 14px; }
+.requestSnapshotReadout dl { min-width: 0; flex: 1; margin: 0; display: grid; grid-template-columns: repeat(var(--snapshot-component-count), minmax(75px, 1fr)); gap: 8px 14px; }
 .requestSnapshotReadout dt { color: var(--muted); font-size: 8.5px; }
 .requestSnapshotReadout dd { margin: 4px 0 0; color: var(--ink); font: 520 10.5px/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
 .requestSnapshotReadout > em { max-width: 175px; color: var(--amber); font-size: 9.5px; font-style: normal; font-weight: 610; line-height: 1.35; }

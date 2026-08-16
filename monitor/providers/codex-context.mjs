@@ -120,18 +120,19 @@ function usageFromRecord(record) {
   if (cachedInput.present && cachedInput.value === null) return null;
   const rawCached = cachedInput.value;
   const cacheRead = Math.min(rawInput, rawCached);
-  const cacheWrite = nonNegativeInteger(
+  const rawCacheWrite = nonNegativeInteger(
     usage.cache_creation_input_tokens
     ?? usage.cacheCreationInputTokens
     ?? usage.cache_write_input_tokens
     ?? usage.cacheWriteInputTokens,
   ) ?? 0;
+  const cacheWrite = Math.min(rawCacheWrite, Math.max(0, rawInput - cacheRead));
   const output = nonNegativeInteger(usage.output_tokens ?? usage.outputTokens) ?? 0;
   const reasoningOutput = Math.min(
     output,
     nonNegativeInteger(usage.reasoning_output_tokens ?? usage.reasoningOutputTokens) ?? 0,
   );
-  const input = Math.max(0, rawInput - cacheRead);
+  const input = Math.max(0, rawInput - cacheRead - cacheWrite);
   const componentTotal = input + output + cacheWrite + cacheRead;
   if (componentTotal === 0) return null;
 

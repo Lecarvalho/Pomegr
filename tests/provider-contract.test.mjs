@@ -27,6 +27,7 @@ test("keeps optional provider capabilities deny-by-default", () => {
   assert.equal(capabilities.needsInput, true);
   assert.equal(capabilities.estimatedCost, false);
   assert.equal(capabilities.contextMachinery, false);
+  assert.equal(capabilities.cacheWriteUsage, false);
   assert.equal(capabilities.workflows, false);
   assert.equal(Object.isFrozen(capabilities), true);
   assert.throws(() => createProviderCapabilities({ futureCapability: true }), /Unknown provider capability/);

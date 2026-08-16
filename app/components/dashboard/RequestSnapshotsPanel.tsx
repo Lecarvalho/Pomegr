@@ -145,10 +145,11 @@ function CacheEventRow({ event, snapshot, agentLabel }: {
   );
 }
 
-export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, historical }: {
+export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, cacheWriteAvailable, historical }: {
   agents: Agent[];
   requestSnapshots: TokenMetrics["requestSnapshots"];
   cacheEvents: TokenMetrics["cacheEvents"];
+  cacheWriteAvailable: boolean;
   historical: boolean;
 }) {
   const snapshots = [...(requestSnapshots?.items || [])].sort((left, right) => (
@@ -163,6 +164,9 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
     cacheReadTokens: true,
     outputTokens: true,
   });
+  const snapshotComponents = cacheWriteAvailable
+    ? SNAPSHOT_COMPONENTS
+    : SNAPSHOT_COMPONENTS.filter((component) => component.key !== "cacheWriteTokens");
   const announcementId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -175,7 +179,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   ));
   const maximum = niceMaximum(Math.max(0, ...snapshots.flatMap((snapshot) => [
     snapshot.totalTokens,
-    ...SNAPSHOT_COMPONENTS.map((component) => snapshot[component.key]),
+    ...snapshotComponents.map((component) => snapshot[component.key]),
   ])));
   const resolvedActiveIndex = activeSnapshotIndex === null
     ? scopedSnapshots.length - 1
@@ -184,13 +188,14 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const spansMultipleDays = snapshots.length > 0
     && Date.parse(snapshots.at(-1)?.observedAt || "") - Date.parse(snapshots[0].observedAt) >= 24 * 60 * 60_000;
 
-  const allScopedEvents = [...(cacheEvents?.items || [])]
+  const cacheEventItems = cacheWriteAvailable ? cacheEvents?.items || [] : [];
+  const allScopedEvents = [...cacheEventItems]
     .filter((event) => resolvedScope === ALL_AGENTS_SCOPE || event.agentId === resolvedScope)
     .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
   const visibleEvents = showAllEvents ? allScopedEvents : allScopedEvents.slice(-RECENT_EVENT_COUNT);
   const hiddenEventCount = Math.max(0, allScopedEvents.length - RECENT_EVENT_COUNT);
   const eventsBySnapshot = new Map<string, CacheEvent[]>();
-  for (const event of cacheEvents?.items || []) {
+  for (const event of cacheEventItems) {
     const key = snapshotEventKey(event.agentId, event.observedAt);
     if (key === null) continue;
     eventsBySnapshot.set(key, [...(eventsBySnapshot.get(key) || []), event]);
@@ -211,13 +216,13 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   const activeAgentLabel = activeSnapshot
     ? agentById.get(activeSnapshot.agentId)?.label || "Agent"
     : scopeLabel;
-  const pointsBySeries = Object.fromEntries(SNAPSHOT_COMPONENTS.map((component) => (
+  const pointsBySeries = Object.fromEntries(snapshotComponents.map((component) => (
     [component.key, snapshotSeriesPoints(scopedSnapshots, component.key, maximum)]
   ))) as Record<SnapshotComponent, Point[]>;
   const activeX = scopedSnapshots.length === 1
     ? CHART_WIDTH / 2
     : (resolvedActiveIndex + 0.5) * CHART_WIDTH / scopedSnapshots.length;
-  const anySeriesVisible = SNAPSHOT_COMPONENTS.some((component) => visibleSeries[component.key]);
+  const anySeriesVisible = snapshotComponents.some((component) => visibleSeries[component.key]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -257,11 +262,11 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
   };
 
   const announcement = activeSnapshot
-    ? `${activeAgentLabel}, ${timelineTime(activeSnapshot.observedAt, spansMultipleDays)}. ${activeSnapshot.uncachedInputTokens.toLocaleString()} uncached input, ${activeSnapshot.cacheWriteTokens.toLocaleString()} cache write, ${activeSnapshot.cacheReadTokens.toLocaleString()} cache read, ${activeSnapshot.outputTokens.toLocaleString()} output, ${activeSnapshot.totalTokens.toLocaleString()} total.${activeEvents.length ? ` ${activeEvents.map((event) => eventTitle(event.kind)).join(", ")}.` : ""}`
+    ? `${activeAgentLabel}, ${timelineTime(activeSnapshot.observedAt, spansMultipleDays)}. ${activeSnapshot.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${activeSnapshot.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${activeSnapshot.cacheReadTokens.toLocaleString()} cache read, ${activeSnapshot.outputTokens.toLocaleString()} output, ${activeSnapshot.totalTokens.toLocaleString()} total.${activeEvents.length ? ` ${activeEvents.map((event) => eventTitle(event.kind)).join(", ")}.` : ""}`
     : "No request snapshot selected.";
 
   return (
-    <section className={`panel requestSnapshotsPanel ${historical ? "historical" : ""}`} aria-label="Request snapshots and cache evidence">
+    <section className={`panel requestSnapshotsPanel ${historical ? "historical" : ""}`} aria-label={cacheWriteAvailable ? "Request snapshots and cache evidence" : "Request snapshots"}>
       <div className="requestSnapshotsHeader">
         <div>
           <h2>Request snapshots</h2>
@@ -291,8 +296,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
               <span><time dateTime={activeSnapshot.observedAt}>{timelineTime(activeSnapshot.observedAt, spansMultipleDays)}</time> · {activeAgentLabel}</span>
               <strong>{activeSnapshot.totalTokens.toLocaleString()} total</strong>
             </div>
-            <dl>
-              {SNAPSHOT_COMPONENTS.map((component) => (
+            <dl style={{ "--snapshot-component-count": snapshotComponents.length } as CSSProperties}>
+              {snapshotComponents.map((component) => (
                 <div key={component.key}><dt>{component.label}</dt><dd>{activeSnapshot[component.key].toLocaleString()}</dd></div>
               ))}
             </dl>
@@ -322,14 +327,14 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
               >
                 <div className="requestSnapshotGrid" aria-hidden="true"><i /><i /><i /></div>
                 <svg className="contextAreaChart requestSnapshotAreaChart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
-                  {[...SNAPSHOT_COMPONENTS].reverse().map((component) => (
+                  {[...snapshotComponents].reverse().map((component) => (
                     <path
                       className={`contextArea ${component.className}Area${visibleSeries[component.key] ? "" : " isHidden"}`}
                       d={areaPath(pointsBySeries[component.key])}
                       key={`${component.key}-area`}
                     />
                   ))}
-                  {SNAPSHOT_COMPONENTS.map((component) => (
+                  {snapshotComponents.map((component) => (
                     <path
                       className={`contextSeriesLine ${component.className}Line${visibleSeries[component.key] ? "" : " isHidden"}`}
                       d={monotonePath(pointsBySeries[component.key])}
@@ -345,7 +350,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
                     return (
                       <div className={`requestSnapshotPointColumn${index === resolvedActiveIndex ? " active" : ""}${events.length ? " hasCacheEvent" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
                         {events.length > 0 && <i className={`requestSnapshotEventMarker ${events[0].kind}`} />}
-                        {SNAPSHOT_COMPONENTS.map((component) => (
+                        {snapshotComponents.map((component) => (
                           <i
                             className={`contextChartPoint ${component.className}ChartPoint${visibleSeries[component.key] ? "" : " isHidden"}`}
                             key={component.key}
@@ -362,7 +367,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
           </div>
           <div className="requestSnapshotFooter">
             <div className="requestSnapshotLegend" aria-label="Request snapshot components">
-              {SNAPSHOT_COMPONENTS.map((component) => (
+              {snapshotComponents.map((component) => (
                 <button
                   className={`requestSnapshotLegendItem ${component.className}`}
                   type="button"
@@ -381,7 +386,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
         </div>
       )}
 
-      <div className="cacheEvidenceSection">
+      {cacheWriteAvailable && <div className="cacheEvidenceSection">
         <div className="cacheEvidenceHeader">
           <div><h3>Cache evidence</h3><p>Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.</p></div>
           {cacheEvents?.status === "ready" && <span>{allScopedEvents.length} {allScopedEvents.length === 1 ? "event" : "events"}</span>}
@@ -405,7 +410,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, h
             />)}
           </ol>
         </>}
-      </div>
+      </div>}
     </section>
   );
 }

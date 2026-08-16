@@ -18,7 +18,7 @@
     { "id": "primary", "parentId": null, "label": "Primary agent", "kind": "orchestrator", "model": "gpt-synthetic", "effort": "high", "status": "idle", "signal": null, "toolCalls": 6, "skills": [], "executionTasks": [{ "id": "command-1", "label": "Run synthetic checks", "kind": "shell", "status": "completed", "background": false, "backgroundId": null, "startedAt": "2026-08-10T13:00:05.000Z", "finishedAt": "2026-08-10T13:00:06.000Z", "exitCode": 0, "signal": null }], "lastSeen": "2026-08-10T13:00:16.000Z", "startedAt": "2026-08-10T13:00:00.000Z", "updatedAt": "2026-08-10T13:00:16.000Z", "durationMs": 16000 },
     { "id": "agent-codex-fixture-child", "parentId": "primary", "label": "Fixture review", "kind": "subagent", "model": "gpt-synthetic", "effort": "medium", "status": "finished", "signal": null, "toolCalls": 0, "skills": [], "executionTasks": [], "lastSeen": "2026-08-10T13:00:17.000Z", "startedAt": "2026-08-10T13:00:14.500Z", "updatedAt": "2026-08-10T13:00:17.000Z", "durationMs": 2500 }
   ],
-  "usageSnapshots": [{ "dedupeId": "codex-fixture-parent:turn-fixture-1:token-count-1", "actorId": "primary", "timestamp": "2026-08-10T13:00:04.000Z", "input": 1000, "output": 120, "cacheWrite": 50, "cacheRead": 500, "reasoningOutput": 40, "totalTokens": 1670, "modelContextWindow": 200000 }],
+  "usageSnapshots": [{ "dedupeId": "codex-fixture-parent:turn-fixture-1:token-count-1", "actorId": "primary", "timestamp": "2026-08-10T13:00:04.000Z", "input": 950, "output": 120, "cacheWrite": 50, "cacheRead": 500, "reasoningOutput": 40, "totalTokens": 1620, "modelContextWindow": 200000 }],
   "toolCalls": [
     { "id": "codex-fbb51bf39c6dca349ace", "timestamp": "2026-08-10T13:00:05.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "Shell", "detail": "Command execution", "status": "completed", "repetitionSignature": "shell:6cb07b8688327ad4", "mutation": null },
     { "id": "codex-f232bf11d94581818976", "timestamp": "2026-08-10T13:00:07.000Z", "actor": { "id": "primary", "label": "Primary agent" }, "tool": "File change", "detail": "File change", "status": "completed", "repetitionSignature": "file change:ffe70f1e23cb366f", "mutation": null },
@@ -30,6 +30,6 @@
   "activity": [{ "id": "command-1", "timestamp": "2026-08-10T13:00:05.000Z", "actor": "Primary agent", "tool": "Shell", "detail": "Run synthetic checks", "status": null }],
   "planTasks": [],
   "compactions": [],
-  "efficiencyRuleEvidence": { "repetition": true, "concurrentMutation": true, "unsharedContext": true, "healthyFallback": true },
+  "efficiencyRuleEvidence": { "repetition": true, "concurrentMutation": true, "unsharedContext": true, "healthyFallback": true, "cacheUsageClassification": false },
   "pullRequestCreations": []
 }

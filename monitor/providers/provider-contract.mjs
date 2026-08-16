@@ -18,6 +18,7 @@ export const PROVIDER_CAPABILITY_KEYS = Object.freeze([
   "liveSessions",
   "needsInput",
   "planTasks",
+  "cacheWriteUsage",
   "cacheUsageClassification",
   "sessionSummary",
   "signals",

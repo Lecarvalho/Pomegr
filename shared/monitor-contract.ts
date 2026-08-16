@@ -241,6 +241,7 @@ export type ProviderCapabilities = {
   liveSessions: boolean;
   needsInput: boolean;
   planTasks: boolean;
+  cacheWriteUsage: boolean;
   cacheUsageClassification: boolean;
   sessionSummary: boolean;
   signals: boolean;

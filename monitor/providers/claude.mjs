@@ -827,6 +827,7 @@ export function createClaudeProvider(options = {}) {
       liveSessions: true,
       needsInput: true,
       planTasks: true,
+      cacheWriteUsage: true,
       sessionSummary: true,
       signals: true,
       usageLimits: true,

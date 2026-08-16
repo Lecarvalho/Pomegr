@@ -870,7 +870,7 @@ export function createCodexProvider(options = {}) {
         unsharedContext: (rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available))
           && usageSnapshots.some((snapshot) => snapshot.actorId === "primary"),
         healthyFallback: rolloutEvidenceAvailable || canonicalEvidence.some((item) => item.available),
-        cacheUsageClassification: rolloutEvidenceAvailable && usageSnapshots.length > 0,
+        cacheUsageClassification: false,
       },
       pullRequestCreations: mergeCodexPullRequestCreations(pullRequestCreationGroups),
     };
@@ -885,7 +885,8 @@ export function createCodexProvider(options = {}) {
       liveSessions: true,
       needsInput: true,
       planTasks: true,
-      cacheUsageClassification: true,
+      cacheWriteUsage: false,
+      cacheUsageClassification: false,
       signals: true,
       usageLimits: true,
     },
