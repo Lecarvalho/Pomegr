@@ -81,6 +81,8 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
     return {
       workflowId: null,
       workflowPhaseId: null,
+      workflowOrder: null,
+      workflowState: null,
       ...agent,
       tokens: {
         total: snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead,

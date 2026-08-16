@@ -510,7 +510,7 @@ describe("usage-limit clock", () => {
     const panelRender = vi.fn();
     const UsagePanelProbe = () => {
       panelRender();
-      return <UsageLimitsPanel usageLimits={usageLimits} />;
+      return <UsageLimitsPanel source="Claude Code" usageLimits={usageLimits} />;
     };
     const panel = (running: boolean) => <LiveClockProvider running={running}><UsagePanelProbe /></LiveClockProvider>;
     const { rerender } = render(panel(true));
@@ -527,6 +527,23 @@ describe("usage-limit clock", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Resets in 1m")).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("asks for provider re-authentication when a retained snapshot refresh receives 401", () => {
+    render(<LiveClockProvider running><UsageLimitsPanel
+      source="Claude Code"
+      usageLimits={{
+        available: true,
+        fetchedAt: "2026-08-08T05:00:00.000Z",
+        attemptedAt: "2026-08-08T12:00:00.000Z",
+        error: "Anthropic usage endpoint returned 401",
+        limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
+      }}
+    /></LiveClockProvider>);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Re-authentication needed");
+    expect(screen.getByRole("status")).toHaveTextContent("Sign in to Claude Code again. Pomegr will retry automatically.");
+    expect(screen.getByText("20%")).toBeInTheDocument();
   });
 });
 

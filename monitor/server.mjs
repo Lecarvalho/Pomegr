@@ -342,7 +342,13 @@ export function createMonitorRuntime(options = {}) {
 
   const { evidence, provider, sessionId } = selection;
   const historical = evidence.historical;
-  const agents = evidence.agents.map((agent) => ({ workflowId: null, workflowPhaseId: null, ...agent }));
+  const agents = evidence.agents.map((agent) => ({
+    workflowId: null,
+    workflowPhaseId: null,
+    workflowOrder: null,
+    workflowState: null,
+    ...agent,
+  }));
   const compactions = evidence.compactions.map((compaction) => ({
     ...compaction,
     actor: {

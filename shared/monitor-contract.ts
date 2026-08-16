@@ -39,6 +39,10 @@ export type Agent = {
   workflowId: string | null;
   /** Present only when a structured provider artifact verifies the phase association. */
   workflowPhaseId: string | null;
+  /** Stable provider-evidence order within the owning workflow. */
+  workflowOrder: number | null;
+  /** Workflow lifecycle evidence; independent from transcript-recency status. */
+  workflowState: "running" | "done" | "error" | "unknown" | null;
   label: string;
   kind: string;
   model: string;
@@ -160,6 +164,8 @@ export type Workflow = {
   name: string;
   summary: string | null;
   status: "running" | "completed" | "unknown";
+  /** Whether exact structured phase and worker metadata has been published. */
+  metadataStatus: "pending" | "ready" | "unavailable";
   startedAt: string | null;
   updatedAt: string | null;
   durationMs: number;

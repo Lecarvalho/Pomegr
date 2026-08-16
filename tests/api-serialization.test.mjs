@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -132,6 +132,36 @@ async function syntheticProviders(context) {
   );
   await writeFixture(path.join(claudeRoot, "registry", `${claudeId}.json`), "claude/registry.json");
   await writeFixture(path.join(claudeRoot, "tasks", claudeId, "task-1.json"), "claude/task.json");
+  const workflowRunId = "wf_fixture-1";
+  const workflowSessionRoot = path.join(claudeRoot, "projects", "fixture", claudeId);
+  await mkdir(path.join(workflowSessionRoot, "subagents", "workflows", workflowRunId), { recursive: true });
+  await appendFile(claudeFile, `${JSON.stringify({
+    type: "user",
+    timestamp: "2026-08-10T13:00:19.000Z",
+    message: { content: [{ type: "tool_result", tool_use_id: "private-launch", content: "WORKFLOW_PATH_MUST_NOT_LEAK" }] },
+    toolUseResult: {
+      status: "async_launched",
+      taskType: "local_workflow",
+      taskId: "PRIVATE_WORKFLOW_TASK_ID",
+      workflowName: "fixture-workflow",
+      runId: workflowRunId,
+      summary: "Implement and verify the fixture",
+      scriptPath: "WORKFLOW_PATH_MUST_NOT_LEAK",
+    },
+  })}\n`, "utf8");
+  await writeFile(
+    path.join(workflowSessionRoot, "subagents", "workflows", workflowRunId, "agent-shared.jsonl"),
+    `${JSON.stringify({ type: "user", timestamp: "2026-08-10T13:00:18.000Z", message: { content: "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" } })}\n`,
+    "utf8",
+  );
+  await writeFixture(
+    path.join(workflowSessionRoot, "subagents", "workflows", workflowRunId, "journal.jsonl"),
+    "claude/workflow/journal.jsonl",
+  );
+  await writeFixture(
+    path.join(workflowSessionRoot, "workflows", `${workflowRunId}.json`),
+    "claude/workflow/completed.json",
+  );
   const claude = createClaudeProvider({
     homeDir: claudeRoot,
     projectsRoot: path.join(claudeRoot, "projects"),
@@ -181,6 +211,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   const serialized = await Promise.all(responses.map((response) => response.text()));
   serialized.forEach((body, index) => assertNoPrivateFixtureSentinels(body, `API response ${index + 1}`));
   assert.doesNotMatch(serialized.join("\n"), /AUTH_FILE_MUST_NOT_LEAK/);
+  assert.doesNotMatch(serialized.join("\n"), /PRIVATE_WORKFLOW_TASK_ID/);
   assert.doesNotMatch(
     serialized.join("\n"),
     /987654321|PROCESS_START_MUST_NOT_LEAK|PROCESS_NAME_MUST_NOT_LEAK|PROCESS_COMMAND_MUST_NOT_LEAK|processStartIdentity|"pid"|intervalMs/,
@@ -193,6 +224,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   ]);
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  assert.equal(claudeState.workflows[0].metadataStatus, "ready");
+  assert.deepEqual(claudeState.workflows[0].agentIds, ["workflow-wf_fixture-1-agent-shared"]);
+  assert.equal(claudeState.agents.find((agent) => agent.workflowId === "wf_fixture-1").workflowState, "done");
   assert.equal(claudeState.session.repository.available, false, "Git failure degrades independently");
   assert.equal(codexState.session.repository.available, false, "Git failure degrades independently");
   assert.equal(claudeState.session.pullRequests.status, "unavailable");

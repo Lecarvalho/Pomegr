@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,6 +28,8 @@ function worker(overrides: Partial<Agent> = {}): Agent {
     durationMs: 180_000,
     workflowId: "workflow-1",
     workflowPhaseId: null,
+    workflowOrder: 0,
+    workflowState: "running",
     tokens: { total: 83_000, input: 1_000, output: 2_000, cacheWrite: 40_000, cacheRead: 40_000 },
     ...overrides,
   };
@@ -43,6 +45,7 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     updatedAt: "2026-08-15T12:03:00.000Z",
     durationMs: 180_000,
     agentIds: ["workflow-agent-1", "workflow-agent-2"],
+    metadataStatus: "pending",
     phases: [],
     ...overrides,
   };
@@ -107,28 +110,31 @@ describe("workflow activity", () => {
     expect(screen.queryByText("Workflow activity")).not.toBeInTheDocument();
   });
 
-  it("opens a running workflow by default and reports verified live measurements", () => {
+  it("opens pending workflow activity by default and shows uniquely ordered workers", () => {
     const agents = [
-      worker(),
-      worker({ id: "workflow-agent-2", label: "واجهة أمامية", tokens: { total: 79_000, input: 2_000, output: 1_000, cacheWrite: 38_000, cacheRead: 38_000 } }),
+      worker({ workflowOrder: 1 }),
+      worker({ id: "workflow-agent-2", label: "واجهة أمامية", workflowOrder: 0, tokens: { total: 79_000, input: 2_000, output: 1_000, cacheWrite: 38_000, cacheRead: 38_000 } }),
     ];
 
     const { container } = renderWorkflowActivity({ agents, historical: false, sessionId: "claude:workflow-live", workflows: [workflow()] });
 
     const details = container.querySelector("details.workflowActivityPanel");
     expect(details).toHaveAttribute("open");
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("Live phase detail unavailable.")).toBeInTheDocument();
+    expect(details?.querySelector(".workflowStatus")).toHaveTextContent("Running");
+    expect(screen.getByText("Claude Code has not published phase details for this running workflow yet.")).toBeInTheDocument();
     expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("2 observed agents");
     expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("162K context");
     expect(screen.getByText("واجهة أمامية")).toHaveAttribute("dir", "auto");
+    const rows = within(screen.getByRole("list", { name: "Workflow workers" })).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("واجهة أمامية");
+    expect(rows[1]).toHaveTextContent("Backend investigator");
     expect(details?.querySelector("summary .workflowDisclosureSummary")).not.toBeInTheDocument();
   });
 
   it("persists a collapsed historical summary per session", () => {
     window.localStorage.setItem("pomegr-workflow-panel-open-claude:workflow-history", "false");
     const agents = [worker({ status: "finished" })];
-    const completed = workflow({ status: "completed", agentIds: [agents[0].id] });
+    const completed = workflow({ status: "completed", metadataStatus: "unavailable", agentIds: [agents[0].id] });
 
     const { container } = renderWorkflowActivity({ agents, historical: true, sessionId: "claude:workflow-history", workflows: [completed] });
 
@@ -152,10 +158,12 @@ describe("workflow activity", () => {
       name: "Earlier audit",
       status: "completed",
       agentIds: [],
+      metadataStatus: "unavailable",
       phases: [],
       updatedAt: "2026-08-15T11:00:00.000Z",
     });
     const active = workflow({
+      metadataStatus: "ready",
       phases: [
         { id: "phase-implement", label: "実装", agentIds: ["workflow-agent-1"] },
         { id: "phase-verify", label: "Verify the responsive interface", agentIds: ["workflow-agent-2"] },
@@ -168,16 +176,19 @@ describe("workflow activity", () => {
     expect(runs).toHaveLength(2);
     expect(runs[0]).toHaveAccessibleName("quickwin-batch workflow");
     expect(runs[1]).toHaveAccessibleName("Earlier audit workflow");
-    const phases = within(runs[0] as HTMLElement).getAllByRole("listitem");
+    const phases = runs[0].querySelectorAll("details.workflowPhase");
+    expect(phases).toHaveLength(2);
     expect(phases[0]).toHaveTextContent("実装");
     expect(phases[0]).toHaveTextContent("Backend investigator");
+    expect(phases[0]).toHaveAttribute("open");
     expect(phases[1]).toHaveTextContent("Verify the responsive interface");
-    expect(screen.queryByText("Live phase detail unavailable.")).not.toBeInTheDocument();
+    expect(phases[1]).toHaveAttribute("open");
+    expect(screen.queryByText("Claude Code has not published phase details for this running workflow yet.")).not.toBeInTheDocument();
   });
 
-  it("marks workflow workers in Agent activity without duplicating their measurements", () => {
+  it("keeps workflow resource rows collapsed and uses static provenance when expanded", () => {
     const verifiedWorker = worker({ workflowPhaseId: "phase-implement" });
-    const active = workflow({ phases: [{ id: "phase-implement", label: "Implement", agentIds: [verifiedWorker.id] }] });
+    const active = workflow({ metadataStatus: "ready", phases: [{ id: "phase-implement", label: "Implement", agentIds: [verifiedWorker.id] }] });
 
     render(
       <LiveClockProvider running={false}>
@@ -185,10 +196,69 @@ describe("workflow activity", () => {
       </LiveClockProvider>,
     );
 
-    expect(screen.getByRole("button", { name: "Workflow" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Implement" })).toBeInTheDocument();
+    const disclosure = screen.getByRole("button", { name: /Workflow agents/ });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("list", { name: "Workflow agent resource details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workflow" })).not.toBeInTheDocument();
+
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("quickwin-batch · Implement")).toBeInTheDocument();
     expect(screen.getAllByText("83K")).toHaveLength(1);
     expect(screen.getAllByText("wall time")).toHaveLength(1);
+  });
+
+  it("renders completed and upcoming phases collapsed with explicit progress", () => {
+    const agents = [
+      worker({ workflowPhaseId: "consult", workflowState: "done" }),
+      worker({ id: "workflow-agent-2", workflowOrder: 1, workflowPhaseId: "implement", workflowState: "unknown" }),
+    ];
+    const ready = workflow({
+      metadataStatus: "ready",
+      phases: [
+        { id: "consult", label: "Consult", agentIds: [agents[0].id] },
+        { id: "implement", label: "Implement", agentIds: [agents[1].id] },
+        { id: "verify", label: "Verify", agentIds: [] },
+      ],
+    });
+
+    const { container } = renderWorkflowActivity({ agents, historical: false, sessionId: "claude:workflow-progress", workflows: [ready] });
+    const phases = container.querySelectorAll("details.workflowPhase");
+    expect(phases[0]).not.toHaveAttribute("open");
+    expect(phases[0].querySelector("summary")).toHaveTextContent("1/1 finished");
+    expect(phases[1]).not.toHaveAttribute("open");
+    expect(phases[1].querySelector("summary")).toHaveTextContent("0/1 finished");
+    expect(phases[2]).not.toHaveAttribute("open");
+    expect(phases[2].querySelector("summary")).toHaveTextContent("No workers observed");
+  });
+
+  it("keeps unmatched and duplicate-label workers identifiable", () => {
+    const longLabel = "مراجع الواجهة الدولية ".repeat(8).trim();
+    const agents = [
+      worker({ label: longLabel, workflowPhaseId: null, workflowState: "unknown" }),
+      worker({ id: "workflow-agent-2", label: longLabel, workflowOrder: 1, workflowPhaseId: "implement", workflowState: "running" }),
+    ];
+    const ready = workflow({ metadataStatus: "ready", phases: [{ id: "implement", label: "تنفيذ", agentIds: [agents[1].id] }] });
+
+    renderWorkflowActivity({ agents, historical: false, sessionId: "claude:workflow-identities", workflows: [ready] });
+
+    expect(screen.getByRole("heading", { name: "Unassigned workers" })).toBeInTheDocument();
+    const workerRows = screen.getAllByRole("listitem", { name: /worker/ });
+    expect(workerRows).toHaveLength(2);
+    expect(workerRows[0]).toHaveAccessibleName(/gent-2/);
+    expect(workerRows[1]).toHaveAccessibleName(/gent-1/);
+  });
+
+  it("distinguishes unavailable metadata from a phase-less workflow", () => {
+    renderWorkflowActivity({
+      agents: [worker({ status: "finished", workflowState: "done" })],
+      historical: true,
+      sessionId: "claude:workflow-unavailable",
+      workflows: [workflow({ status: "completed", metadataStatus: "unavailable", agentIds: ["workflow-agent-1"] })],
+    });
+
+    expect(screen.getByText("Detailed workflow metadata was not published for this run. Worker activity remains available.")).toBeInTheDocument();
+    expect(screen.queryByText(/no phases/i)).not.toBeInTheDocument();
   });
 
   it("advances only live running workflow wall time", () => {
@@ -230,7 +300,15 @@ describe("workflow activity", () => {
     const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 
     expect(styles).toMatch(/\.workflowRunIdentity h3\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*unicode-bidi:\s*plaintext;/s);
+    expect(styles).toMatch(/\.workflowActivityPanel\s*\{[^}]*--workflow-green-fg:\s*color-mix\([^;]+var\(--ink\)\);[^}]*--workflow-amber-fg:\s*color-mix\([^;]+var\(--ink\)\);/s);
+    expect(styles).toMatch(/\.workflowPhaseState,\s*\.workflowPhaseCount\s*\{[^}]*font:\s*11px\/1\.3/);
+    expect(styles).toMatch(/\.workflowWorkerIdentity span\s*\{[^}]*font-size:\s*11px;/);
+    expect(styles).toMatch(/\.workflowWorkerMeasure span\s*\{[^}]*font-size:\s*11px;/);
+    expect(styles).toMatch(/\.workflowPhase-active > summary\s*\{[^}]*background:\s*color-mix\([^;]+var\(--panel\)\);/);
+    expect(styles).toMatch(/\.workflowPhase-active \.workflowPhaseState\s*\{[^}]*color:\s*var\(--workflow-green-fg\);/);
+    expect(styles).toMatch(/\.workflowPhase-upcoming \.workflowPhaseState,\s*\.workflowPhase-unknown \.workflowPhaseState\s*\{[^}]*color:\s*var\(--workflow-amber-fg\);/);
     expect(styles).toMatch(/@media \(max-width:\s*640px\)[\s\S]*?\.workflowRunHeader\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/);
-    expect(styles).toMatch(/@media \(max-width:\s*640px\)[\s\S]*?\.workflowPhaseAgents\s*\{[^}]*grid-column:\s*2;[^}]*justify-content:\s*flex-start;/);
+    expect(styles).toMatch(/@media \(max-width:\s*640px\)[\s\S]*?\.workflowPhaseState\s*\{[^}]*grid-column:\s*2;/);
+    expect(styles).toMatch(/@media \(max-width:\s*640px\)[\s\S]*?\.workflowWorkerIdentity\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/);
   });
 });

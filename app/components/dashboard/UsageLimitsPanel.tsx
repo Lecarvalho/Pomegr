@@ -1,8 +1,10 @@
-import type { UsageLimits } from "../../../shared/monitor-contract";
+import type { ProviderSource, UsageLimits } from "../../../shared/monitor-contract";
 import { EmptyState } from "../EmptyState";
 import { MinuteRelativeTimeText, ResetCountdownText } from "../LiveTime";
 
-export function UsageLimitsPanel({ usageLimits }: { usageLimits: UsageLimits }) {
+export function UsageLimitsPanel({ source, usageLimits }: { source: ProviderSource; usageLimits: UsageLimits }) {
+  const reauthenticationRequired = /returned 401\b/i.test(usageLimits.error || "");
+
   return (
     <section className="panel limitsPanel" aria-label="Provider usage limits">
       <div className="limitsHeader">
@@ -21,6 +23,12 @@ export function UsageLimitsPanel({ usageLimits }: { usageLimits: UsageLimits }) 
           </article>
         ))}
       </div>
+      {reauthenticationRequired && (
+        <div className="usageAuthNotice" role="status">
+          <strong>Re-authentication needed</strong>
+          <span>Sign in to {source} again. Pomegr will retry automatically.</span>
+        </div>
+      )}
     </section>
   );
 }

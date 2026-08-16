@@ -39,10 +39,14 @@ const MAX_WORKFLOW_AGENTS = 64;
 const MAX_WORKFLOW_PHASES = 32;
 const MAX_WORKFLOW_PROGRESS_ITEMS = 256;
 const MAX_WORKFLOW_MANIFEST_BYTES = 512 * 1024;
+const MAX_WORKFLOW_JOURNAL_BYTES = 256 * 1024;
+const MAX_WORKFLOW_JOURNAL_RECORD_BYTES = 16 * 1024;
+const MAX_WORKFLOW_METADATA_BYTES = 16 * 1024;
 const MAX_WORKFLOW_DURATION_MS = 366 * 24 * 60 * 60 * 1_000;
 const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
 const SAFE_WORKFLOW_RUN_ID = /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const SAFE_WORKFLOW_AGENT_FILE = /^agent-([A-Za-z0-9][A-Za-z0-9_-]{0,79})\.jsonl$/;
+const SAFE_WORKFLOW_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
@@ -95,9 +99,11 @@ function cleanWorkflowText(value, maxLength) {
 }
 
 function workflowTimestamp(value) {
-  if (typeof value !== "string") return null;
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  const time = typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string" ? Date.parse(value) : Number.NaN;
+  const date = new Date(time);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function workflowDuration(value) {
@@ -129,6 +135,41 @@ function workflowLaunches(records) {
   return launches;
 }
 
+function readWorkflowAgentMetadata(file) {
+  const stat = statSafe(file);
+  if (!stat || stat.size <= 0 || stat.size > MAX_WORKFLOW_METADATA_BYTES) return null;
+  let metadata;
+  try { metadata = JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
+  if (!plainObject(metadata)) return null;
+  const rawAgentType = cleanWorkflowText(metadata.agentType, 40);
+  const rawModel = cleanWorkflowText(metadata.model, 80);
+  const agentType = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/.test(rawAgentType) ? rawAgentType : "";
+  const model = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(rawModel) ? rawModel : "";
+  const spawnDepth = Number.isInteger(metadata.spawnDepth) && metadata.spawnDepth >= 0 && metadata.spawnDepth <= 32
+    ? metadata.spawnDepth
+    : null;
+  return { agentType: agentType || null, model: model || null, spawnDepth };
+}
+
+function assignWorkflowFallbackLabels(agents) {
+  const labels = new Map();
+  const byCandidate = new Map();
+  for (const agent of agents) {
+    const candidate = agent.rawAgentId.slice(0, 6).toLowerCase();
+    if (!byCandidate.has(candidate)) byCandidate.set(candidate, []);
+    byCandidate.get(candidate).push(agent);
+  }
+  for (const [candidate, matches] of byCandidate) {
+    for (const agent of matches) {
+      const suffix = matches.length === 1
+        ? candidate
+        : crypto.createHash("sha1").update(agent.rawAgentId).digest("hex").slice(0, 6);
+      labels.set(agent.rawAgentId, `Workflow worker · ${suffix}`);
+    }
+  }
+  return labels;
+}
+
 function discoverWorkflowAgents(agentDir) {
   const root = path.join(agentDir, "workflows");
   const runs = new Map();
@@ -151,11 +192,40 @@ function discoverWorkflowAgents(agentDir) {
         rawAgentId: match[1],
         id: `workflow-${entry.name}-agent-${match[1]}`,
         runId: entry.name,
+        metadata: readWorkflowAgentMetadata(file.replace(/\.jsonl$/, ".meta.json")),
       });
     }
+    const fallbackLabels = assignWorkflowFallbackLabels(run.agents);
+    for (const agent of run.agents) agent.fallbackLabel = fallbackLabels.get(agent.rawAgentId);
     runs.set(entry.name, run);
   }
   return { runs, files: [...runs.values()].flatMap((run) => run.agents) };
+}
+
+function readWorkflowJournal(file, discovered) {
+  const stat = statSafe(file);
+  const empty = { order: [], states: new Map() };
+  if (!stat || stat.size <= 0 || stat.size > MAX_WORKFLOW_JOURNAL_BYTES) return empty;
+  const matchedIds = new Set(discovered.map((agent) => agent.rawAgentId));
+  const order = [];
+  const states = new Map();
+  let contents;
+  try { contents = fs.readFileSync(file, "utf8"); } catch { return empty; }
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line || Buffer.byteLength(line, "utf8") > MAX_WORKFLOW_JOURNAL_RECORD_BYTES) continue;
+    let record;
+    try { record = JSON.parse(line); } catch { continue; }
+    if (!plainObject(record) || (record.type !== "started" && record.type !== "result")) continue;
+    const rawAgentId = typeof record.agentId === "string" ? record.agentId.replace(/^agent-/, "") : "";
+    if (!SAFE_WORKFLOW_AGENT_ID.test(rawAgentId) || !matchedIds.has(rawAgentId)) continue;
+    if (record.type === "started") {
+      if (!order.includes(rawAgentId)) order.push(rawAgentId);
+      if (!states.has(rawAgentId)) states.set(rawAgentId, "running");
+    } else {
+      states.set(rawAgentId, "done");
+    }
+  }
+  return { order, states };
 }
 
 function discoverWorkflowManifestIds(workflowRoot) {
@@ -200,16 +270,21 @@ function readCompletedWorkflowManifest(file, expectedRunId, cache) {
       }
     }
     const workers = [];
+    const seenWorkers = new Set();
     if (Array.isArray(manifest.workflowProgress)) {
       for (const item of manifest.workflowProgress.slice(0, MAX_WORKFLOW_PROGRESS_ITEMS)) {
         if (workers.length >= MAX_WORKFLOW_AGENTS || item?.type !== "workflow_agent") continue;
         const rawAgentId = String(item.agentId || "").replace(/^agent-/, "");
-        if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(rawAgentId)) continue;
+        if (!SAFE_WORKFLOW_AGENT_ID.test(rawAgentId) || seenWorkers.has(rawAgentId)) continue;
+        seenWorkers.add(rawAgentId);
         const phaseIndex = Number(item.phaseIndex);
         workers.push({
           rawAgentId,
           label: cleanWorkflowText(item.label, 80) || null,
           phaseIndex: Number.isInteger(phaseIndex) && phaseByIndex.has(phaseIndex) ? phaseIndex : null,
+          state: item.state === "done" || item.state === "error" || item.state === "running"
+            ? item.state
+            : "unknown",
         });
       }
     }
@@ -348,8 +423,8 @@ function actorFor(file, mainFile, metadata, workflowFiles = new Map()) {
   const workflowAgent = workflowFiles.get(file);
   if (workflowAgent) return {
     id: workflowAgent.id,
-    label: "Workflow worker",
-    kind: "workflow-subagent",
+    label: workflowAgent.fallbackLabel,
+    kind: workflowAgent.metadata?.agentType || "workflow-subagent",
     parentId: "primary",
   };
   const id = path.basename(file, ".jsonl");
@@ -380,6 +455,15 @@ function registryStatus(entry, fallback) {
 
 function registryTimestamp(entry) {
   return entry?.updatedAt ? new Date(entry.updatedAt).toISOString() : null;
+}
+
+function hasStrongWorkflowLiveness(agent, historical) {
+  return !historical && (
+    agent?.status === "active"
+    || agent?.status === "warm"
+    || agent?.status === "waiting"
+    || agent?.status === "needs_input"
+  );
 }
 
 function projectCwd(records) {
@@ -443,9 +527,32 @@ function buildWorkflows({
     const launch = launches.get(runId) || null;
     const discovered = workflowDiscovery.runs.get(runId)?.agents || [];
     const manifest = readCompletedWorkflowManifest(path.join(workflowRoot, `${runId}.json`), runId, manifestCache);
-    const agentIds = discovered.map((item) => item.id).filter((id) => agentsById.has(id));
+    const journal = readWorkflowJournal(path.join(path.dirname(workflowRoot), "subagents", "workflows", runId, "journal.jsonl"), discovered);
     const rawAgentIds = new Map(discovered.map((item) => [item.rawAgentId, item.id]));
     const phaseAgents = new Map();
+
+    const fallbackRawOrder = [
+      ...journal.order,
+      ...discovered
+        .filter((item) => !journal.order.includes(item.rawAgentId))
+        .sort((left, right) => {
+          const leftAgent = agentsById.get(left.id);
+          const rightAgent = agentsById.get(right.id);
+          const timeDifference = Date.parse(leftAgent?.startedAt || "") - Date.parse(rightAgent?.startedAt || "");
+          return Number.isFinite(timeDifference) && timeDifference !== 0
+            ? timeDifference
+            : left.rawAgentId.localeCompare(right.rawAgentId);
+        })
+        .map((item) => item.rawAgentId),
+    ];
+    const manifestRawOrder = manifest
+      ? manifest.workers.map((worker) => worker.rawAgentId).filter((rawId, index, values) => values.indexOf(rawId) === index)
+      : [];
+    const orderedRawIds = [
+      ...manifestRawOrder.filter((rawId) => rawAgentIds.has(rawId)),
+      ...fallbackRawOrder.filter((rawId) => !manifestRawOrder.includes(rawId)),
+    ];
+    const agentIds = orderedRawIds.map((rawId) => rawAgentIds.get(rawId)).filter((id) => agentsById.has(id));
 
     if (manifest) {
       for (const worker of manifest.workers) {
@@ -454,6 +561,7 @@ function buildWorkflows({
         if (!agent) continue;
         agent.workflowId = runId;
         if (worker.label) agent.label = worker.label;
+        agent.workflowState = worker.state;
         if (worker.phaseIndex !== null) {
           const phaseId = `${runId}-phase-${worker.phaseIndex}`;
           agent.workflowPhaseId = phaseId;
@@ -464,9 +572,7 @@ function buildWorkflows({
     }
 
     const linkedAgents = agentIds.map((id) => agentsById.get(id)).filter(Boolean);
-    const strongLiveEvidence = !historical && linkedAgents.some((agent) => (
-      agent.status === "active" || agent.status === "warm" || agent.status === "waiting" || agent.status === "needs_input"
-    ));
+    const strongLiveEvidence = linkedAgents.some((agent) => hasStrongWorkflowLiveness(agent, historical));
     const status = manifest ? "completed" : strongLiveEvidence ? "running" : "unknown";
     const agentStartedAt = linkedAgents.map((agent) => agent.startedAt).filter(Boolean).sort()[0] || null;
     const agentUpdatedAt = linkedAgents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1) || null;
@@ -474,12 +580,25 @@ function buildWorkflows({
     const updatedAt = manifest?.updatedAt || agentUpdatedAt || launch?.observedAt;
     const elapsed = startedAt && updatedAt ? Math.max(0, Date.parse(updatedAt) - Date.parse(startedAt)) : 0;
 
-    for (const agent of linkedAgents) agent.workflowId = runId;
+    for (const [workflowOrder, agent] of linkedAgents.entries()) {
+      agent.workflowId = runId;
+      agent.workflowOrder = workflowOrder;
+      if (!manifest) {
+        const rawAgentId = discovered.find((item) => item.id === agent.id)?.rawAgentId;
+        const journalState = rawAgentId ? journal.states.get(rawAgentId) : null;
+        agent.workflowState = journalState === "done"
+          ? "done"
+          : journalState === "running" && status === "running" && hasStrongWorkflowLiveness(agent, historical)
+            ? "running"
+            : "unknown";
+      }
+    }
     return {
       id: runId,
       name: manifest?.name || launch?.name || "Workflow",
       summary: manifest?.summary || launch?.summary || null,
       status,
+      metadataStatus: manifest ? "ready" : status === "running" ? "pending" : "unavailable",
       startedAt,
       updatedAt,
       durationMs: manifest?.durationMs ?? Math.min(elapsed, MAX_WORKFLOW_DURATION_MS),
@@ -737,7 +856,9 @@ export function createClaudeProvider(options = {}) {
         parentId: actor.parentId,
         workflowId: workflowAgent?.runId || null,
         workflowPhaseId: null,
-        model: runtime.model,
+        workflowOrder: null,
+        workflowState: workflowAgent ? "unknown" : null,
+        model: runtime.model === "unknown" ? workflowAgent?.metadata?.model || runtime.model : runtime.model,
         effort: runtime.effort,
         status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
         toolCalls: calls,

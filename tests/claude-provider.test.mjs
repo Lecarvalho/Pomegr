@@ -213,11 +213,17 @@ test("Claude adapter discovers live workflow workers without treating journals a
   assert.equal(new Set(evidence.agents.map((agent) => agent.id)).size, 3);
   assert.equal(new Set(evidence.usageSnapshots.map((snapshot) => snapshot.dedupeId)).size, 2);
   assert.equal(evidence.agents.filter((agent) => agent.workflowId).some((agent) => agent.status === "stopped"), false);
-  assert.deepEqual(evidence.workflows.map(({ id, status, agentIds, phases }) => ({ id, status, agentIds, phases })), [
-    { id: runIds[0], status: "running", agentIds: [`workflow-${runIds[0]}-agent-shared`], phases: [] },
-    { id: runIds[1], status: "running", agentIds: [`workflow-${runIds[1]}-agent-shared`], phases: [] },
+  assert.deepEqual(evidence.workflows.map(({ id, status, metadataStatus, agentIds, phases }) => ({ id, status, metadataStatus, agentIds, phases })), [
+    { id: runIds[0], status: "running", metadataStatus: "pending", agentIds: [`workflow-${runIds[0]}-agent-shared`], phases: [] },
+    { id: runIds[1], status: "running", metadataStatus: "pending", agentIds: [`workflow-${runIds[1]}-agent-shared`], phases: [] },
   ]);
-  assert.equal(evidence.agents.filter((agent) => agent.workflowId).every((agent) => agent.parentId === "primary"), true);
+  const workflowAgents = evidence.agents.filter((agent) => agent.workflowId);
+  assert.equal(workflowAgents.every((agent) => agent.parentId === "primary"), true);
+  assert.equal(workflowAgents.every((agent) => agent.label === "Workflow worker · shared"), true);
+  assert.deepEqual(workflowAgents.map(({ workflowOrder, workflowState }) => ({ workflowOrder, workflowState })), [
+    { workflowOrder: 0, workflowState: "running" },
+    { workflowOrder: 0, workflowState: "unknown" },
+  ]);
   const state = monitorStateFromProviderEvidence("claude", evidence);
   assert.equal(state.metrics.agents, 3);
   assert.equal(state.metrics.tokens.allAgents, 70);
@@ -246,6 +252,12 @@ test("Claude adapter maps a stopped workflow worker by its provider-local agent 
     "agent-shared.jsonl",
   );
   await writeRecords(workerFile, workflowWorkerRecords("worker-one"));
+  const journalFile = path.join(path.dirname(workerFile), "journal.jsonl");
+  await writeRecords(journalFile, [{
+    type: "started",
+    agentId: "shared",
+    key: "WORKFLOW_PATH_MUST_NOT_LEAK",
+  }]);
   await utimes(workerFile, new Date("2026-08-15T18:01:30.000Z"), new Date("2026-08-15T18:01:30.000Z"));
 
   const provider = createClaudeProvider({
@@ -260,8 +272,92 @@ test("Claude adapter maps a stopped workflow worker by its provider-local agent 
   const evidence = await provider.readSession(localId);
   const worker = evidence.agents.find((agent) => agent.workflowId === runId);
   assert.equal(worker.status, "stopped");
+  assert.equal(worker.workflowState, "unknown");
   assert.equal(worker.lastSeen, "2026-08-15T18:01:20.000Z");
   assert.equal(evidence.workflows[0].status, "unknown");
+  assert.equal(evidence.workflows[0].metadataStatus, "unavailable");
+});
+
+test("Claude adapter orders live workflow workers from bounded journal lifecycle evidence", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-journal-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-journal";
+  const runId = "wf_fixture-journal";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const runRoot = path.join(projectsRoot, "fixture-project", localId, "subagents", "workflows", runId);
+  await writeRecords(mainFile, [workflowLaunchRecord(runId)]);
+
+  const workerSpecs = [
+    ["abcdef-one", "2026-08-15T18:01:40.000Z"],
+    ["abcdef-two", "2026-08-15T18:01:30.000Z"],
+    ["delta-1", "2026-08-15T18:01:10.000Z"],
+    ["gamma-1", "2026-08-15T18:01:20.000Z"],
+  ];
+  for (const [agentId, timestamp] of workerSpecs) {
+    const file = path.join(runRoot, `agent-${agentId}.jsonl`);
+    await writeRecords(file, workflowWorkerRecords(`worker-${agentId}`, timestamp));
+    await utimes(file, new Date("2026-08-15T18:01:50.000Z"), new Date("2026-08-15T18:01:50.000Z"));
+  }
+  await writeRecords(path.join(runRoot, "agent-abcdef-one.jsonl"), [{
+    type: "user",
+    timestamp: "2026-08-15T18:01:40.000Z",
+    message: { content: "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" },
+  }]);
+  await utimes(
+    path.join(runRoot, "agent-abcdef-one.jsonl"),
+    new Date("2026-08-15T18:01:50.000Z"),
+    new Date("2026-08-15T18:01:50.000Z"),
+  );
+  await writeRecords(path.join(runRoot, "agent-abcdef-one.meta.json"), [{
+    agentType: "workflow-subagent",
+    spawnDepth: 1,
+    model: "opus",
+    description: "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK",
+    toolUseId: "PRIVATE_WORKFLOW_TASK_ID",
+  }]);
+
+  const journalLines = [
+    JSON.stringify({ type: "started", agentId: "abcdef-two", key: "WORKFLOW_PATH_MUST_NOT_LEAK" }),
+    JSON.stringify({ type: "started", agentId: "abcdef-two", duplicate: true }),
+    JSON.stringify({ type: "ignored", agentId: "abcdef-one", result: "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK" }),
+    JSON.stringify({ type: "started", agentId: "not-discovered", result: "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK" }),
+    JSON.stringify({ type: "result", agentId: "abcdef-two", result: { private: "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK" } }),
+    JSON.stringify({ type: "started", agentId: "abcdef-one", key: "WORKFLOW_PATH_MUST_NOT_LEAK" }),
+    JSON.stringify({ type: "result", agentId: "delta-1", result: "WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK" }),
+    JSON.stringify({ type: "result", agentId: "gamma-1", result: `WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK${"x".repeat(17 * 1024)}` }),
+    "{malformed WORKFLOW_JOURNAL_RESULT_MUST_NOT_LEAK",
+  ];
+  await writeFile(path.join(runRoot, "journal.jsonl"), `${journalLines.join("\n")}\n`, "utf8");
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    now: () => Date.parse("2026-08-15T18:02:00.000Z"),
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  const workflow = evidence.workflows[0];
+  assert.equal(workflow.metadataStatus, "pending");
+  assert.deepEqual(workflow.agentIds, [
+    `workflow-${runId}-agent-abcdef-two`,
+    `workflow-${runId}-agent-abcdef-one`,
+    `workflow-${runId}-agent-delta-1`,
+    `workflow-${runId}-agent-gamma-1`,
+  ]);
+  const agentsById = new Map(evidence.agents.filter((agent) => agent.workflowId === runId).map((agent) => [agent.id, agent]));
+  assert.deepEqual(workflow.agentIds.map((id) => agentsById.get(id).workflowOrder), [0, 1, 2, 3]);
+  assert.deepEqual(workflow.agentIds.map((id) => agentsById.get(id).workflowState), ["done", "running", "done", "unknown"]);
+  assert.equal(new Set(workflow.agentIds.map((id) => agentsById.get(id).label)).size, 4);
+  assert.equal(agentsById.get(`workflow-${runId}-agent-abcdef-one`).kind, "workflow-subagent");
+  assert.equal(agentsById.get(`workflow-${runId}-agent-abcdef-one`).model, "opus");
+  const state = monitorStateFromProviderEvidence("claude", evidence);
+  assertNoPrivateFixtureSentinels(evidence, "live workflow journal evidence");
+  assertNoPrivateFixtureSentinels(state, "serialized live workflow journal state");
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE_WORKFLOW_TASK_ID|not-discovered|duplicate/);
 });
 
 test("Claude adapter allowlists completed workflow phases and worker linkage", async (context) => {
@@ -296,22 +392,66 @@ test("Claude adapter allowlists completed workflow phases and worker linkage", a
     name: "fixture-workflow",
     summary: "Implement and verify the fixture",
     status: "completed",
+    metadataStatus: "ready",
     startedAt: "2026-08-15T18:00:00.000Z",
     updatedAt: "2026-08-15T18:05:00.000Z",
     durationMs: 300_000,
-    agentIds: [`workflow-${runId}-agent-reviewer`, `workflow-${runId}-agent-shared`],
+    agentIds: [`workflow-${runId}-agent-shared`, `workflow-${runId}-agent-reviewer`],
     phases: [
       { id: `${runId}-phase-1`, label: "Implement", agentIds: [`workflow-${runId}-agent-shared`] },
       { id: `${runId}-phase-2`, label: "Review", agentIds: [`workflow-${runId}-agent-reviewer`] },
     ],
   }]);
   const workflowAgents = evidence.agents.filter((agent) => agent.workflowId === runId);
-  assert.deepEqual(workflowAgents.map(({ label, workflowPhaseId }) => ({ label, workflowPhaseId })), [
-    { label: "review:backend", workflowPhaseId: `${runId}-phase-2` },
-    { label: "impl:backend", workflowPhaseId: `${runId}-phase-1` },
+  assert.deepEqual(workflowAgents.map(({ label, workflowPhaseId, workflowOrder, workflowState }) => ({ label, workflowPhaseId, workflowOrder, workflowState })), [
+    { label: "review:backend", workflowPhaseId: `${runId}-phase-2`, workflowOrder: 1, workflowState: "error" },
+    { label: "impl:backend", workflowPhaseId: `${runId}-phase-1`, workflowOrder: 0, workflowState: "done" },
   ]);
   assertNoPrivateFixtureSentinels(evidence, "completed Claude workflow evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /totalTokens|totalToolCalls|taskId|scriptPath|promptPreview|resultPreview|journal|PRIVATE_WORKFLOW_TASK_ID/);
+});
+
+test("Claude adapter accepts finite epoch-millisecond workflow timestamps", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-epoch-workflow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "workflow-epoch";
+  const runId = "wf_fixture-epoch";
+  const sessionRoot = path.join(projectsRoot, "fixture-project", localId);
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  await writeRecords(mainFile, [workflowLaunchRecord(runId)]);
+  await writeRecords(
+    path.join(sessionRoot, "subagents", "workflows", runId, "agent-epoch-worker.jsonl"),
+    workflowWorkerRecords("epoch-worker"),
+  );
+  await mkdir(path.join(sessionRoot, "workflows"), { recursive: true });
+  await writeFile(path.join(sessionRoot, "workflows", `${runId}.json`), JSON.stringify({
+    runId,
+    status: "completed",
+    workflowName: "epoch-workflow",
+    startTime: Date.parse("2026-08-15T18:00:00.000Z"),
+    timestamp: Date.parse("2026-08-15T18:05:00.000Z"),
+    workflowProgress: [{
+      type: "workflow_agent",
+      agentId: "epoch-worker",
+      label: "epoch:worker",
+      state: "done",
+    }],
+  }), "utf8");
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId);
+  assert.equal(evidence.workflows[0].startedAt, "2026-08-15T18:00:00.000Z");
+  assert.equal(evidence.workflows[0].updatedAt, "2026-08-15T18:05:00.000Z");
+  assert.equal(evidence.workflows[0].durationMs, 300_000);
+  assert.equal(evidence.workflows[0].metadataStatus, "ready");
 });
 
 test("Claude adapter never marks incomplete historical or malformed workflows as running", async (context) => {
@@ -330,10 +470,17 @@ test("Claude adapter never marks incomplete historical or malformed workflows as
   ]);
   const workerFile = path.join(sessionRoot, "subagents", "workflows", runId, "agent-shared.jsonl");
   await writeRecords(workerFile, workflowWorkerRecords("worker-one", "2026-08-10T18:01:00.000Z"));
+  const journalFile = path.join(path.dirname(workerFile), "journal.jsonl");
+  await writeRecords(journalFile, [{
+    type: "started",
+    agentId: "shared",
+    key: "WORKFLOW_PATH_MUST_NOT_LEAK",
+  }]);
   await mkdir(path.join(sessionRoot, "workflows"), { recursive: true });
   await writeFile(path.join(sessionRoot, "workflows", `${runId}.json`), "{malformed WORKFLOW_SCRIPT_MUST_NOT_LEAK", "utf8");
   await utimes(mainFile, new Date("2026-08-10T18:01:00.000Z"), new Date("2026-08-10T18:01:00.000Z"));
   await utimes(workerFile, new Date("2026-08-10T18:01:00.000Z"), new Date("2026-08-10T18:01:00.000Z"));
+  await utimes(journalFile, new Date("2026-08-10T18:01:00.000Z"), new Date("2026-08-10T18:01:00.000Z"));
 
   const provider = createClaudeProvider({
     homeDir: root,
@@ -346,6 +493,8 @@ test("Claude adapter never marks incomplete historical or malformed workflows as
   const evidence = await provider.readSession(localId, { historical: true });
   assert.equal(evidence.historical, true);
   assert.equal(evidence.workflows[0].status, "unknown");
+  assert.equal(evidence.workflows[0].metadataStatus, "unavailable");
+  assert.equal(evidence.agents.find((agent) => agent.workflowId === runId).workflowState, "unknown");
   assert.deepEqual(evidence.workflows[0].phases, []);
   assertNoPrivateFixtureSentinels(evidence, "unknown historical Claude workflow evidence");
 });
