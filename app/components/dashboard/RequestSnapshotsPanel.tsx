@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Agent, CacheEvent, MonitorState, RequestSnapshot } from "../../../shared/monitor-contract";
-import { compactNumber, formatDuration, timelineTime } from "../../dashboard-utils";
+import { compactNumber, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
@@ -98,49 +98,65 @@ export function snapshotEventKey(agentId: string, observedAt: string) {
 }
 
 function eventTitle(kind: CacheEvent["kind"]) {
-  if (kind === "miss_refill") return "Possible cache miss · refill recorded";
-  if (kind === "reuse") return "Cache reuse recorded";
-  return "Cache refill recorded";
+  if (kind === "miss_refill") return "Possible cache miss · refill";
+  if (kind === "reuse") return "Cache reuse";
+  return "Cache refill";
 }
 
-function eventDetail(event: CacheEvent) {
-  if (event.kind === "miss_refill" && event.previousCacheReadPercent !== null && event.gapMs !== null) {
-    return `Cached input fell from ${event.previousCacheReadPercent}% to ${event.cacheReadPercent}% after ${formatDuration(event.gapMs)}; a large refill was recorded.`;
-  }
-  if (event.kind === "reuse") {
-    return event.relatedEventId && event.gapMs !== null
-      ? `Cache reuse was recorded ${formatDuration(event.gapMs)} after its linked refill.`
-      : "Pomegr derived cache reuse from the reported token counts for this request.";
-  }
-  return "Pomegr derived a large cache refill from the reported token counts for this request.";
-}
-
-function CacheEventRow({ event, snapshot, agentLabel }: {
+function CacheEventRow({ event, agentLabel, showAgent, interactive, active, selected, onHover, onHoverEnd, onFocus, onBlur, onSelect, onClearSelection }: {
   event: CacheEvent;
-  snapshot: RequestSnapshot | null;
   agentLabel: string;
+  showAgent: boolean;
+  interactive: boolean;
+  active: boolean;
+  selected: boolean;
+  onHover: () => void;
+  onHoverEnd: () => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onSelect: () => void;
+  onClearSelection: () => void;
 }) {
+  const handleKeyDown = (keyboardEvent: KeyboardEvent<HTMLDivElement>) => {
+    if (!interactive) return;
+    if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+      keyboardEvent.preventDefault();
+      onSelect();
+    } else if (keyboardEvent.key === "Escape") {
+      keyboardEvent.preventDefault();
+      keyboardEvent.currentTarget.blur();
+      onClearSelection();
+    }
+  };
+
   return (
-    <li className={`cacheEvidenceRow ${event.kind}`}>
-      <span className="cacheEvidenceMark" aria-hidden="true">
-        <svg viewBox="0 0 16 16">
-          {event.kind === "reuse"
-            ? <path d="M3 9.5a5 5 0 0 0 8.7 1.5M13 6.5A5 5 0 0 0 4.3 5M3 3v3h3M13 13v-3h-3" />
-            : <><path d="M8 2v8" /><path d="m4.5 7 3.5 3.5L11.5 7" /><path d="M3 13h10" /></>}
-        </svg>
-      </span>
-      <div className="cacheEvidenceBody">
-        <div className="cacheEvidenceTitle">
+    <li className="cacheEvidenceItem">
+      <div
+        className={`cacheEvidenceRow ${event.kind}${active ? " active" : ""}${interactive ? " interactive" : ""}`}
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        aria-label={interactive ? `Locate ${eventTitle(event.kind)} at ${timelineTime(event.observedAt)}` : undefined}
+        aria-pressed={interactive ? selected : undefined}
+        onPointerEnter={interactive ? onHover : undefined}
+        onPointerLeave={interactive ? onHoverEnd : undefined}
+        onFocus={interactive ? onFocus : undefined}
+        onBlur={interactive ? onBlur : undefined}
+        onClick={interactive ? onSelect : undefined}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="cacheEvidenceMark" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            {event.kind === "reuse"
+              ? <path d="M3 9.5a5 5 0 0 0 8.7 1.5M13 6.5A5 5 0 0 0 4.3 5M3 3v3h3M13 13v-3h-3" />
+              : <><path d="M8 2v8" /><path d="m4.5 7 3.5 3.5L11.5 7" /><path d="M3 13h10" /></>}
+          </svg>
+        </span>
+        <div className="cacheEvidenceBody">
           <strong>{eventTitle(event.kind)}</strong>
-          <span>{agentLabel} · <time dateTime={event.observedAt}>{timelineTime(event.observedAt)}</time></span>
+          {showAgent && <span>{agentLabel}</span>}
         </div>
-        <p>{eventDetail(event)}</p>
+        <span className="cacheEvidencePercent"><strong>{event.cacheReadPercent}%</strong> read</span>
       </div>
-      <dl className="cacheEvidenceMetrics">
-        <div><dt>Cache read</dt><dd>{snapshot ? `${snapshot.cacheReadTokens.toLocaleString()} (${event.cacheReadPercent}%)` : `${event.cacheReadPercent}%`}</dd></div>
-        <div><dt>Cache write</dt><dd>{(snapshot?.cacheWriteTokens ?? event.cacheWriteTokens).toLocaleString()}</dd></div>
-        <div><dt>Prompt input</dt><dd>{event.promptInputTokens.toLocaleString()}</dd></div>
-      </dl>
     </li>
   );
 }
@@ -156,7 +172,9 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     Date.parse(left.observedAt) - Date.parse(right.observedAt) || left.id.localeCompare(right.id)
   ));
   const [scope, setScope] = useState(() => initialScope(agents, snapshots));
-  const [activeSnapshotIndex, setActiveSnapshotIndex] = useState<number | null>(null);
+  const [selectedSnapshotIndex, setSelectedSnapshotIndex] = useState<number | null>(null);
+  const [hoveredSnapshotIndex, setHoveredSnapshotIndex] = useState<number | null>(null);
+  const [focusedSnapshotIndex, setFocusedSnapshotIndex] = useState<number | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [visibleSeries, setVisibleSeries] = useState<Record<SnapshotComponent, boolean>>({
     uncachedInputTokens: true,
@@ -181,9 +199,10 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     snapshot.totalTokens,
     ...snapshotComponents.map((component) => snapshot[component.key]),
   ])));
-  const resolvedActiveIndex = activeSnapshotIndex === null
+  const inspectionSnapshotIndex = hoveredSnapshotIndex ?? focusedSnapshotIndex ?? selectedSnapshotIndex;
+  const resolvedActiveIndex = inspectionSnapshotIndex === null
     ? scopedSnapshots.length - 1
-    : Math.max(0, Math.min(activeSnapshotIndex, scopedSnapshots.length - 1));
+    : Math.max(0, Math.min(inspectionSnapshotIndex, scopedSnapshots.length - 1));
   const activeSnapshot = scopedSnapshots[resolvedActiveIndex];
   const spansMultipleDays = snapshots.length > 0
     && Date.parse(snapshots.at(-1)?.observedAt || "") - Date.parse(snapshots[0].observedAt) >= 24 * 60 * 60_000;
@@ -200,14 +219,14 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     if (key === null) continue;
     eventsBySnapshot.set(key, [...(eventsBySnapshot.get(key) || []), event]);
   }
-  const snapshotsByEvent = new Map<string, RequestSnapshot>();
-  for (const snapshot of snapshots) {
+  const scopedSnapshotIndexes = new Map<string, number>();
+  scopedSnapshots.forEach((snapshot, index) => {
     const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
-    if (key !== null) snapshotsByEvent.set(key, snapshot);
-  }
-  const matchingSnapshot = (event: CacheEvent) => {
+    if (key !== null) scopedSnapshotIndexes.set(key, index);
+  });
+  const matchingSnapshotIndex = (event: CacheEvent) => {
     const key = snapshotEventKey(event.agentId, event.observedAt);
-    return key === null ? null : snapshotsByEvent.get(key) || null;
+    return key === null ? null : scopedSnapshotIndexes.get(key) ?? null;
   };
   const activeSnapshotKey = activeSnapshot
     ? snapshotEventKey(activeSnapshot.agentId, activeSnapshot.observedAt)
@@ -230,7 +249,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
   }, [resolvedScope, scopedSnapshots.length]);
 
   useEffect(() => {
-    if (activeSnapshotIndex === null) return;
+    if (inspectionSnapshotIndex === null) return;
     const activePoint = chartRef.current?.querySelector<HTMLElement>(`[data-snapshot-index="${resolvedActiveIndex}"]`);
     const viewport = viewportRef.current;
     if (!activePoint || !viewport) return;
@@ -238,7 +257,13 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     else if (activePoint.offsetLeft + activePoint.offsetWidth > viewport.scrollLeft + viewport.clientWidth) {
       viewport.scrollLeft = activePoint.offsetLeft + activePoint.offsetWidth - viewport.clientWidth;
     }
-  }, [activeSnapshotIndex, resolvedActiveIndex]);
+  }, [inspectionSnapshotIndex, resolvedActiveIndex]);
+
+  const clearInspection = () => {
+    setSelectedSnapshotIndex(null);
+    setHoveredSnapshotIndex(null);
+    setFocusedSnapshotIndex(null);
+  };
 
   const handleChartKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (scopedSnapshots.length === 0) return;
@@ -249,16 +274,28 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     else if (event.key === "End") next = scopedSnapshots.length - 1;
     else return;
     event.preventDefault();
-    setActiveSnapshotIndex(next === scopedSnapshots.length - 1 ? null : next);
+    setHoveredSnapshotIndex(null);
+    setFocusedSnapshotIndex(null);
+    setSelectedSnapshotIndex(next);
+  };
+
+  const chartSnapshotIndex = (element: HTMLDivElement, clientX: number) => {
+    const bounds = element.getBoundingClientRect();
+    if (bounds.width <= 0) return null;
+    const progress = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
+    return Math.round(progress * (scopedSnapshots.length - 1));
   };
 
   const handleChartPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (scopedSnapshots.length === 0) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    if (bounds.width <= 0) return;
-    const progress = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    const next = Math.round(progress * (scopedSnapshots.length - 1));
-    setActiveSnapshotIndex(next === scopedSnapshots.length - 1 ? null : next);
+    const next = chartSnapshotIndex(event.currentTarget, event.clientX);
+    if (next !== null) setHoveredSnapshotIndex(next);
+  };
+
+  const handleChartClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (scopedSnapshots.length === 0) return;
+    const next = chartSnapshotIndex(event.currentTarget, event.clientX);
+    if (next !== null) setSelectedSnapshotIndex(next);
   };
 
   const announcement = activeSnapshot
@@ -276,7 +313,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
           <span>Scope</span>
           <select aria-label="Request scope" value={resolvedScope} onChange={(event) => {
             setScope(event.target.value);
-            setActiveSnapshotIndex(null);
+            clearInspection();
             setShowAllEvents(false);
           }}>
             {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.label}</option>)}
@@ -302,8 +339,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
               ))}
             </dl>
             {activeEvents.map((event) => <em className={event.kind} key={event.id}>{eventTitle(event.kind)}</em>)}
-            {activeSnapshotIndex !== null && activeSnapshotIndex < scopedSnapshots.length - 1 && (
-              <button type="button" onClick={() => setActiveSnapshotIndex(null)}>Latest</button>
+            {inspectionSnapshotIndex !== null && resolvedActiveIndex < scopedSnapshots.length - 1 && (
+              <button type="button" onClick={clearInspection}>Latest</button>
             )}
           </div>
           <div className="requestSnapshotPlot">
@@ -322,7 +359,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
                 aria-describedby={announcementId}
                 onKeyDown={handleChartKeyDown}
                 onPointerMove={handleChartPointerMove}
-                onPointerLeave={(event) => { if (document.activeElement !== event.currentTarget) setActiveSnapshotIndex(null); }}
+                onPointerLeave={() => setHoveredSnapshotIndex(null)}
+                onClick={handleChartClick}
                 style={{ minWidth: `${scopedSnapshots.length * MINIMUM_POINT_STEP}px` }}
               >
                 <div className="requestSnapshotGrid" aria-hidden="true"><i /><i /><i /></div>
@@ -344,12 +382,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
                   <line className="requestSnapshotCursor" x1={activeX} x2={activeX} y1={0} y2={CHART_HEIGHT} />
                 </svg>
                 <div className="requestSnapshotPoints" style={{ "--snapshot-count": scopedSnapshots.length } as CSSProperties} aria-hidden="true">
-                  {scopedSnapshots.map((snapshot, index) => {
-                    const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
-                    const events = key === null ? [] : eventsBySnapshot.get(key) || [];
-                    return (
-                      <div className={`requestSnapshotPointColumn${index === resolvedActiveIndex ? " active" : ""}${events.length ? " hasCacheEvent" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
-                        {events.length > 0 && <i className={`requestSnapshotEventMarker ${events[0].kind}`} />}
+                  {scopedSnapshots.map((snapshot, index) => (
+                      <div className={`requestSnapshotPointColumn${index === resolvedActiveIndex ? " active" : ""}`} data-snapshot-index={index} data-snapshot-id={snapshot.id} key={snapshot.id}>
                         {snapshotComponents.map((component) => (
                           <i
                             className={`contextChartPoint ${component.className}ChartPoint${visibleSeries[component.key] ? "" : " isHidden"}`}
@@ -358,8 +392,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
                           />
                         ))}
                       </div>
-                    );
-                  })}
+                  ))}
                 </div>
                 {!anySeriesVisible && <p className="requestSnapshotHiddenState">All series hidden. Use the legend to show a metric.</p>}
               </div>
@@ -388,7 +421,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
 
       {cacheWriteAvailable && <div className="cacheEvidenceSection">
         <div className="cacheEvidenceHeader">
-          <div><h3>Cache evidence</h3><p>Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.</p></div>
+          <div><h3>Cache evidence</h3><p>Transitions from provider-reported token counts. Not cost.</p></div>
           {cacheEvents?.status === "ready" && <span>{allScopedEvents.length} {allScopedEvents.length === 1 ? "event" : "events"}</span>}
         </div>
         {cacheEvents?.status !== "ready" ? (
@@ -402,12 +435,25 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
             </button>
           )}
           <ol className="cacheEvidenceList">
-            {visibleEvents.map((event) => <CacheEventRow
-              event={event}
-              snapshot={matchingSnapshot(event)}
-              agentLabel={agentById.get(event.agentId)?.label || "Agent"}
-              key={event.id}
-            />)}
+            {visibleEvents.map((event) => {
+              const snapshotIndex = matchingSnapshotIndex(event);
+              const eventKey = snapshotEventKey(event.agentId, event.observedAt);
+              return <CacheEventRow
+                event={event}
+                agentLabel={agentById.get(event.agentId)?.label || "Agent"}
+                showAgent={resolvedScope === ALL_AGENTS_SCOPE}
+                interactive={snapshotIndex !== null}
+                active={eventKey !== null && eventKey === activeSnapshotKey}
+                selected={snapshotIndex !== null && snapshotIndex === selectedSnapshotIndex}
+                onHover={() => { if (snapshotIndex !== null) setHoveredSnapshotIndex(snapshotIndex); }}
+                onHoverEnd={() => setHoveredSnapshotIndex(null)}
+                onFocus={() => { if (snapshotIndex !== null) setFocusedSnapshotIndex(snapshotIndex); }}
+                onBlur={() => setFocusedSnapshotIndex(null)}
+                onSelect={() => { if (snapshotIndex !== null) setSelectedSnapshotIndex(snapshotIndex); }}
+                onClearSelection={clearInspection}
+                key={event.id}
+              />;
+            })}
           </ol>
         </>}
       </div>}

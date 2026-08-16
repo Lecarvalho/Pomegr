@@ -689,26 +689,54 @@ describe("request snapshots and cache evidence", () => {
     expect(container.querySelectorAll(".contextChartPoint")).toHaveLength(12);
   });
 
-  it("uses one keyboard chart stop, pointer inspection, and exact agent-timestamp cache markers", async () => {
+  it("links chart inspection and exact agent-timestamp cache evidence in both directions", async () => {
     const user = userEvent.setup();
     const { container } = render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} cacheWriteAvailable historical={false} />);
     const chart = screen.getByRole("group", { name: /Primary agent request snapshots/ });
 
     expect(chart).toHaveAttribute("tabindex", "0");
     expect(container.querySelectorAll('.requestSnapshotChart [tabindex="0"]')).toHaveLength(0);
-    expect(container.querySelectorAll(".requestSnapshotPointColumn.hasCacheEvent")).toHaveLength(2);
-    expect(container.querySelector('[data-snapshot-id="snapshot-write"]')).toHaveClass("hasCacheEvent");
-    expect(container.querySelector('[data-snapshot-id="snapshot-read"]')).toHaveClass("hasCacheEvent");
+    expect(container.querySelector(".requestSnapshotEventMarker")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
+    const missRow = screen.getByRole("button", { name: /Locate Possible cache miss/ });
+    const reuseRow = screen.getByRole("button", { name: /Locate Cache reuse/ });
+    expect(reuseRow).toHaveClass("active");
+    expect(missRow).not.toHaveClass("active");
 
     vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({ left: 0, right: 200, top: 0, bottom: 156, width: 200, height: 156, x: 0, y: 0, toJSON: () => ({}) });
     fireEvent.pointerMove(chart, { clientX: 0 });
     expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("146,282 cache write, 0 cache read");
+    expect(missRow).toHaveClass("active");
+    expect(reuseRow).not.toHaveClass("active");
     fireEvent.pointerMove(chart, { clientX: 200 });
     expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("759 cache write, 146,282 cache read");
+    expect(reuseRow).toHaveClass("active");
+
+    fireEvent.pointerEnter(missRow);
+    expect(container.querySelector('[data-snapshot-id="snapshot-write"]')).toHaveClass("active");
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent(/Possible cache miss.*refill/);
+    fireEvent.pointerLeave(missRow);
+    expect(container.querySelector('[data-snapshot-id="snapshot-read"]')).toHaveClass("active");
+
+    fireEvent.focus(missRow);
+    fireEvent.keyDown(missRow, { key: "Enter" });
+    fireEvent.blur(missRow);
+    expect(missRow).toHaveAttribute("aria-pressed", "true");
+    expect(missRow).toHaveClass("active");
+    expect(container.querySelector('[data-snapshot-id="snapshot-write"]')).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument();
+
+    fireEvent.pointerMove(chart, { clientX: 200 });
+    fireEvent.click(chart, { clientX: 200 });
+    fireEvent.pointerLeave(chart);
+    expect(reuseRow).toHaveAttribute("aria-pressed", "true");
+    expect(reuseRow).toHaveClass("active");
+    expect(screen.queryByRole("button", { name: "Latest" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(chart, { key: "Home" });
     expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("146,282 cache write, 0 cache read");
-    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("Possible cache miss · refill recorded");
+    expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("Possible cache miss · refill");
     expect(screen.getByRole("button", { name: "Latest" })).toBeInTheDocument();
     fireEvent.keyDown(chart, { key: "End" });
     expect(container.querySelector(".instrumentAnnouncement")).toHaveTextContent("759 cache write, 146,282 cache read");
@@ -716,24 +744,34 @@ describe("request snapshots and cache evidence", () => {
 
     await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
     expect(container.querySelectorAll(".requestSnapshotPointColumn")).toHaveLength(3);
-    expect(container.querySelectorAll(".requestSnapshotPointColumn.hasCacheEvent")).toHaveLength(2);
+    expect(container.querySelector(".requestSnapshotEventMarker")).not.toBeInTheDocument();
   });
 
-  it("owns the bounded cache evidence list and exposes exact joined counts", async () => {
+  it("keeps cache evidence rows compact without repeating chart values", async () => {
     const user = userEvent.setup();
     render(<RequestSnapshotsPanel agents={[agent, childAgent]} requestSnapshots={requestSnapshots} cacheEvents={cacheEvents} cacheWriteAvailable historical={false} />);
 
     const list = screen.getByRole("list");
     expect(screen.getByRole("heading", { name: "Cache evidence" })).toBeInTheDocument();
-    expect(screen.getByText("Meaningful cache transitions derived by Pomegr from provider-reported token counts. Evidence, not cost.")).toBeInTheDocument();
+    expect(screen.getByText("Transitions from provider-reported token counts. Not cost.")).toBeInTheDocument();
     expect(within(list).getAllByRole("listitem")).toHaveLength(5);
 
     await user.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
     expect(within(list).getAllByRole("listitem")).toHaveLength(7);
-    expect(screen.getByText("0 (5%)")).toBeInTheDocument();
-    expect(screen.getByText("146,282 (90%)")).toBeInTheDocument();
-    expect(within(list).getByText("146,282")).toBeInTheDocument();
+    const evidenceRows = within(list).getAllByRole("button");
+    expect(evidenceRows[0]).toHaveTextContent("5% read");
+    expect(evidenceRows[1]).toHaveTextContent("90% read");
+    expect(list.querySelector("time")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Cache read")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Cache write")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Prompt input")).not.toBeInTheDocument();
+    expect(within(list).queryByText(/Pomegr/)).not.toBeInTheDocument();
+    expect(within(list).queryByText(/large cache/i)).not.toBeInTheDocument();
+    expect(within(list).queryByText("Primary agent")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show recent 5" })).toHaveAttribute("aria-expanded", "true");
+
+    await user.selectOptions(screen.getByLabelText("Request scope"), "all-agents");
+    expect(within(screen.getByRole("list")).getAllByText("Primary agent").length).toBeGreaterThan(0);
 
     await user.selectOptions(screen.getByLabelText("Request scope"), "child");
     expect(screen.getByText("Watching for meaningful cache transitions for Builder…")).toBeInTheDocument();
