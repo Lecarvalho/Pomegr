@@ -5,17 +5,32 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const description = "A quiet, local observer for coding-agent sessions.";
+const socialImage = {
+  url: "/landing/social/pomegr-og-inclined-quiet-observer.png",
+  width: 1200,
+  height: 630,
+  alt: "Pomegr — A quiet, local observer for coding-agent sessions",
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://pomegr.com"),
   title: { default: "Pomegr", template: "%s · Pomegr" },
-  description: "A quiet, local observer for coding-agent sessions.",
+  description,
   icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }] },
   openGraph: {
     type: "website",
     siteName: "Pomegr",
     title: "Pomegr",
-    description: "A quiet, local observer for coding-agent sessions.",
+    description,
     url: "https://pomegr.com",
+    images: [socialImage],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Pomegr",
+    description,
+    images: [socialImage],
   },
 };
 
