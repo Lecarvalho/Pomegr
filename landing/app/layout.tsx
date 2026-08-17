@@ -6,6 +6,9 @@ const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const description = "A quiet, local observer for coding-agent sessions.";
+const socialTitle = "Pomegr — Keep your bearings while agents work";
+const socialDescription =
+  "See live activity, context, tasks, Git changes, and usage in one read-only operations view.";
 const socialImage = {
   url: "/landing/social/pomegr-og-inclined-quiet-observer.png",
   width: 1200,
@@ -21,15 +24,15 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Pomegr",
-    title: "Pomegr",
-    description,
+    title: socialTitle,
+    description: socialDescription,
     url: "https://pomegr.com",
     images: [socialImage],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pomegr",
-    description,
+    title: socialTitle,
+    description: socialDescription,
     images: [socialImage],
   },
 };
