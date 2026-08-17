@@ -196,14 +196,17 @@ function summaryFromRecords(records, fallback = {}) {
     if (timestamp) timestamps.push(timestamp);
     if (record?.type === "session_meta" && record.payload && typeof record.payload === "object") {
       const payload = record.payload;
-      const spawned = nestedThreadSpawn(payload);
-      ownerThreadId = safeThreadId(payload.id ?? payload.thread_id) || ownerThreadId;
-      sessionId = safeThreadId(payload.sessionId ?? payload.session_id) || sessionId;
-      parentThreadId = safeThreadId(payload.parentThreadId ?? payload.parent_thread_id ?? spawned?.parent_thread_id) || parentThreadId;
-      forkedFromId = safeThreadId(payload.forkedFromId ?? payload.forked_from_id) || forkedFromId;
-      agentNickname = boundedText(payload.agentNickname ?? payload.agent_nickname ?? spawned?.agent_nickname, MAX_LABEL_LENGTH) || agentNickname;
-      agentRole = boundedText(payload.agentRole ?? payload.agent_role ?? spawned?.agent_role, MAX_ROLE_LENGTH) || agentRole;
-      sourceKind = codexSourceKind(payload.source);
+      const recordThreadId = safeThreadId(payload.id ?? payload.thread_id);
+      if (!ownerThreadId && recordThreadId) ownerThreadId = recordThreadId;
+      if (!recordThreadId || recordThreadId === ownerThreadId) {
+        const spawned = nestedThreadSpawn(payload);
+        sessionId = safeThreadId(payload.sessionId ?? payload.session_id) || sessionId;
+        parentThreadId = safeThreadId(payload.parentThreadId ?? payload.parent_thread_id ?? spawned?.parent_thread_id) || parentThreadId;
+        forkedFromId = safeThreadId(payload.forkedFromId ?? payload.forked_from_id) || forkedFromId;
+        agentNickname = boundedText(payload.agentNickname ?? payload.agent_nickname ?? spawned?.agent_nickname, MAX_LABEL_LENGTH) || agentNickname;
+        agentRole = boundedText(payload.agentRole ?? payload.agent_role ?? spawned?.agent_role, MAX_ROLE_LENGTH) || agentRole;
+        sourceKind = codexSourceKind(payload.source);
+      }
     }
     const observedRuntime = runtimeRecord(record);
     if (observedRuntime) runtime = observedRuntime;
@@ -418,9 +421,17 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
     if (right === rootThreadId) return 1;
     const depth = treeDepth(left, parentById, rootThreadId) - treeDepth(right, parentById, rootThreadId);
     if (depth) return depth;
+    const leftThread = threadById.get(left);
+    const rightThread = threadById.get(right);
     const leftSummary = summaries.get(left);
     const rightSummary = summaries.get(right);
-    const started = timestampValue(leftSummary?.startedAt) - timestampValue(rightSummary?.startedAt);
+    const leftStartedAt = codexTimestamp(leftThread?.createdAt)
+      || leftSummary?.startedAt
+      || collaborations.get(left)?.startedAt;
+    const rightStartedAt = codexTimestamp(rightThread?.createdAt)
+      || rightSummary?.startedAt
+      || collaborations.get(right)?.startedAt;
+    const started = timestampValue(rightStartedAt) - timestampValue(leftStartedAt);
     return started || left.localeCompare(right);
   });
 
@@ -429,8 +440,8 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
     const thread = threadById.get(threadId) || {};
     const summary = summaries.get(threadId);
     const collaboration = collaborations.get(threadId);
-    const startedAt = summary?.startedAt
-      || codexTimestamp(thread.createdAt)
+    const startedAt = codexTimestamp(thread.createdAt)
+      || summary?.startedAt
       || collaboration?.startedAt
       || codexTimestamp(thread.updatedAt)
       || new Date(0).toISOString();
@@ -478,10 +489,10 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       kind,
       model: summary?.runtime?.model && summary.runtime.model !== "unknown"
         ? summary.runtime.model
-        : collaboration?.model || "unknown",
+        : primary ? "unknown" : collaboration?.model || "unknown",
       effort: summary?.runtime?.effort && summary.runtime.effort !== "unspecified"
         ? summary.runtime.effort
-        : collaboration?.effort || "unspecified",
+        : primary ? "unspecified" : collaboration?.effort || "unspecified",
       status,
       signal: null,
       toolCalls: 0,

@@ -130,6 +130,13 @@ export function resetCountdown(value: string | null, now = Date.now()) {
 }
 
 export function agentTreeRows(agents: Agent[]) {
+  const compareCreation = (left: Agent, right: Agent) => {
+    const leftStartedAt = Date.parse(left.startedAt || "");
+    const rightStartedAt = Date.parse(right.startedAt || "");
+    const leftTimestamp = Number.isFinite(leftStartedAt) ? leftStartedAt : Number.NEGATIVE_INFINITY;
+    const rightTimestamp = Number.isFinite(rightStartedAt) ? rightStartedAt : Number.NEGATIVE_INFINITY;
+    return rightTimestamp - leftTimestamp || left.id.localeCompare(right.id);
+  };
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const children = new Map<string, Agent[]>();
   const roots: Agent[] = [];
@@ -138,7 +145,10 @@ export function agentTreeRows(agents: Agent[]) {
       children.set(agent.parentId, [...(children.get(agent.parentId) || []), agent]);
     } else roots.push(agent);
   }
-  roots.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : 0));
+  for (const siblings of children.values()) siblings.sort(compareCreation);
+  roots.sort((left, right) => (
+    left.id === "primary" ? -1 : right.id === "primary" ? 1 : compareCreation(left, right)
+  ));
   const rows: Array<{ agent: Agent; depth: number }> = [];
   const visited = new Set<string>();
   const visit = (agent: Agent, depth: number) => {

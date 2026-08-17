@@ -71,6 +71,83 @@ test("uses the latest recognized turn context and keeps private settings fields 
   assertNoPrivateFixtureSentinels(summary, "Codex runtime metadata");
 });
 
+test("keeps a child rollout bound to its first thread metadata when it embeds parent session metadata", () => {
+  const child = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-16T20:49:15.625Z",
+      type: "session_meta",
+      payload: {
+        id: "child-thread",
+        session_id: "root-thread",
+        parent_thread_id: "root-thread",
+        source: { subagent: { thread_spawn: { parent_thread_id: "root-thread" } } },
+      },
+    },
+    {
+      timestamp: "2026-08-16T20:49:15.627Z",
+      type: "session_meta",
+      payload: { id: "root-thread", session_id: "root-thread", source: "vscode" },
+    },
+    {
+      timestamp: "2026-08-16T20:49:16.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-child", effort: "high" },
+    },
+  ], { localId: "child-thread" });
+  const root = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-16T20:40:00.000Z",
+      type: "session_meta",
+      payload: { id: "root-thread", session_id: "root-thread", source: "vscode" },
+    },
+    {
+      timestamp: "2026-08-16T20:40:01.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-root", effort: "xhigh" },
+    },
+  ], { localId: "root-thread" });
+
+  assert.equal(child.localId, "child-thread");
+  assert.equal(child.sessionId, "root-thread");
+  assert.equal(child.parentThreadId, "root-thread");
+  assert.equal(child.sourceKind, "subAgentThreadSpawn");
+
+  const agents = buildCodexAgentTree({
+    rootThreadId: "root-thread",
+    threads: [
+      { localId: "child-thread", sessionId: "root-thread", parentThreadId: "root-thread", createdAt: "2026-08-16T20:49:15.500Z" },
+      { localId: "root-thread", sessionId: "root-thread", createdAt: "2026-08-16T20:40:00.000Z" },
+    ],
+    summaries: new Map([["child-thread", child], ["root-thread", root]]),
+    historical: false,
+  });
+
+  assert.deepEqual(agents.map(({ id, parentId, model }) => ({ id, parentId, model })), [
+    { id: "primary", parentId: null, model: "gpt-root" },
+    { id: "agent-child-thread", parentId: "primary", model: "gpt-child" },
+  ]);
+});
+
+test("orders Codex sibling agents by stable creation time with the newest first", () => {
+  const threads = [
+    { localId: "old-child", sessionId: "root-thread", parentThreadId: "root-thread", createdAt: "2026-08-16T20:41:00.000Z" },
+    { localId: "root-thread", sessionId: "root-thread", createdAt: "2026-08-16T20:40:00.000Z" },
+    { localId: "new-child", sessionId: "root-thread", parentThreadId: "root-thread", createdAt: "2026-08-16T20:43:00.000Z" },
+    { localId: "middle-child", sessionId: "root-thread", parentThreadId: "root-thread", createdAt: "2026-08-16T20:42:00.000Z" },
+  ];
+
+  const first = buildCodexAgentTree({ rootThreadId: "root-thread", threads, historical: false });
+  const refreshed = buildCodexAgentTree({ rootThreadId: "root-thread", threads: [...threads].reverse(), historical: false });
+
+  assert.deepEqual(first.map(({ id }) => id), [
+    "primary",
+    "agent-new-child",
+    "agent-middle-child",
+    "agent-old-child",
+  ]);
+  assert.deepEqual(refreshed.map(({ id }) => id), first.map(({ id }) => id));
+});
+
 test("builds a deterministic primary/subagent tree across completion, interruption, resume, fork, and missing rollout", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-agents-"));
   context.after(() => rm(root, { recursive: true, force: true }));

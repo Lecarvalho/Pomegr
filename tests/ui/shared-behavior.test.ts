@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
-import type { SessionSummary } from "../../shared/monitor-contract";
+import { agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
+import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
 describe("shared monitor defaults", () => {
@@ -77,6 +77,45 @@ describe("session catalog order", () => {
       "2026-08-11T12:04:00.000Z",
       "2026-08-11T12:03:00.000Z",
     ]);
+  });
+});
+
+describe("agent tree order", () => {
+  const agent = (id: string, parentId: string | null, startedAt: string): Agent => ({
+    id,
+    parentId,
+    workflowId: null,
+    workflowPhaseId: null,
+    workflowOrder: null,
+    workflowState: null,
+    label: id,
+    kind: id === "primary" ? "orchestrator" : "subagent",
+    model: "test-model",
+    effort: "high",
+    status: "active",
+    signal: null,
+    toolCalls: 0,
+    skills: [],
+    executionTasks: [],
+    lastSeen: startedAt,
+    startedAt,
+    updatedAt: startedAt,
+    durationMs: 0,
+    tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  });
+
+  it("keeps parents attached and sorts siblings newest-created first regardless of API order", () => {
+    const agents = [
+      agent("older", "primary", "2026-08-11T12:01:00.000Z"),
+      agent("nested", "newer", "2026-08-11T12:04:00.000Z"),
+      agent("primary", null, "2026-08-11T12:00:00.000Z"),
+      agent("newer", "primary", "2026-08-11T12:03:00.000Z"),
+      agent("middle", "primary", "2026-08-11T12:02:00.000Z"),
+    ];
+
+    const expected = ["primary", "newer", "nested", "middle", "older"];
+    expect(agentTreeRows(agents).map(({ agent: row }) => row.id)).toEqual(expected);
+    expect(agentTreeRows([...agents].reverse()).map(({ agent: row }) => row.id)).toEqual(expected);
   });
 });
 
