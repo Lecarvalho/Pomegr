@@ -1,11 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const landingRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(import.meta.url);
-const wrangler = require.resolve("wrangler/bin/wrangler.js");
+const wrangler = resolve(
+  dirname(require.resolve("wrangler/package.json")),
+  "bin",
+  "wrangler.js",
+);
 const environment = {
   ...process.env,
   WRANGLER_WRITE_LOGS: "false",

@@ -80,7 +80,14 @@ function comparableDeploymentConfig(config) {
     preview_urls: config.preview_urls,
     routes: config.routes,
     vars: config.vars,
-    d1_databases: config.d1_databases,
+    d1_databases: config.d1_databases?.map(
+      ({ binding, database_name, database_id, remote }) => ({
+          binding,
+          database_name,
+          database_id,
+          ...(remote === undefined ? {} : { remote }),
+      }),
+    ),
     ratelimits: config.ratelimits,
   });
 }
