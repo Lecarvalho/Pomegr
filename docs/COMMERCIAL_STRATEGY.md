@@ -10,6 +10,28 @@ The local, single-user observer should remain useful and open source. Revenue sh
 
 Current licensing decision: future Pomegr development uses `AGPL-3.0-only`, with the option to offer separate commercial terms. Previously published MIT revisions remain MIT. The Pomegr name and visual identity are governed separately by the repository's trademark policy.
 
+## Platform direction
+
+The technical direction that supports these editions is recorded in
+`docs/plans/remote-platform-and-orgs.md`. In summary:
+
+- Pomegr becomes self-contained for remote viewing: each PC's agent opens an outbound
+  connection to a Pomegr-operated backend, so users monitor sessions from anywhere
+  without VPNs, tunnels, or router configuration. User-supplied overlay networks
+  remain an interim development tool, not the product answer.
+- Native Android and iOS apps are the intended remote clients, consuming the backend
+  API and receiving push notifications. The browser dashboard on a phone is a
+  temporary bridge.
+- Devices enroll by pairing (QR/short code) against the user's account; the PC stays
+  the authority and no raw credentials ever leave it.
+- The backend coordinates provider usage-limit polling across a user's machines
+  through per-account poll leases, eliminating the duplicated polling that causes
+  provider `429` errors when several PCs share one subscription.
+- Organization visibility (Teams and Enterprise) is delivered by the same backend
+  with roles, retention controls, and a visible consent surface. Org-scope data is
+  readable by the org by design; the privacy promise remains that prompts, source
+  code, commands, and credentials are never collected in the first place.
+
 ## Target customer
 
 The initial buyer hypothesis is an engineering manager, developer-platform lead, or AI-enablement lead at a team that:
@@ -27,7 +49,7 @@ The open-source, local observer: live sessions, local history, deterministic met
 
 ### Pro
 
-A convenience product for individual developers. Possible value includes a signed installer, automatic updates, background startup, desktop notifications, scheduled reports, and extended local history.
+A convenience product for individual developers. Possible value includes a signed installer, automatic updates, background startup, desktop notifications, scheduled reports, extended local history, remote access from anywhere through the Pomegr backend, native mobile apps with push notifications, and coordinated usage-limit polling across a developer's machines.
 
 Initial pricing hypothesis: USD 9 per month or USD 79 per year.
 
