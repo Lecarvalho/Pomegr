@@ -215,7 +215,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <SiteFooter />
+      <SiteFooter current="home" />
     </main>
   );
 }

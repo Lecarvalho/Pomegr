@@ -121,7 +121,7 @@ export default function AboutPage() {
         </section>
       </article>
 
-      <SiteFooter />
+      <SiteFooter current="about" />
     </main>
   );
 }

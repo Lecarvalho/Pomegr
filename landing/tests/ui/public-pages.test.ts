@@ -7,7 +7,7 @@ describe("public landing surfaces", () => {
   it("keeps the landing page inside the isolated package", () => {
     const source = read("app/components/LandingPage.tsx");
     expect(source).toContain('<SiteHeader current="home" />');
-    expect(source).toContain("<SiteFooter />");
+    expect(source).toContain('<SiteFooter current="home" />');
     expect(source).toContain('id="waitlist"');
     expect(source).not.toMatch(/from\s+["'](?:\.\.\/){3,}/);
     expect(source).not.toContain("issues/new");
@@ -51,8 +51,11 @@ describe("public landing surfaces", () => {
     expect(source).toContain("Bounded metadata");
     expect(source).toContain("Raw prompts · responses · commands · credentials · transcripts");
     expect(source).toContain('<SiteHeader current="about" />');
-    expect(source).toContain("<SiteFooter />");
+    expect(source).toContain('<SiteFooter current="about" />');
     expect(header).toContain('current: "home" | "about"');
+    expect(footer).toContain('current: "home" | "about"');
+    expect(footer).toContain('<Link href="/about">About</Link>');
+    expect(footer).toContain('<Link href="/">Home</Link>');
     expect(footer).toContain("TRADEMARKS.md");
     expect(footer).toContain("THIRD_PARTY_NOTICES.md");
     expect(footer).not.toContain("Local-first · read-only");
