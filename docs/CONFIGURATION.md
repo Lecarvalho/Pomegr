@@ -34,7 +34,18 @@ Reports are written only after the user clicks **Generate report** and selects a
 
 No extra setup is required when Claude Code persists sessions under `%USERPROFILE%\.claude\projects`. The local session registry supplies the strongest live and needs-input evidence. When the registry provides an owner PID and process-start identity, Pomegr validates both monitor-side so orphaned registry files cannot keep exited sessions live; those owner fields are never exposed to the browser. `CLAUDE_PROJECTS_DIR` can select a different session root, and `CLAUDE_SESSION_FILE` can pin one synthetic or explicitly selected primary rollout.
 
-Estimated API cost is optional. Configure `scripts/claude-statusline-bridge.mjs` as described in the README to capture Claude Code's own client-side estimate. The bridge persists only normalized session ID, non-negative USD amount, estimate type, and observation time.
+Estimated API cost is optional. Wrap the Claude Code status line with `scripts/claude-statusline-bridge.mjs` to capture Claude Code's own client-side estimate. In `~/.claude/settings.json`, point `statusLine.command` at the bridge and pass the existing status-line command after `--`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node \"<repo>/scripts/claude-statusline-bridge.mjs\" -- <existing status-line command>"
+  }
+}
+```
+
+The bridge forwards stdin to the delegated command unchanged, so the visible status line keeps working. It persists only the normalized session ID, non-negative USD amount, estimate type, and observation time. Replacing `statusLine.command` with a direct script call silently stops cost capture, so keep the bridge as the outermost command.
 
 ### Codex
 
