@@ -219,7 +219,7 @@ test("Claude adapter discovers live workflow workers without treating journals a
   ]);
   const workflowAgents = evidence.agents.filter((agent) => agent.workflowId);
   assert.equal(workflowAgents.every((agent) => agent.parentId === "primary"), true);
-  assert.equal(workflowAgents.every((agent) => agent.label === "Workflow worker · shared"), true);
+  assert.equal(workflowAgents.every((agent) => agent.label === "Worker 1"), true);
   assert.deepEqual(workflowAgents.map(({ workflowOrder, workflowState }) => ({ workflowOrder, workflowState })), [
     { workflowOrder: 0, workflowState: "running" },
     { workflowOrder: 0, workflowState: "unknown" },

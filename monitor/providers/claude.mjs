@@ -170,6 +170,11 @@ function assignWorkflowFallbackLabels(agents) {
   return labels;
 }
 
+function workflowWorkerOrderLabel(order, metadata) {
+  const agentType = metadata?.agentType && metadata.agentType !== "workflow-subagent" ? metadata.agentType : "";
+  return agentType ? `Worker ${order + 1} · ${agentType}` : `Worker ${order + 1}`;
+}
+
 function discoverWorkflowAgents(agentDir) {
   const root = path.join(agentDir, "workflows");
   const runs = new Map();
@@ -554,13 +559,17 @@ function buildWorkflows({
     ];
     const agentIds = orderedRawIds.map((rawId) => rawAgentIds.get(rawId)).filter((id) => agentsById.has(id));
 
+    const manifestLabelled = new Set();
     if (manifest) {
       for (const worker of manifest.workers) {
         const agentId = rawAgentIds.get(worker.rawAgentId);
         const agent = agentId ? agentsById.get(agentId) : null;
         if (!agent) continue;
         agent.workflowId = runId;
-        if (worker.label) agent.label = worker.label;
+        if (worker.label) {
+          agent.label = worker.label;
+          manifestLabelled.add(agentId);
+        }
         agent.workflowState = worker.state;
         if (worker.phaseIndex !== null) {
           const phaseId = `${runId}-phase-${worker.phaseIndex}`;
@@ -583,8 +592,12 @@ function buildWorkflows({
     for (const [workflowOrder, agent] of linkedAgents.entries()) {
       agent.workflowId = runId;
       agent.workflowOrder = workflowOrder;
+      const discoveredAgent = discovered.find((item) => item.id === agent.id);
+      if (!manifestLabelled.has(agent.id)) {
+        agent.label = workflowWorkerOrderLabel(workflowOrder, discoveredAgent?.metadata);
+      }
       if (!manifest) {
-        const rawAgentId = discovered.find((item) => item.id === agent.id)?.rawAgentId;
+        const rawAgentId = discoveredAgent?.rawAgentId;
         const journalState = rawAgentId ? journal.states.get(rawAgentId) : null;
         agent.workflowState = journalState === "done"
           ? "done"
