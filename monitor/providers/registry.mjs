@@ -178,12 +178,19 @@ export function createProviderRegistry(adapters) {
 
     resolveCapabilities,
 
-    async readSession(requestedSessionId = "") {
+    async readSession(requestedSessionId = "", options = {}) {
       if (requestedSessionId) {
         const parsed = parseProviderSessionId(requestedSessionId);
         const registration = parsed ? providersById.get(parsed.providerId) : null;
         if (!parsed || !registration) return null;
-        const catalogEntry = (await catalogEntries()).find((entry) => entry.id === requestedSessionId);
+        const catalogHint = options.catalogEntry?.id === requestedSessionId
+          ? {
+            ...options.catalogEntry,
+            localId: parsed.localSessionId,
+            provider: registration.provider,
+          }
+          : null;
+        const catalogEntry = catalogHint || (await catalogEntries()).find((entry) => entry.id === requestedSessionId);
         return readCandidate(catalogEntry || {
           id: requestedSessionId,
           localId: parsed.localSessionId,

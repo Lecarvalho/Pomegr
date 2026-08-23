@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Dashboard } from "./Dashboard";
+import { HomeDashboard } from "./HomeDashboard";
 
 export const metadata: Metadata = {
   title: "Pomegr",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <Dashboard />;
+  return <HomeDashboard />;
 }

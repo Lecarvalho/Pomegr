@@ -4,8 +4,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   return proxyMonitorJson({
-    path: "/api/sessions",
-    timeoutMs: 7500,
-    unavailableBody: { sessions: [], error: "Historical sessions are unavailable." },
+    path: "/api/home",
+    timeoutMs: 10000,
+    unavailableBody: { generatedAt: null, projects: [], error: "Home overview is unavailable." },
   });
 }

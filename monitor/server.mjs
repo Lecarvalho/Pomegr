@@ -122,6 +122,66 @@ function publicResourceUsage(value) {
   };
 }
 
+function median(values) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+function homeSessionSummary(entry, evidence, resourceUsage) {
+  if (!evidence?.session) return null;
+  const agents = Array.isArray(evidence.agents) ? evidence.agents.map((agent) => ({ ...agent })) : [];
+  const tokenUsage = applyLatestUsage(
+    agents,
+    Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [],
+    evidence.session.startedAt,
+    evidence.session.updatedAt,
+    entry.id,
+    Array.isArray(evidence.compactions) ? evidence.compactions : [],
+  );
+  const startedAt = Date.parse(evidence.session.startedAt || "");
+  const updatedAt = Date.parse(evidence.session.updatedAt || "");
+  const wallTimeMs = Number.isFinite(startedAt) && Number.isFinite(updatedAt)
+    ? Math.max(0, updatedAt - startedAt)
+    : null;
+  return {
+    id: entry.id,
+    provider: entry.provider,
+    source: entry.source,
+    title: entry.title,
+    project: entry.project,
+    updatedAt: entry.updatedAt,
+    recordedUpdatedAt: evidence.session.updatedAt || entry.updatedAt,
+    needsInput: Boolean(entry.needsInput),
+    agentCount: agents.length,
+    activeAgentCount: agents.filter(isRunningAgent).length,
+    latestContextTotal: Number.isFinite(tokenUsage.allAgents) ? tokenUsage.allAgents : null,
+    contextHistory: tokenUsage.contextHistory,
+    wallTimeMs,
+    resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
+  };
+}
+
+function unavailableHomeSessionSummary(entry, resourceUsage) {
+  return {
+    id: entry.id,
+    provider: entry.provider,
+    source: entry.source,
+    title: entry.title,
+    project: entry.project,
+    updatedAt: entry.updatedAt,
+    recordedUpdatedAt: entry.updatedAt,
+    needsInput: Boolean(entry.needsInput),
+    agentCount: null,
+    activeAgentCount: null,
+    latestContextTotal: null,
+    contextHistory: null,
+    wallTimeMs: null,
+    resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
+  };
+}
+
 function groupToolEvidence(toolCalls) {
   const repetitionMap = new Map();
   const patternMap = new Map();
@@ -216,8 +276,20 @@ export function createMonitorRuntime(options = {}) {
   const pullRequestReader = options.readPullRequests || readPullRequests;
   const now = options.now || (() => Date.now());
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
+  const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
   const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
   const enrichmentCache = new Map();
+  const homeSummaryCacheMs = Math.max(0, Number(options.homeSummaryCacheMs ?? 5000));
+  const homeHistorySummaryCacheMs = Math.max(0, Number(options.homeHistorySummaryCacheMs ?? 5 * 60_000));
+  const homeSnapshotCacheMs = Math.max(0, Number(options.homeSnapshotCacheMs ?? 10_000));
+  const deferHomeHistory = options.deferHomeHistory !== false;
+  const yieldHomeHistory = options.yieldHomeHistory || (() => new Promise((resolve) => setImmediate(resolve)));
+  const homeSummaryCache = new Map();
+  let homeSnapshotCached = null;
+  let homeSnapshotInFlight = null;
+  let homeSnapshotRefreshScheduled = false;
+  let homeHistoryRefreshInFlight = null;
+  let homeHistoryRefreshScheduled = false;
 
   async function refreshLiveEnrichment(entry, input) {
     let repository;
@@ -322,6 +394,204 @@ export function createMonitorRuntime(options = {}) {
       // Resource telemetry must never make session discovery unavailable.
     }
     return inspected.sessions;
+  }
+
+  function homeSummaryCacheKey(entry) {
+    return `${entry.id}|${entry.updatedAt}|${entry.isLive ? "live" : "history"}`;
+  }
+
+  function cachedHomeSummary(entry, endMs, resourceUsageFor) {
+    const cached = homeSummaryCache.get(homeSummaryCacheKey(entry));
+    if (!cached || cached.expiresAt <= endMs) return { found: false, summary: null };
+    const summary = cached.summary && entry.isLive
+      ? { ...cached.summary, resources: publicResourceUsage(resourceUsageFor(entry.id)) }
+      : cached.summary;
+    return { found: true, summary };
+  }
+
+  async function loadHomeSummary(entry, endMs, resourceUsage = null) {
+    let summary;
+    try {
+      const selection = await registry.readSession(entry.id, { catalogEntry: entry });
+      summary = selection?.evidence
+        ? homeSessionSummary(entry, selection.evidence, entry.isLive ? resourceUsage : null)
+        : entry.isLive
+          ? unavailableHomeSessionSummary(entry, resourceUsage)
+          : null;
+    } catch {
+      summary = entry.isLive ? unavailableHomeSessionSummary(entry, resourceUsage) : null;
+    }
+    const cacheMs = entry.isLive ? homeSummaryCacheMs : homeHistorySummaryCacheMs;
+    homeSummaryCache.set(homeSummaryCacheKey(entry), { expiresAt: endMs + cacheMs, summary });
+    return summary;
+  }
+
+  function queueHomeHistoryRefresh(entries) {
+    if (homeHistoryRefreshInFlight || homeHistoryRefreshScheduled || entries.length === 0) return;
+    homeHistoryRefreshScheduled = true;
+    try {
+      scheduleHomeRefresh(() => {
+        homeHistoryRefreshScheduled = false;
+        const refresh = (async () => {
+          for (const entry of entries) {
+            const observedAt = now();
+            const cached = cachedHomeSummary(entry, observedAt, () => null);
+            if (!cached.found) await loadHomeSummary(entry, observedAt);
+            try {
+              await yieldHomeHistory();
+            } catch {
+              // A failed cooperative yield must not discard safely parsed history.
+            }
+          }
+          homeSnapshotCached = null;
+        })().finally(() => {
+          if (homeHistoryRefreshInFlight === refresh) homeHistoryRefreshInFlight = null;
+        });
+        homeHistoryRefreshInFlight = refresh;
+        void refresh.catch(() => {});
+        return refresh;
+      });
+    } catch {
+      homeHistoryRefreshScheduled = false;
+    }
+  }
+
+  async function buildHomeSnapshot() {
+    const inspected = typeof registry.inspectSessions === "function"
+      ? await registry.inspectSessions()
+      : { sessions: await registry.listSessions(), resourceTargets: [] };
+    try {
+      await resourceUsageSampler.sample(inspected.resourceTargets || []);
+    } catch {
+      // Resource telemetry must never make the home snapshot unavailable.
+    }
+    const catalog = Array.isArray(inspected.sessions) ? inspected.sessions : [];
+    const resourceUsageFor = (sessionId) => {
+      try {
+        return resourceUsageSampler.get(sessionId);
+      } catch {
+        return null;
+      }
+    };
+    const liveEntries = catalog.filter((entry) => entry?.isLive);
+    const endMs = now();
+    for (const [cacheKey, cached] of homeSummaryCache) {
+      if (!cached || cached.expiresAt <= endMs) homeSummaryCache.delete(cacheKey);
+    }
+    if (liveEntries.length === 0) return { generatedAt: new Date(endMs).toISOString(), projects: [] };
+    const projectNames = new Set(liveEntries.map((entry) => entry.project || "Unknown project"));
+    const startMs = endMs - 7 * 24 * 60 * 60_000;
+    const relevantHistory = catalog.filter((entry) => !entry.isLive
+      && projectNames.has(entry.project || "Unknown project"));
+    const live = await Promise.all(liveEntries.map(async (entry) => {
+      const cached = cachedHomeSummary(entry, endMs, resourceUsageFor);
+      const summary = cached.found
+        ? cached.summary
+        : await loadHomeSummary(entry, endMs, resourceUsageFor(entry.id));
+      return { entry, summary };
+    }));
+    const history = [];
+    const missingHistory = [];
+    for (const entry of relevantHistory) {
+      const cached = cachedHomeSummary(entry, endMs, () => null);
+      if (cached.found) history.push({ entry, summary: cached.summary });
+      else missingHistory.push(entry);
+    }
+    const historyLoading = deferHomeHistory && missingHistory.length > 0;
+    if (historyLoading) {
+      queueHomeHistoryRefresh(missingHistory);
+    } else if (missingHistory.length > 0) {
+      history.push(...await Promise.all(missingHistory.map(async (entry) => ({
+        entry,
+        summary: await loadHomeSummary(entry, endMs),
+      }))));
+    }
+    const summaries = [...live, ...history];
+    const projects = [...projectNames].sort((left, right) => left.localeCompare(right)).map((project) => {
+      const projectEntries = liveEntries.filter((entry) => (entry.project || "Unknown project") === project);
+      const projectLive = summaries
+        .filter(({ entry }) => entry.isLive && (entry.project || "Unknown project") === project)
+        .map(({ summary }) => summary)
+        .filter(Boolean);
+      const projectHistory = summaries
+        .filter(({ entry }) => !entry.isLive && (entry.project || "Unknown project") === project)
+        .map(({ summary }) => summary)
+        .filter((summary) => {
+          const recordedMs = Date.parse(summary?.recordedUpdatedAt || "");
+          return summary && Number.isFinite(recordedMs) && recordedMs >= startMs && recordedMs <= endMs;
+        });
+      const finalContexts = projectHistory
+        .filter((summary) => Number.isFinite(summary.latestContextTotal)
+          && Number.isFinite(Date.parse(summary.recordedUpdatedAt || "")))
+        .sort((left, right) => Date.parse(left.recordedUpdatedAt) - Date.parse(right.recordedUpdatedAt))
+        .slice(-6)
+        .map((summary) => ({ endedAt: summary.recordedUpdatedAt, total: summary.latestContextTotal }));
+      return {
+        project,
+        updatedAt: projectEntries.map((entry) => entry.updatedAt).sort().at(-1) || null,
+        liveCount: projectEntries.length,
+        sessions: projectLive.map((summary) => {
+          const session = { ...summary };
+          delete session.recordedUpdatedAt;
+          delete session.wallTimeMs;
+          return session;
+        }),
+        history: {
+          status: historyLoading ? "loading" : "ready",
+          windowDays: 7,
+          completed: projectHistory.length,
+          medianWallTimeMs: median(projectHistory.map((summary) => summary.wallTimeMs)),
+          medianFinalContext: median(projectHistory.map((summary) => summary.latestContextTotal)),
+          finalContexts,
+        },
+      };
+    });
+    return {
+      generatedAt: new Date(endMs).toISOString(),
+      projects,
+    };
+  }
+
+  function refreshHomeSnapshot() {
+    if (homeSnapshotInFlight) return homeSnapshotInFlight;
+    const refresh = buildHomeSnapshot()
+      .then((snapshot) => {
+        homeSnapshotCached = {
+          expiresAt: now() + homeSnapshotCacheMs,
+          snapshot,
+        };
+        return snapshot;
+      })
+      .finally(() => {
+        if (homeSnapshotInFlight === refresh) homeSnapshotInFlight = null;
+      });
+    homeSnapshotInFlight = refresh;
+    return refresh;
+  }
+
+  function queueHomeSnapshotRefresh() {
+    if (homeSnapshotInFlight || homeSnapshotRefreshScheduled) return;
+    homeSnapshotRefreshScheduled = true;
+    try {
+      scheduleHomeRefresh(() => {
+        homeSnapshotRefreshScheduled = false;
+        const refresh = refreshHomeSnapshot();
+        void refresh.catch(() => {});
+        return refresh;
+      });
+    } catch {
+      homeSnapshotRefreshScheduled = false;
+    }
+  }
+
+  async function homeSnapshot() {
+    if (homeSnapshotCacheMs === 0) return refreshHomeSnapshot();
+    if (homeSnapshotCached?.expiresAt > now()) return homeSnapshotCached.snapshot;
+    if (homeSnapshotCached) {
+      queueHomeSnapshotRefresh();
+      return homeSnapshotCached.snapshot;
+    }
+    return refreshHomeSnapshot();
   }
 
   async function analyze(requestedSessionId = "") {
@@ -512,7 +782,7 @@ export function createMonitorRuntime(options = {}) {
     return createEmptyMonitorState({ source: registry.defaultProvider.source, usageLimits: emptyUsageLimits() });
   }
 
-  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog });
+  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, homeSnapshot });
 }
 
 export function createMonitorRequestHandler(options = {}) {
@@ -553,6 +823,17 @@ export function createMonitorRequestHandler(options = {}) {
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ sessions: [], error: "Session catalog error" }));
+    }
+    return;
+  }
+  if (requestUrl.pathname === "/api/home") {
+    try {
+      const body = JSON.stringify(await runtime.homeSnapshot());
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(body);
+    } catch {
+      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ generatedAt: null, projects: [], error: "Home snapshot error" }));
     }
     return;
   }

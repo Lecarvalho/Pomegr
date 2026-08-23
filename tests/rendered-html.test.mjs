@@ -29,8 +29,8 @@ test("server-renders the composed Pomegr dashboard", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Pomegr<\/title>/i);
-  assert.match(html, /No live sessions/);
-  assert.match(html, /Connecting to local monitor/);
+  assert.match(html, /Running sessions/);
+  assert.match(html, /Connecting to monitor/);
   assert.doesNotMatch(html, /Local monitor offline/);
   assert.match(html, /Local observer · Read-only/);
   assert.match(html, />Source<\/a>/);

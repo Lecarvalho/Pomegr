@@ -60,6 +60,12 @@ Bucket sizes are selected from fixed, human-readable intervals to target roughly
 
 This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`; generated reports intentionally omit it.
 
+## Project home history
+
+The project home is built only for projects with at least one live session in the current catalog. Live cards expose bounded session metadata, agent counts, latest all-agent context, per-session `contextHistory`, and live-only resources. The home monitor performs one catalog inspection and one batched resource sample; resources are in-memory telemetry and are never reconstructed for history.
+
+Each visible project's history window is exactly seven days of completed sessions whose recorded session timestamps belong to that project. On a cold monitor start, live cards are returned first while recorded history is marked loading and parsed cooperatively in the background; partial aggregates are not presented as complete. Once ready, history exposes completed count, median wall time, median final all-agent context, and at most six chronological `{ endedAt, total }` final-context points. These are recorded session levels, not sums, rates, throughput, spend, or quality judgments. Current Git state and current plan limits never enter project history.
+
 ## Cache events
 
 `metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. It reports only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest events enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities. If that cap would exclude a reuse event's related refill, the reuse is omitted so normalized relations never dangle.
@@ -146,7 +152,7 @@ Each agent's wall time is measured from its earliest to latest recorded transcri
 
 ## Session state
 
-When Claude's local session registry is available, its entries are the primary liveness signal. For current registry records, Pomegr validates the bounded owner PID and process-start identity before accepting the entry; this prevents an orphaned JSON file or a reused PID from keeping an exited session live. The owner fields remain monitor-side and are never returned to the browser. A process-backed registered session remains live even while idle. Registry formats without owner identity retain the compatibility behavior. An unregistered transcript receives a 15-second grace window for startup ordering and final exit-time writes, then moves to history. The browser refreshes the local session catalog every two seconds, so registry-backed exits normally appear within a few seconds after that grace expires. No external API is called.
+When Claude's local session registry is available, its entries are the primary liveness signal. For current registry records, Pomegr validates the bounded owner PID and process-start identity before accepting the entry; this prevents an orphaned JSON file or a reused PID from keeping an exited session live. The owner fields remain monitor-side and are never returned to the browser. A process-backed registered session remains live even while idle. Registry formats without owner identity retain the compatibility behavior. An unregistered transcript receives a 15-second grace window for startup ordering and final exit-time writes, then moves to history. The browser refreshes the local session catalog every five seconds, so registry-backed exits normally appear within a few seconds after that grace expires. No external API is called.
 
 When the provider registry is unavailable, Pomegr falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 

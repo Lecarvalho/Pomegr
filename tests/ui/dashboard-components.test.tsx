@@ -466,6 +466,7 @@ describe("session sidebar", () => {
     const onClose = vi.fn();
     render(<LiveClockProvider running={false}><SessionSidebar open sessions={sessions} selectedSessionId={null} currentSessionId="live-1" viewingHistory={false} onClose={onClose} onSelect={onSelect} /></LiveClockProvider>);
 
+    expect(screen.getByRole("link", { name: "Home — running sessions" })).toHaveAttribute("href", "/");
     await user.click(screen.getByRole("button", { name: /Live work/ }));
     expect(onSelect).toHaveBeenCalledWith(sessions[0]);
 

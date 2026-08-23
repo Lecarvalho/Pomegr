@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
+import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
 import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
@@ -52,10 +53,10 @@ function storedAgentActivityViewMode(sessionId: string | null): AgentActivityVie
   }
 }
 
-export function Dashboard() {
+export function Dashboard({ initialSessionId = null }: { initialSessionId?: string | null }) {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => notificationNavigationSessionId());
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
@@ -73,9 +74,14 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!notificationNavigationSessionId()) return;
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-  }, []);
+    const legacySessionId = notificationNavigationSessionId();
+    if (!legacySessionId || initialSessionId) return;
+    try {
+      window.history.replaceState(null, "", `/sessions/${encodeSessionRoute(legacySessionId)}`);
+    } catch {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+    }
+  }, [initialSessionId]);
 
   useEffect(() => {
     const bridge = desktopBridge();
@@ -145,7 +151,7 @@ export function Dashboard() {
     if (paused) return () => controller.abort();
     const poll = async () => {
       await refreshSessions(controller.signal);
-      if (!controller.signal.aborted && !paused) nextRefresh = window.setTimeout(() => void poll(), 2_000);
+      if (!controller.signal.aborted && !paused) nextRefresh = window.setTimeout(() => void poll(), 5_000);
     };
     void poll();
     return () => {
@@ -214,6 +220,7 @@ export function Dashboard() {
     setSelectedSessionId(session.id);
     setSidebarOpen(false);
     setLoading(true);
+    window.history.pushState(null, "", `/sessions/${encodeSessionRoute(session.id)}`);
   }, [selectedSessionId]);
 
   const generateReport = async () => {

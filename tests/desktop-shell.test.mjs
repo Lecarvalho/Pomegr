@@ -417,7 +417,8 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.doesNotMatch(main, /releaseNotes|signedUrl|certificate|update[^\n]*console\./i);
   assert.match(main, /fetch\(`\$\{webHandle\.origin\}\/api\/sessions`/);
   assert.match(main, /openNotificationSession/);
-  assert.match(main, /encodeURIComponent\(sessionId\)/);
+  assert.match(main, /import \{ encodeSessionRoute \} from "\.\.\/shared\/session-route\.mjs"/);
+  assert.match(main, /\/sessions\/\$\{encodeSessionRoute\(sessionId\)\}/);
   assert.doesNotMatch(main, /notification[^\n]*(?:answer|approve|command|prompt)/i);
   assert.match(main, /label: "Quit Pomegr"/);
   assert.match(main, /installDesktopWindowLifecycle\(mainWindow/);

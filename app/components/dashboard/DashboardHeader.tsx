@@ -28,7 +28,7 @@ export function DashboardHeader({ connected, connecting, historical, paused, des
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
         </button>
-        <PomegrBrand href="#top" />
+        <PomegrBrand href="/" />
       </div>
       <div className="topActions">
         <span className={`connection ${connecting ? "connecting" : connected ? "online" : "offline"}`}><i /> {connecting ? "Connecting to monitor" : historical ? "Historical snapshot" : connected ? "Monitor connected" : "Monitor offline"}</span>

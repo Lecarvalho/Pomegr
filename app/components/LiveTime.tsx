@@ -1,7 +1,7 @@
 "use client";
 
 import type { Agent, ExecutionTask, MonitorState } from "../../shared/monitor-contract";
-import { coarseRelativeTime, formatDuration, minuteRelativeTime, relativeTime, resetCountdown } from "../dashboard-utils";
+import { coarseRelativeTime, formatDuration, minuteRelativeTime, relativeTime, resetCountdown, sessionRelativeTime } from "../dashboard-utils";
 import { formatAgentRowWallTime, formatExecutionTaskWallTime, liveWallTimeMs } from "../formatting.mjs";
 import { useLiveNow } from "../hooks/LiveClockContext";
 
@@ -18,6 +18,11 @@ export function MinuteRelativeTimeText({ value }: { value: string | null }) {
 export function CoarseRelativeTimeText({ value }: { value: string | null }) {
   const now = useLiveNow();
   return <>{coarseRelativeTime(value, now)}</>;
+}
+
+export function SessionRelativeTimeText({ value }: { value: string | null }) {
+  const now = useLiveNow();
+  return <>{sessionRelativeTime(value, now)}</>;
 }
 
 export function ResetCountdownText({ value }: { value: string | null }) {

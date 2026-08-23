@@ -7,6 +7,7 @@ import { Worker } from "node:worker_threads";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
+import { encodeSessionRoute } from "../shared/session-route.mjs";
 import {
   assertNoSystemNodeInPath,
   keepOnlyRuntimeEnvironment,
@@ -157,7 +158,12 @@ function openAbout() {
 
 function openNotificationSession(sessionId) {
   if (!mainWindow || mainWindow.isDestroyed() || !webHandle?.origin) return;
-  const target = `${webHandle.origin}/?sessionId=${encodeURIComponent(sessionId)}`;
+  let target;
+  try {
+    target = `${webHandle.origin}/sessions/${encodeSessionRoute(sessionId)}`;
+  } catch {
+    return;
+  }
   void mainWindow.loadURL(target).then(showShellWindow, showShellWindow);
 }
 

@@ -224,6 +224,32 @@ test("coalesces only concurrent catalog reads", async () => {
   assert.equal(catalogCalls, 2);
 });
 
+test("uses an inspected catalog entry without rediscovering sessions", async () => {
+  let catalogCalls = 0;
+  const readOptions = [];
+  const codex = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilities: { liveSessions: true },
+    async listSessions() {
+      catalogCalls += 1;
+      return [session("live", "2026-08-10T12:00:00.000Z")];
+    },
+    async readSession(localId, options) {
+      readOptions.push({ localId, options });
+      return evidence(localId);
+    },
+  });
+  const registry = createProviderRegistry([codex]);
+
+  const inspected = await registry.inspectSessions();
+  const selected = await registry.readSession("codex:live", { catalogEntry: inspected.sessions[0] });
+
+  assert.equal(catalogCalls, 1);
+  assert.equal(selected.sessionId, "codex:live");
+  assert.deepEqual(readOptions, [{ localId: "live", options: { historical: false } }]);
+});
+
 test("explicit reads refresh the catalog before deciding historical state", async () => {
   let catalogCalls = 0;
   let sessions = [session("changing", "2026-08-10T12:00:00.000Z")];

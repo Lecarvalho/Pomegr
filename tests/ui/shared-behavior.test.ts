@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention } from "../../app/dashboard-utils";
+import { agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -36,6 +36,13 @@ describe("wall-time formatting", () => {
     expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:30.000Z"))).toBe("just now");
     expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:03:00.000Z"))).toBe("3m ago");
     expect(coarseRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T14:03:00.000Z"))).toBe("2h ago");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:05.000Z"))).toBe("just now");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:30.000Z"))).toBe("<1m");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:03:00.000Z"))).toBe("3m ago");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T14:03:00.000Z"))).toBe("2h ago");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-11T12:00:00.000Z"))).toBe("3d ago");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-10-07T12:00:00.000Z"))).toBe("2mo ago");
+    expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2028-08-07T12:00:00.000Z"))).toBe("2y ago");
     expect(resetCountdown("2026-08-08T12:02:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Resets in 1m");
   });
 });

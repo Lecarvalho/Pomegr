@@ -237,6 +237,50 @@ export type SessionSummary = {
   needsInput: boolean;
 };
 
+export type HomeContextHistory = {
+  bucketMs: number;
+  buckets: ContextHistoryBucket[];
+  boundaries: ContextHistoryBoundary[];
+};
+
+export type HomeSessionSummary = {
+  id: string;
+  provider: ProviderId;
+  source: ProviderSource;
+  title: string;
+  project: string;
+  updatedAt: string;
+  needsInput: boolean;
+  agentCount: number | null;
+  activeAgentCount: number | null;
+  latestContextTotal: number | null;
+  contextHistory: HomeContextHistory | null;
+  resources: ResourceUsage | null;
+};
+
+export type HomeProjectHistory = {
+  status?: "loading" | "ready";
+  windowDays: 7;
+  completed: number;
+  medianWallTimeMs: number | null;
+  medianFinalContext: number | null;
+  finalContexts: Array<{ endedAt: string; total: number }>;
+};
+
+export type HomeProjectSummary = {
+  project: string;
+  updatedAt: string;
+  liveCount: number;
+  sessions: HomeSessionSummary[];
+  history: HomeProjectHistory;
+};
+
+export type HomeSnapshot = {
+  generatedAt: string | null;
+  projects: HomeProjectSummary[];
+  error?: string;
+};
+
 export type PullRequest = {
   host: "github";
   repository: string;

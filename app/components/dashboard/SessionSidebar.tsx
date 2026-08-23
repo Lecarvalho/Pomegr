@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
 import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
-import { RelativeTimeText } from "../LiveTime";
+import { SessionRelativeTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 import type { DesktopState } from "../DesktopControls";
 
@@ -28,6 +29,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
   const liveSessions = sessions.filter((session) => session.isLive);
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
+  const liveProjectCount = new Set(liveSessions.map((session) => session.project)).size;
 
   return (
     <>
@@ -38,14 +40,19 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
           <CloseButton label="Close session navigation" onClick={onClose} />
         </div>
         <nav className="sessionNav">
-          <div className="liveHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
+          <div className="liveHeading"><span>HOME</span><small>{liveProjectCount}</small></div>
+          <Link className="liveSessionLink" href="/" onClick={onClose} aria-label="Home — running sessions">
+            <i />
+            <span><strong>Running sessions</strong><small>{liveSessions.length} live across projects</small></span>
+          </Link>
+          <div className="historyHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
           <div className="liveSessionList">
             {liveSessions.map((session) => {
               const selected = selectedSessionId ? selectedSessionId === session.id : currentSessionId === session.id && !viewingHistory;
               return (
                 <button type="button" className={`liveSessionLink ${selected ? "selected" : ""}`} data-needs-input={session.needsInput || undefined} key={session.id} onClick={() => onSelect(session)} aria-current={selected ? "page" : undefined}>
                   <i />
-                  <span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project} · {session.needsInput ? <em>Needs input</em> : <RelativeTimeText value={session.updatedAt} />}</small></span>
+                  <span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project} · {session.needsInput ? <em>Needs input</em> : <SessionRelativeTimeText value={session.updatedAt} />}</small></span>
                 </button>
               );
             })}
