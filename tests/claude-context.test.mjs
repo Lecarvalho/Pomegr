@@ -7,6 +7,10 @@ function assistant(id, timestamp, usage, model = "claude-test") {
   return { type: "assistant", timestamp, message: { id, model, usage, content: [] } };
 }
 
+function assistantWithoutIdentity(timestamp, usage, model = "claude-test") {
+  return { type: "assistant", timestamp, message: { model, usage, content: [] } };
+}
+
 test("strictly normalizes bounded Claude request usage and cache comparability", () => {
   const snapshots = parseClaudeContextRecords([
     assistant("one", "2026-08-10T10:00:00.000Z", {
@@ -48,6 +52,46 @@ test("missing or malformed cache evidence breaks comparison without losing valid
   assert.equal(snapshots[1].cacheComparable, false);
   assert.notEqual(snapshots[0].comparisonGroup, snapshots[2].comparisonGroup);
   assert.equal(snapshots[1].input, 2_000);
+});
+
+test("fallback Claude usage identities remain stable when a moving tail drops preceding records", () => {
+  const options = { actorId: "primary", sourceKey: "source" };
+  const prefix = assistantWithoutIdentity("2026-08-10T09:00:00.000Z", {
+    input_tokens: 500, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+  });
+  const suffix = [
+    assistantWithoutIdentity("2026-08-10T10:00:00.000Z", {
+      input_tokens: 1_000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+    }),
+    assistantWithoutIdentity("2026-08-10T10:00:00.000Z", {
+      input_tokens: 2_000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+    }),
+  ];
+  const complete = parseClaudeContextRecords([prefix, ...suffix], options);
+  const tail = parseClaudeContextRecords(suffix, options);
+  assert.equal(complete.length, 3);
+  assert.equal(tail.length, 2);
+  assert.equal(new Set(tail.map(({ dedupeId }) => dedupeId)).size, 2);
+  for (const input of [1_000, 2_000]) {
+    assert.equal(
+      complete.find((snapshot) => snapshot.input === input)?.dedupeId,
+      tail.find((snapshot) => snapshot.input === input)?.dedupeId,
+    );
+  }
+  assert.equal(tail.every(({ dedupeId }) => dedupeId.startsWith("source:fallback-")), true);
+
+  const withoutTimestamp = assistantWithoutIdentity(undefined, {
+    input_tokens: 3_000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+  });
+  const earlierFallback = parseClaudeContextRecords([withoutTimestamp], {
+    ...options,
+    fallbackTimestamp: "2026-08-10T11:00:00.000Z",
+  });
+  const laterFallback = parseClaudeContextRecords([withoutTimestamp], {
+    ...options,
+    fallbackTimestamp: "2026-08-10T12:00:00.000Z",
+  });
+  assert.equal(earlierFallback[0].dedupeId, laterFallback[0].dedupeId);
 });
 
 test("an assistant record without a usable usage object breaks cache comparison fail-closed", () => {

@@ -44,6 +44,7 @@ import {
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 2 * 1024 * 1024;
+const MAX_LIVE_USAGE_SNAPSHOTS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 const ALL_SOURCE_KINDS = [
   ...TOP_LEVEL_SOURCE_KINDS,
@@ -262,15 +263,58 @@ export function createCodexProvider(options = {}) {
   let catalogCache = null;
   let catalogPending = null;
   const rolloutCache = new Map();
+  const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
   const livePlanTaskCache = new Map();
   const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0 };
 
-  const invalidateRolloutFile = (file) => {
+  const invalidateRolloutFile = (file, { clearContext = false } = {}) => {
     rolloutCache.delete(file);
+    if (clearContext) liveContextUsageCache.delete(file);
     liveExecutionTaskCache.delete(file);
     livePlanTaskCache.delete(file);
   };
+
+  function mergeLiveContextUsage(file, generation, snapshots) {
+    if (!generation) {
+      try {
+        const stat = fs.statSync(file);
+        if (stat.isFile() && stat.size > 0) return liveContextUsageCache.get(file)?.snapshots || snapshots;
+      } catch {
+        // A deleted rollout must not retain its previous usage history.
+      }
+      liveContextUsageCache.delete(file);
+      return snapshots;
+    }
+    const previous = liveContextUsageCache.get(file);
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size
+        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
+      && priorSuffixStillMatches(file, previous);
+    const byId = new Map(monotonic ? previous.snapshots.map((snapshot) => [snapshot.dedupeId, snapshot]) : []);
+    for (const snapshot of snapshots) {
+      const existing = byId.get(snapshot.dedupeId);
+      if (!existing || Date.parse(snapshot.timestamp) >= Date.parse(existing.timestamp)) {
+        byId.set(snapshot.dedupeId, snapshot);
+      }
+    }
+    const merged = [...byId.values()]
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
+        || left.dedupeId.localeCompare(right.dedupeId))
+      .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
+    liveContextUsageCache.set(file, {
+      identity: generation.identity,
+      size: generation.size,
+      mtimeMs: generation.mtimeMs,
+      suffixBytes: generation.suffixBytes,
+      suffixDigest: generation.suffixDigest,
+      snapshots: merged,
+    });
+    return merged;
+  }
 
   const rolloutIdentity = (stat) => {
     const device = Number.isFinite(stat?.dev) ? stat.dev : null;
@@ -398,11 +442,11 @@ export function createCodexProvider(options = {}) {
   function readRolloutRecords(file, historical) {
     let stat;
     try { stat = fs.statSync(file); } catch {
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
     if (!stat.isFile() || stat.size <= 0) {
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
     const bytes = historical ? stat.size : Math.min(stat.size, maximumLiveTailBytes);
@@ -433,7 +477,7 @@ export function createCodexProvider(options = {}) {
     }
     let confirmed;
     try { confirmed = fs.statSync(file); } catch {
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
     if (
@@ -474,6 +518,7 @@ export function createCodexProvider(options = {}) {
     while (rolloutCache.size > scanLimit) {
       const evictedFile = rolloutCache.keys().next().value;
       rolloutCache.delete(evictedFile);
+      liveContextUsageCache.delete(evictedFile);
       liveExecutionTaskCache.delete(evictedFile);
       livePlanTaskCache.delete(evictedFile);
     }
@@ -799,8 +844,11 @@ export function createCodexProvider(options = {}) {
         actorId: actor.id,
         fallbackTimestamp,
         sourceKey: thread.localId,
+        stableFallbackIdentity: !historical,
       });
-      usageSnapshots.push(...context.usageSnapshots);
+      usageSnapshots.push(...(historical
+        ? context.usageSnapshots
+        : mergeLiveContextUsage(thread.rolloutFile, generation, context.usageSnapshots)));
       compactions.push(...context.compactions);
       return parseCodexActivityRecords(records, {
         actor,

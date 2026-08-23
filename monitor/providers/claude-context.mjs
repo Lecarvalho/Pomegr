@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 const MAX_USAGE_SNAPSHOTS = 100;
 
 function nonNegativeInteger(value) {
@@ -14,6 +16,18 @@ function boundedIdentity(value) {
 function boundedModel(value) {
   if (typeof value !== "string") return "";
   return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
+}
+
+function fallbackIdentity(timestamp, model, usage) {
+  const identity = JSON.stringify([
+    timestamp,
+    model,
+    usage.input,
+    usage.output,
+    usage.cacheWrite,
+    usage.cacheRead,
+  ]);
+  return crypto.createHash("sha256").update(identity).digest("hex").slice(0, 24);
 }
 
 function validTimestamp(value) {
@@ -62,11 +76,9 @@ export function parseClaudeContextRecords(records, options = {}) {
   const fallbackTimestamp = validTimestamp(options.fallbackTimestamp);
   const snapshots = new Map();
   let comparisonGroup = 0;
-  let ordinal = 0;
 
   for (const record of Array.isArray(records) ? records : []) {
     if (!assistantRecord(record)) continue;
-    ordinal += 1;
     const usage = normalizedUsage(record);
     const observedTimestamp = validTimestamp(record.timestamp ?? record.message?.timestamp);
     const timestamp = observedTimestamp || fallbackTimestamp;
@@ -78,7 +90,7 @@ export function parseClaudeContextRecords(records, options = {}) {
     const providerIdentity = boundedIdentity(record.message.id ?? record.requestId ?? record.uuid);
     const dedupeId = providerIdentity
       ? `${sourceKey}:message:${providerIdentity}`
-      : `${sourceKey}:message-${ordinal}`;
+      : `${sourceKey}:fallback-${fallbackIdentity(observedTimestamp || "unobserved", boundedModel(record.message.model), usage)}`;
     const snapshot = {
       dedupeId,
       actorId,

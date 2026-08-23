@@ -31,6 +31,8 @@ import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
+const MAX_LIVE_USAGE_SNAPSHOTS = 100;
+const LIVE_USAGE_SUFFIX_BYTES = 256;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const MAX_TRANSCRIPT_PLAN_TASKS = 40;
 const MAX_PENDING_TASK_CALLS = 80;
@@ -61,6 +63,59 @@ function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   return text.split(/\r?\n/).filter(Boolean).flatMap((line) => {
     try { return [JSON.parse(line)]; } catch { return []; }
   });
+}
+
+function fileIdentity(stat) {
+  const device = Number.isFinite(stat?.dev) ? stat.dev : null;
+  const inode = Number.isFinite(stat?.ino) && stat.ino > 0 ? stat.ino : null;
+  return inode !== null
+    ? `${device ?? "device"}:${inode}`
+    : `birth:${Number.isFinite(stat?.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
+}
+
+function digestBuffer(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function readFileSuffix(file, size, suffixBytes) {
+  if (!Number.isInteger(size) || size < 1 || !Number.isInteger(suffixBytes) || suffixBytes < 1) return null;
+  const bytes = Math.min(size, suffixBytes);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(file, "r");
+    const buffer = Buffer.alloc(bytes);
+    const read = fs.readSync(descriptor, buffer, 0, bytes, size - bytes);
+    return read === bytes ? { bytes, digest: digestBuffer(buffer) } : null;
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function priorFileSuffixStillMatches(file, generation) {
+  if (!generation?.suffixDigest || !Number.isInteger(generation.size) || generation.size < 1) return false;
+  const suffix = readFileSuffix(file, generation.size, generation.suffixBytes);
+  return suffix?.bytes === generation.suffixBytes && suffix.digest === generation.suffixDigest;
+}
+
+function usageSnapshotGeneration(file, stat) {
+  const suffix = readFileSuffix(file, stat.size, LIVE_USAGE_SUFFIX_BYTES);
+  return suffix ? {
+    identity: fileIdentity(stat),
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    suffixBytes: suffix.bytes,
+    suffixDigest: suffix.digest,
+  } : null;
+}
+
+function mergeLiveUsageSnapshots(previous, current) {
+  const byId = new Map(previous.map((snapshot) => [snapshot.dedupeId, snapshot]));
+  for (const snapshot of current) byId.set(snapshot.dedupeId, snapshot);
+  return [...byId.values()]
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
+    .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
 }
 
 function safeDetail(tool, input = {}) {
@@ -655,6 +710,7 @@ export function createClaudeProvider(options = {}) {
   const sessionSummaryCache = new Map();
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
+  const liveUsageSnapshotCache = new Map();
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
@@ -666,6 +722,43 @@ export function createClaudeProvider(options = {}) {
   const usageLimits = createUsageLimitsCoordinator({
     request: options.usageRequest || usageRequest(homeDir, options.fetch || globalThis.fetch),
   }).get;
+
+  function liveUsageSnapshots(file, records, actor, stat, historical) {
+    const parsed = parseClaudeContextRecords(records, {
+      actorId: actor.id,
+      sourceKey: actor.id,
+      fallbackTimestamp: stat.mtime.toISOString(),
+    });
+    if (historical) return parsed;
+
+    const generation = usageSnapshotGeneration(file, stat);
+    if (!generation) {
+      liveUsageSnapshotCache.delete(file);
+      return parsed;
+    }
+    const cached = liveUsageSnapshotCache.get(file);
+    if (!cached || cached.actorId !== actor.id) {
+      liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots: parsed });
+      return parsed;
+    }
+
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
+    if (!monotonic || !priorFileSuffixStillMatches(file, previous)) {
+      liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots: parsed });
+      return parsed;
+    }
+
+    const snapshots = generation.size === previous.size && generation.mtimeMs === previous.mtimeMs
+      ? cached.snapshots
+      : mergeLiveUsageSnapshots(cached.snapshots, parsed);
+    liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots });
+    return snapshots;
+  }
 
   function discoveredSessions() {
     const files = listSessionFiles(projectsRoot);
@@ -712,6 +805,9 @@ export function createClaudeProvider(options = {}) {
   }
 
   async function readSession(localSessionId = "") {
+    for (const file of liveUsageSnapshotCache.keys()) {
+      if (!statSafe(file)) liveUsageSnapshotCache.delete(file);
+    }
     const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
     const explicitMatch = explicitSession
       && path.basename(explicitSession, ".jsonl") === localSessionId
@@ -790,11 +886,7 @@ export function createClaudeProvider(options = {}) {
       const actor = actorFor(file, mainFile, agentMetadata, workflowFiles);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
-      usageSnapshots.push(...parseClaudeContextRecords(records, {
-        actorId: actor.id,
-        sourceKey: actor.id,
-        fallbackTimestamp: stat.mtime.toISOString(),
-      }));
+      usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical));
       let observedCompactions = contextCompactionsCache.get(file);
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));

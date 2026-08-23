@@ -24,7 +24,7 @@ Codex subscription-backed session records currently do not provide reliable cach
 - **Agent context** — latest live snapshot, or final recorded snapshot in history, for that agent
 - **All-agent context** — sum of every visible agent's latest live or final recorded snapshot
 
-Codex rollout parsing accepts the recognized snake_case and camelCase token-count shapes. Unknown future shapes are unavailable rather than interpreted as cumulative usage. Live files are read from a bounded tail, so a burst that pushes the latest recognized snapshot beyond that tail can temporarily make context unavailable; Pomegr never substitutes `total_token_usage`.
+Codex rollout parsing accepts the recognized snake_case and camelCase token-count shapes. Unknown future shapes are unavailable rather than interpreted as cumulative usage. Live files are read from a bounded tail. During one monitor process, Pomegr retains at most the latest 100 normalized usage observations per agent across verified append-only tail movement; the retained state contains no transcript content and resets on truncation, replacement, deletion, or failed continuity verification. After a cold start, only observations still present in the current tail can be recovered, so a burst that pushes the latest recognized snapshot beyond that tail can temporarily make context unavailable. Pomegr never substitutes `total_token_usage`.
 
 ## Estimated API cost
 
@@ -39,6 +39,8 @@ All-agent context is the only aggregated context total Pomegr presents. The dash
 ## Request snapshots
 
 `metrics.tokens.requestSnapshots` is a separate bounded feed of valid provider usage observations. Every item represents exactly one request and exposes only an opaque monitor-generated ID, normalized agent ID, normalized observation timestamp, request-local uncached input, cache write, cache read, output, and `totalTokens` recomputed from those four parts. It does not use a provider-reported total. Provider capability gates determine which components are presented; Cache write is currently omitted for Codex.
+
+For live Claude Code and Codex sessions, the provider adapters retain no more than the latest 100 normalized observations per agent in memory so the feed remains continuous when older transcript records leave a bounded read tail. Retention is process-local and is merged only while file identity, size, modification time, and a previously observed file suffix prove append-only continuity. Truncation, replacement, deletion, or unverifiable continuity discards the retained observations. When a provider omits a request identity, Pomegr derives a bounded stable internal identity only from normalized timestamp, model, and token-count fields; neither that identity nor its source fields are exposed through the browser API.
 
 The monitor deduplicates observations privately, keeps at most the latest 100 valid requests per visible agent, and returns the merged items chronologically. Invalid timestamps or counts, all-zero observations, unknown agents, missing internal dedupe evidence, and cumulative-only provider records are rejected. Status is `ready` when at least one valid item remains and `unavailable` otherwise.
 

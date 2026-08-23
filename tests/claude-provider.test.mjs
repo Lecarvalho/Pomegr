@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -159,6 +159,64 @@ test("Claude adapter returns sanitized provider evidence without changing normal
   assert.equal(evidence.planTasks[0].subject, "Verify synthetic fixture");
   assert.equal(evidence.compactions[0].trigger, "auto");
   assertNoPrivateFixtureSentinels(evidence, "Claude adapter evidence");
+});
+
+test("Claude live usage snapshots survive a moving transcript tail and reset on replacement", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-usage-rollover-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "claude-usage-rollover";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const usage = (id, timestamp, input) => ({
+    type: "assistant",
+    timestamp,
+    message: {
+      id,
+      model: "claude-test",
+      usage: {
+        input_tokens: input,
+        output_tokens: 10,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      content: [],
+    },
+  });
+  const filler = (index) => ({
+    type: "user",
+    timestamp: new Date(Date.parse("2026-08-12T14:00:00.000Z") + index * 1_000).toISOString(),
+    message: { content: "TAIL_FILLER_".repeat(25_000) },
+  });
+  await writeRecords(mainFile, [
+    usage("before-rollover", "2026-08-12T14:00:00.000Z", 100),
+    ...Array.from({ length: 5 }, (_, index) => filler(index + 1)),
+  ]);
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+
+  const before = await provider.readSession(localId);
+  assert.deepEqual(before.usageSnapshots.map(({ dedupeId }) => dedupeId), ["primary:message:before-rollover"]);
+
+  await appendFile(mainFile, `${Array.from({ length: 3 }, (_, index) => JSON.stringify(filler(index + 40))).join("\n")}\n`, "utf8");
+  await appendFile(mainFile, `${JSON.stringify(usage("after-rollover", "2026-08-12T15:00:00.000Z", 200))}\n`, "utf8");
+  const afterAppend = await provider.readSession(localId);
+  assert.deepEqual(afterAppend.usageSnapshots.map(({ dedupeId }) => dedupeId), [
+    "primary:message:before-rollover",
+    "primary:message:after-rollover",
+  ]);
+
+  await writeRecords(mainFile, [usage("replacement", "2026-08-12T16:00:00.000Z", 300)]);
+  const afterReplacement = await provider.readSession(localId);
+  assert.deepEqual(afterReplacement.usageSnapshots.map(({ dedupeId }) => dedupeId), ["primary:message:replacement"]);
+
+  await rm(mainFile);
+  assert.equal(await provider.readSession(localId), null);
 });
 
 test("Claude adapter rejects unsafe session IDs and degrades missing sessions independently", async (context) => {

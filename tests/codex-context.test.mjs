@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -256,4 +256,97 @@ test("integrates primary and child latest snapshots into all-agent context", asy
   assert.equal(state.metrics.tokens.cacheRead, 600);
   assertNoPrivateFixtureSentinels(evidence, "Codex context provider evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /total_token_usage|900000|980000/);
+});
+
+test("retains live Codex usage snapshots across a moving tail and resets on replacement or deletion", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-context-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-context-cache.jsonl");
+  const session = {
+    timestamp: "2026-08-12T12:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: "live-context-cache",
+      session_id: "live-context-cache",
+      cwd: "C:\\synthetic\\context-cache",
+      source: "cli",
+    },
+  };
+  const turn = {
+    timestamp: "2026-08-12T12:00:01.000Z",
+    type: "turn_context",
+    payload: { turn_id: "turn-live-context" },
+  };
+  const first = tokenCount("2026-08-12T12:00:02.000Z", { input_tokens: 100, output_tokens: 10 });
+  const second = tokenCount("2026-08-12T12:00:03.000Z", { input_tokens: 200, output_tokens: 20 });
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  await writeFile(file, serialize([session, turn, first]), "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 2 * 1024,
+  });
+  const initial = await provider.readSession("live-context-cache", { historical: false });
+  assert.deepEqual(initial.usageSnapshots.map(({ timestamp, input, output }) => ({ timestamp, input, output })), [
+    { timestamp: first.timestamp, input: 100, output: 10 },
+  ]);
+  const firstDedupeId = initial.usageSnapshots[0].dedupeId;
+
+  await appendFile(file, `${JSON.stringify({
+    timestamp: "2026-08-12T12:00:02.500Z",
+    type: "padding",
+    payload: { value: "x".repeat(3_000) },
+  })}\n${JSON.stringify(second)}\n`, "utf8");
+  const afterAppend = await provider.readSession("live-context-cache", { historical: false });
+  assert.deepEqual(afterAppend.usageSnapshots.map(({ timestamp, input, output }) => ({ timestamp, input, output })), [
+    { timestamp: first.timestamp, input: 100, output: 10 },
+    { timestamp: second.timestamp, input: 200, output: 20 },
+  ]);
+  assert.equal(afterAppend.usageSnapshots[0].dedupeId, firstDedupeId);
+
+  const regrown = tokenCount("2026-08-12T12:00:04.000Z", { input_tokens: 250, output_tokens: 25 });
+  await writeFile(file, serialize([session, turn, {
+    timestamp: "2026-08-12T12:00:03.500Z",
+    type: "padding",
+    payload: { value: "y".repeat(3_000) },
+  }, regrown]), "utf8");
+  const afterRegrow = await provider.readSession("live-context-cache", { historical: false });
+  assert.deepEqual(afterRegrow.usageSnapshots.map(({ timestamp, input, output }) => ({ timestamp, input, output })), [
+    { timestamp: regrown.timestamp, input: 250, output: 25 },
+  ]);
+
+  const replacement = tokenCount("2026-08-12T12:01:00.000Z", { input_tokens: 300, output_tokens: 30 });
+  await writeFile(file, serialize([session, turn, replacement]), "utf8");
+  const afterReplacement = await provider.readSession("live-context-cache", { historical: false });
+  assert.deepEqual(afterReplacement.usageSnapshots.map(({ timestamp, input, output }) => ({ timestamp, input, output })), [
+    { timestamp: replacement.timestamp, input: 300, output: 30 },
+  ]);
+
+  await rm(file);
+  assert.equal(await provider.readSession("live-context-cache", { historical: false }), null);
+});
+
+test("stable live Codex fallback identities do not depend on tail turn context or fallback time", () => {
+  const usage = tokenCount(undefined, { input_tokens: 100, output_tokens: 10 });
+  const withTurn = parseCodexContextRecords([
+    { timestamp: "2026-08-12T12:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-before-tail" } },
+    usage,
+  ], {
+    actorId: "primary",
+    sourceKey: "thread-live",
+    fallbackTimestamp: "2026-08-12T12:01:00.000Z",
+    stableFallbackIdentity: true,
+  }).usageSnapshots;
+  const tailOnly = parseCodexContextRecords([usage], {
+    actorId: "primary",
+    sourceKey: "thread-live",
+    fallbackTimestamp: "2026-08-12T12:02:00.000Z",
+    stableFallbackIdentity: true,
+  }).usageSnapshots;
+
+  assert.equal(withTurn[0].dedupeId, tailOnly[0].dedupeId);
 });

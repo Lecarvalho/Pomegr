@@ -155,6 +155,10 @@ function laterEvidence(previous, next) {
   return Number.isFinite(nextTime) && (!Number.isFinite(previousTime) || nextTime >= previousTime) ? next : previous;
 }
 
+function stableFallbackIdentity({ timestamp, input, output, cacheWrite, cacheRead, reasoningOutput }) {
+  return `${timestamp}:${input}:${output}:${cacheWrite}:${cacheRead}:${reasoningOutput}`;
+}
+
 export function parseCodexContextRecords(records, options = {}) {
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
@@ -184,6 +188,15 @@ export function parseCodexContextRecords(records, options = {}) {
       tokenCountsByTurn.set(turnId, nextCount);
       const dedupeId = providerIdentity
         ? `${sourceKey}:token-count:${providerIdentity}`
+        : options.stableFallbackIdentity
+          ? `${sourceKey}:token-count:${stableFallbackIdentity({
+            timestamp: recordTimestamp(record, null) || "unobserved",
+            input: normalizedUsage.input,
+            output: normalizedUsage.output,
+            cacheWrite: normalizedUsage.cacheWrite,
+            cacheRead: normalizedUsage.cacheRead,
+            reasoningOutput: normalizedUsage.reasoningOutput,
+          })}`
         : `${sourceKey}:${turnId}:token-count-${nextCount}`;
       const snapshot = {
         dedupeId,
