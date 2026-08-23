@@ -13,7 +13,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 ## Collaboration
 
 - The user grants standing permission to use subagents for repository work whenever parallel or independent assessment would improve the result. Do not ask for subagent permission again.
-- Default subagents and workflow workers to the cheapest capable model, such as Haiku, and low reasoning effort. Reserve larger models for stages that genuinely need stronger reasoning, and never leave investigative or probe agents on the session's default model by accident.
+- Default subagents and workflow workers to the cheapest capable model, such as Sonnet, Haiku (Claude), Terra, Luna (Codex). Reserve larger models for stages that genuinely need stronger reasoning, and never leave investigative or probe agents on the session's default model by accident.
 
 ## Architecture
 
