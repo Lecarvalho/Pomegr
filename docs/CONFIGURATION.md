@@ -97,6 +97,23 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Pomegr configuration.
 
+## Agent display roles
+
+Pomegr exposes a bounded display `role` for each agent, not a provider-native agent type. The primary agent is always `orchestrator`; other roles resolve in this order: repository mapping, built-in exact type, documented keyword rule, verified workflow association, then `unknown`. This is display normalization applied whenever a session is read, including history; it is not recorded session state or an authoritative assessment of an agent.
+
+To customize recognized local agent types, optionally commit `.pomegr/roles.json`:
+
+```json
+{
+  "version": 1,
+  "roles": {
+    "cavecrew-builder": "builder"
+  }
+}
+```
+
+Keys must already be normalized: lowercase, the text after the final `:`, and separators folded to `-`. The file is capped at 16 KiB and 64 mappings, keys at 64 characters, and values must be one of Pomegr's built-in roles. Extra top-level fields, an unsupported version, or malformed JSON ignore the entire file; invalid individual mapping rows are skipped. Validate it read-only with `node monitor/agent-roles.mjs validate --cwd .` or `/pomegr:doctor`. Mapping contents never enter the browser API or generated reports.
+
 To share Claude cost or Codex lifecycle snapshots with a portable build, set `POMEGR_DATA_DIR` to that portable `PomegrData` directory in the external bridge environment as well as when launching Pomegr; the specific snapshot-root variables remain available when only one bridge root should move.
 
 ## Troubleshooting

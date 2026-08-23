@@ -94,7 +94,9 @@ export type ProviderEfficiencyRuleEvidence = {
   cacheUsageClassification: boolean;
 };
 
-export type ProviderAgentEvidence = Omit<Agent, "tokens" | "executionTasks"> & {
+/** Provider-private agent type evidence. `kind` never enters MonitorState. */
+export type ProviderAgentEvidence = Omit<Agent, "role" | "tokens" | "executionTasks"> & {
+  kind: string;
   /** Live provider-authored heading only; never reasoning prose or a task association. */
   currentActivity?: Agent["currentActivity"];
   executionTasks: ExecutionTask[];

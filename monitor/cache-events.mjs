@@ -105,7 +105,7 @@ export function buildCacheEvents({
       && model === previous.model
       && !hasCompactionBetween(compactions, snapshot.actorId, previous.observedAt, observedAt);
     const gapMs = comparableToPrevious ? observedAt - previous.observedAt : null;
-    const missRefill = agent?.kind !== "fork"
+    const missRefill = agent?.role !== "fork"
       && comparableToPrevious
       && previous.parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens

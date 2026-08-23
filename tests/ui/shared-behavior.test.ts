@@ -89,7 +89,7 @@ describe("agent tree order", () => {
     workflowOrder: null,
     workflowState: null,
     label: id,
-    kind: id === "primary" ? "orchestrator" : "subagent",
+    role: id === "primary" ? "orchestrator" : "unknown",
     model: "test-model",
     effort: "high",
     status: "active",

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "roles": {
+    "cavecrew-builder": "builder",
+    "cavecrew-investigator": "explore",
+    "cavecrew-reviewer": "reviewer"
+  }
+}

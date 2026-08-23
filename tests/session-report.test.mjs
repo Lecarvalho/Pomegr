@@ -50,7 +50,7 @@ const state = {
     id: "primary",
     parentId: null,
     label: "Primary agent",
-    kind: "orchestrator",
+    role: "orchestrator",
     model: "test-model",
     effort: "medium",
     status: "idle",

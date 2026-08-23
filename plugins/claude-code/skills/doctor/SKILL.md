@@ -17,5 +17,6 @@ Perform a read-only diagnosis. Do not edit files, report signals, or call either
 5. If any tool is missing, direct the user to Claude Code's `/mcp` view and `/reload-plugins`. Do not read credential files or expose MCP configuration values.
 6. Verify that the plugin package contains `.mcp.json`, `hooks/hooks.json`, and `scripts/policy.mjs`, and that the hooks manifest registers `SessionStart`, `PreToolUse`, and `SubagentStop`. This confirms packaged structure, not runtime registration.
 7. Return a compact checklist covering policy, automatic loading, delegation coverage, MCP tools, and native session naming. Native naming passes when Claude Code is allowed to create its automatic title; an idle session may remain Untitled.
+8. Validate optional repository role display mappings with `node <repository-root>/monitor/agent-roles.mjs validate --cwd <repository-root>`. Report missing as inactive, show only the terminal diagnostics and accepted mapping keys, and explain that an invalid file is ignored by the monitor. This check is read-only; never include role-map values or contents in browser-visible output.
 
 Never modify `AGENTS.md`, `CLAUDE.md`, `.claude/settings*`, or `.pomegr/signals.md` during diagnosis.

@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
-import { AgentActivityPanel } from "./components/dashboard/AgentActivityPanel";
+import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
 import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
 import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
@@ -43,6 +43,15 @@ function notificationNavigationSessionId() {
   return candidate && /^[a-z][a-z0-9_-]{0,31}:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(candidate) ? candidate : null;
 }
 
+function storedAgentActivityViewMode(sessionId: string | null): AgentActivityViewMode {
+  if (!sessionId || typeof window === "undefined") return "list";
+  try {
+    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "tree" ? "tree" : "list";
+  } catch {
+    return "list";
+  }
+}
+
 export function Dashboard() {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -53,6 +62,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
   const capabilities = data.capabilities || createEmptyProviderCapabilities();
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
@@ -172,6 +182,20 @@ export function Dashboard() {
     void desktopBridge()?.setNotificationQuiet(value).then((state) => { if (state) setDesktopState(state); }, () => {});
   }, []);
 
+  const activeSessionId = data.session?.id ?? null;
+  const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId
+    ? agentActivityViewPreference.viewMode
+    : storedAgentActivityViewMode(activeSessionId);
+  const changeAgentActivityView = useCallback((viewMode: AgentActivityViewMode) => {
+    setAgentActivityViewPreference({ sessionId: activeSessionId, viewMode });
+    if (!activeSessionId) return;
+    try {
+      window.localStorage.setItem(`pomegr-agent-activity-view-${activeSessionId}`, viewMode);
+    } catch {
+      // The in-memory controlled state remains usable when preferences are unavailable.
+    }
+  }, [activeSessionId]);
+
   const installUpdate = useCallback(() => {
     void desktopBridge()?.installUpdate().then((state) => { if (state) setDesktopState(state); }, () => {});
   }, []);
@@ -243,10 +267,10 @@ export function Dashboard() {
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           {capabilities.workflows && (data.workflows || []).length > 0 && (
-            <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} workflows={data.workflows || []} />
+            <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} workflows={data.workflows || []} />
           )}
-          <section className="contentGrid">
-            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} workflows={data.workflows || []} historical={viewingHistory} />
+          <section className={`contentGrid ${agentActivityViewMode === "tree" ? "contentGrid-tree" : ""}`.trim()}>
+            <AgentActivityPanel agents={data.agents} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
             <InsightsPanel insights={data.insights} />
           </section>
 

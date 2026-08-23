@@ -10,18 +10,23 @@ import { ExecutionTaskRow } from "../ExecutionTaskRow";
 import { AgentWallTimeText, CoarseRelativeTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
+import { AgentTreeView } from "./agent-tree/AgentTreeView";
+
+export type AgentActivityViewMode = "list" | "tree";
 
 type OpenAgentPopover = { kind: "skills" | "execution" | "plan"; agentId: string } | null;
 
-export function AgentActivityPanel({ agents, executionTasks, planTasks, workflows = [], historical }: {
+export function AgentActivityPanel({ agents, executionTasks, planTasks, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
   agents: Agent[];
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
   workflows?: Workflow[];
   historical: boolean;
+  sessionId?: string;
+  viewMode?: AgentActivityViewMode;
+  onViewModeChange?: (viewMode: AgentActivityViewMode) => void;
 }) {
   const [openPopover, setOpenPopover] = useState<OpenAgentPopover>(null);
-  const [workflowAgentsOpen, setWorkflowAgentsOpen] = useState(false);
   const popoverAnchorRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissibleLayer(Boolean(openPopover), popoverAnchorRef, closePopover);
@@ -31,16 +36,6 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
   const phasesByWorkflowId = new Map(workflows.map((workflow) => [workflow.id, new Map(workflow.phases.map((phase) => [phase.id, phase]))]));
   const labelCounts = new Map<string, number>();
   for (const agent of agents) labelCounts.set(agent.label, (labelCounts.get(agent.label) || 0) + 1);
-  const workflowRows = agentRows
-    .filter(({ agent }) => Boolean(agent.workflowId && workflowsById.has(agent.workflowId)))
-    .sort((left, right) => {
-      const byWorkflow = (left.agent.workflowId || "").localeCompare(right.agent.workflowId || "");
-      if (byWorkflow !== 0) return byWorkflow;
-      const leftOrder = left.agent.workflowOrder ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder = right.agent.workflowOrder ?? Number.MAX_SAFE_INTEGER;
-      return leftOrder - rightOrder || left.agent.id.localeCompare(right.agent.id);
-    });
-  const standardRows = agentRows.filter(({ agent }) => !agent.workflowId || !workflowsById.has(agent.workflowId));
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
   const openPlanTasks = planTasks.length - completedPlanTasks - activePlanTasks;
@@ -110,7 +105,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
           </div>
           <div className="agentMeta">
             {workflow && <span className="workflowProvenance" dir="auto">{workflow.name}{phase ? ` · ${phase.label}` : ""}</span>}
-            <span className="agentMetaKind">{agent.kind}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span>
+            <span className="agentMetaKind">{agent.role || "unknown"}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span>
           </div>
         </div>
         <div className="agentTokens" title="Latest non-zero provider usage snapshot for this agent; not cumulative token use."><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "final context" : "latest context"}</span></div>
@@ -124,22 +119,15 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
   };
 
   return (
-    <article className={`panel agentsPanel ${openPopover ? "hasOpenPopover" : ""}`.trim()}>
-      <PanelHeader title="Agent activity" trailing={<span className="quiet">{agents.length} observed</span>} />
-      <div className="agentList">
+    <article className={`panel agentsPanel agentsPanel-${viewMode} ${openPopover ? "hasOpenPopover" : ""}`.trim()} data-session-id={sessionId}>
+      <PanelHeader
+        title="Agent activity"
+        trailing={<div className="agentViewControls" aria-label="Agent activity view"><span className="quiet">{agents.length} observed</span><button aria-pressed={viewMode === "list"} className="agentViewButton" onClick={() => onViewModeChange("list")} type="button">List</button><button aria-pressed={viewMode === "tree"} className="agentViewButton" onClick={() => onViewModeChange("tree")} type="button">Tree</button></div>}
+      />
+      {viewMode === "list" ? <div className="agentList">
         {agents.length === 0 && <EmptyState text="No agents have appeared in this session yet." />}
-        {standardRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{standardRows.map(renderAgentRow)}</div>}
-        {workflowRows.length > 0 && (
-          <div className={`workflowAgentGroup ${workflowAgentsOpen ? "open" : ""}`}>
-            <button aria-controls="workflow-agent-resource-details" aria-expanded={workflowAgentsOpen} className="workflowAgentGroupSummary" onClick={() => setWorkflowAgentsOpen((open) => !open)} type="button">
-              <span className="workflowAgentGroupIcon" aria-hidden="true" />
-              <strong>Workflow agents</strong>
-              <span>{workflowRows.length} {workflowRows.length === 1 ? "resource row" : "resource rows"}</span>
-            </button>
-            {workflowAgentsOpen && <div className="workflowAgentRows" id="workflow-agent-resource-details" role="list" aria-label="Workflow agent resource details">{workflowRows.map(renderAgentRow)}</div>}
-          </div>
-        )}
-      </div>
+        {agentRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{agentRows.map(renderAgentRow)}</div>}
+      </div> : <AgentTreeView agents={agents} historical={historical} sessionId={sessionId} workflows={workflows} />}
     </article>
   );
 }

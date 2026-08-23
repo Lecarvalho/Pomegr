@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCacheEvents, CACHE_EVENT_RULES } from "../monitor/cache-events.mjs";
 
-const agent = { id: "primary", label: "Primary agent", kind: "orchestrator" };
+const agent = { id: "primary", label: "Primary agent", role: "orchestrator" };
 
 function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, model = "model", group = 0 } = {}) {
   return {

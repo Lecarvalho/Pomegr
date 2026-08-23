@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
+import { repositoryRoleMappings, resolveAgentRole } from "./agent-roles.mjs";
 import { buildCacheEvents } from "./cache-events.mjs";
 import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
@@ -348,13 +349,25 @@ export function createMonitorRuntime(options = {}) {
   const capabilities = typeof registry.resolveCapabilities === "function"
     ? await registry.resolveCapabilities(provider, { historical })
     : provider.capabilities;
-  const agents = evidence.agents.map((agent) => ({
-    workflowId: null,
-    workflowPhaseId: null,
-    workflowOrder: null,
-    workflowState: null,
-    ...agent,
-  }));
+  const repositoryRoles = repositoryRoleMappings(evidence.session.cwd);
+  const agents = evidence.agents.map(({ kind, ...agent }) => {
+    const normalized = {
+      workflowId: null,
+      workflowPhaseId: null,
+      workflowOrder: null,
+      workflowState: null,
+      ...agent,
+    };
+    return {
+      ...normalized,
+      role: resolveAgentRole({
+        id: normalized.id,
+        kind,
+        workflowId: normalized.workflowId,
+        repositoryRoles,
+      }),
+    };
+  });
   const compactions = evidence.compactions.map((compaction) => ({
     ...compaction,
     actor: {

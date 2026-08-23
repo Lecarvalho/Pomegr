@@ -18,6 +18,24 @@ export type AgentCurrentActivity = {
   observedAt: string;
 };
 
+/**
+ * Bounded, provider-neutral display role. Provider-specific agent types stay
+ * inside the monitor and are resolved before state reaches the browser.
+ */
+export type AgentRole =
+  | "orchestrator"
+  | "explore"
+  | "plan"
+  | "builder"
+  | "reviewer"
+  | "tester"
+  | "researcher"
+  | "general-purpose"
+  | "workflow-worker"
+  | "fork"
+  | "compaction"
+  | "unknown";
+
 export type ExecutionTask = {
   id: string;
   label: string;
@@ -44,7 +62,7 @@ export type Agent = {
   /** Workflow lifecycle evidence; independent from transcript-recency status. */
   workflowState: "running" | "done" | "error" | "unknown" | null;
   label: string;
-  kind: string;
+  role: AgentRole;
   model: string;
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";

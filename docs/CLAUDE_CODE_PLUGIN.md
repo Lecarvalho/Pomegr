@@ -28,7 +28,7 @@ Run `/pomegr:init`. The skill first inspects safe repository structure and any e
 
 Before writing, the skill previews the complete policy or a focused update and asks for confirmation. It creates or updates only `.pomegr/signals.md`; it never adds reporting instructions to `AGENTS.md` or `CLAUDE.md`, and it does not blindly replace an existing policy. The policy is designed to be committed and shared with collaborators.
 
-After initialization, the skill follows the policy immediately. `/pomegr:doctor` provides a read-only validation of the policy, automatic loading, five expected MCP tools, and packaged files. It does not edit files or emit a signal.
+After initialization, the skill follows the policy immediately. `/pomegr:doctor` provides a read-only validation of the policy, optional `.pomegr/roles.json` display mappings, automatic loading, five expected MCP tools, and packaged files. It does not edit files or emit a signal.
 
 ## Repository policy
 

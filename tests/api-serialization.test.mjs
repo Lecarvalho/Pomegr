@@ -4,7 +4,7 @@ import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createMonitorServer } from "../monitor/server.mjs";
+import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
@@ -281,6 +281,69 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       }],
     });
   }
+});
+
+test("normalizes hostile provider agent kinds before browser state is built", async () => {
+  const provider = {
+    id: "claude",
+    source: "Claude Code",
+    capabilities: {},
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: {
+      defaultProvider: provider,
+      async readSession() {
+        return {
+          provider,
+          sessionId: "claude:role-fixture",
+          evidence: {
+            historical: true,
+            session: {
+              title: "Role fixture",
+              project: "pomegr",
+              cwd: SAFE_CWD,
+              startedAt: null,
+              updatedAt: null,
+              recordedGitBranch: "",
+              cost: null,
+              approvalMode: null,
+              contextMachinery: null,
+              summary: null,
+              signal: null,
+            },
+            agents: [{
+              id: "agent-hostile",
+              parentId: null,
+              label: "Agent",
+              kind: "HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK",
+              workflowId: null,
+              workflowPhaseId: null,
+              workflowOrder: null,
+              workflowState: null,
+              model: "unknown",
+              effort: "unknown",
+              status: "idle",
+              signal: null,
+              toolCalls: 0,
+              skills: [],
+              executionTasks: [],
+              lastSeen: "",
+              startedAt: "",
+              updatedAt: "",
+              durationMs: 0,
+            }],
+            workflows: [], usageSnapshots: [], toolCalls: [], activity: [], planTasks: [], compactions: [], pullRequestCreations: [],
+            efficiencyRuleEvidence: { repetition: false, concurrentMutation: false, unsharedContext: false, healthyFallback: false, cacheUsageClassification: false },
+          },
+        };
+      },
+      async readUsageLimits() { return { available: false, fetchedAt: null, attemptedAt: null, limits: [], error: "" }; },
+    },
+  });
+  const state = await runtime.analyze();
+  assert.equal(state.agents[0].role, "unknown");
+  assert.equal(Object.hasOwn(state.agents[0], "kind"), false);
+  assert.doesNotMatch(JSON.stringify(state), /HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/);
 });
 
 test("missing and deleted history stays historical without current Git or usage data", async (context) => {
