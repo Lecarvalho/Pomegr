@@ -16,7 +16,7 @@ Safe cost snapshots ────┘            │
                            Pomegr web UI (:3003)
 ```
 
-The browser receives normalized metadata only. The monitor owns privileged access to local transcripts, Git, OAuth-backed plan data, and operating-system process measurements.
+The browser receives normalized metadata only. The monitor owns privileged access to local transcripts, Git, OAuth-backed plan data, and operating-system process measurements. A transcript path is the sole narrow exception: after an explicit copy action, a same-origin, no-store endpoint may return the matched agent's local path once; paths never enter the continuously refreshed state, session catalog, reports, logs, or error responses.
 
 ## Runtime components
 

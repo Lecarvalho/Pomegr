@@ -33,6 +33,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "resolveCapabilities",
   "listSessions",
   "readSession",
+  "readTranscriptPath",
   "readUsageLimits",
   "unavailableMessage",
   "qaStats",
@@ -123,6 +124,9 @@ export function defineProvider(adapter) {
   if (adapter.source !== expectedSource) throw new TypeError(`Provider ${adapter.id} source must be ${expectedSource}`);
   if (typeof adapter.listSessions !== "function") throw new TypeError("Provider adapter must implement listSessions");
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
+  if (adapter.readTranscriptPath !== undefined && typeof adapter.readTranscriptPath !== "function") {
+    throw new TypeError("Provider readTranscriptPath must be a function");
+  }
   if (adapter.resolveCapabilities !== undefined && typeof adapter.resolveCapabilities !== "function") {
     throw new TypeError("Provider resolveCapabilities must be a function");
   }

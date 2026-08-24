@@ -53,6 +53,8 @@ export type ExecutionTask = {
 export type Agent = {
   id: string;
   parentId: string | null;
+  /** Whether an explicit one-shot request can resolve this agent's local transcript path. */
+  transcriptAvailable?: boolean;
   /** Normalized workflow association. Provider task IDs never cross this boundary. */
   workflowId: string | null;
   /** Present only when a structured provider artifact verifies the phase association. */

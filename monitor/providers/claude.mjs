@@ -713,6 +713,7 @@ export function createClaudeProvider(options = {}) {
   const liveUsageSnapshotCache = new Map();
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
+  const transcriptPathsBySessionId = new Map();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
     env: environment,
     now,
@@ -877,6 +878,7 @@ export function createClaudeProvider(options = {}) {
     const toolCalls = [];
     const usageSnapshots = [];
     const compactions = [];
+    const transcriptPaths = new Map();
     let startedAt = null;
     let updatedAt = null;
 
@@ -884,6 +886,7 @@ export function createClaudeProvider(options = {}) {
       const stat = statSafe(file);
       if (!stat) continue;
       const actor = actorFor(file, mainFile, agentMetadata, workflowFiles);
+      if (file !== mainFile) transcriptPaths.set(actor.id, file);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
       usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical));
@@ -959,6 +962,7 @@ export function createClaudeProvider(options = {}) {
         label: actor.label,
         kind: actor.kind,
         parentId: actor.parentId,
+        transcriptAvailable: file !== mainFile,
         workflowId: workflowAgent?.runId || null,
         workflowPhaseId: null,
         workflowOrder: null,
@@ -1003,6 +1007,9 @@ export function createClaudeProvider(options = {}) {
       historical,
       manifestCache: workflowManifestCache,
     });
+    transcriptPathsBySessionId.delete(sessionId);
+    transcriptPathsBySessionId.set(sessionId, transcriptPaths);
+    while (transcriptPathsBySessionId.size > 64) transcriptPathsBySessionId.delete(transcriptPathsBySessionId.keys().next().value);
 
     return {
       localId: sessionId,
@@ -1042,6 +1049,11 @@ export function createClaudeProvider(options = {}) {
     };
   }
 
+  async function readTranscriptPath(localSessionId = "", agentId = "") {
+    if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId);
+    return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
+  }
+
   return defineProvider({
     id: "claude",
     source: "Claude Code",
@@ -1062,6 +1074,7 @@ export function createClaudeProvider(options = {}) {
     },
     listSessions,
     readSession,
+    readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${projectsRoot}`;

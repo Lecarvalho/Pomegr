@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Agent, ExecutionTask, MonitorState, SessionSummary } from "../../shared/monitor-contract";
@@ -380,6 +380,67 @@ describe("reported signal tooltips", () => {
 });
 
 describe("agent detail popovers", () => {
+  it("copies a subagent transcript path on demand without rendering the path", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ path: "C:\\Users\\Leandro\\.codex\\sessions\\child.jsonl" }),
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    vi.stubGlobal("fetch", fetchMock);
+    const childAgent: Agent = {
+      ...agent,
+      id: "agent-child",
+      parentId: "primary",
+      label: "Builder",
+      transcriptAvailable: true,
+    };
+
+    try {
+      render(<LiveClockProvider running={false}><AgentActivityPanel agents={[childAgent]} executionTasks={[]} planTasks={[]} historical={false} sessionId="claude:session-1" /></LiveClockProvider>);
+      await user.click(screen.getByRole("button", { name: "1 shell task" }));
+      const dialog = screen.getByRole("dialog", { name: "Activity and execution for Builder" });
+      const copyButton = screen.getByRole("button", { name: "Copy transcript path for Builder" });
+
+      await user.click(copyButton);
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("C:\\Users\\Leandro\\.codex\\sessions\\child.jsonl"));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/transcript-path?sessionId=claude%3Asession-1&agentId=agent-child",
+        { cache: "no-store" },
+      );
+      expect(screen.getByRole("button", { name: "Transcript path copied for Builder" })).toHaveClass("copied");
+      expect(screen.getByRole("status")).toHaveTextContent("Transcript path for Builder copied.");
+      expect(dialog).not.toHaveTextContent("C:\\Users\\Leandro\\.codex\\sessions\\child.jsonl");
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+      else delete (navigator as Navigator & { clipboard?: Clipboard }).clipboard;
+    }
+  });
+
+  it("offers transcript details even when a subagent has no recorded activity rows", async () => {
+    const user = userEvent.setup();
+    const transcriptOnlyAgent: Agent = {
+      ...agent,
+      id: "agent-transcript-only",
+      parentId: "primary",
+      label: "Investigator",
+      transcriptAvailable: true,
+      executionTasks: [],
+      skills: [],
+    };
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[transcriptOnlyAgent]} executionTasks={[]} planTasks={[]} historical={false} sessionId="codex:session-2" /></LiveClockProvider>);
+
+    await user.click(screen.getByRole("button", { name: "Agent details" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Activity and execution for Investigator" });
+    expect(dialog).toHaveTextContent("0 running · 0 finished");
+    expect(screen.getByRole("button", { name: "Copy transcript path for Investigator" })).toBeInTheDocument();
+  });
+
   it("shows a privacy-safe cause tooltip for a failed shell task", async () => {
     const user = userEvent.setup();
     const failedTask: ExecutionTask = {

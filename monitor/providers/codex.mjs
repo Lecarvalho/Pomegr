@@ -266,6 +266,7 @@ export function createCodexProvider(options = {}) {
   const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
   const livePlanTaskCache = new Map();
+  const transcriptPathsBySessionId = new Map();
   const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0 };
 
   const invalidateRolloutFile = (file, { clearContext = false } = {}) => {
@@ -755,6 +756,16 @@ export function createCodexProvider(options = {}) {
       summaries,
       historical,
     });
+    const transcriptPaths = new Map();
+    for (const agent of agents) {
+      const threadId = agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length);
+      const transcriptPath = metadataById.get(threadId)?.rolloutFile || null;
+      agent.transcriptAvailable = agent.id !== "primary" && Boolean(transcriptPath);
+      if (agent.transcriptAvailable) transcriptPaths.set(agent.id, transcriptPath);
+    }
+    transcriptPathsBySessionId.delete(localSessionId);
+    transcriptPathsBySessionId.set(localSessionId, transcriptPaths);
+    while (transcriptPathsBySessionId.size > 64) transcriptPathsBySessionId.delete(transcriptPathsBySessionId.keys().next().value);
     const startedAt = agents.map((agent) => agent.startedAt).filter(Boolean).sort()[0] || metadata.createdAt;
     const updatedAt = agents.map((agent) => agent.updatedAt).filter(Boolean).sort().at(-1)
       || metadata.updatedAt
@@ -949,6 +960,11 @@ export function createCodexProvider(options = {}) {
     usageLimits: true,
   };
 
+  async function readTranscriptPath(localSessionId = "", agentId = "") {
+    if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId, { historical: true });
+    return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
+  }
+
   return defineProvider({
     id: "codex",
     source: "Codex",
@@ -964,6 +980,7 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
+    readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : "No Codex sessions found.";

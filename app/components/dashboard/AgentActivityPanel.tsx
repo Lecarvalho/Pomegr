@@ -5,6 +5,7 @@ import type { Agent, ExecutionTask, PlanTask, Workflow } from "../../../shared/m
 import { agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
+import { CopyTranscriptButton } from "../CopyTranscriptButton";
 import { EmptyState } from "../EmptyState";
 import { ExecutionTaskRow } from "../ExecutionTaskRow";
 import { AgentWallTimeText, CoarseRelativeTimeText, RelativeTimeText } from "../LiveTime";
@@ -47,6 +48,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
     const runningTasks = tasks.filter((task) => task.status === "running");
     const finishedTasks = tasks.filter((task) => task.status !== "running");
     const currentActivity = historical ? null : agent.currentActivity;
+    const transcriptAvailable = agent.id !== "primary" && agent.transcriptAvailable === true;
     const rowPopoverOpen = openPopover?.agentId === agent.id;
     const workflow = agent.workflowId ? workflowsById.get(agent.workflowId) : null;
     const phase = agent.workflowId && agent.workflowPhaseId ? phasesByWorkflowId.get(agent.workflowId)?.get(agent.workflowPhaseId) : null;
@@ -77,16 +79,16 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
                 )}
               </div>
             )}
-            {(tasks.length > 0 || currentActivity) && (
+            {(tasks.length > 0 || currentActivity || transcriptAvailable) && (
               <div className="agentPopoverAnchor executionTaskAnchor" ref={isOpen("execution", agent.id) ? popoverAnchorRef : undefined}>
-                <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : "Current activity"}</AgentChip>
+                <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : currentActivity ? "Current activity" : "Agent details"}</AgentChip>
                 {isOpen("execution", agent.id) && (
-                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Activity and execution for ${agent.label}`} eyebrow="ACTIVITY & EXECUTION" title={agent.label} closeLabel="Close activity and execution" onClose={closePopover} summary={`${runningTasks.length} running · ${finishedTasks.length} finished`} className="executionTaskPopover">
-                    <div className="executionTaskList">
+                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Activity and execution for ${agent.label}`} eyebrow="ACTIVITY & EXECUTION" title={agent.label} closeLabel="Close activity and execution" onClose={closePopover} summary={`${runningTasks.length} running · ${finishedTasks.length} finished`} actions={transcriptAvailable ? <CopyTranscriptButton sessionId={sessionId} agentId={agent.id} agentLabel={agent.label} /> : undefined} className="executionTaskPopover">
+                    {(currentActivity || runningTasks.length > 0 || finishedTasks.length > 0) && <div className="executionTaskList">
                       {currentActivity && <section className="executionTaskSection currentActivitySection" aria-label="Current provider-reported activity"><h3>Current activity</h3><div className="currentActivityRow"><span className="currentActivityMark" aria-hidden="true" /><div><strong>{currentActivity.label}</strong><small>Provider-reported · observed <RelativeTimeText value={currentActivity.observedAt} /></small></div></div></section>}
                       {runningTasks.length > 0 && <section className="executionTaskSection" aria-label="Running execution tasks"><h3>Running</h3>{runningTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
                       {finishedTasks.length > 0 && <section className="executionTaskSection" aria-label="Finished execution tasks"><h3>Recently finished ({finishedTasks.length})</h3>{finishedTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
-                    </div>
+                    </div>}
                   </PopoverFrame>
                 )}
               </div>

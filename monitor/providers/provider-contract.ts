@@ -148,6 +148,8 @@ export interface ProviderAdapter {
   readonly watchTargets?: readonly string[];
   listSessions(): Promise<ProviderSessionReference[]>;
   readSession(localSessionId: string, options: ProviderReadOptions): Promise<ProviderSessionEvidence | null>;
+  /** Resolve a monitor-private local path only for an explicit one-shot copy request. */
+  readTranscriptPath?(localSessionId: string, agentId: string): Promise<string | null>;
   resolveCapabilities?(): Promise<Partial<ProviderCapabilities>>;
   readUsageLimits?(): Promise<UsageLimits>;
   unavailableMessage?(localSessionId: string): string;

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import path from "node:path";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { repositoryRoleMappings, resolveAgentRole } from "./agent-roles.mjs";
@@ -76,6 +77,12 @@ function unavailableResourceUsage() {
     observedPeak: null,
     samples: [],
   };
+}
+
+function safeTranscriptPath(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 32_768) return null;
+  if (!path.isAbsolute(value) || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
 }
 
 function resourceNumber(value, nullable = false) {
@@ -796,11 +803,20 @@ export function createMonitorRuntime(options = {}) {
   return state;
   }
 
+  async function transcriptPath(requestedSessionId = "", agentId = "") {
+    if (typeof requestedSessionId !== "string" || requestedSessionId.length === 0 || requestedSessionId.length > 256) return null;
+    if (typeof agentId !== "string" || agentId.length === 0 || agentId.length > 256 || /[\u0000-\u001f\u007f]/.test(agentId)) return null;
+    const selection = await registry.readSession(requestedSessionId);
+    const agent = selection?.evidence?.agents?.find((candidate) => candidate?.id === agentId);
+    if (!agent?.transcriptAvailable || typeof selection.provider?.readTranscriptPath !== "function") return null;
+    return safeTranscriptPath(await selection.provider.readTranscriptPath(selection.evidence.localId, agentId));
+  }
+
   function analyzeEmpty() {
     return createEmptyMonitorState({ source: registry.defaultProvider.source, usageLimits: emptyUsageLimits() });
   }
 
-  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, homeSnapshot });
+  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, homeSnapshot, transcriptPath });
 }
 
 export function createMonitorRequestHandler(options = {}) {
@@ -852,6 +868,34 @@ export function createMonitorRequestHandler(options = {}) {
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ generatedAt: null, providerLimits: [], projects: [], error: "Home snapshot error" }));
+    }
+    return;
+  }
+  if (requestUrl.pathname === "/api/transcript-path") {
+    if (request.method !== "GET" || request.headers.origin !== undefined) {
+      response.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: "Transcript path request denied." }));
+      return;
+    }
+    const sessionId = requestUrl.searchParams.get("sessionId") || "";
+    const agentId = requestUrl.searchParams.get("agentId") || "";
+    if (!sessionId || !agentId || sessionId.length > 256 || agentId.length > 256) {
+      response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: "A valid session and agent are required." }));
+      return;
+    }
+    try {
+      const transcriptPath = await runtime.transcriptPath(sessionId, agentId);
+      if (!transcriptPath) {
+        response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Transcript path unavailable." }));
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ path: transcriptPath }));
+    } catch {
+      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: "Transcript path unavailable." }));
     }
     return;
   }

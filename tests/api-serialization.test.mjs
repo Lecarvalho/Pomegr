@@ -130,9 +130,10 @@ async function syntheticProviders(context) {
   const claudeRoot = path.join(root, "claude");
   const claudeId = "claude-fixture-parent";
   const claudeFile = path.join(claudeRoot, "projects", "fixture", `${claudeId}.jsonl`);
+  const claudeChildFile = path.join(claudeRoot, "projects", "fixture", claudeId, "subagents", "agent-child-fixture.jsonl");
   await writeFixture(claudeFile, "claude/session.jsonl", replacements);
   await writeFixture(
-    path.join(claudeRoot, "projects", "fixture", claudeId, "subagents", "agent-child-fixture.jsonl"),
+    claudeChildFile,
     "claude/subagent.jsonl",
     replacements,
   );
@@ -179,8 +180,10 @@ async function syntheticProviders(context) {
 
   const codexRoot = path.join(root, "codex");
   const rolloutRoot = path.join(codexRoot, "sessions", "2026", "08", "10");
-  await writeFixture(path.join(rolloutRoot, "rollout-parent.jsonl"), "codex/parent.jsonl", replacements);
-  await writeFixture(path.join(rolloutRoot, "rollout-child.jsonl"), "codex/child.jsonl", replacements);
+  const codexParentFile = path.join(rolloutRoot, "rollout-parent.jsonl");
+  const codexChildFile = path.join(rolloutRoot, "rollout-child.jsonl");
+  await writeFixture(codexParentFile, "codex/parent.jsonl", replacements);
+  await writeFixture(codexChildFile, "codex/child.jsonl", replacements);
   const parent = codexAppThread();
   const codex = createCodexProvider({
     codexHome: codexRoot,
@@ -195,11 +198,11 @@ async function syntheticProviders(context) {
     },
     rateLimitsReader: { async readRateLimits() { return rateLimitsWithPrivateFields(); } },
   });
-  return { claude, codex };
+  return { claude, codex, transcriptPaths: { claudeChildFile, codexChildFile } };
 }
 
 test("/api/state and /api/sessions serialize only allowlisted Claude and Codex metadata", async (context) => {
-  const { claude, codex } = await syntheticProviders(context);
+  const { claude, codex, transcriptPaths } = await syntheticProviders(context);
   const providerRegistry = createProviderRegistry([claude, codex]);
   const origin = await startSyntheticMonitor(context, {
     providerRegistry,
@@ -230,6 +233,12 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   ]);
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  assert.equal(serialized.join("\n").includes(transcriptPaths.claudeChildFile), false);
+  assert.equal(serialized.join("\n").includes(transcriptPaths.codexChildFile), false);
+  assert.equal(Object.hasOwn(claudeState.agents.find((agent) => agent.id === "agent-child-fixture"), "transcriptPath"), false);
+  assert.equal(Object.hasOwn(codexState.agents.find((agent) => agent.id === "agent-codex-fixture-child"), "transcriptPath"), false);
+  assert.equal(claudeState.agents.find((agent) => agent.id === "agent-child-fixture").transcriptAvailable, true);
+  assert.equal(codexState.agents.find((agent) => agent.id === "agent-codex-fixture-child").transcriptAvailable, true);
   assert.equal(claudeState.workflows[0].metadataStatus, "ready");
   assert.deepEqual(claudeState.workflows[0].agentIds, ["workflow-wf_fixture-1-agent-shared"]);
   assert.equal(claudeState.agents.find((agent) => agent.workflowId === "wf_fixture-1").workflowState, "done");
@@ -281,6 +290,30 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       }],
     });
   }
+});
+
+test("the transcript path endpoint is one-shot, agent-scoped, and rejects browser cross-origin access", async (context) => {
+  const { claude, codex, transcriptPaths } = await syntheticProviders(context);
+  const origin = await startSyntheticMonitor(context, {
+    providerRegistry: createProviderRegistry([claude, codex]),
+    readGitState() { return { available: false, branch: "", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }; },
+    async readPullRequests() { return { status: "unavailable", checkedAt: null, items: [] }; },
+  });
+  const query = (sessionId, agentId) => new URLSearchParams({ sessionId, agentId });
+  const [claudePath, codexPath, primaryPath, deniedPath] = await Promise.all([
+    fetch(`${origin}/api/transcript-path?${query("claude:claude-fixture-parent", "agent-child-fixture")}`),
+    fetch(`${origin}/api/transcript-path?${query("codex:codex-fixture-parent", "agent-codex-fixture-child")}`),
+    fetch(`${origin}/api/transcript-path?${query("claude:claude-fixture-parent", "primary")}`),
+    fetch(`${origin}/api/transcript-path?${query("claude:claude-fixture-parent", "agent-child-fixture")}`, {
+      headers: { Origin: "https://untrusted.example" },
+    }),
+  ]);
+
+  assert.deepEqual([claudePath.status, codexPath.status, primaryPath.status, deniedPath.status], [200, 200, 404, 403]);
+  assert.deepEqual(await claudePath.json(), { path: transcriptPaths.claudeChildFile });
+  assert.deepEqual(await codexPath.json(), { path: transcriptPaths.codexChildFile });
+  assert.doesNotMatch(await primaryPath.text(), /claudeFile|\.jsonl|PRIVATE/i);
+  assert.doesNotMatch(await deniedPath.text(), /agent-child-fixture|\.jsonl|PRIVATE/i);
 });
 
 test("normalizes hostile provider agent kinds before browser state is built", async () => {

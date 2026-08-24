@@ -26,6 +26,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 ## Security and privacy invariants
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or credential-file contents to the browser.
+- Local transcript paths may be disclosed only through the one-shot same-origin transcript-path endpoint after an explicit user copy action. Never include them in state, session catalogs, reports, logs, or error text.
 - Provider-native agent kinds and repository role-map contents are monitor-private. The browser may receive only the bounded normalized `Agent.role` enum; it must never receive or reinterpret a provider kind.
 - Claude status-line cost capture may persist and expose only the normalized session ID, non-negative `total_cost_usd`, USD currency label, estimate type, and local observation timestamp. Never persist other status-line fields, and always present the value as a Claude Code estimate rather than authoritative billing.
 - Execution-task metadata may expose only normalized tool/background IDs, the Bash description, shell kind, lifecycle status, timestamps, background flag, exit code, and a bounded enum-based failure category derived monitor-side. Never expose commands, stdout, stderr, matched source text, or task-notification output.
