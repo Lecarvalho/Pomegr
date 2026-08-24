@@ -55,7 +55,6 @@ export function buildPomegrMcpServer() {
         description: descriptionSchema,
       }).strict(),
       annotations: signalAnnotations,
-      _meta: { "anthropic/alwaysLoad": true },
     },
     async (input) => {
       const signal = normalizeAgentSignal(input);
@@ -78,7 +77,6 @@ export function buildPomegrMcpServer() {
       description: "Remove the calling agent's current Pomegr status tag when no project-specific state remains meaningful. This does not affect the overall session tag.",
       inputSchema: z.object({}).strict(),
       annotations: signalAnnotations,
-      _meta: { "anthropic/alwaysLoad": true },
     },
     async () => ({ content: [{ type: "text", text: "Agent signal cleared. Pomegr will read this call from the session transcript." }] }),
   );
@@ -90,7 +88,6 @@ export function buildPomegrMcpServer() {
       description: "Remove the overall session's current Pomegr status tag when no project-specific state remains meaningful. This does not clear agent or task tags.",
       inputSchema: z.object({}).strict(),
       annotations: signalAnnotations,
-      _meta: { "anthropic/alwaysLoad": true },
     },
     async () => ({ content: [{ type: "text", text: "Session signal cleared. Pomegr will read this call from agent transcripts." }] }),
   );
@@ -106,7 +103,6 @@ export function buildPomegrMcpServer() {
         description: sessionDescriptionSchema,
       }).strict(),
       annotations: signalAnnotations,
-      _meta: { "anthropic/alwaysLoad": true },
     },
     async (input) => {
       const signal = normalizeSessionSignal(input);
@@ -126,15 +122,14 @@ export function buildPomegrMcpServer() {
     TASK_SIGNAL_TOOL,
     {
       title: "Report Pomegr task signal",
-      description: "Report one short status or outcome tag for a specific execution task. Pass the background task ID returned by Claude Code, or the Bash tool-use ID when available. A later call for the same task replaces the earlier tag. Do not include prompts, responses, secrets, commands, or tool output.",
+      description: "Report one short status or outcome tag for a specific execution task. Pass the stable task ID returned by the coding-agent host when available. A later call for the same task replaces the earlier tag. Do not include prompts, responses, secrets, commands, or tool output.",
       inputSchema: z.object({
         task_id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
-          .describe("Stable background task ID returned by Claude Code, or the corresponding Bash tool-use ID."),
+          .describe("Stable execution-task ID returned by the coding-agent host."),
         label: labelSchema,
         tone: toneSchema,
       }).strict(),
       annotations: signalAnnotations,
-      _meta: { "anthropic/alwaysLoad": true },
     },
     async (input) => {
       const signal = normalizeTaskSignal(input);

@@ -30,6 +30,11 @@ Download the [latest release](https://github.com/Lecarvalho/pomegr/releases/late
 
 Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https://github.com/Lecarvalho/pomegr/issues) before proposing a substantial change.
 
+## Coding-agent plugins
+
+- [Install the Pomegr plugin into a Codex repository](docs/CODEX_PLUGIN.md)
+- [Install the Pomegr reporting plugin for Claude Code](docs/CLAUDE_CODE_PLUGIN.md)
+
 ## Current limitations
 
 - The desktop app currently supports Windows x64 only.

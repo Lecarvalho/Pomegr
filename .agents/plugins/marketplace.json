@@ -1,0 +1,20 @@
+{
+  "name": "pomegr",
+  "interface": {
+    "displayName": "Pomegr"
+  },
+  "plugins": [
+    {
+      "name": "pomegr",
+      "source": {
+        "source": "local",
+        "path": "./plugins/pomegr"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

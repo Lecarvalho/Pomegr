@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pomegr": {
+      "command": "node",
+      "args": ["./mcp/server.bundle.mjs"],
+      "cwd": "."
+    }
+  }
+}

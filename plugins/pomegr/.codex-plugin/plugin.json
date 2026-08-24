@@ -1,0 +1,26 @@
+{
+  "name": "pomegr",
+  "version": "0.1.0",
+  "description": "Report bounded coding-agent signals to the local Pomegr observer.",
+  "author": {
+    "name": "Leandro Carvalho",
+    "url": "https://github.com/Lecarvalho"
+  },
+  "homepage": "https://github.com/Lecarvalho/pomegr",
+  "repository": "https://github.com/Lecarvalho/pomegr",
+  "license": "AGPL-3.0-only",
+  "keywords": ["observability", "coding-agents", "signals", "local-first"],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Pomegr",
+    "shortDescription": "Bounded signals for the local Pomegr observer",
+    "longDescription": "Adds provider-neutral reporting tools that Pomegr reads from Codex transcripts. The plugin does not send transcript contents or credentials.",
+    "developerName": "Leandro Carvalho",
+    "category": "Productivity",
+    "capabilities": ["Signal reporting"],
+    "websiteURL": "https://github.com/Lecarvalho/pomegr",
+    "defaultPrompt": [
+      "Report this session's current project-specific Pomegr signal."
+    ]
+  }
+}
