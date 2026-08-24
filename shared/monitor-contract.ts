@@ -275,8 +275,15 @@ export type HomeProjectSummary = {
   history: HomeProjectHistory;
 };
 
+export type HomeProviderUsageLimits = {
+  provider: ProviderId;
+  source: ProviderSource;
+  usageLimits: UsageLimits;
+};
+
 export type HomeSnapshot = {
   generatedAt: string | null;
+  providerLimits: HomeProviderUsageLimits[];
   projects: HomeProjectSummary[];
   error?: string;
 };

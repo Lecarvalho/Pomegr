@@ -1052,6 +1052,28 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeIntro h1 { margin: 0; font-size: clamp(30px, 4vw, 48px); font-weight: 520; letter-spacing: -.045em; line-height: 1; }
 .homeIntro p { max-width: 560px; margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .homeStatus, .homeUnavailable { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.homeLimits { min-width: 0; margin: 0 0 24px; border: 1px solid var(--line); background: var(--panel); }
+.homeLimitsHeader { min-height: 42px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+.homeLimitsHeader h2 { margin: 0; color: var(--ink); font-size: 12px; font-weight: 650; }
+.homeLimitsHeader span { color: var(--muted); font: 9px/1 var(--font-geist-mono), monospace; }
+.homeProviderLimits { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.homeProviderLimit { min-width: 0; padding: 13px 16px 15px; }
+.homeProviderLimit + .homeProviderLimit { border-left: 1px solid var(--line); }
+.homeProviderLimit > header { min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.homeProviderLimit > header small { min-width: 0; overflow: hidden; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
+.homeProviderLimit > p { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.homeLimitList { min-width: 0; margin-top: 10px; display: grid; gap: 8px; }
+.homeLimitRow { min-width: 0; display: grid; grid-template-columns: minmax(90px, 1fr) minmax(68px, .65fr) 38px; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+.homeLimitRow > span, .homeLimitRow > span strong, .homeLimitRow > span small { min-width: 0; display: block; }
+.homeLimitRow > span strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.homeLimitRow > span small { margin-top: 2px; color: var(--muted); font: 7.5px/1.1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .04em; }
+.homeLimitTrack { height: 4px; overflow: hidden; background: var(--line); }
+.homeLimitTrack b { display: block; height: 100%; background: var(--green); transition: width .2s ease-out; }
+.homeLimitRow.warning .homeLimitTrack b { background: var(--amber); }
+.homeLimitRow.critical .homeLimitTrack b { background: var(--red); }
+.homeLimitRow > em { color: var(--ink); font: 600 10px/1 var(--font-geist-mono), monospace; font-style: normal; text-align: right; }
+.homeLimitRow.warning > em { color: var(--amber); }
+.homeLimitRow.critical > em { color: var(--red); }
 .homeFolio { min-width: 0; margin-top: 14px; border: 1px solid var(--line); background: var(--panel); }
 .homeFolioHeader { min-height: 58px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
 .homeFolioHeader > div { min-width: 0; }
@@ -1106,6 +1128,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 }
 
 @media (max-width: 980px) {
+  .homeProviderLimits { grid-template-columns: 1fr; }
+  .homeProviderLimit + .homeProviderLimit { border-top: 1px solid var(--line); border-left: 0; }
   .homeFolioBody { grid-template-columns: 1fr; }
   .homeHistory { border-top: 1px solid var(--line); border-left: 0; }
 }
@@ -1114,6 +1138,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .homeContent { padding-top: 28px; }
   .homeIntro { margin-bottom: 20px; }
   .homeIntro h1 { font-size: 34px; }
+  .homeLimits { margin-bottom: 18px; }
+  .homeLimitsHeader, .homeProviderLimit { padding-left: 13px; padding-right: 13px; }
+  .homeLimitsHeader span { display: none; }
   .homeFolioHeader, .homeLiveSection, .homeHistory { padding-left: 13px; padding-right: 13px; }
   .homeSessionGraphs { grid-template-columns: 1fr; gap: 8px; }
   .homeFigure { margin-top: 4px; }

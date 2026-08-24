@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { HomeProjectSummary, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
+import type { HomeProjectSummary, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CloseButton } from "./components/CloseButton";
 import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
-import { SessionRelativeTimeText } from "./components/LiveTime";
+import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 
-const EMPTY: HomeSnapshot = { generatedAt: null, projects: [] };
+const EMPTY: HomeSnapshot = { generatedAt: null, providerLimits: [], projects: [] };
 
 function number(value: number | null) { if (!Number.isFinite(value)) return "—"; return new Intl.NumberFormat(undefined, { notation: value! >= 10_000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(value!); }
 function duration(value: number | null) { if (!Number.isFinite(value)) return "—"; const minutes = Math.floor(value! / 60_000); return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`; }
@@ -29,6 +29,51 @@ function agentSummary(session: HomeSessionSummary) {
 }
 
 function domId(value: string) { return value.replace(/[^a-zA-Z0-9_-]/g, "-"); }
+
+function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }) {
+  if (!providers.length) return null;
+  return (
+    <section className="homeLimits" aria-labelledby="home-limits-heading">
+      <header className="homeLimitsHeader">
+        <h2 id="home-limits-heading">Usage limits</h2>
+        <span>Provider-reported plan usage</span>
+      </header>
+      <div className="homeProviderLimits">
+        {providers.map(({ provider, source, usageLimits }) => {
+          const needsSignIn = /returned 401\b/i.test(usageLimits.error || "");
+          return (
+            <article className="homeProviderLimit" key={provider}>
+              <header>
+                <ProviderBadge source={source} />
+                <small>{needsSignIn
+                  ? "Sign-in needed"
+                  : usageLimits.available && usageLimits.error
+                    ? "Refresh delayed"
+                    : usageLimits.fetchedAt
+                      ? <>Updated <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></>
+                      : "Unavailable"}</small>
+              </header>
+              {usageLimits.limits.length ? (
+                <div className="homeLimitList">
+                  {usageLimits.limits.map((limit) => {
+                    const percent = Math.min(100, Math.max(0, limit.percent));
+                    return (
+                      <div className={`homeLimitRow ${limit.severity}`} key={limit.id} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
+                        <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
+                        <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
+                        <em>{Math.round(limit.percent)}%</em>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : <p>{needsSignIn ? `Sign in to ${source} again to refresh limits.` : usageLimits.error || "Plan usage is not available."}</p>}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function ContextFigure({ history, id }: { history: HomeSessionSummary["contextHistory"]; id: string }) {
   const buckets = history?.buckets?.filter((bucket) => Number.isFinite(bucket.total)).slice(-48) || [];
@@ -146,6 +191,7 @@ export function HomeDashboard() {
             {loading && <p className="homeStatus" role="status">Loading the local monitor…</p>}
             {!loading && !connected && <p className="homeStatus" role="status">Home overview is unavailable. Pomegr will reconnect automatically.</p>}
             {!loading && connected && projects.length === 0 && <p className="homeStatus" role="status">No running sessions yet.</p>}
+            {!loading && connected && <HomeUsageLimits providers={snapshot.providerLimits || []} />}
             {projects.map((project) => <ProjectFolio key={project.project} project={project} />)}
           </section>
           <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{connected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>

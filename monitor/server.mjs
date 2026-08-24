@@ -457,6 +457,19 @@ export function createMonitorRuntime(options = {}) {
   }
 
   async function buildHomeSnapshot() {
+    const providerLimitsPromise = Promise.all((Array.isArray(registry.providers) ? registry.providers : [])
+      .filter((provider) => provider?.id === "claude" || provider?.id === "codex")
+      .map(async (provider) => {
+        let usageLimits = createEmptyUsageLimits();
+        if (typeof registry.readUsageLimits === "function") {
+          try {
+            usageLimits = await registry.readUsageLimits(provider);
+          } catch {
+            usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
+          }
+        }
+        return { provider: provider.id, source: provider.source, usageLimits };
+      }));
     const inspected = typeof registry.inspectSessions === "function"
       ? await registry.inspectSessions()
       : { sessions: await registry.listSessions(), resourceTargets: [] };
@@ -478,7 +491,11 @@ export function createMonitorRuntime(options = {}) {
     for (const [cacheKey, cached] of homeSummaryCache) {
       if (!cached || cached.expiresAt <= endMs) homeSummaryCache.delete(cacheKey);
     }
-    if (liveEntries.length === 0) return { generatedAt: new Date(endMs).toISOString(), projects: [] };
+    if (liveEntries.length === 0) return {
+      generatedAt: new Date(endMs).toISOString(),
+      providerLimits: await providerLimitsPromise,
+      projects: [],
+    };
     const projectNames = new Set(liveEntries.map((entry) => entry.project || "Unknown project"));
     const startMs = endMs - 7 * 24 * 60 * 60_000;
     const relevantHistory = catalog.filter((entry) => !entry.isLive
@@ -548,6 +565,7 @@ export function createMonitorRuntime(options = {}) {
     });
     return {
       generatedAt: new Date(endMs).toISOString(),
+      providerLimits: await providerLimitsPromise,
       projects,
     };
   }
@@ -833,7 +851,7 @@ export function createMonitorRequestHandler(options = {}) {
       response.end(body);
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ generatedAt: null, projects: [], error: "Home snapshot error" }));
+      response.end(JSON.stringify({ generatedAt: null, providerLimits: [], projects: [], error: "Home snapshot error" }));
     }
     return;
   }

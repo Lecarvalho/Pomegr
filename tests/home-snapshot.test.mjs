@@ -40,6 +40,31 @@ function runtimeFixture(entries, evidenceById, options = {}) {
   });
 }
 
+test("home snapshot includes independent Claude and Codex usage limits without live sessions", async () => {
+  const providers = [
+    { id: "claude", source: "Claude Code" },
+    { id: "codex", source: "Codex" },
+  ];
+  const calls = [];
+  const state = await runtimeFixture([], new Map(), {
+    registry: {
+      providers,
+      async readUsageLimits(selectedProvider) {
+        calls.push(selectedProvider.id);
+        if (selectedProvider.id === "claude") throw new Error("PROMPT_RESPONSE_COMMAND_CREDENTIAL");
+        return { available: true, fetchedAt: "2026-08-23T12:00:00.000Z", attemptedAt: "2026-08-23T12:00:00.000Z", limits: [{ id: "codex-primary", label: "Codex", window: "5 hours", percent: 37.5, resetsAt: null, severity: "normal", active: false }], error: "" };
+      },
+    },
+  }).homeSnapshot();
+
+  assert.deepEqual(calls, ["claude", "codex"]);
+  assert.deepEqual(state.projects, []);
+  assert.equal(state.providerLimits[0].source, "Claude Code");
+  assert.equal(state.providerLimits[0].usageLimits.error, "Usage limits are temporarily unavailable.");
+  assert.equal(state.providerLimits[1].usageLimits.limits[0].percent, 37.5);
+  assert.doesNotMatch(JSON.stringify(state), /PROMPT|RESPONSE|COMMAND|CREDENTIAL/);
+});
+
 test("home snapshot keeps only live projects and bounds seven-day history", async () => {
   const entries = [
     { id: "codex:live", provider: "codex", source: "Codex", title: "Live", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false },
@@ -267,7 +292,7 @@ test("home handler sanitizes monitor failure", async () => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/home`);
     const body = await response.text();
     assert.equal(response.status, 500);
-    assert.deepEqual(JSON.parse(body), { generatedAt: null, projects: [], error: "Home snapshot error" });
+    assert.deepEqual(JSON.parse(body), { generatedAt: null, providerLimits: [], projects: [], error: "Home snapshot error" });
     assert.doesNotMatch(body, /PROMPT|RESPONSE|COMMAND|CREDENTIAL/);
   } finally {
     await new Promise((resolve) => server.close(resolve));

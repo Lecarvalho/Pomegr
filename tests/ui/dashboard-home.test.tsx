@@ -9,6 +9,15 @@ function response(body: object, status = 200) {
 
 const snapshot = {
   generatedAt: "2026-08-23T12:00:00.000Z",
+  providerLimits: [{
+    provider: "claude",
+    source: "Claude Code",
+    usageLimits: { available: true, fetchedAt: "2026-08-23T11:58:00.000Z", attemptedAt: "2026-08-23T11:58:00.000Z", limits: [{ id: "current-session", label: "Current session", window: "5 hours", percent: 31, resetsAt: "2026-08-23T15:00:00.000Z", severity: "normal", active: false }] },
+  }, {
+    provider: "codex",
+    source: "Codex",
+    usageLimits: { available: true, fetchedAt: "2026-08-23T11:59:00.000Z", attemptedAt: "2026-08-23T11:59:00.000Z", limits: [{ id: "codex-secondary", label: "Codex", window: "7 days", percent: 82, resetsAt: "2026-08-29T12:00:00.000Z", severity: "warning", active: false }] },
+  }],
   projects: [{
     project: "pomegr",
     updatedAt: "2026-08-23T12:00:00.000Z",
@@ -41,6 +50,10 @@ describe("home dashboard", () => {
     expect(screen.getByRole("heading", { name: "7-day history" })).toBeInTheDocument();
     expect(screen.getByText("3", { selector: ".homeHistoryMetrics b" })).toBeInTheDocument();
     expect(screen.getAllByText("Build home")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
+    expect(container.querySelector('.homeLimitRow[aria-label="Current session, 5 hours, 31% used"]')).toBeInTheDocument();
+    expect(container.querySelector('.homeLimitRow.warning[aria-label="Codex, 7 days, 82% used"]')).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Pomegr home" })).toHaveLength(1);
     expect(screen.queryByText(/recent|completed session/i)).not.toBeInTheDocument();
     expect(container.querySelector('a[href="/sessions/codex-live.one_2"]')).toBeInTheDocument();
@@ -57,6 +70,20 @@ describe("home dashboard", () => {
     expect(screen.queryByText("median wall time")).not.toBeInTheDocument();
   });
 
+  it("flags retained Claude limits when the provider needs sign-in", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      projects: [],
+      providerLimits: [{
+        ...snapshot.providerLimits[0],
+        usageLimits: { ...snapshot.providerLimits[0].usageLimits, error: "Anthropic usage endpoint returned 401" },
+      }],
+    }));
+    render(<HomeDashboard />);
+    expect(await screen.findByText("Sign-in needed")).toBeInTheDocument();
+    expect(screen.getByText("31%")).toBeInTheDocument();
+  });
+
   it("renders stepped context and separate CPU/memory resource paths with current values", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
@@ -68,7 +95,7 @@ describe("home dashboard", () => {
   });
 
   it("shows no-live and offline states without hanging polling", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", projects: [] }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], projects: [] }));
     render(<HomeDashboard />);
     expect(await screen.findByText("No running sessions yet.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/home", expect.objectContaining({ cache: "no-store" }));
