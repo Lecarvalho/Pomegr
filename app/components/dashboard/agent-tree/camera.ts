@@ -10,9 +10,9 @@ export type CameraPoint = { x: number; y: number };
 export type CameraViewport = { width: number; height: number };
 export type CameraForm = "columns" | "rail" | "column" | "indented-rail";
 
-export const MIN_FIT_SCALE = 0.4;
 export const MIN_ZOOM_SCALE = 0.25;
 export const MAX_ZOOM_SCALE = 3;
+export const FIT_MARGIN = 24;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -22,16 +22,25 @@ function coordinate(value: CameraPoint | LayoutRect) {
   return { x: value.x, y: value.y };
 }
 
-/** Fit against width only. A tall tree remains vertically pannable at its clamped scale. */
-export function fitCamera(bounds: ContentBounds, viewport: CameraViewport, form: CameraForm = "columns"): Camera {
+/** Fit and center the complete tree inside the viewport. */
+export function fitCamera(bounds: ContentBounds, viewport: CameraViewport, form: CameraForm = "columns", margin = FIT_MARGIN): Camera {
   void form;
   const width = Math.max(0, bounds.width);
+  const height = Math.max(0, bounds.height);
   const viewportWidth = Math.max(0, viewport.width);
-  const scale = clamp(width > 0 && viewportWidth > 0 ? viewportWidth / width : 1, MIN_FIT_SCALE, 1);
+  const viewportHeight = Math.max(0, viewport.height);
+  const horizontalMargin = Math.max(0, Math.min(margin, viewportWidth / 4));
+  const verticalMargin = Math.max(0, Math.min(margin, viewportHeight / 4));
+  const availableWidth = Math.max(0, viewportWidth - horizontalMargin * 2);
+  const availableHeight = Math.max(0, viewportHeight - verticalMargin * 2);
+  const widthScale = width > 0 && availableWidth > 0 ? availableWidth / width : 1;
+  const heightScale = height > 0 && availableHeight > 0 ? availableHeight / height : 1;
+  const scale = Math.min(widthScale, heightScale, 1);
   const centerX = bounds.x + width / 2;
+  const centerY = bounds.y + height / 2;
   return {
     x: viewportWidth / 2 - centerX * scale,
-    y: -bounds.y * scale,
+    y: viewportHeight / 2 - centerY * scale,
     scale,
   };
 }

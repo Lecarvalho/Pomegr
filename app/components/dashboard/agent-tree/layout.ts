@@ -102,10 +102,10 @@ function boundsForRects(rects: Map<string, LayoutRect>): ContentBounds {
 }
 
 /**
- * Lay out a forest in columns. The x-axis is depth; sibling subtrees are stacked
- * deterministically, and a parent is centered over its visible children.
+ * Lay out a desktop forest from top to bottom. Depth advances down the canvas;
+ * sibling subtrees spread horizontally, with each parent centered above them.
  */
-export function layoutColumns(
+export function layoutTopDown(
   input: LayoutForest | AgentTreeNode[] | LayoutNode[],
   rootOrOptions: string | LayoutNode | ColumnLayoutOptions | null = null,
   maybeOptions: ColumnLayoutOptions = {},
@@ -125,30 +125,30 @@ export function layoutColumns(
   const rects = new Map<string, LayoutRect>();
   const byId = new Map(asNodeList(input).map((node) => [node.id, node]));
   const occupied = new Map<number, number>();
-  const reserve = (depth: number, desiredTop: number) => {
-    const top = Math.max(desiredTop, occupied.get(depth) ?? desiredTop);
-    occupied.set(depth, top + tileHeight + rowGap);
-    return top;
+  const reserve = (depth: number, desiredLeft: number) => {
+    const left = Math.max(desiredLeft, occupied.get(depth) ?? desiredLeft);
+    occupied.set(depth, left + tileWidth + columnGap);
+    return left;
   };
-  const place = (node: LayoutNode, depth: number, desiredTop: number): { top: number; bottom: number } => {
+  const place = (node: LayoutNode, depth: number, desiredLeft: number): { left: number; right: number } => {
     const children = visibleChildren(node, collapsed, visibleIds).filter((child) => byId.has(child.id));
     if (!children.length) {
-      const top = reserve(depth, desiredTop);
-      rects.set(node.id, { x: padding + depth * (tileWidth + columnGap), y: top, w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
-      return { top, bottom: top + tileHeight };
+      const left = reserve(depth, desiredLeft);
+      rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
+      return { left, right: left + tileWidth };
     }
-    const childPlaced = children.map((child) => place(child, depth + 1, desiredTop));
-    const childTop = Math.min(...childPlaced.map(({ top }) => top));
-    const childBottom = Math.max(...childPlaced.map(({ bottom }) => bottom));
-    const desired = (childTop + childBottom - tileHeight) / 2;
-    const top = reserve(depth, Math.max(desired, desiredTop));
-    rects.set(node.id, { x: padding + depth * (tileWidth + columnGap), y: top, w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
-    return { top: Math.min(top, childTop), bottom: Math.max(top + tileHeight, childBottom) };
+    const childPlaced = children.map((child) => place(child, depth + 1, desiredLeft));
+    const childLeft = Math.min(...childPlaced.map(({ left }) => left));
+    const childRight = Math.max(...childPlaced.map(({ right }) => right));
+    const desired = (childLeft + childRight - tileWidth) / 2;
+    const left = reserve(depth, Math.max(desired, desiredLeft));
+    rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
+    return { left: Math.min(left, childLeft), right: Math.max(left + tileWidth, childRight) };
   };
-  let nextRootTop = padding;
+  let nextRootLeft = padding;
   for (const rootNode of roots) {
-    const placed = place(rootNode, 0, nextRootTop);
-    nextRootTop = Math.max(nextRootTop, placed.bottom + rowGap);
+    const placed = place(rootNode, 0, nextRootLeft);
+    nextRootLeft = Math.max(nextRootLeft, placed.right + columnGap);
   }
   return createLayoutMap(rects, boundsForRects(rects));
 }
@@ -194,5 +194,6 @@ export function contentBounds(input: Map<string, LayoutRect> | LayoutRect[] | Re
   return { x: left, y: top, width: right - left, height: bottom - top, left, top, right, bottom };
 }
 
-export const layoutColumnTree = layoutColumns;
+export const layoutColumns = layoutTopDown;
+export const layoutColumnTree = layoutTopDown;
 export const layoutIndentedRail = layoutRail;

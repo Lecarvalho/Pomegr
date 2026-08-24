@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "../../shared/monitor-contract";
 import { fitCamera, pinCard, revealChildren, zoomAt } from "../../app/components/dashboard/agent-tree/camera";
-import { contentBounds, layoutColumns, layoutRail } from "../../app/components/dashboard/agent-tree/layout";
+import { contentBounds, layoutColumns, layoutRail, layoutTopDown } from "../../app/components/dashboard/agent-tree/layout";
 import { buildAgentForest, buildVisualForest } from "../../app/components/dashboard/agent-tree/topology";
 
 function agent(id: string, parentId: string | null, startedAt = "2026-08-23T12:00:00.000Z", overrides: Partial<Agent> = {}): Agent {
@@ -106,18 +106,23 @@ describe("agent tree topology", () => {
 });
 
 describe("agent tree layout", () => {
-  it("centers parents and supports a seven-level chain and wide fanout", () => {
+  it("centers parents above horizontal children and supports deep chains", () => {
     const chain: Agent[] = [agent("root", null)];
     for (let index = 1; index < 7; index += 1) chain.push(agent(`level-${index}`, index === 1 ? "root" : `level-${index - 1}`));
     const wide = [agent("wide-root", null), ...Array.from({ length: 8 }, (_, index) => agent(`wide-${index}`, "wide-root", `2026-08-23T12:0${index}:00.000Z`))];
     const chainForest = buildAgentForest(chain);
     const wideForest = buildAgentForest(wide);
-    const chainLayout = layoutColumns(chainForest);
-    const wideLayout = layoutColumns(wideForest);
+    const chainLayout = layoutTopDown(chainForest);
+    const wideLayout = layoutTopDown(wideForest);
     expect(chainLayout.get("level-6")?.depth).toBe(6);
+    expect(chainLayout.get("level-6")!.y).toBeGreaterThan(chainLayout.get("root")!.y);
+    expect(chainLayout.get("level-6")!.x).toBe(chainLayout.get("root")!.x);
     const wideRoot = wideLayout.get("wide-root")!;
     const children = wideForest.byId.get("wide-root")!.children.map((child) => wideLayout.get(child.id)!);
-    expect(wideRoot.y + wideRoot.h / 2).toBeCloseTo((children[0].y + children.at(-1)!.y + children.at(-1)!.h) / 2);
+    expect(children.at(-1)!.x).toBeGreaterThan(children[0].x);
+    expect(wideRoot.x + wideRoot.w / 2).toBeCloseTo((children[0].x + children.at(-1)!.x + children.at(-1)!.w) / 2);
+    expect(wideLayout.bounds.width).toBeGreaterThan(wideLayout.bounds.height);
+    expect(chainLayout.bounds.height).toBeGreaterThan(chainLayout.bounds.width);
   });
 
   it("uses fixed-height rows and caps rail indentation", () => {
@@ -138,12 +143,16 @@ describe("agent tree layout", () => {
 describe("agent tree camera", () => {
   const bounds = { x: 24, y: 24, width: 1_000, height: 2_000, left: 24, top: 24, right: 1_024, bottom: 2_024 };
 
-  it("fits width only and clamps the scale", () => {
+  it("fits and centers the complete tree on both axes", () => {
     const camera = fitCamera(bounds, { width: 800, height: 500 }, "columns");
-    expect(camera.scale).toBe(0.8);
-    expect(camera.y).toBeCloseTo(-19.2);
-    expect(fitCamera({ ...bounds, width: 10, right: 34 }, { width: 800, height: 500 }).scale).toBe(1);
-    expect(fitCamera({ ...bounds, width: 10_000, right: 10_024 }, { width: 800, height: 500 }).scale).toBe(0.4);
+    expect(camera.scale).toBeCloseTo(0.226);
+    expect(bounds.x * camera.scale + camera.x).toBeCloseTo(287);
+    expect((bounds.x + bounds.width) * camera.scale + camera.x).toBeCloseTo(513);
+    expect(bounds.y * camera.scale + camera.y).toBeCloseTo(24);
+    expect((bounds.y + bounds.height) * camera.scale + camera.y).toBeCloseTo(476);
+    expect(fitCamera({ ...bounds, width: 10, height: 10, right: 34, bottom: 34 }, { width: 800, height: 500 }).scale).toBe(1);
+    expect(fitCamera({ ...bounds, width: 10_000, right: 10_024 }, { width: 800, height: 500 }).scale).toBeCloseTo(0.0752);
+    expect(fitCamera({ ...bounds, height: 1_000_000, bottom: 1_000_024 }, { width: 800, height: 500 }).scale).toBeCloseTo(0.000452);
   });
 
   it("zooms around a point and clamps both directions", () => {

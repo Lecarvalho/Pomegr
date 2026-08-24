@@ -71,12 +71,13 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByText("unknown")).toBeInTheDocument();
   });
 
-  it("renders column-laid-out SVG role glyphs, provenance, and the List-view detail note", () => {
+  it("renders the top-down tree, vertical connectors, provenance, and the List-view detail note", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
     const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, worker()]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:tree" viewMode="tree" onViewModeChange={() => {}} workflows={[workflow()]} /></LiveClockProvider>);
     expect(screen.getByRole("tree", { name: "Agent spawn hierarchy" })).toBeInTheDocument();
     expect(container.querySelectorAll(".agentTreeCard svg.agentTreeRoleGlyph")).toHaveLength(2);
     expect(container.querySelector(".agentTreeNode")?.getAttribute("style")).toContain("--tree-x");
+    expect(container.querySelector(".agentTreeConnectors path")?.getAttribute("d")).toMatch(/^M[^V]+V[^H]+H[^V]+V/);
     expect(container.querySelector(".agentTreeCard.activeAgent .agentTreeRole")).toBeInTheDocument();
     expect(screen.getByText("Workflow: quickwin-batch · Implement")).toBeInTheDocument();
     expect(screen.getByText("Tasks, skills, execution, and plan details are available in List view.")).toBeInTheDocument();
@@ -106,6 +107,41 @@ describe("workflow activity and agent tree view", () => {
     expect(container.querySelector(".agentTreeView-columns")).toBeInTheDocument();
     rerender(<LiveClockProvider running={false}><AgentActivityPanel agents={dashboardState().agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:responsive" viewMode="tree" workflows={[workflow()]} /></LiveClockProvider>);
     expect(window.localStorage.getItem("pomegr-agent-tree-camera-claude:responsive")).toContain("1.5");
+  });
+
+  it("fits every tree card inside the canvas and centers the complete bounds", async () => {
+    class MockResizeObserver { constructor(callback: (entries: Array<{ contentRect: { width: number } }>) => void) { callback([{ contentRect: { width: 1_000 } }]); } observe() {} disconnect() {} }
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(520);
+    const agents = [
+      worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator" }),
+      worker({ id: "branch", parentId: "primary", label: "Branch" }),
+      worker({ id: "top", parentId: "branch", label: "Top" }),
+      worker({ id: "middle", parentId: "branch", label: "Middle" }),
+      worker({ id: "bottom", parentId: "branch", label: "Bottom" }),
+    ];
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:fit" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: /Fit/ }));
+    const surface = container.querySelector(".agentTreeSurface") as HTMLDivElement;
+    const scale = Number(surface.style.getPropertyValue("--tree-camera-scale"));
+    const cameraX = Number.parseFloat(surface.style.getPropertyValue("--tree-camera-x"));
+    const cameraY = Number.parseFloat(surface.style.getPropertyValue("--tree-camera-y"));
+    const nodes = [...container.querySelectorAll<HTMLElement>(".agentTreeNode")];
+    const left = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue("--tree-x"))));
+    const right = Math.max(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue("--tree-x")) + Number.parseFloat(node.style.getPropertyValue("--tree-w"))));
+    const top = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue("--tree-y"))));
+    const bottom = Math.max(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue("--tree-y")) + Number.parseFloat(node.style.getPropertyValue("--tree-h"))));
+    const screenLeft = left * scale + cameraX;
+    const screenRight = right * scale + cameraX;
+    const screenTop = top * scale + cameraY;
+    const screenBottom = bottom * scale + cameraY;
+    expect(screenLeft).toBeGreaterThanOrEqual(24);
+    expect(screenRight).toBeLessThanOrEqual(976);
+    expect((screenLeft + screenRight) / 2).toBeCloseTo(500);
+    expect(screenTop).toBeGreaterThanOrEqual(24);
+    expect(screenBottom).toBeLessThanOrEqual(496);
+    expect((screenTop + screenBottom) / 2).toBeCloseTo(260);
   });
 
   it("supports roving tree keys, drag separation, and phase membership without Tree phase rows", () => {
