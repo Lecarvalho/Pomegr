@@ -1114,7 +1114,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeSessionMetrics { min-width: 52px; text-align: right; }
 .homeSessionMetrics b { display: block; color: var(--blue); font: 600 12px/1 var(--font-geist-mono), monospace; }
 .homeSessionMetrics small { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .07em; }
-.homeSessionGraphs { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.homeSessionGraphs { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; row-gap: 16px; }
 .homeFigure { min-width: 0; margin: 8px 0 0; }
 .homeFigure svg { width: 100%; height: 62px; display: block; overflow: visible; }
 .homeFigure figcaption { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font: 9px/1.2 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .05em; }
@@ -1125,7 +1125,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeChartMemory { fill: none; stroke: var(--resource-memory); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
 .homeChartLabel { fill: var(--muted); font: 8px var(--font-geist-mono), monospace; }
 .homeChartTime { margin-top: 4px; display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
-.homeResourceTime { padding-left: 38px; }
+.homeSessionTime { grid-column: 1 / -1; margin-top: -8px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
 .homeResourceFigure svg { height: 78px; }
 .homeHistoryMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .homeHistoryMetrics span { min-width: 0; }
