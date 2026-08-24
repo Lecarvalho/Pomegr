@@ -36,8 +36,11 @@ plugin_manifest="$repository_root/plugins/claude-code/.claude-plugin/plugin.json
 plugin_package="$repository_root/plugins/claude-code/package.json"
 mcp_server="$repository_root/plugins/claude-code/mcp/server.mjs"
 mcp_bundle="$repository_root/plugins/claude-code/mcp/server.bundle.mjs"
+rename_script="$repository_root/plugins/claude-code/scripts/rename-session.mjs"
+title_contract="$repository_root/plugins/claude-code/scripts/session-title.mjs"
+rename_bundle="$repository_root/plugins/claude-code/scripts/rename-session.bundle.mjs"
 
-for required_file in "$plugin_manifest" "$plugin_package" "$mcp_server" "$mcp_bundle"; do
+for required_file in "$plugin_manifest" "$plugin_package" "$mcp_server" "$mcp_bundle" "$rename_script" "$title_contract" "$rename_bundle"; do
   if [[ ! -f "$required_file" ]]; then
     printf 'Error: required file is missing: %s\n' "$required_file" >&2
     exit 66
@@ -50,7 +53,10 @@ cleanup() {
     "$backup_dir/plugin.json" \
     "$backup_dir/package.json" \
     "$backup_dir/server.mjs" \
-    "$backup_dir/server.bundle.mjs"
+    "$backup_dir/server.bundle.mjs" \
+    "$backup_dir/rename-session.mjs" \
+    "$backup_dir/session-title.mjs" \
+    "$backup_dir/rename-session.bundle.mjs"
   rmdir -- "$backup_dir"
 }
 trap cleanup EXIT
@@ -59,12 +65,18 @@ cp -- "$plugin_manifest" "$backup_dir/plugin.json"
 cp -- "$plugin_package" "$backup_dir/package.json"
 cp -- "$mcp_server" "$backup_dir/server.mjs"
 cp -- "$mcp_bundle" "$backup_dir/server.bundle.mjs"
+cp -- "$rename_script" "$backup_dir/rename-session.mjs"
+cp -- "$title_contract" "$backup_dir/session-title.mjs"
+cp -- "$rename_bundle" "$backup_dir/rename-session.bundle.mjs"
 
 restore_release_files() {
   cp -- "$backup_dir/plugin.json" "$plugin_manifest"
   cp -- "$backup_dir/package.json" "$plugin_package"
   cp -- "$backup_dir/server.mjs" "$mcp_server"
   cp -- "$backup_dir/server.bundle.mjs" "$mcp_bundle"
+  cp -- "$backup_dir/rename-session.mjs" "$rename_script"
+  cp -- "$backup_dir/session-title.mjs" "$title_contract"
+  cp -- "$backup_dir/rename-session.bundle.mjs" "$rename_bundle"
 }
 
 if ! version_transition="$(node --input-type=module - "$plugin_manifest" "$plugin_package" "$mcp_server" "$increment" <<'NODE'
@@ -151,7 +163,7 @@ if ! (cd -- "$repository_root" && npm run build:plugin); then
 fi
 
 printf '\nPomegr Claude plugin prepared: %s\n' "$version_transition"
-printf 'Updated both plugin manifests, synchronized the MCP server version, and rebuilt server.bundle.mjs.\n'
+printf 'Updated both plugin manifests, synchronized the MCP server version, and rebuilt the MCP and rename-hook bundles.\n'
 printf '\nAfter this release is committed and pushed, each project-scope client must run:\n\n'
 printf '  /plugin marketplace update pomegr\n'
 printf '  claude plugin update pomegr@pomegr --scope project\n'

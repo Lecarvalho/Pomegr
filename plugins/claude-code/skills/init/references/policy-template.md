@@ -1,11 +1,11 @@
 # Pomegr reporting policy
 
-Policy version: 4
+Policy version: 5
 
 ## Session naming
 
-- Allow Claude Code to assign a concise native automatic title after the first substantive request.
-- Never ask the user to name the session and never report a title through Pomegr MCP.
+- After the first substantive request makes the work clear, call the Pomegr `rename_session` tool once with a concise, meaningful title. If that tool is unavailable, use another host-native session-title capability or allow the provider's automatic title.
+- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.
 
 ## Privacy and semantics
 

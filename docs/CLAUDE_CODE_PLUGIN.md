@@ -28,11 +28,11 @@ Run `/pomegr:init`. The skill first inspects safe repository structure and any e
 
 Before writing, the skill previews the complete policy or a focused update and asks for confirmation. It creates or updates only `.pomegr/signals.md`; it never adds reporting instructions to `AGENTS.md` or `CLAUDE.md`, and it does not blindly replace an existing policy. The policy is designed to be committed and shared with collaborators.
 
-After initialization, the skill follows the policy immediately. `/pomegr:doctor` provides a read-only validation of the policy, optional `.pomegr/roles.json` display mappings, automatic loading, five expected MCP tools, and packaged files. It does not edit files or emit a signal.
+After initialization, the skill follows the policy immediately. `/pomegr:doctor` provides a read-only validation of the policy, optional `.pomegr/roles.json` display mappings, automatic loading, six expected MCP tools, and packaged files. It does not edit files, rename a session, or emit a signal.
 
 ## Repository policy
 
-`.pomegr/signals.md` uses policy version `4` and contains Session naming, Privacy and semantics, Delegated agent tooling, Delegated agents, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
+`.pomegr/signals.md` uses policy version `5` and contains Session naming, Privacy and semantics, Delegated agent tooling, Delegated agents, Session signals, Agent signals, and Task signals sections. Each signal table uses `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text, tones are `neutral`, `info`, `positive`, `warning`, or `negative`, and transition conditions must be concrete and observable.
 
 The `Delegated agents` table is the declaration that drives delegation. Each row names a subagent type and what it owns — `agent`, `task`, or `agent and task` — and `*` covers every subagent type. A row may only own a scope that configures at least one signal row, and an empty table means the delegating session keeps all reporting for itself. The table is the sole scope input for both delegation hooks, so a repository that configures no delegated agents pays no per-spawn cost.
 
@@ -44,7 +44,7 @@ Instruction, unlike capability, is not checked in the definition at all. A defin
 
 The naming, privacy, and delegated-agent tooling sections are canonical policy and must remain identical to the plugin template. Repository-owned customization belongs in the three signal tables. Session and agent rows must define replacement or clearing; task rows must state that their outcomes are durable and cannot be cleared.
 
-The policy requires Claude Code to use its native automatic session naming after substantive work. Pomegr does not expose a title-reporting tool, does not ask the user to run `/rename`, and does not replace an explicit native title. An idle session may remain Untitled.
+After substantive work makes the purpose clear, the policy requires the main agent to call Pomegr's `rename_session` tool once with a concise, meaningful title. A dedicated `PreToolUse` hook receives Claude Code's trusted current `session_id` and performs the provider-native `renameSession()` mutation; the model supplies only the title and cannot select a target session. The hook preserves any existing custom title, so an explicit user title wins. It fails closed with a bounded message when the SDK cannot safely identify or update the session, and provider automatic naming remains the fallback. Subagents never rename the main session, and Pomegr never asks the user to run `/rename`.
 
 Signals are agent-reported guidance and may become stale; they are not authoritative Pomegr judgments. Policies and reports must never contain prompts, responses, secrets, credentials, raw commands, stdout, stderr, tool results, or sensitive repository content.
 
@@ -77,10 +77,11 @@ Both hooks exit `0` with no output on a missing, invalid, or unrelated policy, a
 
 ## MCP tools and signal lifetime
 
-The plugin provides five tools:
+The plugin provides six tools:
 
 | Tool | Effect |
 | --- | --- |
+| `rename_session` | Requests one concise provider-native title for the calling main session. A trusted hook binds the mutation to that session and preserves any existing custom title. |
 | `report_session_signal` | Reports or replaces the overall session's current label, tone, and optional description. |
 | `report_agent_signal` | Reports or replaces the calling agent's current label, tone, and optional description. |
 | `report_task_signal` | Records a durable outcome for a recognized execution-task ID. |
@@ -89,7 +90,7 @@ The plugin provides five tools:
 
 A label such as `Idle`, `Blocked`, or `Needs input` is a visible semantic state, not an absence of state. It remains visible until a later report replaces it or the matching clear tool removes it. Clearing means that no agent-reported state is currently meaningful for that scope. Task signals are durable outcomes and cannot be cleared; a later task report for the same recognized execution task may replace one.
 
-The MCP server is stateless. Report and clear calls are recorded in the provider transcript, and Pomegr reconstructs them chronologically for live and historical views. A clear becomes `null` in the existing normalized browser shape, so the browser API does not expose raw clear events or new control fields.
+The MCP server is stateless. Report and clear calls are recorded in the provider transcript, and Pomegr reconstructs them chronologically for live and historical views. A clear becomes `null` in the existing normalized browser shape, so the browser API does not expose raw clear events or new control fields. `rename_session` is the sole provider-control exception: its trusted hook appends Claude's native bounded custom-title record through the official Agent SDK. It adds no browser API field, persisted Pomegr state, prompt content, or tool output.
 
 Pomegr derives reporting ownership and timestamps from transcript evidence. Task targets are resolved monitor-side against normalized Bash tool-use or background-task IDs. Unmatched task targets, extra MCP arguments, tool results, and surrounding transcript content never enter the browser API.
 
@@ -102,13 +103,13 @@ Start with `/pomegr:doctor`. Its checklist distinguishes these common cases:
 - **Policy not loaded in the current context:** run `/reload-plugins`, then start or resume a session so the `SessionStart` hook runs.
 - **A subagent finished without reporting:** confirm its type has a `Delegated agents` row and that its `tools` allowlist reaches the Pomegr namespace. `/pomegr:doctor` lists the declared rows and the drift warnings for both gaps.
 - **One or more MCP tools missing:** inspect Claude Code's `/mcp` view and reload the plugin. Doctor does not call a reporting tool merely to test connectivity.
-- **Session remains Untitled:** native naming occurs after substantive interaction; an idle session is allowed to remain Untitled.
+- **Session remains Untitled:** confirm that `rename_session` appears in `/mcp`, the Pomegr rename `PreToolUse` hook appears in `/hooks`, and substantive work has begun. Reload the plugin if either capability is missing. Provider automatic naming is the fallback; an idle session is allowed to remain Untitled.
 
 For unsupported standalone/manual installations, the repository's MCP server can still be registered directly under the exact server name `pomegr`. In that mode, add policy guidance through the host's supported instruction mechanism because the plugin hook is absent. The bundled plugin is the supported path for automatic policy loading.
 
 ## Deferred Pomegr queries
 
-V1 is reporting-only. It intentionally does not include `report_session_title`, a policy-status MCP tool, or a generic natural-language `ask_pomegr` tool.
+The plugin intentionally does not include `report_session_title`, a policy-status MCP tool, or a generic natural-language `ask_pomegr` tool. Titles are written only through the narrow provider-native `rename_session` bridge; they are not a second Pomegr reporting channel.
 
 A separately scoped milestone may add authenticated, structured read-only queries for the current context snapshot, provider-reported usage limits, deterministic attention signals, and a normalized session overview. That bridge must use a short-lived local capability and an unambiguous current-session reference. It must not expose the desktop monitor token, raw transcripts, prompts, responses, commands, credentials, cumulative context spent, or token-spend totals.
 

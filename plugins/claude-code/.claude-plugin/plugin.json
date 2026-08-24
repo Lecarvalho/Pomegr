@@ -1,6 +1,6 @@
 {
   "name": "pomegr",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Configure and report bounded, repository-specific coding-agent signals to the local Pomegr observer.",
   "author": {
     "name": "Leandro Carvalho"

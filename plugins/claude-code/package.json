@@ -1,12 +1,13 @@
 {
   "name": "@pomegr/claude-code-plugin",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.241",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "4.4.3"
   }

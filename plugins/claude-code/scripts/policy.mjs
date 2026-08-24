@@ -7,7 +7,7 @@ import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 4;
+export const POLICY_VERSION = 5;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
@@ -38,8 +38,8 @@ const DELEGATED_OWNERSHIP = new Map([
 const DELEGATED_AGENT_TYPE_PATTERN = /^(?:\*|[a-z0-9][a-z0-9._:-]{0,63})$/;
 const FORK_AGENT_TYPE = "fork";
 const CANONICAL_SESSION_NAMING = [
-  "- Allow Claude Code to assign a concise native automatic title after the first substantive request.",
-  "- Never ask the user to name the session and never report a title through Pomegr MCP.",
+  "- After the first substantive request makes the work clear, call the Pomegr `rename_session` tool once with a concise, meaningful title. If that tool is unavailable, use another host-native session-title capability or allow the provider's automatic title.",
+  "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
 ].join("\n");
 const CANONICAL_PRIVACY = [
   "- Report only project-specific state that helps an observer understand the work.",
@@ -200,7 +200,7 @@ export function validatePolicyText(text) {
     sections.set(name, body || "");
   }
   if (sections.get("Session naming") !== CANONICAL_SESSION_NAMING) {
-    errors.push("Session naming must match the canonical native-title policy.");
+    errors.push("Session naming must match the canonical agent-title policy.");
   }
   if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) {
     errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
@@ -351,7 +351,7 @@ function hookOutput(policy) {
         "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
         "Delegation is mechanized: the Pomegr PreToolUse hook appends the applicable rows to the prompt of any subagent type declared under Delegated agents, so you do not have to remember to paste them. Keep the resolved Pomegr MCP tools in those subagents' allowlists.",
-        "Do not ask the user to name the session; allow Claude Code to assign its native automatic title after substantive work begins.",
+        "After substantive work makes the session's purpose clear, call the Pomegr `rename_session` tool once with a concise, meaningful title. Its trusted hook targets this main session and preserves an explicit user title. Do not ask the user to name the session, and do not delegate naming to a subagent.",
         ...drift,
         "",
         policy.text,

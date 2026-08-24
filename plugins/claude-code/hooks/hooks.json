@@ -23,6 +23,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/rename-session.bundle.mjs\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [

@@ -192,9 +192,9 @@ test("validates the delegated-agents table and rejects incoherent delegation", a
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 4", "Policy version: 1"));
+  const malformed = validatePolicyText(template.replace("Policy version: 5", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.includes("Policy version must be 4."));
+  assert.ok(malformed.errors.includes("Policy version must be 5."));
 
   const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -204,11 +204,11 @@ test("rejects malformed and oversized policies without interpreting their conten
 test("rejects policies that contradict naming, privacy, and signal-lifetime invariants", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
   const badNaming = validatePolicyText(template.replace(
-    "- Never ask the user to name the session and never report a title through Pomegr MCP.",
+    "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
     "- Always ask the user to run /rename and report the title.",
   ));
   assert.equal(badNaming.status, "invalid");
-  assert.ok(badNaming.errors.includes("Session naming must match the canonical native-title policy."));
+  assert.ok(badNaming.errors.includes("Session naming must match the canonical agent-title policy."));
 
   const badPrivacy = validatePolicyText(template.replace(
     "- Never include prompts, responses, secrets, commands, stdout, stderr, tool results, credential values, or sensitive repository content.",
@@ -343,11 +343,11 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     const validOutput = JSON.parse(valid.stdout);
     assert.equal(validOutput.hookSpecificOutput.hookEventName, "SessionStart");
     assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /allow Claude Code to assign/i);
+    assert.match(validOutput.hookSpecificOutput.additionalContext, /call the Pomegr `rename_session` tool once/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /Delegation is mechanized/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
-    await writePolicy(repository, template.replace("Policy version: 4", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 5", "Policy version: invalid"));
     const invalid = runPolicyHook(nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
@@ -495,7 +495,7 @@ test("delegation hook stays silent for an undeclared policy, a missing policy, a
     await writePolicy(repository, template);
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
 
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 4", "Policy version: 9"));
+    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 5", "Policy version: 9"));
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
   });
 });
@@ -573,8 +573,10 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
   assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
+  assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
   assert.match(hooks.hooks.PreToolUse[0].hooks[0].command, /policy\.mjs" delegate/);
+  assert.match(hooks.hooks.PreToolUse[1].hooks[0].command, /rename-session\.bundle\.mjs/);
   assert.match(hooks.hooks.SubagentStop[0].hooks[0].command, /policy\.mjs" subagent-stop/);
   for (const event of ["SessionStart", "PreToolUse", "SubagentStop"]) {
     assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
@@ -582,7 +584,8 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   }
   assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
   assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
-  assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@modelcontextprotocol/server", "zod"]);
+  assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/server", "zod"]);
+  assert.equal(packageManifest.dependencies["@anthropic-ai/claude-agent-sdk"], "0.3.241");
 
   const doctor = await readFile(path.join(pluginRoot, "skills", "doctor", "SKILL.md"), "utf8");
   assert.match(doctor, /\[Pomegr reporting policy loaded\]/);
@@ -612,10 +615,32 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       "clear_agent_signal",
       "clear_session_signal",
+      "rename_session",
       "report_agent_signal",
       "report_session_signal",
       "report_task_signal",
     ]);
+
+    const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
+      cwd: clientRepository,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CLAUDE_CONFIG_DIR: path.join(temporaryRoot, "claude-config"),
+        CLAUDE_PROJECT_DIR: clientRepository,
+        NODE_PATH: "",
+      },
+      input: JSON.stringify({
+        hook_event_name: "PreToolUse",
+        session_id: "550e8400-e29b-41d4-a716-446655440000",
+        cwd: clientRepository,
+        tool_name: "mcp__plugin_pomegr_pomegr__rename_session",
+        tool_input: { title: "Installed plugin title" },
+      }),
+    });
+    assert.equal(renameHook.status, 2);
+    assert.match(renameHook.stderr, /^Pomegr could not safely rename the current Claude Code session\./);
+    assert.doesNotMatch(renameHook.stderr, /550e8400|client-repository|claude-config/i);
   });
 });
 
@@ -628,6 +653,8 @@ test("plugin namespace rejects every legacy Threadlight identifier", async () =>
     path.join(pluginRoot, "package.json"),
     path.join(pluginRoot, "hooks", "hooks.json"),
     path.join(pluginRoot, "mcp", "server.mjs"),
+    path.join(pluginRoot, "scripts", "rename-session.mjs"),
+    path.join(pluginRoot, "scripts", "session-title.mjs"),
     path.join(pluginRoot, "scripts", "policy.mjs"),
     path.join(pluginRoot, "skills", "doctor", "SKILL.md"),
     path.join(pluginRoot, "skills", "doctor", "agents", "openai.yaml"),
@@ -647,13 +674,14 @@ test("plugin namespace rejects every legacy Threadlight identifier", async () =>
   await assert.rejects(access(path.join(restartSkillRoot, "scripts", "restart-threadlight.ps1")), { code: "ENOENT" });
 });
 
-test("plugin MCP inventory contains only reporting and scoped clearing tools", () => {
+test("plugin MCP inventory contains bounded reporting, clearing, and native title tools", () => {
   const server = buildPomegrMcpServer();
   const tools = Object.keys(server._registeredTools).sort();
 
   assert.deepEqual(tools, [
     "clear_agent_signal",
     "clear_session_signal",
+    "rename_session",
     "report_agent_signal",
     "report_session_signal",
     "report_task_signal",
@@ -661,6 +689,12 @@ test("plugin MCP inventory contains only reporting and scoped clearing tools", (
   assert.equal(tools.includes("report_session_title"), false);
   assert.equal(tools.includes("ask_pomegr"), false);
   assert.ok(tools.every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
+  assert.equal(server._registeredTools.rename_session.annotations.readOnlyHint, false);
+  assert.equal(server._registeredTools.rename_session.annotations.destructiveHint, false);
+  assert.equal(server._registeredTools.rename_session.annotations.idempotentHint, true);
+  for (const name of tools.filter((tool) => tool !== "rename_session")) {
+    assert.equal(server._registeredTools[name].annotations.readOnlyHint, true);
+  }
 });
 
 test("plugin release helper synchronizes versions, rebuilds, rolls back, and prints correct client commands", async () => {
@@ -670,6 +704,7 @@ test("plugin release helper synchronizes versions, rebuilds, rolls back, and pri
   assert.match(script, /plugins\/claude-code\/\.claude-plugin\/plugin\.json/);
   assert.match(script, /plugins\/claude-code\/package\.json/);
   assert.match(script, /plugins\/claude-code\/mcp\/server\.mjs/);
+  assert.match(script, /rename-session/);
   assert.match(script, /npm run build:plugin/);
   assert.match(script, /restore_release_files/);
   assert.match(script, /\/plugin marketplace update pomegr/);
