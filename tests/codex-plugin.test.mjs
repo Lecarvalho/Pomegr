@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
-import { access, cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, cp, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
-import { installCodexPlugin } from "../scripts/install-codex-plugin.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repositoryRoot, "plugins", "pomegr");
@@ -69,7 +67,7 @@ async function readMcpToolInventory(server, cwd) {
   }
 }
 
-test("repo marketplace exposes the provider-neutral Pomegr Codex plugin", async () => {
+test("Pomegr repository exposes a standard provider-neutral Codex marketplace plugin", async () => {
   const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".agents", "plugins", "marketplace.json"), "utf8"));
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const mcp = JSON.parse(await readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
@@ -89,12 +87,12 @@ test("repo marketplace exposes the provider-neutral Pomegr Codex plugin", async 
 test("installed Codex plugin starts without repository dependencies and lists bounded signal tools", async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const installedPlugin = path.join(temporaryRoot, "installed-pomegr");
-    const clientRepository = path.join(temporaryRoot, "client-repository");
+    const runtimeCwd = path.join(temporaryRoot, "runtime");
     await cp(pluginRoot, installedPlugin, { recursive: true });
-    await mkdir(clientRepository, { recursive: true });
+    await mkdir(runtimeCwd, { recursive: true });
     await assert.rejects(access(path.join(installedPlugin, "node_modules")), { code: "ENOENT" });
 
-    const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
+    const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), runtimeCwd);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       "clear_agent_signal",
       "clear_session_signal",
@@ -106,125 +104,9 @@ test("installed Codex plugin starts without repository dependencies and lists bo
   });
 });
 
-test("repo installer previews, installs, preserves other marketplace entries, and becomes idempotent", async () => {
-  await withTemporaryDirectory(async (clientRepository) => {
-    await mkdir(path.join(clientRepository, ".git"));
-    const marketplacePath = path.join(clientRepository, ".agents", "plugins", "marketplace.json");
-    const existingMarketplace = {
-      name: "client-tools",
-      interface: { displayName: "Client Tools" },
-      plugins: [{
-        name: "existing",
-        source: { source: "local", path: "./plugins/existing" },
-        policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-        category: "Productivity",
-      }],
-    };
-    await mkdir(path.dirname(marketplacePath), { recursive: true });
-    await writeFile(marketplacePath, `${JSON.stringify(existingMarketplace, null, 2)}\n`, "utf8");
-
-    const preview = await installCodexPlugin({ targetRepository: clientRepository, dryRun: true });
-    assert.ok(preview.plugin.files.every((file) => file.action === "create"));
-    assert.equal(preview.marketplace.action, "update");
-    await assert.rejects(access(path.join(clientRepository, "plugins", "pomegr")), { code: "ENOENT" });
-    assert.deepEqual(JSON.parse(await readFile(marketplacePath, "utf8")), existingMarketplace);
-
-    const installed = await installCodexPlugin({ targetRepository: clientRepository });
-    assert.equal(installed.marketplace.action, "update");
-    const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
-    assert.equal(marketplace.name, "client-tools");
-    assert.equal(marketplace.interface.displayName, "Client Tools");
-    assert.deepEqual(marketplace.plugins.map((plugin) => plugin.name), ["existing", "pomegr"]);
-    assert.equal(marketplace.plugins[1].source.path, "./plugins/pomegr");
-
-    const installedTools = await readMcpToolInventory(
-      path.join(clientRepository, "plugins", "pomegr", "mcp", "server.bundle.mjs"),
-      clientRepository,
-    );
-    assert.deepEqual(installedTools.map((tool) => tool.name).sort(), [
-      "clear_agent_signal",
-      "clear_session_signal",
-      "report_agent_signal",
-      "report_session_signal",
-      "report_task_signal",
-    ]);
-
-    const secondPreview = await installCodexPlugin({ targetRepository: clientRepository, dryRun: true });
-    assert.ok(secondPreview.plugin.files.every((file) => file.action === "unchanged"));
-    assert.equal(secondPreview.marketplace.action, "unchanged");
-  });
-});
-
-test("repo installer refuses to overwrite a plugin directory owned by another package", async () => {
-  await withTemporaryDirectory(async (clientRepository) => {
-    await mkdir(path.join(clientRepository, ".git"));
-    const manifestPath = path.join(clientRepository, "plugins", "pomegr", ".codex-plugin", "plugin.json");
-    await mkdir(path.dirname(manifestPath), { recursive: true });
-    await writeFile(manifestPath, '{"name":"not-pomegr"}\n', "utf8");
-
-    await assert.rejects(
-      installCodexPlugin({ targetRepository: clientRepository, dryRun: true }),
-      /Refusing to overwrite a non-Pomegr plugin directory/,
-    );
-  });
-});
-
-test("repo installer refuses unmanaged files in an existing Pomegr plugin directory", async () => {
-  await withTemporaryDirectory(async (clientRepository) => {
-    await mkdir(path.join(clientRepository, ".git"));
-    const destination = path.join(clientRepository, "plugins", "pomegr");
-    await cp(pluginRoot, destination, { recursive: true });
-    await writeFile(path.join(destination, "unmanaged-hook.mjs"), "// must not survive an update\n", "utf8");
-
-    await assert.rejects(
-      installCodexPlugin({ targetRepository: clientRepository, dryRun: true }),
-      /Refusing to leave unmanaged files in the Pomegr plugin directory/,
-    );
-  });
-});
-
-test("repo installer preserves custom metadata on an existing Pomegr marketplace entry", async () => {
-  await withTemporaryDirectory(async (clientRepository) => {
-    await mkdir(path.join(clientRepository, ".git"));
-    const marketplacePath = path.join(clientRepository, ".agents", "plugins", "marketplace.json");
-    await mkdir(path.dirname(marketplacePath), { recursive: true });
-    await writeFile(marketplacePath, `${JSON.stringify({
-      name: "client-tools",
-      plugins: [{
-        name: "pomegr",
-        source: { source: "local", path: "./old/pomegr" },
-        policy: { installation: "INSTALLED_BY_DEFAULT", authentication: "ON_USE", products: ["Codex"] },
-        category: "Development",
-        clientNote: "preserve me",
-      }],
-    }, null, 2)}\n`, "utf8");
-
-    await installCodexPlugin({ targetRepository: clientRepository });
-    const entry = JSON.parse(await readFile(marketplacePath, "utf8")).plugins[0];
-    assert.equal(entry.source.path, "./plugins/pomegr");
-    assert.deepEqual(entry.policy, {
-      installation: "INSTALLED_BY_DEFAULT",
-      authentication: "ON_USE",
-      products: ["Codex"],
-    });
-    assert.equal(entry.category, "Development");
-    assert.equal(entry.clientNote, "preserve me");
-  });
-});
-
-test("repo installer rejects symbolic-link escapes in managed target paths", async () => {
-  for (const managedRoot of ["plugins", ".agents"]) {
-    await withTemporaryDirectory(async (temporaryRoot) => {
-      const clientRepository = path.join(temporaryRoot, "client");
-      const external = path.join(temporaryRoot, "external");
-      await mkdir(path.join(clientRepository, ".git"), { recursive: true });
-      await mkdir(external);
-      await symlink(external, path.join(clientRepository, managedRoot), process.platform === "win32" ? "junction" : "dir");
-
-      await assert.rejects(
-        installCodexPlugin({ targetRepository: clientRepository, dryRun: true }),
-        /Refusing to write through a symbolic link/,
-      );
-    });
-  }
+test("client guide uses only standard Codex marketplace commands", async () => {
+  const guide = await readFile(path.join(repositoryRoot, "docs", "CODEX_PLUGIN.md"), "utf8");
+  assert.match(guide, /codex plugin marketplace add Lecarvalho\/pomegr --ref main/);
+  assert.match(guide, /codex plugin add pomegr@pomegr/);
+  assert.doesNotMatch(guide, /install-codex-plugin|client-repository|--dry-run/);
 });

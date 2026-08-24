@@ -2,34 +2,27 @@
 
 Pomegr ships a self-contained Codex plugin that exposes five bounded, provider-neutral reporting tools. The plugin runs locally over stdio and lets the Pomegr observer read agent-reported session, agent, and execution-task signals from Codex transcripts. It does not send transcript contents or credentials.
 
-## Install into a repository
+## Install
 
-Use the installer from a Pomegr source checkout or release archive. Preview the exact target-repository changes first:
-
-```powershell
-node .\scripts\install-codex-plugin.mjs --repo C:\path\to\client-repository --dry-run
-```
-
-Apply the installation after reviewing the preview:
+Register the Pomegr Git repository as a Codex marketplace, then install the plugin from that marketplace:
 
 ```powershell
-node .\scripts\install-codex-plugin.mjs --repo C:\path\to\client-repository
-```
-
-The installer requires the target to be a Git repository root. It copies the package to `plugins/pomegr/` and safely creates or merges `.agents/plugins/marketplace.json`. Existing marketplace metadata and other plugin entries are preserved. An existing `plugins/pomegr/` directory is updated only when its manifest identifies it as Pomegr and contains no unmanaged files.
-
-Commit those repository files so collaborators receive the same package and marketplace entry. Each client then registers the repository root as a local marketplace and installs Pomegr using the marketplace name from `.agents/plugins/marketplace.json` (`pomegr` for a new installation):
-
-```powershell
-codex plugin marketplace add C:\path\to\client-repository
+codex plugin marketplace add Lecarvalho/pomegr --ref main
 codex plugin add pomegr@pomegr
 ```
 
-Restart Codex and start a new task in the repository so the installed skills and tools are picked up. If the repository already had a differently named marketplace, use that preserved name after `@` in the second command. The Codex CLI currently has no repo-scoped plugin-install flag; the package and catalog remain repository-owned while each collaborator explicitly enables the installed plugin in their local Codex configuration.
+Restart Codex and start a new task so the installed tools are picked up. The plugin is installed in the client's local Codex configuration and cache; it does not copy scripts or plugin files into the client's repositories. To pin a stable release, replace `main` with a published Pomegr release tag.
+
+To update an installation that tracks `main`:
+
+```powershell
+codex plugin marketplace upgrade pomegr
+codex plugin add pomegr@pomegr
+```
 
 ## What is installed
 
-The Codex package is separate from `plugins/claude-code/`. It intentionally excludes Claude-specific hooks, environment variables, policy injection, and native session renaming. Its MCP server provides:
+The Codex package distributed from this repository is separate from `plugins/claude-code/`. It intentionally excludes Claude-specific hooks, environment variables, policy injection, and native session renaming. Its MCP server provides:
 
 | Tool | Effect |
 | --- | --- |
