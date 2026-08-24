@@ -1,44 +1,8 @@
 import type { MonitorState, ProviderCapabilities, ProviderSource } from "../../../shared/monitor-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
-import { RelativeTimeText, SessionWallTimeText } from "../LiveTime";
+import { SessionWallTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
-
-type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
-
-function estimatedCostLabel(cost: SessionCost) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: cost.currency,
-    minimumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
-    maximumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
-  }).format(cost.amount);
-}
-
-function SessionCostMeta({ cost, source, supported, historical }: {
-  cost: SessionCost | null;
-  source: ProviderSource;
-  supported: boolean;
-  historical: boolean;
-}) {
-  return (
-    <div className="sessionMetaGroup sessionCost">
-      <span className="sessionMetaLabel">SESSION COST ESTIMATE</span>
-      <strong className={!supported || !cost ? "sessionCostUnavailable" : undefined}>
-        {!supported ? "Unsupported" : cost ? estimatedCostLabel(cost) : historical ? "Not recorded" : "Not observed"}
-      </strong>
-      <small>
-        {!supported
-          ? "This provider does not report a session estimate."
-          : cost
-            ? <><span>{source} estimate · {historical ? <>recorded {sessionListTime(cost.observedAt)}</> : <>observed <RelativeTimeText value={cost.observedAt} /></>}</span><span>May differ from actual billing.</span></>
-            : historical
-              ? "No estimate was captured for this session."
-              : "Waiting for a provider status-line estimate."}
-      </small>
-    </div>
-  );
-}
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
@@ -80,7 +44,6 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
             ? `Recorded ${sessionListTime(session.approvalMode.observedAt)}`
             : "Provider-reported"}</small>}
         </div>}
-        <SessionCostMeta cost={session.cost} source={source} supported={capabilities.estimatedCost} historical={historical} />
       </div>}
     </section>
   );

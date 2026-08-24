@@ -2,7 +2,8 @@
 
 import type { MonitorState } from "../../../shared/monitor-contract";
 import { createEmptyProviderCapabilities } from "../../../shared/monitor-state.mjs";
-import { compactNumber } from "../../dashboard-utils";
+import { compactNumber, sessionListTime } from "../../dashboard-utils";
+import { RelativeTimeText } from "../LiveTime";
 import { ActivityPanel } from "./ActivityPanel";
 import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 import { MachineryPanel } from "./MachineryPanel";
@@ -25,6 +26,17 @@ function compactUsageWindow(window: string) {
     .replace(/\s+days?\b/gi, "d")
     .replace(/\s+weeks?\b/gi, "w")
     .replace(/\s+months?\b/gi, "mo");
+}
+
+type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
+
+function estimatedCostLabel(cost: SessionCost) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cost.currency,
+    minimumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
+    maximumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
+  }).format(cost.amount);
 }
 
 function SessionDetailsSummary({ state, historical }: { state: MonitorState; historical: boolean }) {
@@ -81,6 +93,19 @@ export function SessionDetailsPanel({
       summary={<SessionDetailsSummary state={state} historical={historical} />}
       title="Session details"
     >
+      {capabilities.estimatedCost && session.cost && (
+        <div className="sessionCostDetail">
+          <div>
+            <span>{state.source} API list-rate estimate</span>
+            <small>
+              Reference only — not a bill or subscription spend. {historical
+                ? `Recorded ${sessionListTime(session.cost.observedAt)}`
+                : <>Observed <RelativeTimeText value={session.cost.observedAt} /></>}
+            </small>
+          </div>
+          <strong>{estimatedCostLabel(session.cost)}</strong>
+        </div>
+      )}
       <RepositoryPanel session={session} />
       {!historical && capabilities.usageLimits && <UsageLimitsPanel source={state.source} usageLimits={state.usageLimits} />}
       <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} />

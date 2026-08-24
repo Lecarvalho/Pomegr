@@ -9,9 +9,11 @@ import { ContextHistoryPanel } from "../../app/components/dashboard/ContextHisto
 import { monotonePath, RequestSnapshotsPanel, snapshotEventKey } from "../../app/components/dashboard/RequestSnapshotsPanel";
 import { ResourceUsagePanel } from "../../app/components/dashboard/ResourceUsagePanel";
 import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel";
+import { SessionDetailsPanel } from "../../app/components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
 import { MachineryPanel } from "../../app/components/dashboard/MachineryPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
+import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 const claudeCapabilities = {
   approvalMode: true,
@@ -1081,40 +1083,64 @@ describe("live resource usage panel", () => {
 });
 
 describe("estimated session cost", () => {
-  it("shows a captured provider estimate at session scope with visible provenance", () => {
+  function detailsState(session: NonNullable<MonitorState["session"]>, source: "Claude Code" | "Codex", capabilities: typeof claudeCapabilities | typeof codexCapabilities) {
+    return {
+      ...createEmptyMonitorState({ connected: true, source, capabilities }),
+      session,
+    } satisfies MonitorState;
+  }
+
+  it("moves a captured provider estimate out of the hero and into session details", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 1.2345, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
     };
-    render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+    const hero = render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("SESSION COST ESTIMATE")).toBeInTheDocument();
+    expect(hero.container).not.toHaveTextContent("$1.23");
+    expect(hero.container).not.toHaveTextContent(/cost estimate/i);
+    hero.unmount();
+
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+
+    expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
     expect(screen.getByText("$1.23")).toBeInTheDocument();
-    expect(screen.getByText(/Claude Code estimate · observed/)).toBeInTheDocument();
-    expect(screen.getByText("May differ from actual billing.")).toBeInTheDocument();
+    expect(screen.getByText(/Reference only — not a bill or subscription spend\. Observed/)).toBeInTheDocument();
   });
 
-  it("distinguishes an unobserved live estimate from an unrecorded historical estimate", () => {
+  it("shows the recorded observation time for a historical estimate", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      cost: { amount: 0.0042, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
+    };
+
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+
+    expect(screen.getByText("$0.0042")).toBeInTheDocument();
+    expect(screen.getByText(/Recorded Aug 9/)).toBeInTheDocument();
+  });
+
+  it("omits unobserved and unrecorded placeholder estimates", () => {
     const session = { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), updatedAt: "2026-08-09T12:00:00.000Z" };
-    const { rerender } = render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
+    const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
-    expect(screen.getByText("Not observed")).toBeInTheDocument();
-    expect(screen.getByText("Waiting for a provider status-line estimate.")).toBeInTheDocument();
-    rerender(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical /></LiveClockProvider>);
-    expect(document.querySelector(".sessionCost")).toHaveTextContent("Not recorded");
-    expect(screen.getByText("No estimate was captured for this session.")).toBeInTheDocument();
+    expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
+    expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
+    rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
+    expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
   });
 
-  it("shows an explicit unsupported state and ignores any inapplicable cost value", () => {
+  it("omits unsupported estimates and ignores any inapplicable cost value", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 9, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-11T12:00:00.000Z" },
     };
-    render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Codex", codexCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
-    expect(screen.getByText("Unsupported")).toBeInTheDocument();
-    expect(screen.getByText("This provider does not report a session estimate.")).toBeInTheDocument();
+    expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText("$9.00")).not.toBeInTheDocument();
+    expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
   });
 });
 
