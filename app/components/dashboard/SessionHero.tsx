@@ -6,7 +6,22 @@ import { ProviderBadge } from "../ProviderBadge";
 
 export function SessionHero({ session, source, capabilities, historical }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean }) {
   const sessionLabel = session?.title || "Waiting for a session";
-  const summary = capabilities.sessionSummary ? session?.summary : null;
+  const providerSummary = capabilities.sessionSummary ? session?.summary : null;
+  const reportedSummary = !capabilities.sessionSummary && capabilities.signals
+    ? session?.signal?.description || null
+    : null;
+  const summaryText = providerSummary?.text || reportedSummary;
+  const summarySource = providerSummary
+    ? "Provider summary"
+    : reportedSummary ? "Agent-reported summary" : null;
+  const summaryTitle = providerSummary
+    ? "Provider-generated session summary"
+    : reportedSummary ? "Agent-reported session summary from the Pomegr MCP tool" : undefined;
+  const emptySummary = capabilities.sessionSummary
+    ? historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary."
+    : capabilities.signals
+      ? historical ? "No agent-reported summary was recorded for this session." : "Waiting for an agent to report a session summary through Pomegr."
+      : "Session summaries are not available for this provider.";
   const sessionDisplayId = session?.id.includes(":") ? session.id.slice(session.id.indexOf(":") + 1) : session?.id;
   return (
     <section className="hero">
@@ -17,11 +32,8 @@ export function SessionHero({ session, source, capabilities, historical }: { ses
           <span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={source} /></span>
           <span className="sessionIdentityPart"><span aria-hidden="true">·</span><code>{sessionDisplayId}</code></span>
         </div>}
-        {session && <p title={summary ? "Provider-generated session summary" : undefined}>{summary?.text
-          || (!capabilities.sessionSummary
-            ? "Session summaries are not available for this provider."
-            : historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary.")}</p>}
-        {summary && <small className="heroSummarySource">Provider summary</small>}
+        {session && <p title={summaryTitle}>{summaryText || emptySummary}</p>}
+        {summarySource && <small className="heroSummarySource">{summarySource}</small>}
         {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
           <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
         </div>}

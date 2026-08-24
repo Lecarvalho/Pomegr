@@ -1162,18 +1162,35 @@ describe("provider capability gates", () => {
     expect(screen.queryByText(id)).not.toBeInTheDocument();
   });
 
-  it("labels Codex provenance and uses a provider-neutral unsupported summary state", () => {
+  it("labels Codex provenance and shows its agent-reported session summary", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       summary: { text: "Unsupported summary must stay hidden", observedAt: null, source: "provider" },
+      signal: { label: "Awaiting merge", tone: "info", reportedAt: "2026-08-24T12:00:00.000Z", description: "Implementation is complete. Next: merge the approved pull request." },
     } satisfies NonNullable<MonitorState["session"]>;
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
 
     expect(screen.getByText("Codex")).toHaveClass("providerTag");
     expect(screen.getByText("Codex").closest(".providerBadge")?.querySelector('[data-mark="openai"]')).toBeInTheDocument();
-    expect(screen.getByText("Session summaries are not available for this provider.")).toBeInTheDocument();
+    expect(screen.getByText("Implementation is complete. Next: merge the approved pull request.")).toHaveAttribute("title", "Agent-reported session summary from the Pomegr MCP tool");
+    expect(screen.getByText("Agent-reported summary")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Awaiting merge" })).toBeInTheDocument();
     expect(screen.queryByText("Unsupported summary must stay hidden")).not.toBeInTheDocument();
     expect(screen.queryByText(/Waiting for the provider/)).not.toBeInTheDocument();
+  });
+
+  it("asks Codex agents for a report instead of claiming summaries are unsupported", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      updatedAt: "2026-08-24T12:00:00.000Z",
+    };
+
+    const { rerender } = render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
+    expect(screen.getByText("Waiting for an agent to report a session summary through Pomegr.")).toBeInTheDocument();
+    expect(screen.queryByText(/not available for this provider/i)).not.toBeInTheDocument();
+
+    rerender(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical /></LiveClockProvider>);
+    expect(screen.getByText("No agent-reported summary was recorded for this session.")).toBeInTheDocument();
   });
 
   it("uses the Claude mark for Claude Code sessions", () => {

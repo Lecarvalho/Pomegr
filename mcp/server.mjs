@@ -27,6 +27,10 @@ const descriptionSchema = z.string().trim().min(1).max(SIGNAL_MAX_DESCRIPTION_LE
   .refine((description) => normalizeAgentSignal({ label: "Signal", tone: "neutral", description }) !== null, "Use one line of plain text without control characters.")
   .describe("Optional short plain-text explanation shown as the tag tooltip.")
   .optional();
+const sessionDescriptionSchema = z.string().trim().min(1).max(SIGNAL_MAX_DESCRIPTION_LENGTH)
+  .refine((description) => normalizeSessionSignal({ label: "Signal", tone: "neutral", description }) !== null, "Use one line of plain text without control characters.")
+  .describe("Optional short plain-text session summary. Pomegr shows it in the session header when the provider has no native summary.")
+  .optional();
 const signalAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -37,7 +41,7 @@ const signalAnnotations = {
 export function buildPomegrMcpServer() {
   const server = new McpServer(
     { name: "pomegr", version: "0.1.0" },
-    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal or clear_session_signal when the corresponding current state is no longer meaningful and no replacement applies." },
+    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, and report_task_signal for a durable execution-task outcome. Include a concise description with report_session_signal when Pomegr needs an agent-reported session summary. A later report replaces the same scope. Use clear_agent_signal or clear_session_signal when the corresponding current state is no longer meaningful and no replacement applies." },
   );
 
   server.registerTool(
@@ -95,11 +99,11 @@ export function buildPomegrMcpServer() {
     SESSION_SIGNAL_TOOL,
     {
       title: "Report Pomegr session signal",
-      description: "Report one short status tag for the overall Pomegr session, with an optional tooltip description. Any agent may report it, and the latest call replaces the earlier session tag. Do not include prompts, responses, secrets, commands, or tool output.",
+      description: "Report one short status tag for the overall Pomegr session, with an optional agent-authored summary. Pomegr shows the summary in the session header when the provider has no native summary. Any agent may report it, and the latest call replaces the earlier session signal. Do not include prompts, responses, secrets, commands, or tool output.",
       inputSchema: z.object({
         label: labelSchema,
         tone: toneSchema,
-        description: descriptionSchema,
+        description: sessionDescriptionSchema,
       }).strict(),
       annotations: signalAnnotations,
       _meta: { "anthropic/alwaysLoad": true },

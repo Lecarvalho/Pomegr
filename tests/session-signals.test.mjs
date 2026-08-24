@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { buildPomegrMcpServer } from "../mcp/server.mjs";
 import {
   AGENT_SIGNAL_MCP_TOOL,
   CLEAR_AGENT_SIGNAL_MCP_TOOL,
@@ -23,6 +24,21 @@ import {
 
 const PLUGIN_MCP_PREFIX = "mcp__plugin_pomegr_pomegr__";
 const LEGACY_MCP_PREFIX = "mcp__threadlight__";
+
+test("registers the session signal MCP tool with an agent-reported summary description", async () => {
+  const server = buildPomegrMcpServer();
+  const tool = server._registeredTools.report_session_signal;
+
+  assert.equal(tool?.title, "Report Pomegr session signal");
+  assert.match(tool?.description || "", /agent-authored summary/);
+  const result = await tool.handler({
+    label: "Awaiting merge",
+    tone: "info",
+    description: "Implementation is complete. Next: merge the approved pull request.",
+  });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /Session signal reported: Awaiting merge/);
+});
 
 function agentSignalRecord(label, tone, timestamp) {
   return {
