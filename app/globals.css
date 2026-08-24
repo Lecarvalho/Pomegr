@@ -1122,7 +1122,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeChartMemory { fill: none; stroke: var(--resource-memory); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
 .homeChartLabel { fill: var(--muted); font: 8px var(--font-geist-mono), monospace; }
 .homeChartTime { margin-top: 4px; display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
-.homeSessionTime { grid-column: 1 / -1; margin-top: -8px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
 .homeResourceFigure svg { height: 78px; }
 .homeHistoryMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .homeHistoryMetrics span { min-width: 0; }

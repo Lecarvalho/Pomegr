@@ -92,6 +92,7 @@ describe("home dashboard", () => {
     expect(container.querySelector(".homeChartCpu")).toBeInTheDocument();
     expect(container.querySelector(".homeChartMemory")).toBeInTheDocument();
     expect(screen.getByText("42% · 64 MB")).toBeInTheDocument();
+    expect(screen.queryByText("20m ago")).not.toBeInTheDocument();
   });
 
   it("shows no-live and offline states without hanging polling", async () => {
