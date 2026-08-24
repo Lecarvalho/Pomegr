@@ -61,7 +61,7 @@ components:
 
 Pomegr should feel like a precise field instrument assembled on warm drafting paper: a dense near-black observer surface, restrained annotation, and a torn paper message pinned across the machinery. The world is tactile without becoming nostalgic, and technical without resembling a generic developer dashboard.
 
-Depth is flat and tonal by default. Texture, clipped paper edges, ink rules, and a few structural shadows communicate material; they never compete with the session evidence. The existing Pomegr mark and wordmark are binding identity assets.
+Depth is flat and tonal by default. Texture, clipped paper edges, ink rules, and a few structural shadows communicate material; they never compete with the session evidence. The official Pomegr mark and wordmark are binding identity assets.
 
 **Key Characteristics:**
 
@@ -155,6 +155,10 @@ The base geometry is square and technical: one-pixel rules, near-zero radii, rec
 ### Navigation
 
 The paper header uses the official Pomegr mark and wordmark, understated mono links, and a directional dashboard action. On mobile the product lockup remains intact while secondary links disappear.
+
+### Brand Mark
+
+The canonical product mark is `assets/brand/pomegr-logo.png`, exported as `/pomegr-logo.png` for the app and public landing site. Preserve its transparent exterior, red pomegranate silhouette, five-node session topology, opaque white seeds, and broken sketch highlight. Do not substitute the retired outline SVG marks on product surfaces or recolor the white internal details for dark mode.
 
 ### Observer Legend
 

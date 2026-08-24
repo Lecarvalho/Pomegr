@@ -915,14 +915,11 @@ body { font-size: 14px; line-height: 1.55; font-weight: 400; }
 }
 .aboutBrandMark { position: relative; display: block; width: 64px; height: 64px; margin: 0 0 26px; }
 .aboutBrandMark img { position: absolute; inset: 0; display: block; width: 64px; height: 64px; }
-.aboutBrandMarkLight { display: none !important; }
 .aboutPage > h1 { font-size: clamp(44px, 6vw, 68px); font-weight: 480; }
 .aboutLead { font-size: clamp(18px, 2vw, 24px); }
 .aboutGrid h2, .aboutNote h2 { font-size: 18px; font-weight: 520; }
 
 html[data-theme="dark"] .sessionSidebar { background: var(--sidebar); scrollbar-color: var(--line-strong) transparent; }
-html[data-theme="dark"] .aboutBrandMarkDark { display: none !important; }
-html[data-theme="dark"] .aboutBrandMarkLight { display: block !important; }
 html[data-theme="dark"] .panel, html[data-theme="dark"] .aboutGrid > div,
 html[data-theme="dark"] .aboutNote { background: var(--panel); }
 html[data-theme="dark"] .ghostButton, html[data-theme="dark"] .themeToggle,

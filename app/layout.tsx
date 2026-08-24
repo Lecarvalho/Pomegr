@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: "Pomegr",
   description: "A quiet, local observer for coding-agent sessions.",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
-    shortcut: "/favicon.svg",
+    icon: [{ url: "/pomegr-logo.png", type: "image/png" }],
+    shortcut: "/pomegr-logo.png",
   },
 };
 

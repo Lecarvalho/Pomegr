@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { PomegrBrand } from "../components/PomegrBrand";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -27,8 +26,7 @@ export default function About() {
 
       <article className="aboutPage">
         <span className="aboutBrandMark" role="img" aria-label="Pomegr pomegranate mark">
-          <Image className="aboutBrandMarkDark" src="/pomegr-mark-outline-dark.svg" alt="" width={64} height={64} priority />
-          <Image className="aboutBrandMarkLight" src="/pomegr-mark-outline-light.svg" alt="" width={64} height={64} priority />
+          <img className="aboutBrandMarkImage" src="/pomegr-logo.png" alt="" width="64" height="64" />
         </span>
         <div className="eyebrow"><span /> ABOUT POMEGR</div>
         <h1>A quiet view into active work.</h1>

@@ -16,12 +16,10 @@ const PUBLIC_PATHS = new Set([
   "/about",
   "/api/waitlist",
   "/api/waitlist/status",
-  "/favicon.svg",
+  "/pomegr-logo.png",
   "/robots.txt",
   "/sitemap.xml",
   "/manifest.webmanifest",
-  "/pomegr-mark-outline-dark.svg",
-  "/pomegr-mark-outline-light.svg",
 ]);
 
 const PUBLIC_PREFIXES = ["/_next/", "/_vinext/", "/assets/", "/fonts/", "/landing/"];

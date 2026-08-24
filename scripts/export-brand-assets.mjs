@@ -27,9 +27,27 @@ for (const [sourceName, outputName, width, height] of exports) {
     .toFile(path.join(brandDir, outputName));
 }
 
-const iconSource = await readFile(path.join(brandDir, "pomegr-icon-color.svg"));
+const iconSource = await readFile(path.join(brandDir, "pomegr-logo.png"));
+const renderLogo = (size, padding) => sharp(iconSource)
+  .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .resize(size - (padding * 2), size - (padding * 2), {
+    fit: "contain",
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  })
+  .extend({
+    top: padding,
+    right: padding,
+    bottom: padding,
+    left: padding,
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  })
+  .png({ compressionLevel: 9, adaptiveFiltering: false, palette: false });
+
+await mkdir(path.join(projectRoot, "public"), { recursive: true });
+await mkdir(path.join(projectRoot, "landing", "public"), { recursive: true });
 await mkdir(path.join(projectRoot, "build"), { recursive: true });
-await sharp(iconSource, { density: 384 })
-  .resize(1024, 1024, { fit: "fill" })
-  .png({ compressionLevel: 9, adaptiveFiltering: false, palette: false })
-  .toFile(path.join(projectRoot, "build", "icon.png"));
+await Promise.all([
+  renderLogo(512, 44).toFile(path.join(projectRoot, "public", "pomegr-logo.png")),
+  renderLogo(512, 44).toFile(path.join(projectRoot, "landing", "public", "pomegr-logo.png")),
+  renderLogo(1024, 88).toFile(path.join(projectRoot, "build", "icon.png")),
+]);

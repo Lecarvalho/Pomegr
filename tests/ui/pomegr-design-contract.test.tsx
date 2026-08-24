@@ -15,14 +15,13 @@ describe("Pomegr visual contract", () => {
 
     expect(screen.getByRole("link", { name: "Pomegr dashboard" })).toHaveTextContent("POMEGR");
     expect(screen.getByText("ABOUT POMEGR")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Pomegr pomegranate mark" })).toContainElement(document.querySelector(".aboutBrandMarkLight"));
-    expect(document.querySelector(".aboutBrandMarkDark")).toHaveAttribute("src", expect.stringContaining("pomegr-mark-outline-dark.svg"));
-    expect(document.querySelector(".aboutBrandMarkLight")).toHaveAttribute("src", expect.stringContaining("pomegr-mark-outline-light.svg"));
+    expect(screen.getByRole("img", { name: "Pomegr pomegranate mark" })).toContainElement(document.querySelector(".aboutBrandMarkImage"));
+    expect(document.querySelector(".aboutBrandMarkImage")).toHaveAttribute("src", expect.stringContaining("pomegr-logo.png"));
     expect(container.querySelector(".brandWordmark path")).toBeInTheDocument();
     expect(container.querySelector(".brandMark")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "openai/codex#35300" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
-    expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.svg/);
+    expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/pomegr-logo\.png/);
   });
 
   it("uses restrained typography, a single inspectable context line, and square framed controls", () => {

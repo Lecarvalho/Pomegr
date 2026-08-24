@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://pomegr.com"),
   title: { default: "Pomegr", template: "%s · Pomegr" },
   description,
-  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }] },
+  icons: { icon: [{ url: "/pomegr-logo.png", type: "image/png" }] },
   openGraph: {
     type: "website",
     siteName: "Pomegr",

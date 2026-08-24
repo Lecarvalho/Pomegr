@@ -3,7 +3,7 @@ import Link from "next/link";
 export function PomegrBrand({ href = "/", label = "Pomegr home" }: { href?: string; label?: string }) {
   return (
     <Link className="brand" href={href} aria-label={label}>
-      <img className="brandMark" src="/favicon.svg" alt="" width="35" height="35" />
+      <img className="brandMark" src="/pomegr-logo.png" alt="" width="35" height="35" />
       <svg className="brandWordmark" viewBox="80 660 1310 180" aria-hidden="true">
         <g fill="none" stroke="currentColor" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round">
           <path d="M100 820V680H183C225 680 251 700 251 733C251 766 225 786 183 786H100" />

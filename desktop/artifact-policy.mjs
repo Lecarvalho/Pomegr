@@ -55,7 +55,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
 ]);
 
 export const BRAND_ASSET_FILES = Object.freeze([
-  "assets/brand/pomegr-icon-color.svg",
+  "assets/brand/pomegr-logo.png",
   "build/icon.png",
 ]);
 
