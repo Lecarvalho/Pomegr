@@ -21,7 +21,7 @@ function normalizedType(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-const MAX_USAGE_SNAPSHOTS = 100;
+const MAX_USAGE_SNAPSHOTS = 1_000;
 
 function boundedModel(value) {
   if (typeof value !== "string") return "";

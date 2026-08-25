@@ -82,13 +82,13 @@ test("preserves bounded comparable usage and marks missing intermediate evidence
     availableEvidence: { cacheUsageClassification: true },
   }).insights;
   assert.equal(interruptedSignals.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
-  for (let index = 0; index < 105; index += 1) records.push(
+  for (let index = 0; index < 1_005; index += 1) records.push(
     { timestamp: new Date(Date.parse("2026-08-10T12:00:00.000Z") + index).toISOString(), type: "turn_context", payload: { turn_id: `bounded-${index}`, model: "gpt-5.6" } },
     tokenCount(new Date(Date.parse("2026-08-10T12:00:00.000Z") + index).toISOString(), { input_tokens: 100 + index, output_tokens: 1 }, { event_id: `bounded-${index}` }),
   );
 
   const { usageSnapshots } = parseCodexContextRecords(records, { actorId: "primary", sourceKey: "thread-1" });
-  assert.equal(usageSnapshots.length, 100);
+  assert.equal(usageSnapshots.length, 1_000);
   assert.equal(usageSnapshots.some((snapshot) => snapshot.dedupeId.endsWith(":before")), false);
   assert.equal(usageSnapshots.every((snapshot) => snapshot.model === "gpt-5.6"), true);
 });
@@ -183,6 +183,28 @@ test("deduplicates stable event identities, ignores cumulative-only and zero sna
     targetBuckets: 1,
   });
   assert.equal(history.buckets.at(-1).total, 330);
+});
+
+test("keeps early observations available across a busy full-session context timeline", () => {
+  const startedAt = Date.parse("2026-08-10T13:00:00.000Z");
+  const records = Array.from({ length: 150 }, (_, index) => tokenCount(
+    new Date(startedAt + index * 60_000).toISOString(),
+    { input_tokens: 1_000 + index, output_tokens: 10 },
+    { event_id: `history-${index}` },
+  ));
+  const { usageSnapshots } = parseCodexContextRecords(records, {
+    actorId: "primary",
+    sourceKey: "thread-history",
+  });
+  const history = buildContextHistory(usageSnapshots, {
+    startedAt: new Date(startedAt).toISOString(),
+    updatedAt: new Date(startedAt + 149 * 60_000).toISOString(),
+  });
+
+  assert.equal(usageSnapshots.length, 150);
+  assert.equal(usageSnapshots[0].timestamp, new Date(startedAt).toISOString());
+  assert.equal(history.buckets[0].total > 0, true);
+  assert.equal(history.buckets.at(-1).total, 1_159);
 });
 
 test("keeps only bounded compaction evidence and warns only for an explicit automatic trigger", () => {
@@ -480,6 +502,10 @@ test("hydrates and retains live Codex compactions after they move outside the st
     maximumStateTailBytes: 2 * 1024,
   });
   const hydrated = await provider.readSession("live-compaction-cache", { historical: false });
+  assert.deepEqual(hydrated.usageSnapshots.map(({ timestamp, input, output }) => ({ timestamp, input, output })), [
+    { timestamp: receipt[1].timestamp, input: 218_000, output: 159 },
+    { timestamp: receipt[5].timestamp, input: 20_000, output: 100 },
+  ]);
   assert.deepEqual(hydrated.compactions, [{
     actorId: "primary",
     timestamp: "2026-08-25T12:00:03.000Z",

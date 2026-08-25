@@ -123,13 +123,14 @@ test("an assistant record without a usable usage object breaks cache comparison 
 });
 
 test("deduplicates message identities and bounds observations per agent", () => {
-  const records = Array.from({ length: 105 }, (_, index) => assistant(
+  const records = Array.from({ length: 1_005 }, (_, index) => assistant(
     `message-${index}`,
     new Date(Date.parse("2026-08-10T10:00:00.000Z") + index).toISOString(),
     { input_tokens: 100 + index, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
   ));
   records.push({ ...records.at(-1), timestamp: "2026-08-10T11:00:00.000Z" });
   const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source" });
-  assert.equal(snapshots.length, 100);
+  assert.equal(snapshots.length, 1_000);
+  assert.equal(snapshots.some((snapshot) => snapshot.dedupeId.endsWith(":message-0")), false);
   assert.equal(snapshots.at(-1).timestamp, "2026-08-10T11:00:00.000Z");
 });

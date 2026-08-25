@@ -45,7 +45,7 @@ import {
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
-const MAX_LIVE_USAGE_SNAPSHOTS = 100;
+const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 const ALL_SOURCE_KINDS = [
@@ -445,14 +445,16 @@ export function createCodexProvider(options = {}) {
     }
     rolloutStats.taskHydrationReads += 1;
     rolloutStats.taskHydrationBytes += bytes;
+    const context = parseCodexContextRecords(records, {
+      actorId,
+      fallbackTimestamp,
+      sourceKey,
+      stableFallbackIdentity: true,
+    });
     return {
       taskState: parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp }),
-      compactions: parseCodexContextRecords(records, {
-        actorId,
-        fallbackTimestamp,
-        sourceKey,
-        stableFallbackIdentity: true,
-      }).compactions,
+      usageSnapshots: context.usageSnapshots,
+      compactions: context.compactions,
     };
   }
 
@@ -930,7 +932,7 @@ export function createCodexProvider(options = {}) {
       const normalizedContext = historical
         ? { snapshots: context.usageSnapshots, compactions: context.compactions }
         : mergeLiveContextEvidence(thread.rolloutFile, generation, {
-          usageSnapshots: context.usageSnapshots,
+          usageSnapshots: [...(hydratedStateEvidence?.usageSnapshots || []), ...context.usageSnapshots],
           compactions: [...(hydratedStateEvidence?.compactions || []), ...context.compactions],
         });
       usageSnapshots.push(...normalizedContext.snapshots);

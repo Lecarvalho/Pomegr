@@ -31,7 +31,7 @@ import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
-const MAX_LIVE_USAGE_SNAPSHOTS = 100;
+const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const MAX_TRANSCRIPT_PLAN_TASKS = 40;

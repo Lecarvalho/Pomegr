@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-const MAX_USAGE_SNAPSHOTS = 100;
+const MAX_USAGE_SNAPSHOTS = 1_000;
 
 function nonNegativeInteger(value) {
   if (value === null || value === undefined || value === "") return null;

@@ -379,6 +379,96 @@ test("normalizes hostile provider agent kinds before browser state is built", as
   assert.doesNotMatch(JSON.stringify(state), /HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/);
 });
 
+test("preserves busy full-session context history while keeping request snapshots bounded", async () => {
+  const provider = {
+    id: "codex",
+    source: "Codex",
+    capabilities: {},
+  };
+  const startedAtMs = Date.parse("2026-08-10T13:00:00.000Z");
+  const usageSnapshots = Array.from({ length: 150 }, (_, index) => ({
+    dedupeId: `busy-history-${index}`,
+    actorId: "primary",
+    timestamp: new Date(startedAtMs + index * 60_000).toISOString(),
+    input: 1_000 + index,
+    output: 10,
+    cacheWrite: 0,
+    cacheRead: 0,
+  }));
+  const runtime = createMonitorRuntime({
+    providerRegistry: {
+      defaultProvider: provider,
+      async readSession() {
+        return {
+          provider,
+          sessionId: "codex:busy-history",
+          evidence: {
+            historical: true,
+            session: {
+              title: "Busy history fixture",
+              project: "pomegr",
+              cwd: SAFE_CWD,
+              startedAt: new Date(startedAtMs).toISOString(),
+              updatedAt: new Date(startedAtMs + 149 * 60_000).toISOString(),
+              recordedGitBranch: "",
+              cost: null,
+              approvalMode: null,
+              contextMachinery: null,
+              summary: null,
+              signal: null,
+            },
+            agents: [{
+              id: "primary",
+              parentId: null,
+              label: "Primary agent",
+              kind: "orchestrator",
+              model: "unknown",
+              effort: "unknown",
+              status: "idle",
+              signal: null,
+              toolCalls: 0,
+              skills: [],
+              executionTasks: [],
+              lastSeen: new Date(startedAtMs + 149 * 60_000).toISOString(),
+              startedAt: new Date(startedAtMs).toISOString(),
+              updatedAt: new Date(startedAtMs + 149 * 60_000).toISOString(),
+              durationMs: 149 * 60_000,
+            }],
+            workflows: [],
+            usageSnapshots,
+            toolCalls: [],
+            activity: [],
+            planTasks: [],
+            compactions: [],
+            pullRequestCreations: [],
+            efficiencyRuleEvidence: {
+              repetition: false,
+              concurrentMutation: false,
+              unsharedContext: false,
+              healthyFallback: false,
+              cacheUsageClassification: false,
+            },
+          },
+        };
+      },
+      async readUsageLimits() {
+        return { available: false, fetchedAt: null, attemptedAt: null, limits: [], error: "" };
+      },
+    },
+    async readPullRequests() {
+      return { status: "ready", checkedAt: null, items: [] };
+    },
+  });
+
+  const state = await runtime.analyze("codex:busy-history");
+  const firstContextBucket = state.metrics.tokens.contextHistory.buckets.find((bucket) => bucket.total > 0);
+
+  assert.equal(state.metrics.tokens.requestSnapshots.items.length, 100);
+  assert.equal(Date.parse(firstContextBucket.start) <= startedAtMs + 10 * 60_000, true);
+  assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, 1_159);
+  assert.equal(Date.parse(state.metrics.tokens.requestSnapshots.items[0].observedAt) > Date.parse(firstContextBucket.start), true);
+});
+
 test("missing and deleted history stays historical without current Git or usage data", async (context) => {
   const { claude, codex } = await syntheticProviders(context);
   let gitCalls = 0;

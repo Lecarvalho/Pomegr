@@ -254,8 +254,7 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionI
     boundedByAgent.set(snapshot.actorId, [...(boundedByAgent.get(snapshot.actorId) || []), snapshot]);
   }
   const snapshots = [...boundedByAgent.values()].flatMap((items) => items
-    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
-    .slice(-100));
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)));
   const latestByAgent = new Map();
   for (const usage of snapshots) {
     const usageTime = new Date(usage.timestamp).getTime();
