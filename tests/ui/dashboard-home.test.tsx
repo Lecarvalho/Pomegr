@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import type { HomeSnapshot } from "../../shared/monitor-contract";
@@ -82,9 +83,51 @@ const snapshot = {
   }],
 } satisfies HomeSnapshot;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.localStorage.removeItem("pomegr-home-limit-activity-open");
+});
 
 describe("home dashboard", () => {
+  it("folds limit activity into aligned window and session summaries without repeated details", async () => {
+    window.localStorage.setItem("pomegr-home-limit-activity-open", "false");
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
+    const { container } = render(<HomeDashboard />);
+
+    const details = (await screen.findByText("Limit activity")).closest("details");
+    const summary = details?.querySelector(":scope > summary .homeLimitActivitySummary");
+    expect(details).not.toHaveAttribute("open");
+    expect(summary).toHaveTextContent("Claude Code 5h");
+    expect(summary).toHaveTextContent("2 sessions");
+    expect(summary).not.toHaveTextContent("observed");
+    expect(summary).not.toHaveTextContent("Partial evidence");
+    expect(summary).not.toHaveTextContent(/movement|pts/i);
+    expect(summary).not.toHaveTextContent("31%");
+    expect(summary?.querySelectorAll(".homeLimitActivitySummaryItem > span")).toHaveLength(2);
+    expect(summary?.querySelector(".homeLimitActivitySummarySessions")).toHaveTextContent("2 sessions");
+
+    await userEvent.click(screen.getByText("Limit activity"));
+    expect(details).toHaveAttribute("open");
+    expect(details?.querySelector(":scope > summary .homeLimitActivitySummary")).not.toBeInTheDocument();
+    expect(container.querySelector(".homeLimitActivityDescription")).toHaveTextContent("correlated with local request observations");
+  });
+
+  it("omits an unhelpful movement placeholder while account observations are collecting", async () => {
+    window.localStorage.setItem("pomegr-home-limit-activity-open", "false");
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, status: "collecting" as const, movements: [] })),
+    }));
+    const { container } = render(<HomeDashboard />);
+
+    await screen.findByText("Limit activity");
+    const summary = container.querySelector(".homeLimitActivitySummary");
+    expect(summary).toHaveTextContent("Claude Code 5h");
+    expect(summary).toHaveTextContent("2 sessions");
+    expect(summary).not.toHaveTextContent("observed");
+    expect(summary).not.toHaveTextContent(/collecting|movement history|no movement/i);
+  });
+
   it("shows only supplied live project/session content with always-visible seven-day metrics", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);

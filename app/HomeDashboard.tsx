@@ -9,6 +9,7 @@ import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, ResetCountdownText, SessionRelativeTimeText } from "./components/LiveTime";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { DashboardDisclosurePanel } from "./components/dashboard/DashboardDisclosurePanel";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 
 const EMPTY: HomeSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [], projects: [] };
@@ -47,6 +48,15 @@ function limitPercent(value: number | null) {
 function limitWindowAdjective(value: string) {
   const match = value.trim().match(/^(\d+)\s*(hours?|days?)$/i);
   return match ? `${match[1]}-${match[2].replace(/s$/i, "").toLowerCase()}` : value.trim().toLowerCase();
+}
+
+function compactLimitWindow(value: string) {
+  return value
+    .replace(/\s+minutes?\b/gi, "m")
+    .replace(/\s+hours?\b/gi, "h")
+    .replace(/\s+days?\b/gi, "d")
+    .replace(/\s+weeks?\b/gi, "w")
+    .replace(/\s+months?\b/gi, "mo");
 }
 
 function limitMovementCopy(activity: HomeLimitActivity, movement: HomeLimitActivity["movements"][number]) {
@@ -169,11 +179,32 @@ function LimitActivityMovements({ activity, activityId }: { activity: HomeLimitA
   </aside>;
 }
 
+function HomeLimitActivitySummary({ activities }: { activities: HomeLimitActivity[] }) {
+  if (!activities.length) return <span className="disclosureSummaryUnavailable">No activity observed yet</span>;
+
+  return <span className="disclosureSummaryMetrics homeLimitActivitySummary">
+    {activities.map((activity) => {
+      const observedSessions = (activity.sessions || []).filter((session) => session.requestObservations.length > 0).length;
+      const evidenceLabel = `${observedSessions || "No"} ${observedSessions === 1 ? "session" : "sessions"}`;
+
+      return <span className="homeLimitActivitySummaryItem" key={`${activity.provider}-${activity.limitId}`}>
+        <span className="homeLimitActivitySummaryProvider"><b>{activity.source}</b> {compactLimitWindow(activity.window)}</span>
+        <span className="homeLimitActivitySummarySessions">{evidenceLabel}</span>
+      </span>;
+    })}
+  </span>;
+}
+
 function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[] }) {
-  return <section className="homeLimitActivity" aria-labelledby="home-limit-activity-heading">
-    <header className="homeLimitActivityHeader">
-      <div><h2 id="home-limit-activity-heading">Limit activity</h2><p>Selected account windows correlated with local request observations.</p></div>
-    </header>
+  return <DashboardDisclosurePanel
+    bodyClassName="homeLimitActivityContent"
+    className="homeLimitActivity"
+    defaultOpen={false}
+    storageKey="pomegr-home-limit-activity-open"
+    summary={<HomeLimitActivitySummary activities={activities} />}
+    title="Limit activity"
+  >
+    <p className="homeLimitActivityDescription">Selected account windows correlated with local request observations.</p>
     {activities.length ? activities.map((activity, index) => {
       const activityId = domId(`${activity.provider}-${activity.limitId}-${index}`);
       const percent = limitPercent(activity.percent);
@@ -192,7 +223,7 @@ function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[
         <div className="homeLimitActivityBody"><LimitActivityTimeline activity={activity} activityId={activityId} /><LimitActivityMovements activity={activity} activityId={activityId} /></div>
       </article>;
     }) : <p className="homeLimitActivityEmpty">No limit activity observed yet.</p>}
-  </section>;
+  </DashboardDisclosurePanel>;
 }
 
 function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }) {
