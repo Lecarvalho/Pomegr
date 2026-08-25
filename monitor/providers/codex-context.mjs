@@ -52,6 +52,21 @@ function explicitCompactionTrigger(value) {
   return null;
 }
 
+function compactionTriggerEvidence(...objects) {
+  const observed = [];
+  for (const object of objects) {
+    if (!object || typeof object !== "object" || Array.isArray(object)) continue;
+    for (const key of ["trigger", "compaction_trigger", "compactionTrigger"]) {
+      if (!Object.hasOwn(object, key)) continue;
+      const trigger = explicitCompactionTrigger(object[key]);
+      if (!trigger) return { present: true, trigger: null };
+      observed.push(trigger);
+    }
+  }
+  if (new Set(observed).size > 1) return { present: true, trigger: null };
+  return { present: observed.length > 0, trigger: observed[0] || null };
+}
+
 function compactionPayload(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) return null;
   const payload = record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
@@ -68,6 +83,62 @@ function compactionPayload(record) {
     "threadcompacted",
   ].includes(type))) return null;
   return payload;
+}
+
+function payloadType(record) {
+  return normalizedType(record?.payload?.type);
+}
+
+function isTaskEvent(record, type) {
+  return normalizedType(record?.type) === "eventmsg" && payloadType(record) === type;
+}
+
+function isContextCompactionCompletion(record) {
+  return isTaskEvent(record, "itemcompleted")
+    && normalizedType(record?.payload?.item?.type) === "contextcompaction";
+}
+
+function isWindowedCompactionRecord(record) {
+  if (normalizedType(record?.type) !== "compacted") return false;
+  const payload = record?.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const hasWindowNumber = Object.hasOwn(payload, "window_number") || Object.hasOwn(payload, "windowNumber");
+  const hasReplacementHistory = Object.hasOwn(payload, "replacement_history") || Object.hasOwn(payload, "replacementHistory");
+  return hasWindowNumber && hasReplacementHistory;
+}
+
+function inferredWindowedCompaction(records, index) {
+  const record = records[index];
+  if (!isWindowedCompactionRecord(record)) return { trigger: null, preTokens: null };
+
+  const previous = records[index - 1];
+  const following = records.slice(index + 1, index + 9);
+  const completionIndex = following.findIndex(isContextCompactionCompletion);
+  if (completionIndex < 0) return { trigger: null, preTokens: null };
+
+  const beforeCompletion = following.slice(0, completionIndex);
+  const afterCompletion = following.slice(completionIndex + 1);
+  if (
+    isTaskEvent(previous, "taskstarted")
+    && isTaskEvent(afterCompletion[0], "taskcomplete")
+  ) return { trigger: "manual", preTokens: null };
+
+  const resetContextIndex = beforeCompletion.findIndex((candidate) => normalizedType(candidate?.type) === "turncontext");
+  if (
+    isTokenCountRecord(previous)
+    && resetContextIndex > 0
+    && normalizedType(beforeCompletion[resetContextIndex - 1]?.type) === "worldstate"
+    && !beforeCompletion.some((candidate) => isTaskEvent(candidate, "taskcomplete"))
+    && afterCompletion.length > 0
+    && !isTaskEvent(afterCompletion[0], "taskcomplete")
+  ) {
+    return {
+      trigger: "auto",
+      preTokens: usageFromRecord(previous)?.totalTokens ?? null,
+    };
+  }
+
+  return { trigger: null, preTokens: null };
 }
 
 function eventIdentity(record, info) {
@@ -160,6 +231,7 @@ function stableFallbackIdentity({ timestamp, input, output, cacheWrite, cacheRea
 }
 
 export function parseCodexContextRecords(records, options = {}) {
+  const recordList = Array.isArray(records) ? records : [];
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
   const snapshots = new Map();
@@ -171,7 +243,7 @@ export function parseCodexContextRecords(records, options = {}) {
   let sawTurn = false;
   let turnHasUsage = false;
 
-  for (const record of (Array.isArray(records) ? records : [])) {
+  for (const [recordIndex, record] of recordList.entries()) {
     if (normalizedType(record?.type) === "turncontext") {
       if (sawTurn && !turnHasUsage) comparisonGroup += 1;
       sawTurn = true;
@@ -223,24 +295,24 @@ export function parseCodexContextRecords(records, options = {}) {
 
     const compacted = compactionPayload(record);
     const compactMetadata = compacted?.compactMetadata ?? compacted?.compact_metadata ?? compacted;
-    const trigger = explicitCompactionTrigger(
-      compactMetadata?.trigger
-      ?? compactMetadata?.compaction_trigger
-      ?? compactMetadata?.compactionTrigger
-      ?? record?.trigger,
-    );
-    if (!compacted || !trigger || !timestamp) continue;
-    const preTokens = nonNegativeInteger(
+    const triggerEvidence = compactionTriggerEvidence(compactMetadata, record);
+    if (!compacted || !timestamp || (triggerEvidence.present && !triggerEvidence.trigger)) continue;
+    const inferred = triggerEvidence.trigger ? { trigger: null, preTokens: null } : inferredWindowedCompaction(recordList, recordIndex);
+    const trigger = triggerEvidence.trigger || inferred.trigger || "unknown";
+    const recordedPreTokens = nonNegativeInteger(
       compactMetadata.pre_tokens
       ?? compactMetadata.preTokens
       ?? compactMetadata.pre_compaction_tokens
       ?? compactMetadata.preCompactionTokens,
     );
+    const preTokens = recordedPreTokens ?? inferred.preTokens;
     const providerIdentity = eventIdentity(record, compacted);
     const key = providerIdentity
       ? `${sourceKey}:compaction:${providerIdentity}`
       : `${sourceKey}:compaction:${timestamp}:${trigger}:${preTokens ?? "unknown"}`;
-    compactions.set(key, { actorId, timestamp, trigger, preTokens });
+    const evidence = { actorId, timestamp, trigger, preTokens };
+    if (inferred.trigger) evidence.inferred = true;
+    compactions.set(key, evidence);
   }
 
   const chronological = (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp);

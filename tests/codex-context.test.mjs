@@ -205,9 +205,23 @@ test("keeps only bounded compaction evidence and warns only for an explicit auto
       type: "event_msg",
       payload: { type: "context_compacted", trigger: "automatic", summary: "RESPONSE_MUST_NOT_LEAK", pre_tokens: 195_000 },
     },
+    {
+      id: "unrecognized",
+      timestamp: "2026-08-10T13:00:04.000Z",
+      type: "compacted",
+      payload: { trigger: "future-trigger", summary: "RESPONSE_MUST_NOT_LEAK" },
+    },
+    {
+      id: "conflicting",
+      timestamp: "2026-08-10T13:00:05.000Z",
+      type: "compacted",
+      trigger: "manual",
+      payload: { trigger: "auto", summary: "RESPONSE_MUST_NOT_LEAK" },
+    },
   ], { actorId: "primary", sourceKey: "thread-1" });
 
   assert.deepEqual(compactions, [
+    { actorId: "primary", timestamp: "2026-08-10T13:00:01.000Z", trigger: "unknown", preTokens: 190_000 },
     { actorId: "primary", timestamp: "2026-08-10T13:00:02.000Z", trigger: "manual", preTokens: 180_000 },
     { actorId: "primary", timestamp: "2026-08-10T13:00:03.000Z", trigger: "auto", preTokens: 195_000 },
   ]);
@@ -217,6 +231,102 @@ test("keeps only bounded compaction evidence and warns only for an explicit auto
   });
   assert.equal(insights.filter((insight) => insight.id === "automatic-compaction-primary").length, 1);
   assertNoPrivateFixtureSentinels(compactions, "Codex compaction evidence");
+});
+
+test("keeps an isolated windowed compaction ambiguous when the rollout omits the trigger", () => {
+  const { compactions } = parseCodexContextRecords([{
+    timestamp: "2026-08-25T00:36:36.233Z",
+    type: "compacted",
+    payload: {
+      message: "RESPONSE_MUST_NOT_LEAK",
+      replacement_history: [{ private: "RESPONSE_MUST_NOT_LEAK" }],
+      window_number: 2,
+      first_window_id: "PRIVATE_PROVIDER_ID",
+      previous_window_id: "PRIVATE_PROVIDER_ID",
+      window_id: "PRIVATE_PROVIDER_ID",
+    },
+  }], { actorId: "primary", sourceKey: "thread-windowed" });
+
+  assert.deepEqual(compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-25T00:36:36.233Z",
+    trigger: "unknown",
+    preTokens: null,
+  }]);
+  assertNoPrivateFixtureSentinels(compactions, "windowed Codex compaction evidence");
+});
+
+test("classifies the current in-turn windowed compaction receipt as automatic", () => {
+  const { compactions } = parseCodexContextRecords([
+    { timestamp: "2026-08-25T00:36:35.000Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T00:36:36.000Z", {
+      input_tokens: 230_000,
+      cached_input_tokens: 220_000,
+      output_tokens: 5_253,
+      total_tokens: 235_253,
+    }, { event_id: "before-auto" }),
+    {
+      timestamp: "2026-08-25T00:36:36.233Z",
+      type: "compacted",
+      payload: {
+        message: "RESPONSE_MUST_NOT_LEAK",
+        replacement_history: [{ private: "RESPONSE_MUST_NOT_LEAK" }],
+        window_number: 2,
+      },
+    },
+    { timestamp: "2026-08-25T00:36:36.300Z", type: "world_state", payload: {} },
+    { timestamp: "2026-08-25T00:36:36.400Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T00:36:36.500Z", { input_tokens: 20_000, output_tokens: 458 }, { event_id: "after-auto" }),
+    { timestamp: "2026-08-25T00:36:36.600Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T00:36:36.700Z", type: "response_item", payload: { type: "reasoning", private: "RESPONSE_MUST_NOT_LEAK" } },
+  ], { actorId: "primary", sourceKey: "thread-auto-receipt" });
+
+  assert.deepEqual(compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-25T00:36:36.233Z",
+    trigger: "auto",
+    preTokens: 235_253,
+    inferred: true,
+  }]);
+  const { insights } = evaluateEfficiencySignals({
+    agents: [{ id: "primary", label: "Primary agent", status: "idle", toolCalls: 0, tokens: { total: 20_458 } }],
+    compactions,
+  });
+  assert.equal(insights[0].id, "automatic-compaction-primary");
+  assert.equal(insights[0].level, "warning");
+  assertNoPrivateFixtureSentinels(compactions, "automatic receipt evidence");
+});
+
+test("classifies a dedicated windowed compaction task receipt as manual", () => {
+  const { compactions } = parseCodexContextRecords([
+    { timestamp: "2026-08-25T01:03:53.000Z", type: "event_msg", payload: { type: "task_started" } },
+    {
+      timestamp: "2026-08-25T01:04:33.516Z",
+      type: "compacted",
+      payload: {
+        message: "RESPONSE_MUST_NOT_LEAK",
+        replacement_history: [{ private: "RESPONSE_MUST_NOT_LEAK" }],
+        window_number: 3,
+      },
+    },
+    tokenCount("2026-08-25T01:04:33.600Z", { input_tokens: 6_000, output_tokens: 628 }, { event_id: "after-manual" }),
+    { timestamp: "2026-08-25T01:04:33.700Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T01:04:33.800Z", type: "event_msg", payload: { type: "task_complete" } },
+  ], { actorId: "primary", sourceKey: "thread-manual-receipt" });
+
+  assert.deepEqual(compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-25T01:04:33.516Z",
+    trigger: "manual",
+    preTokens: null,
+    inferred: true,
+  }]);
+  const { insights } = evaluateEfficiencySignals({
+    agents: [{ id: "primary", label: "Primary agent", status: "idle", toolCalls: 0, tokens: { total: 6_628 } }],
+    compactions,
+  });
+  assert.equal(insights[0].id, "healthy-flow");
+  assertNoPrivateFixtureSentinels(compactions, "manual receipt evidence");
 });
 
 test("integrates primary and child latest snapshots into all-agent context", async (context) => {

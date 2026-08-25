@@ -12,6 +12,7 @@ import { RepositoryPanel } from "../../app/components/dashboard/RepositoryPanel"
 import { SessionDetailsPanel } from "../../app/components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
 import { MachineryPanel } from "../../app/components/dashboard/MachineryPanel";
+import { InsightsPanel } from "../../app/components/dashboard/InsightsPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
@@ -71,6 +72,20 @@ const agent: Agent = {
   durationMs: 5_000,
   tokens: { total: 1200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500 },
 };
+
+describe("efficiency signal semantics", () => {
+  it("uses a warning triangle instead of a positive check for warning signals", () => {
+    const { container } = render(<InsightsPanel insights={[{
+      id: "automatic-compaction-primary",
+      level: "warning",
+      title: "Primary agent context was automatically compacted",
+      detail: "Earlier conversation detail was summarized.",
+    }]} />);
+
+    expect(container.querySelector(".insight.warning .insightWarningIcon")).toBeInTheDocument();
+    expect(container.querySelector(".insight.warning .insightCheckIcon")).not.toBeInTheDocument();
+  });
+});
 
 function repositorySession(
   repository: NonNullable<MonitorState["session"]>["repository"],

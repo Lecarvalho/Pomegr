@@ -69,13 +69,6 @@ export function evaluateEfficiencySignals({
     .sort((a, b) => b.count - a.count);
   const insights = [];
 
-  for (const agent of agents.filter((item) => item.status === "needs_input")) insights.push({
-    id: `needs-input-${agent.id}`,
-    level: "warning",
-    title: `${agent.label} needs your input`,
-    detail: "A user-input request is waiting for a response.",
-  });
-
   const compactionRule = EFFICIENCY_SIGNAL_RULES.automaticCompaction;
   const automaticCompactionsByAgent = new Map();
   for (const compaction of compactions.filter((item) => item.trigger === compactionRule.trigger)) {
@@ -94,9 +87,11 @@ export function evaluateEfficiencySignals({
     const latest = observed.at(-1);
     const occurrence = observed.length === 1 ? "" : ` ${observed.length.toLocaleString("en-US")} times; the latest boundary was recorded`;
     const context = latest.preTokens === null ? "" : ` at ${compactContext(latest.preTokens)} context`;
-    const event = observed.length === 1
-      ? `The provider automatically compacted this agent's conversation${context}.`
-      : `The provider automatically compacted this agent's conversation${occurrence}${context}.`;
+    const event = latest.inferred
+      ? `Codex compacted context during an active task and resumed that task${context}. Pomegr classifies this recorded lifecycle as automatic; this rollout did not persist the provider trigger itself.`
+      : observed.length === 1
+        ? `The provider automatically compacted this agent's conversation${context}.`
+        : `The provider automatically compacted this agent's conversation${occurrence}${context}.`;
     insights.push({
       id: `automatic-compaction-${agent.id}`,
       level: "warning",

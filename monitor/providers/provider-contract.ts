@@ -69,12 +69,14 @@ export type ProviderToolCallEvidence = {
   } | null;
 };
 
-/** Only recognized automatic/manual evidence may cross the provider boundary. */
+/** Bounded compaction evidence; unknown means neither the provider nor a recognized lifecycle identified the trigger. */
 export type ProviderCompactionEvidence = {
   actorId: string;
   timestamp: string;
-  trigger: "auto" | "manual";
+  trigger: "auto" | "manual" | "unknown";
   preTokens: number | null;
+  /** True only for a deterministic provider-lifecycle classification. */
+  inferred?: true;
 };
 
 /** Successful provider-local PR creation with all raw command/result content discarded. */

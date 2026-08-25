@@ -99,6 +99,41 @@ test("manual compaction does not emit an efficiency warning", () => {
   assert.equal(insights[0].id, "healthy-flow");
 });
 
+test("ambiguous triggerless provider compaction does not emit an efficiency signal", () => {
+  const { insights } = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 20_000 } })],
+    compactions: [{
+      actorId: "primary",
+      timestamp: "2026-08-25T00:36:36.233Z",
+      trigger: "unknown",
+      preTokens: null,
+    }],
+  });
+
+  assert.equal(insights.length, 1);
+  assert.equal(insights[0].id, "healthy-flow");
+});
+
+test("inferred automatic compaction emits a warning with transparent lifecycle copy", () => {
+  const { insights } = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 20_000 } })],
+    compactions: [{
+      actorId: "primary",
+      timestamp: "2026-08-25T00:36:36.233Z",
+      trigger: "auto",
+      preTokens: 235_253,
+      inferred: true,
+    }],
+  });
+
+  assert.deepEqual(insights, [{
+    id: "automatic-compaction-primary",
+    level: "warning",
+    title: "Primary agent context was automatically compacted",
+    detail: "Codex compacted context during an active task and resumed that task at 235.3K context. Pomegr classifies this recorded lifecycle as automatic; this rollout did not persist the provider trigger itself. Earlier conversation detail was summarized to continue the session. Consider delegating or starting a focused follow-up before context pressure builds again.",
+  }]);
+});
+
 test("full transcript scans retain only bounded compaction events", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-compactions-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -149,12 +184,12 @@ test("the centralized catalog selects and caps repetition and overlap signals", 
   assert.equal(insights.filter((insight) => insight.id.startsWith("overlap-")).length, 2);
 });
 
-test("user-input attention remains part of the centralized signal catalog", () => {
+test("user-input attention stays out of the efficiency signal catalog", () => {
   const { insights } = evaluateEfficiencySignals({
     agents: [primary({ status: "needs_input", toolCalls: 0, tokens: { total: 0 } })],
   });
-  assert.equal(insights[0].id, "needs-input-primary");
-  assert.equal(insights.some((insight) => insight.id === "healthy-flow"), false);
+  assert.equal(insights.some((insight) => insight.id.startsWith("needs-input-")), false);
+  assert.equal(insights[0].id, "healthy-flow");
 });
 
 test("missing provider evidence disables dependent rules and the healthy fallback", () => {
