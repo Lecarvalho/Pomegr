@@ -440,6 +440,159 @@ test("retains live Codex usage snapshots across a moving tail and resets on repl
   assert.equal(await provider.readSession("live-context-cache", { historical: false }), null);
 });
 
+test("hydrates and retains live Codex compactions after they move outside the state tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-compaction-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-compaction-cache.jsonl");
+  const session = {
+    timestamp: "2026-08-25T12:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: "live-compaction-cache",
+      session_id: "live-compaction-cache",
+      cwd: "C:\\synthetic\\compaction-cache",
+      source: "cli",
+    },
+  };
+  const receipt = [
+    { timestamp: "2026-08-25T12:00:01.000Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T12:00:02.000Z", { input_tokens: 218_000, output_tokens: 159, total_tokens: 218_159 }, { event_id: "before-auto" }),
+    { timestamp: "2026-08-25T12:00:03.000Z", type: "compacted", payload: { replacement_history: [{ private: "RESPONSE_MUST_NOT_LEAK" }], window_number: 2 } },
+    { timestamp: "2026-08-25T12:00:03.100Z", type: "world_state", payload: {} },
+    { timestamp: "2026-08-25T12:00:03.200Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T12:00:03.300Z", { input_tokens: 20_000, output_tokens: 100 }, { event_id: "after-auto" }),
+    { timestamp: "2026-08-25T12:00:03.400Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T12:00:03.500Z", type: "response_item", payload: { type: "reasoning" } },
+  ];
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  await writeFile(file, serialize([session, ...receipt, {
+    timestamp: "2026-08-25T12:00:04.000Z",
+    type: "padding",
+    payload: { value: "x".repeat(2 * 1024 * 1024 + 128 * 1024) },
+  }]), "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    maximumStateTailBytes: 2 * 1024,
+  });
+  const hydrated = await provider.readSession("live-compaction-cache", { historical: false });
+  assert.deepEqual(hydrated.compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-25T12:00:03.000Z",
+    trigger: "auto",
+    preTokens: 218_159,
+    inferred: true,
+  }]);
+
+  await appendFile(file, `${JSON.stringify({
+    timestamp: "2026-08-25T12:00:05.000Z",
+    type: "padding",
+    payload: { value: "y".repeat(9_000) },
+  })}\n`, "utf8");
+  const retained = await provider.readSession("live-compaction-cache", { historical: false });
+  assert.deepEqual(retained.compactions, hydrated.compactions);
+  const { insights } = evaluateEfficiencySignals({
+    agents: retained.agents,
+    compactions: retained.compactions,
+    availableEvidence: retained.efficiencyRuleEvidence,
+  });
+  assert.equal(insights.some((insight) => insight.id === "automatic-compaction-primary"), true);
+  assertNoPrivateFixtureSentinels(retained.compactions, "retained Codex compaction evidence");
+
+  await writeFile(file, serialize([session, {
+    timestamp: "2026-08-25T12:01:00.000Z",
+    type: "padding",
+    payload: { value: "z".repeat(3_000) },
+  }]), "utf8");
+  const replaced = await provider.readSession("live-compaction-cache", { historical: false });
+  assert.deepEqual(replaced.compactions, []);
+});
+
+test("captures a live Codex compaction appended between polls beyond the state tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-compaction-gap-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-compaction-gap.jsonl");
+  const session = { timestamp: "2026-08-25T13:00:00.000Z", type: "session_meta", payload: { id: "live-compaction-gap", session_id: "live-compaction-gap", cwd: "C:\\synthetic\\compaction-gap", source: "cli" } };
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  await writeFile(file, serialize([session, tokenCount("2026-08-25T13:00:01.000Z", { input_tokens: 10_000, output_tokens: 10 }, { event_id: "initial" })]), "utf8");
+  const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0, maximumStateTailBytes: 2 * 1024, maximumTaskHistoryBytes: 16 * 1024 });
+  const initial = await provider.readSession("live-compaction-gap", { historical: false });
+  assert.deepEqual(initial.compactions, []);
+
+  const receipt = [
+    tokenCount("2026-08-25T13:00:02.000Z", { input_tokens: 210_000, output_tokens: 50, total_tokens: 210_050 }, { event_id: "before-gap-auto" }),
+    { timestamp: "2026-08-25T13:00:03.000Z", type: "compacted", payload: { replacement_history: [], window_number: 2 } },
+    { timestamp: "2026-08-25T13:00:03.100Z", type: "world_state", payload: {} },
+    { timestamp: "2026-08-25T13:00:03.200Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T13:00:03.300Z", { input_tokens: 20_000, output_tokens: 100 }, { event_id: "after-gap-auto" }),
+    { timestamp: "2026-08-25T13:00:03.400Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T13:00:03.500Z", type: "response_item", payload: { type: "reasoning" } },
+    { timestamp: "2026-08-25T13:00:04.000Z", type: "padding", payload: { value: "x".repeat(4_000) } },
+  ];
+  await appendFile(file, serialize(receipt), "utf8");
+  const afterGap = await provider.readSession("live-compaction-gap", { historical: false });
+  assert.equal(afterGap.compactions[0]?.trigger, "auto");
+  assert.equal(evaluateEfficiencySignals({ agents: afterGap.agents, compactions: afterGap.compactions }).insights.some((insight) => insight.id === "automatic-compaction-primary"), true);
+});
+
+test("upgrades partial live Codex compaction evidence when its completion arrives", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-compaction-upgrade-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-compaction-upgrade.jsonl");
+  const session = { timestamp: "2026-08-25T14:00:00.000Z", type: "session_meta", payload: { id: "live-compaction-upgrade", session_id: "live-compaction-upgrade", cwd: "C:\\synthetic\\compaction-upgrade", source: "cli" } };
+  const before = tokenCount("2026-08-25T14:00:01.000Z", { input_tokens: 205_000, output_tokens: 25, total_tokens: 205_025 }, { event_id: "before-upgrade" });
+  const compacted = { timestamp: "2026-08-25T14:00:02.000Z", type: "compacted", payload: { replacement_history: [], window_number: 2 } };
+  const serialize = (records) => `${records.map(JSON.stringify).join("\n")}\n`;
+  await writeFile(file, serialize([session, before, compacted]), "utf8");
+  const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0, maximumStateTailBytes: 2 * 1024, maximumTaskHistoryBytes: 8 * 1024 });
+  const partial = await provider.readSession("live-compaction-upgrade", { historical: false });
+  assert.equal(partial.compactions[0]?.trigger, "unknown");
+
+  await appendFile(file, serialize([
+    { timestamp: "2026-08-25T14:00:02.100Z", type: "world_state", payload: {} },
+    { timestamp: "2026-08-25T14:00:02.200Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T14:00:02.300Z", { input_tokens: 18_000, output_tokens: 100 }, { event_id: "after-upgrade" }),
+    { timestamp: "2026-08-25T14:00:02.400Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T14:00:02.500Z", type: "response_item", payload: { type: "reasoning" } },
+  ]), "utf8");
+  const completed = await provider.readSession("live-compaction-upgrade", { historical: false });
+  assert.deepEqual(completed.compactions, [{ actorId: "primary", timestamp: compacted.timestamp, trigger: "auto", preTokens: 205_025, inferred: true }]);
+});
+
+test("keeps hydrated automatic evidence when the smaller live tail sees only an ambiguous boundary", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-compaction-strength-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "rollout-live-compaction-strength.jsonl");
+  const session = { timestamp: "2026-08-25T15:00:00.000Z", type: "session_meta", payload: { id: "live-compaction-strength", session_id: "live-compaction-strength", cwd: "C:\\synthetic\\compaction-strength", source: "cli" } };
+  const before = tokenCount("2026-08-25T15:00:01.000Z", { input_tokens: 215_000, output_tokens: 25, total_tokens: 215_025 }, { event_id: "before-strength" });
+  const compacted = { timestamp: "2026-08-25T15:00:02.000Z", type: "compacted", payload: { replacement_history: [], window_number: 2 } };
+  const records = [
+    session,
+    before,
+    compacted,
+    { timestamp: "2026-08-25T15:00:02.100Z", type: "world_state", payload: {} },
+    { timestamp: "2026-08-25T15:00:02.200Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-25T15:00:02.300Z", { input_tokens: 18_000, output_tokens: 100 }, { event_id: "after-strength" }),
+    { timestamp: "2026-08-25T15:00:02.400Z", type: "event_msg", payload: { type: "item_completed", item: { type: "ContextCompaction" } } },
+    { timestamp: "2026-08-25T15:00:02.500Z", type: "response_item", payload: { type: "reasoning" } },
+    { timestamp: "2026-08-25T15:00:03.000Z", type: "padding", payload: { value: "x".repeat(1_650) } },
+  ];
+  await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`, "utf8");
+  const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0, maximumStateTailBytes: 2 * 1024, maximumTaskHistoryBytes: 8 * 1024 });
+  const evidence = await provider.readSession("live-compaction-strength", { historical: false });
+  assert.deepEqual(evidence.compactions, [{ actorId: "primary", timestamp: compacted.timestamp, trigger: "auto", preTokens: 215_025, inferred: true }]);
+});
+
 test("stable live Codex fallback identities do not depend on tail turn context or fallback time", () => {
   const usage = tokenCount(undefined, { input_tokens: 100, output_tokens: 10 });
   const withTurn = parseCodexContextRecords([

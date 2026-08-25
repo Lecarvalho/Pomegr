@@ -44,8 +44,9 @@ import {
 
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
-export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 2 * 1024 * 1024;
+export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 100;
+const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 const ALL_SOURCE_KINDS = [
   ...TOP_LEVEL_SOURCE_KINDS,
@@ -277,16 +278,18 @@ export function createCodexProvider(options = {}) {
     livePlanTaskCache.delete(file);
   };
 
-  function mergeLiveContextUsage(file, generation, snapshots) {
+  function mergeLiveContextEvidence(file, generation, context) {
+    const snapshots = context?.usageSnapshots || [];
+    const compactions = context?.compactions || [];
     if (!generation) {
       try {
         const stat = fs.statSync(file);
-        if (stat.isFile() && stat.size > 0) return liveContextUsageCache.get(file)?.snapshots || snapshots;
+        if (stat.isFile() && stat.size > 0) return liveContextUsageCache.get(file) || { snapshots, compactions };
       } catch {
-        // A deleted rollout must not retain its previous usage history.
+        // A deleted rollout must not retain its previous context evidence.
       }
       liveContextUsageCache.delete(file);
-      return snapshots;
+      return { snapshots, compactions };
     }
     const previous = liveContextUsageCache.get(file);
     const monotonic = previous
@@ -307,6 +310,28 @@ export function createCodexProvider(options = {}) {
       .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
         || left.dedupeId.localeCompare(right.dedupeId))
       .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
+    const compactionKey = (compaction) => `${compaction.actorId}:${compaction.timestamp}`;
+    const compactionStrength = (compaction) => {
+      if (compaction.trigger === "unknown") return 0;
+      return compaction.inferred === true ? 1 : 2;
+    };
+    const compactionsById = new Map(monotonic
+      ? (previous.compactions || []).map((compaction) => [compactionKey(compaction), compaction])
+      : []);
+    for (const compaction of compactions) {
+      const key = compactionKey(compaction);
+      const existing = compactionsById.get(key);
+      const incomingStrength = compactionStrength(compaction);
+      const existingStrength = compactionStrength(existing || {});
+      if (
+        !existing
+        || incomingStrength > existingStrength
+        || (incomingStrength === existingStrength && existing.preTokens === null && compaction.preTokens !== null)
+      ) compactionsById.set(key, compaction);
+    }
+    const mergedCompactions = [...compactionsById.values()]
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+      .slice(-MAX_LIVE_COMPACTIONS);
     liveContextUsageCache.set(file, {
       identity: generation.identity,
       size: generation.size,
@@ -314,8 +339,9 @@ export function createCodexProvider(options = {}) {
       suffixBytes: generation.suffixBytes,
       suffixDigest: generation.suffixDigest,
       snapshots: merged,
+      compactions: mergedCompactions,
     });
-    return merged;
+    return { snapshots: merged, compactions: mergedCompactions };
   }
 
   const rolloutIdentity = (stat) => {
@@ -373,7 +399,7 @@ export function createCodexProvider(options = {}) {
     return cached.state;
   }
 
-  function hydrateLiveTaskState(file, generation, fallbackTimestamp) {
+  function hydrateLiveStateEvidence(file, generation, { fallbackTimestamp, actorId, sourceKey }) {
     if (!generation || generation.size <= maximumLiveTailBytes) return null;
     const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
     const position = generation.size - bytes;
@@ -415,7 +441,15 @@ export function createCodexProvider(options = {}) {
     }
     rolloutStats.taskHydrationReads += 1;
     rolloutStats.taskHydrationBytes += bytes;
-    return parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp });
+    return {
+      taskState: parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp }),
+      compactions: parseCodexContextRecords(records, {
+        actorId,
+        fallbackTimestamp,
+        sourceKey,
+        stableFallbackIdentity: true,
+      }).compactions,
+    };
   }
 
   function reusableLivePlanTasks(file, threadId, generation) {
@@ -460,7 +494,7 @@ export function createCodexProvider(options = {}) {
         rolloutStats.cacheHits += 1;
         return { records: cached.records, generation: cached.generation };
       }
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
     }
     let text = "";
     let buffer;
@@ -472,7 +506,7 @@ export function createCodexProvider(options = {}) {
       if (read !== bytes) throw new Error("Incomplete Codex rollout read");
       text = buffer.toString("utf8");
     } catch {
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     } finally {
       if (descriptor !== undefined) fs.closeSync(descriptor);
@@ -488,7 +522,7 @@ export function createCodexProvider(options = {}) {
       || confirmed.mtimeMs !== stat.mtimeMs
       || rolloutIdentity(confirmed) !== identity
     ) {
-      invalidateRolloutFile(file);
+      invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
     if (!historical && stat.size > bytes) {
@@ -825,11 +859,30 @@ export function createCodexProvider(options = {}) {
       const records = recordsByThreadId.get(thread.localId) || [];
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       const generation = generationsByThreadId.get(thread.localId) || null;
+      const context = parseCodexContextRecords(records, {
+        actorId: actor.id,
+        fallbackTimestamp,
+        sourceKey: thread.localId,
+        stableFallbackIdentity: !historical,
+      });
       let existingState = historical
         ? null
         : reusableLiveTaskState(thread.rolloutFile, thread.localId, generation);
-      if (!historical && !existingState) {
-        existingState = hydrateLiveTaskState(thread.rolloutFile, generation, fallbackTimestamp);
+      let hydratedStateEvidence = null;
+      const previousContext = liveContextUsageCache.get(thread.rolloutFile);
+      const skippedContextGap = previousContext
+        && generation
+        && generation.size - previousContext.size > maximumLiveTailBytes;
+      const needsContextHydration = !historical
+        && generation?.size > maximumLiveTailBytes
+        && (!previousContext || skippedContextGap);
+      if (!historical && (!existingState || needsContextHydration)) {
+        hydratedStateEvidence = hydrateLiveStateEvidence(thread.rolloutFile, generation, {
+          fallbackTimestamp,
+          actorId: actor.id,
+          sourceKey: thread.localId,
+        });
+        existingState = hydratedStateEvidence?.taskState || null;
       }
       const rolloutTaskState = parseCodexExecutionTaskStateRecords(records, {
         fallbackTimestamp,
@@ -866,16 +919,14 @@ export function createCodexProvider(options = {}) {
         fallbackTimestamp,
         sourceKey: thread.localId,
       }));
-      const context = parseCodexContextRecords(records, {
-        actorId: actor.id,
-        fallbackTimestamp,
-        sourceKey: thread.localId,
-        stableFallbackIdentity: !historical,
-      });
-      usageSnapshots.push(...(historical
-        ? context.usageSnapshots
-        : mergeLiveContextUsage(thread.rolloutFile, generation, context.usageSnapshots)));
-      compactions.push(...context.compactions);
+      const normalizedContext = historical
+        ? { snapshots: context.usageSnapshots, compactions: context.compactions }
+        : mergeLiveContextEvidence(thread.rolloutFile, generation, {
+          usageSnapshots: context.usageSnapshots,
+          compactions: [...(hydratedStateEvidence?.compactions || []), ...context.compactions],
+        });
+      usageSnapshots.push(...normalizedContext.snapshots);
+      compactions.push(...normalizedContext.compactions);
       return parseCodexActivityRecords(records, {
         actor,
         fallbackTimestamp,
