@@ -283,9 +283,59 @@ export type HomeProviderUsageLimits = {
   usageLimits: UsageLimits;
 };
 
+/** One bounded request-time observation used only to correlate account-limit movement. */
+export type HomeLimitRequestObservation = {
+  id: string;
+  observedAt: string;
+};
+
+export type HomeLimitActivitySession = {
+  id: string;
+  title: string;
+  project: string;
+  isLive: boolean;
+  requestObservations: HomeLimitRequestObservation[];
+};
+
+export type HomeLimitMovement = {
+  id: string;
+  from: string;
+  to: string;
+  changePoints: number;
+  correlation: "single" | "shared" | "unobserved";
+  sessionIds: string[];
+};
+
+/**
+ * Account-level plan movement aligned with local request timestamps. This is
+ * correlation evidence, never proportional session attribution or billing.
+ */
+export type HomeLimitActivity = {
+  provider: ProviderId;
+  source: ProviderSource;
+  limitId: string;
+  label: string;
+  window: string;
+  percent: number;
+  resetsAt: string | null;
+  windowStartsAt: string;
+  windowStartsAtExact: boolean;
+  generatedAt: string;
+  observedFrom: string;
+  /** Earliest locally recorded provider rejection in this reset window. */
+  firstRejectedAt: string | null;
+  status: "collecting" | "ready";
+  partialCoverage: boolean;
+  eventsTruncated: boolean;
+  observations: Array<{ observedAt: string; percent: number }>;
+  sessions: HomeLimitActivitySession[];
+  movements: HomeLimitMovement[];
+};
+
 export type HomeSnapshot = {
   generatedAt: string | null;
   providerLimits: HomeProviderUsageLimits[];
+  limitActivities: HomeLimitActivity[];
   projects: HomeProjectSummary[];
   error?: string;
 };

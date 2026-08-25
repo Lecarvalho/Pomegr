@@ -5,11 +5,11 @@ import { createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 
 const provider = { source: "Codex", capabilities: createEmptyProviderCapabilities() };
 
-function evidence({ project = "pomegr", updatedAt = "2026-08-23T12:00:00.000Z", agents = [], usageSnapshots = [] } = {}) {
+function evidence({ project = "pomegr", startedAt = "2026-08-23T11:00:00.000Z", updatedAt = "2026-08-23T12:00:00.000Z", agents = [], usageSnapshots = [], usageLimitRejections = [] } = {}) {
   return {
     historical: false,
-    session: { title: "Home fixture", project, cwd: "C:\\synthetic\\pomegr", startedAt: "2026-08-23T11:00:00.000Z", updatedAt, recordedGitBranch: "main", cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null },
-    agents, usageSnapshots, toolCalls: [], activity: [], planTasks: [], compactions: [],
+    session: { title: "Home fixture", project, cwd: "C:\\synthetic\\pomegr", startedAt, updatedAt, recordedGitBranch: "main", cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null },
+    agents, usageSnapshots, usageLimitRejections, toolCalls: [], activity: [], planTasks: [], compactions: [],
     efficiencyRuleEvidence: { repetition: true, concurrentMutation: true, unsharedContext: true, healthyFallback: true },
     pullRequestCreations: [],
   };
@@ -63,6 +63,99 @@ test("home snapshot includes independent Claude and Codex usage limits without l
   assert.equal(state.providerLimits[0].usageLimits.error, "Usage limits are temporarily unavailable.");
   assert.equal(state.providerLimits[1].usageLimits.limits[0].percent, 37.5);
   assert.doesNotMatch(JSON.stringify(state), /PROMPT|RESPONSE|COMMAND|CREDENTIAL/);
+});
+
+test("home snapshot correlates Claude limit movement across live-only projects", async () => {
+  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const entries = [
+    { id: "claude:live", provider: "claude", source: "Claude Code", title: "Live session", project: "repo-live", updatedAt: "2026-08-23T12:10:00.000Z", isLive: true, needsInput: false },
+    { id: "claude:closed", provider: "claude", source: "Claude Code", title: "Closed session", project: "repo-closed", updatedAt: "2026-08-23T12:05:00.000Z", isLive: false, needsInput: false },
+  ];
+  const request = (dedupeId, timestamp) => ({
+    dedupeId,
+    actorId: "primary",
+    timestamp,
+    input: 100,
+    output: 20,
+    cacheWrite: 0,
+    cacheRead: 0,
+    token: "PRIVATE_TOKEN",
+    model: "PRIVATE_MODEL",
+    prompt: "PRIVATE_PROMPT",
+    command: "PRIVATE_COMMAND",
+    credential: "PRIVATE_CREDENTIAL",
+  });
+  const evidenceById = new Map([
+    ["claude:live", evidence({ project: "repo-live", startedAt: "2026-08-23T11:30:00.000Z", updatedAt: "2026-08-23T12:10:00.000Z", agents: [agent("primary")], usageSnapshots: [request("live-request", "2026-08-23T12:10:00.000Z")] })],
+    ["claude:closed", evidence({ project: "repo-closed", startedAt: "2026-08-23T10:30:00.000Z", updatedAt: "2026-08-23T12:05:00.000Z", agents: [agent("primary", "finished")], usageSnapshots: [request("closed-request", "2026-08-23T12:05:00.000Z")], usageLimitRejections: [{ observedAt: "2026-08-23T12:20:00.000Z", resetsAt: "2026-08-23T17:00:00.000Z", private: "PRIVATE_REJECTION_PAYLOAD" }] })],
+  ]);
+  let currentTime = Date.parse("2026-08-23T12:00:00.000Z");
+  let limit = { fetchedAt: "2026-08-23T12:00:00.000Z", percent: 10 };
+  const runtime = runtimeFixture(entries, evidenceById, {
+    now: () => currentTime,
+    homeSnapshotCacheMs: 0,
+    registry: {
+      defaultProvider: claudeProvider,
+      providers: [claudeProvider],
+      async readUsageLimits(selectedProvider) {
+        assert.equal(selectedProvider.id, "claude");
+        assert.equal(selectedProvider.source, "Claude Code");
+        return { available: true, ...limit, attemptedAt: limit.fetchedAt, limits: [{ id: "current-session", label: "Current session", window: "5 hours", percent: limit.percent, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: true }], error: "" };
+      },
+      async readSession(id) {
+        return { evidence: evidenceById.get(id), provider: claudeProvider, sessionId: id };
+      },
+    },
+  });
+
+  const first = await runtime.homeSnapshot();
+  currentTime = Date.parse("2026-08-23T12:30:00.000Z");
+  limit = { fetchedAt: "2026-08-23T12:15:00.000Z", percent: 35 };
+  const second = await runtime.homeSnapshot();
+
+  assert.deepEqual(first.projects.map(({ project }) => project), ["repo-live"]);
+  assert.deepEqual(second.projects.map(({ project }) => project), ["repo-live"]);
+  assert.equal(second.projects[0].sessions.length, 1);
+  assert.equal(second.limitActivities.length, 1);
+  const activity = second.limitActivities[0];
+  assert.equal(activity.provider, "claude");
+  assert.equal(activity.source, "Claude Code");
+  assert.deepEqual(activity.sessions.map(({ project, isLive }) => ({ project, isLive })), [
+    { project: "repo-closed", isLive: false },
+    { project: "repo-live", isLive: true },
+  ]);
+  assert.equal(activity.movements.length, 1);
+  assert.equal(activity.movements[0].correlation, "shared");
+  assert.deepEqual(activity.movements[0].sessionIds, ["claude:closed", "claude:live"]);
+  assert.equal(activity.movements[0].changePoints, 25);
+  assert.equal(activity.firstRejectedAt, "2026-08-23T12:20:00.000Z");
+  assert.ok(Number.isFinite(activity.movements[0].changePoints));
+  assert.equal(activity.sessions.every((session) => session.requestObservations.length === 1), true);
+  assert.deepEqual(activity.sessions.flatMap(({ requestObservations }) => requestObservations.map(({ observedAt }) => observedAt)).sort(), [
+    "2026-08-23T12:05:00.000Z",
+    "2026-08-23T12:10:00.000Z",
+  ]);
+  assert.doesNotMatch(JSON.stringify(second), /PRIVATE|token|model|prompt|command|credential/i);
+});
+
+test("home limit activity marks failed live request evidence as truncated", async () => {
+  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const entry = { id: "claude:failed", provider: "claude", source: "Claude Code", title: "Failed live session", project: "repo", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false };
+  const state = await runtimeFixture([entry], new Map([[entry.id, new Error("PRIVATE_FAILURE")]]), {
+    registry: {
+      defaultProvider: claudeProvider,
+      providers: [claudeProvider],
+      async readUsageLimits() {
+        return { available: true, fetchedAt: "2026-08-23T12:00:00.000Z", attemptedAt: "2026-08-23T12:00:00.000Z", limits: [{ id: "current-session", label: "Current session", window: "5h", percent: 42, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: true }], error: "" };
+      },
+    },
+  }).homeSnapshot();
+
+  assert.equal(state.limitActivities.length, 1);
+  assert.equal(state.limitActivities[0].eventsTruncated, true);
+  assert.equal(state.projects[0].sessions[0].latestContextTotal, null);
+  assert.equal(state.projects[0].sessions[0].requestObservationsAvailable, undefined);
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE_FAILURE/);
 });
 
 test("home snapshot keeps only live projects and bounds seven-day history", async () => {
@@ -292,7 +385,7 @@ test("home handler sanitizes monitor failure", async () => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/home`);
     const body = await response.text();
     assert.equal(response.status, 500);
-    assert.deepEqual(JSON.parse(body), { generatedAt: null, providerLimits: [], projects: [], error: "Home snapshot error" });
+    assert.deepEqual(JSON.parse(body), { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" });
     assert.doesNotMatch(body, /PROMPT|RESPONSE|COMMAND|CREDENTIAL/);
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -18,6 +18,48 @@ const snapshot = {
     source: "Codex",
     usageLimits: { available: true, fetchedAt: "2026-08-23T11:59:00.000Z", attemptedAt: "2026-08-23T11:59:00.000Z", limits: [{ id: "codex-secondary", label: "Codex", window: "7 days", percent: 82, resetsAt: "2026-08-29T12:00:00.000Z", severity: "warning", active: false }] },
   }],
+  limitActivities: [{
+    provider: "claude",
+    source: "Claude Code",
+    limitId: "current-session",
+    label: "Current session",
+    window: "5 hours",
+    percent: 31,
+    resetsAt: "2026-08-23T15:00:00.000Z",
+    windowStartsAt: "2026-08-23T09:00:00.000Z",
+    windowStartsAtExact: true,
+    generatedAt: "2026-08-23T12:00:00.000Z",
+    observedFrom: "2026-08-23T11:30:00.000Z",
+    firstRejectedAt: "2026-08-23T11:30:00.000Z",
+    status: "ready",
+    partialCoverage: true,
+    eventsTruncated: false,
+    observations: [
+      { observedAt: "2026-08-23T11:30:00.000Z", percent: 18 },
+      { observedAt: "2026-08-23T12:00:00.000Z", percent: 31 },
+    ],
+    sessions: [{
+      id: "claude:pomegr-home",
+      title: "Pomegr home",
+      project: "pomegr",
+      isLive: true,
+      requestObservations: [{ id: "request-live", observedAt: "2026-08-23T11:30:00.000Z" }],
+    }, {
+      id: "claude:closed.other-repo",
+      title: "Review report",
+      project: "other-repo",
+      isLive: false,
+      requestObservations: [{ id: "request-closed", observedAt: "2026-08-23T11:45:00.000Z" }],
+    }],
+    movements: [{
+      id: "movement-1",
+      from: "2026-08-23T11:30:00.000Z",
+      to: "2026-08-23T12:00:00.000Z",
+      changePoints: 13,
+      correlation: "single",
+      sessionIds: ["claude:pomegr-home"],
+    }],
+  }],
   projects: [{
     project: "pomegr",
     updatedAt: "2026-08-23T12:00:00.000Z",
@@ -57,6 +99,63 @@ describe("home dashboard", () => {
     expect(screen.getAllByRole("link", { name: "Pomegr home" })).toHaveLength(1);
     expect(screen.queryByText(/recent|completed session/i)).not.toBeInTheDocument();
     expect(container.querySelector('a[href="/sessions/codex-live.one_2"]')).toBeInTheDocument();
+
+    const limits = container.querySelector(".homeLimits");
+    const activity = container.querySelector(".homeLimitActivity");
+    const folio = container.querySelector(".homeFolio");
+    expect(limits).toBeInTheDocument();
+    expect(activity).toBeInTheDocument();
+    expect(folio).toBeInTheDocument();
+    expect(limits!.compareDocumentPosition(activity!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity!.compareDocumentPosition(folio!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity).toHaveTextContent("Claude Code");
+    expect(activity).toHaveTextContent("Current session");
+    expect(activity).toHaveTextContent("31%");
+    expect(activity).toHaveTextContent(/Reset/i);
+    expect(activity).toHaveTextContent("Partial coverage");
+    expect(activity).toHaveTextContent("Correlation, not billing attribution.");
+    expect(activity).toHaveTextContent("Only “Pomegr home” had an observed request in this interval.");
+    expect(activity).toHaveTextContent("pomegr · live");
+    expect(activity).toHaveTextContent("other-repo · closed");
+    expect(activity!.querySelectorAll(".homeLimitActivityDesktopPlot .homeLimitActivityObservation")).toHaveLength(2);
+    expect(activity!.querySelectorAll(".homeLimitActivityDesktopPlot .homeLimitActivityRequest")).toHaveLength(2);
+    expect(activity!.querySelectorAll(".homeLimitActivityWindowStart, .homeLimitActivityMobileWindowStart")).toHaveLength(2);
+    expect(activity!.querySelector(".homeLimitActivityWindowStart")?.getAttribute("aria-label")).toMatch(/^5-hour window began at .+/);
+    expect(activity!.querySelector(".homeLimitActivityMobileWindowStart")?.getAttribute("title")).toMatch(/^5-hour window began at .+/);
+    const desktopRejection = activity!.querySelector(".homeLimitActivityRejection");
+    const mobileRejection = activity!.querySelector(".homeLimitActivityMobileRejection");
+    expect(desktopRejection).toBeInTheDocument();
+    expect(mobileRejection).toBeInTheDocument();
+    const rejectionLabel = desktopRejection?.getAttribute("aria-label");
+    expect(rejectionLabel).toMatch(/^First rejection recorded at /);
+    expect(desktopRejection?.querySelector("title")?.textContent).toBe(rejectionLabel);
+    expect(mobileRejection?.getAttribute("aria-label")).toBe(rejectionLabel);
+    expect(mobileRejection?.getAttribute("title")).toBe(rejectionLabel);
+    expect(activity).not.toHaveTextContent(/token totals?|share|drainer/i);
+  });
+
+  it("omits limit rejection markers when no first rejection is recorded", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, firstRejectedAt: null })),
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByText("5-hour limit activity");
+    const activity = container.querySelector(".homeLimitActivity");
+    expect(activity).toBeInTheDocument();
+    expect(activity!.querySelector(".homeLimitActivityRejection, .homeLimitActivityMobileRejection")).not.toBeInTheDocument();
+    expect(activity).not.toHaveTextContent("First rejection recorded at");
+  });
+
+  it("keeps the exact window-start marker when the provider omits resetsAt", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByText("5-hour limit activity");
+    expect(container.querySelector(".homeLimitActivityWindowStart")).toBeInTheDocument();
+    expect(container.querySelector(".homeLimitActivityMobileWindowStart")).toBeInTheDocument();
   });
 
   it("keeps live cards available while recorded history warms", async () => {
@@ -74,6 +173,7 @@ describe("home dashboard", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       projects: [],
+      limitActivities: [],
       providerLimits: [{
         ...snapshot.providerLimits[0],
         usageLimits: { ...snapshot.providerLimits[0].usageLimits, error: "Anthropic usage endpoint returned 401" },
@@ -96,7 +196,7 @@ describe("home dashboard", () => {
   });
 
   it("shows no-live and offline states without hanging polling", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], projects: [] }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], limitActivities: [], projects: [] }));
     render(<HomeDashboard />);
     expect(await screen.findByText("No running sessions yet.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/home", expect.objectContaining({ cache: "no-store" }));

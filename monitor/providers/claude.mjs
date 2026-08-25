@@ -45,11 +45,44 @@ const MAX_WORKFLOW_JOURNAL_BYTES = 256 * 1024;
 const MAX_WORKFLOW_JOURNAL_RECORD_BYTES = 16 * 1024;
 const MAX_WORKFLOW_METADATA_BYTES = 16 * 1024;
 const MAX_WORKFLOW_DURATION_MS = 366 * 24 * 60 * 60 * 1_000;
+const MAX_USAGE_LIMIT_REJECTION_WINDOWS = 16;
 const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
 const TERMINAL_WORKFLOW_AGENT_STATES = new Set(["done", "error"]);
 const SAFE_WORKFLOW_RUN_ID = /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const SAFE_WORKFLOW_AGENT_FILE = /^agent-([A-Za-z0-9][A-Za-z0-9_-]{0,79})\.jsonl$/;
 const SAFE_WORKFLOW_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+
+function normalizedResetTimestamp(value) {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : null;
+  const milliseconds = numeric === null ? Date.parse(value) : numeric < 1_000_000_000_000 ? numeric * 1_000 : numeric;
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+}
+
+/**
+ * Normalize only the first locally recorded Claude rejection for each five-hour
+ * reset window. No other quota, message, or transcript fields leave the adapter.
+ */
+export function claudeFiveHourLimitRejections(recordGroups = []) {
+  const earliestByReset = new Map();
+  for (const records of recordGroups) {
+    if (!Array.isArray(records)) continue;
+    for (const record of records) {
+      const quota = record?.quotaLimits;
+      if (!quota || quota.rateLimitType !== "five_hour" || quota.status !== "rejected") continue;
+      const observedMs = Date.parse(record.timestamp || "");
+      const resetsAt = normalizedResetTimestamp(quota.resetsAt);
+      if (!Number.isFinite(observedMs) || !resetsAt) continue;
+      const observedAt = new Date(observedMs).toISOString();
+      const previous = earliestByReset.get(resetsAt);
+      if (!previous || observedMs < Date.parse(previous.observedAt)) earliestByReset.set(resetsAt, { observedAt, resetsAt });
+    }
+  }
+  return [...earliestByReset.values()]
+    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
+    .slice(-MAX_USAGE_LIMIT_REJECTION_WINDOWS);
+}
 
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
@@ -841,6 +874,7 @@ export function createClaudeProvider(options = {}) {
     fileByAgentId.set("primary", mainFile);
     for (const file of ordinaryAgentFiles) fileByAgentId.set(path.basename(file, ".jsonl"), file);
     const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
+    const usageLimitRejections = claudeFiveHourLimitRejections(recordsByFile.values());
     const mainRecords = recordsByFile.get(mainFile) || [];
     const signalsByFile = new Map(await Promise.all(files.map(async (file) => [
       file,
@@ -1036,6 +1070,7 @@ export function createClaudeProvider(options = {}) {
       agents,
       workflows,
       usageSnapshots,
+      usageLimitRejections,
       toolCalls,
       activity,
       planTasks,

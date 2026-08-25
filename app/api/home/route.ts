@@ -6,6 +6,6 @@ export async function GET() {
   return proxyMonitorJson({
     path: "/api/home",
     timeoutMs: 10000,
-    unavailableBody: { generatedAt: null, providerLimits: [], projects: [], error: "Home overview is unavailable." },
+    unavailableBody: { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home overview is unavailable." },
   });
 }

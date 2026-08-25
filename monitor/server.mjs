@@ -8,6 +8,7 @@ import { buildCacheEvents } from "./cache-events.mjs";
 import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { readGitStateAsync } from "./git-state.mjs";
+import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
 import { buildRequestSnapshots } from "./request-snapshots.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
@@ -35,6 +36,13 @@ const RESOURCE_USAGE_REASONS = new Set([
   "owner_identity_mismatch",
   "collection_failed",
 ]);
+const HOME_LIMIT_WINDOW_MS = 5 * 60 * 60_000;
+const MAX_HOME_LIMIT_ACTIVITY_SESSIONS = 24;
+
+function isFiveHourUsageWindow(value) {
+  const window = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return window === "5 hours" || window === "5 hour" || window === "5h";
+}
 
 function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
@@ -165,6 +173,13 @@ function homeSessionSummary(entry, evidence, resourceUsage) {
     activeAgentCount: agents.filter(isRunningAgent).length,
     latestContextTotal: Number.isFinite(tokenUsage.allAgents) ? tokenUsage.allAgents : null,
     contextHistory: tokenUsage.contextHistory,
+    isLive: Boolean(entry.isLive),
+    createdAt: evidence.session.startedAt,
+    requestObservationsAvailable: true,
+    requestObservations: tokenUsage.requestSnapshots.items.map(({ id, observedAt }) => ({ id, observedAt })),
+    usageLimitRejections: Array.isArray(evidence.usageLimitRejections)
+      ? evidence.usageLimitRejections.map(({ observedAt, resetsAt }) => ({ observedAt, resetsAt }))
+      : [],
     wallTimeMs,
     resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
   };
@@ -184,6 +199,11 @@ function unavailableHomeSessionSummary(entry, resourceUsage) {
     activeAgentCount: null,
     latestContextTotal: null,
     contextHistory: null,
+    isLive: Boolean(entry.isLive),
+    createdAt: null,
+    requestObservationsAvailable: false,
+    requestObservations: [],
+    usageLimitRejections: [],
     wallTimeMs: null,
     resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
   };
@@ -292,6 +312,7 @@ export function createMonitorRuntime(options = {}) {
   const deferHomeHistory = options.deferHomeHistory !== false;
   const yieldHomeHistory = options.yieldHomeHistory || (() => new Promise((resolve) => setImmediate(resolve)));
   const homeSummaryCache = new Map();
+  const homeLimitActivityTracker = createHomeLimitActivityTracker();
   let homeSnapshotCached = null;
   let homeSnapshotInFlight = null;
   let homeSnapshotRefreshScheduled = false;
@@ -477,9 +498,11 @@ export function createMonitorRuntime(options = {}) {
         }
         return { provider: provider.id, source: provider.source, usageLimits };
       }));
-    const inspected = typeof registry.inspectSessions === "function"
-      ? await registry.inspectSessions()
-      : { sessions: await registry.listSessions(), resourceTargets: [] };
+    const inspectedPromise = typeof registry.inspectSessions === "function"
+      ? registry.inspectSessions()
+      : Promise.resolve(registry.listSessions()).then((sessions) => ({ sessions, resourceTargets: [] }));
+    const [providerLimits, inspected] = await Promise.all([providerLimitsPromise, inspectedPromise]);
+    homeLimitActivityTracker.observe(providerLimits);
     try {
       await resourceUsageSampler.sample(inspected.resourceTargets || []);
     } catch {
@@ -495,25 +518,47 @@ export function createMonitorRuntime(options = {}) {
     };
     const liveEntries = catalog.filter((entry) => entry?.isLive);
     const endMs = now();
+    const generatedAt = new Date(endMs).toISOString();
     for (const [cacheKey, cached] of homeSummaryCache) {
       if (!cached || cached.expiresAt <= endMs) homeSummaryCache.delete(cacheKey);
     }
-    if (liveEntries.length === 0) return {
-      generatedAt: new Date(endMs).toISOString(),
-      providerLimits: await providerLimitsPromise,
-      projects: [],
-    };
-    const projectNames = new Set(liveEntries.map((entry) => entry.project || "Unknown project"));
-    const startMs = endMs - 7 * 24 * 60 * 60_000;
-    const relevantHistory = catalog.filter((entry) => !entry.isLive
-      && projectNames.has(entry.project || "Unknown project"));
-    const live = await Promise.all(liveEntries.map(async (entry) => {
+
+    const fiveHourProviderIds = new Set(providerLimits.flatMap(({ provider, usageLimits }) => (
+      usageLimits?.limits?.some((limit) => isFiveHourUsageWindow(limit?.window))
+        ? [provider]
+        : []
+    )));
+    const activityEntries = [];
+    const limitedActivityProviders = new Set();
+    for (const provider of fiveHourProviderIds) {
+      const candidates = catalog
+        .filter((entry) => entry?.provider === provider && (
+          entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - HOME_LIMIT_WINDOW_MS
+        ))
+        .sort((left, right) => Number(Boolean(right.isLive)) - Number(Boolean(left.isLive))
+          || Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""));
+      if (candidates.length > MAX_HOME_LIMIT_ACTIVITY_SESSIONS) limitedActivityProviders.add(provider);
+      activityEntries.push(...candidates.slice(0, MAX_HOME_LIMIT_ACTIVITY_SESSIONS));
+    }
+    const immediateEntries = [...new Map([...liveEntries, ...activityEntries].map((entry) => [entry.id, entry])).values()];
+    const immediate = await Promise.all(immediateEntries.map(async (entry) => {
       const cached = cachedHomeSummary(entry, endMs, resourceUsageFor);
       const summary = cached.found
         ? cached.summary
-        : await loadHomeSummary(entry, endMs, resourceUsageFor(entry.id));
+        : await loadHomeSummary(entry, endMs, entry.isLive ? resourceUsageFor(entry.id) : null);
+      if ((!summary || summary.requestObservationsAvailable === false)
+        && activityEntries.some((activityEntry) => activityEntry.id === entry.id)) {
+        limitedActivityProviders.add(entry.provider);
+      }
       return { entry, summary };
     }));
+
+    const projectNames = new Set(liveEntries.map((entry) => entry.project || "Unknown project"));
+    const startMs = endMs - 7 * 24 * 60 * 60_000;
+    const immediateEntryIds = new Set(immediateEntries.map((entry) => entry.id));
+    const relevantHistory = catalog.filter((entry) => !entry.isLive
+      && !immediateEntryIds.has(entry.id)
+      && projectNames.has(entry.project || "Unknown project"));
     const history = [];
     const missingHistory = [];
     for (const entry of relevantHistory) {
@@ -530,7 +575,14 @@ export function createMonitorRuntime(options = {}) {
         summary: await loadHomeSummary(entry, endMs),
       }))));
     }
-    const summaries = [...live, ...history];
+    const summaries = [...immediate, ...history];
+    const limitActivities = homeLimitActivityTracker.build({
+      providerLimits,
+      generatedAt,
+      sessions: immediate.map(({ summary }) => summary).filter(Boolean),
+    }).map((activity) => limitedActivityProviders.has(activity.provider)
+      ? { ...activity, eventsTruncated: true }
+      : activity);
     const projects = [...projectNames].sort((left, right) => left.localeCompare(right)).map((project) => {
       const projectEntries = liveEntries.filter((entry) => (entry.project || "Unknown project") === project);
       const projectLive = summaries
@@ -558,6 +610,11 @@ export function createMonitorRuntime(options = {}) {
           const session = { ...summary };
           delete session.recordedUpdatedAt;
           delete session.wallTimeMs;
+          delete session.isLive;
+          delete session.createdAt;
+          delete session.requestObservationsAvailable;
+          delete session.requestObservations;
+          delete session.usageLimitRejections;
           return session;
         }),
         history: {
@@ -571,8 +628,9 @@ export function createMonitorRuntime(options = {}) {
       };
     });
     return {
-      generatedAt: new Date(endMs).toISOString(),
-      providerLimits: await providerLimitsPromise,
+      generatedAt,
+      providerLimits,
+      limitActivities,
       projects,
     };
   }
@@ -867,7 +925,7 @@ export function createMonitorRequestHandler(options = {}) {
       response.end(body);
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ generatedAt: null, providerLimits: [], projects: [], error: "Home snapshot error" }));
+      response.end(JSON.stringify({ generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" }));
     }
     return;
   }

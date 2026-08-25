@@ -1089,6 +1089,54 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitRow > em { color: var(--ink); font: 600 10px/1 var(--font-geist-mono), monospace; font-style: normal; text-align: right; }
 .homeLimitRow.warning > em { color: var(--amber); }
 .homeLimitRow.critical > em { color: var(--red); }
+.homeLimitActivity { min-width: 0; margin: 0 0 24px; overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
+.homeLimitActivityHeader { min-height: 58px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
+.homeLimitActivityHeader h2 { margin: 0; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -.015em; }
+.homeLimitActivityHeader p { max-width: 62ch; margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.homeLimitActivityCard + .homeLimitActivityCard { border-top: 1px solid var(--line-strong); }
+.homeLimitActivityCardHeader { min-height: 64px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.homeLimitActivityCardHeader > div:first-child { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.homeLimitActivityCardHeader h3 { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.homeLimitActivityCardHeader small { flex: 0 0 auto; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
+.homeLimitActivityCurrent { flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+.homeLimitActivityCurrent strong { color: var(--amber); font: 650 22px/1 var(--font-geist-mono), monospace; }
+.homeLimitActivityCard.critical .homeLimitActivityCurrent strong { color: var(--red); }
+.homeLimitActivityCurrent span { color: var(--muted); font-size: 9px; }
+.homeLimitActivityStatus, .homeLimitActivityCoverage { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.4; }
+.homeLimitActivityStatus { background: var(--amber-soft); color: var(--ink); }
+.homeLimitActivityCoverage + .homeLimitActivityCoverage { padding-top: 0; }
+.homeLimitActivityBody { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .34fr); }
+.homeLimitActivityTimeline { min-width: 0; margin: 0; padding: 15px 16px 16px; overflow-x: auto; scrollbar-width: thin; }
+.homeLimitActivityTimeline figcaption { min-width: 0; margin-bottom: 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; color: var(--muted); font: 8px/1.25 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
+.homeLimitActivityTimeline figcaption small { color: var(--muted); font: inherit; letter-spacing: 0; text-transform: none; }
+.homeLimitActivityDesktopPlot { width: 100%; height: auto; min-width: 680px; display: block; overflow: visible; }
+.homeLimitActivityMobilePlot { display: none; }
+.homeLimitActivityGuide { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 5; vector-effect: non-scaling-stroke; }
+.homeLimitActivityAxis, .homeLimitActivityLaneLabel, .homeLimitActivityLaneProject, .homeLimitActivityNoLanes { fill: var(--muted); font: 8px var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
+.homeLimitActivityLaneLabel { fill: var(--ink); font-family: var(--font-inter), sans-serif; font-size: 9px; font-weight: 620; }
+.homeLimitActivityLaneProject { font-size: 7px; }
+.homeLimitActivityNoLanes { font-size: 9px; }
+.homeLimitActivityLine { fill: none; stroke: var(--amber); stroke-width: 2.25; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.homeLimitActivityCard.critical .homeLimitActivityLine { stroke: var(--red); }
+.homeLimitActivityObservation { fill: var(--panel); stroke: var(--amber); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.homeLimitActivityCard.critical .homeLimitActivityObservation { stroke: var(--red); }
+.homeLimitActivityWindowStart { fill: var(--panel); stroke: var(--green); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.homeLimitActivityWindowStart:focus-visible { outline: none; stroke-width: 3; }
+.homeLimitActivityRejection { fill: var(--panel); stroke: var(--red); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.homeLimitActivityRejection:focus-visible { outline: none; stroke-width: 3; }
+.homeLimitActivityLaneTrack { fill: none; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.homeLimitActivityRequest { fill: var(--ink); stroke: var(--panel); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.homeLimitMovements { min-width: 0; padding: 15px 16px 16px; border-left: 1px solid var(--line); background: var(--panel-2); }
+.homeLimitMovements h3 { margin: 0 0 12px; color: var(--ink); font-size: 10px; font-weight: 650; }
+.homeLimitMovements ol { margin: 0; padding: 0; list-style: none; }
+.homeLimitMovement { min-width: 0; padding: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.homeLimitMovement:first-child { padding-top: 0; border-top: 0; }
+.homeLimitMovement strong { color: var(--amber); font: 650 12px/1.2 var(--font-geist-mono), monospace; }
+.homeLimitActivityCard.critical .homeLimitMovement strong { color: var(--red); }
+.homeLimitMovement > span { color: var(--muted); font: 8px/1.3 var(--font-geist-mono), monospace; text-align: right; }
+.homeLimitMovement small { grid-column: 1 / -1; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.homeLimitActivityNote { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.5; }
+.homeLimitActivityEmpty { margin: 0; padding: 16px; color: var(--muted); font-size: 10px; }
 .homeFolio { min-width: 0; margin-top: 14px; border: 1px solid var(--line); background: var(--panel); }
 .homeFolioHeader { min-height: 58px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
 .homeFolioHeader > div { min-width: 0; }
@@ -1144,6 +1192,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 @media (max-width: 980px) {
   .homeProviderLimits { grid-template-columns: 1fr; }
   .homeProviderLimit + .homeProviderLimit { border-top: 1px solid var(--line); border-left: 0; }
+  .homeLimitActivityBody { grid-template-columns: 1fr; }
+  .homeLimitMovements { border-top: 1px solid var(--line); border-left: 0; }
   .homeFolioBody { grid-template-columns: 1fr; }
   .homeHistory { border-top: 1px solid var(--line); border-left: 0; }
 }
@@ -1155,6 +1205,27 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .homeLimits { margin-bottom: 18px; }
   .homeLimitsHeader, .homeProviderLimit { padding-left: 13px; padding-right: 13px; }
   .homeLimitsHeader span { display: none; }
+  .homeLimitActivity { margin-bottom: 18px; }
+  .homeLimitActivityHeader, .homeLimitActivityCardHeader, .homeLimitActivityTimeline, .homeLimitMovements, .homeLimitActivityStatus, .homeLimitActivityCoverage { padding-left: 13px; padding-right: 13px; }
+  .homeLimitActivityCardHeader { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .homeLimitActivityCurrent { width: 100%; justify-content: space-between; }
+  .homeLimitActivityTimeline figcaption { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .homeLimitActivityDesktopPlot { display: none; }
+  .homeLimitActivityMobilePlot { display: block; }
+  .homeLimitActivityMobileChart { position: relative; }
+  .homeLimitActivityMobileChart > svg { width: 100%; height: 76px; display: block; overflow: visible; }
+  .homeLimitActivityMobileWindowStart { position: absolute; bottom: 0; left: 0; width: 8px; height: 8px; border: 2px solid var(--green); border-radius: 50%; background: var(--panel); transform: translate(-50%, 50%); }
+  .homeLimitActivityMobileWindowStart:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .homeLimitActivityMobileRejection { position: absolute; top: 8%; width: 10px; height: 10px; border: 2px solid var(--red); border-radius: 50%; background: var(--panel); transform: translate(-50%, -50%); }
+  .homeLimitActivityMobileRejection:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+  .homeLimitActivityMobileAxis { margin-top: 5px; display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
+  .homeLimitActivityMobileLanes { margin-top: 18px; display: grid; gap: 14px; }
+  .homeLimitActivityMobileLane { min-width: 0; display: grid; gap: 7px; }
+  .homeLimitActivityMobileLane > span, .homeLimitActivityMobileLane strong, .homeLimitActivityMobileLane small { min-width: 0; display: block; }
+  .homeLimitActivityMobileLane strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+  .homeLimitActivityMobileLane small { margin-top: 3px; color: var(--muted); font: 7px/1.2 var(--font-geist-mono), monospace; }
+  .homeLimitActivityMobileLane > i { position: relative; height: 12px; display: block; border-bottom: 1px solid var(--line); font-style: normal; }
+  .homeLimitActivityMobileLane > i b { position: absolute; bottom: -4px; width: 7px; height: 7px; margin-left: -3px; display: block; background: var(--ink); border: 1px solid var(--panel); }
   .homeFolioHeader, .homeLiveSection, .homeHistory { padding-left: 13px; padding-right: 13px; }
   .homeSessionGraphs { grid-template-columns: 1fr; gap: 8px; }
   .homeFigure { margin-top: 4px; }

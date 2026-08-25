@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "nod
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createClaudeProvider } from "../monitor/providers/claude.mjs";
+import { claudeFiveHourLimitRejections, createClaudeProvider } from "../monitor/providers/claude.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -107,6 +107,18 @@ function workflowStopRecords(agentId, timestamp = "2026-08-15T18:01:20.000Z") {
     },
   ];
 }
+
+test("Claude adapter keeps only the first structured five-hour rejection per reset window", () => {
+  const events = claudeFiveHourLimitRejections([[
+    { type: "assistant", timestamp: "2026-08-25T02:21:18.314Z", quotaLimits: { rateLimitType: "five_hour", status: "rejected", resetsAt: 1_787_634_600, private: "MUST_NOT_LEAK" } },
+    { type: "assistant", timestamp: "2026-08-25T02:21:06.475Z", quotaLimits: { rateLimitType: "five_hour", status: "rejected", resetsAt: 1_787_634_600 } },
+    { type: "assistant", timestamp: "2026-08-25T02:20:00.000Z", quotaLimits: { rateLimitType: "seven_day", status: "rejected", resetsAt: 1_787_634_600 } },
+    { type: "assistant", timestamp: "2026-08-25T02:19:00.000Z", quotaLimits: { rateLimitType: "five_hour", status: "allowed", resetsAt: 1_787_634_600 } },
+    { type: "assistant", timestamp: "invalid", quotaLimits: { rateLimitType: "five_hour", status: "rejected", resetsAt: "invalid" } },
+  ]]);
+  assert.deepEqual(events, [{ observedAt: "2026-08-25T02:21:06.475Z", resetsAt: "2026-08-25T05:10:00.000Z" }]);
+  assert.equal(JSON.stringify(events).includes("MUST_NOT_LEAK"), false);
+});
 
 test("Claude adapter returns sanitized provider evidence without changing normalized features", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-provider-"));
