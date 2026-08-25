@@ -409,6 +409,8 @@ test("Claude adapter orders live workflow workers from bounded journal lifecycle
   const agentsById = new Map(evidence.agents.filter((agent) => agent.workflowId === runId).map((agent) => [agent.id, agent]));
   assert.deepEqual(workflow.agentIds.map((id) => agentsById.get(id).workflowOrder), [0, 1, 2, 3]);
   assert.deepEqual(workflow.agentIds.map((id) => agentsById.get(id).workflowState), ["done", "running", "done", "unknown"]);
+  assert.equal(agentsById.get(`workflow-${runId}-agent-abcdef-two`).status, "finished");
+  assert.equal(agentsById.get(`workflow-${runId}-agent-delta-1`).status, "finished");
   assert.equal(new Set(workflow.agentIds.map((id) => agentsById.get(id).label)).size, 4);
   assert.equal(agentsById.get(`workflow-${runId}-agent-abcdef-one`).kind, "workflow-subagent");
   assert.equal(agentsById.get(`workflow-${runId}-agent-abcdef-one`).model, "opus");
@@ -465,6 +467,7 @@ test("Claude adapter allowlists completed workflow phases and worker linkage", a
     { label: "review:backend", workflowPhaseId: `${runId}-phase-2`, workflowOrder: 1, workflowState: "error" },
     { label: "impl:backend", workflowPhaseId: `${runId}-phase-1`, workflowOrder: 0, workflowState: "done" },
   ]);
+  assert.deepEqual(workflowAgents.map((agent) => agent.status), ["finished", "finished"]);
   assertNoPrivateFixtureSentinels(evidence, "completed Claude workflow evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /totalTokens|totalToolCalls|taskId|scriptPath|promptPreview|resultPreview|journal|PRIVATE_WORKFLOW_TASK_ID/);
 });

@@ -46,6 +46,7 @@ const MAX_WORKFLOW_JOURNAL_RECORD_BYTES = 16 * 1024;
 const MAX_WORKFLOW_METADATA_BYTES = 16 * 1024;
 const MAX_WORKFLOW_DURATION_MS = 366 * 24 * 60 * 60 * 1_000;
 const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
+const TERMINAL_WORKFLOW_AGENT_STATES = new Set(["done", "error"]);
 const SAFE_WORKFLOW_RUN_ID = /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const SAFE_WORKFLOW_AGENT_FILE = /^agent-([A-Za-z0-9][A-Za-z0-9_-]{0,79})\.jsonl$/;
 const SAFE_WORKFLOW_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
@@ -1007,6 +1008,11 @@ export function createClaudeProvider(options = {}) {
       historical,
       manifestCache: workflowManifestCache,
     });
+    for (const agent of agents) {
+      if (agent.status !== "stopped" && TERMINAL_WORKFLOW_AGENT_STATES.has(agent.workflowState)) {
+        agent.status = "finished";
+      }
+    }
     transcriptPathsBySessionId.delete(sessionId);
     transcriptPathsBySessionId.set(sessionId, transcriptPaths);
     while (transcriptPathsBySessionId.size > 64) transcriptPathsBySessionId.delete(transcriptPathsBySessionId.keys().next().value);

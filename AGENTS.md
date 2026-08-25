@@ -71,6 +71,12 @@ npm test
 npm run lint
 ```
 
+### Codex on Windows
+
+- In a managed Codex filesystem sandbox, run `npm run build` with escalated sandbox permissions because it overwrites the generated plugin bundles under `plugins/claude-code` and `plugins/pomegr`. A sandboxed run can report `Access is denied` or `EPERM` for a bundle even when Windows has no open handle or ACL restriction; do not diagnose that message as a process lock without independent handle evidence.
+- `npm test` invokes `npm run build`, so it needs the same escalation when run as the full wrapper. The individual `test:plugin`, `test:node`, and `test:ui` scripts can remain sandboxed.
+- Do not run `npm run build` and `npm test` concurrently. Both regenerate the same plugin bundles, and `npm test` already includes the build.
+
 The dashboard binds to `0.0.0.0:3003` and is reachable at `http://<LAN-IP>:3003`; the private monitor listens on `127.0.0.1:4317`.
 
 ## Change checklist
