@@ -37,17 +37,8 @@ function limitTime(value: string | null) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(timestamp);
 }
 
-function limitInterval(from: string, to: string) {
-  return `${limitTime(from)}–${limitTime(to)}`;
-}
-
 function limitPercent(value: number | null) {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value!)) : null;
-}
-
-function limitWindowAdjective(value: string) {
-  const match = value.trim().match(/^(\d+)\s*(hours?|days?)$/i);
-  return match ? `${match[1]}-${match[2].replace(/s$/i, "").toLowerCase()}` : value.trim().toLowerCase();
 }
 
 function compactLimitWindow(value: string) {
@@ -59,124 +50,41 @@ function compactLimitWindow(value: string) {
     .replace(/\s+months?\b/gi, "mo");
 }
 
-function limitMovementCopy(activity: HomeLimitActivity, movement: HomeLimitActivity["movements"][number]) {
-  if (movement.correlation === "single") {
-    const session = activity.sessions.find((candidate) => candidate.id === movement.sessionIds[0]);
-    return session ? `Only “${session.title}” had an observed request in this interval.` : "One local session had an observed request in this interval.";
-  }
-  if (movement.correlation === "shared") return `${movement.sessionIds.length} local sessions had observed requests in this interval; attribution is ambiguous.`;
-  return "No matching session observation.";
-}
-
-function LimitActivityTimeline({ activity, activityId }: { activity: HomeLimitActivity; activityId: string }) {
-  const width = 760;
-  const timelineLeft = 170;
-  const timelineRight = 748;
+function LimitActivityOverview({ activity }: { activity: HomeLimitActivity }) {
   const observations = activity.observations.filter((observation) => Number.isFinite(Date.parse(observation.observedAt)) && Number.isFinite(observation.percent));
   const sessions = activity.sessions || [];
   const startMs = Date.parse(activity.windowStartsAt);
   const endMs = Date.parse(activity.generatedAt);
-  const hasExactWindowStart = activity.windowStartsAtExact === true && Number.isFinite(startMs);
-  const windowStartLabel = `${limitWindowAdjective(activity.window)} window began at ${limitTime(activity.windowStartsAt)}`;
-  const rejectedMs = Date.parse(activity.firstRejectedAt || "");
-  const hasRecordedRejection = Number.isFinite(rejectedMs) && rejectedMs >= startMs && rejectedMs <= endMs;
-  const rejectionLabel = `First rejection recorded at ${limitTime(activity.firstRejectedAt)}`;
   const rangeMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0;
-  const timelineX = (observedAt: string) => {
-    const observedMs = Date.parse(observedAt);
-    if (!rangeMs || !Number.isFinite(observedMs)) return timelineLeft;
-    return timelineLeft + Math.min(1, Math.max(0, (observedMs - startMs) / rangeMs)) * (timelineRight - timelineLeft);
-  };
-  const timelineY = (percent: number) => 18 + (1 - (limitPercent(percent) ?? 0) / 100) * 88;
-  const axisY = 134;
-  const windowStartMarkerY = 120;
-  const laneTop = 152;
-  const laneHeight = 32;
-  const height = laneTop + Math.max(1, sessions.length) * laneHeight + 28;
-  const titleId = `home-limit-activity-title-${activityId}`;
-  const descId = `home-limit-activity-desc-${activityId}`;
-  const linePath = observations.length > 1
-    ? observations.map((observation, index) => {
-      const x = timelineX(observation.observedAt).toFixed(1);
-      const y = timelineY(observation.percent).toFixed(1);
-      if (!index) return `M${x} ${y}`;
-      return `L${x} ${timelineY(observations[index - 1].percent).toFixed(1)}L${x} ${y}`;
-    }).join(" ")
-    : "";
-  const mobileLinePath = observations.length > 1
-    ? observations.map((observation, index) => {
-      const x = rangeMs ? Math.min(100, Math.max(0, ((Date.parse(observation.observedAt) - startMs) / rangeMs) * 100)) : 0;
-      const y = 6 + (1 - (limitPercent(observation.percent) ?? 0) / 100) * 48;
-      if (!index) return `M${x.toFixed(2)} ${y.toFixed(2)}`;
-      const previousY = 6 + (1 - (limitPercent(observations[index - 1].percent) ?? 0) / 100) * 48;
-      return `L${x.toFixed(2)} ${previousY.toFixed(2)}L${x.toFixed(2)} ${y.toFixed(2)}`;
-    }).join(" ")
-    : "";
-  const mobilePosition = (observedAt: string) => {
+  const position = (observedAt: string) => {
     const observedMs = Date.parse(observedAt);
     if (!rangeMs || !Number.isFinite(observedMs)) return 0;
     return Math.min(100, Math.max(0, ((observedMs - startMs) / rangeMs) * 100));
   };
+  const reachedAt = observations
+    .filter((observation) => (limitPercent(observation.percent) ?? 0) >= 100)
+    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))[0]?.observedAt || null;
+  const startLabel = `${activity.windowStartsAtExact ? "Started" : "Shown from"} ${limitTime(activity.windowStartsAt)}`;
+  const reachedLabel = reachedAt ? `Reached 100% at ${limitTime(reachedAt)}` : null;
 
   return (
     <figure className="homeLimitActivityTimeline">
-      <figcaption><span>Account movement and request observations</span><small>Absolute provider limit · 0–100%</small></figcaption>
-      <svg className="homeLimitActivityDesktopPlot" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={`${titleId} ${descId}`}>
-        <title id={titleId}>{activity.label} account limit timeline</title>
-        <desc id={descId}>Provider-reported percentage observations from {limitTime(activity.windowStartsAt)} to {limitTime(activity.generatedAt)}, with request observations in account-wide session lanes.</desc>
-        {[0, 50, 100].map((percent) => <g key={percent}><path className="homeLimitActivityGuide" d={`M${timelineLeft} ${timelineY(percent)}H${timelineRight}`} /><text className="homeLimitActivityAxis" x={timelineLeft - 10} y={timelineY(percent) + 4} textAnchor="end">{percent}%</text></g>)}
-        <text className="homeLimitActivityAxis" x={timelineLeft} y={axisY}>{limitTime(activity.windowStartsAt)}</text>
-        <text className="homeLimitActivityAxis" x={timelineRight} y={axisY} textAnchor="end">{limitTime(activity.generatedAt)}</text>
-        {linePath && <path className="homeLimitActivityLine" d={linePath} />}
-        {observations.map((observation, index) => <circle className="homeLimitActivityObservation" key={`${observation.observedAt}-${index}`} cx={timelineX(observation.observedAt)} cy={timelineY(observation.percent)} r="4" aria-label={`${Math.round(limitPercent(observation.percent) ?? 0)}% observed at ${limitTime(observation.observedAt)}`} />)}
-        {hasRecordedRejection && <circle className="homeLimitActivityRejection" cx={timelineX(activity.firstRejectedAt!)} cy={timelineY(100)} r="5" tabIndex={0} aria-label={rejectionLabel}><title>{rejectionLabel}</title></circle>}
-        {hasExactWindowStart && <circle className="homeLimitActivityWindowStart" cx={timelineLeft} cy={windowStartMarkerY} r="4" tabIndex={0} aria-label={windowStartLabel}><title>{windowStartLabel}</title></circle>}
-        {sessions.length ? sessions.map((session, index) => {
-          const y = laneTop + index * laneHeight;
-          return <g className="homeLimitActivityLane" key={session.id}>
-            <text className="homeLimitActivityLaneLabel" x="0" y={y + 5}>{session.title}</text>
-            <text className="homeLimitActivityLaneProject" x="0" y={y + 19}>{session.project} · {session.isLive ? "live" : "closed"}</text>
-            <path className="homeLimitActivityLaneTrack" d={`M${timelineLeft} ${y}H${timelineRight}`} />
-            {session.requestObservations.map((observation, observationIndex) => <rect className="homeLimitActivityRequest" key={`${observation.id}-${observationIndex}`} x={timelineX(observation.observedAt) - 4} y={y - 4} width="8" height="8" aria-label={`${session.title}, ${session.project}, ${session.isLive ? "live" : "closed"} request observed at ${limitTime(observation.observedAt)}`} />)}
-          </g>;
-        }) : <text className="homeLimitActivityNoLanes" x="0" y={laneTop + 5}>No session request observations</text>}
-      </svg>
-      <div className="homeLimitActivityMobilePlot">
-        <div className="homeLimitActivityMobileChart">
-          <svg viewBox="0 0 100 60" preserveAspectRatio="none" role="img" aria-label={`${activity.label} provider percentage across the displayed window`}>
-            {[6, 30, 54].map((y) => <path className="homeLimitActivityGuide" d={`M0 ${y}H100`} key={y} />)}
-            {mobileLinePath && <path className="homeLimitActivityLine" d={mobileLinePath} />}
-            {observations.map((observation, index) => <rect className="homeLimitActivityObservation" key={`${observation.observedAt}-mobile-${index}`} x={mobilePosition(observation.observedAt) - .7} y={5 + (1 - (limitPercent(observation.percent) ?? 0) / 100) * 48} width="1.4" height="4" />)}
-          </svg>
-          {hasExactWindowStart && <span className="homeLimitActivityMobileWindowStart" role="img" tabIndex={0} aria-label={windowStartLabel} title={windowStartLabel} />}
-          {hasRecordedRejection && <span className="homeLimitActivityRejection homeLimitActivityMobileRejection" role="img" tabIndex={0} style={{ left: `${mobilePosition(activity.firstRejectedAt!)}%` }} aria-label={rejectionLabel} title={rejectionLabel} />}
-        </div>
-        <div className="homeLimitActivityMobileAxis"><span>{limitTime(activity.windowStartsAt)}</span><span>{limitTime(activity.generatedAt)}</span></div>
-        <div className="homeLimitActivityMobileLanes">
-          {sessions.length ? sessions.map((session) => <div className="homeLimitActivityMobileLane" key={`${session.id}-mobile`}>
-            <span><strong>{session.title}</strong><small>{session.project} · {session.isLive ? "live" : "closed"}</small></span>
-            <i aria-label={`${session.title} request observations`}>
-              {session.requestObservations.map((observation) => <b key={`${observation.id}-mobile`} style={{ left: `${mobilePosition(observation.observedAt)}%` }} title={`Request observed at ${limitTime(observation.observedAt)}`} />)}
-            </i>
-          </div>) : <p className="homeUnavailable">No session request observations</p>}
-        </div>
+      <figcaption>Session request observations</figcaption>
+      <div className="homeLimitActivitySessions">
+        {sessions.length ? sessions.map((session) => <div className="homeLimitActivitySession" key={session.id}>
+          <span><strong>{session.title}</strong><small>{session.project} · {session.isLive ? "live" : "closed"}</small></span>
+          <i aria-label={`${session.title} request observations`}>
+            {session.requestObservations.map((observation) => <b key={observation.id} style={{ left: `${position(observation.observedAt)}%` }} title={`Request observed at ${limitTime(observation.observedAt)}`} />)}
+          </i>
+        </div>) : <p className="homeUnavailable">No session request observations</p>}
+      </div>
+      <div className="homeLimitActivityScale" role="img" aria-label={`${activity.label} limit range from 0 to 100 percent. ${startLabel}.${reachedLabel ? ` ${reachedLabel}.` : ""}`}>
+        <div className="homeLimitActivityScaleLabels"><span>0</span><span>100%</span></div>
+        <i className="homeLimitActivityScaleTrack" aria-hidden="true">{reachedLabel && <b />}</i>
+        <div className="homeLimitActivityScaleTimes"><span>{startLabel}</span>{reachedLabel && <span className="homeLimitActivityScaleReached">{reachedLabel}</span>}</div>
       </div>
     </figure>
   );
-}
-
-function LimitActivityMovements({ activity, activityId }: { activity: HomeLimitActivity; activityId: string }) {
-  const movements = [...(activity.movements || [])].sort((left, right) => Date.parse(right.to) - Date.parse(left.to)).slice(0, 4);
-  const headingId = `home-limit-movements-heading-${activityId}`;
-  return <aside className="homeLimitMovements" aria-labelledby={headingId}>
-    <h3 id={headingId}>Newest observed movements</h3>
-    {movements.length ? <ol>{movements.map((movement) => <li className="homeLimitMovement" key={movement.id}>
-      <strong>{movement.changePoints > 0 ? "+" : ""}{Number.isFinite(movement.changePoints) ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(movement.changePoints) : "—"} points</strong>
-      <span>{limitInterval(movement.from, movement.to)}</span>
-      <small>{limitMovementCopy(activity, movement)}</small>
-    </li>)}</ol> : <p className="homeUnavailable">No observed movements yet.</p>}
-    <p className="homeLimitActivityNote">Correlation, not billing attribution. These account-limit movements are shown alongside nearby request observations; they do not assign usage, cost, or causation to sessions.</p>
-  </aside>;
 }
 
 function HomeLimitActivitySummary({ activities }: { activities: HomeLimitActivity[] }) {
@@ -204,9 +112,8 @@ function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[
     summary={<HomeLimitActivitySummary activities={activities} />}
     title="Limit activity"
   >
-    <p className="homeLimitActivityDescription">Selected account windows correlated with local request observations.</p>
-    {activities.length ? activities.map((activity, index) => {
-      const activityId = domId(`${activity.provider}-${activity.limitId}-${index}`);
+    <p className="homeLimitActivityDescription">Local session requests within selected account windows.</p>
+    {activities.length ? activities.map((activity) => {
       const percent = limitPercent(activity.percent);
       const observations = activity.observations || [];
       const coverage = activity.partialCoverage ? "Partial coverage · observations may begin after the window started." : null;
@@ -216,11 +123,11 @@ function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[
           <div><ProviderBadge source={activity.source} /><h3>{activity.label}</h3><small>{activity.window}</small></div>
           <div className="homeLimitActivityCurrent"><strong>{percent === null ? "—" : `${Math.round(percent)}%`}</strong><span><ResetCountdownText value={activity.resetsAt} /></span></div>
         </header>
-        {activity.status === "collecting" && <p className="homeLimitActivityStatus" role="status">Collecting account observations; movement history will appear as the window fills.</p>}
+        {activity.status === "collecting" && <p className="homeLimitActivityStatus" role="status">Collecting account observations.</p>}
         {!observations.length && activity.status !== "collecting" && <p className="homeLimitActivityStatus">No account limit observations in this window.</p>}
         {coverage && <p className="homeLimitActivityCoverage">{coverage}</p>}
         {activity.eventsTruncated && <p className="homeLimitActivityCoverage">Request evidence is incomplete or bounded to a recent window.</p>}
-        <div className="homeLimitActivityBody"><LimitActivityTimeline activity={activity} activityId={activityId} /><LimitActivityMovements activity={activity} activityId={activityId} /></div>
+        <LimitActivityOverview activity={activity} />
       </article>;
     }) : <p className="homeLimitActivityEmpty">No limit activity observed yet.</p>}
   </DashboardDisclosurePanel>;

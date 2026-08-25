@@ -109,7 +109,7 @@ describe("home dashboard", () => {
     await userEvent.click(screen.getByText("Limit activity"));
     expect(details).toHaveAttribute("open");
     expect(details?.querySelector(":scope > summary .homeLimitActivitySummary")).not.toBeInTheDocument();
-    expect(container.querySelector(".homeLimitActivityDescription")).toHaveTextContent("correlated with local request observations");
+    expect(container.querySelector(".homeLimitActivityDescription")).toHaveTextContent("Local session requests within selected account windows");
   });
 
   it("omits an unhelpful movement placeholder while account observations are collecting", async () => {
@@ -156,49 +156,43 @@ describe("home dashboard", () => {
     expect(activity).toHaveTextContent("31%");
     expect(activity).toHaveTextContent(/Reset/i);
     expect(activity).toHaveTextContent("Partial coverage");
-    expect(activity).toHaveTextContent("Correlation, not billing attribution.");
-    expect(activity).toHaveTextContent("Only “Pomegr home” had an observed request in this interval.");
     expect(activity).toHaveTextContent("pomegr · live");
     expect(activity).toHaveTextContent("other-repo · closed");
-    expect(activity!.querySelectorAll(".homeLimitActivityDesktopPlot .homeLimitActivityObservation")).toHaveLength(2);
-    expect(activity!.querySelectorAll(".homeLimitActivityDesktopPlot .homeLimitActivityRequest")).toHaveLength(2);
-    expect(activity!.querySelectorAll(".homeLimitActivityWindowStart, .homeLimitActivityMobileWindowStart")).toHaveLength(2);
-    expect(activity!.querySelector(".homeLimitActivityWindowStart")?.getAttribute("aria-label")).toMatch(/^5-hour window began at .+/);
-    expect(activity!.querySelector(".homeLimitActivityMobileWindowStart")?.getAttribute("title")).toMatch(/^5-hour window began at .+/);
-    const desktopRejection = activity!.querySelector(".homeLimitActivityRejection");
-    const mobileRejection = activity!.querySelector(".homeLimitActivityMobileRejection");
-    expect(desktopRejection).toBeInTheDocument();
-    expect(mobileRejection).toBeInTheDocument();
-    const rejectionLabel = desktopRejection?.getAttribute("aria-label");
-    expect(rejectionLabel).toMatch(/^First rejection recorded at /);
-    expect(desktopRejection?.querySelector("title")?.textContent).toBe(rejectionLabel);
-    expect(mobileRejection?.getAttribute("aria-label")).toBe(rejectionLabel);
-    expect(mobileRejection?.getAttribute("title")).toBe(rejectionLabel);
+    expect(activity!.querySelectorAll(".homeLimitActivitySession > i b")).toHaveLength(2);
+    expect(activity!.querySelector(".homeLimitActivityScaleLabels")).toHaveTextContent("0100%");
+    expect(activity!.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
+    expect(activity!.querySelector(".homeLimitActivityScaleTrack b")).not.toBeInTheDocument();
+    expect(activity!.querySelector(".homeLimitActivityTimeline svg, .homeLimitActivityObservation, .homeLimitActivityWindowStart, .homeLimitActivityRejection")).not.toBeInTheDocument();
+    expect(activity).not.toHaveTextContent(/First rejection|Newest observed movements|No observed movements/i);
     expect(activity).not.toHaveTextContent(/token totals?|share|drainer/i);
   });
 
-  it("omits limit rejection markers when no first rejection is recorded", async () => {
+  it("shows one terminal mark when a provider observation reaches 100%", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
-      limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, firstRejectedAt: null })),
+      limitActivities: snapshot.limitActivities.map((activity) => ({
+        ...activity,
+        percent: 100,
+        observations: [...activity.observations, { observedAt: "2026-08-23T12:05:00.000Z", percent: 100 }],
+      })),
     }));
     const { container } = render(<HomeDashboard />);
     await screen.findByText("Limit activity");
     const activity = container.querySelector(".homeLimitActivity");
     expect(activity).toBeInTheDocument();
-    expect(activity!.querySelector(".homeLimitActivityRejection, .homeLimitActivityMobileRejection")).not.toBeInTheDocument();
-    expect(activity).not.toHaveTextContent("First rejection recorded at");
+    expect(activity!.querySelectorAll(".homeLimitActivityScaleTrack b")).toHaveLength(1);
+    expect(activity!.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/Reached 100% at .+/);
+    expect(activity!.querySelector(".homeLimitActivityScale")?.getAttribute("aria-label")).toMatch(/Reached 100% at .+/);
   });
 
-  it("keeps the exact window-start marker when the provider omits resetsAt", async () => {
+  it("keeps the exact start time when the provider omits resetsAt", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
     }));
     const { container } = render(<HomeDashboard />);
     await screen.findByText("Limit activity");
-    expect(container.querySelector(".homeLimitActivityWindowStart")).toBeInTheDocument();
-    expect(container.querySelector(".homeLimitActivityMobileWindowStart")).toBeInTheDocument();
+    expect(container.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
   });
 
   it("labels a selected seven-day activity window without five-hour copy", async () => {
@@ -215,8 +209,7 @@ describe("home dashboard", () => {
     }));
     const { container } = render(<HomeDashboard />);
     await screen.findByText("Limit activity");
-    expect(container.querySelector(".homeLimitActivityWindowStart")?.getAttribute("aria-label")).toMatch(/^7-day window began at .+/);
-    expect(container.querySelector(".homeLimitActivityMobileWindowStart")?.getAttribute("title")).toMatch(/^7-day window began at .+/);
+    expect(container.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
     expect(container.querySelector(".homeLimitActivity")).not.toHaveTextContent("5-hour limit activity");
   });
 
