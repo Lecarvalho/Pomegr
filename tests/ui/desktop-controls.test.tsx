@@ -97,41 +97,4 @@ describe("desktop controls", () => {
     expect(JSON.stringify((window as Window & { pomegrDesktop?: unknown }).pomegrDesktop)).not.toMatch(/provider|command|prompt|response/i);
   });
 
-  it("offers a verified update at the true bottom of the sidebar and installs it once", async () => {
-    const user = userEvent.setup();
-    let listener: ((next: DesktopState) => void) | undefined;
-    const state: DesktopState = {
-      paused: false,
-      launchAtLogin: false,
-      launchAtLoginAvailable: true,
-      closeBehavior: "ask",
-      notifications: true,
-      notificationQuietUntil: null,
-      update: { status: "ready", version: "1.2.3" },
-    };
-    const installUpdate = vi.fn(async () => ({ ...state, update: { status: "installing" as const, version: "1.2.3" } }));
-    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
-      saveReport: vi.fn(),
-      getDesktopState: async () => state,
-      setPaused: vi.fn(),
-      setLaunchAtLogin: vi.fn(),
-      setCloseBehavior: vi.fn(),
-      setNotifications: vi.fn(),
-      setNotificationQuiet: vi.fn(),
-      installUpdate,
-      quit: vi.fn(),
-      onDesktopStateChanged(callback: (next: DesktopState) => void) { listener = callback; return () => { listener = undefined; }; },
-    };
-    vi.spyOn(globalThis, "fetch").mockImplementation((input) => String(input).startsWith("/api/sessions")
-      ? response({ sessions: [] })
-      : response(createEmptyMonitorState({ connected: true })));
-
-    render(<Dashboard />);
-    const action = await screen.findByRole("button", { name: "Restart Pomegr to update to version 1.2.3" });
-    expect(action.closest(".sidebarFooter")).toBeInTheDocument();
-    await user.click(action);
-    expect(installUpdate).toHaveBeenCalledOnce();
-    act(() => listener?.({ ...state, update: { status: "installing", version: "1.2.3" } }));
-    expect(await screen.findByRole("button", { name: "Restarting Pomegr to update to version 1.2.3" })).toBeDisabled();
-  });
 });

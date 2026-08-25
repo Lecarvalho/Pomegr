@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { HomeProjectSummary, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
-import { CloseButton } from "./components/CloseButton";
+import { NavigationMenuButton } from "./components/NavigationMenuButton";
 import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
@@ -126,7 +126,6 @@ export function HomeDashboard() {
   const [snapshot, setSnapshot] = useState<HomeSnapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const projects = useMemo(() => snapshot.projects || [], [snapshot.projects]);
 
   useEffect(() => {
@@ -160,28 +159,12 @@ export function HomeDashboard() {
     };
   }, []);
 
-  const liveSessions = projects.flatMap((project) => project.sessions || []);
   return (
     <LiveClockProvider running={connected}>
-      <div className="appFrame homeApp">
-        {sidebarOpen && <button className="sidebarBackdrop" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close home navigation" />}
-        <aside id="home-navigation" className={`sessionSidebar homeSidebar${sidebarOpen ? " open" : ""}`}>
-          <div className="sidebarHeader homeSidebarHeader"><CloseButton label="Close home navigation" onClick={() => setSidebarOpen(false)} /></div>
-          <nav className="sessionNav">
-            <div className="liveHeading"><span>HOME</span><small>{projects.length}</small></div>
-            <Link className="liveSessionLink selected" href="/" aria-current="page" onClick={() => setSidebarOpen(false)}>
-              <i /><span><strong>Running sessions</strong><small>{liveSessions.length} live across projects</small></span>
-            </Link>
-            <div className="historyHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
-            <div className="liveSessionList">
-              {liveSessions.map((session) => <Link className="liveSessionLink" data-needs-input={session.needsInput || undefined} key={session.id} href={sessionHref(session)} onClick={() => setSidebarOpen(false)}><i /><span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project}</small></span></Link>)}
-            </div>
-          </nav>
-        </aside>
-        <main className="shell" id="top">
+      <main className="shell homeApp" id="top">
           <header className="topbar">
             <div className="topbarLead">
-              <button className="sessionMenuButton" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open home navigation" aria-expanded={sidebarOpen} aria-controls="home-navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
+              <NavigationMenuButton />
               <PomegrBrand href="/" />
             </div>
             <div className="topActions"><span className={`connection ${loading ? "connecting" : connected ? "online" : "offline"}`}><i />{loading ? "Connecting to monitor" : connected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
@@ -195,8 +178,7 @@ export function HomeDashboard() {
             {projects.map((project) => <ProjectFolio key={project.project} project={project} />)}
           </section>
           <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{connected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
-        </main>
-      </div>
+      </main>
     </LiveClockProvider>
   );
 }

@@ -11,14 +11,16 @@ import { SessionRelativeTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 import type { DesktopState } from "../DesktopControls";
 
-export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, update, onInstallUpdate, onClose, onSelect }: {
+export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect }: {
   open: boolean;
   sessions: SessionSummary[];
   selectedSessionId: string | null;
   currentSessionId: string | null;
   viewingHistory: boolean;
-  update: DesktopState["update"] | null;
-  onInstallUpdate: () => void;
+  homeSelected?: boolean;
+  aboutSelected?: boolean;
+  update?: DesktopState["update"] | null;
+  onInstallUpdate?: () => void;
   onClose: () => void;
   onSelect: (session: SessionSummary) => void;
 }) {
@@ -41,7 +43,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
         </div>
         <nav className="sessionNav">
           <div className="liveHeading"><span>HOME</span><small>{liveProjectCount}</small></div>
-          <Link className="liveSessionLink" href="/" onClick={onClose} aria-label="Home — running sessions">
+          <Link className={`liveSessionLink ${homeSelected ? "selected" : ""}`} href="/" onClick={onClose} aria-label="Home — running sessions" aria-current={homeSelected ? "page" : undefined}>
             <i />
             <span><strong>Running sessions</strong><small>{liveSessions.length} live across projects</small></span>
           </Link>
@@ -83,7 +85,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
                 </section>
               );
             })}
-            <a className="sidebarAboutLink" href="/about"><span>About Pomegr</span><i aria-hidden="true">→</i></a>
+            <Link className={`sidebarAboutLink ${aboutSelected ? "selected" : ""}`} href="/about" onClick={onClose} aria-current={aboutSelected ? "page" : undefined}><span>About Pomegr</span><i aria-hidden="true">→</i></Link>
           </div>
         </nav>
         {update?.version && (update.status === "ready" || update.status === "installing") && (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { NavigationMenuButton } from "../components/NavigationMenuButton";
 import { PomegrBrand } from "../components/PomegrBrand";
 import { ThemeToggle } from "../components/ThemeToggle";
 
@@ -17,7 +18,10 @@ export default function About() {
   return (
     <main className="aboutShell">
       <header className="topbar">
-        <PomegrBrand label="Pomegr dashboard" />
+        <div className="topbarLead">
+          <NavigationMenuButton />
+          <PomegrBrand label="Pomegr dashboard" />
+        </div>
         <div className="topActions">
           <ThemeToggle />
           <Link className="ghostButton aboutBack" href="/">Back to dashboard</Link>

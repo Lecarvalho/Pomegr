@@ -49,7 +49,7 @@ describe("home dashboard", () => {
     expect(await screen.findByRole("heading", { name: "pomegr" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "7-day history" })).toBeInTheDocument();
     expect(screen.getByText("3", { selector: ".homeHistoryMetrics b" })).toBeInTheDocument();
-    expect(screen.getAllByText("Build home")).toHaveLength(2);
+    expect(screen.getByText("Build home")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
     expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
     expect(container.querySelector('.homeLimitRow[aria-label="Current session, 5 hours, 31% used"]')).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe("home dashboard", () => {
       projects: snapshot.projects.map((project) => ({ ...project, history: { ...project.history, status: "loading" as const } })),
     }));
     render(<HomeDashboard />);
-    expect(await screen.findAllByText("Build home")).toHaveLength(2);
+    expect(await screen.findByText("Build home")).toBeInTheDocument();
     expect(screen.getByText("Loading recorded sessions…")).toBeInTheDocument();
     expect(screen.queryByText("median wall time")).not.toBeInTheDocument();
   });

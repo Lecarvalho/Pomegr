@@ -12,7 +12,6 @@ import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
-import { SessionSidebar } from "./components/dashboard/SessionSidebar";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
 import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
@@ -20,6 +19,7 @@ import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import type { DesktopState } from "./components/DesktopControls";
+import { useAppNavigation } from "./components/app-navigation";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -57,7 +57,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const appNavigation = useAppNavigation();
   const [paused, setPaused] = useState(false);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -202,26 +202,11 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     }
   }, [activeSessionId]);
 
-  const installUpdate = useCallback(() => {
-    void desktopBridge()?.installUpdate().then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
-
   const viewingHistory = data.view === "history";
   const connecting = loading && !data.error && !data.session;
   const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
   const clockRunning = data.connected && !viewingHistory && !paused && !switchingSession;
   const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
-
-  const selectSession = useCallback((session: SessionSummary) => {
-    if (session.id === selectedSessionId) {
-      setSidebarOpen(false);
-      return;
-    }
-    setSelectedSessionId(session.id);
-    setSidebarOpen(false);
-    setLoading(true);
-    window.history.pushState(null, "", `/sessions/${encodeSessionRoute(session.id)}`);
-  }, [selectedSessionId]);
 
   const generateReport = async () => {
     if (!data.session || reportGenerating) return;
@@ -265,10 +250,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
   return (
     <LiveClockProvider running={clockRunning}>
-      <div className="appFrame">
-        <SessionSidebar open={sidebarOpen} sessions={sessions} selectedSessionId={selectedSessionId} currentSessionId={data.session?.id || null} viewingHistory={viewingHistory} update={desktopState?.update || null} onInstallUpdate={installUpdate} onClose={() => setSidebarOpen(false)} onSelect={selectSession} />
-        <main className="shell" id="top">
-        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={sidebarOpen} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={() => setSidebarOpen(true)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
+      <main className="shell" id="top">
+        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={appNavigation.open} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={appNavigation.openNavigation} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
@@ -292,8 +275,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} />
         </>}
           <DashboardFooter connected={data.connected} connecting={connecting} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
-        </main>
-      </div>
+      </main>
     </LiveClockProvider>
   );
 }

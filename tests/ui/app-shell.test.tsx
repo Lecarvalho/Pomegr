@@ -1,0 +1,85 @@
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const navigation = vi.hoisted(() => ({ pathname: "/about", push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => navigation.pathname,
+  useRouter: () => ({ push: navigation.push }),
+}));
+
+import { AppShell } from "../../app/components/AppShell";
+import { NavigationMenuButton } from "../../app/components/NavigationMenuButton";
+import type { DesktopState } from "../../app/components/DesktopControls";
+
+function response(body: object) {
+  return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+}
+
+const sessions = [
+  { id: "claude:live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Pomegr", updatedAt: "2026-08-24T12:00:00.000Z", isLive: true, needsInput: false },
+  { id: "codex:history-1", provider: "codex", source: "Codex", title: "Recorded work", project: "Pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: false, needsInput: false },
+] as const;
+
+afterEach(() => {
+  delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
+  navigation.pathname = "/about";
+  navigation.push.mockReset();
+  vi.restoreAllMocks();
+});
+
+describe("shared app shell", () => {
+  it("shows the same live and historical catalog on Home", async () => {
+    navigation.pathname = "/";
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+
+    render(<AppShell><main><h1>Home content</h1></main></AppShell>);
+
+    expect(await screen.findByRole("link", { name: "Home — running sessions" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("HISTORY")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live work/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Pomegr1$/ })).toBeInTheDocument();
+  });
+
+  it("keeps the canonical live and history navigation beside About and routes session selection", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+
+    render(<AppShell><main><NavigationMenuButton /><h1>About content</h1></main></AppShell>);
+
+    expect(await screen.findByRole("complementary", { name: "Session navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "About content" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "About Pomegr" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("HISTORY")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live work/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Pomegr1$/ }));
+    await user.click(screen.getByRole("button", { name: /Recorded work/ }));
+    expect(navigation.push).toHaveBeenCalledWith("/sessions/codex-history-1");
+
+    await user.click(screen.getByRole("button", { name: "Open session navigation" }));
+    expect(screen.getByRole("complementary", { name: "Session navigation" })).toHaveClass("open");
+  });
+
+  it("keeps the desktop update offer in the persistent sidebar", async () => {
+    const user = userEvent.setup();
+    let listener: ((next: DesktopState) => void) | undefined;
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, update: { status: "ready", version: "1.2.3" } };
+    const installUpdate = vi.fn(async () => ({ ...state, update: { status: "installing" as const, version: "1.2.3" } }));
+    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
+      getDesktopState: async () => state,
+      installUpdate,
+      onDesktopStateChanged(callback: (next: DesktopState) => void) { listener = callback; return () => { listener = undefined; }; },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));
+
+    render(<AppShell><main>Home content</main></AppShell>);
+    const action = await screen.findByRole("button", { name: "Restart Pomegr to update to version 1.2.3" });
+    expect(action.closest(".sidebarFooter")).toBeInTheDocument();
+    await user.click(action);
+    expect(installUpdate).toHaveBeenCalledOnce();
+    act(() => listener?.({ ...state, update: { status: "installing", version: "1.2.3" } }));
+    expect(await screen.findByRole("button", { name: "Restarting Pomegr to update to version 1.2.3" })).toBeDisabled();
+  });
+});
