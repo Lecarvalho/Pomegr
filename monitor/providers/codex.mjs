@@ -26,6 +26,7 @@ import {
 import {
   mergeCodexSignals,
   parseCodexSignalRecords,
+  readCodexSignals,
 } from "./codex-session-signals.mjs";
 import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
@@ -805,6 +806,18 @@ export function createCodexProvider(options = {}) {
     const compactions = [];
     const pullRequestCreationGroups = [];
     let rolloutEvidenceAvailable = false;
+    const liveSignalsByThreadId = historical ? new Map() : new Map(await Promise.all(
+      allMetadata
+        .filter((thread) => thread.rolloutFile)
+        .map(async (thread) => [
+          thread.localId,
+          await readCodexSignals(
+            thread.rolloutFile,
+            recordsByThreadId.get(thread.localId) || [],
+            generationsByThreadId.get(thread.localId) || null,
+          ),
+        ]),
+    ));
     const rolloutCalls = allMetadata.flatMap((thread) => {
       const actor = actorByThreadId.get(thread.localId);
       if (!actor || !thread.rolloutFile) return [];
@@ -844,7 +857,9 @@ export function createCodexProvider(options = {}) {
         agentStatus,
         rolloutHeuristicIdle,
       }));
-      rolloutSignalsByActor.set(actor.id, parseCodexSignalRecords(records));
+      rolloutSignalsByActor.set(actor.id, historical
+        ? parseCodexSignalRecords(records)
+        : liveSignalsByThreadId.get(thread.localId) || parseCodexSignalRecords(records));
       rolloutSkillsByActor.set(actor.id, parseCodexSkillUsageRecords(records));
       pullRequestCreationGroups.push(parseCodexPullRequestRecords(records, {
         actorId: actor.id,

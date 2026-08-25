@@ -1,0 +1,43 @@
+# Pomegr reporting policy
+
+Policy version: 6
+
+## Session naming
+
+- After the first substantive request makes the work clear, set one concise, meaningful title through an available provider-native capability. If no safe title capability is available, allow the provider's automatic title.
+- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.
+
+## Privacy and semantics
+
+- Report only project-specific state that helps an observer understand the work.
+- Treat every signal as agent-reported and potentially stale, not as a Pomegr judgment.
+- Report transitions, not heartbeats. Replace a signal when a new configured state applies; clear agent or session state when none applies.
+- Never include prompts, responses, secrets, commands, stdout, stderr, tool results, credential values, or sensitive repository content.
+- Use only labels and conditions approved below. Pomegr's universal MCP validation remains the safety boundary, not this file as an application enum.
+
+## Delegated agent tooling
+
+- A subagent can start without this policy in its context. Declare every signal-owning subagent type under `Delegated agents`; the active provider adapter's delegation hook then supplies the applicable rows to that subagent.
+- Never rely on the delegating session remembering to paste the rows. Injection is the mechanism; a pasted copy is only a fallback, and the hook does not append a second copy when the prompt already carries one.
+- Every signal-owning subagent must retain access to the Pomegr MCP server and the applicable reporting tools. A custom agent definition that replaces or disables inherited MCP configuration must explicitly restore that access.
+- Match the logical tool suffixes `report_agent_signal`, `report_task_signal`, and `clear_agent_signal` in the resolved Pomegr MCP namespace; provider-specific prefixes are not part of this policy.
+- Never assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool. Add the tool, or keep the reporting in the delegating session.
+
+## Delegated agents
+
+_No delegated agent types configured._
+
+## Session signals
+
+| Label | Tone | Report when | Replace or clear when |
+| --- | --- | --- | --- |
+| Privacy verified | positive | A change affecting exposed data, desktop boundaries, or provider normalization has passed the applicable privacy and serialization checks. | Clear after later edits invalidate the verification; replace when another configured session outcome applies. |
+| Release verified | positive | A Windows release candidate has passed its required quality, packaging, privacy, signature, and artifact checks. | Clear when the candidate changes or the session moves to unrelated work; replace when another configured session outcome applies. |
+
+## Agent signals
+
+_No project-specific signals configured._
+
+## Task signals
+
+_No project-specific signals configured._

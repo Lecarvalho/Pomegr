@@ -14,6 +14,20 @@ const signalCall = (timestamp, name, callId, input, type = "function_call") => r
   call_id: callId,
   [type === "custom_tool_call" ? "input" : "arguments"]: JSON.stringify(input),
 });
+const appMcpSignalCall = (timestamp, tool, input, options = {}) => record(timestamp, "event_msg", {
+  type: "item_completed",
+  item: {
+    type: "McpToolCall",
+    id: options.id || `mcp-${tool}`,
+    server: options.server || "pomegr",
+    tool,
+    arguments: input,
+    pluginId: options.pluginId || "pomegr@synthetic",
+    readOnlyHint: true,
+    status: options.status || "completed",
+    result: options.result || { content: [{ type: "text", text: "PRIVATE_TOOL_RESULT_MUST_NOT_LEAK" }] },
+  },
+});
 const PLUGIN_MCP_PREFIX = "mcp__plugin_pomegr_pomegr__";
 
 test("accepts only allowlisted Codex Pomegr signal calls and rollout timestamps", () => {
@@ -55,6 +69,80 @@ test("accepts plugin-namespaced tools and applies report-clear-report transition
     reportedAt: "2026-08-11T14:02:00.000Z",
   });
   assert.equal(signals.session, null);
+});
+
+test("accepts completed Codex app MCP items without exposing wrapper metadata or results", () => {
+  const signals = parseCodexSignalRecords([
+    appMcpSignalCall("2026-08-11T14:00:00.000Z", "report_agent_signal", {
+      label: "Investigating",
+      tone: "info",
+      description: "Reviewing the provider boundary.",
+    }),
+    appMcpSignalCall("2026-08-11T14:01:00.000Z", "report_session_signal", {
+      label: "Privacy verified",
+      tone: "positive",
+      description: "The bounded signal surface passed review.",
+    }),
+    appMcpSignalCall("2026-08-11T14:02:00.000Z", "report_task_signal", {
+      task_id: "command-1",
+      label: "Checks passed",
+      tone: "positive",
+    }),
+  ]);
+
+  assert.deepEqual(signals.agent, {
+    label: "Investigating",
+    tone: "info",
+    reportedAt: "2026-08-11T14:00:00.000Z",
+    description: "Reviewing the provider boundary.",
+  });
+  assert.deepEqual(signals.session, {
+    label: "Privacy verified",
+    tone: "positive",
+    reportedAt: "2026-08-11T14:01:00.000Z",
+    description: "The bounded signal surface passed review.",
+  });
+  assert.deepEqual([...signals.tasks], [["command-1", {
+    label: "Checks passed",
+    tone: "positive",
+    reportedAt: "2026-08-11T14:02:00.000Z",
+  }]]);
+  assertNoPrivateFixtureSentinels(signals, "Codex app MCP signal evidence");
+  assert.doesNotMatch(JSON.stringify(signals), /pluginId|readOnlyHint|PRIVATE_TOOL_RESULT_MUST_NOT_LEAK/);
+});
+
+test("ignores incomplete, foreign, malformed, and non-signal Codex app MCP items", () => {
+  const signals = parseCodexSignalRecords([
+    appMcpSignalCall("2026-08-11T14:00:00.000Z", "report_session_signal", { label: "Failed", tone: "negative" }, { status: "failed" }),
+    appMcpSignalCall("2026-08-11T14:01:00.000Z", "report_session_signal", { label: "Spoofed", tone: "negative" }, { server: "another" }),
+    appMcpSignalCall("2026-08-11T14:02:00.000Z", "unrecognized_signal", { label: "Spoofed", tone: "negative" }),
+    appMcpSignalCall("2026-08-11T14:03:00.000Z", "report_session_signal", { label: "Spoofed", tone: "negative", extra: true }),
+    record("2026-08-11T14:04:00.000Z", "event_msg", {
+      type: "item_started",
+      item: { type: "McpToolCall", server: "pomegr", tool: "report_session_signal", arguments: { label: "Spoofed", tone: "negative" }, status: "completed" },
+    }),
+  ]);
+
+  assert.equal(signals.agent, null);
+  assert.equal(signals.session, null);
+  assert.deepEqual([...signals.tasks], []);
+});
+
+test("applies Codex app MCP report and clear transitions in transcript order", () => {
+  const signals = parseCodexSignalRecords([
+    appMcpSignalCall("2026-08-11T14:00:00.000Z", "report_session_signal", { label: "Needs input", tone: "warning" }),
+    appMcpSignalCall("2026-08-11T14:01:00.000Z", "clear_session_signal", {}),
+    appMcpSignalCall("2026-08-11T14:02:00.000Z", "report_session_signal", { label: "Privacy verified", tone: "positive" }),
+    appMcpSignalCall("2026-08-11T14:03:00.000Z", "report_agent_signal", { label: "Reviewed", tone: "info" }),
+    appMcpSignalCall("2026-08-11T14:04:00.000Z", "clear_agent_signal", {}),
+  ]);
+
+  assert.deepEqual(signals.session, {
+    label: "Privacy verified",
+    tone: "positive",
+    reportedAt: "2026-08-11T14:02:00.000Z",
+  });
+  assert.equal(signals.agent, null);
 });
 
 test("orders session reports and clears across Codex rollouts by timestamp", () => {
@@ -117,4 +205,54 @@ test("derives the reporting agent from each rollout and resolves task targets mo
   assert.deepEqual(task.signal, { label: "Checks passed", tone: "positive", reportedAt: "2026-08-11T15:00:03.000Z" });
   assert.doesNotMatch(JSON.stringify(evidence), /unknown-task|Spoofed|MCP_ARGUMENT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK/);
   assertNoPrivateFixtureSentinels(monitorStateFromProviderEvidence("codex", evidence), "Codex signal MonitorState");
+});
+
+test("retains a completed Codex app session signal outside the bounded live tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-signals-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "11");
+  await mkdir(directory, { recursive: true });
+  const filler = "PRIVATE_TRANSCRIPT_CONTENT_MUST_NOT_LEAK".repeat(16_000);
+  const records = [
+    record("2026-08-11T15:00:00.000Z", "session_meta", { id: "live-signal-parent", cwd: "C:\\synthetic\\repo", source: "cli" }),
+    appMcpSignalCall("2026-08-11T15:00:01.000Z", "report_session_signal", {
+      label: "Privacy verified",
+      tone: "positive",
+      description: "The bounded live signal remains current.",
+    }),
+    record("2026-08-11T15:00:02.000Z", "response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: filler }],
+    }),
+    record("2026-08-11T15:00:03.000Z", "event_msg", { type: "token_count", info: null }),
+  ];
+  await writeFile(path.join(directory, "rollout-live.jsonl"), `${records.map(JSON.stringify).join("\n")}\n`, "utf8");
+
+  const provider = createCodexProvider({ codexHome: root, cacheMs: 0, includeArchived: false });
+  const evidence = await provider.readSession("live-signal-parent", { historical: false });
+
+  assert.deepEqual(evidence.session.signal, {
+    label: "Privacy verified",
+    tone: "positive",
+    reportedAt: "2026-08-11T15:00:01.000Z",
+    description: "The bounded live signal remains current.",
+  });
+  assert.doesNotMatch(JSON.stringify(evidence), /PRIVATE_TRANSCRIPT_CONTENT_MUST_NOT_LEAK/);
+  assertNoPrivateFixtureSentinels(monitorStateFromProviderEvidence("codex", evidence), "Codex live signal MonitorState");
+
+  const replacement = [
+    record("2026-08-11T16:00:00.000Z", "session_meta", { id: "live-signal-parent", cwd: "C:\\synthetic\\repo", source: "cli" }),
+    record("2026-08-11T16:00:01.000Z", "response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "PRIVATE_REPLACEMENT_CONTENT_MUST_NOT_LEAK".repeat(17_000) }],
+    }),
+    record("2026-08-11T16:00:02.000Z", "event_msg", { type: "token_count", info: null }),
+  ];
+  await writeFile(path.join(directory, "rollout-live.jsonl"), `${replacement.map(JSON.stringify).join("\n")}\n`, "utf8");
+  const replacedEvidence = await provider.readSession("live-signal-parent", { historical: false });
+
+  assert.equal(replacedEvidence.session.signal, null);
+  assert.doesNotMatch(JSON.stringify(replacedEvidence), /PRIVATE_REPLACEMENT_CONTENT_MUST_NOT_LEAK|Privacy verified/);
 });
