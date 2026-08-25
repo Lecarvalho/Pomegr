@@ -6,6 +6,7 @@ export const DEFAULT_CODEX_SCAN_LIMIT = 500;
 const DEFAULT_INDEX_BYTES = 1024 * 1024;
 const DEFAULT_HEADER_BYTES = 64 * 1024;
 const MAX_TITLE_LENGTH = 160;
+const MAX_AGENT_PATH_LENGTH = 512;
 const MAX_PATH_LENGTH = 4096;
 const MAX_BRANCH_LENGTH = 256;
 const SAFE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -52,6 +53,12 @@ export function codexSourceKind(source) {
   if (subagent && typeof subagent === "object" && ("thread_spawn" in subagent || "threadSpawn" in subagent)) return "subAgentThreadSpawn";
   if (subagent !== undefined) return "subAgentOther";
   return "unknown";
+}
+
+export function isCodexApprovalReviewerSource(source) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const subagent = source.subAgent ?? source.subagent;
+  return Boolean(subagent && typeof subagent === "object" && subagent.other === "guardian");
 }
 
 function projectFromCwd(cwd) {
@@ -162,9 +169,11 @@ export function readCodexRolloutHeader(file, options = {}) {
     createdAt: codexTimestamp(payload.timestamp ?? sessionRecord.timestamp),
     updatedAt: stat.mtime.toISOString(),
     sourceKind,
+    approvalReviewer: isCodexApprovalReviewerSource(payload.source),
     sessionId: safeRelatedId(payload.sessionId ?? payload.session_id) || localId,
     parentThreadId,
     forkedFromId: safeRelatedId(payload.forkedFromId ?? payload.forked_from_id),
+    agentPath: boundedText(payload.agentPath ?? payload.agent_path ?? spawned.agent_path ?? spawned.agentPath, MAX_AGENT_PATH_LENGTH),
     agentNickname: boundedText(payload.agentNickname ?? payload.agent_nickname ?? spawned.agent_nickname ?? spawned.agentNickname, MAX_TITLE_LENGTH),
     agentRole: boundedText(payload.agentRole ?? payload.agent_role ?? spawned.agent_role ?? spawned.agentRole, MAX_TITLE_LENGTH),
     runtimeStatus: null,
@@ -218,9 +227,11 @@ export function normalizeCodexThreadMetadata(thread, options = {}) {
     createdAt: codexTimestamp(thread.createdAt),
     updatedAt: codexTimestamp(thread.updatedAt) || codexTimestamp(thread.recencyAt),
     sourceKind: codexSourceKind(thread.source),
+    approvalReviewer: isCodexApprovalReviewerSource(thread.source),
     sessionId: localSessionId,
     parentThreadId: isSafeCodexSessionId(thread.parentThreadId) ? thread.parentThreadId : null,
     forkedFromId: safeRelatedId(thread.forkedFromId),
+    agentPath: boundedText(thread.agentPath, MAX_AGENT_PATH_LENGTH),
     agentNickname: boundedText(thread.agentNickname, MAX_TITLE_LENGTH),
     agentRole: boundedText(thread.agentRole, MAX_TITLE_LENGTH),
     runtimeStatus: codexThreadRuntimeStatus(thread.status),

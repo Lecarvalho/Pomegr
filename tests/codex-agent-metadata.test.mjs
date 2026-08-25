@@ -7,6 +7,7 @@ import {
   buildCodexAgentTree,
   parseCodexAgentRecords,
 } from "../monitor/providers/codex-agent-metadata.mjs";
+import { classifyCodexApprovalAction } from "../monitor/providers/codex-review-actions.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import {
   assertNoPrivateFixtureSentinels,
@@ -126,6 +127,303 @@ test("keeps a child rollout bound to its first thread metadata when it embeds pa
     { id: "primary", parentId: null, model: "gpt-root" },
     { id: "agent-child-thread", parentId: "primary", model: "gpt-child" },
   ]);
+});
+
+test("reconciles task aliases with child agent paths without creating phantom agents", () => {
+  const root = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-25T15:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "alias-root", session_id: "alias-root", source: "vscode" },
+    },
+    {
+      timestamp: "2026-08-25T15:00:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "spawn_agent",
+        call_id: "spawn-alias-child",
+        arguments: "{\"task_name\":\"catalogus_research\",\"message\":\"PROMPT_MUST_NOT_LEAK\"}",
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:02.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call_output",
+        call_id: "spawn-alias-child",
+        output: "{\"task_name\":\"/root/catalogus_research\"}",
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:04.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "interrupt_agent",
+        call_id: "stop-alias-child",
+        arguments: "{\"target\":\"catalogus_research\"}",
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:04.100Z",
+      type: "response_item",
+      payload: { type: "function_call_output", call_id: "stop-alias-child", output: "{\"previous_status\":\"running\"}" },
+    },
+    {
+      timestamp: "2026-08-25T15:00:05.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "followup_task",
+        call_id: "resume-alias-child",
+        arguments: "{\"target\":\"catalogus_research\",\"message\":\"PROMPT_MUST_NOT_LEAK\"}",
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:05.100Z",
+      type: "response_item",
+      payload: { type: "function_call_output", call_id: "resume-alias-child", output: "" },
+    },
+  ], { localId: "alias-root" });
+  const child = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-25T15:00:01.500Z",
+      type: "session_meta",
+      payload: {
+        id: "alias-child-thread",
+        session_id: "alias-root",
+        parent_thread_id: "alias-root",
+        agent_path: "/root/catalogus_research",
+        agent_nickname: "Hooke",
+        agent_role: "explorer",
+        source: {
+          subagent: {
+            thread_spawn: {
+              parent_thread_id: "alias-root",
+              agent_path: "/root/catalogus_research",
+              agent_nickname: "Hooke",
+              agent_role: "explorer",
+            },
+          },
+        },
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:03.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-child", effort: "high" },
+    },
+  ], { localId: "alias-child-thread" });
+
+  const agents = buildCodexAgentTree({
+    rootThreadId: "alias-root",
+    threads: [
+      { localId: "alias-root", sessionId: "alias-root", createdAt: "2026-08-25T15:00:00.000Z" },
+      {
+        localId: "alias-child-thread",
+        sessionId: "alias-root",
+        parentThreadId: "alias-root",
+        createdAt: "2026-08-25T15:00:01.500Z",
+      },
+    ],
+    summaries: new Map([["alias-root", root], ["alias-child-thread", child]]),
+    historical: false,
+  });
+
+  assert.deepEqual(agents.map(({ id, label, model, effort, status }) => ({ id, label, model, effort, status })), [
+    { id: "primary", label: "Primary agent", model: "unknown", effort: "unspecified", status: "idle" },
+    { id: "agent-alias-child-thread", label: "Hooke", model: "gpt-child", effort: "high", status: "active" },
+  ]);
+  assert.equal(agents.some((agent) => agent.id === "agent-catalogus_research"), false);
+  assert.equal(agents.some((agent) => "agentPath" in agent || "agentReference" in agent), false);
+  assertNoPrivateFixtureSentinels(agents, "Codex alias-reconciled agents");
+});
+
+test("names Codex guardians and exposes only bounded normalized review decisions", () => {
+  const guardian = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-25T15:25:12.547Z",
+      type: "session_meta",
+      payload: {
+        id: "guardian-thread",
+        session_id: "guardian-root",
+        parent_thread_id: "guardian-root",
+        source: { subagent: { other: "guardian" } },
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:25:13.268Z",
+      type: "turn_context",
+      payload: { model: "codex-auto-review", effort: "low" },
+    },
+    {
+      timestamp: "2026-08-25T15:25:13.300Z",
+      type: "event_msg",
+      payload: { type: "task_started", turn_id: "guardian-turn-1" },
+    },
+    {
+      timestamp: "2026-08-25T15:25:13.400Z",
+      type: "event_msg",
+      payload: {
+        type: "user_message",
+        message: `PRIVATE_PROMPT_MUST_NOT_LEAK\n${JSON.stringify({ command: ["npm", "test", "COMMAND_MUST_NOT_LEAK"], cwd: "PRIVATE_PATH_MUST_NOT_LEAK", justification: "APPROVAL_REASON_MUST_NOT_LEAK", sandbox_permissions: "require_escalated", tool: "exec_command", tty: false }, null, 2)}\n>>> end`,
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:25:17.430Z",
+      type: "event_msg",
+      payload: {
+        type: "task_complete",
+        turn_id: "guardian-turn-1",
+        completed_at: "2026-08-25T15:25:17.400Z",
+        duration_ms: 4_250,
+        last_agent_message: JSON.stringify({
+          risk_level: "medium",
+          user_authorization: "APPROVAL_REASON_MUST_NOT_LEAK",
+          outcome: "allow",
+          rationale: "REASONING_MUST_NOT_LEAK",
+        }),
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:28:20.000Z",
+      type: "event_msg",
+      payload: { type: "task_started", turn_id: "guardian-turn-2" },
+    },
+    {
+      timestamp: "2026-08-25T15:28:20.100Z",
+      type: "event_msg",
+      payload: {
+        type: "user_message",
+        message: `${JSON.stringify({ cwd: "PRIVATE_PATH_MUST_NOT_LEAK", files: ["PRIVATE_PATH_MUST_NOT_LEAK"], patch: "RESPONSE_MUST_NOT_LEAK", tool: "apply_patch" }, null, 2)}\n>>> end`,
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:28:24.687Z",
+      type: "event_msg",
+      payload: {
+        type: "task_complete",
+        turn_id: "guardian-turn-2",
+        completed_at: "2026-08-25T15:28:24.600Z",
+        duration_ms: 875,
+        last_agent_message: JSON.stringify({ outcome: "deny", risk_level: "COMMAND_MUST_NOT_LEAK", rationale: "RESPONSE_MUST_NOT_LEAK" }),
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:28:25.000Z",
+      type: "event_msg",
+      payload: { type: "task_complete", last_agent_message: JSON.stringify({ outcome: "future-value" }) },
+    },
+  ], { localId: "guardian-thread" });
+
+  const agents = buildCodexAgentTree({
+    rootThreadId: "guardian-root",
+    threads: [
+      { localId: "guardian-root", sessionId: "guardian-root", createdAt: "2026-08-25T15:20:00.000Z" },
+      {
+        localId: "guardian-thread",
+        sessionId: "guardian-root",
+        parentThreadId: "guardian-root",
+        createdAt: "2026-08-25T15:25:12.547Z",
+      },
+    ],
+    summaries: new Map([["guardian-thread", guardian]]),
+    historical: true,
+  });
+  const reviewer = agents.find((agent) => agent.id === "agent-guardian-thread");
+
+  assert.equal(reviewer.label, "Approval reviewer");
+  assert.equal(reviewer.kind, "approval-reviewer");
+  assert.deepEqual(reviewer.reviewDecisions, {
+    total: 2,
+    allowed: 1,
+    denied: 1,
+    items: [
+      { action: "build_or_test", outcome: "allowed", risk: "medium", durationMs: 4_250, reviewedAt: "2026-08-25T15:25:17.400Z" },
+      { action: "file_change", outcome: "denied", risk: "unknown", durationMs: 875, reviewedAt: "2026-08-25T15:28:24.600Z" },
+    ],
+    truncated: false,
+  });
+  assertNoPrivateFixtureSentinels(reviewer, "Codex approval reviewer");
+  assert.doesNotMatch(JSON.stringify(reviewer), /provider_turn_id|risk_level|user_authorization|rationale/i);
+
+  const bounded = parseCodexAgentRecords([
+    {
+      timestamp: "2026-08-25T15:00:00.000Z",
+      type: "session_meta",
+      payload: { id: "bounded-guardian", source: { subagent: { other: "guardian" } } },
+    },
+    ...Array.from({ length: 105 }, (_, index) => ({
+      timestamp: new Date(Date.UTC(2026, 7, 25, 16, 0, index)).toISOString(),
+      type: "event_msg",
+      payload: { type: "task_complete", last_agent_message: JSON.stringify({ outcome: "allow" }) },
+    })),
+  ], { localId: "bounded-guardian" });
+  assert.equal(bounded.reviewDecisions.total, 105);
+  assert.equal(bounded.reviewDecisions.allowed, 105);
+  assert.equal(bounded.reviewDecisions.denied, 0);
+  assert.equal(bounded.reviewDecisions.items.length, 100);
+  assert.equal(bounded.reviewDecisions.items.every((decision) => decision.action === "privileged_action"), true);
+  assert.equal(bounded.reviewDecisions.truncated, true);
+});
+
+test("classifies the final structured approval request into a bounded action enum", () => {
+  const envelope = (request) => `PRIVATE_PROMPT_MUST_NOT_LEAK\n${JSON.stringify(request, null, 2)}\n>>> end`;
+  const exec = (command, justification = "") => envelope({ command, cwd: "PRIVATE_PATH_MUST_NOT_LEAK", justification, sandbox_permissions: "require_escalated", tool: "exec_command", tty: false });
+
+  assert.equal(classifyCodexApprovalAction(exec(["npm", "run", "build"])), "build_or_test");
+  assert.equal(classifyCodexApprovalAction(exec(["powershell", "restart-pomegr.ps1"])), "local_process");
+  assert.equal(classifyCodexApprovalAction(exec(["npm", "ci"])), "dependency_change");
+  assert.equal(classifyCodexApprovalAction(exec(["git", "push"])), "version_control");
+  assert.equal(classifyCodexApprovalAction(exec(["curl", "https://example.invalid/private"])), "network_access");
+  assert.equal(classifyCodexApprovalAction(exec(["Remove-Item", "PRIVATE_PATH_MUST_NOT_LEAK"])), "filesystem_action");
+  assert.equal(classifyCodexApprovalAction(exec(["echo", "COMMAND_MUST_NOT_LEAK"])), "shell_command");
+  assert.equal(classifyCodexApprovalAction(envelope({ patch: "RESPONSE_MUST_NOT_LEAK", tool: "apply_patch" })), "file_change");
+  assert.equal(classifyCodexApprovalAction(envelope({ tool: "web__run" })), "network_access");
+  assert.equal(classifyCodexApprovalAction(envelope({ tool: "mcp__node_repl__js" })), "browser_interaction");
+  assert.equal(classifyCodexApprovalAction("malformed PRIVATE_PROMPT_MUST_NOT_LEAK"), "privileged_action");
+});
+
+test("keeps bounded approval categories when a live guardian request leaves the ordinary state tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-review-tail-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const rootId = "01a03983-665a-7a43-a008-6aa1f1d6ec91";
+  const childId = "01a03986-8514-7d73-9267-f425f160cdb7";
+  const rootRecords = [{
+    timestamp: "2026-08-25T15:00:00.000Z",
+    type: "session_meta",
+    payload: { id: rootId, timestamp: "2026-08-25T15:00:00.000Z", cwd: root, source: "cli" },
+  }];
+  const childRecords = [
+    {
+      timestamp: "2026-08-25T15:00:01.000Z",
+      type: "session_meta",
+      payload: { id: childId, session_id: rootId, parent_thread_id: rootId, timestamp: "2026-08-25T15:00:01.000Z", cwd: root, source: { subagent: { other: "guardian" } } },
+    },
+    { timestamp: "2026-08-25T15:00:02.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "review-turn" } },
+    {
+      timestamp: "2026-08-25T15:00:02.100Z",
+      type: "event_msg",
+      payload: { type: "user_message", message: `${JSON.stringify({ command: ["powershell", "restart-pomegr.ps1", "COMMAND_MUST_NOT_LEAK"], cwd: "PRIVATE_PATH_MUST_NOT_LEAK", justification: "Restart the local server", sandbox_permissions: "require_escalated", tool: "exec_command", tty: false }, null, 2)}\n>>> end` },
+    },
+    {
+      timestamp: "2026-08-25T15:00:05.000Z",
+      type: "event_msg",
+      payload: { type: "task_complete", turn_id: "review-turn", completed_at: "2026-08-25T15:00:05.000Z", duration_ms: 2_900, last_agent_message: JSON.stringify({ risk_level: "medium", user_authorization: "high", outcome: "allow", rationale: "REASONING_MUST_NOT_LEAK" }) },
+    },
+    { timestamp: "2026-08-25T15:00:06.000Z", type: "event_msg", payload: { type: "agent_message", message: "x".repeat(2_000) } },
+  ];
+  await writeFile(path.join(directory, `rollout-2026-08-25T15-00-00-${rootId}.jsonl`), `${rootRecords.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(path.join(directory, `rollout-2026-08-25T15-00-01-${childId}.jsonl`), `${childRecords.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+
+  const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 20, maximumStateTailBytes: 256, maximumTaskHistoryBytes: 8_192 });
+  const evidence = await provider.readSession(rootId, { historical: false });
+  const reviewer = evidence.agents.find((agent) => agent.label === "Approval reviewer");
+  assert.equal(reviewer.reviewDecisions.items[0].action, "local_process");
+  assertNoPrivateFixtureSentinels(reviewer, "live hydrated Codex approval category");
 });
 
 test("orders Codex sibling agents by stable creation time with the newest first", () => {

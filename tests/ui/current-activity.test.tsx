@@ -60,8 +60,8 @@ describe("current agent activity", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await user.click(trigger);
 
-    const dialog = screen.getByRole("dialog", { name: "Activity and execution for Primary agent" });
-    expect(dialog).toHaveTextContent("ACTIVITY & EXECUTION");
+    const dialog = screen.getByRole("dialog", { name: "Agent activity for Primary agent" });
+    expect(dialog).toHaveTextContent("AGENT ACTIVITY");
     expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(activity.label);
     expect(dialog).toHaveTextContent("Provider-reported");
     expect(dialog).toHaveTextContent("0 running · 0 finished");
@@ -76,7 +76,7 @@ describe("current agent activity", () => {
     render(panel({ ...baseAgent, currentActivity: activity, executionTasks: [task] }));
 
     await user.click(screen.getByRole("button", { name: "1 running" }));
-    const dialog = screen.getByRole("dialog", { name: "Activity and execution for Primary agent" });
+    const dialog = screen.getByRole("dialog", { name: "Agent activity for Primary agent" });
     expect(dialog).toHaveTextContent("1 running · 0 finished");
     expect(dialog).toHaveTextContent(activity.label);
     expect(dialog).toHaveTextContent("Run verification");
@@ -89,7 +89,7 @@ describe("current agent activity", () => {
     const user = userEvent.setup();
     const { rerender } = render(panel({ ...baseAgent, executionTasks: [task] }));
     await user.click(screen.getByRole("button", { name: "1 running" }));
-    expect(screen.getByRole("dialog", { name: "Activity and execution for Primary agent" })).not.toHaveTextContent("Current activity");
+    expect(screen.getByRole("dialog", { name: "Agent activity for Primary agent" })).not.toHaveTextContent("Current activity");
 
     rerender(panel({ ...baseAgent, currentActivity: activity }, true));
     expect(screen.queryByRole("button", { name: "Current activity" })).not.toBeInTheDocument();

@@ -98,6 +98,8 @@ function mergeMetadata(items) {
       sessionId: preferred.sessionId || alternate.sessionId,
       parentThreadId: preferred.parentThreadId || alternate.parentThreadId,
       forkedFromId: preferred.forkedFromId || alternate.forkedFromId,
+      agentPath: preferred.agentPath || alternate.agentPath,
+      approvalReviewer: preferred.approvalReviewer || alternate.approvalReviewer,
       agentNickname: preferred.agentNickname || alternate.agentNickname,
       agentRole: preferred.agentRole || alternate.agentRole,
       runtimeStatus: preferred.runtimeStatus || alternate.runtimeStatus,
@@ -149,6 +151,8 @@ function mergeFreshSessionTreeMetadata(discovered, sessionTree) {
       sessionId: fresh.sessionId,
       parentThreadId: fresh.parentThreadId,
       forkedFromId: fresh.forkedFromId,
+      agentPath: fresh.agentPath || item.agentPath,
+      approvalReviewer: fresh.approvalReviewer || item.approvalReviewer,
       sourceKind: fresh.sourceKind,
       agentNickname: fresh.agentNickname,
       agentRole: fresh.agentRole,
@@ -475,7 +479,7 @@ export function createCodexProvider(options = {}) {
     return rolloutFile ? { ...metadata, rolloutFile } : metadata;
   }
 
-  function readRolloutRecords(file, historical) {
+  function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes) {
     let stat;
     try { stat = fs.statSync(file); } catch {
       invalidateRolloutFile(file, { clearContext: true });
@@ -485,7 +489,7 @@ export function createCodexProvider(options = {}) {
       invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
-    const bytes = historical ? stat.size : Math.min(stat.size, maximumLiveTailBytes);
+    const bytes = historical ? stat.size : Math.min(stat.size, liveMaximumBytes);
     const identity = rolloutIdentity(stat);
     const key = `${historical ? "history" : "live"}:${identity}:${stat.size}:${stat.mtimeMs}:${bytes}`;
     const cached = rolloutCache.get(file);
@@ -771,7 +775,11 @@ export function createCodexProvider(options = {}) {
       for (const thread of pending) {
         parsedIds.add(thread.localId);
         if (!thread.rolloutFile) continue;
-        const { records, generation } = readRolloutRecords(thread.rolloutFile, historical);
+        const { records, generation } = readRolloutRecords(
+          thread.rolloutFile,
+          historical,
+          thread.approvalReviewer ? maximumLiveTaskHistoryBytes : maximumLiveTailBytes,
+        );
         recordsByThreadId.set(thread.localId, records);
         if (generation) generationsByThreadId.set(thread.localId, generation);
         const summary = parseCodexAgentRecords(records, thread);

@@ -50,6 +50,25 @@ export type ExecutionTask = {
   signal: ReportedSignal | null;
 };
 
+export type ReviewDecision = {
+  /** Deterministic bounded category derived monitor-side from the reviewed request. */
+  action: "build_or_test" | "browser_interaction" | "dependency_change" | "file_change" | "filesystem_action" | "local_process" | "network_access" | "version_control" | "shell_command" | "privileged_action";
+  outcome: "allowed" | "denied";
+  /** Bounded provider-reported assessment; never inferred by Pomegr. */
+  risk: "low" | "medium" | "high" | "unknown";
+  /** Provider-reported review duration, capped monitor-side. */
+  durationMs: number | null;
+  reviewedAt: string;
+};
+
+export type ReviewDecisionFeed = {
+  total: number;
+  allowed: number;
+  denied: number;
+  items: ReviewDecision[];
+  truncated: boolean;
+};
+
 export type Agent = {
   id: string;
   parentId: string | null;
@@ -77,6 +96,8 @@ export type Agent = {
   toolCalls: number;
   skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
   executionTasks?: ExecutionTask[];
+  /** Bounded normalized approval outcomes. Reviewed content and rationale remain monitor-private. */
+  reviewDecisions?: ReviewDecisionFeed;
   lastSeen: string;
   startedAt: string;
   updatedAt: string;

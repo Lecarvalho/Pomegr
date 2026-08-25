@@ -1,9 +1,18 @@
 import fs from "node:fs";
-import { codexSourceKind, codexTimestamp, isSafeCodexSessionId } from "./codex-session-metadata.mjs";
+import {
+  codexSourceKind,
+  codexTimestamp,
+  isCodexApprovalReviewerSource,
+  isSafeCodexSessionId,
+} from "./codex-session-metadata.mjs";
+import { classifyCodexApprovalAction, normalizeCodexReviewAction } from "./codex-review-actions.mjs";
 
 const MAX_LABEL_LENGTH = 80;
 const MAX_MODEL_LENGTH = 96;
 const MAX_ROLE_LENGTH = 64;
+const MAX_AGENT_PATH_LENGTH = 512;
+const MAX_REVIEW_DECISIONS = 100;
+const MAX_REVIEW_DURATION_MS = 60 * 60 * 1_000;
 const KNOWN_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const COMPLETED_EVENTS = new Set(["task_complete", "task_completed", "turn_complete", "turn_completed"]);
 const INTERRUPTED_EVENTS = new Set(["turn_aborted", "turn_interrupted", "task_interrupted"]);
@@ -26,6 +35,20 @@ function safeThreadId(value) {
   if (typeof value !== "string") return null;
   const match = value.match(/(?:agent-)?([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/);
   return match && isSafeCodexSessionId(match[1]) ? match[1] : null;
+}
+
+function safeAgentReference(value) {
+  return boundedText(value, MAX_AGENT_PATH_LENGTH);
+}
+
+function agentReferenceAliases(value) {
+  const reference = safeAgentReference(value).replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  if (!reference) return [];
+  const trimmed = reference.replace(/^\/+|\/+$/g, "");
+  const aliases = new Set([reference, trimmed]);
+  const leaf = trimmed.split("/").at(-1);
+  if (leaf) aliases.add(leaf);
+  return [...aliases].filter(Boolean);
 }
 
 function recordTimestamp(record) {
@@ -128,6 +151,8 @@ function canonicalCollaboration(payload, timestamp, ownerThreadId) {
     const requestedEffort = normalizedEffort(payload.reasoningEffort ?? payload.reasoning_effort);
     return [{
       childThreadId,
+      agentReference: null,
+      referenceKind: "thread",
       parentThreadId: senderThreadId,
       label: "Unnamed subagent",
       kind: "subagent",
@@ -151,7 +176,7 @@ function functionOutputObject(payload) {
 }
 
 function functionCallTarget(input) {
-  return safeThreadId(input?.target ?? input?.agent_id ?? input?.agentId ?? input?.thread_id ?? input?.threadId);
+  return safeAgentReference(input?.target ?? input?.agent_id ?? input?.agentId ?? input?.thread_id ?? input?.threadId);
 }
 
 function terminalEvent(record) {
@@ -172,6 +197,38 @@ function isFinalAgentMessage(record) {
   return record?.type === "event_msg" && record?.payload?.type === "agent_message";
 }
 
+function approvalReviewDecision(record, action) {
+  const payload = record?.payload;
+  if (record?.type !== "event_msg" || !["task_complete", "task_completed"].includes(payload?.type)) return null;
+  const result = parseObject(payload?.last_agent_message ?? payload?.lastAgentMessage);
+  const outcome = result?.outcome === "allow"
+    ? "allowed"
+    : result?.outcome === "deny"
+      ? "denied"
+      : null;
+  const normalizedRisk = boundedText(result?.risk_level ?? result?.riskLevel, 16).toLowerCase();
+  const risk = ["low", "medium", "high"].includes(normalizedRisk) ? normalizedRisk : "unknown";
+  const rawDurationMs = payload?.duration_ms ?? payload?.durationMs;
+  const durationMs = Number.isFinite(rawDurationMs) && rawDurationMs >= 0 && rawDurationMs <= MAX_REVIEW_DURATION_MS
+    ? Math.round(rawDurationMs)
+    : null;
+  const reviewedAt = codexTimestamp(payload?.completed_at ?? payload?.completedAt) || recordTimestamp(record);
+  return outcome && reviewedAt ? { action: normalizeCodexReviewAction(action), outcome, risk, durationMs, reviewedAt } : null;
+}
+
+function reviewDecisionFeed(decisions) {
+  const unique = new Map();
+  for (const decision of decisions) unique.set(`${decision.reviewedAt}:${decision.outcome}`, decision);
+  const ordered = [...unique.values()].sort((left, right) => timestampValue(left.reviewedAt) - timestampValue(right.reviewedAt));
+  return {
+    total: ordered.length,
+    allowed: ordered.filter((decision) => decision.outcome === "allowed").length,
+    denied: ordered.filter((decision) => decision.outcome === "denied").length,
+    items: ordered.slice(-MAX_REVIEW_DECISIONS),
+    truncated: ordered.length > MAX_REVIEW_DECISIONS,
+  };
+}
+
 function summaryFromRecords(records, fallback = {}) {
   const timestamps = [];
   const pendingCalls = new Map();
@@ -187,9 +244,14 @@ function summaryFromRecords(records, fallback = {}) {
   let sessionId = safeThreadId(fallback.sessionId);
   let parentThreadId = safeThreadId(fallback.parentThreadId);
   let forkedFromId = safeThreadId(fallback.forkedFromId);
+  let agentPath = safeAgentReference(fallback.agentPath);
+  let approvalReviewer = fallback.approvalReviewer === true;
   let agentNickname = boundedText(fallback.agentNickname, MAX_LABEL_LENGTH);
   let agentRole = boundedText(fallback.agentRole, MAX_ROLE_LENGTH);
   let sourceKind = fallback.sourceKind || "unknown";
+  const reviewDecisions = [];
+  const reviewActionsByTurn = new Map();
+  let currentReviewTurnId = "";
 
   for (const [order, record] of records.entries()) {
     const timestamp = recordTimestamp(record);
@@ -203,6 +265,8 @@ function summaryFromRecords(records, fallback = {}) {
         sessionId = safeThreadId(payload.sessionId ?? payload.session_id) || sessionId;
         parentThreadId = safeThreadId(payload.parentThreadId ?? payload.parent_thread_id ?? spawned?.parent_thread_id) || parentThreadId;
         forkedFromId = safeThreadId(payload.forkedFromId ?? payload.forked_from_id) || forkedFromId;
+        agentPath = safeAgentReference(payload.agentPath ?? payload.agent_path ?? spawned?.agent_path ?? spawned?.agentPath) || agentPath;
+        approvalReviewer ||= isCodexApprovalReviewerSource(payload.source);
         agentNickname = boundedText(payload.agentNickname ?? payload.agent_nickname ?? spawned?.agent_nickname, MAX_LABEL_LENGTH) || agentNickname;
         agentRole = boundedText(payload.agentRole ?? payload.agent_role ?? spawned?.agent_role, MAX_ROLE_LENGTH) || agentRole;
         sourceKind = codexSourceKind(payload.source);
@@ -213,8 +277,22 @@ function summaryFromRecords(records, fallback = {}) {
     const observedTerminal = terminalEvent(record);
     if (observedTerminal && timestamp) terminal = { status: observedTerminal, timestamp, order };
     if (isFinalAgentMessage(record) && timestamp) terminal = { status: "finished", timestamp, order };
-
     const payload = record?.payload;
+    if (record?.type === "event_msg" && payload?.type === "task_started") {
+      currentReviewTurnId = boundedText(payload.turn_id ?? payload.turnId, 160);
+    }
+    if (record?.type === "event_msg" && payload?.type === "user_message") {
+      const action = classifyCodexApprovalAction(payload.message);
+      if (currentReviewTurnId) reviewActionsByTurn.set(currentReviewTurnId, action);
+    }
+    const completedReviewTurnId = boundedText(payload?.turn_id ?? payload?.turnId, 160);
+    const reviewDecision = approvalReviewDecision(record, reviewActionsByTurn.get(completedReviewTurnId));
+    if (reviewDecision) reviewDecisions.push(reviewDecision);
+    if (reviewDecision && completedReviewTurnId) {
+      reviewActionsByTurn.delete(completedReviewTurnId);
+      if (currentReviewTurnId === completedReviewTurnId) currentReviewTurnId = "";
+    }
+
     collaborations.push(...canonicalCollaboration(payload, timestamp, ownerThreadId));
     if (record?.type !== "response_item" || !payload || typeof payload !== "object") continue;
     if (payload.type === "function_call" || payload.type === "custom_tool_call") {
@@ -225,7 +303,8 @@ function summaryFromRecords(records, fallback = {}) {
       pendingCalls.set(id, {
         action,
         parentThreadId: ownerThreadId,
-        targetThreadId: functionCallTarget(input),
+        targetReference: functionCallTarget(input),
+        agentReference: safeAgentReference(input.task_name ?? input.taskName ?? input.agent_path ?? input.agentPath),
         label: titleFromIdentifier(input.task_name ?? input.taskName ?? input.nickname),
         kind: boundedText(input.agent_role ?? input.agentRole ?? input.role, MAX_ROLE_LENGTH, "subagent"),
         model: normalizedModel(input.model),
@@ -238,12 +317,19 @@ function summaryFromRecords(records, fallback = {}) {
     const pending = pendingCalls.get(callId(payload));
     if (!pending) continue;
     const output = functionOutputObject(payload);
-    const childThreadId = pending.targetThreadId || safeThreadId(
-      output?.agent_id ?? output?.agentId ?? output?.thread_id ?? output?.threadId ?? output?.target,
+    const outputThreadId = safeThreadId(output?.agent_id ?? output?.agentId ?? output?.thread_id ?? output?.threadId);
+    const outputReference = safeAgentReference(
+      output?.task_name ?? output?.taskName ?? output?.agent_path ?? output?.agentPath ?? output?.target,
     );
-    if (!childThreadId) continue;
+    const agentReference = pending.action === "spawn"
+      ? outputReference || pending.agentReference
+      : pending.targetReference || outputReference;
+    const childThreadId = outputThreadId;
+    if (!childThreadId && !agentReference) continue;
     collaborations.push({
       childThreadId,
+      agentReference,
+      referenceKind: childThreadId ? "thread" : "agentPath",
       parentThreadId: pending.parentThreadId,
       label: pending.label,
       kind: pending.kind,
@@ -276,6 +362,8 @@ function summaryFromRecords(records, fallback = {}) {
     sessionId: sessionId || ownerThreadId,
     parentThreadId,
     forkedFromId,
+    agentPath,
+    approvalReviewer,
     agentNickname,
     agentRole,
     sourceKind,
@@ -285,6 +373,7 @@ function summaryFromRecords(records, fallback = {}) {
     durationMs: Math.max(0, timestampValue(updatedAt) - timestampValue(startedAt)),
     terminal,
     collaborations,
+    reviewDecisions: approvalReviewer ? reviewDecisionFeed(reviewDecisions) : reviewDecisionFeed([]),
   };
 }
 
@@ -365,13 +454,44 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
   }
   if (!threadById.has(rootThreadId)) threadById.set(rootThreadId, { localId: rootThreadId });
 
+  const threadIdsByAgentReference = new Map();
+  function indexAgentReference(parentThreadId, reference, threadId) {
+    if (!isSafeCodexSessionId(parentThreadId) || !isSafeCodexSessionId(threadId)) return;
+    for (const alias of agentReferenceAliases(reference)) {
+      const key = `${parentThreadId}\u0000${alias}`;
+      const ids = threadIdsByAgentReference.get(key) || new Set();
+      ids.add(threadId);
+      threadIdsByAgentReference.set(key, ids);
+    }
+  }
+  for (const [threadId, thread] of threadById) {
+    if (threadId === rootThreadId) continue;
+    const summary = summaries.get(threadId);
+    const parentThreadId = safeThreadId(summary?.parentThreadId ?? thread?.parentThreadId);
+    indexAgentReference(parentThreadId, summary?.agentPath ?? thread?.agentPath, threadId);
+  }
+
+  function resolveCollaborationThreadId(collaboration) {
+    if (isSafeCodexSessionId(collaboration?.childThreadId)) return collaboration.childThreadId;
+    const parentThreadId = safeThreadId(collaboration?.parentThreadId);
+    const directReference = safeThreadId(collaboration?.agentReference);
+    if (directReference && threadById.has(directReference)) return directReference;
+    const candidates = new Set();
+    for (const alias of agentReferenceAliases(collaboration?.agentReference)) {
+      for (const id of threadIdsByAgentReference.get(`${parentThreadId}\u0000${alias}`) || []) candidates.add(id);
+    }
+    return candidates.size === 1 ? [...candidates][0] : null;
+  }
+
   const collaborations = new Map();
   for (const summary of summaries.values()) {
     for (const collaboration of summary?.collaborations || []) {
-      if (!isSafeCodexSessionId(collaboration.childThreadId)) continue;
+      const childThreadId = resolveCollaborationThreadId(collaboration);
+      if (!childThreadId) continue;
+      const resolved = { ...collaboration, childThreadId };
       collaborations.set(
-        collaboration.childThreadId,
-        mergeCollaboration(collaborations.get(collaboration.childThreadId), collaboration),
+        childThreadId,
+        mergeCollaboration(collaborations.get(childThreadId), resolved),
       );
     }
   }
@@ -466,14 +586,19 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
         : "idle";
     }
     const sourceKind = summary?.sourceKind || thread.sourceKind || "unknown";
+    const approvalReviewer = summary?.approvalReviewer === true || thread.approvalReviewer === true;
     const role = boundedText(thread.agentRole ?? summary?.agentRole, MAX_ROLE_LENGTH);
     const nickname = boundedText(thread.agentNickname ?? summary?.agentNickname, MAX_LABEL_LENGTH);
     const label = primary
       ? "Primary agent"
-      : nickname || (collaboration?.label !== "Unnamed subagent" ? collaboration?.label : "") || "Unnamed subagent";
+      : nickname
+        || (approvalReviewer ? "Approval reviewer" : "")
+        || (collaboration?.label !== "Unnamed subagent" ? collaboration?.label : "")
+        || "Unnamed subagent";
     const kind = primary
       ? "orchestrator"
-      : role || (collaboration?.kind !== "subagent" ? collaboration?.kind : "")
+      : role || (approvalReviewer ? "approval-reviewer" : "")
+        || (collaboration?.kind !== "subagent" ? collaboration?.kind : "")
         || sourceKindLabel(sourceKind, summary?.forkedFromId ?? thread.forkedFromId);
     let lastSeen = collaborationIsLater
       ? collaboration.updatedAt
@@ -498,6 +623,7 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       toolCalls: 0,
       skills: [],
       executionTasks: [],
+      reviewDecisions: summary?.reviewDecisions || reviewDecisionFeed([]),
       lastSeen,
       startedAt,
       updatedAt: lastSeen,

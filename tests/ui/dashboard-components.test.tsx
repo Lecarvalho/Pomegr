@@ -418,7 +418,7 @@ describe("agent detail popovers", () => {
     try {
       render(<LiveClockProvider running={false}><AgentActivityPanel agents={[childAgent]} executionTasks={[]} planTasks={[]} historical={false} sessionId="claude:session-1" /></LiveClockProvider>);
       await user.click(screen.getByRole("button", { name: "1 shell task" }));
-      const dialog = screen.getByRole("dialog", { name: "Activity and execution for Builder" });
+      const dialog = screen.getByRole("dialog", { name: "Agent activity for Builder" });
       const copyButton = screen.getByRole("button", { name: "Copy transcript path for Builder" });
 
       await user.click(copyButton);
@@ -453,9 +453,53 @@ describe("agent detail popovers", () => {
 
     await user.click(screen.getByRole("button", { name: "Agent details" }));
 
-    const dialog = screen.getByRole("dialog", { name: "Activity and execution for Investigator" });
+    const dialog = screen.getByRole("dialog", { name: "Agent activity for Investigator" });
     expect(dialog).toHaveTextContent("0 running · 0 finished");
     expect(screen.getByRole("button", { name: "Copy transcript path for Investigator" })).toBeInTheDocument();
+  });
+
+  it("shows approval reviews separately from shell execution", async () => {
+    const user = userEvent.setup();
+    const reviewer: Agent = {
+      ...agent,
+      id: "agent-reviewer",
+      parentId: "primary",
+      label: "Approval reviewer",
+      role: "reviewer",
+      model: "codex-auto-review",
+      effort: "low",
+      toolCalls: 0,
+      skills: [],
+      executionTasks: [],
+      reviewDecisions: {
+        total: 2,
+        allowed: 1,
+        denied: 1,
+        items: [
+          { action: "build_or_test", outcome: "allowed", risk: "medium", durationMs: 4_250, reviewedAt: "2026-08-08T12:00:03.000Z" },
+          { action: "file_change", outcome: "denied", risk: "unknown", durationMs: 875, reviewedAt: "2026-08-08T12:00:05.000Z" },
+        ],
+        truncated: false,
+      },
+    };
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[reviewer]} executionTasks={[]} planTasks={[]} historical={false} sessionId="codex:guardian" /></LiveClockProvider>);
+
+    await user.click(screen.getByRole("button", { name: "2 reviews" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Agent activity for Approval reviewer" });
+    expect(dialog).toHaveTextContent("AGENT ACTIVITY");
+    expect(dialog).toHaveTextContent("1 allowed · 1 denied · 0 shell tasks");
+    expect(screen.getByRole("region", { name: "Completed approval reviews" })).toHaveTextContent("Review decisions (2)");
+    expect(dialog).toHaveTextContent("Allowed");
+    expect(dialog).toHaveTextContent("Denied");
+    expect(dialog).toHaveTextContent("Build or test");
+    expect(dialog).toHaveTextContent("File change");
+    expect(dialog).toHaveTextContent("medium risk");
+    expect(dialog).toHaveTextContent("risk unavailable");
+    expect(dialog).toHaveTextContent("Pomegr category · provider-assessed");
+    expect(dialog).toHaveTextContent("reviewed in 4.3s");
+    expect(dialog).toHaveTextContent("reviewed in under 1s");
+    expect(dialog).not.toHaveTextContent(/command|prompt|rationale/i);
   });
 
   it("shows a privacy-safe cause tooltip for a failed shell task", async () => {
@@ -488,7 +532,7 @@ describe("agent detail popovers", () => {
 
     await user.click(screen.getByRole("button", { name: "1 shell task" }));
     expect(screen.queryByRole("dialog", { name: "Skills used by Primary agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Activity and execution for Primary agent" })).toHaveTextContent("Run verification");
+    expect(screen.getByRole("dialog", { name: "Agent activity for Primary agent" })).toHaveTextContent("Run verification");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

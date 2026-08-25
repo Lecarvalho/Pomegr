@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Agent, ExecutionTask, PlanTask, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, ExecutionTask, PlanTask, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
 import { agentsWithFinishedVisibility, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
@@ -17,6 +17,19 @@ export type AgentActivityViewMode = "list" | "tree";
 
 type OpenAgentPopover = { kind: "skills" | "execution" | "plan"; agentId: string } | null;
 type FinishedAgentPreference = { sessionId: string; showFinished: boolean };
+
+const REVIEW_ACTION_LABELS: Record<ReviewDecision["action"], string> = {
+  build_or_test: "Build or test",
+  browser_interaction: "Browser interaction",
+  dependency_change: "Dependency change",
+  file_change: "File change",
+  filesystem_action: "Filesystem action",
+  local_process: "Local process or server",
+  network_access: "Network access",
+  version_control: "Version-control action",
+  shell_command: "Shell command",
+  privileged_action: "Privileged action",
+};
 
 function storedFinishedAgentVisibility(sessionId: string) {
   if (typeof window === "undefined") return true;
@@ -73,6 +86,8 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
     const tasks = executionTasksByAgent.get(agent.id) || [];
     const runningTasks = tasks.filter((task) => task.status === "running");
     const finishedTasks = tasks.filter((task) => task.status !== "running");
+    const reviewDecisions = agent.reviewDecisions || { total: 0, allowed: 0, denied: 0, items: [], truncated: false };
+    const visibleReviewDecisions = [...reviewDecisions.items].reverse();
     const currentActivity = historical ? null : agent.currentActivity;
     const transcriptAvailable = agent.id !== "primary" && agent.transcriptAvailable === true;
     const rowPopoverOpen = openPopover?.agentId === agent.id;
@@ -105,13 +120,19 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
                 )}
               </div>
             )}
-            {(tasks.length > 0 || currentActivity || transcriptAvailable) && (
+            {(tasks.length > 0 || reviewDecisions.total > 0 || currentActivity || transcriptAvailable) && (
               <div className="agentPopoverAnchor executionTaskAnchor" ref={isOpen("execution", agent.id) ? popoverAnchorRef : undefined}>
-                <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : currentActivity ? "Current activity" : "Agent details"}</AgentChip>
+                <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : reviewDecisions.total > 0 ? `${reviewDecisions.total} ${reviewDecisions.total === 1 ? "review" : "reviews"}` : currentActivity ? "Current activity" : "Agent details"}</AgentChip>
                 {isOpen("execution", agent.id) && (
-                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Activity and execution for ${agent.label}`} eyebrow="ACTIVITY & EXECUTION" title={agent.label} closeLabel="Close activity and execution" onClose={closePopover} summary={`${runningTasks.length} running · ${finishedTasks.length} finished`} actions={transcriptAvailable ? <CopyTranscriptButton sessionId={sessionId} agentId={agent.id} agentLabel={agent.label} /> : undefined} className="executionTaskPopover">
-                    {(currentActivity || runningTasks.length > 0 || finishedTasks.length > 0) && <div className="executionTaskList">
+                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Agent activity for ${agent.label}`} eyebrow="AGENT ACTIVITY" title={agent.label} closeLabel="Close agent activity" onClose={closePopover} summary={reviewDecisions.total > 0 ? `${reviewDecisions.allowed} allowed · ${reviewDecisions.denied} denied · ${tasks.length} shell ${tasks.length === 1 ? "task" : "tasks"}` : `${runningTasks.length} running · ${finishedTasks.length} finished`} actions={transcriptAvailable ? <CopyTranscriptButton sessionId={sessionId} agentId={agent.id} agentLabel={agent.label} /> : undefined} className="executionTaskPopover">
+                    {(currentActivity || visibleReviewDecisions.length > 0 || runningTasks.length > 0 || finishedTasks.length > 0) && <div className="executionTaskList">
                       {currentActivity && <section className="executionTaskSection currentActivitySection" aria-label="Current provider-reported activity"><h3>Current activity</h3><div className="currentActivityRow"><span className="currentActivityMark" aria-hidden="true" /><div><strong>{currentActivity.label}</strong><small>Provider-reported · observed <RelativeTimeText value={currentActivity.observedAt} /></small></div></div></section>}
+                      {visibleReviewDecisions.length > 0 && <section className="executionTaskSection reviewDecisionSection" aria-label="Completed approval reviews"><h3>Review decisions ({reviewDecisions.total})</h3>{visibleReviewDecisions.map((decision, index) => {
+                        const actionLabel = REVIEW_ACTION_LABELS[decision.action] || REVIEW_ACTION_LABELS.privileged_action;
+                        const riskLabel = decision.risk === "unknown" ? "risk unavailable" : `${decision.risk} risk`;
+                        const durationLabel = decision.durationMs === null ? null : decision.durationMs < 1_000 ? "under 1s" : decision.durationMs < 10_000 ? `${(decision.durationMs / 1_000).toFixed(1).replace(/\.0$/, "")}s` : `${Math.round(decision.durationMs / 1_000)}s`;
+                        return <div className={`reviewDecisionRow ${decision.outcome}`} key={`${decision.reviewedAt}-${decision.outcome}-${index}`}><span className="reviewDecisionMark" aria-hidden="true" /><div><div className="reviewDecisionHeading"><strong>{actionLabel}</strong><span className="reviewDecisionOutcome">{decision.outcome === "allowed" ? "Allowed" : "Denied"}</span></div><small>Pomegr category · provider-assessed {riskLabel} · completed <RelativeTimeText value={decision.reviewedAt} />{durationLabel ? ` · reviewed in ${durationLabel}` : ""}</small></div></div>;
+                      })}{reviewDecisions.truncated && <p className="reviewDecisionLimit">Showing the latest {visibleReviewDecisions.length} decisions.</p>}</section>}
                       {runningTasks.length > 0 && <section className="executionTaskSection" aria-label="Running execution tasks"><h3>Running</h3>{runningTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
                       {finishedTasks.length > 0 && <section className="executionTaskSection" aria-label="Finished execution tasks"><h3>Recently finished ({finishedTasks.length})</h3>{finishedTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} />)}</section>}
                     </div>}

@@ -20,6 +20,7 @@ test("normalizes only the terminal provider namespace and resolves documented pr
   assert.equal(resolveAgentRole({ kind: "plugin:cavecrew_builder", cwd: root }), "reviewer");
   assert.equal(resolveAgentRole({ kind: "custom-builder", cwd: root }), "builder");
   assert.equal(resolveAgentRole({ kind: "code-reviewer-builder", cwd: root }), "reviewer");
+  assert.equal(resolveAgentRole({ kind: "approval-reviewer", cwd: root }), "reviewer");
   assert.equal(resolveAgentRole({ kind: "verify-build", cwd: root }), "tester");
   assert.equal(resolveAgentRole({ kind: "unknown", workflowId: "wf-1", cwd: root }), "workflow-worker");
   assert.equal(resolveAgentRole({ kind: "unknown", cwd: root }), "unknown");
