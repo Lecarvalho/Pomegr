@@ -10,7 +10,7 @@ import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency
 import { readGitStateAsync } from "./git-state.mjs";
 import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
-import { buildRequestSnapshots } from "./request-snapshots.mjs";
+import { buildRequestModelObservations, buildRequestSnapshots } from "./request-snapshots.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -36,12 +36,24 @@ const RESOURCE_USAGE_REASONS = new Set([
   "owner_identity_mismatch",
   "collection_failed",
 ]);
-const HOME_LIMIT_WINDOW_MS = 5 * 60 * 60_000;
+const HOME_FIVE_HOUR_LIMIT_WINDOW_MS = 5 * 60 * 60_000;
+const HOME_SEVEN_DAY_LIMIT_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const MAX_HOME_LIMIT_ACTIVITY_SESSIONS = 24;
+const MAX_HOME_MODEL_SELECTION_SESSIONS = 50;
 
-function isFiveHourUsageWindow(value) {
+function isLimitActivityWindow(value) {
   const window = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-  return window === "5 hours" || window === "5 hour" || window === "5h";
+  return window === "5 hours" || window === "5 hour" || window === "5h"
+    || window === "7 days" || window === "7 day" || window === "7d";
+}
+
+function limitActivityWindowMs(provider, providerLimits) {
+  if (provider !== "codex") return HOME_FIVE_HOUR_LIMIT_WINDOW_MS;
+  const codexLimits = providerLimits.find((item) => item?.provider === provider)?.usageLimits?.limits;
+  return Array.isArray(codexLimits) && codexLimits.some((limit) => {
+    const window = String(limit?.window || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return window === "7 days" || window === "7 day" || window === "7d";
+  }) ? HOME_SEVEN_DAY_LIMIT_WINDOW_MS : HOME_FIVE_HOUR_LIMIT_WINDOW_MS;
 }
 
 function emptyUsageLimits(error = "") {
@@ -177,6 +189,9 @@ function homeSessionSummary(entry, evidence, resourceUsage) {
     createdAt: evidence.session.startedAt,
     requestObservationsAvailable: true,
     requestObservations: tokenUsage.requestSnapshots.items.map(({ id, observedAt }) => ({ id, observedAt })),
+    requestModelObservations: entry.provider === "codex"
+      ? buildRequestModelObservations({ agents, usageSnapshots: Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [] })
+      : [],
     usageLimitRejections: Array.isArray(evidence.usageLimitRejections)
       ? evidence.usageLimitRejections.map(({ observedAt, resetsAt }) => ({ observedAt, resetsAt }))
       : [],
@@ -203,6 +218,7 @@ function unavailableHomeSessionSummary(entry, resourceUsage) {
     createdAt: null,
     requestObservationsAvailable: false,
     requestObservations: [],
+    requestModelObservations: [],
     usageLimitRejections: [],
     wallTimeMs: null,
     resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
@@ -522,25 +538,36 @@ export function createMonitorRuntime(options = {}) {
       if (!cached || cached.expiresAt <= endMs) homeSummaryCache.delete(cacheKey);
     }
 
-    const fiveHourProviderIds = new Set(providerLimits.flatMap(({ provider, usageLimits }) => (
-      usageLimits?.limits?.some((limit) => isFiveHourUsageWindow(limit?.window))
+    const activityProviderIds = new Set(providerLimits.flatMap(({ provider, usageLimits }) => (
+      usageLimits?.limits?.some((limit) => isLimitActivityWindow(limit?.window))
         ? [provider]
         : []
     )));
     const activityEntries = [];
     const limitedActivityProviders = new Set();
-    for (const provider of fiveHourProviderIds) {
+    for (const provider of activityProviderIds) {
+      const activityWindowMs = limitActivityWindowMs(provider, providerLimits);
       const candidates = catalog
         .filter((entry) => entry?.provider === provider && (
-          entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - HOME_LIMIT_WINDOW_MS
+          entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - activityWindowMs
         ))
         .sort((left, right) => Number(Boolean(right.isLive)) - Number(Boolean(left.isLive))
           || Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""));
       if (candidates.length > MAX_HOME_LIMIT_ACTIVITY_SESSIONS) limitedActivityProviders.add(provider);
       activityEntries.push(...candidates.slice(0, MAX_HOME_LIMIT_ACTIVITY_SESSIONS));
     }
-    const immediateEntries = [...new Map([...liveEntries, ...activityEntries].map((entry) => [entry.id, entry])).values()];
-    const immediate = await Promise.all(immediateEntries.map(async (entry) => {
+    const modelSelectionEntries = (activityProviderIds.has("codex") ? catalog : [])
+      .filter((entry) => entry?.provider === "codex" && (
+        entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - HOME_SEVEN_DAY_LIMIT_WINDOW_MS
+      ))
+      .sort((left, right) => Number(Boolean(right.isLive)) - Number(Boolean(left.isLive))
+        || Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""))
+      .slice(0, MAX_HOME_MODEL_SELECTION_SESSIONS);
+    const displayImmediateEntries = [...new Map([...liveEntries, ...activityEntries].map((entry) => [entry.id, entry])).values()];
+    const displayImmediateEntryIds = new Set(displayImmediateEntries.map((entry) => entry.id));
+    const modelSelectionEntryIds = new Set(modelSelectionEntries.map((entry) => entry.id));
+    const immediateEntries = [...new Map([...displayImmediateEntries, ...modelSelectionEntries].map((entry) => [entry.id, entry])).values()];
+    const loadedImmediate = await Promise.all(immediateEntries.map(async (entry) => {
       const cached = cachedHomeSummary(entry, endMs, resourceUsageFor);
       const summary = cached.found
         ? cached.summary
@@ -551,12 +578,13 @@ export function createMonitorRuntime(options = {}) {
       }
       return { entry, summary };
     }));
+    const immediate = loadedImmediate.filter(({ entry }) => displayImmediateEntryIds.has(entry.id));
+    const modelSelection = loadedImmediate.filter(({ entry }) => modelSelectionEntryIds.has(entry.id));
 
     const projectNames = new Set(liveEntries.map((entry) => entry.project || "Unknown project"));
     const startMs = endMs - 7 * 24 * 60 * 60_000;
-    const immediateEntryIds = new Set(immediateEntries.map((entry) => entry.id));
     const relevantHistory = catalog.filter((entry) => !entry.isLive
-      && !immediateEntryIds.has(entry.id)
+      && !displayImmediateEntryIds.has(entry.id)
       && projectNames.has(entry.project || "Unknown project"));
     const history = [];
     const missingHistory = [];
@@ -579,6 +607,7 @@ export function createMonitorRuntime(options = {}) {
       providerLimits,
       generatedAt,
       sessions: immediate.map(({ summary }) => summary).filter(Boolean),
+      modelSelectionSessions: modelSelection.map(({ summary }) => summary).filter(Boolean),
     }).map((activity) => limitedActivityProviders.has(activity.provider)
       ? { ...activity, eventsTruncated: true }
       : activity);
@@ -613,6 +642,7 @@ export function createMonitorRuntime(options = {}) {
           delete session.createdAt;
           delete session.requestObservationsAvailable;
           delete session.requestObservations;
+          delete session.requestModelObservations;
           delete session.usageLimitRejections;
           return session;
         }),

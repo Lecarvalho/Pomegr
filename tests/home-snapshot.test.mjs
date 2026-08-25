@@ -15,8 +15,8 @@ function evidence({ project = "pomegr", startedAt = "2026-08-23T11:00:00.000Z", 
   };
 }
 
-function agent(id, status = "active") {
-  return { id, parentId: null, label: id, kind: "orchestrator", model: "test", effort: null, status, signal: null, toolCalls: 0, skills: [], executionTasks: [], lastSeen: "2026-08-23T12:00:00.000Z", startedAt: "2026-08-23T11:00:00.000Z", updatedAt: "2026-08-23T12:00:00.000Z", durationMs: 3600000 };
+function agent(id, status = "active", model = "test") {
+  return { id, parentId: null, label: id, kind: "orchestrator", model, effort: null, status, signal: null, toolCalls: 0, skills: [], executionTasks: [], lastSeen: "2026-08-23T12:00:00.000Z", startedAt: "2026-08-23T11:00:00.000Z", updatedAt: "2026-08-23T12:00:00.000Z", durationMs: 3600000 };
 }
 
 function runtimeFixture(entries, evidenceById, options = {}) {
@@ -63,6 +63,50 @@ test("home snapshot includes independent Claude and Codex usage limits without l
   assert.equal(state.providerLimits[0].usageLimits.error, "Usage limits are temporarily unavailable.");
   assert.equal(state.providerLimits[1].usageLimits.limits[0].percent, 37.5);
   assert.doesNotMatch(JSON.stringify(state), /PROMPT|RESPONSE|COMMAND|CREDENTIAL/);
+});
+
+test("home snapshot selects the Codex activity window from bounded dominant-model evidence", async () => {
+  const codexProvider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities() };
+  const entry = { id: "codex:recent", provider: "codex", source: "Codex", title: "Recent Codex", project: "repo", updatedAt: "2026-08-23T16:30:00.000Z", isLive: false, needsInput: false };
+  const limits = [
+    { id: "gpt-5.3-codex-spark-primary", label: "GPT-5.3-Codex-Spark", window: "5 hours", percent: 20, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: false },
+    { id: "codex-secondary", label: "Codex", window: "7 days", percent: 60, resetsAt: "2026-08-29T17:00:00.000Z", severity: "normal", active: false },
+  ];
+  const activityForModel = async (model, requestModels = [model]) => runtimeFixture([entry], new Map([[entry.id, evidence({
+    startedAt: "2026-08-23T16:00:00.000Z",
+    updatedAt: "2026-08-23T16:30:00.000Z",
+    agents: [agent("primary", "finished", model)],
+    usageSnapshots: requestModels.map((requestModel, index) => ({
+      dedupeId: `request-${index}`,
+      actorId: "primary",
+      timestamp: `2026-08-23T16:${String(30 + index).padStart(2, "0")}:00.000Z`,
+      input: 100,
+      output: 20,
+      cacheWrite: 0,
+      cacheRead: 0,
+      model: requestModel,
+    })),
+  })]]), {
+    now: () => Date.parse("2026-08-23T17:00:00.000Z"),
+    registry: {
+      defaultProvider: codexProvider,
+      providers: [codexProvider],
+      async readUsageLimits() {
+        return { available: true, fetchedAt: "2026-08-23T17:00:00.000Z", attemptedAt: "2026-08-23T17:00:00.000Z", limits, error: "" };
+      },
+    },
+  }).homeSnapshot();
+
+  const spark = await activityForModel("gpt-5.3-codex-spark");
+  const standard = await activityForModel("gpt-5.4");
+  const switched = await activityForModel("gpt-5.3-codex-spark", ["gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4"]);
+  assert.equal(spark.limitActivities[0].limitId, "gpt-5.3-codex-spark-primary");
+  assert.equal(spark.limitActivities[0].window, "5 hours");
+  assert.equal(standard.limitActivities[0].limitId, "codex-secondary");
+  assert.equal(standard.limitActivities[0].window, "7 days");
+  assert.equal(switched.limitActivities[0].limitId, "codex-secondary");
+  assert.doesNotMatch(JSON.stringify(standard), /gpt-5\.4|requestModelObservations/i);
+  assert.doesNotMatch(JSON.stringify(spark), /requestModelObservations/i);
 });
 
 test("home snapshot correlates Claude limit movement across live-only projects", async () => {

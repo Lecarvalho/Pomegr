@@ -140,7 +140,7 @@ describe("home dashboard", () => {
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, firstRejectedAt: null })),
     }));
     const { container } = render(<HomeDashboard />);
-    await screen.findByText("5-hour limit activity");
+    await screen.findByText("Limit activity");
     const activity = container.querySelector(".homeLimitActivity");
     expect(activity).toBeInTheDocument();
     expect(activity!.querySelector(".homeLimitActivityRejection, .homeLimitActivityMobileRejection")).not.toBeInTheDocument();
@@ -153,9 +153,28 @@ describe("home dashboard", () => {
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
     }));
     const { container } = render(<HomeDashboard />);
-    await screen.findByText("5-hour limit activity");
+    await screen.findByText("Limit activity");
     expect(container.querySelector(".homeLimitActivityWindowStart")).toBeInTheDocument();
     expect(container.querySelector(".homeLimitActivityMobileWindowStart")).toBeInTheDocument();
+  });
+
+  it("labels a selected seven-day activity window without five-hour copy", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity) => ({
+        ...activity,
+        limitId: "codex-secondary",
+        label: "Codex",
+        window: "7 days",
+        windowStartsAt: "2026-08-16T12:00:00.000Z",
+        firstRejectedAt: null,
+      })),
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByText("Limit activity");
+    expect(container.querySelector(".homeLimitActivityWindowStart")?.getAttribute("aria-label")).toMatch(/^7-day window began at .+/);
+    expect(container.querySelector(".homeLimitActivityMobileWindowStart")?.getAttribute("title")).toMatch(/^7-day window began at .+/);
+    expect(container.querySelector(".homeLimitActivity")).not.toHaveTextContent("5-hour limit activity");
   });
 
   it("keeps live cards available while recorded history warms", async () => {

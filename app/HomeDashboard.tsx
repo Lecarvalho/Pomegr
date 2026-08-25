@@ -44,6 +44,11 @@ function limitPercent(value: number | null) {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value!)) : null;
 }
 
+function limitWindowAdjective(value: string) {
+  const match = value.trim().match(/^(\d+)\s*(hours?|days?)$/i);
+  return match ? `${match[1]}-${match[2].replace(/s$/i, "").toLowerCase()}` : value.trim().toLowerCase();
+}
+
 function limitMovementCopy(activity: HomeLimitActivity, movement: HomeLimitActivity["movements"][number]) {
   if (movement.correlation === "single") {
     const session = activity.sessions.find((candidate) => candidate.id === movement.sessionIds[0]);
@@ -62,7 +67,7 @@ function LimitActivityTimeline({ activity, activityId }: { activity: HomeLimitAc
   const startMs = Date.parse(activity.windowStartsAt);
   const endMs = Date.parse(activity.generatedAt);
   const hasExactWindowStart = activity.windowStartsAtExact === true && Number.isFinite(startMs);
-  const windowStartLabel = `5-hour window began at ${limitTime(activity.windowStartsAt)}`;
+  const windowStartLabel = `${limitWindowAdjective(activity.window)} window began at ${limitTime(activity.windowStartsAt)}`;
   const rejectedMs = Date.parse(activity.firstRejectedAt || "");
   const hasRecordedRejection = Number.isFinite(rejectedMs) && rejectedMs >= startMs && rejectedMs <= endMs;
   const rejectionLabel = `First rejection recorded at ${limitTime(activity.firstRejectedAt)}`;
@@ -167,7 +172,7 @@ function LimitActivityMovements({ activity, activityId }: { activity: HomeLimitA
 function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[] }) {
   return <section className="homeLimitActivity" aria-labelledby="home-limit-activity-heading">
     <header className="homeLimitActivityHeader">
-      <div><h2 id="home-limit-activity-heading">5-hour limit activity</h2><p>Account-level movement correlated with local request observations.</p></div>
+      <div><h2 id="home-limit-activity-heading">Limit activity</h2><p>Selected account windows correlated with local request observations.</p></div>
     </header>
     {activities.length ? activities.map((activity, index) => {
       const activityId = domId(`${activity.provider}-${activity.limitId}-${index}`);
@@ -186,7 +191,7 @@ function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[
         {activity.eventsTruncated && <p className="homeLimitActivityCoverage">Request evidence is incomplete or bounded to a recent window.</p>}
         <div className="homeLimitActivityBody"><LimitActivityTimeline activity={activity} activityId={activityId} /><LimitActivityMovements activity={activity} activityId={activityId} /></div>
       </article>;
-    }) : <p className="homeLimitActivityEmpty">No 5-hour limit activity observed yet.</p>}
+    }) : <p className="homeLimitActivityEmpty">No limit activity observed yet.</p>}
   </section>;
 }
 

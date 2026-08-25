@@ -29,11 +29,7 @@ function opaqueId(sessionId, snapshot, timestamp) {
     .digest("hex").slice(0, 16)}`;
 }
 
-/**
- * Normalize independent request-local usage observations. This feed never
- * carries values forward, computes deltas, or consumes cumulative totals.
- */
-export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
+function normalizedRequestEvidence(agents, usageSnapshots) {
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const dedupedByAgent = new Map();
 
@@ -51,18 +47,35 @@ export function buildRequestSnapshots({ sessionId = "session", agents = [], usag
     }
   }
 
-  const items = [...dedupedByAgent.values()].flatMap((agentSnapshots) => (
+  return [...dedupedByAgent.values()].flatMap((agentSnapshots) => (
     [...agentSnapshots.values()]
       .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
         || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId))
       .slice(-MAX_REQUEST_SNAPSHOTS_PER_AGENT)
-      .map(({ snapshot, timestamp, parts }) => ({
-        id: opaqueId(sessionId, snapshot, timestamp),
-        agentId: snapshot.actorId,
-        observedAt: timestamp,
-        ...parts,
-      }))
-  )).sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt) || left.id.localeCompare(right.id));
+  )).sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
+    || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId));
+}
+
+/**
+ * Normalize independent request-local usage observations. This feed never
+ * carries values forward, computes deltas, or consumes cumulative totals.
+ */
+export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
+  const items = normalizedRequestEvidence(agents, usageSnapshots).map(({ snapshot, timestamp, parts }) => ({
+    id: opaqueId(sessionId, snapshot, timestamp),
+    agentId: snapshot.actorId,
+    observedAt: timestamp,
+    ...parts,
+  }));
 
   return { status: items.length > 0 ? "ready" : "unavailable", items };
+}
+
+/** Monitor-private model evidence corresponding exactly to valid request snapshots. */
+export function buildRequestModelObservations({ agents = [], usageSnapshots = [] } = {}) {
+  return normalizedRequestEvidence(agents, usageSnapshots).flatMap(({ snapshot, timestamp }) => {
+    if (typeof snapshot.model !== "string") return [];
+    const model = snapshot.model.trim();
+    return model && model.length <= 120 ? [{ observedAt: timestamp, model }] : [];
+  });
 }

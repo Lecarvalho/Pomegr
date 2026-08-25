@@ -10,6 +10,22 @@ const limit = (fetchedAt, percent, resetsAt = "2026-08-25T17:00:00.000Z") => ({
 const rejection = (observedAt, resetsAt = "2026-08-25T17:00:00.000Z") => ({ observedAt, resetsAt });
 const session = (id, requestObservations, extra = {}) => ({ id, provider: "claude", source: "Claude Code", createdAt: "2026-08-25T11:00:00.000Z", title: id, project: "repo", isLive: false, requestObservations, usageLimitRejections: [], ...extra });
 const build = (tracker, providerLimits, sessions = [], generatedAt = "2026-08-25T17:00:00.000Z") => tracker.build({ providerLimits, sessions, generatedAt });
+const codexLimits = (fetchedAt = "2026-08-25T17:00:00.000Z") => ({
+  provider: "codex",
+  source: "Codex",
+  usageLimits: {
+    fetchedAt,
+    limits: [
+      { id: "gpt-5.3-codex-spark-primary", label: "GPT-5.3-Codex-Spark", window: "5 hours", percent: 23, resetsAt: "2026-08-25T17:00:00.000Z" },
+      { id: "codex-secondary", label: "Codex", window: "7 days", percent: 61, resetsAt: "2026-08-29T17:00:00.000Z" },
+    ],
+  },
+});
+const codexSession = (id, models) => session(id, models.map((model, index) => ({ id: `${id}-${index}`, observedAt: `2026-08-25T16:${String(index).padStart(2, "0")}:00.000Z` })), {
+  provider: "codex",
+  source: "Codex",
+  requestModelObservations: models.map((model, index) => ({ model, observedAt: `2026-08-25T16:${String(index).padStart(2, "0")}:00.000Z` })),
+});
 
 test("collects a first current five-hour sample", () => {
   const tracker = createHomeLimitActivityTracker();
@@ -19,6 +35,54 @@ test("collects a first current five-hour sample", () => {
   assert.equal(activities[0].percent, 12);
   assert.equal(activities[0].observedFrom, "2026-08-25T12:00:00.000Z");
   assert.deepEqual(activities[0].observations, [{ observedAt: "2026-08-25T12:00:00.000Z", percent: 12 }]);
+});
+
+test("selects the Spark five-hour limit only when Spark is the unique dominant Codex model", () => {
+  const tracker = createHomeLimitActivityTracker();
+  const activities = build(tracker, [codexLimits()], [
+    codexSession("mostly-spark", ["gpt-5.3-codex-spark", "GPT-5.3-CODEX-SPARK", "gpt-5.4"]),
+  ]);
+
+  assert.equal(activities.length, 1);
+  assert.equal(activities[0].limitId, "gpt-5.3-codex-spark-primary");
+  assert.equal(activities[0].label, "GPT-5.3-Codex-Spark");
+  assert.equal(activities[0].window, "5 hours");
+  assert.doesNotMatch(JSON.stringify(activities), /gpt-5\.4|requestModelObservations/i);
+});
+
+test("selects the Codex seven-day limit for other models, ties, or missing model evidence", () => {
+  for (const sessions of [
+    [codexSession("mostly-standard", ["gpt-5.4", "gpt-5.4", "gpt-5.3-codex-spark"])],
+    [codexSession("tie", ["gpt-5.4", "gpt-5.3-codex-spark"])],
+    [],
+  ]) {
+    const tracker = createHomeLimitActivityTracker();
+    const activities = build(tracker, [codexLimits()], sessions);
+    assert.equal(activities.length, 1);
+    assert.equal(activities[0].limitId, "codex-secondary");
+    assert.equal(activities[0].window, "7 days");
+    assert.equal(activities[0].windowStartsAt, "2026-08-22T17:00:00.000Z");
+    assert.equal(activities[0].firstRejectedAt, null);
+  }
+});
+
+test("uses a wider bounded model sample without adding those sessions to chart lanes", () => {
+  const tracker = createHomeLimitActivityTracker();
+  const displayed = Array.from({ length: 24 }, (_, index) => codexSession(`spark-${index}`, ["gpt-5.3-codex-spark"]));
+  const modelSelectionSessions = [
+    ...displayed,
+    ...Array.from({ length: 25 }, (_, index) => codexSession(`standard-${index}`, ["gpt-5.4"])),
+  ];
+  const activities = tracker.build({
+    providerLimits: [codexLimits()],
+    sessions: displayed,
+    modelSelectionSessions,
+    generatedAt: "2026-08-25T17:00:00.000Z",
+  });
+
+  assert.equal(activities[0].limitId, "codex-secondary");
+  assert.equal(activities[0].sessions.length, displayed.length);
+  assert.equal(activities[0].sessions.some(({ id }) => id.startsWith("standard-")), false);
 });
 
 test("selects the earliest valid five-hour rejection for the current reset across sessions", () => {
@@ -260,4 +324,49 @@ test("rejects invalid evidence and caps public observations globally", () => {
   assert.equal(activities[0].eventsTruncated, true);
   assert.equal(activities[0].sessions[0].requestObservations.length, 2);
   assert.doesNotMatch(JSON.stringify(activities), /PRIVATE|tokens|model|prompt/);
+});
+
+test("shares the public marker cap across session lanes before retaining additional recent requests", () => {
+  const tracker = createHomeLimitActivityTracker({ maxPublicEvents: 6 });
+  tracker.observe([limit("2026-08-25T12:00:00.000Z", 10)]);
+  const requests = (sessionId) => Array.from({ length: 5 }, (_, index) => ({
+    id: `${sessionId}-${index}`,
+    observedAt: `2026-08-25T12:${String(10 + index).padStart(2, "0")}:00.000Z`,
+  }));
+  const activities = build(tracker, [limit("2026-08-25T13:00:00.000Z", 20)], [
+    session("one", requests("one")),
+    session("two", requests("two")),
+    session("three", requests("three")),
+  ]);
+
+  assert.equal(activities[0].eventsTruncated, true);
+  assert.deepEqual(Object.fromEntries(activities[0].sessions.map(({ id, requestObservations }) => [id, requestObservations.length])), {
+    one: 2,
+    two: 2,
+    three: 2,
+  });
+  assert.equal(activities[0].sessions.every(({ requestObservations }) => requestObservations.every(({ id }) => /-(?:3|4)$/.test(id))), true);
+});
+
+test("removes capped-out lanes from movement correlation metadata", () => {
+  const tracker = createHomeLimitActivityTracker({ maxPublicEvents: 1 });
+  tracker.observe([limit("2026-08-25T12:00:00.000Z", 10)]);
+  const activities = build(tracker, [limit("2026-08-25T13:00:00.000Z", 20)], [
+    session("alpha", [{ id: "alpha-request", observedAt: "2026-08-25T12:30:00.000Z" }]),
+    session("beta", [{ id: "beta-request", observedAt: "2026-08-25T12:30:00.000Z" }]),
+  ]);
+
+  assert.deepEqual(activities[0].sessions.map(({ id }) => id), ["alpha"]);
+  assert.equal(activities[0].movements[0].correlation, "single");
+  assert.deepEqual(activities[0].movements[0].sessionIds, ["alpha"]);
+});
+
+test("omits every request lane when the public marker cap is zero", () => {
+  const tracker = createHomeLimitActivityTracker({ maxPublicEvents: 0 });
+  const activities = build(tracker, [limit("2026-08-25T13:00:00.000Z", 20)], [
+    session("hidden", [{ id: "hidden-request", observedAt: "2026-08-25T12:30:00.000Z" }]),
+  ]);
+
+  assert.deepEqual(activities[0].sessions, []);
+  assert.equal(activities[0].eventsTruncated, true);
 });
