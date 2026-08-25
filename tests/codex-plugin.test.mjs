@@ -71,17 +71,40 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".agents", "plugins", "marketplace.json"), "utf8"));
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const mcp = JSON.parse(await readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
+  const hooks = JSON.parse(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
 
   assert.equal(marketplace.name, "pomegr");
   assert.equal(marketplace.plugins[0].name, "pomegr");
   assert.equal(marketplace.plugins[0].source.path, "./plugins/pomegr");
   assert.equal(manifest.name, "pomegr");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.mcpServers, "./.mcp.json");
   assert.equal(mcp.mcpServers.pomegr.command, "node");
   assert.equal(mcp.mcpServers.pomegr.args[0], "./mcp/server.bundle.mjs");
   assert.equal(mcp.mcpServers.pomegr.cwd, ".");
-  assert.doesNotMatch(JSON.stringify({ manifest, mcp }), /claude|anthropic/i);
+  assert.deepEqual(Object.keys(hooks.hooks).sort(), ["SessionStart", "SubagentStart", "SubagentStop"]);
+  assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /\$\{PLUGIN_ROOT\}/);
+  assert.match(hooks.hooks.SessionStart[0].hooks[0].commandWindows, /%PLUGIN_ROOT%/);
+  assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
+});
+
+test("Codex plugin packages explicit init and read-only doctor workflows", async () => {
+  const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
+  const doctor = await readFile(path.join(pluginRoot, "skills", "doctor", "SKILL.md"), "utf8");
+  const template = await readFile(path.join(pluginRoot, "skills", "init", "references", "policy-template.md"), "utf8");
+
+  assert.match(init, /Preview the complete proposed Markdown or a focused diff/);
+  assert.match(init, /Obtain explicit user confirmation before writing/);
+  assert.match(init, /Write only .*\.pomegr\/signals\.md/);
+  assert.match(init, /never edit .*AGENTS\.md/i);
+  assert.match(init, /SubagentStart/);
+  assert.match(init, /report_session_signal/);
+  assert.match(doctor, /Perform a read-only diagnosis/);
+  assert.match(doctor, /SessionStart.*SubagentStart.*SubagentStop/);
+  assert.match(doctor, /Do not invoke them as a connection test/);
+  assert.match(template, /Policy version: 6/);
+  assert.match(template, /provider-specific prefixes are not part of this policy/);
 });
 
 test("installed Codex plugin starts without repository dependencies and lists bounded signal tools", async () => {
@@ -91,6 +114,10 @@ test("installed Codex plugin starts without repository dependencies and lists bo
     await cp(pluginRoot, installedPlugin, { recursive: true });
     await mkdir(runtimeCwd, { recursive: true });
     await assert.rejects(access(path.join(installedPlugin, "node_modules")), { code: "ENOENT" });
+    await access(path.join(installedPlugin, "hooks", "hooks.json"));
+    await access(path.join(installedPlugin, "scripts", "policy.mjs"));
+    await access(path.join(installedPlugin, "skills", "init", "SKILL.md"));
+    await access(path.join(installedPlugin, "skills", "doctor", "SKILL.md"));
 
     const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), runtimeCwd);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
@@ -105,7 +132,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
 });
 
 test("client guide uses only standard Codex marketplace commands", async () => {
-  const guide = await readFile(path.join(repositoryRoot, "docs", "CODEX_PLUGIN.md"), "utf8");
+  const guide = await readFile(path.join(repositoryRoot, "docs", "PLUGINS.md"), "utf8");
   assert.match(guide, /codex plugin marketplace add Lecarvalho\/pomegr --ref main/);
   assert.match(guide, /codex plugin add pomegr@pomegr/);
   assert.doesNotMatch(guide, /install-codex-plugin|client-repository|--dry-run/);

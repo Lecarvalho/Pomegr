@@ -11,8 +11,8 @@ export const POLICY_VERSION = 6;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
+export const POLICY_LOADED_MARKER = "[Pomegr reporting policy loaded]";
 export const DELEGATION_MARKER = "[Pomegr delegated reporting policy]";
-export const DELEGATION_TOOL_NAMES = new Set(["Task", "Agent"]);
 
 const REQUIRED_SECTIONS = [
   "Session naming",
@@ -36,7 +36,6 @@ const DELEGATED_OWNERSHIP = new Map([
   ["agent and task", ["Agent signals", "Task signals"]],
 ]);
 const DELEGATED_AGENT_TYPE_PATTERN = /^(?:\*|[a-z0-9][a-z0-9._:-]{0,63})$/;
-const FORK_AGENT_TYPE = "fork";
 const CANONICAL_SESSION_NAMING = [
   "- After the first substantive request makes the work clear, set one concise, meaningful title through an available provider-native capability. If no safe title capability is available, allow the provider's automatic title.",
   "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
@@ -55,13 +54,8 @@ const CANONICAL_DELEGATED_AGENT_TOOLING = [
   "- Match the logical tool suffixes `report_agent_signal`, `report_task_signal`, and `clear_agent_signal` in the resolved Pomegr MCP namespace; provider-specific prefixes are not part of this policy.",
   "- Never assign agent- or task-signal reporting to a subagent that cannot call the applicable Pomegr MCP tool. Add the tool, or keep the reporting in the delegating session.",
 ].join("\n");
-
-const AGENT_DEFINITION_DIRECTORY = [".claude", "agents"];
-const AGENT_DEFINITION_FILE_LIMIT = 100;
-const AGENT_DEFINITION_HEAD_BYTES = 4096;
-const AGENT_WARNING_LIMIT = 10;
-const POMEGR_TOOL_PATTERN = /mcp__[a-z0-9_]*pomegr[a-z0-9_]*__/i;
-const DELEGATED_REPORT_TOOL_PATTERN = /^mcp__[a-z0-9_]*pomegr[a-z0-9_]*__(?:report_agent_signal|report_task_signal|clear_agent_signal)$/i;
+const DELEGATED_REPORT_TOOL_PATTERN = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(?:report_agent_signal|report_task_signal|clear_agent_signal)$/i;
+const HOOK_INPUT_MAX_BYTES = 1024 * 1024;
 const TRANSCRIPT_SCAN_MAX_BYTES = 32 * 1024 * 1024;
 const TRANSCRIPT_CHUNK_BYTES = 64 * 1024;
 
@@ -115,9 +109,7 @@ function validateDelegatedAgentsSection(body, signals, errors) {
       continue;
     }
     for (const section of owns) {
-      if (!signals[section]?.length) {
-        errors.push(`Delegated agents row ${index + 1} owns "${section}", but that section configures no rows to delegate.`);
-      }
+      if (!signals[section]?.length) errors.push(`Delegated agents row ${index + 1} owns "${section}", but that section configures no rows to delegate.`);
     }
     rows.push({ agentType, owns });
   }
@@ -161,9 +153,7 @@ function validateSignalSection(name, body, errors) {
         || /\b(?:when|if|after|once)\b.{0,180}\b(?:replace|clear)(?:s|ed|ing)?\b/i.test(replaceWhen);
       const negatesTransition = /\b(?:never|do not|don't)\s+(?:replace|clear)\b/i.test(replaceWhen)
         || /\b(?:is|are|be|remain|remains)\s+not\s+(?:replaced|cleared)\b/i.test(replaceWhen);
-      if (!hasTransition || negatesTransition) {
-        errors.push(`${name} row ${index + 1} must affirmatively say when the signal is replaced or cleared.`);
-      }
+      if (!hasTransition || negatesTransition) errors.push(`${name} row ${index + 1} must affirmatively say when the signal is replaced or cleared.`);
     }
     if (name === "Task signals") {
       const durability = replaceWhen.match(/(?:task signals? (?:are|is) not cleared|task signals? cannot be cleared|never clear task signals?)\.?$/i);
@@ -179,9 +169,7 @@ function validateSignalSection(name, body, errors) {
 
 export function validatePolicyText(text) {
   const errors = [];
-  if (typeof text !== "string") {
-    return policyResult("invalid", { errors: ["Policy content is not text."], signals: {}, delegatedAgents: [] });
-  }
+  if (typeof text !== "string") return policyResult("invalid", { errors: ["Policy content is not text."], signals: {}, delegatedAgents: [] });
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > POLICY_MAX_BYTES) errors.push(`Policy exceeds the ${POLICY_MAX_BYTES}-byte limit.`);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) errors.push("Policy contains control characters.");
@@ -189,7 +177,8 @@ export function validatePolicyText(text) {
   if (!new RegExp(`^Policy version: ${POLICY_VERSION}\\s*$`, "m").test(text)) errors.push(`Policy version must be ${POLICY_VERSION}.`);
 
   for (const name of REQUIRED_SECTIONS) {
-    const matches = text.match(new RegExp(`^## ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "gm")) || [];
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matches = text.match(new RegExp(`^## ${escaped}\\s*$`, "gm")) || [];
     if (matches.length > 1) errors.push(`Policy must contain exactly one "${name}" section.`);
   }
 
@@ -199,85 +188,16 @@ export function validatePolicyText(text) {
     if (body === null || !body) errors.push(`Missing or empty "${name}" section.`);
     sections.set(name, body || "");
   }
-  if (sections.get("Session naming") !== CANONICAL_SESSION_NAMING) {
-    errors.push("Session naming must match the canonical agent-title policy.");
-  }
-  if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) {
-    errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
-  }
+  if (sections.get("Session naming") !== CANONICAL_SESSION_NAMING) errors.push("Session naming must match the canonical agent-title policy.");
+  if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) errors.push("Privacy and semantics must match the canonical Pomegr safety policy.");
   if (sections.get("Delegated agent tooling") !== CANONICAL_DELEGATED_AGENT_TOOLING) {
-    errors.push("Delegated agent tooling must declare signal-owning subagent types and attach the Pomegr MCP tools to them.");
+    errors.push("Delegated agent tooling must declare signal-owning subagent types and preserve Pomegr MCP access.");
   }
 
   const signals = {};
   for (const name of SIGNAL_SECTIONS) signals[name] = validateSignalSection(name, sections.get(name), errors);
   const delegatedAgents = validateDelegatedAgentsSection(sections.get("Delegated agents"), signals, errors);
   return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals, delegatedAgents });
-}
-
-function agentToolAllowlist(frontMatter) {
-  const inline = frontMatter.match(/^tools:[ \t]*(.*)$/m);
-  if (!inline) return null;
-  if (inline[1].trim()) return inline[1].trim();
-  const listing = frontMatter.slice(inline.index + inline[0].length).match(/^\n(?:[ \t]*-[ \t]*\S.*(?:\n|$))+/);
-  return listing ? listing[0].trim() : "";
-}
-
-function readFileHead(filePath, bytes) {
-  const handle = fs.openSync(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(bytes);
-    const read = fs.readSync(handle, buffer, 0, bytes, 0);
-    return buffer.subarray(0, read).toString("utf8");
-  } finally {
-    fs.closeSync(handle);
-  }
-}
-
-function agentDefinitionName(frontMatter, fileName) {
-  const declared = frontMatter.match(/^name:[ \t]*["']?([^"'\r\n]+?)["']?[ \t]*$/m);
-  return (declared?.[1] || fileName.replace(/\.md$/, "")).trim().toLowerCase();
-}
-
-export function scanAgentDefinitions(repositoryRoot, delegatedAgents = []) {
-  const directory = path.join(repositoryRoot, ...AGENT_DEFINITION_DIRECTORY);
-  let entries;
-  try {
-    entries = fs.readdirSync(directory, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  const declared = new Set(delegatedAgents.map((row) => row.agentType));
-  const declaresEveryAgent = declared.has("*");
-  const warnings = [];
-  const definitions = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .slice(0, AGENT_DEFINITION_FILE_LIMIT);
-  for (const definition of definitions) {
-    if (warnings.length >= AGENT_WARNING_LIMIT) break;
-    let head;
-    try {
-      head = readFileHead(path.join(directory, definition.name), AGENT_DEFINITION_HEAD_BYTES);
-    } catch {
-      continue;
-    }
-    const frontMatter = head.replace(/\r\n?/g, "\n").match(/^---\n([\s\S]*?)\n---/);
-    if (!frontMatter) continue;
-    const relativePath = [...AGENT_DEFINITION_DIRECTORY, definition.name].join("/");
-    const allowlist = agentToolAllowlist(frontMatter[1]);
-    const reachesPomegr = !allowlist || allowlist === "*" || POMEGR_TOOL_PATTERN.test(allowlist);
-    const isDelegated = declaresEveryAgent || declared.has(agentDefinitionName(frontMatter[1], definition.name));
-
-    if (isDelegated && !reachesPomegr) {
-      warnings.push(`Agent definition "${relativePath}" is declared under Delegated agents but sets an explicit tools allowlist without a Pomegr reporting tool, so it receives the policy rows and still cannot report them.`);
-      continue;
-    }
-    if (!isDelegated && allowlist && allowlist !== "*" && POMEGR_TOOL_PATTERN.test(allowlist)) {
-      warnings.push(`Agent definition "${relativePath}" carries the Pomegr reporting tools but no Delegated agents row matches it, so the delegation hook never injects the applicable rows into its prompt.`);
-    }
-  }
-  return warnings;
 }
 
 export function findPolicy(startDirectory = process.cwd()) {
@@ -308,56 +228,37 @@ export function readPolicy(startDirectory = process.cwd()) {
     const policyPath = fs.realpathSync(found.path);
     const relativePolicyPath = path.relative(repositoryPath, policyPath);
     if (!policyStat.isFile() || policyStat.isSymbolicLink()) {
-      return policyResult("invalid", {
-        path: found.path,
-        repositoryRoot: found.repositoryRoot,
-        errors: ["Policy must be a regular file and cannot be a symbolic link."],
-      });
+      return policyResult("invalid", { path: found.path, repositoryRoot: found.repositoryRoot, errors: ["Policy must be a regular file and cannot be a symbolic link."] });
     }
     if (relativePolicyPath.startsWith(`..${path.sep}`) || relativePolicyPath === ".." || path.isAbsolute(relativePolicyPath)) {
-      return policyResult("invalid", {
-        path: found.path,
-        repositoryRoot: found.repositoryRoot,
-        errors: ["Policy must resolve inside the repository."],
-      });
+      return policyResult("invalid", { path: found.path, repositoryRoot: found.repositoryRoot, errors: ["Policy must resolve inside the repository."] });
     }
     text = fs.readFileSync(found.path, "utf8");
   } catch {
     return policyResult("invalid", { path: found.path, repositoryRoot: found.repositoryRoot, errors: ["Policy could not be read."] });
   }
-  const validated = validatePolicyText(text);
-  const reportsDelegatedSignals = Boolean(validated.signals?.["Agent signals"]?.length || validated.signals?.["Task signals"]?.length);
-  const warnings = validated.status === "valid" && reportsDelegatedSignals
-    ? scanAgentDefinitions(found.repositoryRoot, validated.delegatedAgents)
-    : [];
-  return { ...validated, warnings, path: found.path, repositoryRoot: found.repositoryRoot, text };
+  return { ...validatePolicyText(text), path: found.path, repositoryRoot: found.repositoryRoot, text, warnings: [] };
 }
 
-function hookOutput(policy) {
-  if (policy.status === "missing") return "";
+function sessionStartOutput(policy) {
+  if (policy.status === "missing") return null;
   if (policy.status === "invalid") {
-    return JSON.stringify({
-      systemMessage: "Pomegr reporting policy is invalid. Run /pomegr:doctor; reporting remains non-blocking.",
-    });
+    return { systemMessage: "Pomegr reporting policy is invalid. Use $pomegr:doctor; reporting remains non-blocking." };
   }
-  const drift = policy.warnings?.length
-    ? ["", "[Pomegr policy drift]", ...policy.warnings, "Repair the declaration or the allowlist when you next touch these definitions, or keep their reporting in the delegating session."]
-    : [];
-  return JSON.stringify({
+  return {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: [
-        "[Pomegr reporting policy loaded]",
-        "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
-        "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
-        "Delegation is mechanized: the Pomegr PreToolUse hook appends the applicable rows to the prompt of any subagent type declared under Delegated agents, so you do not have to remember to paste them. Keep the resolved Pomegr MCP tools in those subagents' allowlists.",
-        "After substantive work makes the session's purpose clear, call the Pomegr `rename_session` tool once with a concise, meaningful title. Its trusted hook targets this main session and preserves an explicit user title. Do not ask the user to name the session, and do not delegate naming to a subagent.",
-        ...drift,
+        POLICY_LOADED_MARKER,
+        "Follow this repository-owned policy when reporting session, agent, or execution-task signals through the Pomegr MCP tools.",
+        "Treat signals as project-specific, agent-reported state rather than heartbeats or authoritative judgments. Clear resolved session or agent state when no replacement applies.",
+        "Codex injects declared delegated rows through the Pomegr SubagentStart hook. Do not paste them into subagent prompts yourself.",
+        "Use provider-native automatic session naming unless an explicit safe title capability is available; never ask the user to name the task.",
         "",
         policy.text,
       ].join("\n"),
     },
-  });
+  };
 }
 
 function normalizedAgentType(value) {
@@ -367,7 +268,7 @@ function normalizedAgentType(value) {
 export function delegationPlan(policy, agentType) {
   if (!policy || policy.status !== "valid") return null;
   const type = normalizedAgentType(agentType);
-  if (!type || type === FORK_AGENT_TYPE) return null;
+  if (!type || type === "fork") return null;
 
   const owned = new Set();
   for (const row of policy.delegatedAgents || []) {
@@ -382,10 +283,10 @@ export function delegationPlan(policy, agentType) {
   const labels = sections.flatMap((section) => section.rows.map((row) => row.label));
   const lines = [
     DELEGATION_MARKER,
-    "This repository's Pomegr policy configures the rows below for your agent type. Report them through the Pomegr MCP tools, typically the `mcp__plugin_pomegr_pomegr__*` namespace.",
-    "A signal is current project-specific state, not a heartbeat or a Pomegr judgment. Replace one when a new configured state applies, clear agent state when none applies, and treat execution-task outcomes as durable.",
-    "Never put prompts, responses, secrets, commands, stdout, stderr, tool results, or credential values in a signal.",
-    "If no row below applies when you finish, report nothing.",
+    "This repository's Pomegr policy assigns the rows below to your agent type. Use the logical Pomegr reporting tools for matching transitions.",
+    "Signals are current project-specific state, not heartbeats or Pomegr judgments. Replace applicable state, clear resolved agent state, and keep execution-task outcomes durable.",
+    "Never put prompts, responses, secrets, commands, stdout, stderr, tool results, credentials, or sensitive repository content in a signal.",
+    "If no row applies when you finish, report nothing.",
   ];
   for (const section of sections) {
     lines.push("", `### ${section.name}`, TABLE_HEADER, TABLE_DIVIDER);
@@ -394,13 +295,7 @@ export function delegationPlan(policy, agentType) {
   return { agentType: type, sections, labels, block: lines.join("\n") };
 }
 
-export function promptCarriesPolicy(prompt, plan) {
-  if (typeof prompt !== "string" || !plan) return false;
-  if (prompt.includes(DELEGATION_MARKER)) return true;
-  return /pomegr/i.test(prompt) && plan.labels.every((label) => prompt.includes(label));
-}
-
-function transcriptRecordReports(line) {
+function codexTranscriptRecordReports(line) {
   if (!line || !/pomegr/i.test(line)) return false;
   let record;
   try {
@@ -408,15 +303,17 @@ function transcriptRecordReports(line) {
   } catch {
     return false;
   }
-  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return false;
-  return record.message.content.some((content) => content?.type === "tool_use"
-    && typeof content.name === "string"
-    && DELEGATED_REPORT_TOOL_PATTERN.test(content.name));
+  if (record?.type !== "response_item") return false;
+  const payload = record.payload;
+  if (!payload || !["function_call", "custom_tool_call"].includes(payload.type)) return false;
+  return typeof payload.name === "string" && DELEGATED_REPORT_TOOL_PATTERN.test(payload.name);
 }
 
 export function transcriptReportsDelegatedSignal(transcriptPath) {
   let handle;
   try {
+    const stat = fs.lstatSync(transcriptPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > TRANSCRIPT_SCAN_MAX_BYTES) return null;
     handle = fs.openSync(transcriptPath, "r");
   } catch {
     return null;
@@ -432,9 +329,9 @@ export function transcriptReportsDelegatedSignal(transcriptPath) {
       if (scanned > TRANSCRIPT_SCAN_MAX_BYTES) return null;
       const lines = (remainder + decoder.write(buffer.subarray(0, read))).split("\n");
       remainder = lines.pop() || "";
-      for (const line of lines) if (transcriptRecordReports(line)) return true;
+      for (const line of lines) if (codexTranscriptRecordReports(line)) return true;
     }
-    return transcriptRecordReports(remainder + decoder.end());
+    return codexTranscriptRecordReports(remainder + decoder.end());
   } catch {
     return null;
   } finally {
@@ -444,15 +341,23 @@ export function transcriptReportsDelegatedSignal(transcriptPath) {
 
 function readHookPayload() {
   if (process.stdin.isTTY) return null;
-  let raw;
+  const chunks = [];
+  const buffer = Buffer.alloc(64 * 1024);
+  let total = 0;
   try {
-    raw = fs.readFileSync(0, "utf8");
+    while (true) {
+      const bytesRead = fs.readSync(0, buffer, 0, buffer.length, null);
+      if (!bytesRead) break;
+      total += bytesRead;
+      if (total > HOOK_INPUT_MAX_BYTES) return null;
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
   } catch {
     return null;
   }
-  if (!raw.trim()) return null;
+  if (!total) return null;
   try {
-    const payload = JSON.parse(raw);
+    const payload = JSON.parse(Buffer.concat(chunks, total).toString("utf8"));
     return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
   } catch {
     return null;
@@ -463,37 +368,31 @@ function payloadDirectory(payload, fallback) {
   return typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : fallback;
 }
 
-function delegateOutput(payload, fallbackDirectory) {
-  if (!DELEGATION_TOOL_NAMES.has(payload?.tool_name)) return "";
-  const input = payload.tool_input;
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  if (typeof input.prompt !== "string" || !input.prompt.trim()) return "";
-
-  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), input.subagent_type);
-  if (!plan || promptCarriesPolicy(input.prompt, plan)) return "";
-  return JSON.stringify({
+function subagentStartOutput(payload, fallbackDirectory) {
+  if (!payload || payload.hook_event_name !== "SubagentStart") return null;
+  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), payload.agent_type);
+  if (!plan) return null;
+  return {
     hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      updatedInput: { ...input, prompt: `${input.prompt}\n\n${plan.block}\n` },
+      hookEventName: "SubagentStart",
+      additionalContext: plan.block,
     },
-  });
+  };
 }
 
 function subagentStopOutput(payload, fallbackDirectory) {
-  if (!payload || payload.stop_hook_active === true) return "";
+  if (!payload || payload.hook_event_name !== "SubagentStop") return null;
   const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), payload.agent_type);
-  if (!plan) return "";
-  if (typeof payload.transcript_path !== "string" || !payload.transcript_path) return "";
-  if (transcriptReportsDelegatedSignal(payload.transcript_path) !== false) return "";
-
+  if (!plan || typeof payload.agent_transcript_path !== "string" || !payload.agent_transcript_path) return null;
+  if (transcriptReportsDelegatedSignal(payload.agent_transcript_path) !== false) return null;
   const scopes = plan.sections.map((section) => section.name.toLowerCase()).join(" and ");
-  return JSON.stringify({
+  return {
     systemMessage: [
       `Pomegr: delegated agent "${plan.agentType}" owns ${scopes} but finished without calling a Pomegr reporting tool.`,
       `Configured rows: ${plan.labels.join(", ")}.`,
-      "Pomegr never infers a signal from a transcript. Report one from this session only if you can confirm the outcome; otherwise leave the scope unreported.",
+      "Pomegr never infers a signal from transcript content. Report one from the main session only when the outcome is independently confirmed; otherwise leave it unreported.",
     ].join(" "),
-  });
+  };
 }
 
 function argumentValue(args, name, fallback) {
@@ -505,32 +404,32 @@ export function runPolicyCli(args = process.argv.slice(2)) {
   const command = args[0] || "validate";
   const cwd = argumentValue(args, "--cwd", process.cwd());
 
-  if (command === "delegate" || command === "subagent-stop") {
+  if (["session-start", "subagent-start", "subagent-stop"].includes(command)) {
     const payload = readHookPayload();
-    const output = command === "delegate" ? delegateOutput(payload, cwd) : subagentStopOutput(payload, cwd);
-    if (output) process.stdout.write(`${output}\n`);
+    const policyDirectory = payloadDirectory(payload, cwd);
+    let output = null;
+    if (command === "session-start") output = sessionStartOutput(readPolicy(policyDirectory));
+    if (command === "subagent-start") output = subagentStartOutput(payload, cwd);
+    if (command === "subagent-stop") output = subagentStopOutput(payload, cwd);
+    if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+    else if (command !== "session-start") process.stdout.write("{}\n");
     return 0;
   }
 
-  const policy = readPolicy(cwd);
-  if (command === "hook") {
-    const output = hookOutput(policy);
-    if (output) process.stdout.write(`${output}\n`);
-    return 0;
-  }
   if (command === "validate") {
-    const result = {
+    const policy = readPolicy(cwd);
+    process.stdout.write(`${JSON.stringify({
       status: policy.status,
       path: policy.path,
       errors: policy.errors || [],
       warnings: policy.warnings || [],
       delegatedAgents: (policy.delegatedAgents || []).map((row) => ({ agentType: row.agentType, owns: row.owns })),
       bytes: policy.bytes ?? 0,
-    };
-    process.stdout.write(`${JSON.stringify(result)}\n`);
+    })}\n`);
     return policy.status === "valid" ? 0 : policy.status === "missing" ? 2 : 1;
   }
-  process.stderr.write("Usage: policy.mjs <validate|hook|delegate|subagent-stop> [--cwd <directory>]\n");
+
+  process.stderr.write("Usage: policy.mjs <validate|session-start|subagent-start|subagent-stop> [--cwd <directory>]\n");
   return 64;
 }
 

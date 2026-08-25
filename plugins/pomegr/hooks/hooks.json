@@ -1,0 +1,45 @@
+{
+  "description": "Load a bounded repository-owned Pomegr policy and supply declared reporting rows to Codex subagents.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/policy.mjs\" session-start",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\policy.mjs\" session-start",
+            "timeout": 5,
+            "statusMessage": "Loading Pomegr policy",
+            "additionalContextLimit": 8000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/policy.mjs\" subagent-start",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\policy.mjs\" subagent-start",
+            "timeout": 5,
+            "additionalContextLimit": 4000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/policy.mjs\" subagent-stop",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\policy.mjs\" subagent-stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

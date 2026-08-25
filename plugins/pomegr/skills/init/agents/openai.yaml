@@ -1,0 +1,7 @@
+interface:
+  display_name: "Initialize Pomegr"
+  short_description: "Configure repository signal reporting"
+  default_prompt: "Use $pomegr:init to configure signal reporting for this repository."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Pomegr Doctor"
+  short_description: "Check Pomegr reporting setup"
+  default_prompt: "Use $pomegr:doctor to diagnose this repository's Pomegr setup."
+
+policy:
+  allow_implicit_invocation: true

@@ -32,8 +32,7 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 ## Coding-agent plugins
 
-- [Install the Pomegr plugin with Codex](docs/CODEX_PLUGIN.md)
-- [Install the Pomegr reporting plugin for Claude Code](docs/CLAUDE_CODE_PLUGIN.md)
+- [Install the Pomegr reporting plugin for Codex or Claude Code](docs/PLUGINS.md)
 
 ## Current limitations
 

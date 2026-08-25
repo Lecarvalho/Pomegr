@@ -19,7 +19,8 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
 const policyScript = path.join(pluginRoot, "scripts", "policy.mjs");
 const policyTemplatePath = path.join(pluginRoot, "skills", "init", "references", "policy-template.md");
-const releaseScriptPath = path.join(repositoryRoot, "scripts", "release-claude-plugin.sh");
+const releaseScriptPath = path.join(repositoryRoot, "scripts", "release-plugin.sh");
+const legacyReleaseScriptPath = path.join(repositoryRoot, "scripts", "release-claude-plugin.sh");
 const restartSkillRoot = path.join(repositoryRoot, ".codex", "skills", "restart-pomegr");
 
 async function withTemporaryDirectory(run) {
@@ -144,7 +145,7 @@ test("validates the repository policy template and extracts bounded signal rows"
     assert.deepEqual(result.errors, []);
     assert.match(lfTemplate, /## Delegated agent tooling/);
     assert.match(lfTemplate, /## Delegated agents/);
-    assert.match(lfTemplate, /mcp__plugin_pomegr_pomegr__\*/);
+    assert.match(lfTemplate, /provider-specific prefixes are not part of this policy/);
     assert.equal(result.signals["Session signals"][0].label, "Ready for review");
     assert.equal(result.signals["Agent signals"].length, 0);
     assert.equal(result.signals["Task signals"][0].label, "Checks passed");
@@ -192,9 +193,9 @@ test("validates the delegated-agents table and rejects incoherent delegation", a
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 5", "Policy version: 1"));
+  const malformed = validatePolicyText(template.replace("Policy version: 6", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.includes("Policy version must be 5."));
+  assert.ok(malformed.errors.includes("Policy version must be 6."));
 
   const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -218,7 +219,7 @@ test("rejects policies that contradict naming, privacy, and signal-lifetime inva
   assert.ok(badPrivacy.errors.includes("Privacy and semantics must match the canonical Pomegr safety policy."));
 
   const missingDelegatedTools = validatePolicyText(template.replace(
-    "- Every agent definition that can own a configured agent or execution-task signal must also carry the Pomegr reporting tools in its `tools` allowlist. Claude Code subagents inherit MCP tools from the parent unless a definition sets an explicit allowlist.",
+    "- Every signal-owning subagent must retain access to the Pomegr MCP server and the applicable reporting tools. A custom agent definition that replaces or disables inherited MCP configuration must explicitly restore that access.",
     "- Restricted agent definitions may own signals without the Pomegr reporting tools.",
   ));
   assert.equal(missingDelegatedTools.status, "invalid");
@@ -347,7 +348,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     assert.match(validOutput.hookSpecificOutput.additionalContext, /Delegation is mechanized/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
-    await writePolicy(repository, template.replace("Policy version: 5", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 6", "Policy version: invalid"));
     const invalid = runPolicyHook(nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
@@ -495,7 +496,7 @@ test("delegation hook stays silent for an undeclared policy, a missing policy, a
     await writePolicy(repository, template);
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
 
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 5", "Policy version: 9"));
+    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 6", "Policy version: 9"));
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
   });
 });
@@ -697,17 +698,111 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   }
 });
 
-test("plugin release helper synchronizes versions, rebuilds, rolls back, and prints correct client commands", async () => {
+test("plugin release helper owns one shared Claude and Codex version", async () => {
   const script = await readFile(releaseScriptPath, "utf8");
+  const [claudeManifest, claudePackage, codexManifest] = await Promise.all([
+    readFile(path.join(repositoryRoot, "plugins", "claude-code", ".claude-plugin", "plugin.json"), "utf8").then(JSON.parse),
+    readFile(path.join(repositoryRoot, "plugins", "claude-code", "package.json"), "utf8").then(JSON.parse),
+    readFile(path.join(repositoryRoot, "plugins", "pomegr", ".codex-plugin", "plugin.json"), "utf8").then(JSON.parse),
+  ]);
+  const sharedVersion = claudeManifest.version;
 
+  await assert.rejects(access(legacyReleaseScriptPath), { code: "ENOENT" });
+  assert.equal(claudePackage.version, sharedVersion);
+  assert.equal(codexManifest.version, sharedVersion);
+  assert.match(await readFile(path.join(repositoryRoot, "plugins", "claude-code", "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
+  assert.match(await readFile(path.join(repositoryRoot, "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
+  assert.match(script, /<major\|minor\|patch>/);
+  assert.doesNotMatch(script, /<claude\|codex>/);
   assert.match(script, /major\|minor\|patch/);
   assert.match(script, /plugins\/claude-code\/\.claude-plugin\/plugin\.json/);
   assert.match(script, /plugins\/claude-code\/package\.json/);
   assert.match(script, /plugins\/claude-code\/mcp\/server\.mjs/);
+  assert.match(script, /plugins\/pomegr\/\.codex-plugin\/plugin\.json/);
+  assert.match(script, /repository_root\/mcp\/server\.mjs/);
+  assert.match(script, /plugins\/pomegr\/mcp\/server\.bundle\.mjs/);
   assert.match(script, /rename-session/);
   assert.match(script, /npm run build:plugin/);
   assert.match(script, /restore_release_files/);
   assert.match(script, /\/plugin marketplace update pomegr/);
   assert.match(script, /claude plugin update pomegr@pomegr --scope project/);
+  assert.match(script, /codex plugin marketplace upgrade pomegr/);
+  assert.match(script, /codex plugin add pomegr@pomegr/);
   assert.doesNotMatch(script, /pomegr:pomegr/);
+});
+
+test("plugin release helper bumps both providers together and restores a failed release", async () => {
+  await withTemporaryDirectory(async (temporaryRoot) => {
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\sh.exe" : "bash";
+    const scriptDirectory = path.join(temporaryRoot, "scripts");
+    const claudeRoot = path.join(temporaryRoot, "plugins", "claude-code");
+    const codexRoot = path.join(temporaryRoot, "plugins", "pomegr");
+    const sharedMcpRoot = path.join(temporaryRoot, "mcp");
+    await Promise.all([
+      mkdir(scriptDirectory, { recursive: true }),
+      mkdir(path.join(claudeRoot, ".claude-plugin"), { recursive: true }),
+      mkdir(path.join(claudeRoot, "mcp"), { recursive: true }),
+      mkdir(path.join(claudeRoot, "scripts"), { recursive: true }),
+      mkdir(path.join(codexRoot, ".codex-plugin"), { recursive: true }),
+      mkdir(path.join(codexRoot, "mcp"), { recursive: true }),
+      mkdir(sharedMcpRoot, { recursive: true }),
+    ]);
+
+    const releaseScript = await readFile(releaseScriptPath, "utf8");
+    const rootPackagePath = path.join(temporaryRoot, "package.json");
+    const claudeManifestPath = path.join(claudeRoot, ".claude-plugin", "plugin.json");
+    const claudePackagePath = path.join(claudeRoot, "package.json");
+    const claudeServerPath = path.join(claudeRoot, "mcp", "server.mjs");
+    const codexManifestPath = path.join(codexRoot, ".codex-plugin", "plugin.json");
+    const codexServerPath = path.join(sharedMcpRoot, "server.mjs");
+    await Promise.all([
+      writeFile(path.join(scriptDirectory, "release-plugin.sh"), releaseScript, "utf8"),
+      writeFile(rootPackagePath, JSON.stringify({
+        private: true,
+        scripts: {
+          "build:plugin": "node -e 0",
+        },
+      }), "utf8"),
+      writeFile(claudeManifestPath, JSON.stringify({ name: "pomegr", version: "0.3.1" }, null, 2), "utf8"),
+      writeFile(claudePackagePath, JSON.stringify({ name: "@pomegr/claude-code-plugin", version: "0.3.1" }, null, 2), "utf8"),
+      writeFile(claudeServerPath, 'const identity = { name: "pomegr", version: "0.3.1" };\n', "utf8"),
+      writeFile(path.join(claudeRoot, "mcp", "server.bundle.mjs"), "// bundle\n", "utf8"),
+      writeFile(path.join(claudeRoot, "scripts", "rename-session.mjs"), "// source\n", "utf8"),
+      writeFile(path.join(claudeRoot, "scripts", "session-title.mjs"), "// contract\n", "utf8"),
+      writeFile(path.join(claudeRoot, "scripts", "rename-session.bundle.mjs"), "// bundle\n", "utf8"),
+      writeFile(codexManifestPath, JSON.stringify({ name: "pomegr", version: "0.3.1" }, null, 2), "utf8"),
+      writeFile(codexServerPath, 'const identity = { name: "pomegr", version: "0.3.1" };\n', "utf8"),
+      writeFile(path.join(codexRoot, "mcp", "server.bundle.mjs"), "// bundle\n", "utf8"),
+    ]);
+
+    const runRelease = (increment) => spawnSync(
+      shell,
+      ["scripts/release-plugin.sh", increment],
+      { cwd: temporaryRoot, encoding: "utf8" },
+    );
+
+    const release = runRelease("patch");
+    assert.equal(release.status, 0, release.stderr);
+    assert.equal(JSON.parse(await readFile(claudeManifestPath, "utf8")).version, "0.3.2");
+    assert.equal(JSON.parse(await readFile(claudePackagePath, "utf8")).version, "0.3.2");
+    assert.match(await readFile(claudeServerPath, "utf8"), /version: "0\.3\.2"/);
+    assert.equal(JSON.parse(await readFile(codexManifestPath, "utf8")).version, "0.3.2");
+    assert.match(await readFile(codexServerPath, "utf8"), /version: "0\.3\.2"/);
+    assert.match(release.stdout, /Pomegr plugins prepared: 0\.3\.1 -> 0\.3\.2/);
+
+    await writeFile(rootPackagePath, JSON.stringify({
+      private: true,
+      scripts: {
+        "build:plugin": "node -e process.exit\\(1\\)",
+      },
+    }), "utf8");
+    const failedRelease = runRelease("patch");
+    assert.notEqual(failedRelease.status, 0);
+    assert.equal(JSON.parse(await readFile(claudeManifestPath, "utf8")).version, "0.3.2");
+    assert.equal(JSON.parse(await readFile(claudePackagePath, "utf8")).version, "0.3.2");
+    assert.match(await readFile(claudeServerPath, "utf8"), /version: "0\.3\.2"/);
+    assert.equal(JSON.parse(await readFile(codexManifestPath, "utf8")).version, "0.3.2");
+    assert.match(await readFile(codexServerPath, "utf8"), /version: "0\.3\.2"/);
+    assert.match(failedRelease.stderr, /release files were restored/);
+  });
 });
