@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
+import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -123,6 +123,23 @@ describe("agent tree order", () => {
     const expected = ["primary", "newer", "nested", "middle", "older"];
     expect(agentTreeRows(agents).map(({ agent: row }) => row.id)).toEqual(expected);
     expect(agentTreeRows([...agents].reverse()).map(({ agent: row }) => row.id)).toEqual(expected);
+  });
+
+  it("hides terminal subagents while retaining terminal ancestors of visible work", () => {
+    const agents = [
+      agent("primary", null, "2026-08-11T12:00:00.000Z"),
+      { ...agent("finished-parent", "primary", "2026-08-11T12:01:00.000Z"), status: "finished" as const },
+      agent("active-child", "finished-parent", "2026-08-11T12:02:00.000Z"),
+      { ...agent("finished-leaf", "primary", "2026-08-11T12:03:00.000Z"), status: "finished" as const },
+      { ...agent("stopped-leaf", "primary", "2026-08-11T12:04:00.000Z"), status: "stopped" as const },
+    ];
+
+    expect(agentsWithFinishedVisibility(agents, true)).toBe(agents);
+    expect(agentsWithFinishedVisibility(agents, false).map(({ id }) => id)).toEqual([
+      "primary",
+      "finished-parent",
+      "active-child",
+    ]);
   });
 });
 

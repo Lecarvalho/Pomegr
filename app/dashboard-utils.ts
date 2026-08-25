@@ -179,6 +179,34 @@ export function agentTreeRows(agents: Agent[]) {
   return rows;
 }
 
+const FINISHED_AGENT_STATUSES = new Set<Agent["status"]>(["finished", "stopped"]);
+
+export function agentsWithFinishedVisibility(agents: Agent[], showFinished: boolean) {
+  if (showFinished) return agents;
+
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  const visibleIds = new Set(
+    agents
+      .filter((agent) => agent.id === "primary" || !FINISHED_AGENT_STATUSES.has(agent.status))
+      .map((agent) => agent.id),
+  );
+
+  for (const agent of agents) {
+    if (!visibleIds.has(agent.id)) continue;
+    const visited = new Set<string>([agent.id]);
+    let parentId = agent.parentId;
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      visibleIds.add(parent.id);
+      parentId = parent.parentId;
+    }
+  }
+
+  return agents.filter((agent) => visibleIds.has(agent.id));
+}
+
 export function executionTaskDuration(task: ExecutionTask, now = Date.now()) {
   const end = task.finishedAt ? new Date(task.finishedAt).getTime() : now;
   return Math.max(0, end - new Date(task.startedAt).getTime());

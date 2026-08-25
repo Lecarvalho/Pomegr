@@ -71,6 +71,38 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByText("unknown")).toBeInTheDocument();
   });
 
+  it("toggles terminal subagents in List and Tree and remembers the choice per session", async () => {
+    const user = userEvent.setup();
+    const agents = [
+      worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator" }),
+      worker({ id: "finished-parent", parentId: "primary", label: "Finished parent", status: "finished" }),
+      worker({ id: "active-child", parentId: "finished-parent", label: "Active child" }),
+      worker({ id: "finished-leaf", parentId: "primary", label: "Finished leaf", status: "finished" }),
+      worker({ id: "stopped-leaf", parentId: "primary", label: "Stopped leaf", status: "stopped" }),
+    ];
+    const panel = (sessionId: string, viewMode: "list" | "tree") => <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId={sessionId} viewMode={viewMode} workflows={[]} /></LiveClockProvider>;
+    const { rerender } = render(panel("claude:finished-a", "list"));
+    const finishedToggle = screen.getByRole("button", { name: "Show finished (3)" });
+
+    expect(finishedToggle).toHaveAttribute("aria-pressed", "true");
+    await user.click(finishedToggle);
+    expect(window.localStorage.getItem("pomegr-agent-activity-show-finished-claude:finished-a")).toBe("false");
+    expect(screen.getByRole("list", { name: "Session agents" })).toHaveTextContent("Finished parent");
+    expect(screen.getByRole("list", { name: "Session agents" })).toHaveTextContent("Active child");
+    expect(screen.queryByText("Finished leaf")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stopped leaf")).not.toBeInTheDocument();
+
+    rerender(panel("claude:finished-a", "tree"));
+    expect(screen.getAllByRole("treeitem")).toHaveLength(3);
+    expect(screen.getByRole("treeitem", { name: /Finished parent/ })).toBeInTheDocument();
+    expect(screen.queryByRole("treeitem", { name: /Finished leaf/ })).not.toBeInTheDocument();
+
+    rerender(panel("claude:finished-b", "list"));
+    expect(screen.getByRole("button", { name: "Show finished (3)" })).toHaveAttribute("aria-pressed", "true");
+    rerender(panel("claude:finished-a", "list"));
+    expect(screen.getByRole("button", { name: "Show finished (3)" })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("renders the top-down tree, vertical connectors, provenance, and the List-view detail note", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
     const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, worker()]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:tree" viewMode="tree" onViewModeChange={() => {}} workflows={[workflow()]} /></LiveClockProvider>);

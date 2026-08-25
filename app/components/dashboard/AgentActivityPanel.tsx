@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Agent, ExecutionTask, PlanTask, Workflow } from "../../../shared/monitor-contract";
-import { agentTreeRows, compactNumber } from "../../dashboard-utils";
+import { agentsWithFinishedVisibility, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
 import { CopyTranscriptButton } from "../CopyTranscriptButton";
@@ -16,6 +16,16 @@ import { AgentTreeView } from "./agent-tree/AgentTreeView";
 export type AgentActivityViewMode = "list" | "tree";
 
 type OpenAgentPopover = { kind: "skills" | "execution" | "plan"; agentId: string } | null;
+type FinishedAgentPreference = { sessionId: string; showFinished: boolean };
+
+function storedFinishedAgentVisibility(sessionId: string) {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(`pomegr-agent-activity-show-finished-${sessionId}`) !== "false";
+  } catch {
+    return true;
+  }
+}
 
 export function AgentActivityPanel({ agents, executionTasks, planTasks, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
   agents: Agent[];
@@ -28,20 +38,36 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
   onViewModeChange?: (viewMode: AgentActivityViewMode) => void;
 }) {
   const [openPopover, setOpenPopover] = useState<OpenAgentPopover>(null);
+  const [finishedPreference, setFinishedPreference] = useState<FinishedAgentPreference | null>(null);
   const popoverAnchorRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissibleLayer(Boolean(openPopover), popoverAnchorRef, closePopover);
-  const agentRows = agentTreeRows(agents);
+  const showFinished = finishedPreference?.sessionId === sessionId
+    ? finishedPreference.showFinished
+    : storedFinishedAgentVisibility(sessionId);
+  const visibleAgents = useMemo(() => agentsWithFinishedVisibility(agents, showFinished), [agents, showFinished]);
+  const agentRows = agentTreeRows(visibleAgents);
+  const finishedAgentCount = agents.filter((agent) => agent.id !== "primary" && (agent.status === "finished" || agent.status === "stopped")).length;
   const executionTasksByAgent = new Map(agents.map((agent) => [agent.id, agent.executionTasks || (agent.id === "primary" ? executionTasks : [])]));
   const workflowsById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
   const phasesByWorkflowId = new Map(workflows.map((workflow) => [workflow.id, new Map(workflow.phases.map((phase) => [phase.id, phase]))]));
   const labelCounts = new Map<string, number>();
-  for (const agent of agents) labelCounts.set(agent.label, (labelCounts.get(agent.label) || 0) + 1);
+  for (const agent of visibleAgents) labelCounts.set(agent.label, (labelCounts.get(agent.label) || 0) + 1);
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
   const openPlanTasks = planTasks.length - completedPlanTasks - activePlanTasks;
   const isOpen = (kind: NonNullable<OpenAgentPopover>["kind"], agentId: string) => openPopover?.kind === kind && openPopover.agentId === agentId;
   const toggle = (kind: NonNullable<OpenAgentPopover>["kind"], agentId: string) => setOpenPopover((current) => current?.kind === kind && current.agentId === agentId ? null : { kind, agentId });
+  const toggleFinishedAgents = () => {
+    const next = !showFinished;
+    setOpenPopover(null);
+    setFinishedPreference({ sessionId, showFinished: next });
+    try {
+      window.localStorage.setItem(`pomegr-agent-activity-show-finished-${sessionId}`, String(next));
+    } catch {
+      // The in-memory preference remains usable when browser storage is unavailable.
+    }
+  };
 
   const renderAgentRow = ({ agent, depth }: { agent: Agent; depth: number }) => {
     const tasks = executionTasksByAgent.get(agent.id) || [];
@@ -124,12 +150,12 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
     <article className={`panel agentsPanel agentsPanel-${viewMode} ${openPopover ? "hasOpenPopover" : ""}`.trim()} data-session-id={sessionId}>
       <PanelHeader
         title="Agent activity"
-        trailing={<div className="agentViewControls" aria-label="Agent activity view"><span className="quiet">{agents.length} observed</span><button aria-pressed={viewMode === "list"} className="agentViewButton" onClick={() => onViewModeChange("list")} type="button">List</button><button aria-pressed={viewMode === "tree"} className="agentViewButton" onClick={() => onViewModeChange("tree")} type="button">Tree</button></div>}
+        trailing={<div className="agentViewControls" aria-label="Agent activity controls" role="group"><span className="quiet">{agents.length} observed</span>{finishedAgentCount > 0 && <button aria-pressed={showFinished} className="agentFinishedToggle" onClick={toggleFinishedAgents} title={showFinished ? "Hide finished and stopped subagents. Ancestors of visible agents remain shown." : "Show finished and stopped subagents."} type="button"><span className="agentFinishedToggleMark" aria-hidden="true" />Show finished <span className="agentFinishedCount">({finishedAgentCount})</span></button>}<span className="agentViewMode" aria-label="Agent activity view" role="group"><button aria-pressed={viewMode === "list"} className="agentViewButton" onClick={() => onViewModeChange("list")} type="button">List</button><button aria-pressed={viewMode === "tree"} className="agentViewButton" onClick={() => onViewModeChange("tree")} type="button">Tree</button></span></div>}
       />
       {viewMode === "list" ? <div className="agentList">
         {agents.length === 0 && <EmptyState text="No agents have appeared in this session yet." />}
         {agentRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{agentRows.map(renderAgentRow)}</div>}
-      </div> : <AgentTreeView agents={agents} historical={historical} sessionId={sessionId} workflows={workflows} />}
+      </div> : <AgentTreeView agents={visibleAgents} historical={historical} sessionId={sessionId} workflows={workflows} />}
     </article>
   );
 }
