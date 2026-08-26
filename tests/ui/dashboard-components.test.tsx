@@ -108,6 +108,7 @@ function repositorySession(
     summary: null,
     signal: null,
     progress: null,
+    pomegrPlugin: null,
   } satisfies NonNullable<MonitorState["session"]>;
 }
 
@@ -1191,10 +1192,11 @@ describe("session progress estimate", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-11T12:11:00.000Z"));
     const primary = progressAgent("active", reportedAt);
-    render(<LiveClockProvider running={false}><SessionProgressPanel progress={progress} agents={[primary]} activity={[{ id: "activity-1", timestamp: "2026-08-11T12:10:30.000Z", actor: "primary", tool: "Read", detail: "bounded", status: null }]} connected /></LiveClockProvider>);
+    const { container } = render(<LiveClockProvider running={false}><SessionProgressPanel progress={progress} agents={[primary]} activity={[{ id: "activity-1", timestamp: "2026-08-11T12:10:30.000Z", actor: "primary", tool: "Read", detail: "bounded", status: null }]} connected /></LiveClockProvider>);
 
     expect(screen.getByText(/May be stale/)).toBeInTheDocument();
-    expect(screen.getAllByText(/may be stale/i)).toHaveLength(2);
+    expect(screen.getAllByText(/may be stale/i)).toHaveLength(1);
+    expect(container.querySelector(".sessionProgressNote")).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -1266,6 +1268,48 @@ describe("estimated session cost", () => {
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText("$9.00")).not.toBeInTheDocument();
     expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Pomegr plugin metadata", () => {
+  function detailsState(session: NonNullable<MonitorState["session"]>) {
+    return {
+      ...createEmptyMonitorState({ connected: true, source: "Codex", capabilities: codexCapabilities }),
+      session,
+    } satisfies MonitorState;
+  }
+
+  it("omits integration UI when no trusted observation exists", () => {
+    const session = repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
+    const { container } = render(<SessionDetailsPanel state={detailsState(session)} historical={false} loading={false} onRefresh={vi.fn()} />);
+
+    expect(container.querySelector(".sessionPomegrIntegration")).not.toBeInTheDocument();
+    expect(container.querySelector(".sessionPomegrSummary")).not.toBeInTheDocument();
+  });
+
+  it("shows the active plugin and valid policy in summary and details", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      pomegrPlugin: { status: "active" as const, version: "0.4.1", policyStatus: "valid" as const, policyVersion: 7, observedAt: "2026-08-26T12:00:00.000Z" },
+    };
+    render(<SessionDetailsPanel state={detailsState(session)} historical={false} loading={false} onRefresh={vi.fn()} />);
+
+    expect(document.querySelector(".sessionPomegrSummary")).toHaveTextContent("Pomegr v0.4.1 · Policy v7");
+    expect(screen.getByRole("region", { name: "Pomegr integration" })).toHaveTextContent("Pluginv0.4.1PolicyValid · v7");
+    expect(screen.getByText("Observed at session start")).toBeInTheDocument();
+    expect(screen.getByText("Valid · v7").closest(".sessionPomegrPolicy")).toHaveClass("sessionPomegrPolicy-valid");
+  });
+
+  it("preserves recorded invalid policy state in historical sessions", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      pomegrPlugin: { status: "active" as const, version: null, policyStatus: "invalid" as const, policyVersion: 7, observedAt: "2026-08-26T12:00:00.000Z" },
+    };
+    render(<SessionDetailsPanel state={detailsState(session)} historical loading={false} onRefresh={vi.fn()} />);
+
+    expect(document.querySelector(".sessionPomegrSummary")).toHaveTextContent("Pomegr Version unavailable · Policy needs attention");
+    expect(screen.getByText("Invalid — needs attention · v7")).toBeInTheDocument();
+    expect(screen.getByText("Recorded for this session")).toBeInTheDocument();
   });
 });
 

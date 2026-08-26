@@ -31,6 +31,7 @@ function liveState(id: string, title: string): MonitorState {
       summary: null,
       signal: null,
       progress: null,
+      pomegrPlugin: null,
     },
   };
 }

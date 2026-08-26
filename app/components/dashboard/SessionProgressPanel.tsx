@@ -139,8 +139,8 @@ export function SessionProgressPanel({
         : etaPaused
           ? <p className="sessionProgressNote">The estimate is retained while this session is {blocked ? "blocked" : inputPaused ? "waiting for input" : "waiting"}.</p>
           : stale
-            ? <p className="sessionProgressNote">Values are retained from the last report and may be stale.</p>
-            : <p className="sessionProgressNote">An agent-reported snapshot, not a countdown or Pomegr prediction.</p>}
+            ? ""
+            : <p className="sessionProgressNote">Reported by the agent.</p>}
     </section>
   );
 }

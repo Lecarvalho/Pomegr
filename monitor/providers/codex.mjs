@@ -31,6 +31,7 @@ import {
 import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
+import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -816,6 +817,9 @@ export function createCodexProvider(options = {}) {
       || metadata.updatedAt
       || startedAt;
     const rootRecords = recordsByThreadId.get(metadata.localId) || [];
+    const pomegrPlugin = metadata.rolloutFile
+      ? await readLatestPomegrPluginMetadata(metadata.rolloutFile, "codex")
+      : null;
     const parsedApprovalPlan = metadata.rolloutFile
       ? parseCodexApprovalPlanRecords(rootRecords)
       : { approvalMode: null, planTasks: [] };
@@ -1006,6 +1010,7 @@ export function createCodexProvider(options = {}) {
         signal: allSignals.session,
         // Session progress is scoped to the primary rollout only.
         progress: signalsByActor.get("primary")?.progress || null,
+        pomegrPlugin,
       },
       agents,
       workflows: [],

@@ -21,6 +21,14 @@ export type SessionProgress = {
   reportedAt: string;
 };
 
+export type PomegrPluginMetadata = {
+  status: "active";
+  version: string | null;
+  policyStatus: "valid" | "invalid" | "missing";
+  policyVersion: number | null;
+  observedAt: string | null;
+};
+
 /** Transient provider-authored activity heading for an open agent turn. */
 export type AgentCurrentActivity = {
   label: string;
@@ -492,6 +500,7 @@ export type MonitorState = {
     summary: { text: string; observedAt: string | null; source: "provider" } | null;
     signal: SessionReportedSignal | null;
     progress: SessionProgress | null;
+    pomegrPlugin: PomegrPluginMetadata | null;
   } | null;
   score: number;
   metrics: {

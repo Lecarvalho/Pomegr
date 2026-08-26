@@ -92,7 +92,7 @@ test("Codex policy discovery stays repository-scoped and rejects invalid policy 
   });
 });
 
-test("SessionStart loads valid policy, stays silent when missing, and bounds invalid diagnostics", async () => {
+test("SessionStart reports plugin metadata for valid, missing, and invalid policies", async () => {
   const template = await readFile(codexTemplatePath, "utf8");
   await withTemporaryRepository(async (repository) => {
     const policyPath = path.join(repository, ".pomegr", "signals.md");
@@ -101,18 +101,21 @@ test("SessionStart loads valid policy, stays silent when missing, and bounds inv
     assert.equal(valid.status, 0);
     const output = JSON.parse(valid.stdout);
     assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
+    assert.match(output.hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
     assert.match(output.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
     assert.match(output.hookSpecificOutput.additionalContext, /Policy version: 7/);
 
     await rm(policyPath);
     const missing = runHook("session-start", repository, { hook_event_name: "SessionStart", cwd: repository });
     assert.equal(missing.status, 0);
-    assert.equal(missing.stdout, "");
+    assert.match(JSON.parse(missing.stdout).hookSpecificOutput.additionalContext, /"policyStatus":"missing".*"policyVersion":null/);
 
     await writeFile(policyPath, template.replace("Policy version: 7", "Policy version: invalid"));
     const invalid = runHook("session-start", repository, { hook_event_name: "SessionStart", cwd: repository });
     assert.equal(invalid.status, 0);
-    assert.match(JSON.parse(invalid.stdout).systemMessage, /\$pomegr:doctor/);
+    const invalidOutput = JSON.parse(invalid.stdout);
+    assert.match(invalidOutput.systemMessage, /\$pomegr:doctor/);
+    assert.match(invalidOutput.hookSpecificOutput.additionalContext, /"policyStatus":"invalid".*"policyVersion":null/);
     assert.doesNotMatch(invalid.stdout, /Ready for review/);
   });
 });

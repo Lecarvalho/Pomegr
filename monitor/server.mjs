@@ -861,6 +861,7 @@ export function createMonitorRuntime(options = {}) {
       summary: evidence.session.summary,
       signal: evidence.session.signal,
       progress: evidence.session.progress ?? null,
+      pomegrPlugin: evidence.session.pomegrPlugin ?? null,
     },
     score,
     metrics: {

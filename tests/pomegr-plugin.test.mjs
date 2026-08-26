@@ -308,7 +308,7 @@ test("finds a policy upward only as far as the repository root", async () => {
   });
 });
 
-test("ignores a legacy-only reporting policy and leaves the hook silent", async () => {
+test("ignores a legacy-only reporting policy while reporting the missing Pomegr policy", async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     const legacyDirectory = path.join(repository, ".threadlight");
@@ -322,11 +322,11 @@ test("ignores a legacy-only reporting policy and leaves the hook silent", async 
 
     const hook = runPolicyHook(repository);
     assert.equal(hook.status, 0);
-    assert.equal(hook.stdout, "");
+    assert.match(JSON.parse(hook.stdout).hookSpecificOutput.additionalContext, /"policyStatus":"missing".*"policyVersion":null/);
   });
 });
 
-test("SessionStart hook injects valid policy context, stays silent when missing, and warns safely when invalid", async () => {
+test("SessionStart hook reports plugin metadata and injects valid policy context", async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     const nested = path.join(repository, "src");
@@ -335,7 +335,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
 
     const missing = runPolicyHook(nested);
     assert.equal(missing.status, 0);
-    assert.equal(missing.stdout, "");
+    assert.match(JSON.parse(missing.stdout).hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"policyStatus":"missing".*"policyVersion":null/);
 
     const template = await readFile(policyTemplatePath, "utf8");
     await writePolicy(repository, template);
@@ -343,6 +343,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     assert.equal(valid.status, 0);
     const validOutput = JSON.parse(valid.stdout);
     assert.equal(validOutput.hookSpecificOutput.hookEventName, "SessionStart");
+    assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /call the Pomegr `rename_session` tool once/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /Delegation is mechanized/i);
@@ -354,7 +355,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     const invalidOutput = JSON.parse(invalid.stdout);
     assert.match(invalidOutput.systemMessage, /\/pomegr:doctor/);
     assert.doesNotMatch(invalid.stdout, /Ready for review/);
-    assert.equal(invalidOutput.hookSpecificOutput, undefined);
+    assert.match(invalidOutput.hookSpecificOutput.additionalContext, /"policyStatus":"invalid".*"policyVersion":null/);
   });
 });
 

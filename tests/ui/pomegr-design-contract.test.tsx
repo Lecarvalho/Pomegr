@@ -58,7 +58,7 @@ describe("Pomegr visual contract", () => {
   it("keeps session progress semantic, flat, and motion-safe", () => {
     expect(sessionProgressSource).toMatch(/<progress[^>]*aria-label=\"Agent-reported session progress\"[^>]*aria-valuetext=/);
     expect(sessionProgressSource).toMatch(/Recorded agent estimate/);
-    expect(sessionProgressSource).toMatch(/may be stale/);
+    expect(sessionProgressSource).toMatch(/May be stale — later primary-agent activity was observed/);
     expect(styles).toMatch(/\.sessionProgressPanel\s*\{[^}]*overflow:\s*hidden/);
     expect(styles).toMatch(/\.sessionProgressInstrument progress\s*\{[^}]*appearance:\s*none/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation-duration:\s*\.01ms/);

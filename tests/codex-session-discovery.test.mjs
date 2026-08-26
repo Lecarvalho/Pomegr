@@ -150,6 +150,13 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
     summary: null,
     signal: null,
     progress: null,
+    pomegrPlugin: {
+      status: "active",
+      version: "0.4.1",
+      policyStatus: "valid",
+      policyVersion: 7,
+      observedAt: "2026-08-10T13:00:01.000Z",
+    },
   });
   assertNoPrivateFixtureSentinels(evidence, "Codex rollout evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /rollout-parent|parent\.jsonl/);

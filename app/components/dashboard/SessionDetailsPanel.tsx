@@ -1,6 +1,6 @@
 "use client";
 
-import type { MonitorState } from "../../../shared/monitor-contract";
+import type { MonitorState, PomegrPluginMetadata } from "../../../shared/monitor-contract";
 import { createEmptyProviderCapabilities } from "../../../shared/monitor-state.mjs";
 import { compactNumber, sessionListTime } from "../../dashboard-utils";
 import { RelativeTimeText } from "../LiveTime";
@@ -30,6 +30,23 @@ function compactUsageWindow(window: string) {
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 
+function pluginVersionLabel(version: string | null) {
+  return version ? `v${version.replace(/^v/i, "")}` : "Version unavailable";
+}
+
+function policyStatusLabel(status: PomegrPluginMetadata["policyStatus"]) {
+  if (status === "valid") return "Valid";
+  if (status === "invalid") return "Invalid — needs attention";
+  if (status === "missing") return "Not configured";
+  return "Unavailable";
+}
+
+function policySummaryLabel(plugin: PomegrPluginMetadata) {
+  if (plugin.policyStatus === "valid") return plugin.policyVersion === null ? "Policy valid" : `Policy v${plugin.policyVersion}`;
+  if (plugin.policyStatus === "invalid") return "Policy needs attention";
+  return "Policy not configured";
+}
+
 function estimatedCostLabel(cost: SessionCost) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -48,6 +65,7 @@ function SessionDetailsSummary({ state, historical }: { state: MonitorState; his
     ? usageLimit.percent
     : null;
   const machinery = state.session.contextMachinery;
+  const plugin = state.session.pomegrPlugin;
 
   return (
     <span className="disclosureSummaryMetrics sessionDetailsSummary">
@@ -61,6 +79,11 @@ function SessionDetailsSummary({ state, historical }: { state: MonitorState; his
       ) : <span><b>Git</b> Unavailable</span>}
       {!historical && capabilities.usageLimits && (
         <span><b>Usage {usageLimit ? compactUsageWindow(usageLimit.window) : "5h"}</b> {state.usageLimits.available && usagePercent !== null ? `${Math.round(usagePercent)}%` : "unavailable"}</span>
+      )}
+      {plugin && (
+        <span className="sessionPomegrSummary">
+          <b>Pomegr</b> {pluginVersionLabel(plugin.version)} <span aria-hidden="true">{"\u00b7"}</span> {policySummaryLabel(plugin)}
+        </span>
       )}
       {capabilities.contextMachinery && machinery && (
         <span><b>Loaded inventory</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>
@@ -83,6 +106,7 @@ export function SessionDetailsPanel({
   if (!state.session) return null;
   const session = state.session;
   const capabilities = state.capabilities || createEmptyProviderCapabilities();
+  const plugin = session.pomegrPlugin;
 
   return (
     <DashboardDisclosurePanel
@@ -93,6 +117,24 @@ export function SessionDetailsPanel({
       summary={<SessionDetailsSummary state={state} historical={historical} />}
       title="Session details"
     >
+      {plugin && (
+        <section className="sessionPomegrIntegration" aria-label="Pomegr integration">
+          <div className="sessionPomegrIntegrationHeader">
+            <span>Pomegr integration</span>
+            <small>{historical ? "Recorded for this session" : "Observed at session start"}</small>
+          </div>
+          <div className="sessionPomegrIntegrationGrid">
+            <div>
+              <span>Plugin</span>
+              <strong title={plugin.version || undefined}>{pluginVersionLabel(plugin.version)}</strong>
+            </div>
+            <div className={`sessionPomegrPolicy sessionPomegrPolicy-${plugin.policyStatus || "unknown"}`}>
+              <span>Policy</span>
+              <strong>{policyStatusLabel(plugin.policyStatus)}{plugin.policyVersion === null ? "" : ` · v${plugin.policyVersion}`}</strong>
+            </div>
+          </div>
+        </section>
+      )}
       {capabilities.estimatedCost && session.cost && (
         <div className="sessionCostDetail">
           <div>

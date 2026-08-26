@@ -29,6 +29,7 @@ import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
+import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
@@ -876,6 +877,7 @@ export function createClaudeProvider(options = {}) {
     const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections(recordsByFile.values());
     const mainRecords = recordsByFile.get(mainFile) || [];
+    const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
     const signalsByFile = new Map(await Promise.all(files.map(async (file) => [
       file,
       await readTranscriptSignals(file, recordsByFile.get(file) || []),
@@ -1070,6 +1072,7 @@ export function createClaudeProvider(options = {}) {
         summary: latestSessionSummary(mainRecords),
         signal: sessionSignal,
         progress: sessionProgress,
+        pomegrPlugin,
       },
       agents,
       workflows,

@@ -98,6 +98,8 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 
 Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`.
 
+Every `SessionStart` also emits one bounded `[Pomegr plugin metadata]` line containing only the installed plugin version, policy status (`valid`, `invalid`, or `missing`), and recognized policy version. Pomegr accepts that line only from provider-owned hook context, records the provider transcript timestamp as the observation time, and never treats an absent observation as proof that the plugin is uninstalled. Historical views retain the version and policy state observed in that session rather than substituting the current machine configuration.
+
 Both packages also register an all-tool `PostToolUse` reminder hook. Reminder state is stored only as bounded version, timestamp, and counter records under provider plugin data, with SHA-256 session filenames, owner-only permissions, atomic writes, 30-day expiry, and a 256-file cap. Missing, disabled, malformed, or unwritable policy/data suppresses reminders and never blocks a session.
 
 - A missing policy means repository-specific reporting is inactive.

@@ -318,6 +318,20 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     confidence: "medium",
     reportedAt: "2026-08-10T13:00:20.000Z",
   });
+  assert.deepEqual(claudeState.session.pomegrPlugin, {
+    status: "active",
+    version: "0.4.1",
+    policyStatus: "valid",
+    policyVersion: 7,
+    observedAt: "2026-08-10T12:00:00.500Z",
+  });
+  assert.deepEqual(codexState.session.pomegrPlugin, {
+    status: "active",
+    version: "0.4.1",
+    policyStatus: "valid",
+    policyVersion: 7,
+    observedAt: "2026-08-10T13:00:01.000Z",
+  });
   for (const state of [claudeState, codexState]) {
     assert.equal(Object.hasOwn(state.session.progress, "remaining_minutes_min"), false);
     assert.equal(Object.hasOwn(state.session.progress, "remaining_minutes_max"), false);

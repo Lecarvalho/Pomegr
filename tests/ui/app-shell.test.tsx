@@ -38,7 +38,7 @@ describe("shared app shell", () => {
 
     expect(await screen.findByRole("link", { name: "Home — running sessions" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("HISTORY")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Live work/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Live work/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Pomegr1$/ })).toBeInTheDocument();
   });
 
@@ -52,7 +52,7 @@ describe("shared app shell", () => {
     expect(screen.getByRole("heading", { name: "About content" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "About Pomegr" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("HISTORY")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Live work/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Live work/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^Pomegr1$/ }));
     await user.click(screen.getByRole("button", { name: /Recorded work/ }));

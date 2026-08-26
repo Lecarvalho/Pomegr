@@ -59,7 +59,7 @@ const signalAnnotations = {
 
 export function buildPomegrMcpServer() {
   const server = new McpServer(
-    { name: "pomegr", version: "0.4.1" },
+    { name: "pomegr", version: "0.4.2" },
     { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful." },
   );
 

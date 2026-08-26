@@ -162,6 +162,13 @@ test("Claude adapter returns sanitized provider evidence without changing normal
   assert.equal(evidence.session.contextMachinery.machineryTokens, 1600);
   assert.equal(evidence.session.summary.text, "Synthetic fixture is awaiting review.");
   assert.equal(evidence.session.signal, null);
+  assert.deepEqual(evidence.session.pomegrPlugin, {
+    status: "active",
+    version: "0.4.1",
+    policyStatus: "valid",
+    policyVersion: 7,
+    observedAt: "2026-08-10T12:00:00.500Z",
+  });
   assert.equal(evidence.agents.length, 2);
   assert.equal(evidence.agents[0].status, "needs_input");
   assert.equal(evidence.agents[0].signal.label, "Reviewing");

@@ -14,6 +14,10 @@ export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
 export const POLICY_LOADED_MARKER = "[Pomegr reporting policy loaded]";
 export const DELEGATION_MARKER = "[Pomegr delegated reporting policy]";
+export const PLUGIN_METADATA_MARKER = "[Pomegr plugin metadata]";
+
+const PLUGIN_MANIFEST_URL = new URL("../.codex-plugin/plugin.json", import.meta.url);
+const PLUGIN_VERSION_PATTERN = /^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:-[0-9A-Za-z.-]{1,64})?$/;
 
 const REQUIRED_SECTIONS = [
   "Session naming",
@@ -250,15 +254,41 @@ export function readPolicy(startDirectory = process.cwd()) {
   return { ...validatePolicyText(text), path: found.path, repositoryRoot: found.repositoryRoot, text, warnings: [] };
 }
 
+export function installedPluginVersion() {
+  try {
+    const stat = fs.lstatSync(PLUGIN_MANIFEST_URL);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024) return null;
+    const value = JSON.parse(fs.readFileSync(PLUGIN_MANIFEST_URL, "utf8"));
+    return typeof value?.version === "string" && PLUGIN_VERSION_PATTERN.test(value.version) ? value.version : null;
+  } catch {
+    return null;
+  }
+}
+
+export function pluginMetadataLine(policy) {
+  return `${PLUGIN_METADATA_MARKER} ${JSON.stringify({
+    pluginVersion: installedPluginVersion(),
+    policyStatus: policy.status,
+    policyVersion: Number.isInteger(policy.version) ? policy.version : null,
+  })}`;
+}
+
 function sessionStartOutput(policy) {
-  if (policy.status === "missing") return null;
+  const metadata = pluginMetadataLine(policy);
+  if (policy.status === "missing") {
+    return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: metadata } };
+  }
   if (policy.status === "invalid") {
-    return { systemMessage: "Pomegr reporting policy is invalid. Use $pomegr:doctor; reporting remains non-blocking." };
+    return {
+      systemMessage: "Pomegr reporting policy is invalid. Use $pomegr:doctor; reporting remains non-blocking.",
+      hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: metadata },
+    };
   }
   return {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: [
+        metadata,
         POLICY_LOADED_MARKER,
         "Follow this repository-owned policy when reporting session, agent, or execution-task signals through the Pomegr MCP tools.",
         "Treat signals as project-specific, agent-reported state rather than heartbeats or authoritative judgments. Clear resolved session or agent state when no replacement applies.",

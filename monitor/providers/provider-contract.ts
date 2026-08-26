@@ -107,6 +107,7 @@ export type ProviderAgentEvidence = Omit<Agent, "role" | "tokens" | "executionTa
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 type SessionSummary = NonNullable<NonNullable<MonitorState["session"]>["summary"]>;
+type PomegrPluginMetadata = NonNullable<NonNullable<MonitorState["session"]>["pomegrPlugin"]>;
 
 /**
  * Fully sanitized provider evidence. Shared analysis may aggregate or filter
@@ -128,6 +129,7 @@ export type ProviderSessionEvidence = {
     summary: SessionSummary | null;
     signal: SessionReportedSignal | null;
     progress: SessionProgress | null;
+    pomegrPlugin: PomegrPluginMetadata | null;
   };
   agents: ProviderAgentEvidence[];
   workflows: Workflow[];
