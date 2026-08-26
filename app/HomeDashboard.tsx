@@ -42,6 +42,25 @@ function limitPercent(value: number | null) {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value!)) : null;
 }
 
+function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
+  const projects = new Map<string, {
+    project: string;
+    requestObservations: Array<HomeLimitActivity["sessions"][number]["requestObservations"][number] & { sessionId: string }>;
+    hasLiveWork: boolean;
+  }>();
+
+  for (const session of sessions) {
+    const existing = projects.get(session.project) || { project: session.project, requestObservations: [], hasLiveWork: false };
+    existing.hasLiveWork ||= session.isLive;
+    existing.requestObservations.push(...session.requestObservations.map((observation) => ({ ...observation, sessionId: session.id })));
+    projects.set(session.project, existing);
+  }
+
+  return [...projects.values()]
+    .filter((project) => project.requestObservations.length > 0)
+    .sort((left, right) => left.project.localeCompare(right.project));
+}
+
 function compactLimitWindow(value: string) {
   return value
     .replace(/\s+minutes?\b/gi, "m")
@@ -53,7 +72,7 @@ function compactLimitWindow(value: string) {
 
 function LimitActivityOverview({ activity }: { activity: HomeLimitActivity }) {
   const observations = activity.observations.filter((observation) => Number.isFinite(Date.parse(observation.observedAt)) && Number.isFinite(observation.percent));
-  const sessions = activity.sessions || [];
+  const projects = projectRequestGroups(activity.sessions || []);
   const startMs = Date.parse(activity.windowStartsAt);
   const endMs = Date.parse(activity.generatedAt);
   const rangeMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0;
@@ -70,14 +89,14 @@ function LimitActivityOverview({ activity }: { activity: HomeLimitActivity }) {
 
   return (
     <figure className="homeLimitActivityTimeline">
-      <figcaption>Session request observations</figcaption>
-      <div className="homeLimitActivitySessions">
-        {sessions.length ? sessions.map((session) => <div className="homeLimitActivitySession" key={session.id}>
-          <span><strong>{session.title}</strong><small>{session.project} · {session.isLive ? "live" : "closed"}</small></span>
-          <i aria-label={`${session.title} request observations`}>
-            {session.requestObservations.map((observation) => <b key={observation.id} style={{ left: `${position(observation.observedAt)}%` }} title={`Request observed at ${limitTime(observation.observedAt)}`} />)}
+      <figcaption>Project request observations</figcaption>
+      <div className="homeLimitActivityProjects">
+        {projects.length ? projects.map((project) => <div className="homeLimitActivityProject" key={project.project}>
+          <span><strong>{project.project}</strong><small>{project.requestObservations.length} {project.requestObservations.length === 1 ? "request" : "requests"}{project.hasLiveWork ? " · live" : ""}</small></span>
+          <i aria-label={`${project.project}, ${project.requestObservations.length} ${project.requestObservations.length === 1 ? "request observation" : "request observations"}`}>
+            {project.requestObservations.map((observation) => <b key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={`Request observed at ${limitTime(observation.observedAt)}`} />)}
           </i>
-        </div>) : <p className="homeUnavailable">No session request observations</p>}
+        </div>) : <p className="homeUnavailable">No project request observations</p>}
       </div>
       <div className="homeLimitActivityScale" role="img" aria-label={`${activity.label} limit range from 0 to 100 percent. ${startLabel}.${reachedLabel ? ` ${reachedLabel}.` : ""}`}>
         <div className="homeLimitActivityScaleLabels"><span>0</span><span>100%</span></div>
@@ -93,12 +112,12 @@ function HomeLimitActivitySummary({ activities }: { activities: HomeLimitActivit
 
   return <span className="disclosureSummaryMetrics homeLimitActivitySummary">
     {activities.map((activity) => {
-      const observedSessions = (activity.sessions || []).filter((session) => session.requestObservations.length > 0).length;
-      const evidenceLabel = `${observedSessions || "No"} ${observedSessions === 1 ? "session" : "sessions"}`;
+      const observedProjects = projectRequestGroups(activity.sessions || []).length;
+      const evidenceLabel = `${observedProjects || "No"} ${observedProjects === 1 ? "project" : "projects"}`;
 
       return <span className="homeLimitActivitySummaryItem" key={`${activity.provider}-${activity.limitId}`}>
         <span className="homeLimitActivitySummaryProvider"><b>{activity.source}</b> {compactLimitWindow(activity.window)}</span>
-        <span className="homeLimitActivitySummarySessions">{evidenceLabel}</span>
+        <span className="homeLimitActivitySummaryProjects">{evidenceLabel}</span>
       </span>;
     })}
   </span>;

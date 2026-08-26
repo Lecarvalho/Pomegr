@@ -46,6 +46,12 @@ const snapshot = {
       isLive: true,
       requestObservations: [{ id: "request-live", observedAt: "2026-08-23T11:30:00.000Z" }],
     }, {
+      id: "claude:pomegr-closed",
+      title: "Pomegr closed work",
+      project: "pomegr",
+      isLive: false,
+      requestObservations: [{ id: "request-same-project", observedAt: "2026-08-23T11:40:00.000Z" }],
+    }, {
       id: "claude:closed.other-repo",
       title: "Review report",
       project: "other-repo",
@@ -89,7 +95,7 @@ afterEach(() => {
 });
 
 describe("home dashboard", () => {
-  it("folds limit activity into aligned window and session summaries without repeated details", async () => {
+  it("folds limit activity into aligned window and project summaries without repeated details", async () => {
     window.localStorage.setItem("pomegr-home-limit-activity-open", "false");
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
@@ -98,13 +104,13 @@ describe("home dashboard", () => {
     const summary = details?.querySelector(":scope > summary .homeLimitActivitySummary");
     expect(details).not.toHaveAttribute("open");
     expect(summary).toHaveTextContent("Claude Code 5h");
-    expect(summary).toHaveTextContent("2 sessions");
+    expect(summary).toHaveTextContent("2 projects");
     expect(summary).not.toHaveTextContent("observed");
     expect(summary).not.toHaveTextContent("Partial evidence");
     expect(summary).not.toHaveTextContent(/movement|pts/i);
     expect(summary).not.toHaveTextContent("31%");
     expect(summary?.querySelectorAll(".homeLimitActivitySummaryItem > span")).toHaveLength(2);
-    expect(summary?.querySelector(".homeLimitActivitySummarySessions")).toHaveTextContent("2 sessions");
+    expect(summary?.querySelector(".homeLimitActivitySummaryProjects")).toHaveTextContent("2 projects");
 
     await userEvent.click(screen.getByText("Limit activity"));
     expect(details).toHaveAttribute("open");
@@ -123,7 +129,7 @@ describe("home dashboard", () => {
     await screen.findByText("Limit activity");
     const summary = container.querySelector(".homeLimitActivitySummary");
     expect(summary).toHaveTextContent("Claude Code 5h");
-    expect(summary).toHaveTextContent("2 sessions");
+    expect(summary).toHaveTextContent("2 projects");
     expect(summary).not.toHaveTextContent("observed");
     expect(summary).not.toHaveTextContent(/collecting|movement history|no movement/i);
   });
@@ -156,9 +162,12 @@ describe("home dashboard", () => {
     expect(activity).toHaveTextContent("31%");
     expect(activity).toHaveTextContent(/Reset/i);
     expect(activity).toHaveTextContent("Partial coverage");
-    expect(activity).toHaveTextContent("pomegr · live");
-    expect(activity).toHaveTextContent("other-repo · closed");
-    expect(activity!.querySelectorAll(".homeLimitActivitySession > i b")).toHaveLength(2);
+    expect(activity).toHaveTextContent("Project request observations");
+    expect(activity!.querySelectorAll(".homeLimitActivityProject")).toHaveLength(2);
+    expect(activity!.querySelector('.homeLimitActivityProject > i[aria-label="pomegr, 2 request observations"]')).toBeInTheDocument();
+    expect(activity!.querySelectorAll(".homeLimitActivityProject > i b")).toHaveLength(3);
+    expect(activity).not.toHaveTextContent("Pomegr home");
+    expect(activity).not.toHaveTextContent("Pomegr closed work");
     expect(activity!.querySelector(".homeLimitActivityScaleLabels")).toHaveTextContent("0100%");
     expect(activity!.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
     expect(activity!.querySelector(".homeLimitActivityScaleTrack b")).not.toBeInTheDocument();

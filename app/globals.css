@@ -1141,7 +1141,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitActivitySummary { display: grid; grid-template-columns: max-content max-content; align-items: baseline; justify-content: end; gap: 5px 16px; }
 .homeLimitActivitySummaryItem { display: contents; }
 .homeLimitActivitySummaryProvider { text-align: left; }
-.homeLimitActivitySummarySessions { text-align: right; }
+.homeLimitActivitySummaryProjects { text-align: right; }
 .homeLimitActivityDescription { max-width: none; margin: 0; padding: 11px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.45; }
 .homeLimitActivityCard + .homeLimitActivityCard { border-top: 1px solid var(--line-strong); }
 .homeLimitActivityCardHeader { min-height: 64px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
@@ -1158,13 +1158,13 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitActivityCoverage + .homeLimitActivityCoverage { padding-top: 0; }
 .homeLimitActivityTimeline { min-width: 0; margin: 0; padding: 15px 16px 18px; }
 .homeLimitActivityTimeline figcaption { margin-bottom: 15px; color: var(--muted); font: 8px/1.25 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
-.homeLimitActivitySessions { min-width: 0; display: grid; gap: 13px; }
-.homeLimitActivitySession { min-width: 0; display: grid; grid-template-columns: minmax(140px, 154px) minmax(0, 1fr); align-items: center; gap: 16px; }
-.homeLimitActivitySession > span, .homeLimitActivitySession strong, .homeLimitActivitySession small { min-width: 0; display: block; }
-.homeLimitActivitySession strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.homeLimitActivitySession small { margin-top: 3px; color: var(--muted); font: 7px/1.2 var(--font-geist-mono), monospace; }
-.homeLimitActivitySession > i { position: relative; height: 12px; display: block; border-bottom: 1px solid var(--line); font-style: normal; }
-.homeLimitActivitySession > i b { position: absolute; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; display: block; background: var(--ink); border: 1.5px solid var(--panel); }
+.homeLimitActivityProjects { min-width: 0; display: grid; gap: 13px; }
+.homeLimitActivityProject { min-width: 0; display: grid; grid-template-columns: minmax(140px, 154px) minmax(0, 1fr); align-items: center; gap: 16px; }
+.homeLimitActivityProject > span, .homeLimitActivityProject strong, .homeLimitActivityProject small { min-width: 0; display: block; }
+.homeLimitActivityProject strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.homeLimitActivityProject small { margin-top: 3px; color: var(--muted); font: 7px/1.2 var(--font-geist-mono), monospace; }
+.homeLimitActivityProject > i { position: relative; height: 12px; display: block; border-bottom: 1px solid var(--line); font-style: normal; }
+.homeLimitActivityProject > i b { position: absolute; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; display: block; background: var(--ink); border: 1.5px solid var(--panel); }
 .homeLimitActivityScale { min-width: 0; margin: 24px 0 0 170px; color: var(--muted); font: 8px/1.25 var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
 .homeLimitActivityScaleLabels, .homeLimitActivityScaleTimes { min-width: 0; display: flex; justify-content: space-between; gap: 16px; }
 .homeLimitActivityScaleLabels { margin-bottom: 7px; color: var(--ink); font-weight: 650; }
@@ -1244,7 +1244,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .homeLimitActivityDescription, .homeLimitActivityCardHeader, .homeLimitActivityTimeline, .homeLimitActivityStatus, .homeLimitActivityCoverage { padding-left: 13px; padding-right: 13px; }
   .homeLimitActivityCardHeader { align-items: flex-start; flex-direction: column; gap: 10px; }
   .homeLimitActivityCurrent { width: 100%; justify-content: space-between; }
-  .homeLimitActivitySession { grid-template-columns: 1fr; gap: 7px; }
+  .homeLimitActivityProject { grid-template-columns: 1fr; gap: 7px; }
   .homeLimitActivityScale { margin-left: 0; }
   .homeFolioHeader, .homeLiveSection, .homeHistory { padding-left: 13px; padding-right: 13px; }
   .homeSessionGraphs { grid-template-columns: 1fr; gap: 8px; }
