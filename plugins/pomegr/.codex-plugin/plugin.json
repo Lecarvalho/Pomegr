@@ -1,6 +1,6 @@
 {
   "name": "pomegr",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Configure and report bounded coding-agent signals to the local Pomegr observer.",
   "author": {
     "name": "Leandro Carvalho",

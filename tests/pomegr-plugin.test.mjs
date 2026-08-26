@@ -724,6 +724,8 @@ test("plugin release helper owns one shared Claude and Codex version", async () 
   assert.equal(codexManifest.version, sharedVersion);
   assert.match(await readFile(path.join(repositoryRoot, "plugins", "claude-code", "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
   assert.match(await readFile(path.join(repositoryRoot, "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
+  assert.match(await readFile(path.join(repositoryRoot, "plugins", "claude-code", "mcp", "server.bundle.mjs"), "utf8"), new RegExp(`version:\\s*"${sharedVersion.replaceAll(".", "\\.")}"`));
+  assert.match(await readFile(path.join(repositoryRoot, "plugins", "pomegr", "mcp", "server.bundle.mjs"), "utf8"), new RegExp(`version:\\s*"${sharedVersion.replaceAll(".", "\\.")}"`));
   assert.match(script, /<major\|minor\|patch>/);
   assert.doesNotMatch(script, /<claude\|codex>/);
   assert.match(script, /major\|minor\|patch/);

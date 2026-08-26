@@ -84,11 +84,51 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   assert.equal(mcp.mcpServers.pomegr.args[0], "./mcp/server.bundle.mjs");
   assert.equal(mcp.mcpServers.pomegr.cwd, ".");
   assert.deepEqual(Object.keys(hooks.hooks).sort(), ["PostToolUse", "SessionStart", "SubagentStart", "SubagentStop"]);
-  assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /\$\{PLUGIN_ROOT\}/);
-  assert.match(hooks.hooks.SessionStart[0].hooks[0].commandWindows, /%PLUGIN_ROOT%/);
+  for (const groups of Object.values(hooks.hooks)) {
+    for (const group of groups) {
+      for (const hook of group.hooks) {
+        assert.match(hook.command, /\$\{PLUGIN_ROOT\}/);
+        assert.equal(hook.commandWindows, undefined);
+        assert.doesNotMatch(hook.command, /%PLUGIN_ROOT%/);
+      }
+    }
+  }
   assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
   assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
   assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
+});
+
+test("Codex plugin hooks run under PowerShell after plugin-root expansion", { skip: process.platform !== "win32" }, async () => {
+  await withTemporaryDirectory(async (temporaryRoot) => {
+    const installedPlugin = path.join(temporaryRoot, "installed Pomegr plugin");
+    const runtimeCwd = path.join(temporaryRoot, "runtime workspace");
+    await cp(pluginRoot, installedPlugin, { recursive: true });
+    await mkdir(runtimeCwd, { recursive: true });
+
+    const hooks = JSON.parse(await readFile(path.join(installedPlugin, "hooks", "hooks.json"), "utf8"));
+    const cases = [
+      ["SessionStart", { hook_event_name: "SessionStart", source: "startup", cwd: runtimeCwd }],
+      ["SubagentStart", { hook_event_name: "SubagentStart", agent_type: "investigator", cwd: runtimeCwd }],
+      ["SubagentStop", { hook_event_name: "SubagentStop", agent_type: "investigator", cwd: runtimeCwd }],
+      ["PostToolUse", { hook_event_name: "PostToolUse", session_id: "test-session", tool_name: "exec_command", cwd: runtimeCwd }],
+    ];
+
+    for (const [event, payload] of cases) {
+      const hook = hooks.hooks[event][0].hooks[0];
+      const command = hook.command.replaceAll("${PLUGIN_ROOT}", installedPlugin.replaceAll("\\", "/"));
+      const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
+        cwd: runtimeCwd,
+        encoding: "utf8",
+        input: JSON.stringify(payload),
+      });
+      assert.equal(result.status, 0, `${event} failed: ${result.stderr}`);
+
+      if (event === "SessionStart") {
+        const output = JSON.parse(result.stdout);
+        assert.match(output.hookSpecificOutput.additionalContext, /^\[Pomegr plugin metadata\] \{"pluginVersion":"0\.4\.3","policyStatus":"missing","policyVersion":null\}/);
+      }
+    }
+  });
 });
 
 test("Codex plugin packages explicit init and read-only doctor workflows", async () => {
