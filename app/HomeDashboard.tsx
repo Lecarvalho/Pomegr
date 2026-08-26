@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { HomeLimitActivity, HomeProjectSummary, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
+import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 import { NavigationMenuButton } from "./components/NavigationMenuButton";
 import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
@@ -117,7 +118,7 @@ function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[
       const percent = limitPercent(activity.percent);
       const observations = activity.observations || [];
       const coverage = activity.partialCoverage ? "Partial coverage · observations may begin after the window started." : null;
-      const severity = percent !== null && percent >= 90 ? "critical" : percent !== null && percent >= 70 ? "warning" : "normal";
+      const severity = usageLimitSeverity(percent);
       return <article className={`homeLimitActivityCard ${severity}`} key={`${activity.provider}-${activity.limitId}`}>
         <header className="homeLimitActivityCardHeader">
           <div><ProviderBadge source={activity.source} /><h3>{activity.label}</h3><small>{activity.window}</small></div>
@@ -161,7 +162,7 @@ function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }
                   {usageLimits.limits.map((limit) => {
                     const percent = Math.min(100, Math.max(0, limit.percent));
                     return (
-                      <div className={`homeLimitRow ${limit.severity}`} key={limit.id} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
+                      <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} key={limit.id} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
                         <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
                         <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
                         <em>{Math.round(limit.percent)}%</em>

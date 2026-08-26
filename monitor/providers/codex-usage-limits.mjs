@@ -1,4 +1,5 @@
 import { createCoordinatedUsageLimitsReader } from "../usage-limits.mjs";
+import { clampUsageLimitPercent, usageLimitSeverity } from "../../shared/usage-limit-severity.mjs";
 
 const MAX_BUCKETS = 12;
 const MAX_WINDOW_MINUTES = 366 * 24 * 60;
@@ -52,7 +53,7 @@ function resetTimestamp(value) {
 function normalizedWindow(window, { id, label, kind, reached }) {
   if (!window || typeof window !== "object" || Array.isArray(window)) return null;
   if (typeof window.usedPercent !== "number" || !Number.isFinite(window.usedPercent)) return null;
-  const percent = Math.min(100, Math.max(0, window.usedPercent));
+  const percent = clampUsageLimitPercent(window.usedPercent);
   const active = reached || percent >= 100;
   return {
     id: `${id}-${kind}`,
@@ -60,7 +61,7 @@ function normalizedWindow(window, { id, label, kind, reached }) {
     window: windowLabel(window.windowDurationMins),
     percent,
     resetsAt: resetTimestamp(window.resetsAt),
-    severity: active ? "critical" : percent >= 80 ? "warning" : "normal",
+    severity: usageLimitSeverity(percent),
     active,
   };
 }

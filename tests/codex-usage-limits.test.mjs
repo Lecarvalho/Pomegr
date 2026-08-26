@@ -82,7 +82,7 @@ test("normalizes deterministic Codex primary and secondary rate-limit windows", 
       window: "1 hour",
       percent: 12,
       resetsAt: "2026-08-11T18:00:00.000Z",
-      severity: "critical",
+      severity: "normal",
       active: true,
     },
   ]);

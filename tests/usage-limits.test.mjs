@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createUsageLimitsCoordinator, retryAfterDelay, USAGE_REFRESH_INTERVAL_MS } from "../monitor/usage-limits.mjs";
+import { clampUsageLimitPercent, usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 
 function usageResponse(percent = 12) {
   return new Response(JSON.stringify({
@@ -118,15 +119,15 @@ test("does not let a short Retry-After reduce the five-minute cooldown", async (
   assert.equal(calls, 2);
 });
 
-test("canonicalizes provider severity values and active limits", async () => {
+test("derives usage severity from percentage thresholds independently of provider fields and active state", async () => {
   const coordinator = createUsageLimitsCoordinator({
     request: async () => new Response(JSON.stringify({
       limits: [
-        { kind: "session", percent: 20, severity: "danger", is_active: false },
-        { kind: "weekly_all", percent: 30, severity: "warning", is_active: false },
+        { kind: "session", percent: 74, severity: "danger", is_active: false },
+        { kind: "weekly_all", percent: 75, severity: "normal", is_active: false },
         {
           kind: "weekly_scoped",
-          percent: 40,
+          percent: 85,
           severity: "future-private-value",
           is_active: true,
           scope: { model: { display_name: "Fable" } },
@@ -137,8 +138,16 @@ test("canonicalizes provider severity values and active limits", async () => {
 
   const result = await coordinator.get();
   assert.deepEqual(result.limits.map(({ severity, active }) => ({ severity, active })), [
-    { severity: "critical", active: false },
+    { severity: "normal", active: false },
     { severity: "warning", active: false },
     { severity: "critical", active: true },
   ]);
+});
+
+test("uses blue through 74, yellow from 75 through 84, and red from 85", () => {
+  assert.deepEqual([0, 74, 75, 84, 85, 100].map(usageLimitSeverity), [
+    "normal", "normal", "warning", "warning", "critical", "critical",
+  ]);
+  assert.equal(clampUsageLimitPercent(-1), 0);
+  assert.equal(clampUsageLimitPercent(101), 100);
 });

@@ -226,8 +226,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .limitCards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }.limitCards > .empty { grid-column: 1 / -1; min-height: 105px; }
 .limitCard { padding: 18px 20px; border-right: 1px solid var(--line); }.limitCard:last-child { border-right: 0; }
 .limitTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.limitTop div > span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }.limitTop div > strong { display: block; margin-top: 5px; font: 400 17px/1 var(--font-inter), sans-serif; }.limitTop b { font: 400 27px/1 var(--font-inter), sans-serif; }
-.limitTrack { height: 5px; overflow: hidden; border-radius: 99px; background: #e2e1da; margin: 17px 0 10px; }.limitTrack i { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width .4s ease; }.limitCard.warning .limitTrack i { background: var(--amber); }.limitCard.critical .limitTrack i { background: var(--red); }
-.limitBottom { min-height: 15px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 9px; }.limitBottom em { color: var(--red); font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.limitTrack { height: 5px; overflow: hidden; border-radius: 99px; background: #e2e1da; margin: 17px 0 10px; }.limitTrack i { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .4s ease; }.limitCard.warning .limitTrack i { background: var(--amber); }.limitCard.critical .limitTrack i { background: var(--red); }
+.limitBottom { min-height: 15px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 9px; }.limitBottom em { color: var(--blue); font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }.limitCard.warning .limitBottom em { color: var(--amber); }.limitCard.critical .limitBottom em { color: var(--red); }
 .usageAuthNotice { min-width: 0; margin: 0; padding: 10px 20px 11px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 8px; border-top: 1px solid var(--line); background: var(--amber-soft); font-size: 10px; line-height: 1.45; }
 .usageAuthNotice strong { color: var(--ink); font-weight: 650; white-space: nowrap; }.usageAuthNotice span { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
 
@@ -1131,7 +1131,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitRow > span strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .homeLimitRow > span small { margin-top: 2px; color: var(--muted); font: 7.5px/1.1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .04em; }
 .homeLimitTrack { height: 4px; overflow: hidden; background: var(--line); }
-.homeLimitTrack b { display: block; height: 100%; background: var(--green); transition: width .2s ease-out; }
+.homeLimitTrack b { display: block; height: 100%; background: var(--blue); transition: width .2s ease-out; }
 .homeLimitRow.warning .homeLimitTrack b { background: var(--amber); }
 .homeLimitRow.critical .homeLimitTrack b { background: var(--red); }
 .homeLimitRow > em { color: var(--ink); font: 600 10px/1 var(--font-geist-mono), monospace; font-style: normal; text-align: right; }
@@ -1149,7 +1149,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitActivityCardHeader h3 { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .homeLimitActivityCardHeader small { flex: 0 0 auto; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
 .homeLimitActivityCurrent { flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
-.homeLimitActivityCurrent strong { color: var(--amber); font: 650 22px/1 var(--font-geist-mono), monospace; }
+.homeLimitActivityCurrent strong { color: var(--blue); font: 650 22px/1 var(--font-geist-mono), monospace; }
+.homeLimitActivityCard.warning .homeLimitActivityCurrent strong { color: var(--amber); }
 .homeLimitActivityCard.critical .homeLimitActivityCurrent strong { color: var(--red); }
 .homeLimitActivityCurrent span { color: var(--muted); font-size: 9px; }
 .homeLimitActivityStatus, .homeLimitActivityCoverage { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.4; }

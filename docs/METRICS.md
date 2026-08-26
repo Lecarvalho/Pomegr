@@ -66,6 +66,10 @@ The project home is built only for projects with at least one live session in th
 
 Each visible project's history window is exactly seven days of completed sessions whose recorded session timestamps belong to that project. On a cold monitor start, live cards are returned first while recorded history is marked loading and parsed cooperatively in the background; partial aggregates are not presented as complete. Once ready, history exposes completed count, median wall time, median final all-agent context, and at most six chronological `{ endedAt, total }` final-context points. These are recorded session levels, not sums, rates, throughput, spend, or quality judgments. Current Git state and current plan limits never enter project history.
 
+## Usage-limit colors
+
+Pomegr derives usage-limit color severity from the normalized percentage with fixed inclusive boundaries: the established uncached-input blue (`normal`) from 0% through 74%, yellow (`warning`) from 75% through 84%, and red (`critical`) from 85% through 100%. Provider severity labels and active-window state do not override these color thresholds. Percentages are clamped to the displayed 0–100 range before classification, and every usage-limit surface uses the same rule.
+
 ## Cache events
 
 `metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. It reports only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest events enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities. If that cap would exclude a reuse event's related refill, the reuse is omitted so normalized relations never dangle.

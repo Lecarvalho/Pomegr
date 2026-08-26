@@ -689,6 +689,9 @@ describe("usage-limit clock", () => {
 
     expect(container.querySelectorAll(".limitCard")).toHaveLength(4);
     expect(container.querySelector(".limitCard.critical")).toHaveTextContent("Active limit");
+    expect(container.querySelectorAll(".limitCard.critical")).toHaveLength(2);
+    expect(container.querySelectorAll(".limitCard.warning")).toHaveLength(0);
+    expect(container.querySelectorAll(".limitCard.normal")).toHaveLength(2);
   });
 });
 
