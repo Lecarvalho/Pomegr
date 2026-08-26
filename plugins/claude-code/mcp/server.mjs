@@ -6,10 +6,13 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
   normalizeDescribedSignal,
+  normalizeSessionProgress,
   normalizeTaskSignal,
   SIGNAL_MAX_DESCRIPTION_LENGTH,
   SIGNAL_MAX_LABEL_LENGTH,
   SIGNAL_TONES,
+  SESSION_PROGRESS_PHASES,
+  SESSION_PROGRESS_CONFIDENCES,
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
 
@@ -25,6 +28,20 @@ const description = z.string().trim().min(1).max(SIGNAL_MAX_DESCRIPTION_LENGTH)
 const sessionTitle = z.string().trim().min(1).max(SESSION_TITLE_MAX_LENGTH)
   .refine((value) => normalizeSessionTitle(value) !== null, "Use one line of plain text without control or bidirectional formatting characters.")
   .describe("Concise, meaningful title for the current Claude Code session.");
+const progressSchema = z.object({
+  phase: z.enum(SESSION_PROGRESS_PHASES),
+  percent: z.number().int().min(0).max(100),
+  remaining_minutes_min: z.number().int().min(0).max(10080).optional(),
+  remaining_minutes_max: z.number().int().min(0).max(10080).optional(),
+  confidence: z.enum(SESSION_PROGRESS_CONFIDENCES),
+}).strict().superRefine((value, context) => {
+  const hasMin = value.remaining_minutes_min !== undefined;
+  const hasMax = value.remaining_minutes_max !== undefined;
+  if (hasMin !== hasMax) context.addIssue({ code: z.ZodIssueCode.custom, message: "ETA minimum and maximum must be provided together." });
+  if (hasMin && value.remaining_minutes_min > value.remaining_minutes_max) context.addIssue({ code: z.ZodIssueCode.custom, message: "ETA minimum must not exceed maximum." });
+  if (["blocked", "complete"].includes(value.phase) && (hasMin || hasMax)) context.addIssue({ code: z.ZodIssueCode.custom, message: "Blocked and complete progress cannot include an ETA." });
+  if (value.phase === "complete" && value.percent !== 100) context.addIssue({ code: z.ZodIssueCode.custom, message: "Complete progress must be 100 percent." });
+}).refine((value) => normalizeSessionProgress(value) !== null, "Invalid session progress.");
 
 function describedSchema() {
   return z.object({ label, tone, description }).strict();
@@ -40,8 +57,8 @@ function rejected(text) {
 
 export function buildPomegrMcpServer() {
   const server = new McpServer(
-    { name: "pomegr", version: "0.3.2" },
-    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions, and clear resolved agent or session state when no replacement applies." },
+    { name: "pomegr", version: "0.4.0" },
+    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies." },
   );
 
   server.registerTool("report_agent_signal", {
@@ -61,6 +78,21 @@ export function buildPomegrMcpServer() {
     const signal = normalizeDescribedSignal(input);
     return signal ? success(`Session signal reported: ${signal.label} (${signal.tone}).`) : rejected("Signal rejected. Use a plain-text label of 1-20 characters, optional one-line description up to 160 characters, and a supported tone.");
   });
+
+  server.registerTool("report_session_progress", {
+    title: "Report Pomegr session progress",
+    description: "Report bounded progress for the overall Claude Code session. A later report replaces the current progress, including when percent moves backward. Do not include prompts, responses, secrets, commands, or tool output.",
+    inputSchema: progressSchema, annotations: reportingAnnotations, _meta: { "anthropic/alwaysLoad": true },
+  }, async (input) => {
+    const progress = normalizeSessionProgress(input);
+    return progress ? success(`Session progress reported: ${progress.phase} (${progress.percent}%).`) : rejected("Progress rejected. Use a valid phase, integer percent from 0-100, confidence, and paired ETA bounds when applicable.");
+  });
+
+  server.registerTool("clear_session_progress", {
+    title: "Clear Pomegr session progress",
+    description: "Clear the current overall session progress report. Does not affect status tags or task tags.",
+    inputSchema: z.object({}).strict(), annotations: reportingAnnotations, _meta: { "anthropic/alwaysLoad": true },
+  }, async () => success("Session progress cleared."));
 
   server.registerTool("report_task_signal", {
     title: "Report Pomegr task signal",

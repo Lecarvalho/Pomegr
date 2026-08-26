@@ -71,6 +71,34 @@ test("accepts plugin-namespaced tools and applies report-clear-report transition
   assert.equal(signals.session, null);
 });
 
+test("accepts bounded Codex session progress, including backward reports, but rejects invalid ETA and completion data", () => {
+  const signals = parseCodexSignalRecords([
+    signalCall("2026-08-11T14:00:00.000Z", "mcp__pomegr__report_session_progress", "progress-1", {
+      phase: "implementing", percent: 70, confidence: "high",
+    }),
+    signalCall("2026-08-11T14:01:00.000Z", "mcp__pomegr__report_session_progress", "progress-2", {
+      phase: "planning", percent: 20, remaining_minutes_min: 5, remaining_minutes_max: 15, confidence: "medium",
+    }),
+    signalCall("2026-08-11T14:02:00.000Z", "mcp__pomegr__report_session_progress", "bad-complete", {
+      phase: "complete", percent: 99, confidence: "high",
+    }),
+    signalCall("2026-08-11T14:03:00.000Z", "mcp__pomegr__clear_session_progress", "progress-clear", {}),
+  ]);
+  assert.equal(signals.progress, null);
+  const retained = parseCodexSignalRecords([
+    signalCall("2026-08-11T14:00:00.000Z", "mcp__pomegr__report_session_progress", "progress-1", {
+      phase: "implementing", percent: 70, confidence: "high",
+    }),
+    signalCall("2026-08-11T14:01:00.000Z", "mcp__pomegr__report_session_progress", "progress-2", {
+      phase: "planning", percent: 20, remaining_minutes_min: 5, remaining_minutes_max: 15, confidence: "medium",
+    }),
+  ]);
+  assert.deepEqual(retained.progress, {
+    phase: "planning", percent: 20, remainingMinutesMin: 5, remainingMinutesMax: 15,
+    confidence: "medium", reportedAt: "2026-08-11T14:01:00.000Z",
+  });
+});
+
 test("accepts completed Codex app MCP items without exposing wrapper metadata or results", () => {
   const signals = parseCodexSignalRecords([
     appMcpSignalCall("2026-08-11T14:00:00.000Z", "report_agent_signal", {
@@ -184,12 +212,14 @@ test("derives the reporting agent from each rollout and resolves task targets mo
     signalCall("2026-08-11T15:00:03.000Z", "mcp__pomegr__report_task_signal", "task-valid", { task_id: "command-1", label: "Checks passed", tone: "positive" }),
     signalCall("2026-08-11T15:00:04.000Z", "mcp__pomegr__report_task_signal", "task-private", { task_id: "unknown-task", label: "MCP_ARGUMENT_MUST_NOT_LEAK", tone: "negative" }),
     signalCall("2026-08-11T15:00:05.000Z", "mcp__pomegr__report_session_signal", "session-valid", { label: "Ready", tone: "positive", description: "The session is ready for handoff." }),
+    signalCall("2026-08-11T15:00:05.500Z", "mcp__pomegr__report_session_progress", "progress-valid", { phase: "implementing", percent: 30, remaining_minutes_min: 10, remaining_minutes_max: 20, confidence: "medium" }),
   ];
   const child = [
     record("2026-08-11T15:00:06.000Z", "session_meta", { id: "signal-child", parent_thread_id: "signal-parent", cwd: "C:\\synthetic\\repo", source: { subagent: "review" } }),
     signalCall("2026-08-11T15:00:07.000Z", "mcp__pomegr__report_agent_signal", "agent-valid", { label: "Reviewed", tone: "info", description: "No blocking findings." }),
     signalCall("2026-08-11T15:00:08.000Z", "mcp__pomegr__report_agent_signal", "agent-spoof", { label: "Spoofed", tone: "negative", agent_id: "primary" }),
     signalCall("2026-08-11T15:00:09.000Z", `${PLUGIN_MCP_PREFIX}clear_session_signal`, "session-clear", {}),
+    signalCall("2026-08-11T15:00:10.000Z", "mcp__pomegr__report_session_progress", "progress-child", { phase: "complete", percent: 100, confidence: "high" }),
   ];
   await writeFile(path.join(directory, "rollout-parent.jsonl"), `${parent.map(JSON.stringify).join("\n")}\n`, "utf8");
   await writeFile(path.join(directory, "rollout-child.jsonl"), `${child.map(JSON.stringify).join("\n")}\n`, "utf8");
@@ -201,6 +231,14 @@ test("derives the reporting agent from each rollout and resolves task targets mo
 
   assert.equal(provider.capabilities.signals, true);
   assert.equal(evidence.session.signal, null);
+  assert.deepEqual(evidence.session.progress, {
+    phase: "implementing",
+    percent: 30,
+    remainingMinutesMin: 10,
+    remainingMinutesMax: 20,
+    confidence: "medium",
+    reportedAt: "2026-08-11T15:00:05.500Z",
+  });
   assert.deepEqual(childAgent.signal, { label: "Reviewed", tone: "info", reportedAt: "2026-08-11T15:00:07.000Z", description: "No blocking findings." });
   assert.deepEqual(task.signal, { label: "Checks passed", tone: "positive", reportedAt: "2026-08-11T15:00:03.000Z" });
   assert.doesNotMatch(JSON.stringify(evidence), /unknown-task|Spoofed|MCP_ARGUMENT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK/);

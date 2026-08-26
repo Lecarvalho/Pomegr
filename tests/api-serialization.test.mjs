@@ -156,6 +156,41 @@ async function syntheticProviders(context) {
       scriptPath: "WORKFLOW_PATH_MUST_NOT_LEAK",
     },
   })}\n`, "utf8");
+  await appendFile(claudeFile, `${[
+    {
+      type: "assistant",
+      timestamp: "2026-08-10T13:00:20.000Z",
+      message: {
+        content: [{
+          type: "tool_use",
+          name: "mcp__pomegr__report_session_progress",
+          input: {
+            phase: "implementing",
+            percent: 42,
+            remaining_minutes_min: 5,
+            remaining_minutes_max: 10,
+            confidence: "high",
+          },
+        }],
+      },
+    },
+    {
+      type: "assistant",
+      timestamp: "2026-08-10T13:00:21.000Z",
+      message: {
+        content: [{
+          type: "tool_use",
+          name: "mcp__pomegr__report_session_progress",
+          input: {
+            phase: "complete",
+            percent: 100,
+            confidence: "high",
+            private: "MCP_PROGRESS_PRIVATE_MUST_NOT_LEAK",
+          },
+        }],
+      },
+    },
+  ].map(JSON.stringify).join("\n")}\n`, "utf8");
   await writeFile(
     path.join(workflowSessionRoot, "subagents", "workflows", workflowRunId, "agent-shared.jsonl"),
     `${JSON.stringify({ type: "user", timestamp: "2026-08-10T13:00:18.000Z", message: { content: "WORKFLOW_AGENT_PROMPT_MUST_NOT_LEAK" } })}\n`,
@@ -184,6 +219,39 @@ async function syntheticProviders(context) {
   const codexChildFile = path.join(rolloutRoot, "rollout-child.jsonl");
   await writeFixture(codexParentFile, "codex/parent.jsonl", replacements);
   await writeFixture(codexChildFile, "codex/child.jsonl", replacements);
+  await appendFile(codexParentFile, `${[
+    {
+      timestamp: "2026-08-10T13:00:20.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "mcp__pomegr__report_session_progress",
+        call_id: "progress-valid",
+        arguments: JSON.stringify({
+          phase: "verifying",
+          percent: 88,
+          remaining_minutes_min: 1,
+          remaining_minutes_max: 3,
+          confidence: "medium",
+        }),
+      },
+    },
+    {
+      timestamp: "2026-08-10T13:00:21.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "mcp__pomegr__report_session_progress",
+        call_id: "progress-private",
+        arguments: JSON.stringify({
+          phase: "complete",
+          percent: 100,
+          confidence: "high",
+          private: "MCP_PROGRESS_PRIVATE_MUST_NOT_LEAK",
+        }),
+      },
+    },
+  ].map(JSON.stringify).join("\n")}\n`, "utf8");
   const parent = codexAppThread();
   const codex = createCodexProvider({
     codexHome: codexRoot,
@@ -221,6 +289,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   serialized.forEach((body, index) => assertNoPrivateFixtureSentinels(body, `API response ${index + 1}`));
   assert.doesNotMatch(serialized.join("\n"), /AUTH_FILE_MUST_NOT_LEAK/);
   assert.doesNotMatch(serialized.join("\n"), /PRIVATE_WORKFLOW_TASK_ID/);
+  assert.doesNotMatch(serialized.join("\n"), /MCP_PROGRESS_PRIVATE_MUST_NOT_LEAK|remaining_minutes_min|remaining_minutes_max/);
   assert.doesNotMatch(
     serialized.join("\n"),
     /987654321|PROCESS_START_MUST_NOT_LEAK|PROCESS_NAME_MUST_NOT_LEAK|PROCESS_COMMAND_MUST_NOT_LEAK|processStartIdentity|"pid"|intervalMs/,
@@ -233,6 +302,27 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   ]);
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  assert.deepEqual(claudeState.session.progress, {
+    phase: "implementing",
+    percent: 42,
+    remainingMinutesMin: 5,
+    remainingMinutesMax: 10,
+    confidence: "high",
+    reportedAt: "2026-08-10T13:00:20.000Z",
+  });
+  assert.deepEqual(codexState.session.progress, {
+    phase: "verifying",
+    percent: 88,
+    remainingMinutesMin: 1,
+    remainingMinutesMax: 3,
+    confidence: "medium",
+    reportedAt: "2026-08-10T13:00:20.000Z",
+  });
+  for (const state of [claudeState, codexState]) {
+    assert.equal(Object.hasOwn(state.session.progress, "remaining_minutes_min"), false);
+    assert.equal(Object.hasOwn(state.session.progress, "remaining_minutes_max"), false);
+    assert.equal(Object.hasOwn(state.session.progress, "private"), false);
+  }
   assert.equal(serialized.join("\n").includes(transcriptPaths.claudeChildFile), false);
   assert.equal(serialized.join("\n").includes(transcriptPaths.codexChildFile), false);
   assert.equal(Object.hasOwn(claudeState.agents.find((agent) => agent.id === "agent-child-fixture"), "transcriptPath"), false);

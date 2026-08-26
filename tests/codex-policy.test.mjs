@@ -51,7 +51,7 @@ test("Codex and Claude adapters validate one provider-neutral policy schema", as
   const codexTemplate = await readFile(codexTemplatePath, "utf8");
   const claudeTemplate = await readFile(claudeTemplatePath, "utf8");
 
-  assert.equal(POLICY_VERSION, 6);
+  assert.equal(POLICY_VERSION, 7);
   assert.equal(codexTemplate.replace(/\r\n?/g, "\n"), claudeTemplate.replace(/\r\n?/g, "\n"));
   for (const candidate of [codexTemplate, codexTemplate.replace(/\r\n?/g, "\n").replaceAll("\n", "\r\n")]) {
     const result = validatePolicyText(candidate);
@@ -60,9 +60,14 @@ test("Codex and Claude adapters validate one provider-neutral policy schema", as
     assert.equal(result.signals["Task signals"][0].label, "Checks passed");
   }
 
-  const wrongVersion = validatePolicyText(codexTemplate.replace("Policy version: 6", "Policy version: 5"));
+  const legacy = codexTemplate.replace("Policy version: 7", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: no\n/, "\n");
+  const legacyResult = validatePolicyText(legacy);
+  assert.equal(legacyResult.status, "valid");
+  assert.equal(legacyResult.progressEnabled, false);
+
+  const wrongVersion = validatePolicyText(codexTemplate.replace("Policy version: 7", "Policy version: 5"));
   assert.equal(wrongVersion.status, "invalid");
-  assert.ok(wrongVersion.errors.includes("Policy version must be 6."));
+  assert.ok(wrongVersion.errors.some((error) => error.includes("Policy version must be 7")));
 
   const oversized = validatePolicyText(codexTemplate + "\n" + "x".repeat(POLICY_MAX_BYTES));
   assert.equal(oversized.status, "invalid");
@@ -80,7 +85,7 @@ test("Codex policy discovery stays repository-scoped and rejects invalid policy 
     assert.equal(valid.status, "valid");
     assert.equal(valid.repositoryRoot, repository);
 
-    await writeFile(path.join(repository, ".pomegr", "signals.md"), template.replace("Policy version: 6", "Policy version: invalid"));
+    await writeFile(path.join(repository, ".pomegr", "signals.md"), template.replace("Policy version: 7", "Policy version: invalid"));
     const invalid = readPolicy(nested);
     assert.equal(invalid.status, "invalid");
     assert.doesNotMatch(JSON.stringify(invalid.errors), /Ready for review/);
@@ -97,14 +102,14 @@ test("SessionStart loads valid policy, stays silent when missing, and bounds inv
     const output = JSON.parse(valid.stdout);
     assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
     assert.match(output.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
-    assert.match(output.hookSpecificOutput.additionalContext, /Policy version: 6/);
+    assert.match(output.hookSpecificOutput.additionalContext, /Policy version: 7/);
 
     await rm(policyPath);
     const missing = runHook("session-start", repository, { hook_event_name: "SessionStart", cwd: repository });
     assert.equal(missing.status, 0);
     assert.equal(missing.stdout, "");
 
-    await writeFile(policyPath, template.replace("Policy version: 6", "Policy version: invalid"));
+    await writeFile(policyPath, template.replace("Policy version: 7", "Policy version: invalid"));
     const invalid = runHook("session-start", repository, { hook_event_name: "SessionStart", cwd: repository });
     assert.equal(invalid.status, 0);
     assert.match(JSON.parse(invalid.stdout).systemMessage, /\$pomegr:doctor/);

@@ -11,14 +11,18 @@ import {
   clearSessionSignalCache,
   latestAgentSignal,
   latestSessionSignal,
+  latestSessionProgress,
   latestTaskSignals,
   latestTranscriptSignals,
   mergeTranscriptSignals,
   normalizeSessionSignal,
+  normalizeSessionProgress,
   normalizeAgentSignal,
   normalizeTaskSignal,
   readTranscriptSignals,
   SESSION_SIGNAL_MCP_TOOL,
+  SESSION_PROGRESS_MCP_TOOL,
+  CLEAR_SESSION_PROGRESS_MCP_TOOL,
   TASK_SIGNAL_MCP_TOOL,
 } from "../monitor/session-signals.mjs";
 
@@ -38,6 +42,10 @@ test("registers the session signal MCP tool with an agent-reported summary descr
   });
   assert.equal(result.isError, undefined);
   assert.match(result.content[0].text, /Session signal reported: Awaiting merge/);
+  const progressTool = server._registeredTools.report_session_progress;
+  const progressResult = await progressTool.handler({ phase: "verifying", percent: 80, confidence: "high" });
+  assert.equal(progressResult.isError, undefined);
+  assert.match(progressResult.content[0].text, /Session progress reported: verifying \(80%\)/);
 });
 
 function agentSignalRecord(label, tone, timestamp) {
@@ -67,6 +75,14 @@ function sessionSignalRecord(label, tone, timestamp, description) {
         input: { label, tone, ...(description ? { description } : {}) },
       }],
     },
+  };
+}
+
+function sessionProgressRecord(progress, timestamp, tool = SESSION_PROGRESS_MCP_TOOL) {
+  return {
+    type: "assistant",
+    timestamp,
+    message: { content: [{ type: "tool_use", name: tool, input: progress }] },
   };
 }
 
@@ -159,6 +175,38 @@ test("normalizes bounded plain-text signals", () => {
   });
   assert.equal(normalizeTaskSignal({ task_id: "../unsafe", label: "Approved", tone: "positive" }), null);
   assert.equal(normalizeTaskSignal({ task_id: "background_123", label: "Approved", tone: "positive", result: "private" }), null);
+});
+
+test("normalizes bounded session progress and applies timestamped report-clear transitions", () => {
+  assert.deepEqual(normalizeSessionProgress({
+    phase: "implementing",
+    percent: 40,
+    remaining_minutes_min: 10,
+    remaining_minutes_max: 20,
+    confidence: "medium",
+  }, "2026-08-07T14:00:00.000Z"), {
+    phase: "implementing",
+    percent: 40,
+    remainingMinutesMin: 10,
+    remainingMinutesMax: 20,
+    confidence: "medium",
+    reportedAt: "2026-08-07T14:00:00.000Z",
+  });
+  assert.equal(normalizeSessionProgress({ phase: "complete", percent: 99, confidence: "high" }), null);
+  assert.equal(normalizeSessionProgress({ phase: "blocked", percent: 20, remaining_minutes_min: 1, remaining_minutes_max: 2, confidence: "high" }), null);
+  assert.equal(normalizeSessionProgress({ phase: "planning", percent: 20, remaining_minutes_min: 2, confidence: "low" }), null);
+  assert.equal(normalizeSessionProgress({ phase: "planning", percent: 20, confidence: "low", private: "must not leak" }), null);
+
+  const progress = latestSessionProgress([
+    sessionProgressRecord({ phase: "implementing", percent: 70, confidence: "high" }, "2026-08-07T14:00:00.000Z"),
+    sessionProgressRecord({ phase: "planning", percent: 20, confidence: "low" }, "2026-08-07T14:01:00.000Z"),
+    sessionProgressRecord({}, "2026-08-07T14:02:00.000Z", CLEAR_SESSION_PROGRESS_MCP_TOOL),
+  ]);
+  assert.equal(progress, null);
+  assert.deepEqual(latestSessionProgress([
+    sessionProgressRecord({ phase: "implementing", percent: 70, confidence: "high" }, "2026-08-07T14:00:00.000Z"),
+    sessionProgressRecord({ phase: "planning", percent: 20, confidence: "low" }, "2026-08-07T14:01:00.000Z"),
+  ]), { phase: "planning", percent: 20, confidence: "low", reportedAt: "2026-08-07T14:01:00.000Z" });
 });
 
 test("uses the latest valid Pomegr MCP signal and ignores other content", () => {

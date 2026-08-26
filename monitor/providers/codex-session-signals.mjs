@@ -5,10 +5,13 @@ import {
   AGENT_SIGNAL_MCP_TOOLS,
   CLEAR_AGENT_SIGNAL_MCP_TOOLS,
   CLEAR_SESSION_SIGNAL_MCP_TOOLS,
+  CLEAR_SESSION_PROGRESS_MCP_TOOLS,
   normalizeAgentSignal,
+  normalizeSessionProgress,
   normalizeSessionSignal,
   normalizeTaskSignal,
   SESSION_SIGNAL_MCP_TOOLS,
+  SESSION_PROGRESS_MCP_TOOLS,
   TASK_SIGNAL_MCP_TOOLS,
 } from "../session-signals.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
@@ -19,6 +22,8 @@ const SIGNAL_TOOLS = new Set([
   ...TASK_SIGNAL_MCP_TOOLS,
   ...CLEAR_AGENT_SIGNAL_MCP_TOOLS,
   ...CLEAR_SESSION_SIGNAL_MCP_TOOLS,
+  ...SESSION_PROGRESS_MCP_TOOLS,
+  ...CLEAR_SESSION_PROGRESS_MCP_TOOLS,
 ]);
 const CODEX_APP_MCP_SERVER = "pomegr";
 const MAX_RECENT_CODEX_TRANSCRIPT_BYTES = 512 * 1024;
@@ -49,8 +54,8 @@ function newerSignal(previous, next) {
 }
 
 function signalState() {
-  const state = { agent: null, session: null, tasks: new Map() };
-  signalStateMetadata.set(state, { agentAt: null, sessionAt: null });
+  const state = { agent: null, session: null, progress: null, tasks: new Map() };
+  signalStateMetadata.set(state, { agentAt: null, sessionAt: null, progressAt: null });
   return state;
 }
 
@@ -62,6 +67,13 @@ function setScopedSignal(state, scope, signal, reportedAt) {
   state[scope] = signal;
   const metadata = signalStateMetadata.get(state) || { agentAt: null, sessionAt: null };
   metadata[`${scope}At`] = reportedAt || signal?.reportedAt || null;
+  signalStateMetadata.set(state, metadata);
+}
+
+function setProgress(state, progress, reportedAt) {
+  state.progress = progress;
+  const metadata = signalStateMetadata.get(state) || { agentAt: null, sessionAt: null, progressAt: null };
+  metadata.progressAt = reportedAt || progress?.reportedAt || null;
   signalStateMetadata.set(state, metadata);
 }
 
@@ -108,6 +120,10 @@ export function mergeCodexSignals(target, source) {
       setScopedSignal(target, scope, source[scope], sourceAt);
     }
   }
+  const sourceProgressAt = signalTimestamp(source, "progress");
+  if (sourceProgressAt && timestampValue(sourceProgressAt) >= timestampValue(signalTimestamp(target, "progress"))) {
+    setProgress(target, source.progress, sourceProgressAt);
+  }
   for (const [taskId, signal] of source.tasks) {
     target.tasks.set(taskId, newerSignal(target.tasks.get(taskId), signal));
   }
@@ -130,9 +146,15 @@ export function parseCodexSignalRecords(records) {
     } else if (SESSION_SIGNAL_MCP_TOOLS.has(call.name)) {
       const signal = normalizeSessionSignal(input, reportedAt);
       if (signal) setScopedSignal(signals, "session", signal, signal.reportedAt);
+    } else if (SESSION_PROGRESS_MCP_TOOLS.has(call.name)) {
+      const progress = normalizeSessionProgress(input, reportedAt);
+      if (progress) setProgress(signals, progress, progress.reportedAt);
     } else if (CLEAR_AGENT_SIGNAL_MCP_TOOLS.has(call.name) || CLEAR_SESSION_SIGNAL_MCP_TOOLS.has(call.name)) {
       if (Object.keys(input).length !== 0) continue;
       setScopedSignal(signals, CLEAR_AGENT_SIGNAL_MCP_TOOLS.has(call.name) ? "agent" : "session", null, reportedAt);
+    } else if (CLEAR_SESSION_PROGRESS_MCP_TOOLS.has(call.name)) {
+      if (Object.keys(input).length !== 0) continue;
+      setProgress(signals, null, reportedAt);
     } else {
       const taskSignal = normalizeTaskSignal(input, reportedAt);
       if (!taskSignal) continue;

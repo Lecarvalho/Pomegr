@@ -193,9 +193,9 @@ test("validates the delegated-agents table and rejects incoherent delegation", a
 
 test("rejects malformed and oversized policies without interpreting their content", async () => {
   const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 6", "Policy version: 1"));
+  const malformed = validatePolicyText(template.replace("Policy version: 7", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.includes("Policy version must be 6."));
+  assert.ok(malformed.errors.some((error) => error.includes("Policy version must be 7")));
 
   const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -348,7 +348,7 @@ test("SessionStart hook injects valid policy context, stays silent when missing,
     assert.match(validOutput.hookSpecificOutput.additionalContext, /Delegation is mechanized/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
-    await writePolicy(repository, template.replace("Policy version: 6", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 7", "Policy version: invalid"));
     const invalid = runPolicyHook(nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
@@ -496,7 +496,7 @@ test("delegation hook stays silent for an undeclared policy, a missing policy, a
     await writePolicy(repository, template);
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
 
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 6", "Policy version: 9"));
+    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 7", "Policy version: 9"));
     assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
   });
 });
@@ -573,16 +573,18 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(manifest.name, "pomegr");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
-  assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
+    assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
+    assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
   assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
   assert.match(hooks.hooks.PreToolUse[0].hooks[0].command, /policy\.mjs" delegate/);
   assert.match(hooks.hooks.PreToolUse[1].hooks[0].command, /rename-session\.bundle\.mjs/);
   assert.match(hooks.hooks.SubagentStop[0].hooks[0].command, /policy\.mjs" subagent-stop/);
-  for (const event of ["SessionStart", "PreToolUse", "SubagentStop"]) {
+  for (const event of ["SessionStart", "PreToolUse", "PostToolUse", "SubagentStop"]) {
     assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
-    assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
+    if (event !== "PostToolUse") assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
   }
+  assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
   assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
   assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
   assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/server", "zod"]);
@@ -611,13 +613,20 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     await cp(pluginRoot, isolatedPlugin, { recursive: true });
     await mkdir(clientRepository, { recursive: true });
     await assert.rejects(access(path.join(isolatedPlugin, "node_modules")), { code: "ENOENT" });
+    const reminderPath = path.join(isolatedPlugin, "scripts", "progress-reminder.bundle.mjs");
+    await access(reminderPath);
+    const reminder = spawnSync(process.execPath, [reminderPath], { cwd: clientRepository, encoding: "utf8", input: "{}" });
+    assert.equal(reminder.status, 0);
+    assert.equal(reminder.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       "clear_agent_signal",
+      "clear_session_progress",
       "clear_session_signal",
       "rename_session",
       "report_agent_signal",
+      "report_session_progress",
       "report_session_signal",
       "report_task_signal",
     ]);
@@ -681,9 +690,11 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
 
   assert.deepEqual(tools, [
     "clear_agent_signal",
+    "clear_session_progress",
     "clear_session_signal",
     "rename_session",
     "report_agent_signal",
+    "report_session_progress",
     "report_session_signal",
     "report_task_signal",
   ]);

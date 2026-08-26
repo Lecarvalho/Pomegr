@@ -149,6 +149,7 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
     contextMachinery: null,
     summary: null,
     signal: null,
+    progress: null,
   });
   assertNoPrivateFixtureSentinels(evidence, "Codex rollout evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /rollout-parent|parent\.jsonl/);

@@ -60,6 +60,8 @@ claude --plugin-dir .\plugins\claude-code
 
 Use `$pomegr:init` in Codex or `/pomegr:init` in Claude Code. The skill inspects safe project structure and any existing policy, then asks which project-specific session, agent, and execution-task outcomes an observer needs to notice and when each state should be replaced or cleared.
 
+The init skill is the authoring workflow: it inspects, proposes, confirms, writes, and validates. Its policy template is the runtime artifact copied into `.pomegr/signals.md` and loaded into later sessions. MCP tool descriptions remain the argument contract; the policy maps configured repository states to provider-neutral tool suffixes.
+
 Before writing, the skill previews the complete policy or a focused diff and asks for confirmation. It creates or updates `.pomegr/signals.md`. It does not add reporting instructions to `AGENTS.md`, and it does not blindly replace an existing policy. Generic lifecycle, context, Git, approval, plan-task, and execution-task metadata already derived by Pomegr should not be duplicated as signals.
 
 The Codex skill changes only `.pomegr/signals.md`. The Claude Code skill may also update explicit `tools` allowlists in `.claude/agents/*.md` when a confirmed delegated-reporting choice requires Pomegr access; those definition edits appear in the same preview.
@@ -68,15 +70,19 @@ Use `$pomegr:doctor` in Codex or `/pomegr:doctor` in Claude Code for a read-only
 
 ## Shared repository policy
 
-`.pomegr/signals.md` uses provider-neutral policy version `6`. A policy initialized by either adapter works with both. It contains these sections:
+`.pomegr/signals.md` uses provider-neutral policy version `7`. A policy initialized by either adapter works with both. Legacy version `6` remains accepted as signals-only with Session progress disabled. The current template contains these sections:
 
 - Session naming
 - Privacy and semantics
+- Tool suffixes
 - Delegated agent tooling
+- Session progress
 - Delegated agents
 - Session signals
 - Agent signals
 - Task signals
+
+The `Tool suffixes` section maps each configured scope to its report or clear action. Earlier valid version 7 policies may omit this explanatory section; their MCP tool descriptions provide the same generic behavior.
 
 Signal tables use `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text; tones are `neutral`, `info`, `positive`, `warning`, or `negative`; transition conditions must be concrete and observable. Session and agent rows state when they are replaced or cleared. Task outcomes are durable and cannot be cleared.
 
@@ -84,11 +90,15 @@ The `Delegated agents` table names each normalized agent type and whether it own
 
 Every signal-owning agent must retain access to the Pomegr MCP server and applicable reporting tools. Provider-specific MCP prefixes are not part of the policy.
 
+`Session progress` is opt-in and defaults to `- Enabled: no`. When enabled, an all-tool `PostToolUse` hook observes only root-session metadata and reminds the agent after both 10 minutes and 3 qualifying tool completions without a progress report. It ignores subagents and Pomegr report, clear, and rename tools; it never reads tool input or output. A progress report resets the window, and clearing progress suppresses reminders until later activity.
+
 Signals are agent-reported guidance and may become stale; they are not authoritative Pomegr judgments. Policies and reports must never contain prompts, responses, secrets, credentials, raw commands, stdout, stderr, tool results, transcript paths, hook payloads, or sensitive repository content.
 
 ## Automatic policy loading
 
 Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`.
+
+Both packages also register an all-tool `PostToolUse` reminder hook. Reminder state is stored only as bounded version, timestamp, and counter records under provider plugin data, with SHA-256 session filenames, owner-only permissions, atomic writes, 30-day expiry, and a 256-file cap. Missing, disabled, malformed, or unwritable policy/data suppresses reminders and never blocks a session.
 
 - A missing policy means repository-specific reporting is inactive.
 - An invalid, unsafe, or oversized policy produces only a bounded, non-blocking doctor recommendation.
@@ -125,6 +135,8 @@ Both plugins provide:
 | `report_task_signal` | Records a durable outcome for a recognized execution-task ID. |
 | `clear_session_signal` | Removes the main session's current agent-reported signal. |
 | `clear_agent_signal` | Removes the calling agent's current agent-reported signal. |
+| `report_session_progress` | Publishes the root agent's latest bounded progress estimate and resets the opt-in reminder window. |
+| `clear_session_progress` | Removes the current progress estimate and suppresses reminders until later qualifying root-session activity. |
 
 A visible label remains until a later report replaces it or the matching clear tool removes it. Clearing means no agent-reported state is currently meaningful for that scope. Task signals cannot be cleared; a later report for the same recognized task may replace one.
 
@@ -141,7 +153,7 @@ Codex does not receive this Claude-specific control bridge. Its provider-native 
 Start with the provider's doctor command.
 
 - **Policy missing:** run init.
-- **Policy invalid or old:** run init and review the proposed version 6 update.
+- **Policy invalid or old:** run init and review the proposed version 7 update; version 6 is accepted but keeps progress disabled.
 - **Policy marker missing in Codex:** review and trust Pomegr in `/hooks`, then start or resume a task.
 - **Policy marker missing in Claude Code:** run `/reload-plugins`, then start or resume a session.
 - **A delegated agent did not report:** confirm its normalized type appears under `Delegated agents` and retains the Pomegr MCP tools.
@@ -153,7 +165,11 @@ For unsupported standalone MCP registrations, use the exact server name `pomegr`
 
 ## Package layout and validation
 
-The Codex package lives in `plugins/pomegr/`. The Claude Code package lives in `plugins/claude-code/`, with marketplace metadata in `.claude-plugin/marketplace.json`.
+### Skill changes
+
+Canonical skill content lives in `plugin-src/skills/`. The Codex package lives in `plugins/pomegr/`; the Claude Code package lives in `plugins/claude-code/`, with marketplace metadata in `.claude-plugin/marketplace.json`.
+
+Edit the canonical `SKILL.md.tmpl` files and shared policy template, not the generated package copies. Provider blocks use `{{#codex}}...{{/codex}}` and `{{#claude}}...{{/claude}}`. `npm run build:plugin` renders both self-contained packages and marks generated `SKILL.md` files as artifacts that should not be edited directly.
 
 Regenerate both self-contained runtimes and run package tests:
 
@@ -162,7 +178,7 @@ npm run build:plugin
 npm run test:plugin
 ```
 
-Codex package validation additionally uses the skill and plugin validators:
+After generation, Codex package validation additionally uses the skill and plugin validators:
 
 ```powershell
 python C:\path\to\skill-creator\scripts\quick_validate.py .\plugins\pomegr\skills\init
@@ -177,13 +193,15 @@ claude plugin validate .
 claude --plugin-dir .\plugins\claude-code
 ```
 
+### Plugin upgrade
+
 Claude and Codex share one plugin release version. Prepare both marketplace packages atomically with the shared release helper:
 
 ```bash
 ./scripts/release-plugin.sh patch
 ```
 
-Replace `patch` with `minor` or `major` as appropriate. The helper rejects version drift, updates every Claude and Codex plugin manifest and MCP identity to the same version, rebuilds both packages, and restores all affected files if either build fails. The desktop application retains its own independent release version.
+Replace `patch` with `minor` or `major` as appropriate. The helper rejects version drift, updates every Claude and Codex plugin manifest and MCP identity to the same version, rebuilds both packages, and restores all affected files if either build fails. Run `npm run test:plugin`, review the complete generated diff, then commit and push all release changes together. The helper prints the provider-specific client upgrade commands. The desktop application retains its own independent release version.
 
 Node.js 22.13 or newer must be available for local MCP and hook processes.
 

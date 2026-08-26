@@ -955,12 +955,12 @@ export function createCodexProvider(options = {}) {
     const canonicalByActor = new Map(
       [...actorByThreadId.values()].map((actor, index) => [actor.id, canonicalEvidence[index]]),
     );
-    const allSignals = { agent: null, session: null, tasks: new Map() };
+    const allSignals = { agent: null, session: null, progress: null, tasks: new Map() };
     const signalsByActor = new Map();
     for (const actor of actorByThreadId.values()) {
       const signals = mergeCodexSignals(
-        { agent: null, session: null, tasks: new Map() },
-        rolloutSignalsByActor.get(actor.id) || { agent: null, session: null, tasks: new Map() },
+        { agent: null, session: null, progress: null, tasks: new Map() },
+        rolloutSignalsByActor.get(actor.id) || { agent: null, session: null, progress: null, tasks: new Map() },
       );
       signalsByActor.set(actor.id, signals);
       mergeCodexSignals(allSignals, signals);
@@ -1004,6 +1004,8 @@ export function createCodexProvider(options = {}) {
         contextMachinery: null,
         summary: null,
         signal: allSignals.session,
+        // Session progress is scoped to the primary rollout only.
+        progress: signalsByActor.get("primary")?.progress || null,
       },
       agents,
       workflows: [],

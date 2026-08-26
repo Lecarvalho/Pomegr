@@ -1,0 +1,40 @@
+---
+name: doctor
+description: {{#codex}}Diagnose a repository's Pomegr reporting setup for Codex without changing files or emitting signals. Use when the user invokes $pomegr:doctor, reports missing signal tools or policy loading, or asks whether .pomegr/signals.md and the Codex plugin are configured correctly.{{/codex}}{{#claude}}Diagnose a repository's Pomegr reporting setup without changing files or emitting telemetry. Use when the user invokes /pomegr:doctor, reports missing signal tools or policy loading, or asks whether .pomegr/signals.md and the Claude plugin are configured correctly.{{/claude}}
+---
+
+# Diagnose Pomegr reporting
+
+Perform a read-only diagnosis. Do not edit files, emit or clear signals, invoke Pomegr tools as connection tests, or expose MCP configuration values.
+
+## Policy
+
+Resolve this plugin's `scripts/policy.mjs` relative to this file and run `node <script> validate --cwd <repository-root>`. Interpret its bounded JSON:
+
+- `valid`: show path, byte size, Session progress state, and `delegatedAgents`. {{#codex}}Version 6 is progress-disabled.{{/codex}}{{#claude}}Report `warnings` as delegation drift and recommend `/pomegr:init` for drift. Version 6 is progress-disabled.{{/claude}}
+- `missing`: report repository-specific reporting as inactive and recommend {{#codex}}`$pomegr:init`{{/codex}}{{#claude}}`/pomegr:init`{{/claude}}.
+- `invalid`: show the bounded errors and recommend {{#codex}}`$pomegr:init`{{/codex}}{{#claude}}`/pomegr:init`{{/claude}} to review an update.
+
+## Automatic loading and delegation
+
+For a valid policy, check for `[Pomegr reporting policy loaded]`. If absent, {{#codex}}explain that the task may predate initialization or the hooks may not be trusted; direct the user to `/hooks` to review `SessionStart`, `SubagentStart`, and `SubagentStop`, then recommend starting or resuming a task.{{/codex}}{{#claude}}explain that the session may predate initialization or `SessionStart` did not run; direct the user to `/hooks`, `/reload-plugins`, and a new or resumed session.{{/claude}}
+
+Report delegation coverage. No rows means the main session owns reporting. Each declared type receives matching rows under `[Pomegr delegated reporting policy]` through {{#codex}}`SubagentStart`{{/codex}}{{#claude}}`PreToolUse`{{/claude}}.
+
+## MCP inventory
+
+Check the resolved Pomegr namespace for {{#codex}}`report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`{{/codex}}{{#claude}}`rename_session`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`{{/claude}}. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to {{#codex}}the Codex plugin settings and `/mcp`{{/codex}}{{#claude}}`/mcp` and `/reload-plugins`{{/claude}}. Do not read credential files or expose MCP configuration values.
+
+## Package structure
+
+Verify `.mcp.json`, `hooks/hooks.json`, `scripts/policy.mjs`, and the bundled progress reminder hook. {{#codex}}Also verify `skills/init/SKILL.md` and `skills/doctor/SKILL.md`. Confirm the hooks file registers `SessionStart`, `SubagentStart`, `SubagentStop`, and an all-tool `PostToolUse` hook. This proves package structure, not runtime trust or execution.{{/codex}}{{#claude}}Confirm the hooks manifest registers `SessionStart`, `PreToolUse`, `SubagentStop`, and an all-tool `PostToolUse` hook. This proves package structure, not runtime registration.{{/claude}}
+
+## Role mappings
+
+Run `node <repository-root>/monitor/agent-roles.mjs validate --cwd <repository-root>`. Report missing as inactive; otherwise show only bounded terminal diagnostics and accepted mapping keys. Explain that the monitor ignores an invalid file. Never expose mapping values or contents through browser-visible output.
+
+## Result
+
+Return a compact checklist for policy validity, automatic loading, delegation, MCP tools, package structure, and role mappings.{{#codex}} Include hook trust.{{/codex}}{{#claude}} Include native session naming: it passes when `rename_session` is available or provider automatic naming is the only fallback; an idle session may remain Untitled.{{/claude}}
+
+{{#codex}}Never modify `AGENTS.md`, `.codex/config.toml`, `.codex/agents/*`, `.codex/hooks.json`, `.pomegr/signals.md`, or application code.{{/codex}}{{#claude}}Never modify `AGENTS.md`, `CLAUDE.md`, `.claude/settings*`, or `.pomegr/signals.md`.{{/claude}}

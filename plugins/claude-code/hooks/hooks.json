@@ -35,6 +35,19 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs\" --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 5,
+            "additionalContextLimit": 800
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [

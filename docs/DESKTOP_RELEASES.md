@@ -2,6 +2,16 @@
 
 Official Pomegr Windows releases are built only by the tag-triggered GitHub Actions workflow from a clean checkout of the tagged commit. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
 
+## Package and publish
+
+1. Start from a clean working tree and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
+2. Run `npm version X.Y.Z --no-git-tag-version`, substituting the chosen version. This updates `package.json` and `package-lock.json` without creating a tag.
+3. Run the applicable pre-release quality gates from the [release checklist](#release-checklist), commit the version change, and create the matching annotated `vX.Y.Z` or `vX.Y.Z-beta.N` tag on that commit.
+4. Push the commit, then push the tag. The tag starts `.github/workflows/release.yml`, which rebuilds from the clean tagged checkout, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact asset set, and publishes it.
+5. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
+
+Do not publish locally built executables or manually replace release assets. Correct a failed or broken release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
+
 ## Release checklist
 
 - [ ] The exact tag matches `package.json`, is immutable, and points at the clean checkout used by CI.

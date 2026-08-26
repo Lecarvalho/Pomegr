@@ -1,0 +1,57 @@
+---
+name: init
+description: {{#codex}}Initialize or update a repository's Pomegr reporting policy for Codex. Use when the user invokes $pomegr:init, asks which project-specific session, agent, or execution-task signals Codex should report, or wants to revise .pomegr/signals.md.{{/codex}}{{#claude}}Initialize or update a repository's Pomegr reporting policy. Use when the user invokes /pomegr:init, asks to configure which project-specific session, agent, or execution-task signals coding agents should report, or wants to revise .pomegr/signals.md.{{/claude}}
+---
+
+# Initialize Pomegr reporting
+
+## Scope
+
+{{#codex}}Create or update only `.pomegr/signals.md`. Never edit `AGENTS.md`, Codex configuration, agent definitions, provider settings, or application code.
+
+Inspect safe repository context before asking questions: project structure, package/build manifests, test and CI configuration, contributor guidance, names of `.codex/agents/` files, and any existing policy. Never inspect secrets, credentials, transcripts, prompts, responses, hook payloads, command-output archives, environment files, or MCP configuration values.{{/codex}}{{#claude}}Create or update `.pomegr/signals.md` and, only when needed, the `tools` allowlists of signal-owning agent definitions. Never edit `AGENTS.md`, `CLAUDE.md`, provider settings, or application code.
+
+Inspect safe repository context before asking questions: project structure, package/build manifests, test and CI configuration, contributor guidance, `.claude/agents/*.md`, and any existing policy. Never inspect secrets, credentials, transcripts, prompts, responses, command-output archives, or environment files.{{/claude}}
+
+## Inspect and validate
+
+Resolve this plugin's `scripts/policy.mjs` relative to this file. When a policy exists, run `node <script> validate --cwd <repository-root>` and summarize its signals, delegated agents, and Session progress state. Preserve user-written table choices. {{#codex}}Treat version 6 as progress-disabled and ask before enabling progress during an upgrade.{{/codex}}{{#claude}}Report delegation warnings, restore drifted canonical sections from the template, and ask before enabling Session progress.{{/claude}}
+
+## Configure
+
+Read [the policy template](references/policy-template.md) and use it as the runtime policy structure.
+
+- Configure only project-specific outcomes Pomegr cannot derive. Exclude generic lifecycle, context-size, Git, tool-count, approval, agent-liveness, {{#codex}}plan-task, and execution-task lifecycle{{/codex}}{{#claude}}and task-lifecycle{{/claude}} states.
+- Ask only what is needed to settle each signal's scope, label, tone, trigger, and replacement or clearing condition. Session scope describes the overall goal; agent scope describes one agent's role or conclusion; task scope requires a {{#codex}}recognized{{/codex}}{{#claude}}known{{/claude}} execution-task ID.
+- Session progress defaults to no and requires explicit confirmation to enable.
+- For agent or task signals, add `Delegated agents` rows only for user-confirmed types that can reach a configured outcome. Use `*` only when every spawned type may report; otherwise leave delegation empty when the main session owns reporting.
+
+{{#claude}}For each declared type, prepare any needed `tools` allowlist repair with the resolved namespace—typically `mcp__plugin_pomegr_pomegr__*`—or exact reporting suffixes; the user confirms them at the preview step. Do not add reporting prose to agent definitions: `PreToolUse` supplies the rows even when a definition is a thin wrapper around a canonical body elsewhere.
+
+{{/claude}}Use the template's exact empty-section markers and table shapes. A delegation row may own only a scope with configured signals.
+
+## Preview, write, and verify
+
+- Preview the complete proposed Markdown or a focused diff{{#claude}} together with every agent-definition edit{{/claude}} and explain omitted duplicates.
+- Obtain explicit user confirmation before writing.
+{{#codex}}- Write only `.pomegr/signals.md` after confirmation, creating `.pomegr/` if needed. Preserve unrelated valid guidance instead of replacing the policy wholesale.{{/codex}}{{#claude}}- After confirmation, apply only the policy and allowlist changes, creating `.pomegr/` if needed. Preserve unrelated valid guidance instead of replacing the policy wholesale.{{/claude}}
+- Re-run the validator and fix structural errors without changing approved semantics.{{#claude}} Report its warnings as delegation drift.{{/claude}}
+
+## MCP inventory
+
+Check the resolved Pomegr namespace for {{#codex}}`report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`{{/codex}}{{#claude}}`rename_session`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`{{/claude}}. Display only short names. Do not invoke them as connection tests. {{#codex}}The policy template defines when each is used.{{/codex}}{{#claude}}If any are missing, direct the user to `/mcp`.
+
+The policy template defines when report and clear suffixes are used. After substantive work is clear, the main session may call `rename_session` once with a concise title; never ask the user to name it, overwrite a user title, or delegate naming. If unavailable, allow native automatic naming.{{/claude}}
+
+## Finish
+
+{{#codex}}Report the final path, configured scopes, delegated agents, Session progress state, and tool availability. Check for `[Pomegr reporting policy loaded]`; if absent, explain that loading begins after the hooks are trusted and a new or resumed task triggers `SessionStart`, then direct the user to `/hooks`.
+
+Follow the approved policy immediately. `SubagentStart` supplies delegated rows, so do not paste them into subagent prompts. Use provider-native automatic task naming unless a safe title capability exists.{{/codex}}{{#claude}}Report the final path, configured scopes, delegated agents, Session progress state, tool availability, and delegation drift. Follow the policy immediately; the delegation hook supplies applicable rows, so do not paste them into subagent prompts.{{/claude}}
+
+## Policy limits
+
+- Labels are plain text, 1-20 characters; tones are `neutral`, `info`, `positive`, `warning`, or `negative`.
+- Conditions are concrete, observable, and at most 240 characters. Table cells cannot contain pipe characters.
+- Agent types are normalized names of at most 64 characters, or `*`; ownership is `agent`, `task`, or `agent and task`.
+- Never put raw commands or output, matched source text, prompts, responses, secrets, credentials, hook payloads, or transcript paths in a policy or signal.

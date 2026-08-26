@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
 
+import { buildPluginSkills } from "./build-plugin-skills.mjs";
+
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
 const bundles = [
@@ -15,9 +17,14 @@ const bundles = [
     entryPoint: path.join(pluginRoot, "scripts", "rename-session.mjs"),
     outputFile: path.join(pluginRoot, "scripts", "rename-session.bundle.mjs"),
   },
+  {
+    entryPoint: path.join(repositoryRoot, "scripts", "progress-reminder.mjs"),
+    outputFile: path.join(pluginRoot, "scripts", "progress-reminder.bundle.mjs"),
+  },
 ];
 
 export async function buildClaudePluginMcp() {
+  const skillFiles = await buildPluginSkills(["claude"]);
   for (const bundle of bundles) {
     await mkdir(path.dirname(bundle.outputFile), { recursive: true });
     await build({
@@ -34,10 +41,10 @@ export async function buildClaudePluginMcp() {
       },
     });
   }
-  return bundles.map((bundle) => bundle.outputFile);
+  return [...skillFiles, ...bundles.map((bundle) => bundle.outputFile)];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const built = await buildClaudePluginMcp();
-  for (const file of built) console.log(`Pomegr Claude plugin bundle: ${path.relative(repositoryRoot, file)}`);
+  for (const file of built) console.log(`Pomegr Claude plugin artifact: ${path.relative(repositoryRoot, file)}`);
 }

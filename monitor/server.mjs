@@ -860,6 +860,7 @@ export function createMonitorRuntime(options = {}) {
       contextMachinery: evidence.session.contextMachinery,
       summary: evidence.session.summary,
       signal: evidence.session.signal,
+      progress: evidence.session.progress ?? null,
     },
     score,
     metrics: {

@@ -34,6 +34,13 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 - [Install the Pomegr reporting plugin for Codex or Claude Code](docs/PLUGINS.md)
 
+## Publish procedures
+
+- **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/PLUGINS.md#skill-changes).
+- **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/PLUGINS.md#plugin-upgrade).
+- **Desktop package and publish:** Publish signed Windows artifacts only through the immutable-tag release workflow; follow [Package and publish](docs/DESKTOP_RELEASES.md#package-and-publish).
+- **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](landing/OPERATIONS.md#5-release-the-exact-audited-artifact).
+
 ## Current limitations
 
 - The desktop app currently supports Windows x64 only.

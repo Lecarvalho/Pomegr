@@ -12,6 +12,7 @@ import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
+import { SessionProgressPanel } from "./components/dashboard/SessionProgressPanel";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
 import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
@@ -256,6 +257,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
+          <SessionProgressPanel progress={data.session.progress} agents={data.agents} activity={data.activity} connected={data.connected} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />
           {capabilities.workflows && (data.workflows || []).length > 0 && (
             <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} workflows={data.workflows || []} />
           )}

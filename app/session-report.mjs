@@ -30,6 +30,22 @@ function agentStatus(status) {
   return status === "needs_input" ? "needs input" : status;
 }
 
+function progressPhase(phase) {
+  return ({ planning: "Planning", implementing: "Implementing", verifying: "Verifying", blocked: "Blocked", complete: "Complete" })[phase] || String(phase || "Unknown");
+}
+
+function progressRemaining(progress) {
+  const min = progress?.remainingMinutesMin;
+  const max = progress?.remainingMinutesMax;
+  if (!Number.isInteger(min) || !Number.isInteger(max)) return "—";
+  return min === max ? `${min} min` : `${min}–${max} min`;
+}
+
+function progressConfidence(confidence) {
+  const value = String(confidence || "unknown");
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
 function toolDistribution(patterns) {
   const groups = new Map();
   for (const pattern of patterns || []) {
@@ -89,6 +105,20 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   ];
 
   if (capabilities.estimatedCost) lines.push(`| Estimated API cost | ${money(session.cost)} |`);
+
+  if (session.progress) {
+    const progress = session.progress;
+    lines.push(
+      "",
+      "## Session progress",
+      "",
+      "| Agent estimate | Phase | Completion | Remaining range | Confidence | Reported |",
+      "| --- | --- | ---: | --- | --- | --- |",
+      `| Agent estimate | ${cell(progressPhase(progress.phase))} | ${number(progress.percent)}% | ${cell(progressRemaining(progress))} | ${cell(progressConfidence(progress.confidence))} | ${cell(localTime(progress.reportedAt))} |`,
+      "",
+      "The progress row preserves the agent-reported range, confidence, and timestamp. It is a snapshot, not a Pomegr prediction or countdown.",
+    );
+  }
 
   lines.push(
     "",

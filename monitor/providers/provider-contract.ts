@@ -9,6 +9,7 @@ import type {
   ProviderId,
   ProviderSource,
   SessionApprovalMode,
+  SessionProgress,
   SessionReportedSignal,
   UsageLimits,
   Workflow,
@@ -126,6 +127,7 @@ export type ProviderSessionEvidence = {
     contextMachinery: ContextMachinery | null;
     summary: SessionSummary | null;
     signal: SessionReportedSignal | null;
+    progress: SessionProgress | null;
   };
   agents: ProviderAgentEvidence[];
   workflows: Workflow[];

@@ -8,6 +8,7 @@ const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
 const contextHistorySource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextHistoryPanel.tsx"), "utf8");
 const requestSnapshotsSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestSnapshotsPanel.tsx"), "utf8");
+const sessionProgressSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionProgressPanel.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("renders the wordmark-only header identity and the product mark on About", () => {
@@ -52,5 +53,14 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
+  });
+
+  it("keeps session progress semantic, flat, and motion-safe", () => {
+    expect(sessionProgressSource).toMatch(/<progress[^>]*aria-label=\"Agent-reported session progress\"[^>]*aria-valuetext=/);
+    expect(sessionProgressSource).toMatch(/Recorded agent estimate/);
+    expect(sessionProgressSource).toMatch(/may be stale/);
+    expect(styles).toMatch(/\.sessionProgressPanel\s*\{[^}]*overflow:\s*hidden/);
+    expect(styles).toMatch(/\.sessionProgressInstrument progress\s*\{[^}]*appearance:\s*none/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation-duration:\s*\.01ms/);
   });
 });

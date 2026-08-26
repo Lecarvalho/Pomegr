@@ -164,6 +164,14 @@ A recognized provider-authored Codex activity heading is scoped to its open turn
 
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
+## Session progress estimate
+
+Session progress is an optional agent-reported snapshot, not a Pomegr metric. When enabled by the project policy, the dashboard shows only the latest primary-session report: its phase (`planning`, `implementing`, `verifying`, `blocked`, or `complete`), integer percentage, optional paired remaining-minute range, confidence, and transcript timestamp. A later report replaces the earlier one, including when the percentage moves backward; a clear call or no report keeps the panel hidden. The progress bar is a semantic, text-labeled instrument and does not imply that Pomegr measured work or predicted completion.
+
+Remaining minutes are displayed exactly as the bounded range reported by the agent. They are never accumulated, recalculated, decremented, or converted into a countdown. Complete progress at 100% omits the remaining estimate. Blocked, waiting, or needs-input states label the estimate as paused and retain the last reported values. A finished session without a complete report likewise keeps its last snapshot. Historical views say **Recorded agent estimate** and show the absolute report time.
+
+For a live session, “may be stale” is shown only when the monitor is connected and unpaused, the primary agent is not waiting or needs-input, at least ten minutes have elapsed since the report, and later primary-agent activity is present. Offline, paused, waiting, needs-input, blocked, and historical views freeze the snapshot without a stale warning. This age gate is a presentation rule; it never changes the underlying report or its range/confidence values.
+
 ## User attention
 
 `needs_input` is an operational attention state, not an efficiency signal. The dashboard presents it through live-session navigation and the affected agent's status in the activity and tree views; the desktop app may also issue a transition notification. It does not enter the **Efficiency signals** panel.

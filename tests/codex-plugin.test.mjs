@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { access, cp, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -83,9 +83,11 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   assert.equal(mcp.mcpServers.pomegr.command, "node");
   assert.equal(mcp.mcpServers.pomegr.args[0], "./mcp/server.bundle.mjs");
   assert.equal(mcp.mcpServers.pomegr.cwd, ".");
-  assert.deepEqual(Object.keys(hooks.hooks).sort(), ["SessionStart", "SubagentStart", "SubagentStop"]);
+  assert.deepEqual(Object.keys(hooks.hooks).sort(), ["PostToolUse", "SessionStart", "SubagentStart", "SubagentStop"]);
   assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /\$\{PLUGIN_ROOT\}/);
   assert.match(hooks.hooks.SessionStart[0].hooks[0].commandWindows, /%PLUGIN_ROOT%/);
+  assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
+  assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
   assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
 });
 
@@ -103,7 +105,9 @@ test("Codex plugin packages explicit init and read-only doctor workflows", async
   assert.match(doctor, /Perform a read-only diagnosis/);
   assert.match(doctor, /SessionStart.*SubagentStart.*SubagentStop/);
   assert.match(doctor, /Do not invoke them as a connection test/);
-  assert.match(template, /Policy version: 6/);
+  assert.match(template, /Policy version: 7/);
+  assert.match(template, /## Tool suffixes[\s\S]*report_session_signal[\s\S]*clear_session_progress/);
+  assert.match(template, /## Session progress[\s\S]*- Enabled: no/);
   assert.match(template, /provider-specific prefixes are not part of this policy/);
 });
 
@@ -116,14 +120,21 @@ test("installed Codex plugin starts without repository dependencies and lists bo
     await assert.rejects(access(path.join(installedPlugin, "node_modules")), { code: "ENOENT" });
     await access(path.join(installedPlugin, "hooks", "hooks.json"));
     await access(path.join(installedPlugin, "scripts", "policy.mjs"));
+    const reminderPath = path.join(installedPlugin, "scripts", "progress-reminder.bundle.mjs");
+    await access(reminderPath);
     await access(path.join(installedPlugin, "skills", "init", "SKILL.md"));
     await access(path.join(installedPlugin, "skills", "doctor", "SKILL.md"));
+    const reminder = spawnSync(process.execPath, [reminderPath], { cwd: runtimeCwd, encoding: "utf8", input: "{}" });
+    assert.equal(reminder.status, 0);
+    assert.equal(reminder.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), runtimeCwd);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       "clear_agent_signal",
+      "clear_session_progress",
       "clear_session_signal",
       "report_agent_signal",
+      "report_session_progress",
       "report_session_signal",
       "report_task_signal",
     ]);

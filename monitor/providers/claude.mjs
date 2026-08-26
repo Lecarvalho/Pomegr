@@ -884,6 +884,9 @@ export function createClaudeProvider(options = {}) {
     for (const signals of signalsByFile.values()) mergeTranscriptSignals(combinedSignals, signals);
     const taskSignals = combinedSignals.tasks;
     const sessionSignal = combinedSignals.session;
+    // Session progress is intentionally primary-agent-only; child transcripts
+    // may report agent/task signals but cannot overwrite session progress.
+    const sessionProgress = signalsByFile.get(mainFile)?.progress || null;
     let contextMachinery = contextMachineryCache.get(mainFile);
     if (contextMachinery === undefined) {
       contextMachinery = await readLatestContextMachinery(mainFile);
@@ -1066,6 +1069,7 @@ export function createClaudeProvider(options = {}) {
         contextMachinery,
         summary: latestSessionSummary(mainRecords),
         signal: sessionSignal,
+        progress: sessionProgress,
       },
       agents,
       workflows,

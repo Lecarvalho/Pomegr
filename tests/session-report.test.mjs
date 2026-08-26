@@ -124,6 +124,25 @@ test("keeps a supplied zero estimate distinct from an unsupported estimate", () 
   assert.match(report, /Estimated API cost.*\$0\.00/);
 });
 
+test("includes the bounded agent-reported progress row without recomputing it", () => {
+  const withProgress = structuredClone(state);
+  withProgress.session.progress = {
+    phase: "implementing",
+    percent: 42,
+    remainingMinutesMin: 10,
+    remainingMinutesMax: 20,
+    confidence: "medium",
+    reportedAt: "2026-08-05T17:12:00.000Z",
+  };
+
+  const report = buildSessionReport(withProgress, generatedAt);
+
+  assert.match(report, /## Session progress/);
+  assert.match(report, /Agent estimate.*Implementing.*42%.*10–20 min.*Medium/);
+  assert.match(report, /Aug 5, 2026/);
+  assert.doesNotMatch(report, /10–19 min|0 min remaining/);
+});
+
 test("renders needs-input status as a human-readable report label", () => {
   const needsInput = structuredClone(state);
   needsInput.agents[0].status = "needs_input";

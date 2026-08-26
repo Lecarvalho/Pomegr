@@ -12,6 +12,15 @@ export type SessionReportedSignal = ReportedSignal & {
   description?: string;
 };
 
+export type SessionProgress = {
+  phase: "planning" | "implementing" | "verifying" | "blocked" | "complete";
+  percent: number;
+  remainingMinutesMin?: number;
+  remainingMinutesMax?: number;
+  confidence: "low" | "medium" | "high";
+  reportedAt: string;
+};
+
 /** Transient provider-authored activity heading for an open agent turn. */
 export type AgentCurrentActivity = {
   label: string;
@@ -482,6 +491,7 @@ export type MonitorState = {
     contextMachinery: ContextMachinery | null;
     summary: { text: string; observedAt: string | null; source: "provider" } | null;
     signal: SessionReportedSignal | null;
+    progress: SessionProgress | null;
   } | null;
   score: number;
   metrics: {

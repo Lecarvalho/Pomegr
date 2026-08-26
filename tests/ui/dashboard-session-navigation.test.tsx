@@ -30,6 +30,7 @@ function liveState(id: string, title: string): MonitorState {
       contextMachinery: null,
       summary: null,
       signal: null,
+      progress: null,
     },
   };
 }

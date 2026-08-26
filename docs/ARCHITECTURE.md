@@ -108,7 +108,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 
 ## Normalized state
 
-- `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, an optional reported session signal, and an optional provider-estimated USD cost snapshot
+- `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, optional reported session signal and session progress, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, latest/final context usage, bounded independent request-local `requestSnapshots`, per-agent/all-agent actual-level `contextHistory` with bounded normalized compaction/drop boundaries, and bounded `cacheEvents`
 - `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
@@ -126,6 +126,8 @@ Reported signals use the transcript as their only durable source. The local MCP 
 When the provider records a recognized session summary, `session.summary` carries only the latest bounded, whitespace-normalized plain-text summary, its transcript timestamp, and provider provenance. Pomegr does not derive a summary from prompts, responses, or tool results. The dashboard labels that text as provider-generated and distinguishes the explicit MCP fallback as agent-reported.
 
 Claude Code sends `cost.total_cost_usd` only to its configured status-line command. The optional bridge stores a separate per-session snapshot containing only session ID, estimated USD amount, estimate type, and local observation timestamp, then forwards the original input unchanged to the user's existing status-line command. The monitor reads the sanitized snapshot by session ID. Raw status-line JSON never enters browser state.
+
+Session progress is opt-in and transcript-backed. The provider adapter exposes only the normalized phase, integer completion percentage, optional paired remaining-minute bounds, confidence, and report timestamp from the primary session transcript; a clear call or absent report produces `null`. The dashboard renders the value only when present as an **Agent estimate**. It keeps the reported range and confidence intact, uses a semantic progress element, and never turns the range into a countdown or derives a new estimate. Historical views label it **Recorded agent estimate** with an absolute timestamp. A live value can be marked “may be stale” only after ten minutes without a report when the connected, unpaused primary agent has later activity; offline, paused, waiting, needs-input, blocked, and historical views retain the snapshot without that warning.
 
 When a Claude Code session has recorded `/context` output, `session.contextMachinery` carries its latest sanitized, provider-estimated machinery total plus category and item tables. The total sums non-message category rows so expandable group details are not double-counted. The monitor discovers groups from table headers rather than a repository-specific catalog; raw command output and full memory paths stay monitor-side.
 

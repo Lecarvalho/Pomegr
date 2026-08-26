@@ -7,7 +7,8 @@ import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 6;
+export const POLICY_VERSION = 7;
+export const LEGACY_POLICY_VERSION = 6;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
@@ -23,6 +24,7 @@ const REQUIRED_SECTIONS = [
   "Agent signals",
   "Task signals",
 ];
+const PROGRESS_SECTION = "Session progress";
 const SIGNAL_SECTIONS = ["Session signals", "Agent signals", "Task signals"];
 const EMPTY_SECTION = "_No project-specific signals configured._";
 const EMPTY_DELEGATED_AGENTS = "_No delegated agent types configured._";
@@ -174,16 +176,19 @@ export function validatePolicyText(text) {
   if (bytes > POLICY_MAX_BYTES) errors.push(`Policy exceeds the ${POLICY_MAX_BYTES}-byte limit.`);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) errors.push("Policy contains control characters.");
   if (!/^# Pomegr reporting policy\s*$/m.test(text)) errors.push("Missing the Pomegr reporting policy title.");
-  if (!new RegExp(`^Policy version: ${POLICY_VERSION}\\s*$`, "m").test(text)) errors.push(`Policy version must be ${POLICY_VERSION}.`);
+  const versionMatch = text.match(/^Policy version:\s*(\d+)\s*$/m);
+  const version = versionMatch ? Number(versionMatch[1]) : null;
+  if (![POLICY_VERSION, LEGACY_POLICY_VERSION].includes(version)) errors.push(`Policy version must be ${POLICY_VERSION} (legacy version ${LEGACY_POLICY_VERSION} is accepted).`);
+  const requiredSections = version === POLICY_VERSION ? [...REQUIRED_SECTIONS, PROGRESS_SECTION] : REQUIRED_SECTIONS;
 
-  for (const name of REQUIRED_SECTIONS) {
+  for (const name of requiredSections) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const matches = text.match(new RegExp(`^## ${escaped}\\s*$`, "gm")) || [];
     if (matches.length > 1) errors.push(`Policy must contain exactly one "${name}" section.`);
   }
 
   const sections = new Map();
-  for (const name of REQUIRED_SECTIONS) {
+  for (const name of requiredSections) {
     const body = sectionBody(text, name);
     if (body === null || !body) errors.push(`Missing or empty "${name}" section.`);
     sections.set(name, body || "");
@@ -197,7 +202,12 @@ export function validatePolicyText(text) {
   const signals = {};
   for (const name of SIGNAL_SECTIONS) signals[name] = validateSignalSection(name, sections.get(name), errors);
   const delegatedAgents = validateDelegatedAgentsSection(sections.get("Delegated agents"), signals, errors);
-  return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals, delegatedAgents });
+  const progressBody = version === POLICY_VERSION ? sections.get(PROGRESS_SECTION) : null;
+  const progressEnabled = progressBody === "- Enabled: yes";
+  if (version === POLICY_VERSION && !["- Enabled: yes", "- Enabled: no"].includes(progressBody)) {
+    errors.push('Session progress must contain exactly "- Enabled: yes" or "- Enabled: no".');
+  }
+  return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals, delegatedAgents, version, progressEnabled });
 }
 
 export function findPolicy(startDirectory = process.cwd()) {
