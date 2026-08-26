@@ -13,12 +13,13 @@ export const CODEX_ROLLOUT_LIVE_WINDOW_MS = 120_000;
 export const CODEX_BRIDGE_HEARTBEAT_MS = 15_000;
 export const CODEX_BRIDGE_LEASE_MS = 45_000;
 export const CODEX_NEEDS_INPUT_MAX_MS = 30 * 60_000;
+export const CODEX_ROLLOUT_APPROVAL_GRACE_MS = 5_000;
 export const CODEX_LIVENESS_CACHE_MS = 1_500;
 export const CODEX_LIVENESS_MAX_TAIL_BYTES = 128 * 1024;
 export const CODEX_LIVENESS_MAX_TAIL_RECORDS = 256;
 export const CODEX_LIVENESS_MAX_BRIDGE_FILES = 500;
 const CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS = 2_000;
-const CODEX_LIVENESS_MAX_COLD_DESKTOP_ROLLOUTS = 16;
+const CODEX_LIVENESS_MAX_COLD_ROLLOUTS = 16;
 
 const SAFE_LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
@@ -441,6 +442,35 @@ function isPlanModeTurn(payload) {
   return (payload?.collaboration_mode?.mode ?? payload?.collaborationMode?.mode) === "plan";
 }
 
+function isPendingFileEditCall(payload) {
+  if (!["function_call", "custom_tool_call"].includes(payload?.type)) return false;
+  const name = normalizedToolName(payload.name);
+  if (name === "apply_patch") return true;
+  if (name !== "exec" || typeof payload.input !== "string") return false;
+  return /(?:^|[^\w$])tools\s*\.\s*apply_patch\s*\(/.test(payload.input);
+}
+
+export function isActiveCodexWriterLock(file, options = {}) {
+  if ((options.platform || process.platform) !== "win32") return false;
+  const statFileSync = options.statFileSync || fs.statSync;
+  const openFileSync = options.openFileSync || fs.openSync;
+  const closeFileSync = options.closeFileSync || fs.closeSync;
+  try {
+    if (!statFileSync(file).isFile()) return false;
+  } catch {
+    return false;
+  }
+  let descriptor;
+  try {
+    descriptor = openFileSync(file, "r+");
+    return false;
+  } catch (error) {
+    return ["EBUSY", "EACCES", "EPERM"].includes(error?.code);
+  } finally {
+    if (descriptor !== undefined) closeFileSync(descriptor);
+  }
+}
+
 function rolloutTerminalStatus(record) {
   const type = String(record?.type || "").toLowerCase().replaceAll("_", "");
   const payloadType = String(record?.payload?.type || "").toLowerCase().replaceAll("_", "");
@@ -459,6 +489,7 @@ function rolloutTerminalStatus(record) {
 export function parseCodexRolloutLiveness(records, options = {}) {
   const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
   const pending = new Map();
+  const pendingFileEdits = new Map();
   let planModeTurn = false;
   let planConfirmation = null;
   let latest = null;
@@ -471,15 +502,27 @@ export function parseCodexRolloutLiveness(records, options = {}) {
     if (!recognized) continue;
     if (!latest || timestampValue(timestamp) >= timestampValue(latest.timestamp)) latest = { timestamp, turnId: recordTurnId(record) };
     const observedTerminal = rolloutTerminalStatus(record);
-    if (observedTerminal) terminal = { status: observedTerminal, timestamp };
+    if (observedTerminal) {
+      terminal = { status: observedTerminal, timestamp };
+      pending.clear();
+      pendingFileEdits.clear();
+    }
     if (record.type === "turn_context") {
       planConfirmation = null;
       planModeTurn = isPlanModeTurn(payload);
+      pending.clear();
+      pendingFileEdits.clear();
     } else if (record.type === "event_msg" && ["user_message", "user_prompt"].includes(payload?.type)) {
       planConfirmation = null;
+      pending.clear();
+      pendingFileEdits.clear();
     }
     if (record.type !== "response_item" || !payload || typeof payload !== "object") continue;
-    if (payload.type === "message" && payload.role === "user") planConfirmation = null;
+    if (payload.type === "message" && payload.role === "user") {
+      planConfirmation = null;
+      pending.clear();
+      pendingFileEdits.clear();
+    }
     if (isAssistantFinalMessage(payload) && (planModeTurn || isWrappedProposedPlan(payload))) {
       planConfirmation = { timestamp, turnId: recordTurnId(record) };
     }
@@ -488,15 +531,30 @@ export function parseCodexRolloutLiveness(records, options = {}) {
       const id = callId(payload);
       if (id) pending.set(id, { timestamp, turnId: recordTurnId(record) });
     }
+    if (isPendingFileEditCall(payload)) {
+      const id = callId(payload);
+      if (id) pendingFileEdits.set(id, { timestamp, turnId: recordTurnId(record) });
+    }
     if (["function_call_output", "custom_tool_call_output"].includes(payload.type)) {
       const id = callId(payload);
-      if (id) pending.delete(id);
+      if (id) {
+        pending.delete(id);
+        pendingFileEdits.delete(id);
+      }
     }
   }
   if (!latest) return null;
   const planConfirmationAge = planConfirmation ? nowMs - timestampValue(planConfirmation.timestamp) : null;
   if (planConfirmationAge !== null && planConfirmationAge >= 0 && planConfirmationAge <= CODEX_NEEDS_INPUT_MAX_MS) {
     return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: planConfirmation.timestamp };
+  }
+  const pendingFileEdit = [...pendingFileEdits.values()]
+    .sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
+  const pendingFileEditAge = pendingFileEdit ? nowMs - timestampValue(pendingFileEdit.timestamp) : null;
+  if (pendingFileEditAge !== null
+    && pendingFileEditAge >= CODEX_ROLLOUT_APPROVAL_GRACE_MS
+    && pendingFileEditAge <= CODEX_NEEDS_INPUT_MAX_MS) {
+    return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: pendingFileEdit.timestamp };
   }
   const age = nowMs - timestampValue(latest.timestamp);
   if (age < 0 || age > CODEX_ROLLOUT_LIVE_WINDOW_MS) return null;
@@ -620,6 +678,8 @@ function uniqueResourceOwner(owners) {
 
 export function createCodexLivenessCoordinator(options = {}) {
   const root = resolveCodexLivenessRoot(options);
+  const writerLocksRoot = options.writerLocksRoot ? path.resolve(options.writerLocksRoot) : null;
+  const writerLockIsActive = options.writerLockIsActive || ((file) => isActiveCodexWriterLock(file, { platform: options.platform }));
   const now = options.now || (() => Date.now());
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : CODEX_LIVENESS_CACHE_MS;
   const maximumBridgeFiles = Number.isInteger(options.maximumBridgeFiles)
@@ -635,6 +695,12 @@ export function createCodexLivenessCoordinator(options = {}) {
   let lastCheckedAt = null;
   let resumeGraceUntil = 0;
   let stats = { bridgeFiles: 0, rolloutFiles: 0, rolloutBytes: 0 };
+
+  function hasCurrentWriterLock(thread) {
+    const localId = safeId(thread?.localId);
+    if (!writerLocksRoot || !localId) return false;
+    return writerLockIsActive(path.join(writerLocksRoot, `${localId}.lock`)) === true;
+  }
 
   function rolloutEvidence(file, nowMs) {
     if (!file) return null;
@@ -693,6 +759,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     }
     const resourceOwnersByThreadId = new Map();
     let coldDesktopRollouts = 0;
+    let coldCliRollouts = 0;
     const observedThreads = threads.map((thread) => {
       if (thread.archived) return { ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false, suppressFallbackLive: false };
       const app = appServerLiveness(thread.runtimeStatus, thread.updatedAt);
@@ -718,9 +785,17 @@ export function createCodexLivenessCoordinator(options = {}) {
         && !metadataCanBeLive
         && thread.sourceKind === "vscode"
         && !thread.parentThreadId
-        && coldDesktopRollouts < CODEX_LIVENESS_MAX_COLD_DESKTOP_ROLLOUTS;
+        && coldDesktopRollouts < CODEX_LIVENESS_MAX_COLD_ROLLOUTS;
+      const coldCliCandidate = !primary
+        && !metadataCanBeLive
+        && thread.sourceKind === "cli"
+        && !thread.parentThreadId
+        && hasCurrentWriterLock(thread)
+        && coldCliRollouts < CODEX_LIVENESS_MAX_COLD_ROLLOUTS;
       if (coldDesktopCandidate) coldDesktopRollouts += 1;
-      const inspectRollout = metadataCanBeLive || coldDesktopCandidate;
+      if (coldCliCandidate) coldCliRollouts += 1;
+      const coldRolloutCandidate = coldDesktopCandidate || coldCliCandidate;
+      const inspectRollout = metadataCanBeLive || coldRolloutCandidate;
       const rollout = inspectRollout
         ? rolloutEvidence(thread.rolloutFile, checkedAt)
         : null;

@@ -8,9 +8,11 @@ import {
   CODEX_ACTIVE_WINDOW_MS,
   CODEX_BRIDGE_LEASE_MS,
   CODEX_NEEDS_INPUT_MAX_MS,
+  CODEX_ROLLOUT_APPROVAL_GRACE_MS,
   CODEX_ROLLOUT_LIVE_WINDOW_MS,
   captureCodexLifecycleHook,
   createCodexLivenessCoordinator,
+  isActiveCodexWriterLock,
   parseCodexRolloutLiveness,
   processStartIdentity,
   renewCodexOwnerLease,
@@ -210,6 +212,59 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(answered, { now: START + 5_000 }).status, "active");
   assert.equal(parseCodexRolloutLiveness(answered, { now: START + 4_000 + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1 }), null);
 
+  const directPatch = [...progress, record(6_000, "response_item", {
+    type: "custom_tool_call",
+    name: "apply_patch",
+    call_id: "patch-1",
+    input: "PRIVATE_PATCH_MUST_NOT_LEAK",
+  })];
+  assert.equal(parseCodexRolloutLiveness(directPatch, {
+    now: START + 6_000 + CODEX_ROLLOUT_APPROVAL_GRACE_MS - 1,
+  }).status, "active");
+  const pendingPatch = parseCodexRolloutLiveness(directPatch, {
+    now: START + 6_000 + CODEX_ROLLOUT_APPROVAL_GRACE_MS,
+  });
+  assert.equal(pendingPatch.status, "needs_input");
+  assert.doesNotMatch(JSON.stringify(pendingPatch), /PRIVATE_PATCH_MUST_NOT_LEAK/);
+  assert.equal(parseCodexRolloutLiveness(directPatch, {
+    now: START + 6_000 + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1,
+  }).status, "needs_input");
+  const patched = [...directPatch, record(7_000, "response_item", {
+    type: "custom_tool_call_output",
+    call_id: "patch-1",
+    output: "PATCH_OUTPUT_MUST_NOT_LEAK",
+  })];
+  const completedPatch = parseCodexRolloutLiveness(patched, { now: START + 8_000 });
+  assert.equal(completedPatch.status, "active");
+  assert.doesNotMatch(JSON.stringify(completedPatch), /PRIVATE_PATCH_MUST_NOT_LEAK|PATCH_OUTPUT_MUST_NOT_LEAK/);
+  const interruptedPatch = [...directPatch, record(7_000, "turn_completed", { status: "interrupted" })];
+  assert.equal(parseCodexRolloutLiveness(interruptedPatch, { now: START + 8_000 }).status, "stopped");
+  const supersededPatch = [
+    ...directPatch,
+    record(7_000, "turn_context", {}),
+    record(7_001, "response_item", { type: "message", role: "user", content: [] }),
+  ];
+  assert.equal(parseCodexRolloutLiveness(supersededPatch, { now: START + 8_000 }).status, "active");
+
+  const wrappedPatch = [...progress, record(9_000, "response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "wrapped-patch-1",
+    input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
+  })];
+  assert.equal(parseCodexRolloutLiveness(wrappedPatch, {
+    now: START + 9_000 + CODEX_ROLLOUT_APPROVAL_GRACE_MS,
+  }).status, "needs_input");
+  const ordinaryExec = [...progress, record(10_000, "response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "ordinary-exec-1",
+    input: "await tools.exec_command({ cmd: 'PRIVATE_COMMAND_MUST_NOT_LEAK' });",
+  })];
+  assert.equal(parseCodexRolloutLiveness(ordinaryExec, {
+    now: START + 10_000 + CODEX_ROLLOUT_APPROVAL_GRACE_MS,
+  }).status, "active");
+
   const interrupted = [...progress, record(5_000, "turn_completed", { status: "interrupted" })];
   assert.equal(parseCodexRolloutLiveness(interrupted, { now: START + 6_000 }).status, "stopped");
   const systemError = [...progress, record(5_000, "turn_completed", { status: "failed" })];
@@ -387,6 +442,123 @@ test("cold Codex Desktop discovery reads a bounded stale-mtime rollout whose rec
   assert.equal(coordinator.stats().rolloutFiles, 1);
   assert.equal(observed.sessions.get("cold-desktop").needsInput, true);
   assert.equal(observed.threads[0].liveStatus, "needs_input");
+});
+
+test("cold Codex CLI discovery requires an actively held writer lock for stale approval metadata", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-cli-approval-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-cold-cli-approval.jsonl");
+  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  await writeFile(rolloutFile, [
+    JSON.stringify({ timestamp: new Date(START).toISOString(), type: "turn_context", payload: {} }),
+    JSON.stringify({
+      timestamp: new Date(now - CODEX_ROLLOUT_APPROVAL_GRACE_MS).toISOString(),
+      type: "response_item",
+      payload: {
+        type: "custom_tool_call",
+        name: "exec",
+        call_id: "pending-cli-patch",
+        input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
+      },
+    }),
+  ].join("\n"), "utf8");
+  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
+  await utimes(rolloutFile, staleTime, staleTime);
+  const writerLocksRoot = path.join(root, "thread-writer-locks");
+  await mkdir(writerLocksRoot, { recursive: true });
+  const writerLock = path.join(writerLocksRoot, "cold-cli.lock");
+  await writeFile(writerLock, "", "utf8");
+
+  const unlocked = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    writerLocksRoot,
+    now: () => now,
+    cacheMs: 0,
+  });
+  const stale = unlocked.observe([thread("cold-cli", {
+    sourceKind: "cli",
+    updatedAt: staleTime.toISOString(),
+    rolloutFile,
+  })]);
+  assert.equal(unlocked.stats().rolloutFiles, 0);
+  assert.equal(stale.sessions.get("cold-cli").needsInput, false);
+  assert.equal(isActiveCodexWriterLock(writerLock, { platform: "win32" }), false);
+
+  const activeLock = (file) => isActiveCodexWriterLock(file, {
+    platform: "win32",
+    statFileSync: () => ({ isFile: () => true }),
+    openFileSync: () => {
+      const error = new Error("synthetic Windows sharing violation");
+      error.code = "EPERM";
+      throw error;
+    },
+  });
+  assert.equal(activeLock(writerLock), true);
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "active-liveness"),
+    writerLocksRoot,
+    writerLockIsActive: (file) => file === writerLock && activeLock(file),
+    now: () => now,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([thread("cold-cli", {
+    sourceKind: "cli",
+    updatedAt: staleTime.toISOString(),
+    rolloutFile,
+  })]);
+  assert.equal(coordinator.stats().rolloutFiles, 1);
+  assert.equal(observed.sessions.get("cold-cli").needsInput, true);
+  assert.equal(observed.threads[0].liveStatus, "needs_input");
+});
+
+test("cold Desktop discovery cannot consume the actively locked CLI rollout budget", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-cli-budget-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
+  const desktopThreads = await Promise.all(Array.from({ length: 16 }, async (_, index) => {
+    const rolloutFile = path.join(root, `rollout-desktop-${index}.jsonl`);
+    await writeFile(rolloutFile, JSON.stringify({
+      timestamp: new Date(now).toISOString(),
+      type: "response_item",
+      payload: { type: "custom_tool_call", name: "exec", call_id: `desktop-${index}`, input: "PRIVATE_INPUT_MUST_NOT_LEAK" },
+    }), "utf8");
+    await utimes(rolloutFile, staleTime, staleTime);
+    return thread(`desktop-${index}`, {
+      sourceKind: "vscode",
+      updatedAt: staleTime.toISOString(),
+      rolloutFile,
+    });
+  }));
+  const cliRolloutFile = path.join(root, "rollout-locked-cli.jsonl");
+  await writeFile(cliRolloutFile, JSON.stringify({
+    timestamp: new Date(now - CODEX_ROLLOUT_APPROVAL_GRACE_MS).toISOString(),
+    type: "response_item",
+    payload: {
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "locked-cli-patch",
+      input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
+    },
+  }), "utf8");
+  await utimes(cliRolloutFile, staleTime, staleTime);
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    writerLocksRoot: path.join(root, "thread-writer-locks"),
+    writerLockIsActive: (file) => file.endsWith("locked-cli.lock"),
+    now: () => now,
+    cacheMs: 0,
+  });
+  const cliThread = thread("locked-cli", {
+    sourceKind: "cli",
+    updatedAt: staleTime.toISOString(),
+    rolloutFile: cliRolloutFile,
+  });
+
+  const observed = coordinator.observe([...desktopThreads, cliThread]);
+  assert.equal(coordinator.stats().rolloutFiles, 17);
+  assert.equal(observed.sessions.get("locked-cli").needsInput, true);
+  assert.equal(observed.threads.at(-1).liveStatus, "needs_input");
 });
 
 test("liveness scans one recent pending rollout while skipping five hundred provably stale rollouts", async (context) => {

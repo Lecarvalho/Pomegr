@@ -243,6 +243,7 @@ export function createCodexProvider(options = {}) {
     : Math.max(maximumLiveTailBytes, CODEX_LIVE_TASK_HISTORY_MAX_BYTES);
   const liveness = createCodexLivenessCoordinator({
     root: livenessRoot,
+    writerLocksRoot: path.join(codexHome, "thread-writer-locks"),
     now,
     cacheMs,
     maximumBridgeFiles: options.maximumBridgeFiles,
