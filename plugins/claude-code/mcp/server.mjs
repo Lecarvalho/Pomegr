@@ -57,7 +57,7 @@ function rejected(text) {
 
 export function buildPomegrMcpServer() {
   const server = new McpServer(
-    { name: "pomegr", version: "0.4.0" },
+    { name: "pomegr", version: "0.4.1" },
     { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies." },
   );
 
@@ -127,7 +127,7 @@ export function buildPomegrMcpServer() {
     inputSchema: z.object({ title: sessionTitle }).strict(),
     annotations: titleAnnotations,
     _meta: { "anthropic/alwaysLoad": true },
-  }, async () => success("Session title request handled."));
+  }, async () => success("Session title request accepted; Claude Code preserves any existing explicit title."));
 
   return server;
 }

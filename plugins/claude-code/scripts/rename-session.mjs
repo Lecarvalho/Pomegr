@@ -3,8 +3,13 @@
 import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { getSessionInfo, renameSession } from "@anthropic-ai/claude-agent-sdk";
-import { createSessionTitleRenamer } from "./session-title.mjs";
+import { renameSession } from "@anthropic-ai/claude-agent-sdk";
+import {
+  createSessionTitleRenamer,
+  readExplicitSessionTitle,
+  sessionIdFromTranscriptPath,
+  validSessionId,
+} from "./session-title.mjs";
 
 const RENAME_TOOL_NAMES = new Set([
   "mcp__plugin_pomegr_pomegr__rename_session",
@@ -26,14 +31,19 @@ function readPayload() {
 export async function runRenameSessionHook(payload, options = {}) {
   if (!payload || !RENAME_TOOL_NAMES.has(payload.tool_name)) return { status: "ignored" };
   if (typeof payload.agent_id === "string" && payload.agent_id) return { status: "unavailable" };
+  if (!validSessionId(payload.session_id)) return { status: "unavailable" };
+
+  const sessionId = sessionIdFromTranscriptPath(payload.transcript_path);
+  if (!sessionId || sessionId !== payload.session_id) return { status: "unavailable" };
 
   const renameCurrentSession = createSessionTitleRenamer({
-    getSessionInfo: options.getSessionInfo || getSessionInfo,
+    readExplicitTitle: options.readExplicitTitle || readExplicitSessionTitle,
     renameSession: options.renameSession || renameSession,
   });
   return renameCurrentSession({
-    sessionId: payload.session_id,
+    sessionId,
     directory: options.projectDirectory || process.env.CLAUDE_PROJECT_DIR || payload.cwd,
+    transcriptPath: payload.transcript_path,
     title: payload.tool_input?.title,
   });
 }
