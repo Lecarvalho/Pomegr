@@ -18,6 +18,7 @@ export const CODEX_LIVENESS_MAX_TAIL_BYTES = 128 * 1024;
 export const CODEX_LIVENESS_MAX_TAIL_RECORDS = 256;
 export const CODEX_LIVENESS_MAX_BRIDGE_FILES = 500;
 const CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS = 2_000;
+const CODEX_LIVENESS_MAX_COLD_DESKTOP_ROLLOUTS = 16;
 
 const SAFE_LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_TURN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
@@ -424,6 +425,22 @@ function callId(payload) {
   return typeof value === "string" && value.length <= 192 ? value : null;
 }
 
+function isAssistantFinalMessage(payload) {
+  return payload?.type === "message" && payload.role === "assistant" && payload.phase === "final_answer";
+}
+
+function isWrappedProposedPlan(payload) {
+  if (!isAssistantFinalMessage(payload)) return false;
+  const output = Array.isArray(payload.content)
+    ? payload.content.filter((item) => item?.type === "output_text" && typeof item.text === "string")
+    : [];
+  return output.some((item) => /<proposed_plan>[\s\S]*<\/proposed_plan>/i.test(item.text));
+}
+
+function isPlanModeTurn(payload) {
+  return (payload?.collaboration_mode?.mode ?? payload?.collaborationMode?.mode) === "plan";
+}
+
 function rolloutTerminalStatus(record) {
   const type = String(record?.type || "").toLowerCase().replaceAll("_", "");
   const payloadType = String(record?.payload?.type || "").toLowerCase().replaceAll("_", "");
@@ -442,6 +459,8 @@ function rolloutTerminalStatus(record) {
 export function parseCodexRolloutLiveness(records, options = {}) {
   const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
   const pending = new Map();
+  let planModeTurn = false;
+  let planConfirmation = null;
   let latest = null;
   let terminal = null;
   for (const record of Array.isArray(records) ? records : []) {
@@ -453,7 +472,17 @@ export function parseCodexRolloutLiveness(records, options = {}) {
     if (!latest || timestampValue(timestamp) >= timestampValue(latest.timestamp)) latest = { timestamp, turnId: recordTurnId(record) };
     const observedTerminal = rolloutTerminalStatus(record);
     if (observedTerminal) terminal = { status: observedTerminal, timestamp };
+    if (record.type === "turn_context") {
+      planConfirmation = null;
+      planModeTurn = isPlanModeTurn(payload);
+    } else if (record.type === "event_msg" && ["user_message", "user_prompt"].includes(payload?.type)) {
+      planConfirmation = null;
+    }
     if (record.type !== "response_item" || !payload || typeof payload !== "object") continue;
+    if (payload.type === "message" && payload.role === "user") planConfirmation = null;
+    if (isAssistantFinalMessage(payload) && (planModeTurn || isWrappedProposedPlan(payload))) {
+      planConfirmation = { timestamp, turnId: recordTurnId(record) };
+    }
     if (["function_call", "custom_tool_call"].includes(payload.type)
       && normalizedToolName(payload.name) === "request_user_input") {
       const id = callId(payload);
@@ -465,6 +494,10 @@ export function parseCodexRolloutLiveness(records, options = {}) {
     }
   }
   if (!latest) return null;
+  const planConfirmationAge = planConfirmation ? nowMs - timestampValue(planConfirmation.timestamp) : null;
+  if (planConfirmationAge !== null && planConfirmationAge >= 0 && planConfirmationAge <= CODEX_NEEDS_INPUT_MAX_MS) {
+    return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: planConfirmation.timestamp };
+  }
   const age = nowMs - timestampValue(latest.timestamp);
   if (age < 0 || age > CODEX_ROLLOUT_LIVE_WINDOW_MS) return null;
   const waiting = [...pending.values()].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
@@ -619,9 +652,9 @@ export function createCodexLivenessCoordinator(options = {}) {
     return parseCodexRolloutLiveness(cached.records, { now: nowMs });
   }
 
-  function rolloutMetadataCanBeLive(thread, nowMs) {
+  function rolloutMetadataCanBeLive(thread, nowMs, maximumAge = CODEX_ROLLOUT_LIVE_WINDOW_MS) {
     const updatedAt = timestampValue(thread.updatedAt);
-    const metadataFresh = !Number.isFinite(updatedAt) || nowMs - updatedAt <= CODEX_ROLLOUT_LIVE_WINDOW_MS;
+    const metadataFresh = !Number.isFinite(updatedAt) || nowMs - updatedAt <= maximumAge;
     if (!thread.rolloutFile) return metadataFresh;
     let stat;
     try { stat = fs.statSync(thread.rolloutFile); } catch { return metadataFresh; }
@@ -635,7 +668,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     while (rolloutObservations.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) {
       rolloutObservations.delete(rolloutObservations.keys().next().value);
     }
-    return metadataFresh || (changedAt !== null && nowMs - changedAt <= CODEX_ROLLOUT_LIVE_WINDOW_MS);
+    return metadataFresh || (changedAt !== null && nowMs - changedAt <= maximumAge);
   }
 
   function observe(threads, observeOptions = {}) {
@@ -659,6 +692,7 @@ export function createCodexLivenessCoordinator(options = {}) {
       }
     }
     const resourceOwnersByThreadId = new Map();
+    let coldDesktopRollouts = 0;
     const observedThreads = threads.map((thread) => {
       if (thread.archived) return { ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false, suppressFallbackLive: false };
       const app = appServerLiveness(thread.runtimeStatus, thread.updatedAt);
@@ -675,10 +709,22 @@ export function createCodexLivenessCoordinator(options = {}) {
         const keepStale = checkedAt < resumeGraceUntil || (stalePolls.get(staleKey) || 0) < 2;
         bridge = bridgeLiveness(bridgeRecord, checkedAt, keepStale);
       }
-      const rollout = !app && !bridge && rolloutMetadataCanBeLive(thread, checkedAt)
+      const primary = app || bridge;
+      const canSupplementIdle = primary?.status === "idle";
+      const metadataCanBeLive = canSupplementIdle
+        ? rolloutMetadataCanBeLive(thread, checkedAt, CODEX_NEEDS_INPUT_MAX_MS)
+        : !primary && rolloutMetadataCanBeLive(thread, checkedAt);
+      const coldDesktopCandidate = !primary
+        && !metadataCanBeLive
+        && thread.sourceKind === "vscode"
+        && !thread.parentThreadId
+        && coldDesktopRollouts < CODEX_LIVENESS_MAX_COLD_DESKTOP_ROLLOUTS;
+      if (coldDesktopCandidate) coldDesktopRollouts += 1;
+      const inspectRollout = metadataCanBeLive || coldDesktopCandidate;
+      const rollout = inspectRollout
         ? rolloutEvidence(thread.rolloutFile, checkedAt)
         : null;
-      const liveness = app || bridge || rollout;
+      const liveness = canSupplementIdle && rollout?.needsInput ? rollout : primary || rollout;
       return {
         ...thread,
         liveStatus: liveness?.status || null,

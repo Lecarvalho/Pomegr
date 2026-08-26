@@ -170,7 +170,7 @@ Selecting any live session keeps its state polling. When a selected session lose
 
 For the Claude Code adapter, Pomegr reads the provider's local session registry and treats a `waiting` session whose safe wait category indicates input, approval, permission, or a question as needing user input. The raw wait value and question content are never sent to the browser. Transcript `AskUserQuestion` calls remain a fallback for sessions without registry state. A registered input wait remains live and takes priority for automatic live-session selection until the provider clears it.
 
-For Codex, owning app-server waiting flags or lifecycle-bridge request kinds can mark needs-input. Rollout fallback recognizes only a fresh unmatched structured `request_user_input` call. The matching output clears it; questions, choices, answers, approval reasons, and commands are discarded.
+For Codex, owning app-server waiting flags or lifecycle-bridge request kinds can mark needs-input. Rollout fallback recognizes a fresh unmatched structured `request_user_input` call. An idle authoritative source can also be supplemented by an assistant final answer from a structured Plan-mode turn; the structurally wrapped Codex proposed-plan form remains a fallback when the turn context has moved outside the bounded tail. The matching tool output or next user turn clears the respective wait; plan-confirmation waits expire after the same bounded needs-input interval as lifecycle observations. Questions, choices, plans, answers, approval reasons, and commands are discarded.
 
 ## Session approval mode
 

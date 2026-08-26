@@ -216,6 +216,107 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
 });
 
+test("wrapped and Plan-mode final answers need confirmation until the user responds or the wait expires", () => {
+  const record = (offset, type, payload = {}) => ({ timestamp: new Date(START + offset).toISOString(), type, payload });
+  const wrappedPlan = [
+    record(1_000, "response_item", {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "PREFACE_MUST_NOT_LEAK\n<proposed_plan>PROPOSED_PLAN_MUST_NOT_LEAK</proposed_plan>" }],
+    }),
+    record(1_001, "event_msg", { type: "task_complete" }),
+  ];
+  const waiting = parseCodexRolloutLiveness(wrappedPlan, { now: START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1 });
+  assert.equal(waiting.status, "needs_input");
+  assert.equal(waiting.needsInput, true);
+
+  const revisedPlan = [
+    ...wrappedPlan,
+    record(2_000, "turn_context", { collaboration_mode: { mode: "plan" } }),
+    record(2_001, "response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "REVISION_REQUEST_MUST_NOT_LEAK" }],
+    }),
+    record(3_000, "response_item", {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "PLAIN_PLAN_RESPONSE_MUST_NOT_LEAK" }],
+    }),
+    record(3_001, "event_msg", { type: "task_complete" }),
+  ];
+  assert.equal(parseCodexRolloutLiveness(revisedPlan, { now: START + 4_000 }).needsInput, true);
+
+  const answered = [
+    ...revisedPlan,
+    record(4_000, "turn_context", { collaboration_mode: { mode: "default" } }),
+    record(4_001, "response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "ANSWER_MUST_NOT_LEAK" }],
+    }),
+  ];
+  assert.equal(parseCodexRolloutLiveness(answered, { now: START + 5_000 }).needsInput, false);
+  assert.equal(parseCodexRolloutLiveness(wrappedPlan, { now: START + 1_000 + CODEX_NEEDS_INPUT_MAX_MS + 1 }), null);
+
+  const ordinaryFinal = [
+    record(0, "turn_context", { collaboration_mode: { mode: "default" } }),
+    record(1_000, "response_item", {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "ORDINARY_RESPONSE_MUST_NOT_LEAK" }],
+    }),
+  ];
+  assert.equal(parseCodexRolloutLiveness(ordinaryFinal, { now: START + 2_000 }).needsInput, false);
+});
+
+test("proposed plan confirmation supplements an idle app-server status", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-plan-confirmation-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-plan.jsonl");
+  await writeFile(rolloutFile, [
+    JSON.stringify({
+      timestamp: new Date(START).toISOString(),
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        phase: "final_answer",
+        content: [{ type: "output_text", text: "<proposed_plan>PRIVATE_PLAN_MUST_NOT_LEAK</proposed_plan>" }],
+      },
+    }),
+    JSON.stringify({ timestamp: new Date(START + 1).toISOString(), type: "event_msg", payload: { type: "task_complete" } }),
+  ].join("\n"), "utf8");
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    now: () => START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([thread("plan-root", {
+    runtimeStatus: { type: "idle" },
+    rolloutFile,
+  })]);
+  assert.equal(observed.sessions.get("plan-root").needsInput, true);
+  assert.equal(observed.threads[0].liveStatus, "needs_input");
+  assert.equal(observed.threads[0].liveness.source, "rollout_activity_heuristic");
+
+  const expired = createCodexLivenessCoordinator({
+    root: path.join(root, "expired-liveness"),
+    now: () => START + CODEX_NEEDS_INPUT_MAX_MS + 1,
+    cacheMs: 0,
+  });
+  const stale = expired.observe([thread("plan-root", {
+    runtimeStatus: { type: "idle" },
+    rolloutFile,
+  })]);
+  assert.equal(stale.sessions.get("plan-root").needsInput, false);
+  assert.equal(stale.threads[0].liveStatus, "idle");
+  assert.equal(expired.stats().rolloutFiles, 0);
+});
+
 test("a growing rollout stays live when Windows reports a stale modification time", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-stale-mtime-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -250,6 +351,42 @@ test("a growing rollout stays live when Windows reports a stale modification tim
   assert.equal(observed.sessions.get("growing-root").resourceOwner, null);
   assert.equal(observed.threads[0].liveStatus, "active");
   assert.equal(observed.threads[0].liveness.observedAt, new Date(now).toISOString());
+});
+
+test("cold Codex Desktop discovery reads a bounded stale-mtime rollout whose records are current", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-desktop-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-cold-plan.jsonl");
+  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  await writeFile(rolloutFile, [
+    JSON.stringify({ timestamp: new Date(now - 1_000).toISOString(), type: "turn_context", payload: { collaboration_mode: { mode: "plan" } } }),
+    JSON.stringify({
+      timestamp: new Date(now).toISOString(),
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        phase: "final_answer",
+        content: [{ type: "output_text", text: "COLD_PLAN_MUST_NOT_LEAK" }],
+      },
+    }),
+  ].join("\n"), "utf8");
+  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
+  await utimes(rolloutFile, staleTime, staleTime);
+
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    now: () => now,
+    cacheMs: 0,
+  });
+  const observed = coordinator.observe([thread("cold-desktop", {
+    sourceKind: "vscode",
+    updatedAt: staleTime.toISOString(),
+    rolloutFile,
+  })]);
+  assert.equal(coordinator.stats().rolloutFiles, 1);
+  assert.equal(observed.sessions.get("cold-desktop").needsInput, true);
+  assert.equal(observed.threads[0].liveStatus, "needs_input");
 });
 
 test("liveness scans one recent pending rollout while skipping five hundred provably stale rollouts", async (context) => {
@@ -304,7 +441,7 @@ test("authoritative app-server and lifecycle bridge state avoid rollout tail rea
     cacheMs: 0,
   });
   const observed = coordinator.observe([
-    thread("app-root", { runtimeStatus: { type: "idle" }, rolloutFile }),
+    thread("app-root", { runtimeStatus: { type: "active" }, rolloutFile }),
     thread("bridge-root", { rolloutFile }),
   ]);
   assert.equal(coordinator.stats().rolloutFiles, 0);
