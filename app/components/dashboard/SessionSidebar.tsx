@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
+import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
@@ -88,11 +89,15 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
             <Link className={`sidebarAboutLink ${aboutSelected ? "selected" : ""}`} href="/about" onClick={onClose} aria-current={aboutSelected ? "page" : undefined}><span>About Pomegr</span><i aria-hidden="true">→</i></Link>
           </div>
         </nav>
-        {update?.version && (update.status === "ready" || update.status === "installing") && (
-          <div className="sidebarFooter">
+        <footer className="sidebarFooter">
+          {update?.version && (update.status === "ready" || update.status === "installing") && (
             <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} />
-          </div>
-        )}
+          )}
+          <p className="sidebarMcpVersion" title="Latest Pomegr MCP version bundled with this app">
+            <span>MCP version</span>
+            <strong>v{pomegrPluginManifest.version}</strong>
+          </p>
+        </footer>
       </aside>
     </>
   );

@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 import { AppShell } from "../../app/components/AppShell";
 import { NavigationMenuButton } from "../../app/components/NavigationMenuButton";
 import type { DesktopState } from "../../app/components/DesktopControls";
+import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
 
 function response(body: object) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -30,6 +31,16 @@ afterEach(() => {
 });
 
 describe("shared app shell", () => {
+  it("shows the bundled MCP version at the bottom of the sidebar", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));
+
+    render(<AppShell><main>Home content</main></AppShell>);
+
+    const version = screen.getByText("MCP version").closest(".sidebarMcpVersion");
+    expect(version).toHaveTextContent(`MCP versionv${pomegrPluginManifest.version}`);
+    expect(version?.parentElement).toHaveClass("sidebarFooter");
+  });
+
   it("shows the same live and historical catalog on Home", async () => {
     navigation.pathname = "/";
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));

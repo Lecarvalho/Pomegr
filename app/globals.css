@@ -1005,14 +1005,38 @@ html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: #7130
   .topActions .ghostButton { padding-right: 7px; padding-left: 7px; }
 }
 
-/* Desktop updates live in a dedicated sidebar footer, separate from session navigation. */
+/* Release metadata stays pinned below the independently scrolling session navigation. */
 .sidebarFooter {
   width: 100%;
   margin-top: auto;
   padding: 12px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--line);
   background: var(--sidebar);
+}
+
+.sidebarMcpVersion {
+  min-height: 18px;
+  margin: 0;
+  padding: 0 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font: 650 9px/1.4 var(--font-geist-mono), Consolas, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sidebarMcpVersion strong {
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
 }
 
 .desktopUpdateOffer {
