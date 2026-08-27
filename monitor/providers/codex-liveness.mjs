@@ -241,7 +241,11 @@ function transitionForHook(input, previous) {
   const sameTurn = !previous?.turnId || !turnId || previous.turnId === turnId;
   const toolName = normalizedToolName(input.tool_name);
   if (event === "SessionStart") return { state: "idle", requestKind: null };
-  if (event === "SessionEnd") return { state: "ended", requestKind: null };
+  // Codex can emit SessionEnd after a completed turn while the conversation
+  // remains open and ready for another user message. The owner lease (or
+  // archival) is the durable close boundary; this event only clears turn-local
+  // activity and pending-input state.
+  if (event === "SessionEnd") return { state: "idle", requestKind: null };
   if (event === "SubagentStart") return { state: "active", requestKind: null };
   if (event === "SubagentStop") return { state: "finished", requestKind: null };
   if (event === "UserPromptSubmit") return { state: "active", requestKind: null };
@@ -628,12 +632,24 @@ function bridgeLiveness(record, nowMs, keepStale) {
   const observedAt = codexTimestamp(snapshot.observedAt);
   const age = nowMs - timestampValue(observedAt);
   if (age < 0) return null;
-  if (TERMINAL_BRIDGE_STATES.has(snapshot.lifecycle)) {
+  const leaseCurrent = lease && timestampValue(lease.expiresAt) > nowMs;
+  // Versions that treated SessionEnd as a hard close may have persisted an
+  // `ended` snapshot for an interactive conversation. Heal that state while
+  // the same Codex owner is still alive, then retain the old terminal behavior
+  // once its lease is gone so stale rollout activity cannot reopen it.
+  if (snapshot.lifecycle === "ended") {
+    if (leaseCurrent) {
+      return { live: true, status: "idle", needsInput: false, source: "lifecycle_bridge", observedAt };
+    }
     return age <= CODEX_ROLLOUT_LIVE_WINDOW_MS
-      ? { live: false, authoritative: true, status: snapshot.lifecycle === "ended" ? "finished" : snapshot.lifecycle, needsInput: false, source: "lifecycle_bridge", observedAt }
+      ? { live: false, authoritative: true, status: "finished", needsInput: false, source: "lifecycle_bridge", observedAt }
       : null;
   }
-  const leaseCurrent = lease && timestampValue(lease.expiresAt) > nowMs;
+  if (TERMINAL_BRIDGE_STATES.has(snapshot.lifecycle)) {
+    return age <= CODEX_ROLLOUT_LIVE_WINDOW_MS
+      ? { live: false, authoritative: true, status: snapshot.lifecycle, needsInput: false, source: "lifecycle_bridge", observedAt }
+      : null;
+  }
   if (!leaseCurrent && !keepStale) return null;
   const needsInput = snapshot.lifecycle === "needs_input" && age <= CODEX_NEEDS_INPUT_MAX_MS;
   return {
@@ -666,7 +682,7 @@ function descendantsFor(rootId, threads) {
 }
 
 function currentBridgeResourceOwner(record, nowMs) {
-  if (!record?.lease || TERMINAL_BRIDGE_STATES.has(record.snapshot.lifecycle)) return null;
+  if (!record?.lease || (TERMINAL_BRIDGE_STATES.has(record.snapshot.lifecycle) && record.snapshot.lifecycle !== "ended")) return null;
   if (timestampValue(record.lease.expiresAt) <= nowMs) return null;
   return {
     pid: record.snapshot.ownerPid,

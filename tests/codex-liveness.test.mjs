@@ -58,7 +58,7 @@ async function serializedFiles(root) {
   return contents.join("\n");
 }
 
-test("lifecycle bridge deterministically starts, waits, answers, idles, and closes without private hook fields", async (context) => {
+test("lifecycle bridge keeps a completed interactive session idle until its owner closes", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-bridge-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = START;
@@ -105,8 +105,10 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
   now += 1_000;
   hook(root, now, "SessionEnd");
   observed = coordinator.observe(threads);
-  assert.equal(observed.sessions.get("live-root").isLive, false);
-  assert.equal(observed.threads[0].suppressFallbackLive, true);
+  assert.equal(observed.sessions.get("live-root").isLive, true);
+  assert.equal(observed.sessions.get("live-root").activityStatus, "idle");
+  assert.equal(observed.threads[0].liveStatus, "idle");
+  assert.equal(observed.threads[0].suppressFallbackLive, false);
 
   assert.doesNotMatch(
     await serializedFiles(root),
@@ -191,7 +193,8 @@ test("one owner lease supports concurrent sessions while a stopped subagent beco
     thread("session-b"),
     thread("child-b", { sessionId: "session-b", parentThreadId: "session-b" }),
   ]);
-  assert.equal(observed.sessions.get("session-a").isLive, false);
+  assert.equal(observed.sessions.get("session-a").isLive, true);
+  assert.equal(observed.sessions.get("session-a").activityStatus, "idle");
   assert.equal(observed.sessions.get("session-b").isLive, true);
   assert.equal(observed.threads.find((item) => item.localId === "child-b").liveStatus, "finished");
   assert.equal((await readdir(path.join(root, "leases"))).length, 1);
@@ -278,6 +281,34 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(interrupted, { now: START + 6_000 }).status, "stopped");
   const systemError = [...progress, record(5_000, "turn_completed", { status: "failed" })];
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
+});
+
+test("a persisted ended snapshot stays idle only while its owner lease remains current", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-ended-compat-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  let now = START;
+  hook(root, now, "SessionStart");
+  now += 1_000;
+  const file = (await readdir(path.join(root, "snapshots"))).at(0);
+  const snapshotPath = path.join(root, "snapshots", file);
+  const snapshot = JSON.parse(await readFile(snapshotPath, "utf8"));
+  await writeFile(snapshotPath, `${JSON.stringify({ ...snapshot, lifecycle: "ended", observedAt: new Date(now).toISOString(), sequence: snapshot.sequence + 1 })}\n`, "utf8");
+
+  const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
+  const observed = coordinator.observe([thread()]);
+  assert.equal(observed.sessions.get("live-root").isLive, true);
+  assert.equal(observed.sessions.get("live-root").activityStatus, "idle");
+  assert.deepEqual(observed.sessions.get("live-root").resourceOwner, {
+    pid: OWNER.ownerPid,
+    processStartIdentity: OWNER.ownerStartedAt,
+  });
+
+  now = START + CODEX_BRIDGE_LEASE_MS - 1;
+  assert.equal(coordinator.observe([thread()]).sessions.get("live-root").isLive, true);
+  now += 2;
+  const closed = coordinator.observe([thread()]);
+  assert.equal(closed.sessions.get("live-root").isLive, false);
+  assert.equal(closed.threads[0].suppressFallbackLive, true);
 });
 
 test("open-turn activity keeps rollout catalog working across quiet gaps until explicit completion", async (context) => {

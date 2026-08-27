@@ -37,7 +37,7 @@ Use these bridge transitions:
 | Matching `PostToolUse` | live, active; clear that pending request |
 | Any later recognized progress event for the same turn | live, active; clear an older pending request |
 | `Stop` | live, idle; clear needs-input |
-| `SessionEnd` | not live; clear needs-input |
+| `SessionEnd` | live, idle; clear needs-input (a completed turn can remain interactive) |
 
 Subagent start/stop events follow the same rule when a safe child-agent ID is present. Parent waiting-on-descendant behavior remains a shared Pomegr normalization concern, not a Codex-specific inference.
 
@@ -84,9 +84,9 @@ If both waiting flags appear, needs-input remains true and the safe kind is `mul
 
 ## Clearing stale state
 
-Normal shutdown clears liveness on `SessionEnd`. Unexpected process exit clears it when the owner watcher stops renewing its lease. The monitor allows a 15-second heartbeat interval, a 45-second lease, and two consecutive failed polls before clearing, which bounds the ordinary crash false-positive window while tolerating scheduling jitter. After system resume, the monitor applies one fresh lease interval before declaring old snapshots stale.
+Archival clears liveness immediately. Process exit clears it when the owner watcher stops renewing its lease. The monitor allows a 15-second heartbeat interval, a 45-second lease, and two consecutive failed polls before clearing, which bounds the ordinary crash false-positive window while tolerating scheduling jitter. After system resume, the monitor applies one fresh lease interval before declaring old snapshots stale. `SessionEnd` is intentionally idle rather than terminal because Codex can emit it after a completed turn while the conversation remains open for another user message.
 
-The implementation keeps heartbeat leases separate from lifecycle snapshots so renewal cannot overwrite a newer transition. A root `SessionEnd` snapshot immediately suppresses rollout fallback for the rollout's remaining 120-second freshness window; otherwise the close event itself could make a just-closed thread appear recent and live. A first expired-lease poll and the resume grace can temporarily retain the last bridge state, but never beyond the documented lease/grace bounds while polling continues.
+The implementation keeps heartbeat leases separate from lifecycle snapshots so renewal cannot overwrite a newer transition. A first expired-lease poll and the resume grace can temporarily retain the last bridge state, but never beyond the documented lease/grace bounds while polling continues. Persisted `ended` snapshots from earlier Pomegr versions are interpreted as idle while their original owner lease remains current, then regain their terminal suppression behavior after that lease expires.
 
 Needs-input clears on `serverRequest/resolved`, matching `PostToolUse`, a later recognized progress event for the same turn, `Stop`, `UserPromptSubmit`, `SessionEnd`, or owner-lease expiry. As a final guard against a lost clear event, a bridge needs-input record expires after 30 minutes without reaffirming evidence. This can produce a false negative for a prompt left unanswered longer than 30 minutes; the state must therefore retain its evidence label.
 
