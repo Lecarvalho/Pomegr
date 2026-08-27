@@ -215,13 +215,14 @@ export function normalizeCodexThreadMetadata(thread, options = {}) {
   const localId = thread?.id ?? thread?.threadId;
   if (!isSafeCodexSessionId(localId) || thread?.ephemeral === true) return null;
   const cwd = boundedPath(thread.cwd);
+  const explicitTitle = boundedText(thread.name, MAX_TITLE_LENGTH);
   const indexName = boundedText(options.indexName, MAX_TITLE_LENGTH);
   const localSessionId = safeRelatedId(thread.sessionId) || localId;
   return {
     localId,
     provider: "codex",
     source: "Codex",
-    title: boundedText(thread.name, MAX_TITLE_LENGTH) || indexName || "Untitled session",
+    title: explicitTitle || indexName || "Untitled session",
     project: projectFromCwd(cwd),
     cwd,
     createdAt: codexTimestamp(thread.createdAt),
@@ -234,6 +235,7 @@ export function normalizeCodexThreadMetadata(thread, options = {}) {
     agentPath: boundedText(thread.agentPath, MAX_AGENT_PATH_LENGTH),
     agentNickname: boundedText(thread.agentNickname, MAX_TITLE_LENGTH),
     agentRole: boundedText(thread.agentRole, MAX_TITLE_LENGTH),
+    agentAssignment: explicitTitle || null,
     runtimeStatus: codexThreadRuntimeStatus(thread.status),
     recordedGitBranch: boundedText(thread.gitInfo?.branch, MAX_BRANCH_LENGTH),
     archived: Boolean(options.archived),

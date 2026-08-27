@@ -91,6 +91,17 @@ test("builds a deterministic retrospective without private raw state", () => {
   assert.equal(sessionReportFilename(state, generatedAt), "pomegr-repair-the-parser-2026-08-05.md");
 });
 
+test("reports an explicit agent assignment separately from its stable identity", () => {
+  const assigned = structuredClone(state);
+  assigned.agents[0].assignment = "Trace cli title";
+  assigned.agents[0].label = "Erdos";
+
+  const report = buildSessionReport(assigned, generatedAt);
+
+  assert.match(report, /\| Assignment \| Agent \| Parent \|/);
+  assert.match(report, /\| Trace cli title \| Erdos \|/);
+});
+
 test("omits live-only data from historical reports", () => {
   const historical = structuredClone(state);
   historical.view = "history";

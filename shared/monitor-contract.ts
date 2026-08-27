@@ -99,6 +99,8 @@ export type Agent = {
   workflowOrder: number | null;
   /** Workflow lifecycle evidence; independent from transcript-recency status. */
   workflowState: "running" | "done" | "error" | "unknown" | null;
+  /** Bounded provider-reported work assignment when distinct from the agent identity. */
+  assignment?: string | null;
   label: string;
   role: AgentRole;
   model: string;

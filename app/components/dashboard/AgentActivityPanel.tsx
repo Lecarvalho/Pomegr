@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Agent, ExecutionTask, PlanTask, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
-import { agentsWithFinishedVisibility, agentTreeRows, compactNumber } from "../../dashboard-utils";
+import { agentAssignment, agentDisplayLabel, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
 import { CopyTranscriptButton } from "../CopyTranscriptButton";
@@ -65,7 +65,10 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
   const workflowsById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
   const phasesByWorkflowId = new Map(workflows.map((workflow) => [workflow.id, new Map(workflow.phases.map((phase) => [phase.id, phase]))]));
   const labelCounts = new Map<string, number>();
-  for (const agent of visibleAgents) labelCounts.set(agent.label, (labelCounts.get(agent.label) || 0) + 1);
+  for (const agent of visibleAgents) {
+    const displayLabel = agentDisplayLabel(agent);
+    labelCounts.set(displayLabel, (labelCounts.get(displayLabel) || 0) + 1);
+  }
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;
   const openPlanTasks = planTasks.length - completedPlanTasks - activePlanTasks;
@@ -93,9 +96,12 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
     const rowPopoverOpen = openPopover?.agentId === agent.id;
     const workflow = agent.workflowId ? workflowsById.get(agent.workflowId) : null;
     const phase = agent.workflowId && agent.workflowPhaseId ? phasesByWorkflowId.get(agent.workflowId)?.get(agent.workflowPhaseId) : null;
-    const accessibleLabel = (labelCounts.get(agent.label) || 0) > 1
-      ? `${agent.label} agent ${agent.id.slice(-6)}`
-      : `${agent.label} agent`;
+    const assignment = agentAssignment(agent);
+    const displayName = agentDisplayName(agent);
+    const displayLabel = agentDisplayLabel(agent);
+    const accessibleLabel = (labelCounts.get(displayLabel) || 0) > 1
+      ? `${displayLabel} agent ${agent.id.slice(-6)}`
+      : `${displayLabel} agent`;
 
     return (
       <div
@@ -108,13 +114,13 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
         <div className="treeRail"><span className={agent.id === "primary" ? "primaryNode" : "agentNode"} /></div>
         <div className="agentIdentity">
           <div className="agentTitleLine">
-            <strong dir="auto">{agent.label}</strong>
+            <strong dir="auto">{displayName}</strong>
             {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Pomegr MCP tool"}>{agent.signal.label}</AgentChip>}
             {agent.skills.length > 0 && (
               <div className="agentPopoverAnchor skillPopoverAnchor" ref={isOpen("skills", agent.id) ? popoverAnchorRef : undefined}>
                 <AgentChip as="button" className="skillPopoverTrigger" onClick={() => toggle("skills", agent.id)} expanded={isOpen("skills", agent.id)} controls={`agent-skills-${agent.id}`}>{agent.skills.length} {agent.skills.length === 1 ? "skill" : "skills"}</AgentChip>
                 {isOpen("skills", agent.id) && (
-                  <PopoverFrame id={`agent-skills-${agent.id}`} ariaLabel={`Skills used by ${agent.label}`} eyebrow="SKILL USAGE" title={agent.label} closeLabel="Close skill usage" onClose={closePopover} summary={`${agent.skills.length} recorded ${agent.skills.length === 1 ? "skill" : "skills"} · metadata only`} className="skillPopover">
+                  <PopoverFrame id={`agent-skills-${agent.id}`} ariaLabel={`Skills used by ${displayLabel}`} eyebrow="SKILL USAGE" title={displayLabel} closeLabel="Close skill usage" onClose={closePopover} summary={`${agent.skills.length} recorded ${agent.skills.length === 1 ? "skill" : "skills"} · metadata only`} className="skillPopover">
                     <div className="skillPopoverList">{agent.skills.map((skill) => <div className="skillPopoverRow" key={skill.name}><div><strong>{skill.name}</strong><small>{skill.lastUsed ? <>Last used <RelativeTimeText value={skill.lastUsed} /></> : "Use time unavailable"}</small></div><div><strong>{skill.calls}</strong><small>{skill.calls === 1 ? "use" : "uses"}</small></div></div>)}</div>
                   </PopoverFrame>
                 )}
@@ -124,7 +130,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
               <div className="agentPopoverAnchor executionTaskAnchor" ref={isOpen("execution", agent.id) ? popoverAnchorRef : undefined}>
                 <AgentChip as="button" className="executionTaskTrigger" onClick={() => toggle("execution", agent.id)} expanded={isOpen("execution", agent.id)} controls={`agent-execution-tasks-${agent.id}`}>{tasks.length > 0 ? (runningTasks.length > 0 ? `${runningTasks.length} running` : `${finishedTasks.length} shell ${finishedTasks.length === 1 ? "task" : "tasks"}`) : reviewDecisions.total > 0 ? `${reviewDecisions.total} ${reviewDecisions.total === 1 ? "review" : "reviews"}` : currentActivity ? "Current activity" : "Agent details"}</AgentChip>
                 {isOpen("execution", agent.id) && (
-                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Agent activity for ${agent.label}`} eyebrow="AGENT ACTIVITY" title={agent.label} closeLabel="Close agent activity" onClose={closePopover} summary={reviewDecisions.total > 0 ? `${reviewDecisions.allowed} allowed · ${reviewDecisions.denied} denied · ${tasks.length} shell ${tasks.length === 1 ? "task" : "tasks"}` : `${runningTasks.length} running · ${finishedTasks.length} finished`} actions={transcriptAvailable ? <CopyTranscriptButton sessionId={sessionId} agentId={agent.id} agentLabel={agent.label} /> : undefined} className="executionTaskPopover">
+                  <PopoverFrame id={`agent-execution-tasks-${agent.id}`} ariaLabel={`Agent activity for ${displayLabel}`} eyebrow="AGENT ACTIVITY" title={displayLabel} closeLabel="Close agent activity" onClose={closePopover} summary={reviewDecisions.total > 0 ? `${reviewDecisions.allowed} allowed · ${reviewDecisions.denied} denied · ${tasks.length} shell ${tasks.length === 1 ? "task" : "tasks"}` : `${runningTasks.length} running · ${finishedTasks.length} finished`} actions={transcriptAvailable ? <CopyTranscriptButton sessionId={sessionId} agentId={agent.id} agentLabel={displayLabel} /> : undefined} className="executionTaskPopover">
                     {(currentActivity || visibleReviewDecisions.length > 0 || runningTasks.length > 0 || finishedTasks.length > 0) && <div className="executionTaskList">
                       {currentActivity && <section className="executionTaskSection currentActivitySection" aria-label="Current provider-reported activity"><h3>Current activity</h3><div className="currentActivityRow"><span className="currentActivityMark" aria-hidden="true" /><div><strong>{currentActivity.label}</strong><small>Provider-reported · observed <RelativeTimeText value={currentActivity.observedAt} /></small></div></div></section>}
                       {visibleReviewDecisions.length > 0 && <section className="executionTaskSection reviewDecisionSection" aria-label="Completed approval reviews"><h3>Review decisions ({reviewDecisions.total})</h3>{visibleReviewDecisions.map((decision, index) => {
@@ -153,6 +159,7 @@ export function AgentActivityPanel({ agents, executionTasks, planTasks, workflow
             )}
           </div>
           <div className="agentMeta">
+            {assignment && <span className="agentMetaIdentity" dir="auto">{agent.label}</span>}
             {workflow && <span className="workflowProvenance" dir="auto">{workflow.name}{phase ? ` · ${phase.label}` : ""}</span>}
             <span className="agentMetaKind">{agent.role || "unknown"}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span>
           </div>

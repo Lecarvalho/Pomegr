@@ -30,6 +30,13 @@ function agentStatus(status) {
   return status === "needs_input" ? "needs input" : status;
 }
 
+function agentAssignment(agent) {
+  const assignment = typeof agent?.assignment === "string" ? agent.assignment.trim() : "";
+  return assignment && assignment.toLocaleLowerCase() !== String(agent?.label || "").trim().toLocaleLowerCase()
+    ? assignment
+    : null;
+}
+
 function progressPhase(phase) {
   return ({ planning: "Planning", implementing: "Implementing", verifying: "Verifying", blocked: "Blocked", complete: "Complete" })[phase] || String(phase || "Unknown");
 }
@@ -124,17 +131,17 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     "",
     "## Agent activity",
     "",
-    "| Agent | Parent | Role | Model | Effort | Status | Wall time | Context snapshot | Tool calls |",
-    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
+    "| Assignment | Agent | Parent | Role | Model | Effort | Status | Wall time | Context snapshot | Tool calls |",
+    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |",
   );
 
   if (agents.length) {
     for (const agent of agents) {
       const parent = agent.parentId ? labelsById.get(agent.parentId) || agent.parentId : "—";
-      lines.push(`| ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.role || "unknown")} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agentStatus(agent.status))} | ${formatAgentWallTime(agent, generatedAt.getTime())} | ${number(agent.tokens?.total)} | ${number(agent.toolCalls)} |`);
+      lines.push(`| ${cell(agentAssignment(agent) || "—")} | ${cell(agent.label)} | ${cell(parent)} | ${cell(agent.role || "unknown")} | ${cell(agent.model)} | ${cell(agent.effort)} | ${cell(agentStatus(agent.status))} | ${formatAgentWallTime(agent, generatedAt.getTime())} | ${number(agent.tokens?.total)} | ${number(agent.toolCalls)} |`);
     }
   } else {
-    lines.push("| No agents observed | — | — | — | — | — | — | — | — |");
+    lines.push("| No agents observed | — | — | — | — | — | — | — | — | — |");
   }
 
   lines.push("", "## Skill usage", "");

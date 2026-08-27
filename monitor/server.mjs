@@ -787,6 +787,7 @@ export function createMonitorRuntime(options = {}) {
       workflowPhaseId: null,
       workflowOrder: null,
       workflowState: null,
+      assignment: null,
       ...agent,
     };
     return {

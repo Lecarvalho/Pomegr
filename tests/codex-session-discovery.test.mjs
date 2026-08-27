@@ -32,6 +32,8 @@ function appThread(id, options = {}) {
     path: options.path || "C:\\PRIVATE_PATH_MUST_NOT_LEAK\\rollout.jsonl",
     gitInfo: { branch: options.branch || "codex/app-server" },
     name: options.name ?? "Explicit app-server title",
+    agentNickname: options.agentNickname ?? null,
+    agentRole: options.agentRole ?? null,
     status: { type: "notLoaded" },
     turns: options.turns || [{ items: [{ type: "userMessage", text: "PROMPT_MUST_NOT_LEAK" }] }],
   };
@@ -55,7 +57,12 @@ test("prefers safe app-server thread metadata and never exposes preview, turns, 
     updatedAt: 1_786_350_000,
     branch: "codex/archived",
   });
-  const child = appThread("child-thread", { parentThreadId: "app-thread", source: { subAgent: "review" } });
+  const child = appThread("child-thread", {
+    parentThreadId: "app-thread",
+    source: { subAgent: "review" },
+    name: "Trace CLI title",
+    agentNickname: "Erdos",
+  });
   const appServer = {
     async listThreads(params) {
       calls.push({ method: "thread/list", params });
@@ -82,9 +89,9 @@ test("prefers safe app-server thread metadata and never exposes preview, turns, 
   assert.equal(evidence.session.title, "Explicit app-server title");
   assert.equal(evidence.session.project, "app-project");
   assert.equal(evidence.session.recordedGitBranch, "codex/app-server");
-  assert.deepEqual(evidence.agents.map(({ id, parentId, label, kind, status }) => ({ id, parentId, label, kind, status })), [
-    { id: "primary", parentId: null, label: "Primary agent", kind: "orchestrator", status: "idle" },
-    { id: "agent-child-thread", parentId: "primary", label: "Unnamed subagent", kind: "reviewer", status: "idle" },
+  assert.deepEqual(evidence.agents.map(({ id, parentId, assignment, label, kind, status }) => ({ id, parentId, assignment, label, kind, status })), [
+    { id: "primary", parentId: null, assignment: null, label: "Primary agent", kind: "orchestrator", status: "idle" },
+    { id: "agent-child-thread", parentId: "primary", assignment: "Trace CLI title", label: "Erdos", kind: "reviewer", status: "idle" },
   ]);
   assert.deepEqual(evidence.activity, []);
   assertNoPrivateFixtureSentinels(evidence, "Codex app-server evidence");
@@ -184,6 +191,17 @@ test("normalizes source kinds internally while the registry keeps Codex IDs prov
     source: "Codex",
   }]);
   assert.equal((await registry.readSession("codex:qualified-thread")).sessionId, "codex:qualified-thread");
+});
+
+test("does not promote session-index fallback text into an agent assignment", () => {
+  const metadata = normalizeCodexThreadMetadata(appThread("indexed-child", {
+    name: "",
+    parentThreadId: "parent-thread",
+    source: { subAgent: "review" },
+  }), { indexName: "PROMPT_MUST_NOT_LEAK" });
+
+  assert.equal(metadata.title, "PROMPT_MUST_NOT_LEAK");
+  assert.equal(metadata.agentAssignment, null);
 });
 
 test("bounds the app-server catalog even when a provider returns more than requested", async () => {

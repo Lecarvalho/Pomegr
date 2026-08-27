@@ -231,13 +231,78 @@ test("reconciles task aliases with child agent paths without creating phantom ag
     historical: false,
   });
 
-  assert.deepEqual(agents.map(({ id, label, model, effort, status }) => ({ id, label, model, effort, status })), [
-    { id: "primary", label: "Primary agent", model: "unknown", effort: "unspecified", status: "idle" },
-    { id: "agent-alias-child-thread", label: "Hooke", model: "gpt-child", effort: "high", status: "active" },
+  assert.deepEqual(agents.map(({ id, assignment, label, model, effort, status }) => ({ id, assignment, label, model, effort, status })), [
+    { id: "primary", assignment: null, label: "Primary agent", model: "unknown", effort: "unspecified", status: "idle" },
+    { id: "agent-alias-child-thread", assignment: "Catalogus research", label: "Hooke", model: "gpt-child", effort: "high", status: "active" },
   ]);
   assert.equal(agents.some((agent) => agent.id === "agent-catalogus_research"), false);
   assert.equal(agents.some((agent) => "agentPath" in agent || "agentReference" in agent), false);
   assertNoPrivateFixtureSentinels(agents, "Codex alias-reconciled agents");
+});
+
+test("hydrates a bounded live assignment after its spawn record leaves the ordinary state tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-assignment-tail-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const rootId = "live-assignment-root";
+  const childId = "live-assignment-child";
+  const rootRecords = [
+    {
+      timestamp: "2026-08-25T15:00:00.000Z",
+      type: "session_meta",
+      payload: { id: rootId, timestamp: "2026-08-25T15:00:00.000Z", cwd: root, source: "cli" },
+    },
+    {
+      timestamp: "2026-08-25T15:00:01.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "spawn_agent",
+        call_id: "spawn-live-child",
+        arguments: "{\"task_name\":\"trace_cli_title\",\"message\":\"PROMPT_MUST_NOT_LEAK\"}",
+      },
+    },
+    {
+      timestamp: "2026-08-25T15:00:01.100Z",
+      type: "response_item",
+      payload: { type: "function_call_output", call_id: "spawn-live-child", output: "{\"task_name\":\"/root/trace_cli_title\"}" },
+    },
+    { timestamp: "2026-08-25T15:00:02.000Z", type: "event_msg", payload: { type: "agent_message", message: "x".repeat(2_000) } },
+  ];
+  const childRecords = [{
+    timestamp: "2026-08-25T15:00:01.050Z",
+    type: "session_meta",
+    payload: {
+      id: childId,
+      session_id: rootId,
+      parent_thread_id: rootId,
+      agent_path: "/root/trace_cli_title",
+      agent_nickname: "Erdos",
+      timestamp: "2026-08-25T15:00:01.050Z",
+      cwd: root,
+      source: { subagent: { thread_spawn: { parent_thread_id: rootId, agent_path: "/root/trace_cli_title", agent_nickname: "Erdos" } } },
+    },
+  }];
+  await writeFile(path.join(directory, `rollout-2026-08-25T15-00-00-${rootId}.jsonl`), `${rootRecords.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(path.join(directory, `rollout-2026-08-25T15-00-01-${childId}.jsonl`), `${childRecords.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({
+    id: rootId,
+    thread_name: "Live assignment fixture",
+    updated_at: "2026-08-25T15:00:02.000Z",
+  })}\n`, "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    cacheMs: 0,
+    scanLimit: 20,
+    maximumStateTailBytes: 256,
+    maximumTaskHistoryBytes: 8_192,
+  });
+  const evidence = await provider.readSession(rootId, { historical: false });
+  const child = evidence.agents.find((agent) => agent.label === "Erdos");
+  assert.equal(child.assignment, "Trace cli title");
+  assertNoPrivateFixtureSentinels(evidence, "live hydrated Codex agent assignment");
 });
 
 test("names Codex guardians and exposes only bounded normalized review decisions", () => {

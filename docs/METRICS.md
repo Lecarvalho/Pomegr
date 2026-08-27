@@ -2,6 +2,10 @@
 
 Pomegr currently makes no model calls. Every value and recommendation comes from recorded data and fixed rules.
 
+## Agent identity and assignment
+
+`Agent.label` is the stable display identity, such as a provider codename. `Agent.assignment` is an optional bounded work title from a recognized provider delegation record or explicitly named child thread. Pomegr shows the assignment first when available and keeps the label as secondary identity; it does not infer an assignment from conversation content, automatic catalog titles, session-index fallbacks, or activity.
+
 ## Agent roles
 
 `Agent.role` is a bounded display enum: `orchestrator`, `explore`, `plan`, `builder`, `reviewer`, `tester`, `researcher`, `general-purpose`, `workflow-worker`, `fork`, `compaction`, or `unknown`. The monitor resolves it from primary-agent identity, a valid repository mapping, built-in exact types, ordered keyword matches, and finally verified workflow association. Keyword matches use this deterministic order: review/audit/critic/judge/lint; test/qa/spec/verify; explore/search/locate/investigate/discover/scan/map; plan/design/architect; research/docs/guide/study; then build/implement/edit/fix/migrate/refactor/apply/transform/synthesize/writer. Provider-native kinds and mapping contents remain monitor-private; the browser and reports never reinterpret them.

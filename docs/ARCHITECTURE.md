@@ -111,13 +111,15 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 - `session` — title, project, timestamps, repository, bounded pull-request associations, the latest recognized provider-reported approval mode, the latest bounded provider-generated session summary when available, optional reported session signal and session progress, and an optional provider-estimated USD cost snapshot
 - `view` — live or historical presentation mode
 - `metrics` — agents, tools, repetition, latest/final context usage, bounded independent request-local `requestSnapshots`, per-agent/all-agent actual-level `contextHistory` with bounded normalized compaction/drop boundaries, and bounded `cacheEvents`
-- `agents` — identity, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
+- `agents` — stable identity, optional bounded provider-reported work assignment, parent relationship, runtime settings, state, tokens, explicitly invoked skill names/counts, execution tasks observed in that agent's transcript, an optional reported agent signal, and an optional bounded provider-reported current-activity observation for a live open turn
 - `activity` — sanitized tool, failed shell-completion, and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata and optional enum-based failure category, retained for API compatibility
 - `insights` — deterministic rules
 - `usageLimits` — normalized plan windows and resets
 
 The UI depends on normalized shapes rather than raw provider records.
+
+`Agent.assignment` is an explicit, bounded work title recorded by a recognized provider delegation event or explicitly named child thread. It is displayed ahead of the stable agent label when available, but never replaces that identity. The monitor does not derive assignments from prompts, responses, tool results, automatic catalog titles, or session-index fallbacks; missing or duplicate assignments remain unavailable.
 
 Live `metrics.resources` contains only a bounded status/reason enum, CPU cores and whole-machine percentage, current and observed-peak working-set bytes, read/write bytes per second, and timestamped samples. Historical state sets it to `null`. Process IDs, process-start identities, process names, commands, paths, environment values, collector configuration, and sampling cadence never cross the serialization boundary. Resource telemetry is not consumed by reports, scoring, insights, signals, or recommendation rules.
 
@@ -161,7 +163,7 @@ Codex guardian rollouts remain ordinary child agents but normalize to the provid
 
 An agent's optional `currentActivity` contains only a bounded, one-line provider-authored activity label and its transcript-derived observation timestamp. It is live transient state, not chain-of-thought, a completion claim, a structured task, an execution-task association, or a Pomegr judgment. Provider adapters clear it when its owning turn or agent reaches a recognized terminal state, and historical state omits it. Generated reports do not consume the field.
 
-Codex selected-state polling parses each rollout once per read and reuses that record array for agent, activity, execution-task, context, approval/plan, signal, skill, and pull-request normalization. Live reads are capped at the final 512 KiB per rollout and cached by size and modification time. Historical reads may parse the complete persisted rollout once, then reuse the cache. Cache entries are bounded by the provider scan limit. Concurrent catalog polls share one in-flight app-server request and the 1.5-second catalog cache.
+Codex selected-state polling parses each ordinary rollout tail once per read and reuses that record array for agent, activity, execution-task, context, approval/plan, signal, skill, and pull-request normalization. Live reads are capped at the final 512 KiB per rollout and cached by size and modification time. When a recognized agent assignment has left that tail, a cold live read may hydrate only normalized collaboration metadata from the same bounded 8 MiB history window used for execution-task continuity; subsequent append-only reads retain that bounded assignment cache. Historical reads may parse the complete persisted rollout once, then reuse the cache. Cache entries are bounded by the provider scan limit. Concurrent catalog polls share one in-flight app-server request and the 1.5-second catalog cache.
 
 ### Codex live state
 

@@ -103,6 +103,7 @@ function mergeMetadata(items) {
       approvalReviewer: preferred.approvalReviewer || alternate.approvalReviewer,
       agentNickname: preferred.agentNickname || alternate.agentNickname,
       agentRole: preferred.agentRole || alternate.agentRole,
+      agentAssignment: preferred.agentAssignment || alternate.agentAssignment,
       runtimeStatus: preferred.runtimeStatus || alternate.runtimeStatus,
       liveStatus: preferred.liveStatus || alternate.liveStatus,
       liveness: preferred.liveness || alternate.liveness,
@@ -157,6 +158,7 @@ function mergeFreshSessionTreeMetadata(discovered, sessionTree) {
       sourceKind: fresh.sourceKind,
       agentNickname: fresh.agentNickname,
       agentRole: fresh.agentRole,
+      agentAssignment: fresh.agentAssignment || item.agentAssignment,
       runtimeStatus: fresh.runtimeStatus,
     } : item;
   });
@@ -271,6 +273,7 @@ export function createCodexProvider(options = {}) {
   let catalogCache = null;
   let catalogPending = null;
   const rolloutCache = new Map();
+  const liveAgentAssignmentCache = new Map();
   const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
   const livePlanTaskCache = new Map();
@@ -279,6 +282,7 @@ export function createCodexProvider(options = {}) {
 
   const invalidateRolloutFile = (file, { clearContext = false } = {}) => {
     rolloutCache.delete(file);
+    liveAgentAssignmentCache.delete(file);
     if (clearContext) liveContextUsageCache.delete(file);
     liveExecutionTaskCache.delete(file);
     livePlanTaskCache.delete(file);
@@ -379,6 +383,79 @@ export function createCodexProvider(options = {}) {
     } finally {
       if (descriptor !== undefined) fs.closeSync(descriptor);
     }
+  }
+
+  function assignmentCollaborations(collaborations = []) {
+    const byReference = new Map();
+    for (const collaboration of collaborations) {
+      if (!collaboration?.label || collaboration.label === "Unnamed subagent") continue;
+      const reference = collaboration.childThreadId || collaboration.agentReference;
+      if (!reference) continue;
+      byReference.set(reference, collaboration);
+    }
+    return [...byReference.values()].slice(-scanLimit);
+  }
+
+  function reusableLiveAgentAssignments(file, threadId, generation) {
+    const cached = liveAgentAssignmentCache.get(file);
+    if (!cached || cached.threadId !== threadId || !generation) return null;
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && generation.size - previous.size <= maximumLiveTailBytes
+      && (generation.size > previous.size
+        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
+      && priorSuffixStillMatches(file, previous);
+    if (!monotonic) {
+      liveAgentAssignmentCache.delete(file);
+      return null;
+    }
+    return cached.collaborations;
+  }
+
+  function hydrateLiveAgentAssignments(file, generation, fallback) {
+    if (!generation || generation.size <= maximumLiveTailBytes) return [];
+    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
+    const position = generation.size - bytes;
+    let descriptor;
+    let buffer;
+    try {
+      descriptor = fs.openSync(file, "r");
+      buffer = Buffer.alloc(bytes);
+      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
+      if (read !== bytes) return [];
+    } catch {
+      return [];
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    let confirmed;
+    try { confirmed = fs.statSync(file); } catch { return []; }
+    if (
+      !confirmed.isFile()
+      || confirmed.size !== generation.size
+      || confirmed.mtimeMs !== generation.mtimeMs
+      || rolloutIdentity(confirmed) !== generation.identity
+    ) return [];
+
+    let text = buffer.toString("utf8");
+    if (position > 0) {
+      const newline = text.indexOf("\n");
+      text = newline >= 0 ? text.slice(newline + 1) : "";
+    }
+    const records = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+      } catch {
+        // Assignment hydration ignores malformed and partially read records independently.
+      }
+    }
+    return assignmentCollaborations(parseCodexAgentRecords(records, fallback).collaborations);
   }
 
   function reusableLiveTaskState(file, threadId, generation) {
@@ -637,6 +714,9 @@ export function createCodexProvider(options = {}) {
       for (const file of liveExecutionTaskCache.keys()) {
         if (!knownRolloutFiles.has(file)) liveExecutionTaskCache.delete(file);
       }
+      for (const file of liveAgentAssignmentCache.keys()) {
+        if (!knownRolloutFiles.has(file)) liveAgentAssignmentCache.delete(file);
+      }
       catalogCache = { expiresAt: now() + cacheMs, value };
       return value;
     })();
@@ -787,7 +867,18 @@ export function createCodexProvider(options = {}) {
         );
         recordsByThreadId.set(thread.localId, records);
         if (generation) generationsByThreadId.set(thread.localId, generation);
-        const summary = parseCodexAgentRecords(records, thread);
+        let summary = parseCodexAgentRecords(records, thread);
+        if (!historical && generation) {
+          const retained = reusableLiveAgentAssignments(thread.rolloutFile, thread.localId, generation)
+            ?? hydrateLiveAgentAssignments(thread.rolloutFile, generation, thread);
+          const collaborations = assignmentCollaborations([...retained, ...summary.collaborations]);
+          summary = { ...summary, collaborations: [...collaborations, ...summary.collaborations] };
+          liveAgentAssignmentCache.delete(thread.rolloutFile);
+          liveAgentAssignmentCache.set(thread.rolloutFile, { threadId: thread.localId, generation, collaborations });
+          while (liveAgentAssignmentCache.size > scanLimit) {
+            liveAgentAssignmentCache.delete(liveAgentAssignmentCache.keys().next().value);
+          }
+        }
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
           if (metadataById.has(collaboration.childThreadId)) selectedIds.add(collaboration.childThreadId);

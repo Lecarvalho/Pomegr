@@ -497,6 +497,7 @@ test("normalizes hostile provider agent kinds before browser state is built", as
     },
   });
   const state = await runtime.analyze();
+  assert.equal(state.agents[0].assignment, null);
   assert.equal(state.agents[0].role, "unknown");
   assert.equal(Object.hasOwn(state.agents[0], "kind"), false);
   assert.doesNotMatch(JSON.stringify(state), /HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/);

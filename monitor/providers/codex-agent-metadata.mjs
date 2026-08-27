@@ -589,6 +589,12 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
     const approvalReviewer = summary?.approvalReviewer === true || thread.approvalReviewer === true;
     const role = boundedText(thread.agentRole ?? summary?.agentRole, MAX_ROLE_LENGTH);
     const nickname = boundedText(thread.agentNickname ?? summary?.agentNickname, MAX_LABEL_LENGTH);
+    const collaborationAssignment = collaboration?.label && collaboration.label !== "Unnamed subagent"
+      ? collaboration.label
+      : null;
+    const assignment = primary
+      ? null
+      : boundedText(collaborationAssignment || thread.agentAssignment, MAX_LABEL_LENGTH) || null;
     const label = primary
       ? "Primary agent"
       : nickname
@@ -610,6 +616,7 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
     return {
       id: primary ? "primary" : `agent-${threadId}`,
       parentId: primary ? null : (parentById.get(threadId) === rootThreadId ? "primary" : `agent-${parentById.get(threadId)}`),
+      assignment,
       label,
       kind,
       model: summary?.runtime?.model && summary.runtime.model !== "unknown"

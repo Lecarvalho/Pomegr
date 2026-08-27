@@ -2,7 +2,7 @@
 
 import { useId, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { Agent, ContextHistoryBoundary, MonitorState } from "../../../shared/monitor-contract";
-import { compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
+import { agentDisplayLabel, compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
@@ -92,7 +92,8 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
   const activePoint = points[resolvedActiveIndex];
   const activeX = activePoint ? pointX(activePoint.bucketIndex, buckets.length) : null;
   const activeY = activePoint ? pointY(activePoint.total, maximum) : null;
-  const scopeLabel = resolvedScope === ALL_AGENTS_SCOPE ? "All agents" : agentById.get(resolvedScope)?.label || "Selected agent";
+  const scopeAgent = agentById.get(resolvedScope);
+  const scopeLabel = resolvedScope === ALL_AGENTS_SCOPE ? "All agents" : scopeAgent ? agentDisplayLabel(scopeAgent) : "Selected agent";
   const helperText = resolvedScope === ALL_AGENTS_SCOPE
     ? "Sum of each agent’s latest carried-forward snapshot. Agents can overlap; this is not unique context or spend."
     : `Latest request snapshot over time for ${scopeLabel}. Not cumulative token use.`;
@@ -110,7 +111,7 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
   }) : [];
   const boundaryReadout = (boundary: ContextHistoryBoundary) => {
     const agentPrefix = resolvedScope === ALL_AGENTS_SCOPE
-      ? `${agentById.get(boundary.agentId)?.label || "Agent"}: `
+      ? `${agentById.has(boundary.agentId) ? agentDisplayLabel(agentById.get(boundary.agentId)!) : "Agent"}: `
       : "";
     const previousLevel = boundary.preTokens === null ? "" : ` · ${compactNumber(boundary.preTokens)} before`;
     return `${agentPrefix}${boundaryLabel(boundary.kind)}${previousLevel}`;
@@ -154,7 +155,7 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
             setScope(event.target.value);
             setActivePointIndex(null);
           }}>
-            {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.label}</option>)}
+            {agents.map((agent) => <option value={agent.id} key={agent.id}>{agentDisplayLabel(agent)}</option>)}
             <option value={ALL_AGENTS_SCOPE}>All agents (snapshot sum)</option>
           </select>
         </label>

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Agent, CacheEvent, MonitorState, RequestSnapshot } from "../../../shared/monitor-contract";
-import { compactNumber, timelineTime } from "../../dashboard-utils";
+import { agentDisplayLabel, compactNumber, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
@@ -191,7 +191,8 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const scopeAvailable = scope === ALL_AGENTS_SCOPE || agentById.has(scope);
   const resolvedScope = scopeAvailable ? scope : initialScope(agents, snapshots);
-  const scopeLabel = resolvedScope === ALL_AGENTS_SCOPE ? "All agents" : agentById.get(resolvedScope)?.label || "Selected agent";
+  const scopeAgent = agentById.get(resolvedScope);
+  const scopeLabel = resolvedScope === ALL_AGENTS_SCOPE ? "All agents" : scopeAgent ? agentDisplayLabel(scopeAgent) : "Selected agent";
   const scopedSnapshots = snapshots.filter((snapshot) => (
     resolvedScope === ALL_AGENTS_SCOPE || snapshot.agentId === resolvedScope
   ));
@@ -233,7 +234,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
     : null;
   const activeEvents = activeSnapshotKey === null ? [] : eventsBySnapshot.get(activeSnapshotKey) || [];
   const activeAgentLabel = activeSnapshot
-    ? agentById.get(activeSnapshot.agentId)?.label || "Agent"
+    ? (agentById.has(activeSnapshot.agentId) ? agentDisplayLabel(agentById.get(activeSnapshot.agentId)!) : "Agent")
     : scopeLabel;
   const pointsBySeries = Object.fromEntries(snapshotComponents.map((component) => (
     [component.key, snapshotSeriesPoints(scopedSnapshots, component.key, maximum)]
@@ -316,7 +317,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
             clearInspection();
             setShowAllEvents(false);
           }}>
-            {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.label}</option>)}
+            {agents.map((agent) => <option value={agent.id} key={agent.id}>{agentDisplayLabel(agent)}</option>)}
             <option value={ALL_AGENTS_SCOPE}>All agents</option>
           </select>
         </label>
@@ -440,7 +441,7 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
               const eventKey = snapshotEventKey(event.agentId, event.observedAt);
               return <CacheEventRow
                 event={event}
-                agentLabel={agentById.get(event.agentId)?.label || "Agent"}
+                agentLabel={agentById.has(event.agentId) ? agentDisplayLabel(agentById.get(event.agentId)!) : "Agent"}
                 showAgent={resolvedScope === ALL_AGENTS_SCOPE}
                 interactive={snapshotIndex !== null}
                 active={eventKey !== null && eventKey === activeSnapshotKey}

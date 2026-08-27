@@ -180,6 +180,21 @@ export function agentTreeRows(agents: Agent[]) {
   return rows;
 }
 
+export function agentAssignment(agent: Pick<Agent, "assignment" | "label">) {
+  const assignment = typeof agent.assignment === "string" ? agent.assignment.trim() : "";
+  if (!assignment || assignment.toLocaleLowerCase() === agent.label.trim().toLocaleLowerCase()) return null;
+  return assignment;
+}
+
+export function agentDisplayName(agent: Pick<Agent, "assignment" | "label">) {
+  return agentAssignment(agent) || agent.label;
+}
+
+export function agentDisplayLabel(agent: Pick<Agent, "assignment" | "label">) {
+  const assignment = agentAssignment(agent);
+  return assignment ? `${assignment} — ${agent.label}` : agent.label;
+}
+
 const FINISHED_AGENT_STATUSES = new Set<Agent["status"]>(["finished", "stopped"]);
 
 export function agentsWithFinishedVisibility(agents: Agent[], showFinished: boolean) {
