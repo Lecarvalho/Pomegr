@@ -4,6 +4,8 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 
 | Package | Version | License |
 | --- | --- | --- |
+| @anthropic-ai/claude-agent-sdk | 0.3.241 | SEE LICENSE IN README.md |
+| @anthropic-ai/claude-agent-sdk-win32-x64 | 0.3.241 | SEE LICENSE IN LICENSE.md |
 | @img/colour | 1.1.0 | MIT |
 | @img/sharp-win32-x64 | 0.34.5 | Apache-2.0 AND LGPL-3.0-or-later |
 | @jridgewell/sourcemap-codec | 1.5.5 | MIT |
@@ -56,7 +58,7 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | is-extglob | 2.1.1 | MIT |
 | is-glob | 4.0.3 | MIT |
 | is-number | 7.0.0 | MIT |
-| js-yaml | 4.1.1 | MIT |
+| js-yaml | 4.3.2 | MIT |
 | jsonfile | 6.2.1 | MIT |
 | lazy-val | 1.0.5 | MIT |
 | linebreak | 1.1.0 | MIT |
@@ -66,7 +68,7 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | merge2 | 1.4.1 | MIT |
 | micromatch | 4.0.8 | MIT |
 | ms | 2.1.3 | MIT |
-| nanoid | 3.3.12 | MIT |
+| nanoid | 3.3.18 | MIT |
 | next | 16.2.6 | MIT |
 | pako | 0.2.9 | MIT |
 | parse-css-color | 0.2.1 | MIT |
