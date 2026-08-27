@@ -176,9 +176,13 @@ describe("monitor proxy", () => {
 
   it("returns the sanitized fallback when the monitor fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("secret detail")));
-    const response = await proxyMonitorJson({ path: "/api/state", timeoutMs: 1500, unavailableBody: { connected: false, error: "Monitor unavailable" } });
+    const response = await proxyMonitorJson({ path: "/api/sessions", timeoutMs: 1500, unavailableBody: { sessions: [], liveSessions: [], error: "Monitor unavailable" } });
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ connected: false, error: "Monitor unavailable" });
+    const body = await response.json();
+    expect(body).toEqual({ sessions: [], liveSessions: [], error: "Monitor unavailable" });
+    expect(body.sessions).toEqual([]);
+    expect(body.liveSessions).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain("secret detail");
   });
 
   it("never proxies an ambient non-loopback monitor origin", async () => {

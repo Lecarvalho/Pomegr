@@ -4,8 +4,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   return proxyMonitorJson({
-    path: "/api/home",
+    path: "/api/home?scope=aggregates",
     timeoutMs: 10000,
-    unavailableBody: { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home overview is unavailable." },
+    unavailableBody: { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home overview is unavailable." },
   });
 }

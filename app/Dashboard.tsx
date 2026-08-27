@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useState } from "react";
-import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
+import type { MonitorState } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
@@ -15,12 +15,13 @@ import { SessionHero } from "./components/dashboard/SessionHero";
 import { SessionProgressPanel } from "./components/dashboard/SessionProgressPanel";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
-import { preserveSessionOrder, sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
+import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import type { DesktopState } from "./components/DesktopControls";
 import { useAppNavigation } from "./components/app-navigation";
+import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -56,7 +57,7 @@ function storedAgentActivityViewMode(sessionId: string | null): AgentActivityVie
 
 export function Dashboard({ initialSessionId = null }: { initialSessionId?: string | null }) {
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const { sessions } = useSessionCatalog();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
   const appNavigation = useAppNavigation();
   const [paused, setPaused] = useState(false);
@@ -112,18 +113,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     }
   }, [selectedSessionId]);
 
-  const refreshSessions = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch("/api/sessions", { cache: "no-store", signal });
-      if (!response.ok) return;
-      const catalog = await response.json() as { sessions?: SessionSummary[] };
-      if (signal?.aborted) return;
-      startTransition(() => setSessions((current) => preserveSessionOrder(current, catalog.sessions || [])));
-    } catch {
-      // Live monitoring remains available when the catalog cannot be refreshed.
-    }
-  }, []);
-
   useEffect(() => {
     const controller = new AbortController();
     let nextRefresh: number | null = null;
@@ -140,21 +129,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
       if (nextRefresh !== null) window.clearTimeout(nextRefresh);
     };
   }, [paused, refresh, selectedIsHistorical]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let nextRefresh: number | null = null;
-    if (paused) return () => controller.abort();
-    const poll = async () => {
-      await refreshSessions(controller.signal);
-      if (!controller.signal.aborted && !paused) nextRefresh = window.setTimeout(() => void poll(), 5_000);
-    };
-    void poll();
-    return () => {
-      controller.abort();
-      if (nextRefresh !== null) window.clearTimeout(nextRefresh);
-    };
-  }, [paused, refreshSessions]);
 
   const togglePause = useCallback(() => {
     const next = !paused;

@@ -303,6 +303,103 @@ test("home live session exposes only bounded normalized progress", async () => {
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_PROGRESS_INPUT|progressPrivate/i);
 });
 
+test("session feed returns the catalog with bounded live summaries and refreshes progress", async () => {
+  let entry = { id: "codex:feed", provider: "codex", source: "Codex", title: "Feed", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false, activityStatus: "working" };
+  const evidenceById = new Map();
+  const runtime = runtimeFixture([], evidenceById, {
+    homeSummaryCacheMs: 60_000,
+    resourceTargets: [{ sessionId: entry.id, pid: 99, processStartIdentity: "PRIVATE_FEED_RESOURCE" }],
+    resourceUsageSampler: {
+      async sample() {},
+      get() {
+        return { status: "ready", current: { pid: 99, command: "PRIVATE_FEED_RESOURCE" } };
+      },
+    },
+    registry: {
+      async inspectSessions() { return { sessions: [entry], resourceTargets: [{ sessionId: entry.id, pid: 99, processStartIdentity: "PRIVATE_FEED_RESOURCE" }] }; },
+    },
+  });
+
+  const cold = await runtime.sessionFeed();
+  assert.deepEqual(cold.sessions, [entry]);
+  assert.deepEqual(cold.liveSessions, [{
+    id: entry.id,
+    provider: "codex",
+    source: "Codex",
+    title: "Feed",
+    project: "pomegr",
+    updatedAt: entry.updatedAt,
+    isLive: true,
+    needsInput: false,
+    activityStatus: "working",
+    agentCount: null,
+    activeAgentCount: null,
+    latestContextTotal: null,
+    progress: null,
+  }]);
+
+  const progress = { phase: "verifying", percent: 70, remainingMinutesMin: 2, remainingMinutesMax: 5, confidence: "high", reportedAt: "2026-08-23T12:00:00.000Z" };
+  entry = { ...entry, updatedAt: "2026-08-23T12:00:00.000Z" };
+  const changedEvidence = evidence({ updatedAt: entry.updatedAt, agents: [agent("primary"), agent("helper", "idle")], progress, progressPrivate: "PRIVATE_FEED_PROGRESS" });
+  changedEvidence.contextHistory = { private: "PRIVATE_FEED_CONTEXT" };
+  changedEvidence.resources = { command: "PRIVATE_FEED_RESOURCE" };
+  evidenceById.set(entry.id, changedEvidence);
+
+  const changed = await runtime.sessionFeed();
+  assert.deepEqual(changed.liveSessions[0].progress, progress);
+  assert.equal(changed.liveSessions[0].agentCount, 2);
+  assert.equal(changed.liveSessions[0].activeAgentCount, 1);
+  assert.equal(Object.hasOwn(changed.liveSessions[0], "contextHistory"), false);
+  assert.equal(Object.hasOwn(changed.liveSessions[0], "resources"), false);
+  assert.deepEqual(Object.keys(changed.liveSessions[0]).sort(), [
+    "activeAgentCount", "activityStatus", "agentCount", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "title", "updatedAt",
+  ]);
+  assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
+});
+
+test("session feed and home snapshot coalesce a cold live summary without sharing resource telemetry", async () => {
+  const entry = { id: "codex:coalesced", provider: "codex", source: "Codex", title: "Coalesced", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false, activityStatus: "working" };
+  let readCalls = 0;
+  let releaseRead;
+  const readReady = new Promise((resolve) => { releaseRead = resolve; });
+  const runtime = runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [agent("primary")] })]]), {
+    homeSummaryCacheMs: 60_000,
+    resourceTargets: [{ sessionId: entry.id, pid: 42, processStartIdentity: "PRIVATE_COALESCED_RESOURCE" }],
+    resourceUsageSampler: {
+      async sample() {},
+      get() {
+        return {
+          status: "ready",
+          reason: null,
+          current: { cpuCores: 1, cpuMachinePercent: 2, memoryBytes: 3, readBytesPerSecond: 4, writeBytesPerSecond: 5 },
+          observedPeak: { memoryBytes: 8 },
+          samples: [],
+        };
+      },
+    },
+    registry: {
+      async readSession() {
+        readCalls += 1;
+        await readReady;
+        return { evidence: evidence({ agents: [agent("primary")] }), provider, sessionId: entry.id };
+      },
+    },
+  });
+
+  const feed = runtime.sessionFeed();
+  await new Promise((resolve) => setImmediate(resolve));
+  const home = runtime.homeSnapshot();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(readCalls, 1);
+  releaseRead();
+  const [feedSnapshot, homeSnapshot] = await Promise.all([feed, home]);
+
+  assert.equal(feedSnapshot.liveSessions[0].agentCount, 1);
+  assert.equal(Object.hasOwn(feedSnapshot.liveSessions[0], "resources"), false);
+  assert.equal(homeSnapshot.projects[0].sessions[0].resources.current.memoryBytes, 3);
+  assert.doesNotMatch(JSON.stringify({ feedSnapshot, homeSnapshot }), /PRIVATE_COALESCED_RESOURCE|processStartIdentity|"pid"/i);
+});
+
 test("failed live evidence keeps a live card with null metrics", async () => {
   const entry = { id: "codex:failed", provider: "codex", source: "Codex", title: "Failed", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: true };
   const state = await runtimeFixture([entry], new Map([[entry.id, new Error("PROMPT_RESPONSE_COMMAND_CREDENTIAL")]])).homeSnapshot();

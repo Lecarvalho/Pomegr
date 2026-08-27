@@ -2,10 +2,11 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { SessionSummary } from "../../shared/monitor-contract";
+import type { SessionCatalogSnapshot, SessionSummary } from "../../shared/monitor-contract";
 import { decodeSessionRoute, encodeSessionRoute } from "../../shared/session-route.mjs";
 import { preserveSessionOrder } from "../dashboard-utils";
 import { LiveClockProvider } from "../hooks/LiveClockContext";
+import { SessionCatalogProvider } from "../hooks/SessionCatalogContext";
 import type { DesktopState } from "./DesktopControls";
 import { publishNavigationState, subscribeToOpenNavigation } from "./app-navigation";
 import { SessionSidebar } from "./dashboard/SessionSidebar";
@@ -29,6 +30,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [liveSessions, setLiveSessions] = useState<SessionCatalogSnapshot["liveSessions"]>([]);
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(true);
   const [navigationPath, setNavigationPath] = useState<string | null>(null);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const navigationOpen = navigationPath === pathname;
@@ -48,13 +52,33 @@ export function AppShell({ children }: { children: ReactNode }) {
     const poll = async () => {
       try {
         const response = await fetch("/api/sessions", { cache: "no-store", signal: controller.signal });
-        if (!response.ok) return;
-        const catalog = await response.json() as { sessions?: SessionSummary[] };
-        if (!controller.signal.aborted) {
-          startTransition(() => setSessions((current) => preserveSessionOrder(current, catalog.sessions || [])));
+        if (!response.ok) {
+          if (!controller.signal.aborted) {
+            setConnected(false);
+            setLoading(false);
+          }
+          return;
+        }
+        const catalog = await response.json() as Partial<SessionCatalogSnapshot>;
+        const nextSessions = Array.isArray(catalog.sessions) ? catalog.sessions : null;
+        const nextLiveSessions = Array.isArray(catalog.liveSessions) ? catalog.liveSessions : null;
+        if (!controller.signal.aborted && nextSessions && nextLiveSessions) {
+          startTransition(() => {
+            setSessions((current) => preserveSessionOrder(current, nextSessions));
+            setLiveSessions(nextLiveSessions);
+            setConnected(true);
+            setLoading(false);
+          });
+        } else if (!controller.signal.aborted) {
+          setConnected(false);
+          setLoading(false);
         }
       } catch {
         // Keep the most recent safe catalog visible while the monitor reconnects.
+        if (!controller.signal.aborted) {
+          setConnected(false);
+          setLoading(false);
+        }
       } finally {
         if (!controller.signal.aborted) timer = window.setTimeout(poll, 5_000);
       }
@@ -101,22 +125,24 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <LiveClockProvider running={!desktopState?.paused}>
-      <div className="appFrame">
-        <SessionSidebar
-          open={navigationOpen}
-          sessions={sessions}
-          selectedSessionId={selectedSessionId}
-          currentSessionId={selectedSessionId}
-          viewingHistory={Boolean(selectedSession && !selectedSession.isLive)}
-          homeSelected={pathname === "/"}
-          aboutSelected={pathname === "/about"}
-          update={desktopState?.update || null}
-          onInstallUpdate={installUpdate}
-          onClose={() => setNavigationPath(null)}
-          onSelect={selectSession}
-        />
-        <div className="appContent">{children}</div>
-      </div>
+      <SessionCatalogProvider sessions={sessions} liveSessions={liveSessions} loading={loading} connected={connected}>
+        <div className="appFrame">
+          <SessionSidebar
+            open={navigationOpen}
+            sessions={sessions}
+            selectedSessionId={selectedSessionId}
+            currentSessionId={selectedSessionId}
+            viewingHistory={Boolean(selectedSession && !selectedSession.isLive)}
+            homeSelected={pathname === "/"}
+            aboutSelected={pathname === "/about"}
+            update={desktopState?.update || null}
+            onInstallUpdate={installUpdate}
+            onClose={() => setNavigationPath(null)}
+            onSelect={selectSession}
+          />
+          <div className="appContent">{children}</div>
+        </div>
+      </SessionCatalogProvider>
     </LiveClockProvider>
   );
 }

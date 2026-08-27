@@ -2,7 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
-import type { MonitorState } from "../../shared/monitor-contract";
+import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
+import type { MonitorState, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 function jsonResponse(body: object) {
@@ -99,10 +100,32 @@ function detailedState(options: {
   };
 }
 
+function catalogSession(state: MonitorState, overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: state.session?.id ?? "claude:unknown",
+    provider: state.source === "Codex" ? "codex" : "claude",
+    source: state.source,
+    title: state.session?.title ?? "Unknown session",
+    project: state.session?.project ?? "Pomegr",
+    updatedAt: state.session?.updatedAt ?? "2026-08-11T12:01:00.000Z",
+    isLive: state.view !== "history",
+    needsInput: false,
+    activityStatus: "working",
+    ...overrides,
+  };
+}
+
+function renderDashboard(sessions: SessionSummary[] = []) {
+  return render(
+    <SessionCatalogProvider sessions={sessions} liveSessions={[]}>
+      <Dashboard />
+    </SessionCatalogProvider>,
+  );
+}
+
 function mockDashboardState(state: MonitorState) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url = String(input);
-    if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
     if (url === "/api/state" || url.startsWith("/api/state?sessionId=")) return Promise.resolve(jsonResponse(state));
     return Promise.reject(new Error(`Unexpected request: ${url}`));
   });
@@ -120,12 +143,11 @@ describe("dashboard session navigation", () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
       if (url === "/api/state" || url === "/api/state?sessionId=claude%3Alive-1") return Promise.resolve(jsonResponse(state));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    render(<Dashboard />);
+    renderDashboard([catalogSession(state)]);
 
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
@@ -147,12 +169,11 @@ describe("dashboard session navigation", () => {
     const state = historicalState("claude:history-1", "Historical session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
       if (url === "/api/state" || url === "/api/state?sessionId=claude%3Ahistory-1") return Promise.resolve(jsonResponse(state));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    render(<Dashboard />);
+    renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
@@ -168,7 +189,7 @@ describe("dashboard session navigation", () => {
     window.localStorage.setItem("pomegr-session-details-open", "false");
     mockDashboardState(detailedState());
 
-    const { container } = render(<Dashboard />);
+    const { container } = renderDashboard([catalogSession(detailedState())]);
 
     const details = await waitFor(() => {
       const element = container.querySelector("details.sessionDetails");
@@ -215,7 +236,7 @@ describe("dashboard session navigation", () => {
     };
     mockDashboardState(state);
 
-    const { container } = render(<Dashboard />);
+    const { container } = renderDashboard([catalogSession(state)]);
     const compact = await waitFor(() => {
       const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
       expect(element).toBeInTheDocument();
@@ -231,7 +252,7 @@ describe("dashboard session navigation", () => {
     window.localStorage.setItem("pomegr-session-details-open", "false");
     mockDashboardState(detailedState({ files: [] }));
     const user = userEvent.setup();
-    const first = render(<Dashboard />);
+    const first = renderDashboard([catalogSession(detailedState({ files: [] }))]);
 
     const resource = await waitFor(() => {
       const element = first.container.querySelector("details.resourceUsagePanel");
@@ -253,7 +274,7 @@ describe("dashboard session navigation", () => {
     expect(window.localStorage.getItem("pomegr-session-details-open")).toBe("true");
 
     first.unmount();
-    const restored = render(<Dashboard />).container;
+    const restored = renderDashboard([catalogSession(detailedState({ files: [] }))]).container;
     await waitFor(() => expect(restored.querySelector("details.resourceUsagePanel")).toBeInTheDocument());
     expect(restored.querySelector("details.resourceUsagePanel")).not.toHaveAttribute("open");
     expect(restored.querySelector("details.sessionDetails")).toHaveAttribute("open");
@@ -265,7 +286,7 @@ describe("dashboard session navigation", () => {
     state.source = "Codex";
     state.usageLimits.error = "Codex usage limits are temporarily unavailable.";
     mockDashboardState(state);
-    const { container } = render(<Dashboard />);
+    const { container } = renderDashboard([catalogSession(state)]);
 
     const compact = await waitFor(() => {
       const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
@@ -285,7 +306,7 @@ describe("dashboard session navigation", () => {
     const state = detailedState({ contextSupported: false });
     state.capabilities.usageLimits = false;
     mockDashboardState(state);
-    const { container } = render(<Dashboard />);
+    const { container } = renderDashboard([catalogSession(state)]);
 
     const details = await waitFor(() => {
       const element = container.querySelector("details.sessionDetails");
@@ -304,8 +325,9 @@ describe("dashboard session navigation", () => {
 
   it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {
     window.localStorage.setItem("pomegr-session-details-open", "false");
-    mockDashboardState(detailedState({ historical: true, withContext: false }));
-    const { container } = render(<Dashboard />);
+    const state = detailedState({ historical: true, withContext: false });
+    mockDashboardState(state);
+    const { container } = renderDashboard([catalogSession(state)]);
 
     const compact = await waitFor(() => {
       const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
@@ -319,7 +341,7 @@ describe("dashboard session navigation", () => {
   it("omits Loaded context inventory entirely when the selected provider does not support it", async () => {
     window.localStorage.setItem("pomegr-session-details-open", "true");
     mockDashboardState(detailedState({ contextSupported: false }));
-    const { container } = render(<Dashboard />);
+    const { container } = renderDashboard([catalogSession(detailedState({ contextSupported: false }))]);
 
     await screen.findByText("Session details");
     expect(container.querySelector(".sessionDetails .cachePanel")).not.toBeInTheDocument();
@@ -331,15 +353,15 @@ describe("dashboard session navigation", () => {
     const firstSession = liveState("claude:live-1", "First live session");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
       if (url === "/api/state") return Promise.resolve(jsonResponse(firstSession));
       if (url === "/api/state?sessionId=claude%3Alive-1") return Promise.resolve(jsonResponse(firstSession));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    render(<Dashboard />);
+    renderDashboard([catalogSession(firstSession)]);
 
     expect(await screen.findByText("First live session")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain("/api/sessions");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/state?sessionId=claude%3Alive-1",
       expect.objectContaining({ cache: "no-store" }),
@@ -351,12 +373,11 @@ describe("dashboard session navigation", () => {
     const notified = liveState("codex:notified-1", "Notified session");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
       if (url === "/api/state?sessionId=codex%3Anotified-1") return Promise.resolve(jsonResponse(notified));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    render(<Dashboard />);
+    renderDashboard([catalogSession(notified)]);
     expect(await screen.findByText("Notified session")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/state?sessionId=codex%3Anotified-1",
@@ -370,13 +391,12 @@ describe("dashboard session navigation", () => {
     const first = liveState("claude:live-1", "First live session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url === "/api/sessions") return Promise.resolve(jsonResponse({ sessions: [] }));
       if (url === "/api/state") return Promise.resolve(jsonResponse(first));
       if (url === "/api/state?sessionId=claude%3Alive-1") return Promise.resolve(jsonResponse(first));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    render(<Dashboard />);
+    renderDashboard([catalogSession(first)]);
     expect(await screen.findByText("First live session")).toBeInTheDocument();
   });
 });

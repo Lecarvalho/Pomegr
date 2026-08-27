@@ -280,6 +280,19 @@ export type SessionSummary = {
   activityStatus: SessionActivityStatus;
 };
 
+/** Bounded live-session detail derived from cached, normalized monitor evidence. */
+export type LiveSessionSummary = SessionSummary & {
+  agentCount: number | null;
+  activeAgentCount: number | null;
+  latestContextTotal: number | null;
+  progress: SessionProgress | null;
+};
+
+export type SessionCatalogSnapshot = {
+  sessions: SessionSummary[];
+  liveSessions: LiveSessionSummary[];
+};
+
 export type HomeContextHistory = {
   bucketMs: number;
   buckets: ContextHistoryBucket[];
@@ -382,6 +395,14 @@ export type HomeSnapshot = {
   providerLimits: HomeProviderUsageLimits[];
   limitActivities: HomeLimitActivity[];
   projects: HomeProjectSummary[];
+  error?: string;
+};
+
+/** Home data that is independent from project and live-session presentation. */
+export type HomeAggregateSnapshot = {
+  generatedAt: string | null;
+  providerLimits: HomeProviderUsageLimits[];
+  limitActivities: HomeLimitActivity[];
   error?: string;
 };
 

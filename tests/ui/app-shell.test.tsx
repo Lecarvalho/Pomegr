@@ -12,7 +12,9 @@ vi.mock("next/navigation", () => ({
 import { AppShell } from "../../app/components/AppShell";
 import { NavigationMenuButton } from "../../app/components/NavigationMenuButton";
 import type { DesktopState } from "../../app/components/DesktopControls";
+import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
 import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
+import type { LiveSessionSummary } from "../../shared/monitor-contract";
 
 function response(body: object) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -26,6 +28,19 @@ const sessions = [
   { id: "codex:history-1", provider: "codex", source: "Codex", title: "Recorded work", project: "Pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: false, needsInput: false, activityStatus: "unknown" },
 ] as const;
 
+const liveSessions = [{
+  ...sessions[0],
+  agentCount: 2,
+  activeAgentCount: 1,
+  latestContextTotal: 12_000,
+  progress: { phase: "implementing", percent: 42, remainingMinutesMin: 3, remainingMinutesMax: 6, confidence: "medium", reportedAt: "2026-08-24T12:00:00.000Z" },
+}] satisfies LiveSessionSummary[];
+
+function LiveSessionConsumer() {
+  const { liveSessions } = useSessionCatalog();
+  return <output aria-label="Shared live sessions">{liveSessions.map((session) => `${session.title} ${session.progress?.percent ?? 0}%`).join(", ")}</output>;
+}
+
 afterEach(() => {
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   navigation.pathname = "/about";
@@ -35,7 +50,7 @@ afterEach(() => {
 
 describe("shared app shell", () => {
   it("shows the bundled MCP version at the bottom of the sidebar", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [], liveSessions: [] }));
 
     render(<AppShell><main>Home content</main></AppShell>);
 
@@ -46,7 +61,7 @@ describe("shared app shell", () => {
 
   it("shows the same live and historical catalog on Home", async () => {
     navigation.pathname = "/";
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions, liveSessions: [] }));
 
     render(<AppShell><main><h1>Home content</h1></main></AppShell>);
 
@@ -62,7 +77,7 @@ describe("shared app shell", () => {
 
   it("keeps the canonical live and history navigation beside About and routes session selection", async () => {
     const user = userEvent.setup();
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions, liveSessions: [] }));
 
     render(<AppShell><main><NavigationMenuButton /><h1>About content</h1></main></AppShell>);
 
@@ -90,7 +105,7 @@ describe("shared app shell", () => {
       installUpdate,
       onDesktopStateChanged(callback: (next: DesktopState) => void) { listener = callback; return () => { listener = undefined; }; },
     };
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [], liveSessions: [] }));
 
     render(<AppShell><main>Home content</main></AppShell>);
     const action = await screen.findByRole("button", { name: "Restart Pomegr to update to version 1.2.3" });
@@ -99,5 +114,17 @@ describe("shared app shell", () => {
     expect(installUpdate).toHaveBeenCalledOnce();
     act(() => listener?.({ ...state, update: { status: "installing", version: "1.2.3" } }));
     expect(await screen.findByRole("button", { name: "Restarting Pomegr to update to version 1.2.3" })).toBeDisabled();
+  });
+
+  it("shares one catalog poll between the sidebar and live-session consumers", async () => {
+    navigation.pathname = "/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions, liveSessions }));
+
+    render(<AppShell><LiveSessionConsumer /></AppShell>);
+
+    expect(await screen.findByRole("button", { name: /Live work.*Working now/ })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ cache: "no-store" }));
   });
 });

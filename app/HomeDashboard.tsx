@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { HomeLimitActivity, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
+import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits, LiveSessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 import { NavigationMenuButton } from "./components/NavigationMenuButton";
@@ -11,11 +11,13 @@ import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
+import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 
-const EMPTY: HomeSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [], projects: [] };
+const EMPTY: HomeAggregateSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [] };
+const HOME_AGGREGATE_POLL_MS = 30_000;
 
 function number(value: number | null) { if (!Number.isFinite(value)) return "—"; return new Intl.NumberFormat(undefined, { notation: value! >= 10_000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(value!); }
-function agentSummary(session: HomeSessionSummary) {
+function agentSummary(session: LiveSessionSummary) {
   if (session.agentCount === null) return "agents unavailable";
   if (session.activeAgentCount === null) return `${session.agentCount} ${session.agentCount === 1 ? "agent" : "agents"}`;
   return `${session.activeAgentCount}/${session.agentCount} agents`;
@@ -159,20 +161,20 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
   );
 }
 
-function sessionHref(session: HomeSessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
+function sessionHref(session: LiveSessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
 
-function sessionActivity(session: HomeSessionSummary) {
+function sessionActivity(session: LiveSessionSummary) {
   if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", className: "needsInput" };
   if (session.activityStatus === "working") return { label: "Working now", className: "working" };
   if (session.activityStatus === "idle") return { label: "Idle", className: "idle" };
   return { label: "Open", className: "unknown" };
 }
 
-function isActiveSession(session: HomeSessionSummary) {
+function isActiveSession(session: LiveSessionSummary) {
   return session.needsInput || session.activityStatus === "needs_input" || session.activityStatus === "working";
 }
 
-function SessionCard({ session }: { session: HomeSessionSummary }) {
+function SessionCard({ session }: { session: LiveSessionSummary }) {
   const progress = session.progress;
   const activity = sessionActivity(session);
   const showEta = progress && !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
@@ -180,16 +182,17 @@ function SessionCard({ session }: { session: HomeSessionSummary }) {
   return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}><div><strong>{progress.phase}</strong><b>{progress.percent}%</b></div><progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${progress.phase}`} />{eta && <small>{eta}</small>}</div>}</div>;
 }
 
-function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: HomeSessionSummary[] }) {
+function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: LiveSessionSummary[] }) {
   if (!sessions.length) return null;
   return <section className="homeLiveGrid" aria-labelledby={id}><div className="homeSectionHeader"><h2 id={id}>{title}</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>;
 }
 
 export function HomeDashboard() {
-  const [snapshot, setSnapshot] = useState<HomeSnapshot>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(true);
-  const sessions = useMemo(() => (snapshot.projects || []).flatMap((project) => project.sessions || []), [snapshot.projects]);
+  const [snapshot, setSnapshot] = useState<HomeAggregateSnapshot>(EMPTY);
+  const [aggregateLoading, setAggregateLoading] = useState(true);
+  const [aggregateConnected, setAggregateConnected] = useState(true);
+  const { liveSessions, loading: catalogLoading, connected: catalogConnected } = useSessionCatalog();
+  const sessions = liveSessions;
   const activeSessions = useMemo(() => sessions.filter(isActiveSession), [sessions]);
   const idleSessions = useMemo(() => sessions.filter((session) => !isActiveSession(session)), [sessions]);
 
@@ -201,19 +204,19 @@ export function HomeDashboard() {
       try {
         const response = await fetch("/api/home", { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("offline");
-        const next = await response.json() as HomeSnapshot;
+        const next = await response.json() as HomeAggregateSnapshot;
         if (!controller.signal.aborted) {
           setSnapshot(next);
-          setConnected(true);
-          setLoading(false);
+          setAggregateConnected(true);
+          setAggregateLoading(false);
         }
       } catch {
         if (!controller.signal.aborted) {
-          setConnected(false);
-          setLoading(false);
+          setAggregateConnected(false);
+          setAggregateLoading(false);
         }
       } finally {
-        if (!controller.signal.aborted) timer = window.setTimeout(poll, 5_000);
+        if (!controller.signal.aborted) timer = window.setTimeout(poll, HOME_AGGREGATE_POLL_MS);
       }
     };
 
@@ -225,24 +228,25 @@ export function HomeDashboard() {
   }, []);
 
   return (
-    <LiveClockProvider running={connected}>
+    <LiveClockProvider running={catalogConnected}>
       <main className="shell homeApp" id="top">
           <header className="topbar">
             <div className="topbarLead">
               <NavigationMenuButton />
               <PomegrBrand href="/" />
             </div>
-            <div className="topActions"><span className={`connection ${loading ? "connecting" : connected ? "online" : "offline"}`}><i />{loading ? "Connecting to monitor" : connected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
+            <div className="topActions"><span className={`connection ${catalogLoading ? "connecting" : catalogConnected ? "online" : "offline"}`}><i />{catalogLoading ? "Connecting to monitor" : catalogConnected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
           </header>
           <section className="homeContent" aria-labelledby="home-heading">
             <div className="homeIntro"><h1 id="home-heading">Open sessions</h1><p>Current agent work and open sessions across every project.</p></div>
-            {loading && <p className="homeStatus" role="status">Loading the local monitor…</p>}
-            {!loading && !connected && <p className="homeStatus" role="status">Home overview is unavailable. Pomegr will reconnect automatically.</p>}
-            {!loading && connected && sessions.length === 0 && <p className="homeStatus" role="status">No open sessions yet.</p>}
-            {!loading && connected && <HomeUsageLimits providers={snapshot.providerLimits || []} activities={snapshot.limitActivities || []} />}
-            {!loading && connected && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} /></>}
+            {catalogLoading && <p className="homeStatus" role="status">Loading open sessions from the local monitor…</p>}
+            {!catalogLoading && !catalogConnected && <p className="homeStatus" role="status">Open sessions are unavailable. Pomegr will reconnect automatically.</p>}
+            {!catalogLoading && catalogConnected && sessions.length === 0 && <p className="homeStatus" role="status">No open sessions yet.</p>}
+            {!aggregateLoading && !aggregateConnected && <p className="homeStatus" role="status">Usage and activity overview is unavailable. Pomegr will retry automatically.</p>}
+            {!aggregateLoading && <HomeUsageLimits providers={snapshot.providerLimits || []} activities={snapshot.limitActivities || []} />}
+            {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} /></>}
           </section>
-          <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{connected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
+          <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{catalogLoading ? "Connecting…" : catalogConnected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
       </main>
     </LiveClockProvider>
   );

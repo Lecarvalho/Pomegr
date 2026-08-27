@@ -1,10 +1,15 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
-import type { HomeSnapshot } from "../../shared/monitor-contract";
+import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
+import type { HomeAggregateSnapshot, HomeSnapshot, LiveSessionSummary } from "../../shared/monitor-contract";
 
 function response(body: object, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
+}
+
+function pollResponse(body: object, status = 200) {
+  return Promise.resolve({ ok: status >= 200 && status < 300, json: async () => body } as Response);
 }
 
 const snapshot = {
@@ -156,14 +161,35 @@ const snapshot = {
   }],
 } satisfies HomeSnapshot;
 
+const liveSessions = snapshot.projects.flatMap((project) => project.sessions.map((session) => {
+  const liveSession = { ...session, isLive: true };
+  Reflect.deleteProperty(liveSession, "contextHistory");
+  Reflect.deleteProperty(liveSession, "resources");
+  return liveSession;
+})) satisfies LiveSessionSummary[];
+
+function homeAggregate(overrides: Partial<HomeAggregateSnapshot> = {}): HomeAggregateSnapshot {
+  return {
+    generatedAt: snapshot.generatedAt,
+    providerLimits: snapshot.providerLimits,
+    limitActivities: snapshot.limitActivities,
+    ...overrides,
+  };
+}
+
+function renderHome(live = liveSessions, lifecycle: { loading?: boolean; connected?: boolean } = {}) {
+  return render(<SessionCatalogProvider sessions={[]} liveSessions={live} {...lifecycle}><HomeDashboard /></SessionCatalogProvider>);
+}
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("home dashboard", () => {
   it("shows one quiet cross-project session grid with bounded progress details", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
-    const { container } = render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const { container } = renderHome();
 
     expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
     const activeRegion = screen.getByRole("region", { name: "Active now" });
@@ -185,9 +211,71 @@ describe("home dashboard", () => {
     expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
   });
 
+  it("updates a live card from the shared catalog without another home response", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const view = renderHome();
+
+    expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Working now" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
+      ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
+      : session);
+    view.rerender(<SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider>);
+
+    expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
+    expect(screen.getByText("complete")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls aggregate usage on a 30-second cadence while catalog cards update immediately", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const view = renderHome();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
+      ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
+      : session);
+    view.rerender(<SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider>);
+    expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps live cards visible when aggregate usage polling fails", async () => {
+    let resolveInitial!: (next: Response) => void;
+    let scheduledPoll: (() => void) | null = null;
+    const nativeSetTimeout = window.setTimeout;
+    vi.spyOn(window, "setTimeout").mockImplementation(((handler, timeout, ...args) => {
+      if (timeout === 30_000 && typeof handler === "function") {
+        scheduledPoll = () => handler(...args);
+        return 0;
+      }
+      return nativeSetTimeout(handler, timeout, ...args);
+    }) as typeof window.setTimeout);
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveInitial = resolve; }))
+      .mockImplementationOnce(() => pollResponse({}, 503));
+    renderHome();
+    resolveInitial(await pollResponse(homeAggregate()));
+    expect(await screen.findByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
+
+    await act(async () => { scheduledPoll?.(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Working now" })).toBeInTheDocument();
+    expect(screen.getByText("Usage and activity overview is unavailable. Pomegr will retry automatically.")).toBeInTheDocument();
+    expect(screen.getByText("Monitor connected")).toBeInTheDocument();
+  });
+
   it("joins usage limits and provider-local limit activity", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
-    const { container } = render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const { container } = renderHome();
     expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
     expect(screen.getByText("Build home")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
@@ -228,8 +316,7 @@ describe("home dashboard", () => {
   });
 
   it("shows the observed-project disclosure below Claude's seven-day all-models bar", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       providerLimits: snapshot.providerLimits.map((entry, index) => index === 0
         ? {
             ...entry,
@@ -256,8 +343,8 @@ describe("home dashboard", () => {
           partialCoverage: false,
         },
       ],
-    }));
-    const { container } = render(<HomeDashboard />);
+    })));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
     const weeklyRow = container.querySelector('.homeLimitRow.critical[aria-label="All models, 7 days, 85% used"]')!;
@@ -270,8 +357,7 @@ describe("home dashboard", () => {
   });
 
   it("shows model-scoped request ticks and project activity below Fable's seven-day bar", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       providerLimits: snapshot.providerLimits.map((entry, index) => index === 0
         ? {
             ...entry,
@@ -299,8 +385,8 @@ describe("home dashboard", () => {
           partialCoverage: false,
         },
       ],
-    }));
-    const { container } = render(<HomeDashboard />);
+    })));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
     const fableRow = container.querySelector('.homeLimitRow[aria-label="Fable, 7 days, 19% used"]')!;
@@ -321,13 +407,12 @@ describe("home dashboard", () => {
   });
 
   it("does not surface the internal account-observation collection state", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       limitActivities: snapshot.limitActivities.map((activity, index) => index === 0
         ? { ...activity, status: "collecting" as const }
         : activity),
-    }));
-    const { container } = render(<HomeDashboard />);
+    })));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
     expect(screen.queryByText("Collecting account observations.")).not.toBeInTheDocument();
@@ -336,13 +421,12 @@ describe("home dashboard", () => {
   });
 
   it("consolidates bounded coverage notices inside the project popover", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       limitActivities: snapshot.limitActivities.map((activity, index) => index === 0
         ? { ...activity, partialCoverage: true, eventsTruncated: true }
         : activity),
-    }));
-    const { container } = render(<HomeDashboard />);
+    })));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
     const claudeProjects = screen.getByText("2 projects").closest("details")!;
@@ -352,8 +436,8 @@ describe("home dashboard", () => {
   });
 
   it("scales session activity timing inside the filled usage width", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
-    const { container } = render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
     const claudeTicks = screen.getByRole("img", { name: /Local session activity for Current session, 5 hours/ });
     expect(claudeTicks.querySelectorAll("b")).toHaveLength(3);
@@ -365,11 +449,10 @@ describe("home dashboard", () => {
   });
 
   it("keeps elapsed-window tick spacing when the provider omits resetsAt", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
-    }));
-    render(<HomeDashboard />);
+    })));
+    renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
     const claudeTicks = screen.getByRole("img", { name: /Local session activity for Current session, 5 hours/ });
     const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
@@ -377,8 +460,8 @@ describe("home dashboard", () => {
   });
 
   it("positions Codex activity ticks across the elapsed part of its seven-day window", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
-    render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
     const codexTicks = screen.getByRole("img", { name: /Local session activity for Codex, 7 days/ });
     expect(codexTicks.querySelector(".homeLimitRequestTimeline")).toHaveStyle({ width: "82%" });
@@ -386,34 +469,29 @@ describe("home dashboard", () => {
   });
 
   it("keeps live cards available while recorded history warms", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
-      projects: snapshot.projects.map((project) => ({ ...project, history: { ...project.history, status: "loading" as const } })),
-    }));
-    render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    renderHome();
     expect(await screen.findByText("Build home")).toBeInTheDocument();
     expect(screen.queryByText("Loading recorded sessions…")).not.toBeInTheDocument();
     expect(screen.queryByText("median wall time")).not.toBeInTheDocument();
   });
 
   it("flags retained Claude limits when the provider needs sign-in", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
-      projects: [],
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
       limitActivities: [],
       providerLimits: [{
         ...snapshot.providerLimits[0],
         usageLimits: { ...snapshot.providerLimits[0].usageLimits, error: "Anthropic usage endpoint returned 401" },
       }],
-    }));
-    render(<HomeDashboard />);
+    })));
+    renderHome();
     expect(await screen.findByText("Sign-in needed")).toBeInTheDocument();
     expect(screen.getByText("31%")).toBeInTheDocument();
   });
 
   it("keeps resource telemetry quiet on the home surface", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
-    const { container } = render(<HomeDashboard />);
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
+    const { container } = renderHome();
     await screen.findByRole("heading", { name: "Open sessions" });
     expect(container.querySelector(".homeChartLine, .homeChartCpu, .homeChartMemory")).not.toBeInTheDocument();
     expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
@@ -421,13 +499,14 @@ describe("home dashboard", () => {
   });
 
   it("shows no-live and offline states without hanging polling", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], limitActivities: [], projects: [] }));
-    render(<HomeDashboard />);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], limitActivities: [] }));
+    const noLive = renderHome([]);
     expect(await screen.findByText("No open sessions yet.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/home", expect.objectContaining({ cache: "no-store" }));
 
+    noLive.unmount();
     fetchMock.mockImplementation(() => response({}, 503));
-    render(<HomeDashboard />);
-    expect(await screen.findByText("Home overview is unavailable. Pomegr will reconnect automatically.")).toBeInTheDocument();
+    renderHome([]);
+    expect(await screen.findByText("Usage and activity overview is unavailable. Pomegr will retry automatically.")).toBeInTheDocument();
   });
 });

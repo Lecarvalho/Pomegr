@@ -331,6 +331,7 @@ export function createMonitorRuntime(options = {}) {
   const deferHomeHistory = options.deferHomeHistory !== false;
   const yieldHomeHistory = options.yieldHomeHistory || (() => new Promise((resolve) => setImmediate(resolve)));
   const homeSummaryCache = new Map();
+  const homeSummaryInFlight = new Map();
   const homeLimitActivityTracker = createHomeLimitActivityTracker();
   let homeSnapshotCached = null;
   let homeSnapshotInFlight = null;
@@ -440,7 +441,39 @@ export function createMonitorRuntime(options = {}) {
     } catch {
       // Resource telemetry must never make session discovery unavailable.
     }
-    return inspected.sessions;
+    return Array.isArray(inspected.sessions) ? inspected.sessions : [];
+  }
+
+  function liveSessionSummary(entry, summary) {
+    return {
+      id: entry.id,
+      provider: entry.provider,
+      source: entry.source,
+      title: entry.title,
+      project: entry.project,
+      updatedAt: entry.updatedAt,
+      isLive: Boolean(entry.isLive),
+      needsInput: Boolean(entry.needsInput),
+      activityStatus: entry.activityStatus || "unknown",
+      agentCount: Number.isFinite(summary?.agentCount) ? summary.agentCount : null,
+      activeAgentCount: Number.isFinite(summary?.activeAgentCount) ? summary.activeAgentCount : null,
+      latestContextTotal: Number.isFinite(summary?.latestContextTotal) ? summary.latestContextTotal : null,
+      progress: summary?.progress ?? null,
+    };
+  }
+
+  async function sessionFeed() {
+    const sessions = await sessionCatalog();
+    const endMs = now();
+    const liveSessions = await Promise.all(sessions.filter((entry) => entry?.isLive).map(async (entry) => {
+      const cached = cachedHomeSummary(entry, endMs, () => null);
+      const summary = cached.found ? cached.summary : await loadHomeSummary(entry, endMs, null);
+      return liveSessionSummary(entry, summary);
+    }));
+    return {
+      sessions,
+      liveSessions,
+    };
   }
 
   function homeSummaryCacheKey(entry) {
@@ -450,27 +483,39 @@ export function createMonitorRuntime(options = {}) {
   function cachedHomeSummary(entry, endMs, resourceUsageFor) {
     const cached = homeSummaryCache.get(homeSummaryCacheKey(entry));
     if (!cached || cached.expiresAt <= endMs) return { found: false, summary: null };
-    const summary = cached.summary && entry.isLive
-      ? { ...cached.summary, resources: publicResourceUsage(resourceUsageFor(entry.id)) }
-      : cached.summary;
-    return { found: true, summary };
+    return { found: true, summary: decorateHomeSummary(entry, cached.summary, resourceUsageFor(entry.id)) };
+  }
+
+  function decorateHomeSummary(entry, summary, resourceUsage) {
+    if (!summary || !entry.isLive) return summary;
+    return { ...summary, resources: resourceUsage ? publicResourceUsage(resourceUsage) : null };
   }
 
   async function loadHomeSummary(entry, endMs, resourceUsage = null) {
-    let summary;
-    try {
-      const selection = await registry.readSession(entry.id, { catalogEntry: entry });
-      summary = selection?.evidence
-        ? homeSessionSummary(entry, selection.evidence, entry.isLive ? resourceUsage : null)
-        : entry.isLive
-          ? unavailableHomeSessionSummary(entry, resourceUsage)
-          : null;
-    } catch {
-      summary = entry.isLive ? unavailableHomeSessionSummary(entry, resourceUsage) : null;
+    const cacheKey = homeSummaryCacheKey(entry);
+    let refresh = homeSummaryInFlight.get(cacheKey);
+    if (!refresh) {
+      refresh = (async () => {
+        let summary;
+        try {
+          const selection = await registry.readSession(entry.id, { catalogEntry: entry });
+          summary = selection?.evidence
+            ? homeSessionSummary(entry, selection.evidence, null)
+            : entry.isLive
+              ? unavailableHomeSessionSummary(entry, null)
+              : null;
+        } catch {
+          summary = entry.isLive ? unavailableHomeSessionSummary(entry, null) : null;
+        }
+        const cacheMs = entry.isLive ? homeSummaryCacheMs : homeHistorySummaryCacheMs;
+        homeSummaryCache.set(cacheKey, { expiresAt: endMs + cacheMs, summary });
+        return summary;
+      })().finally(() => {
+        if (homeSummaryInFlight.get(cacheKey) === refresh) homeSummaryInFlight.delete(cacheKey);
+      });
+      homeSummaryInFlight.set(cacheKey, refresh);
     }
-    const cacheMs = entry.isLive ? homeSummaryCacheMs : homeHistorySummaryCacheMs;
-    homeSummaryCache.set(homeSummaryCacheKey(entry), { expiresAt: endMs + cacheMs, summary });
-    return summary;
+    return decorateHomeSummary(entry, await refresh, resourceUsage);
   }
 
   function queueHomeHistoryRefresh(entries) {
@@ -909,7 +954,7 @@ export function createMonitorRuntime(options = {}) {
     return createEmptyMonitorState({ source: registry.defaultProvider.source, usageLimits: emptyUsageLimits() });
   }
 
-  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, homeSnapshot, transcriptPath });
+  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, sessionFeed, homeSnapshot, transcriptPath });
 }
 
 export function createMonitorRequestHandler(options = {}) {
@@ -944,23 +989,33 @@ export function createMonitorRequestHandler(options = {}) {
   const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
   if (requestUrl.pathname === "/api/sessions") {
     try {
-      const body = JSON.stringify({ sessions: await runtime.sessionCatalog() });
+      const body = JSON.stringify(await runtime.sessionFeed());
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(body);
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ sessions: [], error: "Session catalog error" }));
+      response.end(JSON.stringify({ sessions: [], liveSessions: [], error: "Session catalog error" }));
     }
     return;
   }
   if (requestUrl.pathname === "/api/home") {
     try {
-      const body = JSON.stringify(await runtime.homeSnapshot());
+      const snapshot = await runtime.homeSnapshot();
+      const body = JSON.stringify(requestUrl.searchParams.get("scope") === "aggregates"
+        ? {
+          generatedAt: snapshot.generatedAt,
+          providerLimits: snapshot.providerLimits,
+          limitActivities: snapshot.limitActivities,
+          ...(snapshot.error ? { error: snapshot.error } : {}),
+        }
+        : snapshot);
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(body);
     } catch {
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" }));
+      response.end(JSON.stringify(requestUrl.searchParams.get("scope") === "aggregates"
+        ? { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home snapshot error" }
+        : { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" }));
     }
     return;
   }

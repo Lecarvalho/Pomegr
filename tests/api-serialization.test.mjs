@@ -283,8 +283,10 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     fetch(`${origin}/api/sessions`),
     fetch(`${origin}/api/state?sessionId=claude%3Aclaude-fixture-parent`),
     fetch(`${origin}/api/state?sessionId=codex%3Acodex-fixture-parent`),
+    fetch(`${origin}/api/home`),
+    fetch(`${origin}/api/home?scope=aggregates`),
   ]);
-  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200]);
+  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200, 200, 200]);
   const serialized = await Promise.all(responses.map((response) => response.text()));
   serialized.forEach((body, index) => assertNoPrivateFixtureSentinels(body, `API response ${index + 1}`));
   assert.doesNotMatch(serialized.join("\n"), /AUTH_FILE_MUST_NOT_LEAK/);
@@ -300,8 +302,25 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     { id: "claude:claude-fixture-parent", source: "Claude Code" },
     { id: "codex:codex-fixture-parent", source: "Codex" },
   ]);
+  assert.equal(Array.isArray(catalog.liveSessions), true);
+  assert.equal(catalog.liveSessions.every((session) => session.isLive === true), true);
+  for (const session of catalog.liveSessions) {
+    assert.equal(Object.hasOwn(session, "contextHistory"), false);
+    assert.equal(Object.hasOwn(session, "resources"), false);
+  }
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  const home = JSON.parse(serialized[3]);
+  const aggregates = JSON.parse(serialized[4]);
+  assert.equal(Array.isArray(home.projects), true);
+  assert.deepEqual(aggregates, {
+    generatedAt: home.generatedAt,
+    providerLimits: home.providerLimits,
+    limitActivities: home.limitActivities,
+    ...(home.error ? { error: home.error } : {}),
+  });
+  assert.equal(Object.hasOwn(aggregates, "projects"), false);
+  assert.equal(Object.hasOwn(aggregates, "liveSessions"), false);
   assert.deepEqual(claudeState.session.progress, {
     phase: "implementing",
     percent: 42,
@@ -627,7 +646,8 @@ test("one provider failure cannot fail the other provider's API catalog or state
 test("HTTP fallbacks never serialize arbitrary exception messages", async (context) => {
   const { claude } = await syntheticProviders(context);
   const runtime = {
-    async sessionCatalog() { throw new Error("OAUTH_TOKEN_MUST_NOT_LEAK"); },
+    async sessionFeed() { throw new Error("OAUTH_TOKEN_MUST_NOT_LEAK"); },
+    async homeSnapshot() { throw new Error("HOME_PRIVATE_PAYLOAD_MUST_NOT_LEAK"); },
     async analyze() { throw new Error("PRIVATE_PATH_MUST_NOT_LEAK"); },
     analyzeEmpty() {
       return {
@@ -639,13 +659,22 @@ test("HTTP fallbacks never serialize arbitrary exception messages", async (conte
     },
   };
   const origin = await startSyntheticMonitor(context, { runtime });
-  const [sessions, state] = await Promise.all([
+  const [sessions, state, home, aggregates] = await Promise.all([
     fetch(`${origin}/api/sessions`),
     fetch(`${origin}/api/state`),
+    fetch(`${origin}/api/home`),
+    fetch(`${origin}/api/home?scope=aggregates`),
   ]);
   assert.equal(sessions.status, 500);
   assert.equal(state.status, 500);
-  const serialized = `${await sessions.text()}\n${await state.text()}`;
+  assert.equal(home.status, 500);
+  assert.equal(aggregates.status, 500);
+  const [sessionsBody, stateBody, homeBody, aggregatesBody] = await Promise.all([
+    sessions.text(), state.text(), home.text(), aggregates.text(),
+  ]);
+  assert.deepEqual(JSON.parse(homeBody), { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" });
+  assert.deepEqual(JSON.parse(aggregatesBody), { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home snapshot error" });
+  const serialized = `${sessionsBody}\n${stateBody}\n${homeBody}\n${aggregatesBody}`;
   assert.doesNotMatch(serialized, /MUST_NOT_LEAK/);
   assert.match(serialized, /Session catalog error/);
   assert.match(serialized, /Monitor error/);
