@@ -70,11 +70,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
 
   useEffect(() => {
-    document.documentElement.dataset.pomegrHydrated = "true";
-    return () => { delete document.documentElement.dataset.pomegrHydrated; };
-  }, []);
-
-  useEffect(() => {
     const legacySessionId = notificationNavigationSessionId();
     if (!legacySessionId || initialSessionId) return;
     try {

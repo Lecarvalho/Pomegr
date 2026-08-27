@@ -27,10 +27,11 @@ import { stopChild } from "../desktop/utility-lifecycle.mjs";
 import { containsShellStageTrace } from "../desktop/runtime-proof.mjs";
 
 test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", async () => {
-  const [packageJson, main, runner] = await Promise.all([
+  const [packageJson, main, runner, appShell] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
     readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/smoke-runner.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(packageJson.scripts["desktop:smoke"], /ELECTRON_RUN_AS_NODE=1/);
@@ -59,6 +60,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /execFile\("git", \["--version"\]/);
   assert.match(main, /monitor\.ready\.gitProof !== "verified"/);
   assert.match(main, /pomegrHydrated/);
+  assert.match(appShell, /document\.documentElement\.dataset\.pomegrHydrated = ["']true["']/);
   assert.match(main, /getComputedStyle\(frame\)\.display === 'grid'/);
   assert.match(main, /fetch\('\/api\/state'/);
   assert.match(main, /fetch\('\/api\/sessions'/);

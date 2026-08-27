@@ -36,6 +36,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
 
   useEffect(() => {
+    document.documentElement.dataset.pomegrHydrated = "true";
+    return () => { delete document.documentElement.dataset.pomegrHydrated; };
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     let timer: number | null = null;
     if (desktopState?.paused) return () => controller.abort();

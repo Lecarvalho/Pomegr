@@ -4,6 +4,15 @@ Official Pomegr Windows releases are built only by the tag-triggered GitHub Acti
 
 ## Package and publish
 
+To build the Windows installer and portable executable locally for development or testing, install the locked dependencies and run the desktop packaging command from the repository root:
+
+```powershell
+npm ci
+npm run desktop:package
+```
+
+The command prepares the desktop runtime, builds the web application, and creates the NSIS installer and portable executable under `release/`. These local artifacts are for development and acceptance testing only; do not publish them or manually substitute them for artifacts produced and signed by the tag-triggered release workflow.
+
 1. Start from a clean working tree and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
 2. Run `npm version X.Y.Z --no-git-tag-version`, substituting the chosen version. This updates `package.json` and `package-lock.json` without creating a tag.
 3. Run the applicable pre-release quality gates from the [release checklist](#release-checklist), commit the version change, and create the matching annotated `vX.Y.Z` or `vX.Y.Z-beta.N` tag on that commit.
