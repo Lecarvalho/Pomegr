@@ -20,7 +20,7 @@ import {
   parseCodexApprovalPlanRecords,
 } from "./codex-approval-plan.mjs";
 import { parseCodexContextRecords } from "./codex-context.mjs";
-import { parseCodexCurrentActivityRecords } from "./codex-current-activity.mjs";
+import { parseCodexCurrentActivityStateRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
 import {
   mergeCodexPullRequestCreations,
@@ -280,6 +280,7 @@ export function createCodexProvider(options = {}) {
   const liveAgentAssignmentCache = new Map();
   const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
+  const liveCurrentActivityCache = new Map();
   const liveApprovalModeCache = new Map();
   const livePlanTaskCache = new Map();
   const transcriptPathsBySessionId = new Map();
@@ -298,6 +299,7 @@ export function createCodexProvider(options = {}) {
     liveAgentAssignmentCache.delete(file);
     if (clearContext) liveContextUsageCache.delete(file);
     liveExecutionTaskCache.delete(file);
+    liveCurrentActivityCache.delete(file);
     liveApprovalModeCache.delete(file);
     livePlanTaskCache.delete(file);
   };
@@ -496,7 +498,33 @@ export function createCodexProvider(options = {}) {
     return cached.state;
   }
 
-  function hydrateLiveStateEvidence(file, generation, { fallbackTimestamp, actorId, sourceKey }) {
+  function reusableLiveCurrentActivity(file, threadId, generation) {
+    const cached = liveCurrentActivityCache.get(file);
+    if (!cached || cached.threadId !== threadId || !generation) {
+      if (cached) liveCurrentActivityCache.delete(file);
+      return null;
+    }
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size
+        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
+      && priorSuffixStillMatches(file, previous);
+    if (!monotonic) {
+      liveCurrentActivityCache.delete(file);
+      return null;
+    }
+    return cached;
+  }
+
+  function hydrateLiveStateEvidence(file, generation, {
+    fallbackTimestamp,
+    actorId,
+    sourceKey,
+    currentActivityOptions = {},
+  }) {
     if (!generation || generation.size <= maximumLiveTailBytes) return null;
     const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
     const position = generation.size - bytes;
@@ -546,6 +574,7 @@ export function createCodexProvider(options = {}) {
     });
     return {
       taskState: parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp }),
+      currentActivityState: parseCodexCurrentActivityStateRecords(records, currentActivityOptions),
       usageSnapshots: context.usageSnapshots,
       compactions: context.compactions,
     };
@@ -721,6 +750,7 @@ export function createCodexProvider(options = {}) {
       rolloutCache.delete(evictedFile);
       liveContextUsageCache.delete(evictedFile);
       liveExecutionTaskCache.delete(evictedFile);
+      liveCurrentActivityCache.delete(evictedFile);
       liveApprovalModeCache.delete(evictedFile);
       livePlanTaskCache.delete(evictedFile);
     }
@@ -794,6 +824,9 @@ export function createCodexProvider(options = {}) {
       const knownRolloutFiles = new Set(value.map((item) => item.rolloutFile).filter(Boolean));
       for (const file of liveExecutionTaskCache.keys()) {
         if (!knownRolloutFiles.has(file)) liveExecutionTaskCache.delete(file);
+      }
+      for (const file of liveCurrentActivityCache.keys()) {
+        if (!knownRolloutFiles.has(file)) liveCurrentActivityCache.delete(file);
       }
       for (const file of liveAgentAssignmentCache.keys()) {
         if (!knownRolloutFiles.has(file)) liveAgentAssignmentCache.delete(file);
@@ -1080,6 +1113,13 @@ export function createCodexProvider(options = {}) {
       const records = recordsByThreadId.get(thread.localId) || [];
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       const generation = generationsByThreadId.get(thread.localId) || null;
+      const agentStatus = agents.find((agent) => agent.id === actor.id)?.status;
+      const rolloutHeuristicIdle = agentStatus === "idle"
+        && thread.liveness?.source === "rollout_activity_heuristic";
+      if (rolloutHeuristicIdle) rolloutHeuristicIdleActors.add(actor.id);
+      const cachedCurrentActivity = historical
+        ? null
+        : reusableLiveCurrentActivity(thread.rolloutFile, thread.localId, generation);
       const context = parseCodexContextRecords(records, {
         actorId: actor.id,
         fallbackTimestamp,
@@ -1094,14 +1134,25 @@ export function createCodexProvider(options = {}) {
       const skippedContextGap = previousContext
         && generation
         && generation.size - previousContext.size > maximumLiveTailBytes;
+      const skippedActivityGap = cachedCurrentActivity
+        && generation
+        && generation.size - cachedCurrentActivity.generation.size > maximumLiveTailBytes;
       const needsContextHydration = !historical
         && generation?.size > maximumLiveTailBytes
         && (!previousContext || skippedContextGap);
-      if (!historical && (!existingState || needsContextHydration)) {
+      const needsActivityHydration = !historical
+        && generation?.size > maximumLiveTailBytes
+        && (!cachedCurrentActivity || skippedActivityGap);
+      if (!historical && (!existingState || needsContextHydration || needsActivityHydration)) {
         hydratedStateEvidence = hydrateLiveStateEvidence(thread.rolloutFile, generation, {
           fallbackTimestamp,
           actorId: actor.id,
           sourceKey: thread.localId,
+          currentActivityOptions: {
+            existingState: cachedCurrentActivity?.state,
+            agentStatus,
+            rolloutHeuristicIdle,
+          },
         });
         existingState = hydratedStateEvidence?.taskState || null;
       }
@@ -1122,15 +1173,24 @@ export function createCodexProvider(options = {}) {
           liveExecutionTaskCache.delete(liveExecutionTaskCache.keys().next().value);
         }
       }
-      const agentStatus = agents.find((agent) => agent.id === actor.id)?.status;
-      const rolloutHeuristicIdle = agentStatus === "idle"
-        && thread.liveness?.source === "rollout_activity_heuristic";
-      if (rolloutHeuristicIdle) rolloutHeuristicIdleActors.add(actor.id);
-      rolloutActivityByActor.set(actor.id, parseCodexCurrentActivityRecords(records, {
+      const currentActivityState = parseCodexCurrentActivityStateRecords(records, {
         historical,
         agentStatus,
         rolloutHeuristicIdle,
-      }));
+        existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
+      });
+      rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
+      if (!historical && generation) {
+        liveCurrentActivityCache.delete(thread.rolloutFile);
+        liveCurrentActivityCache.set(thread.rolloutFile, {
+          threadId: thread.localId,
+          generation,
+          state: currentActivityState,
+        });
+        while (liveCurrentActivityCache.size > scanLimit) {
+          liveCurrentActivityCache.delete(liveCurrentActivityCache.keys().next().value);
+        }
+      }
       rolloutSignalsByActor.set(actor.id, historical
         ? parseCodexSignalRecords(records)
         : liveSignalsByThreadId.get(thread.localId) || parseCodexSignalRecords(records));
@@ -1281,6 +1341,7 @@ export function createCodexProvider(options = {}) {
         ...rolloutStats,
         cacheEntries: rolloutCache.size,
         liveExecutionTaskEntries: liveExecutionTaskCache.size,
+        liveCurrentActivityEntries: liveCurrentActivityCache.size,
         liveApprovalModeEntries: liveApprovalModeCache.size,
         livePlanTaskEntries: livePlanTaskCache.size,
         catalogPending: Boolean(catalogPending),

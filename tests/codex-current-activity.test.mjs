@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   CODEX_CURRENT_ACTIVITY_MAX_LENGTH,
   parseCodexCurrentActivityRecords,
+  parseCodexCurrentActivityStateRecords,
 } from "../monitor/providers/codex-current-activity.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
@@ -80,6 +81,29 @@ test("keeps an open-turn heading stable across heuristic idle gaps and unrelated
     agentStatus: "idle",
     rolloutHeuristicIdle: true,
   }), expected);
+});
+
+test("carries normalized activity across a bounded-tail gap and clears it on lifecycle transitions", () => {
+  const initial = parseCodexCurrentActivityStateRecords([
+    { timestamp: "2026-08-12T12:00:00.000Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    eventSummary("2026-08-12T12:00:01.000Z", "**Stable live heading**"),
+  ], { agentStatus: "active" });
+  const carried = parseCodexCurrentActivityStateRecords([
+    { timestamp: "2026-08-12T12:00:02.000Z", type: "event_msg", payload: { type: "token_count" } },
+  ], { agentStatus: "active", existingState: initial });
+
+  assert.deepEqual(carried, initial);
+
+  const cleared = parseCodexCurrentActivityStateRecords([
+    { timestamp: "2026-08-12T12:00:03.000Z", type: "turn_completed", payload: { status: "completed" } },
+    responseSummary("2026-08-12T12:00:04.000Z", "**Late duplicate**"),
+  ], { agentStatus: "active", existingState: carried });
+  assert.deepEqual(cleared, { currentActivity: null, turnOpen: false });
+
+  const nextTurn = parseCodexCurrentActivityStateRecords([
+    { timestamp: "2026-08-12T12:00:05.000Z", type: "turn_context", payload: { turn_id: "turn-2" } },
+  ], { agentStatus: "active", existingState: cleared });
+  assert.deepEqual(nextTurn, { currentActivity: null, turnOpen: true });
 });
 
 test("keeps the live heading across interim agent commentary until genuine turn completion", () => {
@@ -216,4 +240,108 @@ test("provider normalization keeps live current activity on its owning agent and
   const historicalEvidence = await provider.readSession("activity-root", { historical: true });
   const historicalState = monitorStateFromProviderEvidence("codex", historicalEvidence);
   assert.equal(historicalState.agents.every((agent) => !agent.currentActivity), true);
+});
+
+test("provider carries current activity after large records evict its source from the live tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-current-activity-tail-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "12");
+  await mkdir(directory, { recursive: true });
+  const rolloutFile = path.join(directory, "rollout-tail-activity.jsonl");
+  const sessionRecord = {
+    timestamp: "2026-08-12T12:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: "tail-activity",
+      session_id: "tail-activity",
+      source: "cli",
+      cwd: "C:\\synthetic\\pomegr",
+    },
+  };
+  const writeRecords = (records) => records.map(JSON.stringify).join("\n");
+  await writeFile(rolloutFile, `${writeRecords([
+    sessionRecord,
+    { timestamp: "2026-08-12T12:00:00.500Z", type: "turn_context", payload: { turn_id: "turn-1" } },
+    responseSummary("2026-08-12T12:00:01.000Z", "**Heading survives tail eviction**"),
+  ])}\n`, "utf8");
+
+  let now = Date.parse("2026-08-12T12:00:02.000Z");
+  const thread = {
+    id: "tail-activity",
+    sessionId: "tail-activity",
+    createdAt: 1_786_536_000,
+    updatedAt: 1_786_536_001,
+    source: "cli",
+    cwd: "C:\\synthetic\\pomegr",
+    name: "Tail activity",
+    status: { type: "notLoaded" },
+    path: rolloutFile,
+  };
+  const appServer = {
+    async listThreads() { return { data: [thread] }; },
+    async readThread({ threadId, includeTurns }) {
+      return threadId === thread.id ? { thread: { ...thread, turns: includeTurns ? [] : undefined } } : null;
+    },
+  };
+  const provider = createCodexProvider({
+    codexHome: root,
+    appServer,
+    cacheMs: 0,
+    includeArchived: false,
+    maximumStateTailBytes: 1_024,
+    maximumTaskHistoryBytes: 1_024,
+    now: () => now,
+  });
+  let providerEvidence = await provider.readSession("tail-activity", { historical: false });
+  const currentActivity = () => monitorStateFromProviderEvidence("codex", providerEvidence).agents[0]?.currentActivity;
+  assert.deepEqual(currentActivity(), {
+    label: "Heading survives tail eviction",
+    observedAt: "2026-08-12T12:00:01.000Z",
+  });
+
+  await appendFile(rolloutFile, `${writeRecords([
+    {
+      timestamp: "2026-08-12T12:00:03.000Z",
+      type: "response_item",
+      payload: { type: "custom_tool_call_output", output: "PRIVATE_TOOL_RESULT_MUST_NOT_LEAK".repeat(300) },
+    },
+    { timestamp: "2026-08-12T12:00:04.000Z", type: "event_msg", payload: { type: "token_count" } },
+  ])}\n`, "utf8");
+  now = Date.parse("2026-08-12T12:00:05.000Z");
+  providerEvidence = await provider.readSession("tail-activity", { historical: false });
+  const carriedState = monitorStateFromProviderEvidence("codex", providerEvidence);
+  assert.deepEqual(carriedState.agents[0]?.currentActivity, {
+    label: "Heading survives tail eviction",
+    observedAt: "2026-08-12T12:00:01.000Z",
+  });
+  assert.doesNotMatch(JSON.stringify(carriedState), /PRIVATE_TOOL_RESULT_MUST_NOT_LEAK/);
+
+  await appendFile(rolloutFile, `${JSON.stringify({
+    timestamp: "2026-08-12T12:00:06.000Z",
+    type: "turn_completed",
+    payload: { status: "completed" },
+  })}\n`, "utf8");
+  now = Date.parse("2026-08-12T12:00:07.000Z");
+  providerEvidence = await provider.readSession("tail-activity", { historical: false });
+  assert.equal(currentActivity(), undefined);
+
+  await appendFile(rolloutFile, `${writeRecords([
+    { timestamp: "2026-08-12T12:00:08.000Z", type: "turn_context", payload: { turn_id: "turn-2" } },
+    eventSummary("2026-08-12T12:00:09.000Z", "**Replacement heading**"),
+  ])}\n`, "utf8");
+  now = Date.parse("2026-08-12T12:00:10.000Z");
+  providerEvidence = await provider.readSession("tail-activity", { historical: false });
+  assert.deepEqual(currentActivity(), {
+    label: "Replacement heading",
+    observedAt: "2026-08-12T12:00:09.000Z",
+  });
+
+  await writeFile(rolloutFile, `${writeRecords([
+    sessionRecord,
+    { timestamp: "2026-08-12T12:00:11.000Z", type: "event_msg", payload: { type: "token_count" } },
+  ])}\n`, "utf8");
+  now = Date.parse("2026-08-12T12:00:12.000Z");
+  providerEvidence = await provider.readSession("tail-activity", { historical: false });
+  assert.equal(currentActivity(), undefined);
+  assert.equal(provider.qaStats().liveCurrentActivityEntries, 1);
 });

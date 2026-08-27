@@ -56,31 +56,57 @@ function turnStartRecord(record) {
     || record?.type === "turn_started";
 }
 
+function initialActivityState(value) {
+  if (!value || typeof value !== "object") return { currentActivity: null, turnOpen: true };
+  const currentActivity = value.currentActivity;
+  const observedAt = codexTimestamp(currentActivity?.observedAt);
+  return {
+    currentActivity: currentActivity && typeof currentActivity.label === "string" && observedAt
+      ? { label: currentActivity.label, observedAt }
+      : null,
+    turnOpen: value.turnOpen !== false,
+  };
+}
+
+/**
+ * Reduce the available rollout records into carry-forward live activity state.
+ * Existing state contains only monitor-normalized metadata from an earlier
+ * generation of the same append-only rollout.
+ */
+export function parseCodexCurrentActivityStateRecords(records, options = {}) {
+  if (options.historical
+    || TERMINAL_AGENT_STATUSES.has(options.agentStatus)
+    || (options.agentStatus === "idle" && !options.rolloutHeuristicIdle)) {
+    return { currentActivity: null, turnOpen: false };
+  }
+  let { currentActivity, turnOpen } = initialActivityState(options.existingState);
+  for (const record of Array.isArray(records) ? records : []) {
+    if (terminalRecord(record)) {
+      currentActivity = null;
+      turnOpen = false;
+      continue;
+    }
+    if (turnStartRecord(record)) {
+      currentActivity = null;
+      turnOpen = true;
+      continue;
+    }
+    if (!turnOpen) continue;
+    const observedAt = codexTimestamp(record?.timestamp);
+    if (!observedAt) continue;
+    for (const label of activityLabels(record)) {
+      if (currentActivity?.label === label && currentActivity.observedAt === observedAt) continue;
+      currentActivity = { label, observedAt };
+    }
+  }
+  return { currentActivity, turnOpen };
+}
+
 /**
  * Extract the latest provider-authored UI activity summary for one Codex agent.
  * This intentionally recognizes only the paired rollout shapes Codex uses for
  * its visible one-line reasoning heading. Arbitrary reasoning remains private.
  */
 export function parseCodexCurrentActivityRecords(records, options = {}) {
-  if (options.historical
-    || TERMINAL_AGENT_STATUSES.has(options.agentStatus)
-    || (options.agentStatus === "idle" && !options.rolloutHeuristicIdle)) return null;
-  let current = null;
-  let turnOpen = true;
-  for (const record of Array.isArray(records) ? records : []) {
-    if (terminalRecord(record)) {
-      current = null;
-      turnOpen = false;
-      continue;
-    }
-    if (turnStartRecord(record)) turnOpen = true;
-    if (!turnOpen) continue;
-    const observedAt = codexTimestamp(record?.timestamp);
-    if (!observedAt) continue;
-    for (const label of activityLabels(record)) {
-      if (current?.label === label && current.observedAt === observedAt) continue;
-      current = { label, observedAt };
-    }
-  }
-  return current;
+  return parseCodexCurrentActivityStateRecords(records, options).currentActivity;
 }
