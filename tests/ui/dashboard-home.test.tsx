@@ -195,11 +195,11 @@ describe("home dashboard", () => {
     expect(limits).not.toHaveTextContent("18 → 31% observed");
     expect(limits).not.toHaveTextContent("72 → 82% observed");
     expect(limits!.querySelectorAll(".homeLimitRequestTicks")).toHaveLength(2);
-    expect(screen.getByRole("img", { name: "Local request timing for Current session, 5 hours: 3 request observations across 2 projects." })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Local request timing for Codex, 7 days: 1 request observation across 1 project." })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Local session activity for Current session, 5 hours: 3 activity observations across 3 sessions and 2 projects." })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Local session activity for Codex, 7 days: 1 activity observation across 1 session and 1 project." })).toBeInTheDocument();
     expect(limits!.querySelector(".homeLimitActivityTimeline, .homeLimitActivityScale")).not.toBeInTheDocument();
-    expect(limits!.querySelector('[title^="pomegr · request observed at"]')).toBeInTheDocument();
-    expect(limits!.querySelector('[title^="other-repo · request observed at"]')).toBeInTheDocument();
+    expect(limits!.querySelector('[title^="pomegr · session activity observed at"]')).toBeInTheDocument();
+    expect(limits!.querySelector('[title^="other-repo · session activity observed at"]')).toBeInTheDocument();
     expect(limits!.querySelector(".homeLimitsNote")).not.toBeInTheDocument();
 
     const claudeProjects = screen.getByText("2 projects").closest("details");
@@ -207,16 +207,35 @@ describe("home dashboard", () => {
     fireEvent.click(claudeProjects!.querySelector("summary")!);
     expect(claudeProjects).toHaveAttribute("open");
     expect(within(claudeProjects!).getByText("pomegr")).toBeInTheDocument();
-    expect(within(claudeProjects!).getByText("2 requests · 66.7% of observed requests")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("2 sessions · 66.7%")).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("other-repo")).toBeInTheDocument();
-    expect(within(claudeProjects!).getByText("1 request · 33.3% of observed requests")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("1 session · 33.3%")).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("correlation evidence, not attribution or billing", { exact: false })).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("Coverage is partial: observations may begin after the window started.", { exact: false })).toBeInTheDocument();
+    expect(limits!.querySelector(".homeLimitActivityInline")).not.toBeInTheDocument();
 
     const codexProjects = screen.getByText("1 project").closest("details");
-    expect(within(codexProjects!).getByText("1 request · 100% of observed requests")).toBeInTheDocument();
+    expect(within(codexProjects!).getByText("1 session · 100%")).toBeInTheDocument();
   });
 
-  it("keeps request timing independent from quota percentage and omits the duplicate scale", async () => {
+  it("consolidates bounded coverage notices inside the project popover", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity, index) => index === 0
+        ? { ...activity, partialCoverage: true, eventsTruncated: true }
+        : activity),
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+
+    const claudeProjects = screen.getByText("2 projects").closest("details")!;
+    const consolidatedNotice = "Usage is account-level; session activity is correlation evidence, not attribution or billing. Coverage is partial: observations may begin after the window started, and session activity evidence is bounded to a recent window.";
+    expect(within(claudeProjects).getByText(consolidatedNotice)).toBeInTheDocument();
+    expect(container.querySelector(".homeLimitActivityCoverage")).not.toBeInTheDocument();
+    expect(container.querySelector(".homeLimitActivityInline")).not.toBeInTheDocument();
+  });
+
+  it("keeps session activity timing independent from quota percentage and omits the duplicate scale", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       limitActivities: snapshot.limitActivities.map((activity) => ({
@@ -227,7 +246,7 @@ describe("home dashboard", () => {
     }));
     const { container } = render(<HomeDashboard />);
     await screen.findByRole("heading", { name: "Usage & activity" });
-    const claudeTicks = screen.getByRole("img", { name: /Local request timing for Current session, 5 hours/ });
+    const claudeTicks = screen.getByRole("img", { name: /Local session activity for Current session, 5 hours/ });
     expect(claudeTicks.querySelectorAll("b")).toHaveLength(3);
     const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
     expect(Math.min(...positions)).toBeCloseTo(41.7, 1);
@@ -241,16 +260,16 @@ describe("home dashboard", () => {
     }));
     render(<HomeDashboard />);
     await screen.findByRole("heading", { name: "Usage & activity" });
-    const claudeTicks = screen.getByRole("img", { name: /Local request timing for Current session, 5 hours/ });
+    const claudeTicks = screen.getByRole("img", { name: /Local session activity for Current session, 5 hours/ });
     const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
     expect(Math.min(...positions)).toBeCloseTo(83.3, 1);
   });
 
-  it("positions Codex request ticks across the selected seven-day reset window", async () => {
+  it("positions Codex activity ticks across the selected seven-day reset window", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     render(<HomeDashboard />);
     await screen.findByRole("heading", { name: "Usage & activity" });
-    const codexTicks = screen.getByRole("img", { name: /Local request timing for Codex, 7 days/ });
+    const codexTicks = screen.getByRole("img", { name: /Local session activity for Codex, 7 days/ });
     expect(parseFloat((codexTicks.querySelector("b") as HTMLElement).style.left)).toBeCloseTo(14.2, 1);
   });
 

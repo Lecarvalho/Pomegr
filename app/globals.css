@@ -1178,8 +1178,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitRow > em { color: var(--ink); font: 600 10px/1 var(--font-geist-mono), monospace; font-style: normal; text-align: right; }
 .homeLimitRow.warning > em { color: var(--amber); }
 .homeLimitRow.critical > em { color: var(--red); }
-.homeLimitActivityStatus, .homeLimitActivityCoverage { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
-.homeLimitActivityStatus { background: var(--amber-soft); color: var(--ink); }
+.homeLimitActivityStatus { margin: 0; background: var(--amber-soft); color: var(--ink); font-size: 8px; line-height: 1.4; }
 .homeSectionHeader { min-height: 30px; margin: -4px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
 .homeSectionHeader h3 { margin: 0; color: var(--muted); font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
 .homeSectionHeader span { color: var(--muted); font: 9px/1 var(--font-geist-mono), monospace; }

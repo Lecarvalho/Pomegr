@@ -49,7 +49,12 @@ function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
 function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
   const projects = projectRequestGroups(activity.sessions || []);
   const requests = projects.flatMap((project) => project.requestObservations.map((observation) => ({ ...observation, project: project.project })));
-  if (!requests.length) return null;
+  const observedSessionIds = new Set(requests.map((observation) => observation.sessionId));
+  const coverageReasons = [
+    activity.partialCoverage ? "observations may begin after the window started" : null,
+    activity.eventsTruncated ? "session activity evidence is bounded to a recent window" : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  if (!requests.length && !coverageReasons.length) return null;
 
   const startMs = Date.parse(activity.windowStartsAt);
   const resetMs = activity.resetsAt ? Date.parse(activity.resetsAt) : NaN;
@@ -62,28 +67,36 @@ function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
     return Math.min(99.6, Math.max(0.4, ((observedMs - startMs) / rangeMs) * 100));
   };
   const projectLabel = `${projects.length} ${projects.length === 1 ? "project" : "projects"}`;
-  const requestLabel = `${requests.length} ${requests.length === 1 ? "request observation" : "request observations"}`;
+  const observationLabel = `${requests.length} activity ${requests.length === 1 ? "observation" : "observations"}`;
+  const sessionLabel = `${observedSessionIds.size} ${observedSessionIds.size === 1 ? "session" : "sessions"}`;
+  const detailsLabel = requests.length ? projectLabel : "About activity";
   const observedShare = (count: number) => {
-    const percent = (count / requests.length) * 100;
+    const percent = (count / observedSessionIds.size) * 100;
     return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
   };
 
   return (
     <>
-      <span className="homeLimitRequestTicks" role="img" aria-label={`Local request timing for ${activity.label}, ${activity.window}: ${requestLabel} across ${projectLabel}.`}>
-        {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={`${observation.project} · request observed at ${limitTime(observation.observedAt)}`} />)}
-      </span>
+      {requests.length > 0 && <span className="homeLimitRequestTicks" role="img" aria-label={`Local session activity for ${activity.label}, ${activity.window}: ${observationLabel} across ${sessionLabel} and ${projectLabel}.`}>
+        {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={`${observation.project} · session activity observed at ${limitTime(observation.observedAt)}`} />)}
+      </span>}
       <details className="homeLimitProjects">
-        <summary aria-label={`Show ${projectLabel} observed during the ${activity.window} window`}>{projectLabel}</summary>
-        <div className="homeLimitProjectsPanel" role="group" aria-label={`Observed project requests for ${activity.label}, ${activity.window}`}>
-          <strong className="homeLimitProjectsTitle">Observed project requests</strong>
-          <ul>
-            {projects.map((project) => <li key={project.project}>
-              <strong>{project.project}</strong>
-              <span>{project.requestObservations.length} {project.requestObservations.length === 1 ? "request" : "requests"} · {observedShare(project.requestObservations.length)} of observed requests</span>
-            </li>)}
-          </ul>
-          <p>Usage is account-level; project timing is correlation evidence, not attribution or billing.</p>
+        <summary aria-label={requests.length ? `Show ${projectLabel} observed during the ${activity.window} window` : `Show observation details for the ${activity.window} window`}>{detailsLabel}</summary>
+        <div className="homeLimitProjectsPanel" role="group" aria-label={requests.length ? `Observed project sessions for ${activity.label}, ${activity.window}` : `Session activity details for ${activity.label}, ${activity.window}`}>
+          <strong className="homeLimitProjectsTitle">{requests.length ? "Observed project sessions" : "About session activity"}</strong>
+          {requests.length > 0 && <ul>
+            {projects.map((project) => {
+              const sessionCount = new Set(project.requestObservations.map((observation) => observation.sessionId)).size;
+              return <li key={project.project}>
+                <strong>{project.project}</strong>
+                <span>{sessionCount} {sessionCount === 1 ? "session" : "sessions"} · {observedShare(sessionCount)}</span>
+              </li>;
+            })}
+          </ul>}
+          <p>
+            Usage is account-level; session activity is correlation evidence, not attribution or billing.
+            {coverageReasons.length > 0 && <> Coverage is partial: {coverageReasons.join(", and ")}.</>}
+          </p>
         </div>
       </details>
     </>
@@ -96,7 +109,7 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
     <section className="homeLimits" aria-labelledby="home-limits-heading">
       <header className="homeLimitsHeader">
         <h2 id="home-limits-heading">Usage &amp; activity</h2>
-        <span>Provider-reported usage · local request timing</span>
+        <span>Provider-reported usage · local session activity</span>
       </header>
       <div className="homeProviderLimits">
         {providers.map(({ provider, source, usageLimits }) => {
@@ -118,7 +131,7 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
                   {usageLimits.limits.map((limit) => {
                     const percent = Math.min(100, Math.max(0, limit.percent));
                     const activity = activities.find((item) => item.provider === provider && item.limitId === limit.id);
-                    const showActivityNotes = activity && (activity.status === "collecting" || activity.partialCoverage || activity.eventsTruncated);
+                    const showCollectingStatus = activity?.status === "collecting";
                     return (
                       <div className="homeLimitEntry" key={limit.id}>
                         <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
@@ -129,10 +142,8 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
                           </div>
                           <em>{Math.round(limit.percent)}%</em>
                         </div>
-                        {showActivityNotes && <div className="homeLimitActivityInline">
-                          {activity.status === "collecting" && <p className="homeLimitActivityStatus" role="status">Collecting account observations.</p>}
-                          {activity.partialCoverage && <p className="homeLimitActivityCoverage">Partial coverage · observations may begin after the window started.</p>}
-                          {activity.eventsTruncated && <p className="homeLimitActivityCoverage">Request evidence is incomplete or bounded to a recent window.</p>}
+                        {showCollectingStatus && <div className="homeLimitActivityInline">
+                          <p className="homeLimitActivityStatus" role="status">Collecting account observations.</p>
                         </div>}
                       </div>
                     );
