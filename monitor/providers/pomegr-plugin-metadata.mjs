@@ -29,6 +29,18 @@ function claudeHostMetadataText(record) {
   if (record.type === "user" && record.isMeta === true && record.message?.role === "user") {
     return textBlocks(record.message.content);
   }
+  const attachment = record.attachment;
+  if (
+    record.type === "attachment"
+    && attachment
+    && typeof attachment === "object"
+    && !Array.isArray(attachment)
+    && attachment.type === "hook_additional_context"
+    && attachment.hookName === "SessionStart"
+    && attachment.hookEvent === "SessionStart"
+  ) {
+    return textBlocks(attachment.content);
+  }
   return [];
 }
 

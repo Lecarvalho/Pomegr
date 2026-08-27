@@ -44,6 +44,12 @@ test("Claude fixtures cover current normalized extraction inputs", async () => {
   const toolNames = new Set(records.flatMap((record) => record.message?.content || []).map((item) => item.name).filter(Boolean));
 
   assert.equal(records.some((record) => record.type === "custom-title" && record.cwd && record.gitBranch), true);
+  assert.equal(records.some((record) => (
+    record.type === "attachment"
+    && record.attachment?.type === "hook_additional_context"
+    && record.attachment?.hookName === "SessionStart"
+    && record.attachment?.hookEvent === "SessionStart"
+  )), true);
   assert.equal(records.some((record) => record.permissionMode), true);
   assert.equal(records.some((record) => record.message?.usage), true);
   assert.deepEqual([...toolNames].sort(), [

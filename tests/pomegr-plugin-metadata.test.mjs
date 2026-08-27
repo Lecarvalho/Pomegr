@@ -37,12 +37,36 @@ test("accepts host metadata records and rejects user-authored lookalikes", () =>
     timestamp: "2026-08-26T12:00:00.000Z",
     message: { role: "user", content: metadata },
   };
+  const claudeAttachment = {
+    type: "attachment",
+    timestamp: "2026-08-26T12:00:01.000Z",
+    attachment: {
+      type: "hook_additional_context",
+      hookName: "SessionStart",
+      hookEvent: "SessionStart",
+      content: [metadata],
+    },
+  };
   const claudeUser = { ...claudeMeta, isMeta: false };
   assert.equal(pomegrPluginMetadataFromRecord(claudeMeta, "claude")?.policyStatus, "missing");
+  assert.equal(pomegrPluginMetadataFromRecord(claudeAttachment, "claude")?.version, "0.4.1");
   assert.equal(pomegrPluginMetadataFromRecord(claudeUser, "claude"), null);
   assert.equal(pomegrPluginMetadataFromRecord({ ...claudeMeta, type: "assistant" }, "claude"), null);
   assert.equal(pomegrPluginMetadataFromRecord({ ...claudeMeta, message: { role: "assistant", content: metadata } }, "claude"), null);
   assert.equal(pomegrPluginMetadataFromRecord({ type: "system", subtype: "away_summary", content: metadata }, "claude"), null);
+  assert.equal(pomegrPluginMetadataFromRecord({ ...claudeAttachment, type: "user" }, "claude"), null);
+  assert.equal(pomegrPluginMetadataFromRecord({
+    ...claudeAttachment,
+    attachment: { ...claudeAttachment.attachment, type: "hook_success", stdout: metadata },
+  }, "claude"), null);
+  assert.equal(pomegrPluginMetadataFromRecord({
+    ...claudeAttachment,
+    attachment: { ...claudeAttachment.attachment, hookName: "PreToolUse" },
+  }, "claude"), null);
+  assert.equal(pomegrPluginMetadataFromRecord({
+    ...claudeAttachment,
+    attachment: { ...claudeAttachment.attachment, hookEvent: "PreToolUse" },
+  }, "claude"), null);
 
   const codexDeveloper = {
     type: "response_item",
@@ -82,10 +106,14 @@ test("reads metadata without returning surrounding transcript content", async (c
   context.after(() => rm(directory, { recursive: true, force: true }));
   const file = path.join(directory, "session.jsonl");
   await writeFile(file, `${JSON.stringify({
-    type: "user",
-    isMeta: true,
+    type: "attachment",
     timestamp: "2026-08-26T12:00:00.000Z",
-    message: { role: "user", content: `${marker("0.4.1", "valid", 7)}\nPRIVATE_POLICY_TEXT_MUST_NOT_LEAK` },
+    attachment: {
+      type: "hook_additional_context",
+      hookName: "SessionStart",
+      hookEvent: "SessionStart",
+      content: [`${marker("0.4.1", "valid", 7)}\nPRIVATE_POLICY_TEXT_MUST_NOT_LEAK`],
+    },
   })}\n`, "utf8");
   const result = await readLatestPomegrPluginMetadata(file, "claude");
   assert.equal(result.version, "0.4.1");
