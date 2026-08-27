@@ -24,6 +24,7 @@ const snapshot = {
     limitId: "current-session",
     label: "Current session",
     window: "5 hours",
+    scope: "account",
     percent: 31,
     resetsAt: "2026-08-23T15:00:00.000Z",
     windowStartsAt: "2026-08-23T09:00:00.000Z",
@@ -71,6 +72,7 @@ const snapshot = {
     limitId: "codex-secondary",
     label: "Codex",
     window: "7 days",
+    scope: "account",
     percent: 82,
     resetsAt: "2026-08-29T12:00:00.000Z",
     windowStartsAt: "2026-08-22T12:00:00.000Z",
@@ -212,10 +214,115 @@ describe("home dashboard", () => {
     expect(within(claudeProjects!).getByText("1 session · 33.3%")).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("correlation evidence, not attribution or billing", { exact: false })).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("Coverage is partial: observations may begin after the window started.", { exact: false })).toBeInTheDocument();
-    expect(limits!.querySelector(".homeLimitActivityInline")).not.toBeInTheDocument();
-
     const codexProjects = screen.getByText("1 project").closest("details");
     expect(within(codexProjects!).getByText("1 session · 100%")).toBeInTheDocument();
+  });
+
+  it("shows the observed-project disclosure below Claude's seven-day all-models bar", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      providerLimits: snapshot.providerLimits.map((entry, index) => index === 0
+        ? {
+            ...entry,
+            usageLimits: {
+              ...entry.usageLimits,
+              limits: [
+                ...entry.usageLimits.limits,
+                { id: "all-models", label: "All models", window: "7 days", percent: 85, resetsAt: "2026-08-29T12:00:00.000Z", severity: "warning" as const, active: false },
+              ],
+            },
+          }
+        : entry),
+      limitActivities: [
+        ...snapshot.limitActivities,
+        {
+          ...snapshot.limitActivities[0],
+          limitId: "all-models",
+          label: "All models",
+          window: "7 days",
+          percent: 85,
+          resetsAt: "2026-08-29T12:00:00.000Z",
+          windowStartsAt: "2026-08-22T12:00:00.000Z",
+          windowStartsAtExact: true,
+          partialCoverage: false,
+        },
+      ],
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+
+    const weeklyRow = container.querySelector('.homeLimitRow.critical[aria-label="All models, 7 days, 85% used"]')!;
+    const disclosure = weeklyRow.querySelector("details.homeLimitProjects")!;
+    expect(disclosure).toBeInTheDocument();
+    expect(disclosure.querySelector("summary")).toHaveAttribute("aria-label", "Show 2 projects observed during the 7 days window");
+    fireEvent.click(disclosure.querySelector("summary")!);
+    expect(disclosure).toHaveAttribute("open");
+    expect(within(disclosure).getByText("Observed project sessions")).toBeInTheDocument();
+  });
+
+  it("shows model-scoped request ticks and project activity below Fable's seven-day bar", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      providerLimits: snapshot.providerLimits.map((entry, index) => index === 0
+        ? {
+            ...entry,
+            usageLimits: {
+              ...entry.usageLimits,
+              limits: [
+                ...entry.usageLimits.limits,
+                { id: "model-fable", label: "Fable", window: "7 days", percent: 19, resetsAt: "2026-08-29T12:00:00.000Z", severity: "normal" as const, active: false },
+              ],
+            },
+          }
+        : entry),
+      limitActivities: [
+        ...snapshot.limitActivities,
+        {
+          ...snapshot.limitActivities[0],
+          limitId: "model-fable",
+          label: "Fable",
+          window: "7 days",
+          scope: "model" as const,
+          percent: 19,
+          resetsAt: "2026-08-29T12:00:00.000Z",
+          windowStartsAt: "2026-08-22T12:00:00.000Z",
+          windowStartsAtExact: true,
+          partialCoverage: false,
+        },
+      ],
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+
+    const fableRow = container.querySelector('.homeLimitRow[aria-label="Fable, 7 days, 19% used"]')!;
+    const ticks = within(fableRow).getByRole("img", { name: "Local request activity for Fable, 7 days: 3 request observations across 2 projects." });
+    expect(ticks.querySelectorAll("b")).toHaveLength(3);
+    expect(ticks.querySelector('[title^="pomegr · Fable request observed at"]')).toBeInTheDocument();
+    expect(ticks.querySelector('[title^="other-repo · Fable request observed at"]')).toBeInTheDocument();
+
+    const disclosure = fableRow.querySelector("details.homeLimitProjects")!;
+    expect(disclosure.querySelector("summary")).toHaveTextContent("2 projects");
+    fireEvent.click(disclosure.querySelector("summary")!);
+    expect(within(disclosure).getByText("Observed Fable activity")).toBeInTheDocument();
+    expect(within(disclosure).getByText("2 requests · 66.7%")).toBeInTheDocument();
+    expect(within(disclosure).getByText("1 request · 33.3%")).toBeInTheDocument();
+    expect(within(disclosure).getByText("Fable usage is account-level; request activity is correlation evidence, not attribution or billing.")).toBeInTheDocument();
+    expect(within(disclosure).queryByText("Observed project sessions")).not.toBeInTheDocument();
+  });
+
+  it("does not surface the internal account-observation collection state", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
+      ...snapshot,
+      limitActivities: snapshot.limitActivities.map((activity, index) => index === 0
+        ? { ...activity, status: "collecting" as const }
+        : activity),
+    }));
+    const { container } = render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+
+    expect(screen.queryByText("Collecting account observations.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Building activity baseline for Current session, 5 hours." })).not.toBeInTheDocument();
+    expect(container.querySelector(".homeLimitCollecting")).not.toBeInTheDocument();
   });
 
   it("consolidates bounded coverage notices inside the project popover", async () => {
@@ -232,7 +339,6 @@ describe("home dashboard", () => {
     const consolidatedNotice = "Usage is account-level; session activity is correlation evidence, not attribution or billing. Coverage is partial: observations may begin after the window started, and session activity evidence is bounded to a recent window.";
     expect(within(claudeProjects).getByText(consolidatedNotice)).toBeInTheDocument();
     expect(container.querySelector(".homeLimitActivityCoverage")).not.toBeInTheDocument();
-    expect(container.querySelector(".homeLimitActivityInline")).not.toBeInTheDocument();
   });
 
   it("keeps session activity timing independent from quota percentage and omits the duplicate scale", async () => {

@@ -37,6 +37,15 @@ function sparkLimit(limit) {
   return /(?:^|[^a-z0-9])(?:gpt-)?5[.-]3-codex-spark(?:[^a-z0-9]|$)/i.test(`${limit.limitId} ${limit.label}`);
 }
 
+function fableModel(value) {
+  const model = boundedText(value, 120)?.toLowerCase().replace(/[\s_.:]+/g, "-");
+  return Boolean(model && /(?:^|-)fable(?:-|$)/.test(model));
+}
+
+function modelMatchesLimit(limit, model) {
+  return limit.provider === "claude" && limit.limitId === "model-fable" && fableModel(model);
+}
+
 function normalizedProviderLimits(item) {
   if (!item || typeof item !== "object") return null;
   const provider = boundedText(item.provider, 80);
@@ -49,8 +58,12 @@ function normalizedProviderLimits(item) {
   const candidates = usageLimits.limits.filter((limit) => limit && typeof limit === "object");
   const eligible = provider === "codex"
     ? candidates.filter((limit) => windowDurationMs(limit.window) !== null)
-    : [candidates.find((limit) => boundedText(limit.id, 120) === "current-session" && windowDurationMs(limit.window) === FIVE_HOURS_MS)
-      || candidates.find((limit) => windowDurationMs(limit.window) === FIVE_HOURS_MS)].filter(Boolean);
+    : [
+        candidates.find((limit) => boundedText(limit.id, 120) === "current-session" && windowDurationMs(limit.window) === FIVE_HOURS_MS)
+          || candidates.find((limit) => windowDurationMs(limit.window) === FIVE_HOURS_MS),
+        candidates.find((limit) => boundedText(limit.id, 120) === "all-models" && windowDurationMs(limit.window) === SEVEN_DAYS_MS),
+        candidates.find((limit) => boundedText(limit.id, 120) === "model-fable" && windowDurationMs(limit.window) === SEVEN_DAYS_MS),
+      ].filter(Boolean);
   return eligible.flatMap((selected) => {
     const limitId = boundedText(selected.id, 120) || "current-session";
     const label = boundedText(selected.label, 160) || "Current session";
@@ -62,7 +75,8 @@ function normalizedProviderLimits(item) {
       ? null
       : timestamp(selected.resetsAt);
     if (selected.resetsAt !== null && selected.resetsAt !== undefined && !resetsAt) return [];
-    return [{ provider, source, limitId, label, window, durationMs, percent, resetsAt, observedAt }];
+    const scope = provider === "claude" && limitId === "model-fable" ? "model" : "account";
+    return [{ provider, source, limitId, label, window, scope, durationMs, percent, resetsAt, observedAt }];
   });
 }
 
@@ -86,9 +100,10 @@ function safeSession(session) {
   }).sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
   const requestModelObservations = (Array.isArray(session.requestModelObservations) ? session.requestModelObservations : []).flatMap((observation) => {
     if (!observation || typeof observation !== "object") return [];
+    const id = boundedText(observation.id, 180);
     const observedAt = timestamp(observation.observedAt);
     const model = boundedText(observation.model, 120);
-    return observedAt && model ? [{ observedAt, model }] : [];
+    return observedAt && model ? [{ ...(id ? { id } : {}), observedAt, model }] : [];
   });
   return {
     id,
@@ -249,6 +264,7 @@ export function createHomeLimitActivityTracker({
           limitId: current.limitId,
           label: current.label,
           window: current.window,
+          scope: current.scope,
           durationMs: current.durationMs,
           windowStartsAt,
           windowStartsAtExact,
@@ -300,19 +316,25 @@ export function createHomeLimitActivityTracker({
         ? new Date(startMs + history.durationMs).toISOString()
         : null;
       const providerSessions = rawProviderSessions
-        .map((session) => ({
-          ...session,
-          requestObservations: session.requestObservations.filter((request) => {
-            const at = Date.parse(request.observedAt);
-            return at >= startMs && at <= endMs;
-          }),
-          usageLimitRejections: session.usageLimitRejections.filter((event) => {
-            const at = Date.parse(event.observedAt);
-            return at >= startMs && at <= endMs
-              && expectedResetAt !== null
-              && event.resetsAt === expectedResetAt;
-          }),
-        }));
+        .map((session) => {
+          const scopedModels = session.requestModelObservations.filter((observation) => modelMatchesLimit(history, observation.model));
+          const scopedRequestIds = new Set(scopedModels.flatMap((observation) => observation.id ? [observation.id] : []));
+          return {
+            ...session,
+            requestObservations: session.requestObservations.filter((request) => {
+              const at = Date.parse(request.observedAt);
+              const inScope = history.scope !== "model"
+                || scopedRequestIds.has(request.id);
+              return at >= startMs && at <= endMs && inScope;
+            }),
+            usageLimitRejections: session.usageLimitRejections.filter((event) => {
+              const at = Date.parse(event.observedAt);
+              return at >= startMs && at <= endMs
+                && expectedResetAt !== null
+                && event.resetsAt === expectedResetAt;
+            }),
+          };
+        });
       const matchingSessions = providerSessions
         .filter((session) => session.requestObservations.length > 0)
         .sort((left, right) => {
@@ -358,6 +380,7 @@ export function createHomeLimitActivityTracker({
         limitId: history.limitId,
         label: history.label,
         window: history.window,
+        scope: history.scope,
         percent: latestSample.percent,
         resetsAt: latestSample.resetsAt,
         windowStartsAt,

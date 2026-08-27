@@ -114,8 +114,9 @@ test("home snapshot correlates Claude limit movement across live-only projects",
   const entries = [
     { id: "claude:live", provider: "claude", source: "Claude Code", title: "Live session", project: "repo-live", updatedAt: "2026-08-23T12:10:00.000Z", isLive: true, needsInput: false },
     { id: "claude:closed", provider: "claude", source: "Claude Code", title: "Closed session", project: "repo-closed", updatedAt: "2026-08-23T12:05:00.000Z", isLive: false, needsInput: false },
+    { id: "claude:weekly", provider: "claude", source: "Claude Code", title: "Weekly session", project: "repo-weekly", updatedAt: "2026-08-20T13:00:00.000Z", isLive: false, needsInput: false },
   ];
-  const request = (dedupeId, timestamp) => ({
+  const request = (dedupeId, timestamp, model = "claude-sonnet-4") => ({
     dedupeId,
     actorId: "primary",
     timestamp,
@@ -124,17 +125,18 @@ test("home snapshot correlates Claude limit movement across live-only projects",
     cacheWrite: 0,
     cacheRead: 0,
     token: "PRIVATE_TOKEN",
-    model: "PRIVATE_MODEL",
+    model,
     prompt: "PRIVATE_PROMPT",
     command: "PRIVATE_COMMAND",
     credential: "PRIVATE_CREDENTIAL",
   });
   const evidenceById = new Map([
-    ["claude:live", evidence({ project: "repo-live", startedAt: "2026-08-23T11:30:00.000Z", updatedAt: "2026-08-23T12:10:00.000Z", agents: [agent("primary")], usageSnapshots: [request("live-request", "2026-08-23T12:10:00.000Z")] })],
+    ["claude:live", evidence({ project: "repo-live", startedAt: "2026-08-23T11:30:00.000Z", updatedAt: "2026-08-23T12:10:00.000Z", agents: [agent("primary")], usageSnapshots: [request("live-request", "2026-08-23T12:10:00.000Z", "claude-fable-4")] })],
     ["claude:closed", evidence({ project: "repo-closed", startedAt: "2026-08-23T10:30:00.000Z", updatedAt: "2026-08-23T12:05:00.000Z", agents: [agent("primary", "finished")], usageSnapshots: [request("closed-request", "2026-08-23T12:05:00.000Z")], usageLimitRejections: [{ observedAt: "2026-08-23T12:20:00.000Z", resetsAt: "2026-08-23T17:00:00.000Z", private: "PRIVATE_REJECTION_PAYLOAD" }] })],
+    ["claude:weekly", evidence({ project: "repo-weekly", startedAt: "2026-08-20T12:30:00.000Z", updatedAt: "2026-08-20T13:00:00.000Z", agents: [agent("primary", "finished")], usageSnapshots: [request("weekly-request", "2026-08-20T13:00:00.000Z", "CLAUDE.FABLE.4")] })],
   ]);
   let currentTime = Date.parse("2026-08-23T12:00:00.000Z");
-  let limit = { fetchedAt: "2026-08-23T12:00:00.000Z", percent: 10 };
+  let limit = { fetchedAt: "2026-08-23T12:00:00.000Z", percent: 10, weeklyPercent: 40, fablePercent: 12 };
   const runtime = runtimeFixture(entries, evidenceById, {
     now: () => currentTime,
     homeSnapshotCacheMs: 0,
@@ -144,7 +146,11 @@ test("home snapshot correlates Claude limit movement across live-only projects",
       async readUsageLimits(selectedProvider) {
         assert.equal(selectedProvider.id, "claude");
         assert.equal(selectedProvider.source, "Claude Code");
-        return { available: true, ...limit, attemptedAt: limit.fetchedAt, limits: [{ id: "current-session", label: "Current session", window: "5 hours", percent: limit.percent, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: true }], error: "" };
+        return { available: true, fetchedAt: limit.fetchedAt, attemptedAt: limit.fetchedAt, limits: [
+          { id: "current-session", label: "Current session", window: "5 hours", percent: limit.percent, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: true },
+          { id: "all-models", label: "All models", window: "7 days", percent: limit.weeklyPercent, resetsAt: "2026-08-27T12:00:00.000Z", severity: "normal", active: false },
+          { id: "model-fable", label: "Fable", window: "7 days", percent: limit.fablePercent, resetsAt: "2026-08-27T12:00:00.000Z", severity: "normal", active: false },
+        ], error: "" };
       },
       async readSession(id) {
         return { evidence: evidenceById.get(id), provider: claudeProvider, sessionId: id };
@@ -154,14 +160,19 @@ test("home snapshot correlates Claude limit movement across live-only projects",
 
   const first = await runtime.homeSnapshot();
   currentTime = Date.parse("2026-08-23T12:30:00.000Z");
-  limit = { fetchedAt: "2026-08-23T12:15:00.000Z", percent: 35 };
+  limit = { fetchedAt: "2026-08-23T12:15:00.000Z", percent: 35, weeklyPercent: 46, fablePercent: 19 };
   const second = await runtime.homeSnapshot();
 
   assert.deepEqual(first.projects.map(({ project }) => project), ["repo-live"]);
   assert.deepEqual(second.projects.map(({ project }) => project), ["repo-live"]);
   assert.equal(second.projects[0].sessions.length, 1);
-  assert.equal(second.limitActivities.length, 1);
-  const activity = second.limitActivities[0];
+  assert.equal(second.limitActivities.length, 3);
+  const activity = second.limitActivities.find(({ limitId }) => limitId === "current-session");
+  const weeklyActivity = second.limitActivities.find(({ limitId }) => limitId === "all-models");
+  const fableActivity = second.limitActivities.find(({ limitId }) => limitId === "model-fable");
+  assert.ok(activity);
+  assert.ok(weeklyActivity);
+  assert.ok(fableActivity);
   assert.equal(activity.provider, "claude");
   assert.equal(activity.source, "Claude Code");
   assert.deepEqual(activity.sessions.map(({ project, isLive }) => ({ project, isLive })), [
@@ -179,7 +190,54 @@ test("home snapshot correlates Claude limit movement across live-only projects",
     "2026-08-23T12:05:00.000Z",
     "2026-08-23T12:10:00.000Z",
   ]);
-  assert.doesNotMatch(JSON.stringify(second), /PRIVATE|token|model|prompt|command|credential/i);
+  assert.deepEqual(weeklyActivity.sessions.map(({ project }) => project), ["repo-weekly", "repo-closed", "repo-live"]);
+  assert.equal(weeklyActivity.window, "7 days");
+  assert.equal(fableActivity.scope, "model");
+  assert.deepEqual(fableActivity.sessions.map(({ project }) => project), ["repo-weekly", "repo-live"]);
+  assert.equal(fableActivity.sessions.every((session) => session.requestObservations.length === 1), true);
+  assert.doesNotMatch(JSON.stringify(second), /claude-fable|claude-sonnet|requestModelObservations/i);
+  assert.doesNotMatch(JSON.stringify(second), /PRIVATE|token|prompt|command|credential/i);
+});
+
+test("home snapshot loads seven-day Claude history for a Fable-only activity limit", async () => {
+  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const entry = { id: "claude:fable-history", provider: "claude", source: "Claude Code", title: "Fable history", project: "repo-fable", updatedAt: "2026-08-20T13:00:00.000Z", isLive: false, needsInput: false };
+  const usageSnapshots = [{
+    dedupeId: "fable-request",
+    actorId: "primary",
+    timestamp: "2026-08-20T13:00:00.000Z",
+    input: 100,
+    output: 20,
+    cacheWrite: 0,
+    cacheRead: 0,
+    model: "claude-fable-4",
+  }];
+  const state = await runtimeFixture([entry], new Map([[entry.id, evidence({
+    project: "repo-fable",
+    startedAt: "2026-08-20T12:30:00.000Z",
+    updatedAt: "2026-08-20T13:00:00.000Z",
+    agents: [agent("primary", "finished")],
+    usageSnapshots,
+  })]]), {
+    registry: {
+      defaultProvider: claudeProvider,
+      providers: [claudeProvider],
+      async readUsageLimits() {
+        return { available: true, fetchedAt: "2026-08-23T12:00:00.000Z", attemptedAt: "2026-08-23T12:00:00.000Z", limits: [
+          { id: "model-fable", label: "Fable", window: "7 days", percent: 19, resetsAt: "2026-08-27T12:00:00.000Z", severity: "normal", active: false },
+        ], error: "" };
+      },
+      async readSession() {
+        return { evidence: evidence({ project: "repo-fable", startedAt: "2026-08-20T12:30:00.000Z", updatedAt: "2026-08-20T13:00:00.000Z", agents: [agent("primary", "finished")], usageSnapshots }), provider: claudeProvider, sessionId: entry.id };
+      },
+    },
+  }).homeSnapshot();
+
+  assert.equal(state.limitActivities.length, 1);
+  assert.equal(state.limitActivities[0].limitId, "model-fable");
+  assert.equal(state.limitActivities[0].scope, "model");
+  assert.deepEqual(state.limitActivities[0].sessions.map(({ project }) => project), ["repo-fable"]);
+  assert.doesNotMatch(JSON.stringify(state), /claude-fable|requestModelObservations/i);
 });
 
 test("home limit activity marks failed live request evidence as truncated", async () => {

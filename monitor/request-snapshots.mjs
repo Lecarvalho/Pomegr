@@ -72,10 +72,10 @@ export function buildRequestSnapshots({ sessionId = "session", agents = [], usag
 }
 
 /** Monitor-private model evidence corresponding exactly to valid request snapshots. */
-export function buildRequestModelObservations({ agents = [], usageSnapshots = [] } = {}) {
+export function buildRequestModelObservations({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
   return normalizedRequestEvidence(agents, usageSnapshots).flatMap(({ snapshot, timestamp }) => {
     if (typeof snapshot.model !== "string") return [];
     const model = snapshot.model.trim();
-    return model && model.length <= 120 ? [{ observedAt: timestamp, model }] : [];
+    return model && model.length <= 120 ? [{ id: opaqueId(sessionId, snapshot, timestamp), observedAt: timestamp, model }] : [];
   });
 }

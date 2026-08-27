@@ -48,11 +48,11 @@ function isLimitActivityWindow(value) {
 }
 
 function limitActivityWindowMs(provider, providerLimits) {
-  if (provider !== "codex") return HOME_FIVE_HOUR_LIMIT_WINDOW_MS;
-  const codexLimits = providerLimits.find((item) => item?.provider === provider)?.usageLimits?.limits;
-  return Array.isArray(codexLimits) && codexLimits.some((limit) => {
+  const limits = providerLimits.find((item) => item?.provider === provider)?.usageLimits?.limits;
+  return Array.isArray(limits) && limits.some((limit) => {
     const window = String(limit?.window || "").trim().toLowerCase().replace(/\s+/g, " ");
-    return window === "7 days" || window === "7 day" || window === "7d";
+    const isSevenDays = window === "7 days" || window === "7 day" || window === "7d";
+    return isSevenDays && (provider !== "claude" || limit?.id === "all-models" || limit?.id === "model-fable");
   }) ? HOME_SEVEN_DAY_LIMIT_WINDOW_MS : HOME_FIVE_HOUR_LIMIT_WINDOW_MS;
 }
 
@@ -190,8 +190,8 @@ function homeSessionSummary(entry, evidence, resourceUsage) {
     createdAt: evidence.session.startedAt,
     requestObservationsAvailable: true,
     requestObservations: tokenUsage.requestSnapshots.items.map(({ id, observedAt }) => ({ id, observedAt })),
-    requestModelObservations: entry.provider === "codex"
-      ? buildRequestModelObservations({ agents, usageSnapshots: Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [] })
+    requestModelObservations: entry.provider === "codex" || entry.provider === "claude"
+      ? buildRequestModelObservations({ sessionId: entry.id, agents, usageSnapshots: Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [] })
       : [],
     usageLimitRejections: Array.isArray(evidence.usageLimitRejections)
       ? evidence.usageLimitRejections.map(({ observedAt, resetsAt }) => ({ observedAt, resetsAt }))

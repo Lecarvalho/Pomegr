@@ -322,7 +322,7 @@ export type HomeProviderUsageLimits = {
   usageLimits: UsageLimits;
 };
 
-/** One bounded request-time observation used only to correlate account-limit movement. */
+/** One bounded request-time observation used only to correlate provider-reported limit movement. */
 export type HomeLimitRequestObservation = {
   id: string;
   observedAt: string;
@@ -346,7 +346,7 @@ export type HomeLimitMovement = {
 };
 
 /**
- * Account-level plan movement aligned with local request timestamps. This is
+ * Provider-reported plan movement aligned with local request timestamps. This is
  * correlation evidence, never proportional session attribution or billing.
  */
 export type HomeLimitActivity = {
@@ -355,6 +355,8 @@ export type HomeLimitActivity = {
   limitId: string;
   label: string;
   window: string;
+  /** Whether local activity is correlated to the whole account limit or one model-scoped limit. */
+  scope: "account" | "model";
   percent: number;
   resetsAt: string | null;
   windowStartsAt: string;

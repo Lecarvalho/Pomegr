@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
+import { buildRequestModelObservations, buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
 
 const agents = [{ id: "primary" }, { id: "child" }];
 
@@ -68,6 +68,18 @@ test("normalizes independent chronological request snapshots with only recompute
     usageSnapshots: [snapshot("PRIVATE_PROVIDER_EVENT_ONE", "primary", "2026-08-10T14:01:00.000Z", { input: 1 })],
   }).items[0].id);
   assert.doesNotMatch(JSON.stringify(feed), /PRIVATE|dedupeId|model|comparisonGroup|privateProviderField|999999999/);
+});
+
+test("keeps model observations monitor-private and aligned to opaque request IDs", () => {
+  const usageSnapshots = [snapshot("PRIVATE_PROVIDER_EVENT", "primary", "2026-08-10T14:01:00.000Z", { input: 1 })];
+  const requestFeed = buildRequestSnapshots({ sessionId: "provider:session", agents, usageSnapshots });
+  const modelObservations = buildRequestModelObservations({ sessionId: "provider:session", agents, usageSnapshots });
+
+  assert.equal(modelObservations.length, 1);
+  assert.equal(modelObservations[0].id, requestFeed.items[0].id);
+  assert.equal(modelObservations[0].observedAt, requestFeed.items[0].observedAt);
+  assert.equal(modelObservations[0].model, "PRIVATE_MODEL_MUST_NOT_LEAK");
+  assert.doesNotMatch(JSON.stringify(requestFeed), /PRIVATE|model/i);
 });
 
 test("deduplicates internally and keeps the latest 100 valid snapshots per agent", () => {

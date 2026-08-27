@@ -7,6 +7,18 @@ const limit = (fetchedAt, percent, resetsAt = "2026-08-25T17:00:00.000Z") => ({
   source: "Claude Code",
   usageLimits: { fetchedAt, limits: [{ id: "current-session", label: "Current session", window: "5 hours", percent, resetsAt }] },
 });
+const claudeLimits = (fetchedAt = "2026-08-25T17:00:00.000Z") => ({
+  provider: "claude",
+  source: "Claude Code",
+  usageLimits: {
+    fetchedAt,
+    limits: [
+      { id: "current-session", label: "Current session", window: "5 hours", percent: 23, resetsAt: "2026-08-25T17:00:00.000Z" },
+      { id: "all-models", label: "All models", window: "7 days", percent: 61, resetsAt: "2026-08-29T17:00:00.000Z" },
+      { id: "model-fable", label: "Fable", window: "7 days", percent: 19, resetsAt: "2026-08-29T17:00:00.000Z" },
+    ],
+  },
+});
 const rejection = (observedAt, resetsAt = "2026-08-25T17:00:00.000Z") => ({ observedAt, resetsAt });
 const session = (id, requestObservations, extra = {}) => ({ id, provider: "claude", source: "Claude Code", createdAt: "2026-08-25T11:00:00.000Z", title: id, project: "repo", isLive: false, requestObservations, usageLimitRejections: [], ...extra });
 const build = (tracker, providerLimits, sessions = [], generatedAt = "2026-08-25T17:00:00.000Z") => tracker.build({ providerLimits, sessions, generatedAt });
@@ -35,6 +47,54 @@ test("collects a first current five-hour sample", () => {
   assert.equal(activities[0].percent, 12);
   assert.equal(activities[0].observedFrom, "2026-08-25T12:00:00.000Z");
   assert.deepEqual(activities[0].observations, [{ observedAt: "2026-08-25T12:00:00.000Z", percent: 12 }]);
+});
+
+test("tracks Claude account windows and filters Fable activity to matching requests", () => {
+  const tracker = createHomeLimitActivityTracker();
+  const activities = build(tracker, [claudeLimits()], [
+    session("weekly-only", [{ id: "weekly-fable", observedAt: "2026-08-23T16:00:00.000Z" }], {
+      requestModelObservations: [{ id: "weekly-fable", observedAt: "2026-08-23T16:00:00.000Z", model: "claude-fable-4" }],
+    }),
+    session("recent", [
+      { id: "recent-fable", observedAt: "2026-08-25T16:30:00.000Z" },
+      { id: "recent-other", observedAt: "2026-08-25T16:40:00.000Z" },
+    ], {
+      requestModelObservations: [
+        { id: "recent-fable", observedAt: "2026-08-25T16:30:00.000Z", model: "CLAUDE.FABLE.4" },
+        { id: "recent-other", observedAt: "2026-08-25T16:40:00.000Z", model: "claude-sonnet-4" },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(activities.map(({ limitId }) => limitId), ["current-session", "all-models", "model-fable"]);
+  assert.deepEqual(activities.map(({ scope }) => scope), ["account", "account", "model"]);
+  assert.deepEqual(activities[0].sessions.map(({ id }) => id), ["recent"]);
+  assert.deepEqual(activities[1].sessions.map(({ id }) => id), ["recent", "weekly-only"]);
+  assert.deepEqual(activities[2].sessions.map(({ id, requestObservations }) => ({ id, requests: requestObservations.map((request) => request.id) })), [
+    { id: "recent", requests: ["recent-fable"] },
+    { id: "weekly-only", requests: ["weekly-fable"] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(activities), /claude-fable|claude-sonnet|requestModelObservations/i);
+});
+
+test("fails closed when Fable model evidence has no opaque request ID", () => {
+  const tracker = createHomeLimitActivityTracker();
+  const observedAt = "2026-08-25T16:30:00.000Z";
+  const activities = build(tracker, [claudeLimits()], [
+    session("ambiguous", [
+      { id: "fable-request", observedAt },
+      { id: "other-request", observedAt },
+    ], {
+      requestModelObservations: [
+        { observedAt, model: "claude-fable-4" },
+        { id: "other-request", observedAt, model: "claude-sonnet-4" },
+      ],
+    }),
+  ]);
+
+  const fableActivity = activities.find(({ limitId }) => limitId === "model-fable");
+  assert.deepEqual(fableActivity.sessions, []);
+  assert.doesNotMatch(JSON.stringify(activities), /claude-fable|claude-sonnet|requestModelObservations/i);
 });
 
 test("selects the Spark five-hour limit only when Spark is the unique dominant Codex model", () => {
