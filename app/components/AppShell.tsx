@@ -65,7 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (!controller.signal.aborted && nextSessions && nextLiveSessions) {
           startTransition(() => {
             setSessions((current) => preserveSessionOrder(current, nextSessions));
-            setLiveSessions(nextLiveSessions);
+            setLiveSessions((current) => preserveSessionOrder(current, nextLiveSessions));
             setConnected(true);
             setLoading(false);
           });

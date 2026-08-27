@@ -69,9 +69,9 @@ export function groupSessionsByProject(sessions: SessionSummary[]) {
   return [...groups].map(([project, projectSessions]) => ({ project, sessions: projectSessions }));
 }
 
-export function preserveSessionOrder(current: SessionSummary[], incoming: SessionSummary[]) {
+export function preserveSessionOrder<T extends SessionSummary>(current: T[], incoming: T[]) {
   const incomingById = new Map(incoming.map((session) => [session.id, session]));
-  const ordered: SessionSummary[] = [];
+  const ordered: T[] = [];
   const seen = new Set<string>();
   const append = (id: string) => {
     const session = incomingById.get(id);

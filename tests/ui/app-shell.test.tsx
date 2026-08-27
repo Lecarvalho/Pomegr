@@ -42,6 +42,7 @@ function LiveSessionConsumer() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   navigation.pathname = "/about";
   navigation.push.mockReset();
@@ -126,5 +127,36 @@ describe("shared app shell", () => {
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ cache: "no-store" }));
+  });
+
+  it("keeps live-session creation order when refreshed activity changes the incoming order", async () => {
+    vi.useFakeTimers();
+    navigation.pathname = "/";
+    const first = { ...liveSessions[0], id: "codex:first", title: "Created first", updatedAt: "2026-08-24T11:58:00.000Z" };
+    const second = { ...liveSessions[0], id: "codex:second", title: "Created second", updatedAt: "2026-08-24T11:59:00.000Z" };
+    const refreshedSecond = { ...second, updatedAt: "2026-08-24T12:01:00.000Z", activityStatus: "idle" as const, progress: { ...second.progress!, percent: 100 } };
+    const catalogSessions = (items: LiveSessionSummary[]) => items.map((session) => ({
+      id: session.id,
+      provider: session.provider,
+      source: session.source,
+      title: session.title,
+      project: session.project,
+      updatedAt: session.updatedAt,
+      isLive: session.isLive,
+      needsInput: session.needsInput,
+      activityStatus: session.activityStatus,
+    }));
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => response({ sessions: catalogSessions([first, second]), liveSessions: [first, second] }))
+      .mockImplementationOnce(() => response({ sessions: catalogSessions([refreshedSecond, first]), liveSessions: [refreshedSecond, first] }));
+
+    render(<AppShell><LiveSessionConsumer /></AppShell>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created first 42%, Created second 42%");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created first 42%, Created second 100%");
+    expect(screen.getByRole("button", { name: /Created second.*Idle/ })).toBeInTheDocument();
   });
 });

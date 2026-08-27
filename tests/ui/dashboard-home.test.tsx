@@ -278,7 +278,7 @@ describe("home dashboard", () => {
     const { container } = renderHome();
     expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
     expect(screen.getByText("Build home")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
     expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
     expect(container.querySelector('.homeLimitRow[aria-label="Current session, 5 hours, 31% used"]')).toBeInTheDocument();
     expect(container.querySelector('.homeLimitRow.warning[aria-label="Codex, 7 days, 82% used"]')).toBeInTheDocument();
