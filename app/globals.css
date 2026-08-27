@@ -1142,6 +1142,21 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .agentTreeView-rail .agentTreeEvidence { grid-column: 2 / 4; grid-row: 2; display: flex; gap: 8px; overflow: hidden; }
 .agentTreeView-rail .agentTreeEvidence > span.agentTreeStatus, .agentTreeView-rail .agentTreeEvidence > span.agentTreeRecency { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* Agent-history marks stay quiet and inherit each agent line's foreground shade. */
+.agentHistoryIndicators { min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.agentHistoryIndicator.agentChip { position: relative; width: 18px; min-width: 18px; max-width: none; height: 18px; min-height: 18px; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; box-shadow: none; overflow: visible; letter-spacing: 0; text-transform: none; }
+.agentHistoryIndicator.agentChip:hover, .agentHistoryIndicator.agentChip[aria-expanded="true"] { border-color: transparent; background: transparent; color: var(--ink); box-shadow: none; }
+.agentHistoryIndicator.agentChip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.agentHistoryIndicator .agentChipLabel { position: relative; width: 100%; height: 100%; display: grid; place-items: center; overflow: visible; }
+.agentHistoryIcon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+.agentHistoryCount { position: absolute; inset-block-start: -2px; inset-inline-end: -2px; min-width: 8px; color: currentColor; font: 650 7px/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; text-align: center; }
+.agentTreeHistoryIndicators { margin: 0; justify-self: start; }
+.agentTreeView-columns .agentTreeHistoryIndicators { align-self: end; }
+.agentTreeView-rail .agentTreeEvidence > span.agentTreeHistoryIndicators { display: inline-flex; flex: 0 0 16px; overflow: visible; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryIndicator { width: 12px; min-width: 12px; height: 12px; min-height: 12px; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryIcon { width: 10px; height: 10px; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryCount { inset-block-start: -3px; inset-inline-end: -3px; font-size: 6px; }
+
 /* Home overview: compact, provider-neutral live work. */
 .homeApp { min-height: 100vh; }
 .homeSidebarHeader { display: none; }

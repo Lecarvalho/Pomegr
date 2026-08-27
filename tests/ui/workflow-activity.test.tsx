@@ -5,7 +5,7 @@ import { Dashboard } from "../../app/Dashboard";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { WorkflowActivityPanel } from "../../app/components/dashboard/WorkflowActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import type { Agent, MonitorState, Workflow } from "../../shared/monitor-contract";
+import type { Agent, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 function worker(overrides: Partial<Agent> = {}): Agent {
@@ -69,6 +69,50 @@ describe("workflow activity and agent tree view", () => {
     expect(rows).toHaveLength(3);
     expect(screen.queryByRole("button", { name: /Workflow agents/ })).not.toBeInTheDocument();
     expect(screen.getByText("unknown")).toBeInTheDocument();
+  });
+
+  it("shows symbol-only compaction counts independently for each agent", async () => {
+    const user = userEvent.setup();
+    const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
+    const child = worker({ id: "child", parentId: "primary", label: "Child agent", workflowId: null, workflowPhaseId: null });
+    const quiet = worker({ id: "quiet", parentId: "primary", label: "Quiet agent", workflowId: null, workflowPhaseId: null });
+    const contextBoundaries: ContextHistoryBoundary[] = [
+      { id: "auto-primary", agentId: "primary", timestamp: "2026-08-15T12:01:00.000Z", kind: "automatic_compaction", preTokens: 80_000 },
+      { id: "manual-primary", agentId: "primary", timestamp: "2026-08-15T12:02:00.000Z", kind: "manual_compaction", preTokens: null },
+      { id: "manual-child", agentId: "child", timestamp: "2026-08-15T12:02:30.000Z", kind: "manual_compaction", preTokens: 70_000 },
+      { id: "drop-quiet", agentId: "quiet", timestamp: "2026-08-15T12:02:45.000Z", kind: "snapshot_drop", preTokens: 65_000 },
+    ];
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child, quiet]} contextBoundaries={contextBoundaries} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:compactions" viewMode="list" workflows={[]} /></LiveClockProvider>);
+
+    const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, 2 compactions/ });
+    const childRow = screen.getByRole("listitem", { name: /Child agent agent, 1 compaction/ });
+    const quietRow = screen.getByRole("listitem", { name: "Quiet agent agent" });
+    const primaryMark = within(primaryRow).getByRole("button", { name: "2 compactions · 1 automatic · 1 manual." });
+    expect(primaryMark.querySelector("svg.agentHistoryIcon")).toBeInTheDocument();
+    expect(primaryMark.querySelector(".agentHistoryDot")).not.toBeInTheDocument();
+    expect(primaryMark).toHaveTextContent("2");
+    expect(within(childRow).getByRole("button", { name: "1 compaction · 1 manual." })).toHaveTextContent("1");
+    expect(within(quietRow).queryByRole("button", { name: /compaction/ })).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".agentHistoryIndicator")).toHaveLength(2);
+    expect(screen.queryByText(/compaction/i)).not.toBeInTheDocument();
+
+    await user.hover(primaryMark);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("2 compactions · 1 automatic · 1 manual.");
+  });
+
+  it("aggregates compaction counts only for agents represented by a Tree cluster", () => {
+    const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
+    const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));
+    const contextBoundaries: ContextHistoryBoundary[] = [
+      { id: "cluster-auto", agentId: "clustered-0", timestamp: "2026-08-15T12:01:00.000Z", kind: "automatic_compaction", preTokens: 80_000 },
+      { id: "cluster-manual", agentId: "clustered-3", timestamp: "2026-08-15T12:02:00.000Z", kind: "manual_compaction", preTokens: null },
+      { id: "primary-manual", agentId: "primary", timestamp: "2026-08-15T12:02:30.000Z", kind: "manual_compaction", preTokens: null },
+    ];
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} contextBoundaries={contextBoundaries} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:cluster-compactions" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+
+    const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 compactions/ });
+    expect(within(cluster).getByRole("button", { name: "2 compactions across 5 agents · 1 automatic · 1 manual." })).toHaveTextContent("2");
+    expect(screen.getByRole("treeitem", { name: /Primary, orchestrator, active, 1 compaction/ })).toBeInTheDocument();
   });
 
   it("toggles terminal subagents in List and Tree and remembers the choice per session", async () => {
