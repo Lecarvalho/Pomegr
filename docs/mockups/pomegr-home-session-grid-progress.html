@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Pomegr — Compact session progress grid</title>
+  <style>
+    :root {
+      --ink: #222220;
+      --muted: #5d5d58;
+      --paper: #edede8;
+      --sidebar: #e8e8e3;
+      --panel: #f6f6f3;
+      --panel-2: #efefeb;
+      --line: #cfcfc9;
+      --line-strong: #b8b8b1;
+      --green: #426953;
+      --green-soft: #e1e9e3;
+      --blue: #4e5c89;
+      --amber: #7d4f21;
+      --amber-soft: #eee3d5;
+      --red: #994238;
+      --font-sans: Inter, "Segoe UI", Arial, sans-serif;
+      --font-mono: "Geist Mono", Consolas, monospace;
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #f0ebed;
+      --muted: #aaa2a7;
+      --paper: #09090b;
+      --sidebar: #0c0c0f;
+      --panel: #101013;
+      --panel-2: #131217;
+      --line: #29252b;
+      --line-strong: #39333a;
+      --green: #79bf9b;
+      --green-soft: #182a22;
+      --blue: #9aa9dd;
+      --amber: #d7a165;
+      --amber-soft: #332419;
+      --red: #e0607d;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--paper); scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-sans); }
+    button, a { font: inherit; }
+    ::selection { background: var(--green); color: var(--panel); }
+    :where(a, button):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+    .shell { width: min(1400px, calc(100% - 56px)); min-height: 100vh; margin: 0 auto; display: flex; flex-direction: column; }
+    .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+    .brand img { width: 31px; height: 31px; object-fit: contain; }
+    .brand strong { font-size: 19px; font-weight: 700; letter-spacing: -.025em; }
+    .top-actions { display: flex; align-items: center; gap: 18px; }
+    .connection { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+    .connection i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 13%, transparent); }
+    .theme-toggle { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--ink); cursor: pointer; }
+    .theme-toggle:hover { border-color: var(--line-strong); background: var(--panel-2); }
+    .theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+    main { flex: 1; padding: 42px 0 36px; }
+    .intro { margin-bottom: 27px; }
+    .intro h1 { margin: 0; font-size: clamp(31px, 4vw, 48px); font-weight: 520; letter-spacing: -.04em; line-height: 1; }
+    .intro p { max-width: 70ch; margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+    .limits-board { min-width: 0; margin-bottom: 28px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .limits-header { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+    .limits-header h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 670; }
+    .limits-header span { color: var(--muted); font: 9px/1 var(--font-mono); }
+    .limits-grid { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .limit-provider { min-width: 0; padding: 13px 16px 15px; }
+    .limit-provider + .limit-provider { border-left: 1px solid var(--line); }
+    .limit-provider > header { min-height: 20px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .limit-provider > header h3 { margin: 0; font-size: 11px; font-weight: 680; }
+    .limit-provider > header small { color: var(--muted); font-size: 8.5px; }
+    .limit-list { margin-top: 11px; display: grid; gap: 9px; }
+    .limit-row { min-width: 0; display: grid; grid-template-columns: minmax(115px, 1fr) minmax(86px, .8fr) 42px; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+    .limit-label, .limit-label strong, .limit-label small { min-width: 0; display: block; }
+    .limit-label strong { overflow: hidden; font-size: 9px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+    .limit-label small { margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+    .limit-row meter { width: 100%; height: 4px; display: block; appearance: none; border: 0; background: var(--line); }
+    .limit-row meter::-webkit-meter-bar { height: 4px; border: 0; border-radius: 0; background: var(--line); }
+    .limit-row meter::-webkit-meter-optimum-value { background: var(--blue); }
+    .limit-row meter::-moz-meter-bar { background: var(--blue); }
+    .limit-row.warning meter::-webkit-meter-optimum-value { background: var(--amber); }
+    .limit-row.warning meter::-moz-meter-bar { background: var(--amber); }
+    .limit-row em { color: var(--ink); font: 620 10px/1 var(--font-mono); font-style: normal; text-align: right; }
+    .limit-row.warning em { color: var(--amber); }
+    .limit-provider-activity { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .limit-activity-header { min-height: 22px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .limit-activity-header strong { font-size: 9px; font-weight: 660; }
+    .limit-activity-header span { color: var(--muted); font: 8px/1 var(--font-mono); }
+    .project-lanes { margin-top: 15px; display: grid; gap: 10px; }
+    .project-lane { min-width: 0; display: grid; grid-template-columns: minmax(105px, 132px) minmax(0, 1fr); align-items: center; gap: 12px; }
+    .project-lane > span, .project-lane strong, .project-lane small { min-width: 0; display: block; }
+    .project-lane strong { overflow: hidden; font-size: 9px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+    .project-lane small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+    .request-track { height: 13px; position: relative; display: block; border-bottom: 1px solid var(--line); }
+    .request-track i { position: absolute; bottom: -4px; left: var(--request-at); width: 7px; height: 7px; margin-left: -3.5px; border: 1px solid var(--panel); border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+    .activity-scale { margin: 14px 0 0 144px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 8px/1 var(--font-mono); }
+    .limits-note { margin: 0; padding: 10px 16px 11px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.45; }
+
+    .running-board { min-width: 0; }
+    .section-header { min-height: 35px; margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+    .section-header h2 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 670; }
+    .section-header span { color: var(--green); font: 750 9px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
+    .session-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+
+    .session-card { min-width: 0; min-height: 205px; padding: 13px 13px 12px; position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); text-align: left; }
+    .card-status { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--green); font: 760 9px/1 var(--font-mono); letter-spacing: .055em; text-transform: uppercase; }
+    .card-status .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
+    .card-status .project-name { min-width: 0; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+    .card-status time { flex: 0 0 auto; margin-left: auto; color: var(--muted); font-weight: 600; letter-spacing: 0; white-space: nowrap; text-transform: none; }
+    .session-card.needs-input .card-status, .session-card.blocked .card-status { color: var(--amber); }
+    .session-card.complete .card-status { color: var(--green); }
+    .session-card h4 { min-height: 38px; margin: 13px 0 0; overflow: hidden; display: -webkit-box; color: var(--ink); font-size: 14px; font-weight: 670; letter-spacing: -.015em; line-height: 1.32; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .session-meta { margin: 6px 0 0; overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+    .provider { color: var(--green); font: 720 9px/1 var(--font-mono); letter-spacing: .05em; text-transform: uppercase; }
+
+    .progress-block { margin-top: 16px; }
+    .progress-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .progress-line strong { min-width: 0; overflow: hidden; color: var(--ink); font: 760 9px/1 var(--font-mono); letter-spacing: .075em; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+    .progress-line b { color: var(--ink); font: 620 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+    progress { width: 100%; height: 5px; margin: 8px 0 0; display: block; appearance: none; border: 0; background: var(--line); }
+    progress::-webkit-progress-bar { background: var(--line); }
+    progress::-webkit-progress-value { background: var(--green); }
+    progress::-moz-progress-bar { background: var(--green); }
+    .blocked progress::-webkit-progress-value { background: var(--amber); }
+    .blocked progress::-moz-progress-bar { background: var(--amber); }
+    .eta { margin: 7px 0 0; color: var(--muted); font: 9px/1.3 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .card-footer { min-width: 0; margin-top: auto; padding-top: 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); }
+    .card-footer span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .card-footer .session-state { color: var(--green); font: 740 8px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+    .blocked .card-footer .session-state, .needs-input .card-footer .session-state { color: var(--amber); }
+    .card-footer b { flex: 0 0 auto; color: var(--blue); font: 620 10px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .history-strip { min-height: 70px; margin-top: 18px; padding: 13px 16px; display: grid; grid-template-columns: minmax(150px, 1.15fr) repeat(3, minmax(90px, .55fr)); align-items: center; gap: 16px; border: 1px solid var(--line); background: var(--panel); }
+    .history-title strong, .history-title small { display: block; }
+    .history-title strong { font-size: 11px; }
+    .history-title small { margin-top: 4px; color: var(--muted); font-size: 8.5px; }
+    .history-metric { min-width: 0; }
+    .history-metric b, .history-metric small { display: block; }
+    .history-metric b { overflow: hidden; font: 620 15px/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+    .history-metric small { margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.2; }
+    footer { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 1260px) {
+      .session-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (max-width: 1020px) {
+      .session-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .history-strip { grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(80px, .5fr)); }
+    }
+    @media (max-width: 740px) {
+      .shell { width: min(100% - 28px, 1400px); }
+      .limits-grid { grid-template-columns: 1fr; }
+      .limit-provider + .limit-provider { border-top: 1px solid var(--line); border-left: 0; }
+      .session-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .history-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .history-title { grid-column: 1 / -1; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+      .connection { display: none; }
+      .intro { margin-bottom: 21px; }
+      main { padding-top: 28px; }
+    }
+    @media (max-width: 460px) {
+      .session-grid { grid-template-columns: 1fr; }
+      .session-card { min-height: 190px; }
+      .limits-header span { display: none; }
+      .limit-provider { padding-right: 0; padding-left: 0; }
+      .project-lane { grid-template-columns: minmax(90px, 112px) minmax(0, 1fr); gap: 9px; }
+      .activity-scale { margin-left: 121px; }
+      .limits-note { padding-right: 0; padding-left: 0; }
+      .history-strip { grid-template-columns: 1fr; gap: 11px; }
+      .history-title { grid-column: auto; }
+      .history-metric { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .history-metric small { margin: 0; }
+      footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 5px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Pomegr home">
+        <img src="../../public/pomegr-logo.png" alt="">
+        <strong>Pomegr</strong>
+      </a>
+      <div class="top-actions">
+        <span class="connection"><i aria-hidden="true"></i>Monitor connected</span>
+        <button class="theme-toggle" type="button" aria-label="Switch to dark theme" title="Switch theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.4A8 8 0 0 1 8.6 4a8.1 8.1 0 1 0 11.4 11.4Z"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <h1 id="page-title">Running sessions</h1>
+        <p>Active work across every project. Progress appears only when reported by the agent; estimates are snapshots, not Pomegr predictions.</p>
+      </section>
+
+      <section class="limits-board" aria-labelledby="limits-title">
+        <header class="limits-header">
+          <h2 id="limits-title">Usage &amp; activity</h2>
+          <span>Provider-reported limits · local request timing</span>
+        </header>
+        <div class="limits-grid">
+          <article class="limit-provider">
+            <header><h3>Claude Code</h3><small>Updated just now</small></header>
+            <div class="limit-list">
+              <div class="limit-row">
+                <span class="limit-label"><strong>Current session</strong><small id="claude-session-reset">18→31% observed · resets in 2h 14m</small></span>
+                <meter min="0" max="100" value="31" aria-label="Claude Code current session limit, 31% used" aria-describedby="claude-session-reset">31%</meter>
+                <em>31%</em>
+              </div>
+              <div class="limit-row">
+                <span class="limit-label"><strong>Weekly</strong><small id="claude-weekly-reset">Resets in 4d 8h</small></span>
+                <meter min="0" max="100" value="64" aria-label="Claude Code weekly limit, 64% used" aria-describedby="claude-weekly-reset">64%</meter>
+                <em>64%</em>
+              </div>
+            </div>
+            <section class="limit-provider-activity" aria-labelledby="claude-project-timing">
+              <header class="limit-activity-header"><strong id="claude-project-timing">Project timing</strong><span>Current session · 5h</span></header>
+              <div class="project-lanes" aria-label="Claude Code project request observations">
+                <div class="project-lane">
+                  <span><strong>Pomegr</strong><small>2 requests · live</small></span>
+                  <span class="request-track" role="img" aria-label="Pomegr requests observed at 11:30 and 11:40"><i style="--request-at:52%" aria-hidden="true"></i><i style="--request-at:68%" aria-hidden="true"></i></span>
+                </div>
+                <div class="project-lane">
+                  <span><strong>Transcript Guard</strong><small>1 request</small></span>
+                  <span class="request-track" role="img" aria-label="Transcript Guard request observed at 11:45"><i style="--request-at:76%" aria-hidden="true"></i></span>
+                </div>
+              </div>
+              <div class="activity-scale" aria-hidden="true"><span>Started 9:00</span><span>Now</span></div>
+            </section>
+          </article>
+
+          <article class="limit-provider">
+            <header><h3>Codex</h3><small>Updated 1m ago</small></header>
+            <div class="limit-list">
+              <div class="limit-row">
+                <span class="limit-label"><strong>5-hour window</strong><small id="codex-five-hour-reset">Resets in 1h 06m</small></span>
+                <meter min="0" max="100" value="47" aria-label="Codex 5-hour limit, 47% used" aria-describedby="codex-five-hour-reset">47%</meter>
+                <em>47%</em>
+              </div>
+              <div class="limit-row warning">
+                <span class="limit-label"><strong>Weekly</strong><small id="codex-weekly-reset">72→82% observed · resets in 5d 1h</small></span>
+                <meter min="0" max="100" value="82" aria-label="Codex weekly limit, 82% used" aria-describedby="codex-weekly-reset">82%</meter>
+                <em>82%</em>
+              </div>
+            </div>
+            <section class="limit-provider-activity" aria-labelledby="codex-project-timing">
+              <header class="limit-activity-header"><strong id="codex-project-timing">Project timing</strong><span>Weekly · 7d</span></header>
+              <div class="project-lanes" aria-label="Codex project request observations">
+                <div class="project-lane">
+                  <span><strong>Agent Bridge</strong><small>2 requests · live</small></span>
+                  <span class="request-track" role="img" aria-label="Agent Bridge requests observed August 24 at 14:20 and August 26 at 11:53"><i style="--request-at:61%" aria-hidden="true"></i><i style="--request-at:84%" aria-hidden="true"></i></span>
+                </div>
+                <div class="project-lane">
+                  <span><strong>Planwatch</strong><small>1 request · live</small></span>
+                  <span class="request-track" role="img" aria-label="Planwatch request observed August 25 at 11:40"><i style="--request-at:72%" aria-hidden="true"></i></span>
+                </div>
+              </div>
+              <div class="activity-scale" aria-hidden="true"><span>7d ago</span><span>Now</span></div>
+            </section>
+          </article>
+        </div>
+        <p class="limits-note">Account-level consumption and project request timing share a window; Pomegr does not assign provider usage to a project.</p>
+      </section>
+
+        <section class="running-board" aria-labelledby="running-title">
+          <header class="section-header"><h2 id="running-title">Running now</h2><span>7 sessions · 7 projects</span></header>
+          <div class="session-grid">
+            <article class="session-card">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Pomegr</span><time datetime="2026-08-26T12:00:00-04:00">just now</time></div>
+              <h4>Design home session progress</h4>
+              <p class="session-meta"><span class="provider">Codex</span> · 1 agent</p>
+              <div class="progress-block">
+                <div class="progress-line"><strong>Verifying</strong><b>85%</b></div>
+                <progress max="100" value="85" aria-label="Agent-reported session progress" aria-valuetext="85% complete, verifying"></progress>
+                <p class="eta">ETA 1–3 min</p>
+              </div>
+              <div class="card-footer"><span class="session-state">Active</span><b>18.4k context</b></div>
+            </article>
+
+            <article class="session-card">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Agent Bridge</span><time datetime="2026-08-26T11:58:00-04:00">2m ago</time></div>
+              <h4>Codex provider integration</h4>
+              <p class="session-meta"><span class="provider">Codex</span> · 3/4 agents</p>
+              <div class="progress-block">
+                <div class="progress-line"><strong>Implementing</strong><b>63%</b></div>
+                <progress max="100" value="63" aria-label="Agent-reported session progress" aria-valuetext="63% complete, implementing"></progress>
+                <p class="eta">ETA 12–18 min</p>
+              </div>
+              <div class="card-footer"><span class="session-state">Active</span><b>91.7k context</b></div>
+            </article>
+
+            <article class="session-card">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Transcript Guard</span><time datetime="2026-08-26T11:57:00-04:00">3m ago</time></div>
+              <h4>Harden transcript privacy</h4>
+              <p class="session-meta"><span class="provider">Claude Code</span> · 2 agents</p>
+              <div class="progress-block">
+                <div class="progress-line"><strong>Verifying</strong><b>92%</b></div>
+                <progress max="100" value="92" aria-label="Agent-reported session progress" aria-valuetext="92% complete, verifying"></progress>
+                <p class="eta">ETA 4–7 min</p>
+              </div>
+              <div class="card-footer"><span class="session-state">Active</span><b>74.2k context</b></div>
+            </article>
+
+            <article class="session-card blocked">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Planwatch</span><time datetime="2026-08-26T11:53:00-04:00">7m ago</time></div>
+              <h4>Investigate usage limits</h4>
+              <p class="session-meta"><span class="provider">Claude Code</span> · 1 agent</p>
+              <div class="progress-block">
+                <div class="progress-line"><strong>Blocked</strong><b>41%</b></div>
+                <progress max="100" value="41" aria-label="Agent-reported session progress" aria-valuetext="41% complete, blocked"></progress>
+              </div>
+              <div class="card-footer"><span class="session-state">Blocked</span><b>38.6k context</b></div>
+            </article>
+
+            <article class="session-card complete">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Release Tools</span><time datetime="2026-08-26T11:55:00-04:00">5m ago</time></div>
+              <h4>Prepare release candidate</h4>
+              <p class="session-meta"><span class="provider">Codex</span> · 2 agents</p>
+              <div class="progress-block">
+                <div class="progress-line"><strong>Complete</strong><b>100%</b></div>
+                <progress max="100" value="100" aria-label="Agent-reported session progress" aria-valuetext="100% complete"></progress>
+              </div>
+              <div class="card-footer"><span class="session-state">Complete</span><b>52.1k context</b></div>
+            </article>
+
+            <article class="session-card">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">API Lab</span><time datetime="2026-08-26T11:59:00-04:00">1m ago</time></div>
+              <h4>Review API serialization</h4>
+              <p class="session-meta"><span class="provider">Codex</span> · 1 agent</p>
+              <div class="card-footer"><span class="session-state">Active</span><b>14.8k context</b></div>
+            </article>
+
+            <article class="session-card needs-input">
+              <div class="card-status"><span class="dot" aria-hidden="true"></span><span class="project-name">Desktop Shell</span><time datetime="2026-08-26T11:50:00-04:00">10m ago</time></div>
+              <h4>Improve desktop shell</h4>
+              <p class="session-meta"><span class="provider">Claude Code</span> · 1 agent</p>
+              <div class="card-footer"><span class="session-state">Needs input</span><b>22.5k context</b></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="history-strip" aria-label="Seven-day history across all projects">
+          <div class="history-title"><strong>7-day overview</strong><small>All projects</small></div>
+          <div class="history-metric"><b>23</b><small>completed</small></div>
+          <div class="history-metric"><b>18m</b><small>median wall time</small></div>
+          <div class="history-metric"><b>42.8k</b><small>median final context</small></div>
+        </section>
+    </main>
+
+    <footer><span>Local observer · Read-only</span><span>HTML layout prototype · five-card maximum</span></footer>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const button = document.querySelector('.theme-toggle');
+    button.addEventListener('click', () => {
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      button.setAttribute('aria-label', `Switch to ${next === 'dark' ? 'light' : 'dark'} theme`);
+    });
+  </script>
+</body>
+</html>

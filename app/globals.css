@@ -999,6 +999,7 @@ html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: #7130
   .aboutBack { padding-right: 10px; padding-left: 10px; white-space: nowrap; }
 }
 
+
 @media (max-width: 360px) {
   .topbarLead { gap: 2px; }
   .topbarLead .brandWordmark { width: 76px; }
@@ -1131,7 +1132,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .agentTreeView-rail .agentTreeEvidence { grid-column: 2 / 4; grid-row: 2; display: flex; gap: 8px; overflow: hidden; }
 .agentTreeView-rail .agentTreeEvidence > span.agentTreeStatus, .agentTreeView-rail .agentTreeEvidence > span.agentTreeRecency { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-/* Home overview: compact, neutral project folios. */
+/* Home overview: compact, provider-neutral live work. */
 .homeApp { min-height: 100vh; }
 .homeSidebarHeader { display: none; }
 .homeContent { min-width: 0; padding: 42px 0 34px; }
@@ -1149,63 +1150,36 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeProviderLimit > header { min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .homeProviderLimit > header small { min-width: 0; overflow: hidden; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
 .homeProviderLimit > p { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
-.homeLimitList { min-width: 0; margin-top: 10px; display: grid; gap: 8px; }
+.homeLimitList { min-width: 0; margin-top: 10px; display: grid; gap: 10px; }
+.homeLimitEntry { min-width: 0; }
 .homeLimitRow { min-width: 0; display: grid; grid-template-columns: minmax(90px, 1fr) minmax(68px, .65fr) 38px; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
 .homeLimitRow > span, .homeLimitRow > span strong, .homeLimitRow > span small { min-width: 0; display: block; }
 .homeLimitRow > span strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .homeLimitRow > span small { margin-top: 2px; color: var(--muted); font: 7.5px/1.1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .04em; }
-.homeLimitTrack { height: 4px; overflow: hidden; background: var(--line); }
+.homeLimitRow > .homeLimitTrackStack { position: relative; min-width: 0; display: grid; gap: 3px; }
+.homeLimitTrack { height: 4px; display: block; overflow: hidden; background: var(--line); }
 .homeLimitTrack b { display: block; height: 100%; background: var(--blue); transition: width .2s ease-out; }
+.homeLimitRequestTicks { position: relative; height: 7px; overflow: hidden; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.homeLimitRequestTicks b { position: absolute; top: -1px; width: 1px; height: 7px; display: block; background: var(--ink); }
+.homeLimitProjects { position: relative; justify-self: start; min-width: 0; color: var(--muted); font: 7.5px/1.2 var(--font-geist-mono), monospace; }
+.homeLimitProjects summary { width: max-content; max-width: 100%; min-height: 18px; display: flex; align-items: center; overflow: hidden; color: inherit; cursor: pointer; list-style: none; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent); text-decoration-style: dotted; text-underline-offset: 3px; text-overflow: ellipsis; white-space: nowrap; }
+.homeLimitProjects summary::-webkit-details-marker { display: none; }
+.homeLimitProjects summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.homeLimitProjects[open] { z-index: 20; color: var(--ink); }
+.homeLimitProjectsPanel { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; width: min(280px, calc(100vw - 32px)); padding: 11px 12px 12px; border: 1px solid var(--line-strong); background: var(--panel-2); box-shadow: 0 14px 28px rgba(0, 0, 0, .24); color: var(--ink); }
+.homeLimitProjectsTitle { display: block; font-size: 9px; font-weight: 650; }
+.homeLimitProjectsPanel ul { margin: 9px 0 0; padding: 0; list-style: none; }
+.homeLimitProjectsPanel li { min-width: 0; padding: 7px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 12px; border-top: 1px solid var(--line); }
+.homeLimitProjectsPanel li > strong { min-width: 0; overflow: hidden; font-size: 8px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.homeLimitProjectsPanel li > span { color: var(--muted); font-size: 7px; text-align: right; white-space: nowrap; }
+.homeLimitProjectsPanel p { margin: 3px 0 0; padding-top: 9px; border-top: 1px solid var(--line); color: var(--muted); font: 8px/1.45 var(--font-inter), sans-serif; }
 .homeLimitRow.warning .homeLimitTrack b { background: var(--amber); }
 .homeLimitRow.critical .homeLimitTrack b { background: var(--red); }
 .homeLimitRow > em { color: var(--ink); font: 600 10px/1 var(--font-geist-mono), monospace; font-style: normal; text-align: right; }
 .homeLimitRow.warning > em { color: var(--amber); }
 .homeLimitRow.critical > em { color: var(--red); }
-.homeLimitActivity { --disclosure-accent: var(--amber); min-width: 0; margin: 0 0 24px; overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
-.homeLimitActivitySummary { display: grid; grid-template-columns: max-content max-content; align-items: baseline; justify-content: end; gap: 5px 16px; }
-.homeLimitActivitySummaryItem { display: contents; }
-.homeLimitActivitySummaryProvider { text-align: left; }
-.homeLimitActivitySummaryProjects { text-align: right; }
-.homeLimitActivityDescription { max-width: none; margin: 0; padding: 11px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.45; }
-.homeLimitActivityCard + .homeLimitActivityCard { border-top: 1px solid var(--line-strong); }
-.homeLimitActivityCardHeader { min-height: 64px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.homeLimitActivityCardHeader > div:first-child { min-width: 0; display: flex; align-items: center; gap: 10px; }
-.homeLimitActivityCardHeader h3 { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.homeLimitActivityCardHeader small { flex: 0 0 auto; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
-.homeLimitActivityCurrent { flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
-.homeLimitActivityCurrent strong { color: var(--blue); font: 650 22px/1 var(--font-geist-mono), monospace; }
-.homeLimitActivityCard.warning .homeLimitActivityCurrent strong { color: var(--amber); }
-.homeLimitActivityCard.critical .homeLimitActivityCurrent strong { color: var(--red); }
-.homeLimitActivityCurrent span { color: var(--muted); font-size: 9px; }
-.homeLimitActivityStatus, .homeLimitActivityCoverage { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.4; }
+.homeLimitActivityStatus, .homeLimitActivityCoverage { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
 .homeLimitActivityStatus { background: var(--amber-soft); color: var(--ink); }
-.homeLimitActivityCoverage + .homeLimitActivityCoverage { padding-top: 0; }
-.homeLimitActivityTimeline { min-width: 0; margin: 0; padding: 15px 16px 18px; }
-.homeLimitActivityTimeline figcaption { margin-bottom: 15px; color: var(--muted); font: 8px/1.25 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .06em; }
-.homeLimitActivityProjects { min-width: 0; display: grid; gap: 13px; }
-.homeLimitActivityProject { min-width: 0; display: grid; grid-template-columns: minmax(140px, 154px) minmax(0, 1fr); align-items: center; gap: 16px; }
-.homeLimitActivityProject > span, .homeLimitActivityProject strong, .homeLimitActivityProject small { min-width: 0; display: block; }
-.homeLimitActivityProject strong { overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.homeLimitActivityProject small { margin-top: 3px; color: var(--muted); font: 7px/1.2 var(--font-geist-mono), monospace; }
-.homeLimitActivityProject > i { position: relative; height: 12px; display: block; border-bottom: 1px solid var(--line); font-style: normal; }
-.homeLimitActivityProject > i b { position: absolute; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; display: block; background: var(--ink); border: 1.5px solid var(--panel); }
-.homeLimitActivityScale { min-width: 0; margin: 24px 0 0 170px; color: var(--muted); font: 8px/1.25 var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; }
-.homeLimitActivityScaleLabels, .homeLimitActivityScaleTimes { min-width: 0; display: flex; justify-content: space-between; gap: 16px; }
-.homeLimitActivityScaleLabels { margin-bottom: 7px; color: var(--ink); font-weight: 650; }
-.homeLimitActivityScaleTrack { position: relative; height: 1px; display: block; background: var(--line-strong); font-style: normal; }
-.homeLimitActivityScaleTrack b { position: absolute; top: -5px; right: 0; width: 1px; height: 11px; display: block; background: var(--red); }
-.homeLimitActivityScaleTimes { margin-top: 8px; }
-.homeLimitActivityScaleReached { color: var(--red); text-align: right; }
-.homeLimitActivityEmpty { margin: 0; padding: 16px; color: var(--muted); font-size: 10px; }
-.homeFolio { min-width: 0; margin-top: 14px; border: 1px solid var(--line); background: var(--panel); }
-.homeFolioHeader { min-height: 58px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
-.homeFolioHeader > div { min-width: 0; }
-.homeFolioHeader h2 { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
-.homeFolioHeader small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; }
-.homeLiveCount { flex: 0 0 auto; color: var(--green); font: 700 10px/1 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .08em; }
-.homeFolioBody { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(220px, .75fr); }
-.homeLiveSection, .homeHistory { min-width: 0; padding: 16px; }
-.homeHistory { border-left: 1px solid var(--line); }
 .homeSectionHeader { min-height: 30px; margin: -4px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
 .homeSectionHeader h3 { margin: 0; color: var(--muted); font: 700 9px/1 var(--font-geist-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
 .homeSectionHeader span { color: var(--muted); font: 9px/1 var(--font-geist-mono), monospace; }
@@ -1223,24 +1197,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeSessionMetrics { min-width: 52px; text-align: right; }
 .homeSessionMetrics b { display: block; color: var(--blue); font: 600 12px/1 var(--font-geist-mono), monospace; }
 .homeSessionMetrics small { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .07em; }
-.homeSessionGraphs { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; row-gap: 16px; }
-.homeFigure { min-width: 0; margin: 8px 0 0; }
-.homeFigure svg { width: 100%; height: 62px; display: block; overflow: visible; }
-.homeFigure figcaption { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font: 9px/1.2 var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .05em; }
-.homeFigure figcaption strong { color: var(--ink); font-weight: 600; text-align: right; }
-.homeChartGuide { fill: none; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.homeChartLine { fill: none; stroke: var(--blue); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.homeChartCpu { fill: none; stroke: var(--resource-cpu); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-.homeChartMemory { fill: none; stroke: var(--resource-memory); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-.homeChartLabel { fill: var(--muted); font: 8px var(--font-geist-mono), monospace; }
-.homeChartTime { margin-top: 4px; display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
-.homeResourceFigure svg { height: 78px; }
-.homeHistoryMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.homeHistoryMetrics span { min-width: 0; }
-.homeHistoryMetrics b { display: block; overflow: hidden; color: var(--ink); font: 600 16px/1 var(--font-geist-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
-.homeHistoryMetrics small { display: block; margin-top: 6px; color: var(--muted); font-size: 8px; line-height: 1.25; }
-.homeHistory > .homeFigure { margin-top: 24px; }
-.homeHistoryFigure { padding-top: 4px; border-top: 1px solid var(--line); }
 .homeUnavailable { margin: 12px 0 0; }
 .homeSidebar .liveSessionList { max-height: none; }
 
@@ -1252,8 +1208,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 @media (max-width: 980px) {
   .homeProviderLimits { grid-template-columns: 1fr; }
   .homeProviderLimit + .homeProviderLimit { border-top: 1px solid var(--line); border-left: 0; }
-  .homeFolioBody { grid-template-columns: 1fr; }
-  .homeHistory { border-top: 1px solid var(--line); border-left: 0; }
 }
 
 @media (max-width: 640px) {
@@ -1263,17 +1217,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .homeLimits { margin-bottom: 18px; }
   .homeLimitsHeader, .homeProviderLimit { padding-left: 13px; padding-right: 13px; }
   .homeLimitsHeader span { display: none; }
-  .homeLimitActivity { margin-bottom: 18px; }
-  .homeLimitActivitySummary { width: auto; grid-template-columns: max-content max-content; justify-content: start; column-gap: 18px; }
-  .homeLimitActivityDescription, .homeLimitActivityCardHeader, .homeLimitActivityTimeline, .homeLimitActivityStatus, .homeLimitActivityCoverage { padding-left: 13px; padding-right: 13px; }
-  .homeLimitActivityCardHeader { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .homeLimitActivityCurrent { width: 100%; justify-content: space-between; }
-  .homeLimitActivityProject { grid-template-columns: 1fr; gap: 7px; }
-  .homeLimitActivityScale { margin-left: 0; }
-  .homeFolioHeader, .homeLiveSection, .homeHistory { padding-left: 13px; padding-right: 13px; }
-  .homeSessionGraphs { grid-template-columns: 1fr; gap: 8px; }
-  .homeFigure { margin-top: 4px; }
-  .homeHistoryMetrics b { font-size: 14px; }
+  .homeLimitProjects summary { min-height: 24px; }
+  .homeLimitProjectsPanel { right: auto; left: 50%; transform: translateX(-50%); }
   .homeSidebarHeader { min-height: 62px; }
   .homeApp .sessionMenuButton { display: grid; min-width: 44px; min-height: 44px; }
   .homeApp .themeToggle { width: 44px; height: 44px; }
@@ -1281,12 +1226,35 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 
 @media (max-width: 420px) {
   .homeContent { padding-bottom: 22px; }
-  .homeHistoryMetrics { gap: 6px; }
-  .homeHistoryMetrics b { font-size: 12px; }
-  .homeHistoryMetrics small { font-size: 7px; }
-  .homeSessionRow { grid-template-columns: 8px minmax(0, 1fr) auto; grid-template-rows: auto auto; }
-  .homeLiveDot { grid-column: 1; grid-row: 1 / -1; }
-  .homeSessionCopy { grid-column: 2; grid-row: 1; }
-  .homeSessionStatus { grid-column: 2; grid-row: 2; }
-  .homeSessionMetrics { grid-column: 3; grid-row: 1 / -1; }
 }
+
+/* Quiet cross-project home layout */
+.homeLimitActivityInline { margin: 5px 48px 0 0; display: grid; gap: 3px; }
+.homeLiveGrid { min-width: 0; margin-top: 14px; }
+.homeLiveGrid > .homeSectionHeader { min-height: 36px; padding: 0 1px; }
+.homeLiveGrid > .homeSectionHeader h2 { margin: 0; color: var(--ink); font-size: 12px; font-weight: 650; }
+.homeSessionGrid { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.homeSessionGrid .homeSessionCard { min-width: 0; margin: 0; padding: 13px; border: 1px solid var(--line); background: var(--panel); }
+.homeSessionGrid .homeSessionCard + .homeSessionCard { margin: 0; padding-top: 13px; border-top: 1px solid var(--line); }
+.homeSessionGrid .homeSessionRow { position: relative; grid-template-columns: 8px minmax(0, 1fr); grid-template-rows: auto auto; min-height: 0; padding: 0 52px 0 0; gap: 8px 9px; }
+.homeSessionGrid .homeLiveDot { grid-column: 1; grid-row: 1 / span 2; margin-top: 4px; }
+.homeSessionGrid .homeSessionCopy { grid-column: 2; grid-row: 1; }
+.homeSessionGrid .homeSessionStatus { grid-column: 2; grid-row: 2; }
+.homeSessionGrid .homeSessionMetrics { position: absolute; inset: 0 0 auto auto; }
+.homeSessionGrid .homeSessionCopy small { white-space: normal; line-height: 1.45; }
+.homeSessionProject { color: var(--ink); font-weight: 620; }
+.homeSessionProgress { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); }
+.homeSessionProgress > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.homeSessionProgress strong { color: var(--ink); font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
+.homeSessionProgress b { color: var(--ink); font: 650 11px/1 var(--font-geist-mono), monospace; }
+.homeSessionProgress progress { width: 100%; height: 5px; margin: 8px 0 0; display: block; appearance: none; border: 0; background: var(--line); }
+.homeSessionProgress progress::-webkit-progress-bar { background: var(--line); }
+.homeSessionProgress progress::-webkit-progress-value { background: var(--green); }
+.homeSessionProgress progress::-moz-progress-bar { background: var(--green); }
+.homeSessionProgress-blocked progress::-webkit-progress-value { background: var(--amber); }
+.homeSessionProgress-blocked progress::-moz-progress-bar { background: var(--amber); }
+.homeSessionProgress > small { display: block; margin-top: 7px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
+@media (max-width: 1200px) { .homeSessionGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 980px) { .homeSessionGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .homeSessionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .homeSessionGrid { grid-template-columns: 1fr; } }

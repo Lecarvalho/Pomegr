@@ -295,6 +295,7 @@ export type HomeSessionSummary = {
   activeAgentCount: number | null;
   latestContextTotal: number | null;
   contextHistory: HomeContextHistory | null;
+  progress: SessionProgress | null;
   resources: ResourceUsage | null;
 };
 

@@ -203,7 +203,9 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
     call_id: "request-1",
     arguments: "QUESTION_MUST_NOT_LEAK",
   })];
-  assert.equal(parseCodexRolloutLiveness(waiting, { now: START + 3_000 }).status, "needs_input");
+  const waitingStatus = parseCodexRolloutLiveness(waiting, { now: START + 3_000 });
+  assert.equal(waitingStatus.status, "needs_input");
+  assert.equal(waitingStatus.needsInputKind, "user_input");
   const answered = [...waiting, record(4_000, "response_item", {
     type: "function_call_output",
     call_id: "request-1",
@@ -225,6 +227,7 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
     now: START + 6_000 + CODEX_ROLLOUT_APPROVAL_GRACE_MS,
   });
   assert.equal(pendingPatch.status, "needs_input");
+  assert.equal(pendingPatch.needsInputKind, "pending_file_edit");
   assert.doesNotMatch(JSON.stringify(pendingPatch), /PRIVATE_PATCH_MUST_NOT_LEAK/);
   assert.equal(parseCodexRolloutLiveness(directPatch, {
     now: START + 6_000 + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1,
@@ -370,6 +373,77 @@ test("proposed plan confirmation supplements an idle app-server status", async (
   assert.equal(stale.sessions.get("plan-root").needsInput, false);
   assert.equal(stale.threads[0].liveStatus, "idle");
   assert.equal(expired.stats().rolloutFiles, 0);
+});
+
+test("pending file edits do not override an idle VS Code app status", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-app-idle-edit-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-pending-edit.jsonl");
+  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  await writeFile(rolloutFile, [
+    JSON.stringify({ timestamp: new Date(START - 1).toISOString(), type: "turn_context", payload: {} }),
+    JSON.stringify({
+      timestamp: new Date(now - CODEX_ROLLOUT_APPROVAL_GRACE_MS).toISOString(),
+      type: "response_item",
+      payload: {
+        type: "custom_tool_call",
+        name: "exec",
+        call_id: "pending-app-patch",
+        input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
+      },
+    }),
+  ].join("\n"), "utf8");
+  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
+  await utimes(rolloutFile, staleTime, staleTime);
+
+  const appObserved = createCodexLivenessCoordinator({
+    root: path.join(root, "app-liveness"),
+    now: () => now,
+    cacheMs: 0,
+  }).observe([thread("app-edit", {
+    sourceKind: "vscode",
+    runtimeStatus: { type: "idle" },
+    rolloutFile,
+  })]);
+  assert.equal(appObserved.sessions.get("app-edit").needsInput, false);
+  assert.equal(appObserved.threads[0].liveStatus, "idle");
+  assert.equal(appObserved.threads[0].liveness.source, "owning_app_server");
+
+  const coldObserved = createCodexLivenessCoordinator({
+    root: path.join(root, "cold-liveness"),
+    now: () => now,
+    cacheMs: 0,
+  }).observe([thread("cold-edit", {
+    sourceKind: "vscode",
+    updatedAt: staleTime.toISOString(),
+    rolloutFile,
+  })]);
+  assert.equal(coldObserved.sessions.get("cold-edit").needsInput, true);
+  assert.equal(coldObserved.threads[0].liveStatus, "needs_input");
+  assert.equal(coldObserved.threads[0].liveness.source, "rollout_activity_heuristic");
+
+  await appendFile(rolloutFile, `\n${JSON.stringify({
+    timestamp: new Date(now - 1_000).toISOString(),
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "request_user_input",
+      call_id: "explicit-app-input",
+      arguments: "PRIVATE_QUESTION_MUST_NOT_LEAK",
+    },
+  })}\n`, "utf8");
+  const explicitObserved = createCodexLivenessCoordinator({
+    root: path.join(root, "explicit-liveness"),
+    now: () => now,
+    cacheMs: 0,
+  }).observe([thread("explicit-input", {
+    sourceKind: "vscode",
+    runtimeStatus: { type: "idle" },
+    rolloutFile,
+  })]);
+  assert.equal(explicitObserved.sessions.get("explicit-input").needsInput, true);
+  assert.equal(explicitObserved.threads[0].liveStatus, "needs_input");
+  assert.equal(explicitObserved.threads[0].liveness.source, "rollout_activity_heuristic");
 });
 
 test("a growing rollout stays live when Windows reports a stale modification time", async (context) => {

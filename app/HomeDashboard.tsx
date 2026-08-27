@@ -2,44 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { HomeLimitActivity, HomeProjectSummary, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
+import type { HomeLimitActivity, HomeProviderUsageLimits, HomeSessionSummary, HomeSnapshot } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 import { NavigationMenuButton } from "./components/NavigationMenuButton";
 import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
-import { MinuteRelativeTimeText, ResetCountdownText, SessionRelativeTimeText } from "./components/LiveTime";
+import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { DashboardDisclosurePanel } from "./components/dashboard/DashboardDisclosurePanel";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 
 const EMPTY: HomeSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [], projects: [] };
 
 function number(value: number | null) { if (!Number.isFinite(value)) return "—"; return new Intl.NumberFormat(undefined, { notation: value! >= 10_000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(value!); }
-function duration(value: number | null) { if (!Number.isFinite(value)) return "—"; const minutes = Math.floor(value! / 60_000); return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`; }
-function chartPath(values: number[], options: { width?: number; top?: number; bottom?: number; left?: number; right?: number; stepped?: boolean } = {}) {
-  if (values.length < 2) return "";
-  const { width = 360, top = 4, bottom = 68, left = 0, right = width, stepped = false } = options;
-  const max = Math.max(...values, 1); const coords = values.map((value, index) => ({ x: left + (index / Math.max(values.length - 1, 1)) * (right - left), y: bottom - (Math.max(0, value) / max) * (bottom - top) }));
-  return coords.map((point, index) => { if (index === 0) return `M${point.x.toFixed(1)} ${point.y.toFixed(1)}`; const previous = coords[index - 1]; return stepped ? `L${point.x.toFixed(1)} ${previous.y.toFixed(1)}L${point.x.toFixed(1)} ${point.y.toFixed(1)}` : `L${point.x.toFixed(1)} ${point.y.toFixed(1)}`; }).join(" ");
-}
-
 function agentSummary(session: HomeSessionSummary) {
   if (session.agentCount === null) return "agents unavailable";
   if (session.activeAgentCount === null) return `${session.agentCount} ${session.agentCount === 1 ? "agent" : "agents"}`;
   return `${session.activeAgentCount}/${session.agentCount} agents`;
 }
 
-function domId(value: string) { return value.replace(/[^a-zA-Z0-9_-]/g, "-"); }
-
 function limitTime(value: string | null) {
   const timestamp = value ? Date.parse(value) : NaN;
   if (!Number.isFinite(timestamp)) return "time unavailable";
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(timestamp);
-}
-
-function limitPercent(value: number | null) {
-  return Number.isFinite(value) ? Math.min(100, Math.max(0, value!)) : null;
 }
 
 function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
@@ -61,105 +46,57 @@ function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
     .sort((left, right) => left.project.localeCompare(right.project));
 }
 
-function compactLimitWindow(value: string) {
-  return value
-    .replace(/\s+minutes?\b/gi, "m")
-    .replace(/\s+hours?\b/gi, "h")
-    .replace(/\s+days?\b/gi, "d")
-    .replace(/\s+weeks?\b/gi, "w")
-    .replace(/\s+months?\b/gi, "mo");
-}
-
-function LimitActivityOverview({ activity }: { activity: HomeLimitActivity }) {
-  const observations = activity.observations.filter((observation) => Number.isFinite(Date.parse(observation.observedAt)) && Number.isFinite(observation.percent));
+function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
   const projects = projectRequestGroups(activity.sessions || []);
+  const requests = projects.flatMap((project) => project.requestObservations.map((observation) => ({ ...observation, project: project.project })));
+  if (!requests.length) return null;
+
   const startMs = Date.parse(activity.windowStartsAt);
-  const endMs = Date.parse(activity.generatedAt);
+  const resetMs = activity.resetsAt ? Date.parse(activity.resetsAt) : NaN;
+  const generatedMs = Date.parse(activity.generatedAt);
+  const endMs = Number.isFinite(resetMs) && resetMs > startMs ? resetMs : generatedMs;
   const rangeMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0;
   const position = (observedAt: string) => {
     const observedMs = Date.parse(observedAt);
-    if (!rangeMs || !Number.isFinite(observedMs)) return 0;
-    return Math.min(100, Math.max(0, ((observedMs - startMs) / rangeMs) * 100));
+    if (!rangeMs || !Number.isFinite(observedMs)) return 0.4;
+    return Math.min(99.6, Math.max(0.4, ((observedMs - startMs) / rangeMs) * 100));
   };
-  const reachedAt = observations
-    .filter((observation) => (limitPercent(observation.percent) ?? 0) >= 100)
-    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))[0]?.observedAt || null;
-  const startLabel = `${activity.windowStartsAtExact ? "Started" : "Shown from"} ${limitTime(activity.windowStartsAt)}`;
-  const reachedLabel = reachedAt ? `Reached 100% at ${limitTime(reachedAt)}` : null;
+  const projectLabel = `${projects.length} ${projects.length === 1 ? "project" : "projects"}`;
+  const requestLabel = `${requests.length} ${requests.length === 1 ? "request observation" : "request observations"}`;
+  const observedShare = (count: number) => {
+    const percent = (count / requests.length) * 100;
+    return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
+  };
 
   return (
-    <figure className="homeLimitActivityTimeline">
-      <figcaption>Project request observations</figcaption>
-      <div className="homeLimitActivityProjects">
-        {projects.length ? projects.map((project) => <div className="homeLimitActivityProject" key={project.project}>
-          <span><strong>{project.project}</strong><small>{project.requestObservations.length} {project.requestObservations.length === 1 ? "request" : "requests"}{project.hasLiveWork ? " · live" : ""}</small></span>
-          <i aria-label={`${project.project}, ${project.requestObservations.length} ${project.requestObservations.length === 1 ? "request observation" : "request observations"}`}>
-            {project.requestObservations.map((observation) => <b key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={`Request observed at ${limitTime(observation.observedAt)}`} />)}
-          </i>
-        </div>) : <p className="homeUnavailable">No project request observations</p>}
-      </div>
-      <div className="homeLimitActivityScale" role="img" aria-label={`${activity.label} limit range from 0 to 100 percent. ${startLabel}.${reachedLabel ? ` ${reachedLabel}.` : ""}`}>
-        <div className="homeLimitActivityScaleLabels"><span>0</span><span>100%</span></div>
-        <i className="homeLimitActivityScaleTrack" aria-hidden="true">{reachedLabel && <b />}</i>
-        <div className="homeLimitActivityScaleTimes"><span>{startLabel}</span>{reachedLabel && <span className="homeLimitActivityScaleReached">{reachedLabel}</span>}</div>
-      </div>
-    </figure>
+    <>
+      <span className="homeLimitRequestTicks" role="img" aria-label={`Local request timing for ${activity.label}, ${activity.window}: ${requestLabel} across ${projectLabel}.`}>
+        {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={`${observation.project} · request observed at ${limitTime(observation.observedAt)}`} />)}
+      </span>
+      <details className="homeLimitProjects">
+        <summary aria-label={`Show ${projectLabel} observed during the ${activity.window} window`}>{projectLabel}</summary>
+        <div className="homeLimitProjectsPanel" role="group" aria-label={`Observed project requests for ${activity.label}, ${activity.window}`}>
+          <strong className="homeLimitProjectsTitle">Observed project requests</strong>
+          <ul>
+            {projects.map((project) => <li key={project.project}>
+              <strong>{project.project}</strong>
+              <span>{project.requestObservations.length} {project.requestObservations.length === 1 ? "request" : "requests"} · {observedShare(project.requestObservations.length)} of observed requests</span>
+            </li>)}
+          </ul>
+          <p>Usage is account-level; project timing is correlation evidence, not attribution or billing.</p>
+        </div>
+      </details>
+    </>
   );
 }
 
-function HomeLimitActivitySummary({ activities }: { activities: HomeLimitActivity[] }) {
-  if (!activities.length) return <span className="disclosureSummaryUnavailable">No activity observed yet</span>;
-
-  return <span className="disclosureSummaryMetrics homeLimitActivitySummary">
-    {activities.map((activity) => {
-      const observedProjects = projectRequestGroups(activity.sessions || []).length;
-      const evidenceLabel = `${observedProjects || "No"} ${observedProjects === 1 ? "project" : "projects"}`;
-
-      return <span className="homeLimitActivitySummaryItem" key={`${activity.provider}-${activity.limitId}`}>
-        <span className="homeLimitActivitySummaryProvider"><b>{activity.source}</b> {compactLimitWindow(activity.window)}</span>
-        <span className="homeLimitActivitySummaryProjects">{evidenceLabel}</span>
-      </span>;
-    })}
-  </span>;
-}
-
-function HomeLimitActivityPanel({ activities }: { activities: HomeLimitActivity[] }) {
-  return <DashboardDisclosurePanel
-    bodyClassName="homeLimitActivityContent"
-    className="homeLimitActivity"
-    defaultOpen={false}
-    storageKey="pomegr-home-limit-activity-open"
-    summary={<HomeLimitActivitySummary activities={activities} />}
-    title="Limit activity"
-  >
-    <p className="homeLimitActivityDescription">Local session requests within selected account windows.</p>
-    {activities.length ? activities.map((activity) => {
-      const percent = limitPercent(activity.percent);
-      const observations = activity.observations || [];
-      const coverage = activity.partialCoverage ? "Partial coverage · observations may begin after the window started." : null;
-      const severity = usageLimitSeverity(percent);
-      return <article className={`homeLimitActivityCard ${severity}`} key={`${activity.provider}-${activity.limitId}`}>
-        <header className="homeLimitActivityCardHeader">
-          <div><ProviderBadge source={activity.source} /><h3>{activity.label}</h3><small>{activity.window}</small></div>
-          <div className="homeLimitActivityCurrent"><strong>{percent === null ? "—" : `${Math.round(percent)}%`}</strong><span><ResetCountdownText value={activity.resetsAt} /></span></div>
-        </header>
-        {activity.status === "collecting" && <p className="homeLimitActivityStatus" role="status">Collecting account observations.</p>}
-        {!observations.length && activity.status !== "collecting" && <p className="homeLimitActivityStatus">No account limit observations in this window.</p>}
-        {coverage && <p className="homeLimitActivityCoverage">{coverage}</p>}
-        {activity.eventsTruncated && <p className="homeLimitActivityCoverage">Request evidence is incomplete or bounded to a recent window.</p>}
-        <LimitActivityOverview activity={activity} />
-      </article>;
-    }) : <p className="homeLimitActivityEmpty">No limit activity observed yet.</p>}
-  </DashboardDisclosurePanel>;
-}
-
-function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }) {
+function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsageLimits[]; activities: HomeLimitActivity[] }) {
   if (!providers.length) return null;
   return (
     <section className="homeLimits" aria-labelledby="home-limits-heading">
       <header className="homeLimitsHeader">
-        <h2 id="home-limits-heading">Usage limits</h2>
-        <span>Provider-reported plan usage</span>
+        <h2 id="home-limits-heading">Usage &amp; activity</h2>
+        <span>Provider-reported usage · local request timing</span>
       </header>
       <div className="homeProviderLimits">
         {providers.map(({ provider, source, usageLimits }) => {
@@ -180,11 +117,23 @@ function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }
                 <div className="homeLimitList">
                   {usageLimits.limits.map((limit) => {
                     const percent = Math.min(100, Math.max(0, limit.percent));
+                    const activity = activities.find((item) => item.provider === provider && item.limitId === limit.id);
+                    const showActivityNotes = activity && (activity.status === "collecting" || activity.partialCoverage || activity.eventsTruncated);
                     return (
-                      <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} key={limit.id} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
-                        <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
-                        <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
-                        <em>{Math.round(limit.percent)}%</em>
+                      <div className="homeLimitEntry" key={limit.id}>
+                        <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
+                          <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
+                          <div className="homeLimitTrackStack">
+                            <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
+                            {activity && <LimitRequestTicks activity={activity} />}
+                          </div>
+                          <em>{Math.round(limit.percent)}%</em>
+                        </div>
+                        {showActivityNotes && <div className="homeLimitActivityInline">
+                          {activity.status === "collecting" && <p className="homeLimitActivityStatus" role="status">Collecting account observations.</p>}
+                          {activity.partialCoverage && <p className="homeLimitActivityCoverage">Partial coverage · observations may begin after the window started.</p>}
+                          {activity.eventsTruncated && <p className="homeLimitActivityCoverage">Request evidence is incomplete or bounded to a recent window.</p>}
+                        </div>}
                       </div>
                     );
                   })}
@@ -198,58 +147,20 @@ function HomeUsageLimits({ providers }: { providers: HomeProviderUsageLimits[] }
   );
 }
 
-function ContextFigure({ history, id }: { history: HomeSessionSummary["contextHistory"]; id: string }) {
-  const buckets = history?.buckets?.filter((bucket) => Number.isFinite(bucket.total)).slice(-48) || [];
-  if (buckets.length < 2) return <p className="homeUnavailable">Context history unavailable</p>;
-  const titleId = `context-title-${id}`; const descId = `context-desc-${id}`;
-  return <figure className="homeFigure"><figcaption><span>Context history</span></figcaption><svg viewBox="0 0 360 72" role="img" aria-labelledby={`${titleId} ${descId}`} preserveAspectRatio="none"><title id={titleId}>Stepped context history</title><desc id={descId}>Actual latest all-agent context level across the last 20 minutes.</desc><path className="homeChartGuide" d="M0 68H360" /><path className="homeChartLine" d={chartPath(buckets.map((bucket) => bucket.total), { stepped: true })} /></svg></figure>;
-}
-
-function ResourceFigure({ session, id }: { session: HomeSessionSummary; id: string }) {
-  const samples = session.resources?.samples?.slice(-48) || []; const cpu = samples.map((sample) => sample.cpuMachinePercent).filter((value): value is number => Number.isFinite(value)); const memory = samples.map((sample) => sample.memoryBytes).filter((value): value is number => Number.isFinite(value));
-  if (cpu.length < 2 && memory.length < 2) return <p className="homeUnavailable">Resource samples unavailable</p>;
-  const titleId = `resource-title-${id}`; const descId = `resource-desc-${id}`; const currentCpu = session.resources?.current?.cpuMachinePercent; const currentMemory = session.resources?.current?.memoryBytes;
-  return <figure className="homeFigure homeResourceFigure"><figcaption><span>Resource use · live samples</span><strong>{Number.isFinite(currentCpu) ? `${Math.round(currentCpu!)}%` : "—"} · {Number.isFinite(currentMemory) ? `${Math.round(currentMemory! / 1024 / 1024)} MB` : "—"}</strong></figcaption><svg viewBox="0 0 360 92" role="img" aria-labelledby={`${titleId} ${descId}`} preserveAspectRatio="none"><title id={titleId}>CPU and memory samples</title><desc id={descId}>Separate labeled resource lanes over the last 20 minutes.</desc><text className="homeChartLabel" x="0" y="22">CPU</text><text className="homeChartLabel" x="0" y="62">MEM</text><path className="homeChartGuide" d="M38 34H360M38 76H360" />{cpu.length > 1 && <path className="homeChartCpu" d={chartPath(cpu, { top: 5, bottom: 30, left: 38, right: 360 })} />}{memory.length > 1 && <path className="homeChartMemory" d={chartPath(memory, { top: 43, bottom: 72, left: 38, right: 360 })} />}</svg></figure>;
-}
-
 function sessionHref(session: HomeSessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
 
-function SessionCard({ session, index }: { session: HomeSessionSummary; index: number }) {
-  const id = `${session.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`;
-  return <div className="homeSessionCard"><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title}`}><span className={`homeLiveDot${session.needsInput ? " needsInput" : ""}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus${session.needsInput ? " needsInput" : ""}`}>{session.needsInput ? "Needs input" : "Active"}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link><div className="homeSessionGraphs"><ContextFigure history={session.contextHistory} id={id} /><ResourceFigure session={session} id={id} /></div></div>;
-}
-
-function ProjectFolio({ project }: { project: HomeProjectSummary }) {
-  const sessions = project.sessions || [];
-  const projectId = domId(project.project);
-  const historyLoading = project.history.status === "loading";
-  return (
-    <article className="homeFolio">
-      <header className="homeFolioHeader"><div><h2>{project.project}</h2><small>Updated <SessionRelativeTimeText value={project.updatedAt} /></small></div><span className="homeLiveCount">{project.liveCount} live</span></header>
-      <div className="homeFolioBody">
-        <section className="homeLiveSection" aria-labelledby={`live-${projectId}`}>
-          <div className="homeSectionHeader"><h3 id={`live-${projectId}`}>Running now</h3><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div>
-          {sessions.length ? sessions.map((session, index) => <SessionCard key={session.id} session={session} index={index} />) : <p className="homeUnavailable">No running sessions</p>}
-        </section>
-        <section className="homeHistory" aria-labelledby={`history-${projectId}`} aria-busy={historyLoading || undefined}>
-          <div className="homeSectionHeader"><h3 id={`history-${projectId}`}>7-day history</h3><span>Recorded sessions</span></div>
-          {historyLoading
-            ? <p className="homeUnavailable" role="status">Loading recorded sessions…</p>
-            : <>
-              <div className="homeHistoryMetrics"><span><b>{project.history.completed}</b><small>completed</small></span><span><b>{duration(project.history.medianWallTimeMs)}</b><small>median wall time</small></span><span><b>{number(project.history.medianFinalContext)}</b><small>median final context</small></span></div>
-              {project.history.finalContexts.length > 1 ? <figure className="homeFigure homeHistoryFigure"><figcaption><span>Final context by session</span><strong>Latest {project.history.finalContexts.length}</strong></figcaption><svg viewBox="0 0 360 72" role="img" aria-label="Final context over the last 7 days" preserveAspectRatio="none"><path className="homeChartGuide" d="M0 68H360" /><path className="homeChartLine" d={chartPath(project.history.finalContexts.map((point) => point.total))} /></svg><div className="homeChartTime"><span>7d ago</span><span>latest</span></div></figure> : <p className="homeUnavailable">Not enough recorded context snapshots</p>}
-            </>}
-        </section>
-      </div>
-    </article>
-  );
+function SessionCard({ session }: { session: HomeSessionSummary }) {
+  const progress = session.progress;
+  const showEta = progress && !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
+  const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
+  return <div className="homeSessionCard"><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source}`}><span className={`homeLiveDot${session.needsInput ? " needsInput" : ""}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus${session.needsInput ? " needsInput" : ""}`}>{session.needsInput ? "Needs input" : "Active"}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}><div><strong>{progress.phase}</strong><b>{progress.percent}%</b></div><progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${progress.phase}`} />{eta && <small>{eta}</small>}</div>}</div>;
 }
 
 export function HomeDashboard() {
   const [snapshot, setSnapshot] = useState<HomeSnapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(true);
-  const projects = useMemo(() => snapshot.projects || [], [snapshot.projects]);
+  const sessions = useMemo(() => (snapshot.projects || []).flatMap((project) => project.sessions || []), [snapshot.projects]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -293,13 +204,12 @@ export function HomeDashboard() {
             <div className="topActions"><span className={`connection ${loading ? "connecting" : connected ? "online" : "offline"}`}><i />{loading ? "Connecting to monitor" : connected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
           </header>
           <section className="homeContent" aria-labelledby="home-heading">
-            <div className="homeIntro"><h1 id="home-heading">Running sessions</h1><p>Active work and seven-day history, grouped by project.</p></div>
+            <div className="homeIntro"><h1 id="home-heading">Running sessions</h1><p>Active work across every project.</p></div>
             {loading && <p className="homeStatus" role="status">Loading the local monitor…</p>}
             {!loading && !connected && <p className="homeStatus" role="status">Home overview is unavailable. Pomegr will reconnect automatically.</p>}
-            {!loading && connected && projects.length === 0 && <p className="homeStatus" role="status">No running sessions yet.</p>}
-            {!loading && connected && <HomeUsageLimits providers={snapshot.providerLimits || []} />}
-            {!loading && connected && <HomeLimitActivityPanel activities={snapshot.limitActivities || []} />}
-            {projects.map((project) => <ProjectFolio key={project.project} project={project} />)}
+            {!loading && connected && sessions.length === 0 && <p className="homeStatus" role="status">No running sessions yet.</p>}
+            {!loading && connected && <HomeUsageLimits providers={snapshot.providerLimits || []} activities={snapshot.limitActivities || []} />}
+            {!loading && connected && sessions.length > 0 && <section className="homeLiveGrid" aria-labelledby="home-live-heading"><div className="homeSectionHeader"><h2 id="home-live-heading">Running now</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>}
           </section>
           <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{connected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
       </main>

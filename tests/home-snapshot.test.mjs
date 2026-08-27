@@ -5,10 +5,10 @@ import { createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 
 const provider = { source: "Codex", capabilities: createEmptyProviderCapabilities() };
 
-function evidence({ project = "pomegr", startedAt = "2026-08-23T11:00:00.000Z", updatedAt = "2026-08-23T12:00:00.000Z", agents = [], usageSnapshots = [], usageLimitRejections = [] } = {}) {
+function evidence({ project = "pomegr", startedAt = "2026-08-23T11:00:00.000Z", updatedAt = "2026-08-23T12:00:00.000Z", agents = [], usageSnapshots = [], usageLimitRejections = [], progress = null, progressPrivate = undefined } = {}) {
   return {
     historical: false,
-    session: { title: "Home fixture", project, cwd: "C:\\synthetic\\pomegr", startedAt, updatedAt, recordedGitBranch: "main", cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null },
+    session: { title: "Home fixture", project, cwd: "C:\\synthetic\\pomegr", startedAt, updatedAt, recordedGitBranch: "main", cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null, progress, ...(progressPrivate === undefined ? {} : { progressPrivate }) },
     agents, usageSnapshots, usageLimitRejections, toolCalls: [], activity: [], planTasks: [], compactions: [],
     efficiencyRuleEvidence: { repetition: true, concurrentMutation: true, unsharedContext: true, healthyFallback: true },
     pullRequestCreations: [],
@@ -235,6 +235,14 @@ test("home latest context uses latest non-zero total per visible agent and safe 
   assert.equal(state.projects[0].sessions[0].latestContextTotal, 10);
   assert.equal(state.projects[0].sessions[0].resources.current.pid, undefined);
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE|command|processStartIdentity|"pid"/i);
+});
+
+test("home live session exposes only bounded normalized progress", async () => {
+  const entry = { id: "codex:progress", provider: "codex", source: "Codex", title: "Progress", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false };
+  const progress = { phase: "implementing", percent: 42, remainingMinutesMin: 8, remainingMinutesMax: 14, confidence: "medium", reportedAt: "2026-08-23T11:45:00.000Z" };
+  const state = await runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [agent("primary")], progress, progressPrivate: "PRIVATE_PROGRESS_INPUT" })]])).homeSnapshot();
+  assert.deepEqual(state.projects[0].sessions[0].progress, progress);
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE_PROGRESS_INPUT|progressPrivate/i);
 });
 
 test("failed live evidence keeps a live card with null metrics", async () => {

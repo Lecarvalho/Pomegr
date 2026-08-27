@@ -1,5 +1,4 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import type { HomeSnapshot } from "../../shared/monitor-contract";
@@ -66,6 +65,34 @@ const snapshot = {
       correlation: "single",
       sessionIds: ["claude:pomegr-home"],
     }],
+  }, {
+    provider: "codex",
+    source: "Codex",
+    limitId: "codex-secondary",
+    label: "Codex",
+    window: "7 days",
+    percent: 82,
+    resetsAt: "2026-08-29T12:00:00.000Z",
+    windowStartsAt: "2026-08-22T12:00:00.000Z",
+    windowStartsAtExact: true,
+    generatedAt: "2026-08-23T12:00:00.000Z",
+    observedFrom: "2026-08-22T12:00:00.000Z",
+    firstRejectedAt: null,
+    status: "ready",
+    partialCoverage: false,
+    eventsTruncated: false,
+    observations: [
+      { observedAt: "2026-08-22T12:00:00.000Z", percent: 72 },
+      { observedAt: "2026-08-23T12:00:00.000Z", percent: 82 },
+    ],
+    sessions: [{
+      id: "codex:live.one_2",
+      title: "Build home",
+      project: "pomegr",
+      isLive: true,
+      requestObservations: [{ id: "request-codex", observedAt: "2026-08-23T11:50:00.000Z" }],
+    }],
+    movements: [],
   }],
   projects: [{
     project: "pomegr",
@@ -82,101 +109,114 @@ const snapshot = {
       agentCount: 2,
       activeAgentCount: 1,
       latestContextTotal: 12000,
+      progress: { phase: "implementing", percent: 42, remainingMinutesMin: 3, remainingMinutesMax: 6, confidence: "medium", reportedAt: "2026-08-23T11:59:00.000Z" },
       contextHistory: { bucketMs: 60_000, buckets: [{ start: "2026-08-23T11:58:00.000Z", end: "2026-08-23T11:59:00.000Z", total: 5000, agents: [] }, { start: "2026-08-23T11:59:00.000Z", end: "2026-08-23T12:00:00.000Z", total: 12000, agents: [] }], boundaries: [] },
       resources: { status: "ready", reason: null, current: { cpuCores: 1, cpuMachinePercent: 42, memoryBytes: 64 * 1024 * 1024, readBytesPerSecond: 0, writeBytesPerSecond: 0 }, observedPeak: { memoryBytes: 64 * 1024 * 1024 }, samples: [{ timestamp: "2026-08-23T11:58:00.000Z", cpuCores: 1, cpuMachinePercent: 20, memoryBytes: 32 * 1024 * 1024, readBytesPerSecond: 0, writeBytesPerSecond: 0 }, { timestamp: "2026-08-23T12:00:00.000Z", cpuCores: 1, cpuMachinePercent: 42, memoryBytes: 64 * 1024 * 1024, readBytesPerSecond: 0, writeBytesPerSecond: 0 }] },
     }],
     history: { windowDays: 7, completed: 3, medianWallTimeMs: 300_000, medianFinalContext: 8000, finalContexts: [{ endedAt: "2026-08-22T11:00:00.000Z", total: 7000 }, { endedAt: "2026-08-23T10:00:00.000Z", total: 9000 }] },
+  }, {
+    project: "other-repo",
+    updatedAt: "2026-08-23T11:57:00.000Z",
+    liveCount: 2,
+    sessions: [{
+      id: "claude:live.two_3",
+      provider: "claude",
+      source: "Claude Code",
+      title: "Review report",
+      project: "other-repo",
+      updatedAt: "2026-08-23T11:57:00.000Z",
+      needsInput: true,
+      agentCount: 1,
+      activeAgentCount: 1,
+      latestContextTotal: 8000,
+      contextHistory: null,
+      progress: null,
+      resources: { status: "ready", reason: null, current: null, observedPeak: null, samples: [] },
+    }, {
+      id: "codex:blocked.three_4",
+      provider: "codex",
+      source: "Codex",
+      title: "Waiting on input",
+      project: "other-repo",
+      updatedAt: "2026-08-23T11:55:00.000Z",
+      needsInput: false,
+      agentCount: 1,
+      activeAgentCount: 1,
+      latestContextTotal: 4000,
+      contextHistory: null,
+      progress: { phase: "blocked", percent: 68, remainingMinutesMin: 2, remainingMinutesMax: 4, confidence: "low", reportedAt: "2026-08-23T11:55:00.000Z" },
+      resources: { status: "ready", reason: null, current: null, observedPeak: null, samples: [] },
+    }],
+    history: { windowDays: 7, completed: 0, medianWallTimeMs: null, medianFinalContext: null, finalContexts: [] },
   }],
 } satisfies HomeSnapshot;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  window.localStorage.removeItem("pomegr-home-limit-activity-open");
 });
 
 describe("home dashboard", () => {
-  it("folds limit activity into aligned window and project summaries without repeated details", async () => {
-    window.localStorage.setItem("pomegr-home-limit-activity-open", "false");
+  it("shows one quiet cross-project session grid with bounded progress details", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
 
-    const details = (await screen.findByText("Limit activity")).closest("details");
-    const summary = details?.querySelector(":scope > summary .homeLimitActivitySummary");
-    expect(details).not.toHaveAttribute("open");
-    expect(summary).toHaveTextContent("Claude Code 5h");
-    expect(summary).toHaveTextContent("2 projects");
-    expect(summary).not.toHaveTextContent("observed");
-    expect(summary).not.toHaveTextContent("Partial evidence");
-    expect(summary).not.toHaveTextContent(/movement|pts/i);
-    expect(summary).not.toHaveTextContent("31%");
-    expect(summary?.querySelectorAll(".homeLimitActivitySummaryItem > span")).toHaveLength(2);
-    expect(summary?.querySelector(".homeLimitActivitySummaryProjects")).toHaveTextContent("2 projects");
-
-    await userEvent.click(screen.getByText("Limit activity"));
-    expect(details).toHaveAttribute("open");
-    expect(details?.querySelector(":scope > summary .homeLimitActivitySummary")).not.toBeInTheDocument();
-    expect(container.querySelector(".homeLimitActivityDescription")).toHaveTextContent("Local session requests within selected account windows");
+    expect(await screen.findByRole("heading", { name: "Running sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Running now" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".homeSessionCard")).toHaveLength(3);
+    expect(container.querySelector(".homeSessionGrid")).toBeInTheDocument();
+    expect(screen.getAllByText("pomegr").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("other-repo").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("implementing")).toHaveLength(1);
+    expect(screen.getByText("ETA 3–6 min")).toBeInTheDocument();
+    expect(screen.queryByText("ETA 2–4 min")).not.toBeInTheDocument();
+    expect(container.querySelectorAll('progress[aria-label="Agent-reported session progress"]')).toHaveLength(2);
+    expect(container.querySelector('a[aria-label="Open Review report · other-repo · Claude Code"]')?.closest(".homeSessionCard")?.querySelector(".homeSessionProgress")).not.toBeInTheDocument();
+    expect(container.querySelector(".homeFolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
   });
 
-  it("omits an unhelpful movement placeholder while account observations are collecting", async () => {
-    window.localStorage.setItem("pomegr-home-limit-activity-open", "false");
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
-      limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, status: "collecting" as const, movements: [] })),
-    }));
-    const { container } = render(<HomeDashboard />);
-
-    await screen.findByText("Limit activity");
-    const summary = container.querySelector(".homeLimitActivitySummary");
-    expect(summary).toHaveTextContent("Claude Code 5h");
-    expect(summary).toHaveTextContent("2 projects");
-    expect(summary).not.toHaveTextContent("observed");
-    expect(summary).not.toHaveTextContent(/collecting|movement history|no movement/i);
-  });
-
-  it("shows only supplied live project/session content with always-visible seven-day metrics", async () => {
+  it("joins usage limits and provider-local limit activity", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
-    expect(await screen.findByRole("heading", { name: "pomegr" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "7-day history" })).toBeInTheDocument();
-    expect(screen.getByText("3", { selector: ".homeHistoryMetrics b" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Running sessions" })).toBeInTheDocument();
     expect(screen.getByText("Build home")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
     expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
     expect(container.querySelector('.homeLimitRow[aria-label="Current session, 5 hours, 31% used"]')).toBeInTheDocument();
     expect(container.querySelector('.homeLimitRow.warning[aria-label="Codex, 7 days, 82% used"]')).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Pomegr home" })).toHaveLength(1);
-    expect(screen.queryByText(/recent|completed session/i)).not.toBeInTheDocument();
     expect(container.querySelector('a[href="/sessions/codex-live.one_2"]')).toBeInTheDocument();
 
     const limits = container.querySelector(".homeLimits");
     const activity = container.querySelector(".homeLimitActivity");
     const folio = container.querySelector(".homeFolio");
     expect(limits).toBeInTheDocument();
-    expect(activity).toBeInTheDocument();
-    expect(folio).toBeInTheDocument();
-    expect(limits!.compareDocumentPosition(activity!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(activity!.compareDocumentPosition(folio!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(activity).toHaveTextContent("Claude Code");
-    expect(activity).toHaveTextContent("Current session");
-    expect(activity).toHaveTextContent("31%");
-    expect(activity).toHaveTextContent(/Reset/i);
-    expect(activity).toHaveTextContent("Partial coverage");
-    expect(activity).toHaveTextContent("Project request observations");
-    expect(activity!.querySelectorAll(".homeLimitActivityProject")).toHaveLength(2);
-    expect(activity!.querySelector('.homeLimitActivityProject > i[aria-label="pomegr, 2 request observations"]')).toBeInTheDocument();
-    expect(activity!.querySelectorAll(".homeLimitActivityProject > i b")).toHaveLength(3);
-    expect(activity).not.toHaveTextContent("Pomegr home");
-    expect(activity).not.toHaveTextContent("Pomegr closed work");
-    expect(activity!.querySelector(".homeLimitActivityScaleLabels")).toHaveTextContent("0100%");
-    expect(activity!.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
-    expect(activity!.querySelector(".homeLimitActivityScaleTrack b")).not.toBeInTheDocument();
-    expect(activity!.querySelector(".homeLimitActivityTimeline svg, .homeLimitActivityObservation, .homeLimitActivityWindowStart, .homeLimitActivityRejection")).not.toBeInTheDocument();
-    expect(activity).not.toHaveTextContent(/First rejection|Newest observed movements|No observed movements/i);
-    expect(activity).not.toHaveTextContent(/token totals?|share|drainer/i);
+    expect(activity).not.toBeInTheDocument();
+    expect(folio).not.toBeInTheDocument();
+    expect(limits).not.toHaveTextContent("18 → 31% observed");
+    expect(limits).not.toHaveTextContent("72 → 82% observed");
+    expect(limits!.querySelectorAll(".homeLimitRequestTicks")).toHaveLength(2);
+    expect(screen.getByRole("img", { name: "Local request timing for Current session, 5 hours: 3 request observations across 2 projects." })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Local request timing for Codex, 7 days: 1 request observation across 1 project." })).toBeInTheDocument();
+    expect(limits!.querySelector(".homeLimitActivityTimeline, .homeLimitActivityScale")).not.toBeInTheDocument();
+    expect(limits!.querySelector('[title^="pomegr · request observed at"]')).toBeInTheDocument();
+    expect(limits!.querySelector('[title^="other-repo · request observed at"]')).toBeInTheDocument();
+    expect(limits!.querySelector(".homeLimitsNote")).not.toBeInTheDocument();
+
+    const claudeProjects = screen.getByText("2 projects").closest("details");
+    expect(claudeProjects).not.toHaveAttribute("open");
+    fireEvent.click(claudeProjects!.querySelector("summary")!);
+    expect(claudeProjects).toHaveAttribute("open");
+    expect(within(claudeProjects!).getByText("pomegr")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("2 requests · 66.7% of observed requests")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("other-repo")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("1 request · 33.3% of observed requests")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("correlation evidence, not attribution or billing", { exact: false })).toBeInTheDocument();
+
+    const codexProjects = screen.getByText("1 project").closest("details");
+    expect(within(codexProjects!).getByText("1 request · 100% of observed requests")).toBeInTheDocument();
   });
 
-  it("shows one terminal mark when a provider observation reaches 100%", async () => {
+  it("keeps request timing independent from quota percentage and omits the duplicate scale", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       limitActivities: snapshot.limitActivities.map((activity) => ({
@@ -186,40 +226,32 @@ describe("home dashboard", () => {
       })),
     }));
     const { container } = render(<HomeDashboard />);
-    await screen.findByText("Limit activity");
-    const activity = container.querySelector(".homeLimitActivity");
-    expect(activity).toBeInTheDocument();
-    expect(activity!.querySelectorAll(".homeLimitActivityScaleTrack b")).toHaveLength(1);
-    expect(activity!.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/Reached 100% at .+/);
-    expect(activity!.querySelector(".homeLimitActivityScale")?.getAttribute("aria-label")).toMatch(/Reached 100% at .+/);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+    const claudeTicks = screen.getByRole("img", { name: /Local request timing for Current session, 5 hours/ });
+    expect(claudeTicks.querySelectorAll("b")).toHaveLength(3);
+    const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
+    expect(Math.min(...positions)).toBeCloseTo(41.7, 1);
+    expect(container.querySelector(".homeLimitActivityScale")).not.toBeInTheDocument();
   });
 
-  it("keeps the exact start time when the provider omits resetsAt", async () => {
+  it("falls back to the observed interval when the provider omits resetsAt", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
     }));
-    const { container } = render(<HomeDashboard />);
-    await screen.findByText("Limit activity");
-    expect(container.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
+    render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+    const claudeTicks = screen.getByRole("img", { name: /Local request timing for Current session, 5 hours/ });
+    const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
+    expect(Math.min(...positions)).toBeCloseTo(83.3, 1);
   });
 
-  it("labels a selected seven-day activity window without five-hour copy", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
-      limitActivities: snapshot.limitActivities.map((activity) => ({
-        ...activity,
-        limitId: "codex-secondary",
-        label: "Codex",
-        window: "7 days",
-        windowStartsAt: "2026-08-16T12:00:00.000Z",
-        firstRejectedAt: null,
-      })),
-    }));
-    const { container } = render(<HomeDashboard />);
-    await screen.findByText("Limit activity");
-    expect(container.querySelector(".homeLimitActivityScaleTimes")).toHaveTextContent(/^Started .+/);
-    expect(container.querySelector(".homeLimitActivity")).not.toHaveTextContent("5-hour limit activity");
+  it("positions Codex request ticks across the selected seven-day reset window", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
+    render(<HomeDashboard />);
+    await screen.findByRole("heading", { name: "Usage & activity" });
+    const codexTicks = screen.getByRole("img", { name: /Local request timing for Codex, 7 days/ });
+    expect(parseFloat((codexTicks.querySelector("b") as HTMLElement).style.left)).toBeCloseTo(14.2, 1);
   });
 
   it("keeps live cards available while recorded history warms", async () => {
@@ -229,7 +261,7 @@ describe("home dashboard", () => {
     }));
     render(<HomeDashboard />);
     expect(await screen.findByText("Build home")).toBeInTheDocument();
-    expect(screen.getByText("Loading recorded sessions…")).toBeInTheDocument();
+    expect(screen.queryByText("Loading recorded sessions…")).not.toBeInTheDocument();
     expect(screen.queryByText("median wall time")).not.toBeInTheDocument();
   });
 
@@ -248,15 +280,13 @@ describe("home dashboard", () => {
     expect(screen.getByText("31%")).toBeInTheDocument();
   });
 
-  it("renders stepped context and separate CPU/memory resource paths with current values", async () => {
+  it("keeps resource telemetry quiet on the home surface", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
-    await screen.findByRole("heading", { name: "pomegr" });
-    expect(container.querySelector(".homeChartLine")?.getAttribute("d")).toMatch(/L[\d.]+ [\d.]+L[\d.]+ [\d.]+/);
-    expect(container.querySelector(".homeChartCpu")).toBeInTheDocument();
-    expect(container.querySelector(".homeChartMemory")).toBeInTheDocument();
-    expect(screen.getByText("42% · 64 MB")).toBeInTheDocument();
-    expect(screen.queryByText("20m ago")).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Running sessions" });
+    expect(container.querySelector(".homeChartLine, .homeChartCpu, .homeChartMemory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
+    expect(screen.queryByText("42% · 64 MB")).not.toBeInTheDocument();
   });
 
   it("shows no-live and offline states without hanging polling", async () => {

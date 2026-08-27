@@ -546,7 +546,11 @@ export function parseCodexRolloutLiveness(records, options = {}) {
   if (!latest) return null;
   const planConfirmationAge = planConfirmation ? nowMs - timestampValue(planConfirmation.timestamp) : null;
   if (planConfirmationAge !== null && planConfirmationAge >= 0 && planConfirmationAge <= CODEX_NEEDS_INPUT_MAX_MS) {
-    return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: planConfirmation.timestamp };
+    return { live: true, status: "needs_input", needsInput: true, needsInputKind: "plan_confirmation", source: "rollout_activity_heuristic", observedAt: planConfirmation.timestamp };
+  }
+  const waiting = [...pending.values()].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
+  if (waiting && nowMs - timestampValue(waiting.timestamp) <= CODEX_ROLLOUT_LIVE_WINDOW_MS) {
+    return { live: true, status: "needs_input", needsInput: true, needsInputKind: "user_input", source: "rollout_activity_heuristic", observedAt: waiting.timestamp };
   }
   const pendingFileEdit = [...pendingFileEdits.values()]
     .sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
@@ -554,14 +558,10 @@ export function parseCodexRolloutLiveness(records, options = {}) {
   if (pendingFileEditAge !== null
     && pendingFileEditAge >= CODEX_ROLLOUT_APPROVAL_GRACE_MS
     && pendingFileEditAge <= CODEX_NEEDS_INPUT_MAX_MS) {
-    return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: pendingFileEdit.timestamp };
+    return { live: true, status: "needs_input", needsInput: true, needsInputKind: "pending_file_edit", source: "rollout_activity_heuristic", observedAt: pendingFileEdit.timestamp };
   }
   const age = nowMs - timestampValue(latest.timestamp);
   if (age < 0 || age > CODEX_ROLLOUT_LIVE_WINDOW_MS) return null;
-  const waiting = [...pending.values()].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
-  if (waiting && nowMs - timestampValue(waiting.timestamp) <= CODEX_ROLLOUT_LIVE_WINDOW_MS) {
-    return { live: true, status: "needs_input", needsInput: true, source: "rollout_activity_heuristic", observedAt: waiting.timestamp };
-  }
   const status = terminal && timestampValue(terminal.timestamp) >= timestampValue(latest.timestamp)
     ? (["interrupted", "system_error"].includes(terminal.status) ? "stopped" : terminal.status)
     : age <= CODEX_ACTIVE_WINDOW_MS ? "active" : "idle";
@@ -799,7 +799,10 @@ export function createCodexLivenessCoordinator(options = {}) {
       const rollout = inspectRollout
         ? rolloutEvidence(thread.rolloutFile, checkedAt)
         : null;
-      const liveness = canSupplementIdle && rollout?.needsInput ? rollout : primary || rollout;
+      const appIdleFileEdit = app?.status === "idle"
+        && thread.sourceKind === "vscode"
+        && rollout?.needsInputKind === "pending_file_edit";
+      const liveness = canSupplementIdle && rollout?.needsInput && !appIdleFileEdit ? rollout : primary || rollout;
       return {
         ...thread,
         liveStatus: liveness?.status || null,
