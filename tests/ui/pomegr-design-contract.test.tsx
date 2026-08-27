@@ -54,6 +54,10 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
     expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
+    expect(styles).toMatch(/--popover:\s*#fffefa/);
+    expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--popover:\s*#1c1a20/);
+    expect(styles).toMatch(/\.agentPopover\s*\{[^}]*background:\s*var\(--popover\)[^}]*box-shadow:\s*var\(--popover-shadow\)/);
+    expect(styles).toMatch(/\.tooltipPopover\s*\{[^}]*padding:\s*9px 11px[^}]*border:\s*1px solid var\(--popover-line\)[^}]*background:\s*var\(--popover\)/);
   });
 
   it("keeps session progress semantic, flat, and motion-safe", () => {
