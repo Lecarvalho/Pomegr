@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolvePomegrDataRoot } from "../../shared/pomegr-paths.mjs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
+import { parseCodexCurrentActivityRecords } from "./codex-current-activity.mjs";
 import { codexTimestamp, isSafeCodexSessionId } from "./codex-session-metadata.mjs";
 
 export const CODEX_ACTIVE_WINDOW_MS = 15_000;
@@ -717,7 +718,13 @@ export function createCodexLivenessCoordinator(options = {}) {
       stats.rolloutFiles += 1;
       stats.rolloutBytes += Math.min(stat.size, maximumTailBytes);
     }
-    return parseCodexRolloutLiveness(cached.records, { now: nowMs, ...parseOptions });
+    const liveness = parseCodexRolloutLiveness(cached.records, { now: nowMs, ...parseOptions });
+    if (liveness?.status !== "idle") return liveness;
+    const currentActivity = parseCodexCurrentActivityRecords(cached.records, {
+      agentStatus: "idle",
+      rolloutHeuristicIdle: true,
+    });
+    return currentActivity ? { ...liveness, status: "active" } : liveness;
   }
 
   function rolloutMetadataCanBeLive(thread, nowMs, maximumAge = CODEX_ROLLOUT_LIVE_WINDOW_MS) {

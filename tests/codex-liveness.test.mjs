@@ -280,6 +280,44 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
 });
 
+test("open-turn activity keeps rollout catalog working across quiet gaps until explicit completion", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-open-turn-live-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-open-turn.jsonl");
+  const record = (offset, type, payload = {}) => JSON.stringify({
+    timestamp: new Date(START + offset).toISOString(),
+    type,
+    payload,
+  });
+  const openTurn = [
+    record(0, "session_meta", { id: "open-turn-root" }),
+    record(1_000, "turn_context", { turn_id: "turn-1" }),
+    record(2_000, "event_msg", { type: "agent_reasoning", text: "**Working through a quiet operation**" }),
+    record(50_000, "event_msg", { type: "token_count" }),
+  ];
+  await writeFile(rolloutFile, openTurn.join("\n"), "utf8");
+  let now = START + 70_000;
+  const coordinator = createCodexLivenessCoordinator({
+    root: path.join(root, "liveness"),
+    now: () => now,
+    cacheMs: 0,
+  });
+  const threads = [thread("open-turn-root", {
+    updatedAt: new Date(START + 50_000).toISOString(),
+    rolloutFile,
+  })];
+
+  const working = coordinator.observe(threads);
+  assert.equal(working.threads[0].liveStatus, "active");
+  assert.equal(working.sessions.get("open-turn-root").activityStatus, "working");
+
+  await appendFile(rolloutFile, `\n${record(71_000, "turn_completed", { status: "completed" })}`, "utf8");
+  now = START + 72_000;
+  const completed = coordinator.observe(threads);
+  assert.equal(completed.threads[0].liveStatus, "idle");
+  assert.equal(completed.sessions.get("open-turn-root").activityStatus, "idle");
+});
+
 test("wrapped and Plan-mode final answers need confirmation until the user responds or the wait expires", () => {
   const record = (offset, type, payload = {}) => ({ timestamp: new Date(START + offset).toISOString(), type, payload });
   const wrappedPlan = [
