@@ -4,7 +4,8 @@ export function relativeTime(value: string | null, now = Date.now()) {
   if (!value) return "—";
   const seconds = Math.max(0, Math.round((now - new Date(value).getTime()) / 1000));
   if (seconds < 10) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
+  // Relative timestamps stay minute-granular so the dashboard never counts seconds.
+  if (seconds < 60) return "<1m ago";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   return `${Math.floor(seconds / 3600)}h ago`;
 }

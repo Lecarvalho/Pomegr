@@ -28,7 +28,7 @@ describe("wall-time formatting", () => {
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", true, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(5_000);
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", false, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(1_000);
     expect(liveWallTimeMs(1_000, null, true, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(1_000);
-    expect(relativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:12.000Z"))).toBe("12s ago");
+    expect(relativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:12.000Z"))).toBe("<1m ago");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:05.000Z"))).toBe("just now");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:00:30.000Z"))).toBe("less than a minute ago");
     expect(minuteRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("1 minute ago");
@@ -44,6 +44,20 @@ describe("wall-time formatting", () => {
     expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-10-07T12:00:00.000Z"))).toBe("2mo ago");
     expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2028-08-07T12:00:00.000Z"))).toBe("2y ago");
     expect(resetCountdown("2026-08-08T12:02:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Resets in 1m");
+  });
+
+  it("never counts seconds in relative timestamps", () => {
+    const timestamp = "2026-08-08T12:00:00.000Z";
+    const now = Date.parse("2026-08-08T12:00:30.000Z");
+    const labels = [
+      relativeTime(timestamp, now),
+      minuteRelativeTime(timestamp, now),
+      coarseRelativeTime(timestamp, now),
+      sessionRelativeTime(timestamp, now),
+    ];
+
+    expect(labels).toEqual(["<1m ago", "less than a minute ago", "just now", "<1m"]);
+    expect(labels.join(" ")).not.toMatch(/\b\d+s(?:econds?)?\b/i);
   });
 });
 
