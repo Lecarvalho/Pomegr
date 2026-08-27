@@ -4,14 +4,54 @@ Official Pomegr Windows releases are built only by the tag-triggered GitHub Acti
 
 ## Package and publish
 
-To build the Windows installer and portable executable locally for development or testing, install the locked dependencies and run the desktop packaging command from the repository root:
+To build the Windows installer and portable executable locally for development or testing, run the fail-closed helper from PowerShell at the repository root:
+
+```powershell
+.\scripts\package-desktop-local.ps1
+```
+
+The helper stops only validated Pomegr development, local Electron, and current-checkout portable or unpacked desktop processes, installs the locked dependencies with `npm ci`, downloads and verifies the Electron runtime, archives any existing `release/` directory, runs `npm run desktop:package` into a clean output directory, inspects the packaged runtime and privacy boundary with `npm run desktop:inspect`, and restores the development server in a detached PowerShell terminal when it was running beforehand. Previous release output—including portable `PomegrData` and legacy artifacts—is preserved beneath the ignored `.electron-builder-cache/local-package-backups/` directory rather than deleted. Use `-LeaveDevStopped` to leave development stopped, or `-WhatIf` to preview every state-changing step. The equivalent manual build commands are:
 
 ```powershell
 npm ci
+node node_modules\electron\install.js
 npm run desktop:package
+npm run desktop:inspect
 ```
 
 The command prepares the desktop runtime, builds the web application, and creates the NSIS installer and portable executable under `release/`. These local artifacts are for development and acceptance testing only; do not publish them or manually substitute them for artifacts produced and signed by the tag-triggered release workflow.
+
+Before running the manual commands, move any existing `release/` directory aside. The finalizer intentionally rejects stale artifacts and portable data so only the current allowlisted output can remain in the release directory.
+
+### Refresh dependencies on Windows
+
+The helper handles the usual repository-owned lock holders automatically. Use this manual fallback if npm still reports `EPERM` while unlinking a native `.node` file or `EBUSY` while removing a package directory:
+
+1. In the terminal running `npm run dev` or `npm run desktop:start`, press `Ctrl+C` and wait for the PowerShell prompt to return. Close any locally launched Pomegr Electron window as well.
+2. From the repository root, verify that no repository-owned Node or Electron processes remain:
+
+   ```powershell
+   $repo = (Resolve-Path .).Path
+   Get-CimInstance Win32_Process |
+     Where-Object {
+       $_.Name -in @("node.exe", "electron.exe") -and
+       $_.CommandLine -like "*$repo*"
+     } |
+     Select-Object ProcessId, ParentProcessId, Name, CommandLine
+   ```
+
+3. If the command still lists a process, confirm that its command line belongs to this Pomegr checkout, then stop only the listed process ID. Repeat the inspection until it returns no rows:
+
+   ```powershell
+   $verifiedProcessId = 12345 # Replace with the verified ProcessId from the inspection above.
+   Stop-Process -Id $verifiedProcessId -Force
+   ```
+
+   Never stop every `node.exe` process; other development tools and applications may also use Node.js.
+4. Run `npm ci` again. Administrator privileges are not normally required when the checkout belongs to the current user.
+5. Run `node node_modules\electron\install.js` to populate Electron's on-demand `dist` runtime, then continue with `npm run desktop:package` or restart development with `npm run dev`.
+
+### Publish signed artifacts
 
 1. Start from a clean working tree and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
 2. Run `npm version X.Y.Z --no-git-tag-version`, substituting the chosen version. This updates `package.json` and `package-lock.json` without creating a tag.

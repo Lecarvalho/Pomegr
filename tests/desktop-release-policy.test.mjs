@@ -278,3 +278,43 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(documentation, /CN-only value is rejected/i);
   assert.match(documentation, /current installation remains usable/i);
 });
+
+test("local desktop packaging helper validates repository processes before replacing dependencies", async () => {
+  const [helper, documentation] = await Promise.all([
+    readFile(new URL("../scripts/package-desktop-local.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(helper, /\[CmdletBinding\(SupportsShouldProcess\)\]/);
+  assert.match(helper, /Resolve-Path \(Join-Path \$PSScriptRoot '\.\.'\)/);
+  assert.match(helper, /Test-ExactCommandArgument/);
+  assert.match(helper, /Test-ExactExecutablePath/);
+  assert.match(helper, /Pomegr-Portable-\$packageVersion-x64\.exe/);
+  assert.match(helper, /win-unpacked\\Pomegr\.exe/);
+  assert.match(helper, /Get-DescendantTargets/);
+  assert.match(helper, /Sort-Object Depth -Descending/);
+  assert.match(helper, /Stop-Process -Id \(\[int\]\$target\.Id\)/);
+  assert.doesNotMatch(helper, /Stop-Process\s+-Name|taskkill(?:\.exe)?\s+\/IM|Get-Process\s+(?:-Name\s+)?node/i);
+
+  const installIndex = helper.indexOf("Invoke-Npm -Arguments @('ci')");
+  const electronIndex = helper.indexOf("    Install-ElectronRuntime");
+  const archiveIndex = helper.indexOf("  Archive-ExistingReleaseOutput");
+  const packageIndex = helper.indexOf("Invoke-Npm -Arguments @('run', 'desktop:package')");
+  const inspectIndex = helper.indexOf("Invoke-Npm -Arguments @('run', 'desktop:inspect')");
+  assert.ok(installIndex >= 0 && electronIndex > installIndex && archiveIndex > electronIndex && packageIndex > archiveIndex && inspectIndex > packageIndex);
+  assert.match(helper, /node_modules\\electron\\install\.js/);
+  assert.match(helper, /node_modules\\electron\\dist\\electron\.exe/);
+  assert.match(helper, /POMEGR_LOCAL_DESKTOP_PACKAGE_ELECTRON_RUNTIME_MISSING/);
+  assert.match(helper, /POMEGR_LOCAL_DESKTOP_PACKAGE_INSPECTION_FAILED/);
+  assert.match(helper, /\.electron-builder-cache\\local-package-backups/);
+  assert.match(helper, /\[System\.IO\.Directory\]::Move\(\$releaseRoot, \$backupPath\)/);
+  assert.match(helper, /if \(\$attempt -ge 5\)/);
+  assert.doesNotMatch(helper, /(?:Move-Item|Remove-Item)[^\n]*\$releaseRoot/);
+  assert.match(helper, /\$devWasRunning -and -not \$LeaveDevStopped/);
+  assert.match(documentation, /\.\\scripts\\package-desktop-local\.ps1/);
+  assert.match(documentation, /node node_modules\\electron\\install\.js/);
+  assert.match(documentation, /npm run desktop:inspect/);
+  assert.match(documentation, /local-package-backups/);
+  assert.match(documentation, /-LeaveDevStopped/);
+  assert.match(documentation, /-WhatIf/);
+});

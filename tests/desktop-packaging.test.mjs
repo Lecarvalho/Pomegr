@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -70,6 +71,7 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.equal(build.files.includes("build/icon.png"), true);
   assert.deepEqual(build.extraResources.map(({ to }) => to).sort(), [...EXTERNAL_LEGAL_FILES, ...EXTERNAL_RUNTIME_FILES].sort());
   assert.match(packageJson.scripts["desktop:package"], /electron-builder --win nsis portable --x64/);
+  assert.match(packageJson.scripts["desktop:package"], /prepare-builder-cache\.mjs/);
   assert.match(packageJson.scripts["desktop:package"], /finalize-package\.mjs/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release/);
   assert.match(packageJson.scripts.lint, /ignore-pattern release-acceptance/);
@@ -88,6 +90,29 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.deepEqual(build.files.filter((filename) => /^(?:desktop|shared|web)\//.test(filename)), DESKTOP_RUNTIME_FILES);
   assert.doesNotThrow(() => assertPomegrDt08PackagingScope(packageJson));
   assert.equal(packageJson.dependencies.vinext, "0.0.50");
+});
+
+test("packaged desktop runtime allowlist is closed over local module imports", async () => {
+  const runtimeFiles = new Set(DESKTOP_RUNTIME_FILES);
+  const testOnlyImport = "desktop/main.mjs=>desktop/smoke-main.mjs";
+  for (const filename of runtimeFiles) {
+    if (!/\.(?:cjs|mjs)$/.test(filename) || WORKER_BUNDLE_FILES.includes(filename)) continue;
+    const source = await readFile(new URL(`../${filename}`, import.meta.url), "utf8");
+    const imports = source.matchAll(/(?:from\s+|import\s*\()\s*["'](\.\.?\/[^"']+)["']/g);
+    for (const [, specifier] of imports) {
+      const imported = path.posix.normalize(path.posix.join(path.posix.dirname(filename), specifier));
+      if (`${filename}=>${imported}` === testOnlyImport) continue;
+      assert.ok(runtimeFiles.has(imported), `${filename} imports missing packaged runtime file ${imported}`);
+    }
+  }
+});
+
+test("desktop builder cache gives downloaded CommonJS tools an explicit package scope", async () => {
+  const source = await readFile(new URL("../desktop/prepare-builder-cache.mjs", import.meta.url), "utf8");
+  assert.match(source, /Object\.freeze\(\{ private: true, type: "commonjs" \}\)/);
+  assert.match(source, /details\.isSymbolicLink\(\)/);
+  assert.match(source, /writeFile\(cachePackagePath, cachePackageText, \{ flag: "wx" \}\)/);
+  assert.doesNotMatch(source, /rm\(|unlink\(|Remove-Item/);
 });
 
 test("artifact policy accepts only required runtime roots and rejects private or development paths", () => {
