@@ -14,7 +14,11 @@ import {
   parseCodexCanonicalExecutionTasks,
   parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
-import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
+import {
+  latestCodexApprovalMode,
+  latestCodexPlanSnapshot,
+  parseCodexApprovalPlanRecords,
+} from "./codex-approval-plan.mjs";
 import { parseCodexContextRecords } from "./codex-context.mjs";
 import { parseCodexCurrentActivityRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
@@ -276,15 +280,25 @@ export function createCodexProvider(options = {}) {
   const liveAgentAssignmentCache = new Map();
   const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
+  const liveApprovalModeCache = new Map();
   const livePlanTaskCache = new Map();
   const transcriptPathsBySessionId = new Map();
-  const rolloutStats = { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0 };
+  const rolloutStats = {
+    reads: 0,
+    bytes: 0,
+    cacheHits: 0,
+    taskHydrationReads: 0,
+    taskHydrationBytes: 0,
+    approvalHydrationReads: 0,
+    approvalHydrationBytes: 0,
+  };
 
   const invalidateRolloutFile = (file, { clearContext = false } = {}) => {
     rolloutCache.delete(file);
     liveAgentAssignmentCache.delete(file);
     if (clearContext) liveContextUsageCache.delete(file);
     liveExecutionTaskCache.delete(file);
+    liveApprovalModeCache.delete(file);
     livePlanTaskCache.delete(file);
   };
 
@@ -553,6 +567,72 @@ export function createCodexProvider(options = {}) {
     return cached.planTasks;
   }
 
+  function reusableLiveApprovalMode(file, threadId, generation) {
+    const cached = liveApprovalModeCache.get(file);
+    if (!cached || cached.threadId !== threadId || !generation) return null;
+    const previous = cached.generation;
+    const monotonic = previous
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size
+        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
+      && priorSuffixStillMatches(file, previous);
+    if (!monotonic) {
+      liveApprovalModeCache.delete(file);
+      return null;
+    }
+    return cached;
+  }
+
+  function hydrateLiveApprovalMode(file, generation) {
+    if (!generation || generation.size <= maximumLiveTailBytes) return null;
+    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
+    const position = generation.size - bytes;
+    let descriptor;
+    let buffer;
+    try {
+      descriptor = fs.openSync(file, "r");
+      buffer = Buffer.alloc(bytes);
+      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
+      if (read !== bytes) return null;
+    } catch {
+      return null;
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    let confirmed;
+    try { confirmed = fs.statSync(file); } catch { return null; }
+    if (
+      !confirmed.isFile()
+      || rolloutIdentity(confirmed) !== generation.identity
+      || confirmed.size !== generation.size
+      || confirmed.mtimeMs !== generation.mtimeMs
+      || !Number.isInteger(generation.suffixBytes)
+      || generation.suffixBytes < 1
+      || generation.suffixBytes > buffer.length
+      || digest(buffer.subarray(buffer.length - generation.suffixBytes)) !== generation.suffixDigest
+    ) return null;
+    let text = buffer.toString("utf8");
+    if (position > 0) {
+      const newline = text.indexOf("\n");
+      text = newline >= 0 ? text.slice(newline + 1) : "";
+    }
+    const records = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+      } catch {
+        // Approval hydration ignores malformed and partially read records independently.
+      }
+    }
+    rolloutStats.approvalHydrationReads += 1;
+    rolloutStats.approvalHydrationBytes += bytes;
+    return { approvalMode: latestCodexApprovalMode(records) };
+  }
+
   function normalizeAppServerMetadata(thread, metadataOptions = {}) {
     const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
     if (!metadata) return null;
@@ -641,6 +721,7 @@ export function createCodexProvider(options = {}) {
       rolloutCache.delete(evictedFile);
       liveContextUsageCache.delete(evictedFile);
       liveExecutionTaskCache.delete(evictedFile);
+      liveApprovalModeCache.delete(evictedFile);
       livePlanTaskCache.delete(evictedFile);
     }
     return { records, generation };
@@ -716,6 +797,9 @@ export function createCodexProvider(options = {}) {
       }
       for (const file of liveAgentAssignmentCache.keys()) {
         if (!knownRolloutFiles.has(file)) liveAgentAssignmentCache.delete(file);
+      }
+      for (const file of liveApprovalModeCache.keys()) {
+        if (!knownRolloutFiles.has(file)) liveApprovalModeCache.delete(file);
       }
       catalogCache = { expiresAt: now() + cacheMs, value };
       return value;
@@ -916,9 +1000,39 @@ export function createCodexProvider(options = {}) {
     const parsedApprovalPlan = metadata.rolloutFile
       ? parseCodexApprovalPlanRecords(rootRecords)
       : { approvalMode: null, planTasks: [] };
+    let approvalMode = parsedApprovalPlan.approvalMode;
     let planTasks = parsedApprovalPlan.planTasks;
     const rootGeneration = generationsByThreadId.get(metadata.localId) || null;
     if (!historical && metadata.rolloutFile && rootGeneration) {
+      const cachedApproval = reusableLiveApprovalMode(metadata.rolloutFile, metadata.localId, rootGeneration);
+      const skippedApprovalGap = cachedApproval
+        && rootGeneration.size - cachedApproval.generation.size > maximumLiveTailBytes;
+      const needsApprovalHydration = !approvalMode && (!cachedApproval || skippedApprovalGap);
+      const hydratedApproval = needsApprovalHydration
+        ? hydrateLiveApprovalMode(metadata.rolloutFile, rootGeneration)
+        : null;
+      approvalMode = approvalMode
+        ?? hydratedApproval?.approvalMode
+        ?? cachedApproval?.approvalMode
+        ?? null;
+      const approvalCacheGeneration = needsApprovalHydration && !hydratedApproval && cachedApproval
+        ? cachedApproval.generation
+        : rootGeneration;
+      const approvalEvidenceAvailable = Boolean(approvalMode)
+        || Boolean(cachedApproval)
+        || Boolean(hydratedApproval)
+        || rootGeneration.size <= maximumLiveTailBytes;
+      liveApprovalModeCache.delete(metadata.rolloutFile);
+      if (approvalEvidenceAvailable) {
+        liveApprovalModeCache.set(metadata.rolloutFile, {
+          threadId: metadata.localId,
+          generation: approvalCacheGeneration,
+          approvalMode,
+        });
+      }
+      while (liveApprovalModeCache.size > scanLimit) {
+        liveApprovalModeCache.delete(liveApprovalModeCache.keys().next().value);
+      }
       const latestSnapshot = latestCodexPlanSnapshot(rootRecords);
       planTasks = latestSnapshot
         ?? reusableLivePlanTasks(metadata.rolloutFile, metadata.localId, rootGeneration)
@@ -933,7 +1047,7 @@ export function createCodexProvider(options = {}) {
         livePlanTaskCache.delete(livePlanTaskCache.keys().next().value);
       }
     }
-    const approvalPlan = { ...parsedApprovalPlan, planTasks };
+    const approvalPlan = { approvalMode, planTasks };
     const actorByThreadId = new Map(agents.map((agent) => [
       agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
       { id: agent.id, label: agent.label },
@@ -1167,6 +1281,7 @@ export function createCodexProvider(options = {}) {
         ...rolloutStats,
         cacheEntries: rolloutCache.size,
         liveExecutionTaskEntries: liveExecutionTaskCache.size,
+        liveApprovalModeEntries: liveApprovalModeCache.size,
         livePlanTaskEntries: livePlanTaskCache.size,
         catalogPending: Boolean(catalogPending),
         livenessRolloutFiles: livenessStats.rolloutFiles,
@@ -1178,6 +1293,8 @@ export function createCodexProvider(options = {}) {
         cacheHits: 0,
         taskHydrationReads: 0,
         taskHydrationBytes: 0,
+        approvalHydrationReads: 0,
+        approvalHydrationBytes: 0,
       });
       return value;
     },
