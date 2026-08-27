@@ -180,6 +180,44 @@ test("Claude adapter returns sanitized provider evidence without changing normal
   assertNoPrivateFixtureSentinels(evidence, "Claude adapter evidence");
 });
 
+test("Claude catalog keeps a custom session title after it moves outside the summary tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-title-tail-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "claude-title-tail";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const filler = (label) => ({
+    type: "user",
+    timestamp: "2026-08-12T14:00:00.000Z",
+    message: { content: `${label}_PRIVATE_MUST_NOT_LEAK`.repeat(24_000) },
+  });
+  await writeRecords(mainFile, [
+    { type: "ai-title", aiTitle: "Automatic title" },
+    filler("BEFORE_RENAME"),
+  ]);
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+
+  assert.equal((await provider.listSessions())[0].title, "Automatic title");
+
+  await appendFile(mainFile, `${[
+    { type: "custom-title", customTitle: "Durable custom title" },
+    filler("AFTER_RENAME"),
+    { type: "ai-title", aiTitle: "Stale automatic title" },
+  ].map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+
+  const catalog = await provider.listSessions();
+  assert.equal(catalog[0].title, "Durable custom title");
+  assert.equal((await provider.readSession(localId)).session.title, "Durable custom title");
+  assertNoPrivateFixtureSentinels(catalog, "Claude title catalog");
+});
+
 test("Claude live usage snapshots survive a moving transcript tail and reset on replacement", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-usage-rollover-"));
   context.after(() => rm(root, { recursive: true, force: true }));

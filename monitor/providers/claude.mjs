@@ -35,6 +35,7 @@ const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
+const MAX_SESSION_TITLE_RECORD_BYTES = 16 * 1024;
 const MAX_TRANSCRIPT_PLAN_TASKS = 40;
 const MAX_PENDING_TASK_CALLS = 80;
 const MAX_WORKFLOWS = 24;
@@ -579,14 +580,52 @@ function recordedGitBranch(records) {
   return branch;
 }
 
-function sessionTitle(records) {
-  let aiTitle = "";
-  let customTitle = "";
+function sessionTitleState(records, initial = {}) {
+  let aiTitle = initial.aiTitle || "";
+  let customTitle = initial.customTitle || "";
   for (const record of records) {
     if (record.type === "ai-title" && typeof record.aiTitle === "string") aiTitle = record.aiTitle;
     if (record.type === "custom-title") customTitle = record.customTitle || record.title || record.name || customTitle;
   }
+  return { aiTitle, customTitle };
+}
+
+function sessionTitle(records) {
+  const { aiTitle, customTitle } = sessionTitleState(records);
   return customTitle || aiTitle || "Untitled session";
+}
+
+async function scanSessionTitleState(file, stat, initial = {}, start = 0) {
+  if (!stat?.isFile() || stat.size <= 0) return sessionTitleState([], initial);
+  let input;
+  let lines;
+  let firstLine = true;
+  const state = sessionTitleState([], initial);
+  try {
+    input = fs.createReadStream(file, {
+      encoding: "utf8",
+      start,
+      end: stat.size - 1,
+    });
+    lines = readline.createInterface({ input, crlfDelay: Infinity });
+    for await (const line of lines) {
+      if (firstLine) {
+        firstLine = false;
+        if (start > 0) continue;
+      }
+      if ((!line.includes("ai-title") && !line.includes("custom-title"))
+        || Buffer.byteLength(line, "utf8") > MAX_SESSION_TITLE_RECORD_BYTES) continue;
+      let record;
+      try { record = JSON.parse(line); } catch { continue; }
+      const next = sessionTitleState([record], state);
+      state.aiTitle = next.aiTitle;
+      state.customTitle = next.customTitle;
+    }
+    return state;
+  } finally {
+    lines?.close();
+    input?.destroy();
+  }
 }
 
 function runtimeMetadata(records) {
@@ -743,6 +782,7 @@ export function createClaudeProvider(options = {}) {
   const registryRoot = options.registryRoot || path.join(homeDir, ".claude", "sessions");
   const now = options.now || (() => Date.now());
   const sessionSummaryCache = new Map();
+  const sessionTitleCache = new Map();
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
   const liveUsageSnapshotCache = new Map();
@@ -758,6 +798,36 @@ export function createClaudeProvider(options = {}) {
   const usageLimits = createUsageLimitsCoordinator({
     request: options.usageRequest || usageRequest(homeDir, options.fetch || globalThis.fetch),
   }).get;
+
+  async function cachedSessionTitle(file, stat) {
+    const identity = fileIdentity(stat);
+    const cached = sessionTitleCache.get(file);
+    if (cached
+      && cached.identity === identity
+      && cached.size === stat.size
+      && cached.mtimeMs === stat.mtimeMs) {
+      sessionTitleCache.delete(file);
+      sessionTitleCache.set(file, cached);
+      return cached.customTitle || cached.aiTitle || "Untitled session";
+    }
+
+    const appendOnly = cached
+      && cached.identity === identity
+      && stat.size > cached.size
+      && stat.mtimeMs >= cached.mtimeMs;
+    const start = appendOnly ? Math.max(0, cached.size - MAX_SESSION_TITLE_RECORD_BYTES) : 0;
+    const initial = appendOnly ? cached : {};
+    try {
+      const state = await scanSessionTitleState(file, stat, initial, start);
+      const value = { identity, size: stat.size, mtimeMs: stat.mtimeMs, ...state };
+      sessionTitleCache.delete(file);
+      sessionTitleCache.set(file, value);
+      while (sessionTitleCache.size > 64) sessionTitleCache.delete(sessionTitleCache.keys().next().value);
+      return value.customTitle || value.aiTitle || "Untitled session";
+    } catch {
+      return sessionTitle(readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES));
+    }
+  }
 
   function liveUsageSnapshots(file, records, actor, stat, historical) {
     const parsed = parseClaudeContextRecords(records, {
@@ -815,9 +885,14 @@ export function createClaudeProvider(options = {}) {
 
   async function listSessions() {
     const { files, liveFiles, registry } = discoveredSessions();
-    return files.slice(0, 50).flatMap(({ file, activityMs }) => {
+    const visibleFiles = new Set(files.slice(0, 50).map(({ file }) => file));
+    for (const file of sessionTitleCache.keys()) {
+      if (!visibleFiles.has(file) && !statSafe(file)) sessionTitleCache.delete(file);
+    }
+    const sessions = [];
+    for (const { file, activityMs } of files.slice(0, 50)) {
       const stat = statSafe(file);
-      if (!stat) return [];
+      if (!stat) continue;
       const cacheKey = `${stat.size}:${stat.mtimeMs}:${activityMs}`;
       const cached = sessionSummaryCache.get(file);
       const registryEntry = registry.get(path.basename(file, ".jsonl"));
@@ -827,17 +902,21 @@ export function createClaudeProvider(options = {}) {
         needsInput: Boolean(registryEntry?.needsInput),
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
-      if (cached?.key === cacheKey) return [{ ...cached.value, ...liveState }];
+      if (cached?.key === cacheKey) {
+        sessions.push({ ...cached.value, ...liveState });
+        continue;
+      }
       const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
       const value = {
         localId: path.basename(file, ".jsonl"),
-        title: sessionTitle(records),
+        title: await cachedSessionTitle(file, stat),
         project: projectName(file, records),
         updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
       };
       sessionSummaryCache.set(file, { key: cacheKey, value });
-      return [{ ...value, ...liveState }];
-    });
+      sessions.push({ ...value, ...liveState });
+    }
+    return sessions;
   }
 
   async function readSession(localSessionId = "") {
@@ -877,6 +956,7 @@ export function createClaudeProvider(options = {}) {
     const recordsByFile = new Map(files.map((file) => [file, readJsonlTail(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections(recordsByFile.values());
     const mainRecords = recordsByFile.get(mainFile) || [];
+    const mainStat = statSafe(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
     const signalsByFile = new Map(await Promise.all(files.map(async (file) => [
       file,
@@ -1060,7 +1140,7 @@ export function createClaudeProvider(options = {}) {
       localId: sessionId,
       historical,
       session: {
-        title: sessionTitle(mainRecords),
+        title: mainStat ? await cachedSessionTitle(mainFile, mainStat) : sessionTitle(mainRecords),
         project: projectName(mainFile, mainRecords),
         cwd: projectCwd(mainRecords),
         startedAt,
