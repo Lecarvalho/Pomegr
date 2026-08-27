@@ -1,4 +1,5 @@
 import type { Activity, Agent, SessionProgress } from "../../../shared/monitor-contract";
+import { AnimatedProgressBar, useAnimatedProgressValue } from "../AnimatedProgress";
 import { RelativeTimeText } from "../LiveTime";
 import { useLiveNow } from "../../hooks/LiveClockContext";
 
@@ -50,6 +51,51 @@ function primaryActivityAfter(progress: SessionProgress, primary: Agent | null, 
     .filter((event) => primaryIds.has(event.actor))
     .reduce((latest, event) => Math.max(latest, timestampOf(event.timestamp)), Number.NEGATIVE_INFINITY);
   return Math.max(agentTimestamp, activityTimestamp) > reportedAt;
+}
+
+function SessionProgressInstrument({
+  progress,
+  phaseLabel,
+  eta,
+  complete,
+  historical,
+}: {
+  progress: SessionProgress;
+  phaseLabel: string;
+  eta: string;
+  complete: boolean;
+  historical: boolean;
+}) {
+  const displayedPercent = useAnimatedProgressValue(progress.percent, "detail", !historical);
+
+  return (
+    <div className="sessionProgressInstrument">
+      <div className="sessionProgressHeadline">
+        <div>
+          <strong>{phaseLabel}</strong>
+          <span>Provider-reported progress</span>
+        </div>
+        <strong className="sessionProgressPercent" aria-hidden="true">{Math.round(displayedPercent)}%</strong>
+      </div>
+      <AnimatedProgressBar
+        value={progress.percent}
+        displayedValue={displayedPercent}
+        label="Agent-reported session progress"
+        valueText={`${progress.percent}% complete · ${phaseLabel}`}
+        motion="detail"
+      />
+      <div className="sessionProgressMeasures">
+        {!complete && <div>
+          <span>REMAINING</span>
+          <strong>{eta}</strong>
+        </div>}
+        <div>
+          <span>CONFIDENCE</span>
+          <strong>{confidenceLabel(progress.confidence)}</strong>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function SessionProgressPanel({
@@ -110,26 +156,7 @@ export function SessionProgressPanel({
         </div>
         <span className={`sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
       </header>
-      <div className="sessionProgressInstrument">
-        <div className="sessionProgressHeadline">
-          <div>
-            <strong>{phaseLabel}</strong>
-            <span>Provider-reported progress</span>
-          </div>
-          <strong className="sessionProgressPercent">{progress.percent}%</strong>
-        </div>
-        <progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${phaseLabel}`} />
-        <div className="sessionProgressMeasures">
-          {!complete && <div>
-            <span>REMAINING</span>
-            <strong>{eta}</strong>
-          </div>}
-          <div>
-            <span>CONFIDENCE</span>
-            <strong>{confidenceLabel(progress.confidence)}</strong>
-          </div>
-        </div>
-      </div>
+      <SessionProgressInstrument progress={progress} phaseLabel={phaseLabel} eta={eta} complete={complete} historical={historical} />
       <div className="sessionProgressReportRow">
         <span>{reportLabel}</span>
         {stale && <strong>May be stale — later primary-agent activity was observed.</strong>}

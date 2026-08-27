@@ -172,10 +172,13 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionProgressHeadline strong { display: block; color: var(--ink); font-size: 14px; font-weight: 620; }
 .sessionProgressHeadline span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .sessionProgressPercent { flex: 0 0 auto; font: 500 23px/1 var(--font-geist-mono), Consolas, monospace !important; font-variant-numeric: tabular-nums; }
-.sessionProgressInstrument progress { width: 100%; height: 8px; margin: 17px 0 16px; display: block; appearance: none; border: 0; background: var(--line); }
-.sessionProgressInstrument progress::-webkit-progress-bar { background: var(--line); }
-.sessionProgressInstrument progress::-webkit-progress-value { background: var(--green); }
-.sessionProgressInstrument progress::-moz-progress-bar { background: var(--green); }
+.animatedProgressTrack { position: relative; width: 100%; overflow: hidden; background: var(--line); }
+.animatedProgressTrack-detail { height: 8px; margin: 17px 0 16px; }
+.animatedProgressTrack-compact { height: 5px; margin: 8px 0 0; }
+.animatedProgressFill { position: absolute; inset: 0; background: var(--green); transform-origin: left center; }
+.animatedProgressTrack-detail .animatedProgressFill::after { position: absolute; top: 0; right: 0; width: 2px; height: 100%; background: var(--panel); content: ""; }
+.animatedProgressTrack-blocked .animatedProgressFill { background: var(--amber); }
+.animatedProgressSemantic { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; appearance: none; border: 0; }
 .sessionProgressMeasures { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, .35fr); gap: 18px; }
 .sessionProgressMeasures > div { min-width: 0; }
 .sessionProgressMeasures span { display: block; color: var(--muted); font: 700 8px/1 var(--font-geist-mono), Consolas, monospace; letter-spacing: .1em; }
@@ -1255,12 +1258,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeSessionProgress > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .homeSessionProgress strong { color: var(--ink); font: 700 8px/1 var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
 .homeSessionProgress b { color: var(--ink); font: 650 11px/1 var(--font-geist-mono), monospace; }
-.homeSessionProgress progress { width: 100%; height: 5px; margin: 8px 0 0; display: block; appearance: none; border: 0; background: var(--line); }
-.homeSessionProgress progress::-webkit-progress-bar { background: var(--line); }
-.homeSessionProgress progress::-webkit-progress-value { background: var(--green); }
-.homeSessionProgress progress::-moz-progress-bar { background: var(--green); }
-.homeSessionProgress-blocked progress::-webkit-progress-value { background: var(--amber); }
-.homeSessionProgress-blocked progress::-moz-progress-bar { background: var(--amber); }
 .homeSessionProgress > small { display: block; margin-top: 7px; color: var(--muted); font: 8px/1 var(--font-geist-mono), monospace; }
 @media (max-width: 1200px) { .homeSessionGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 980px) { .homeSessionGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

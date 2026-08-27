@@ -6,6 +6,7 @@ import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits,
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 import { NavigationMenuButton } from "./components/NavigationMenuButton";
+import { AnimatedProgressBar, useAnimatedProgressValue } from "./components/AnimatedProgress";
 import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
@@ -174,12 +175,34 @@ function isActiveSession(session: LiveSessionSummary) {
   return session.needsInput || session.activityStatus === "needs_input" || session.activityStatus === "working";
 }
 
+function HomeSessionProgress({ session, progress }: { session: LiveSessionSummary; progress: NonNullable<LiveSessionSummary["progress"]> }) {
+  const displayedPercent = useAnimatedProgressValue(progress.percent, "compact");
+  const showEta = !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
+  const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
+
+  return (
+    <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}>
+      <div>
+        <strong>{progress.phase}</strong>
+        <b aria-hidden="true">{Math.round(displayedPercent)}%</b>
+      </div>
+      <AnimatedProgressBar
+        value={progress.percent}
+        displayedValue={displayedPercent}
+        label="Agent-reported session progress"
+        valueText={`${progress.percent}% complete · ${progress.phase}`}
+        motion="compact"
+        blocked={progress.phase === "blocked"}
+      />
+      {eta && <small>{eta}</small>}
+    </div>
+  );
+}
+
 function SessionCard({ session }: { session: LiveSessionSummary }) {
   const progress = session.progress;
   const activity = sessionActivity(session);
-  const showEta = progress && !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
-  const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
-  return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}><div><strong>{progress.phase}</strong><b>{progress.percent}%</b></div><progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${progress.phase}`} />{eta && <small>{eta}</small>}</div>}</div>;
+  return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <HomeSessionProgress session={session} progress={progress} />}</div>;
 }
 
 function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: LiveSessionSummary[] }) {
