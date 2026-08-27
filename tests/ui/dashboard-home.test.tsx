@@ -209,13 +209,14 @@ describe("home dashboard", () => {
     fireEvent.click(claudeProjects!.querySelector("summary")!);
     expect(claudeProjects).toHaveAttribute("open");
     expect(within(claudeProjects!).getByText("pomegr")).toBeInTheDocument();
-    expect(within(claudeProjects!).getByText("2 sessions · 66.7%")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("2 sessions")).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("other-repo")).toBeInTheDocument();
-    expect(within(claudeProjects!).getByText("1 session · 33.3%")).toBeInTheDocument();
+    expect(within(claudeProjects!).getByText("1 session")).toBeInTheDocument();
+    expect(within(claudeProjects!).queryByText(/\d+(?:\.\d+)?%/)).not.toBeInTheDocument();
     expect(within(claudeProjects!).getByText("correlation evidence, not attribution or billing", { exact: false })).toBeInTheDocument();
     expect(within(claudeProjects!).getByText("Coverage is partial: observations may begin after the window started.", { exact: false })).toBeInTheDocument();
     const codexProjects = screen.getByText("1 project").closest("details");
-    expect(within(codexProjects!).getByText("1 session · 100%")).toBeInTheDocument();
+    expect(within(codexProjects!).getByText("1 session")).toBeInTheDocument();
   });
 
   it("shows the observed-project disclosure below Claude's seven-day all-models bar", async () => {
@@ -304,8 +305,9 @@ describe("home dashboard", () => {
     expect(disclosure.querySelector("summary")).toHaveTextContent("2 projects");
     fireEvent.click(disclosure.querySelector("summary")!);
     expect(within(disclosure).getByText("Observed Fable activity")).toBeInTheDocument();
-    expect(within(disclosure).getByText("2 requests · 66.7%")).toBeInTheDocument();
-    expect(within(disclosure).getByText("1 request · 33.3%")).toBeInTheDocument();
+    expect(within(disclosure).getByText("2 requests")).toBeInTheDocument();
+    expect(within(disclosure).getByText("1 request")).toBeInTheDocument();
+    expect(within(disclosure).queryByText(/\d+(?:\.\d+)?%/)).not.toBeInTheDocument();
     expect(within(disclosure).getByText("Fable usage is account-level; request activity is correlation evidence, not attribution or billing.")).toBeInTheDocument();
     expect(within(disclosure).queryByText("Observed project sessions")).not.toBeInTheDocument();
   });
@@ -341,25 +343,20 @@ describe("home dashboard", () => {
     expect(container.querySelector(".homeLimitActivityCoverage")).not.toBeInTheDocument();
   });
 
-  it("keeps session activity timing independent from quota percentage and omits the duplicate scale", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
-      ...snapshot,
-      limitActivities: snapshot.limitActivities.map((activity) => ({
-        ...activity,
-        percent: 100,
-        observations: [...activity.observations, { observedAt: "2026-08-23T12:05:00.000Z", percent: 100 }],
-      })),
-    }));
+  it("scales session activity timing inside the filled usage width", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
     await screen.findByRole("heading", { name: "Usage & activity" });
     const claudeTicks = screen.getByRole("img", { name: /Local session activity for Current session, 5 hours/ });
     expect(claudeTicks.querySelectorAll("b")).toHaveLength(3);
+    expect(claudeTicks.querySelector(".homeLimitRequestTimeline")).toHaveStyle({ width: "31%" });
     const positions = [...claudeTicks.querySelectorAll("b")].map((tick) => parseFloat((tick as HTMLElement).style.left));
-    expect(Math.min(...positions)).toBeCloseTo(41.7, 1);
+    expect(Math.min(...positions)).toBeCloseTo(83.3, 1);
+    expect(Math.max(...positions)).toBeCloseTo(91.7, 1);
     expect(container.querySelector(".homeLimitActivityScale")).not.toBeInTheDocument();
   });
 
-  it("falls back to the observed interval when the provider omits resetsAt", async () => {
+  it("keeps elapsed-window tick spacing when the provider omits resetsAt", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
       ...snapshot,
       limitActivities: snapshot.limitActivities.map((activity) => ({ ...activity, resetsAt: null, windowStartsAtExact: true })),
@@ -371,12 +368,13 @@ describe("home dashboard", () => {
     expect(Math.min(...positions)).toBeCloseTo(83.3, 1);
   });
 
-  it("positions Codex activity ticks across the selected seven-day reset window", async () => {
+  it("positions Codex activity ticks across the elapsed part of its seven-day window", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     render(<HomeDashboard />);
     await screen.findByRole("heading", { name: "Usage & activity" });
     const codexTicks = screen.getByRole("img", { name: /Local session activity for Codex, 7 days/ });
-    expect(parseFloat((codexTicks.querySelector("b") as HTMLElement).style.left)).toBeCloseTo(14.2, 1);
+    expect(codexTicks.querySelector(".homeLimitRequestTimeline")).toHaveStyle({ width: "82%" });
+    expect(parseFloat((codexTicks.querySelector("b") as HTMLElement).style.left)).toBeCloseTo(99.3, 1);
   });
 
   it("keeps live cards available while recorded history warms", async () => {

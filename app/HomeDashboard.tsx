@@ -46,7 +46,7 @@ function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
     .sort((left, right) => left.project.localeCompare(right.project));
 }
 
-function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
+function LimitRequestTicks({ activity, percent }: { activity: HomeLimitActivity; percent: number }) {
   const projects = projectRequestGroups(activity.sessions || []);
   const requests = projects.flatMap((project) => project.requestObservations.map((observation) => ({ ...observation, project: project.project })));
   const observedSessionIds = new Set(requests.map((observation) => observation.sessionId));
@@ -59,10 +59,8 @@ function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
   if (!showDetails) return null;
 
   const startMs = Date.parse(activity.windowStartsAt);
-  const resetMs = activity.resetsAt ? Date.parse(activity.resetsAt) : NaN;
   const generatedMs = Date.parse(activity.generatedAt);
-  const endMs = Number.isFinite(resetMs) && resetMs > startMs ? resetMs : generatedMs;
-  const rangeMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0;
+  const rangeMs = Number.isFinite(startMs) && Number.isFinite(generatedMs) && generatedMs > startMs ? generatedMs - startMs : 0;
   const position = (observedAt: string) => {
     const observedMs = Date.parse(observedAt);
     if (!rangeMs || !Number.isFinite(observedMs)) return 0.4;
@@ -74,11 +72,6 @@ function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
     : `${requests.length} activity ${requests.length === 1 ? "observation" : "observations"}`;
   const sessionLabel = `${observedSessionIds.size} ${observedSessionIds.size === 1 ? "session" : "sessions"}`;
   const detailsLabel = requests.length ? projectLabel : "About activity";
-  const observedTotal = modelScoped ? requests.length : observedSessionIds.size;
-  const observedShare = (count: number) => {
-    const percent = (count / observedTotal) * 100;
-    return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
-  };
   const activityDescription = modelScoped
     ? `Local request activity for ${activity.label}, ${activity.window}: ${observationLabel} across ${projectLabel}.`
     : `Local session activity for ${activity.label}, ${activity.window}: ${observationLabel} across ${sessionLabel} and ${projectLabel}.`;
@@ -86,7 +79,9 @@ function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
   return (
     <>
       {requests.length > 0 && <span className="homeLimitRequestTicks" role="img" aria-label={activityDescription}>
-        {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={modelScoped ? `${observation.project} · ${activity.label} request observed at ${limitTime(observation.observedAt)}` : `${observation.project} · session activity observed at ${limitTime(observation.observedAt)}`} />)}
+        <span className="homeLimitRequestTimeline" style={{ width: `${percent}%` }}>
+          {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={modelScoped ? `${observation.project} · ${activity.label} request observed at ${limitTime(observation.observedAt)}` : `${observation.project} · session activity observed at ${limitTime(observation.observedAt)}`} />)}
+        </span>
       </span>}
       <details className="homeLimitProjects">
         <summary aria-label={requests.length ? `Show ${projectLabel} observed during the ${activity.window} window` : `Show observation details for the ${activity.window} window`}>{detailsLabel}</summary>
@@ -99,7 +94,7 @@ function LimitRequestTicks({ activity }: { activity: HomeLimitActivity }) {
               const observedUnit = modelScoped ? (observedCount === 1 ? "request" : "requests") : (observedCount === 1 ? "session" : "sessions");
               return <li key={project.project}>
                 <strong>{project.project}</strong>
-                <span>{observedCount} {observedUnit} · {observedShare(observedCount)}</span>
+                <span>{observedCount} {observedUnit}</span>
               </li>;
             })}
           </ul>}
@@ -147,7 +142,7 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
                           <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
                           <div className="homeLimitTrackStack">
                             <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
-                            {activity && <LimitRequestTicks activity={activity} />}
+                            {activity && <LimitRequestTicks activity={activity} percent={percent} />}
                           </div>
                           <em>{Math.round(limit.percent)}%</em>
                         </div>

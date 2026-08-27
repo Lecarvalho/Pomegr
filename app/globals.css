@@ -1160,6 +1160,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .homeLimitTrack { height: 4px; display: block; overflow: hidden; background: var(--line); }
 .homeLimitTrack b { display: block; height: 100%; background: var(--blue); transition: width .2s ease-out; }
 .homeLimitRequestTicks { position: relative; height: 7px; overflow: hidden; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.homeLimitRequestTimeline { position: absolute; inset: 0 auto 0 0; display: block; overflow: hidden; transition: width .2s ease-out; }
 .homeLimitRequestTicks b { position: absolute; top: -1px; width: 1px; height: 7px; display: block; background: var(--ink); }
 .homeLimitProjects { position: relative; justify-self: start; min-width: 0; color: var(--muted); font: 7.5px/1.2 var(--font-geist-mono), monospace; }
 .homeLimitProjects summary { width: max-content; max-width: 100%; min-height: 18px; display: flex; align-items: center; overflow: hidden; color: inherit; cursor: pointer; list-style: none; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent); text-decoration-style: dotted; text-underline-offset: 3px; text-overflow: ellipsis; white-space: nowrap; }
