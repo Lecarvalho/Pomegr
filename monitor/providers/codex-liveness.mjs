@@ -488,6 +488,7 @@ function rolloutTerminalStatus(record) {
 
 export function parseCodexRolloutLiveness(records, options = {}) {
   const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
+  const allowPendingFileEdit = options.allowPendingFileEdit !== false;
   const pending = new Map();
   const pendingFileEdits = new Map();
   let planModeTurn = false;
@@ -555,7 +556,8 @@ export function parseCodexRolloutLiveness(records, options = {}) {
   const pendingFileEdit = [...pendingFileEdits.values()]
     .sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
   const pendingFileEditAge = pendingFileEdit ? nowMs - timestampValue(pendingFileEdit.timestamp) : null;
-  if (pendingFileEditAge !== null
+  if (allowPendingFileEdit
+    && pendingFileEditAge !== null
     && pendingFileEditAge >= CODEX_ROLLOUT_APPROVAL_GRACE_MS
     && pendingFileEditAge <= CODEX_NEEDS_INPUT_MAX_MS) {
     return { live: true, status: "needs_input", needsInput: true, needsInputKind: "pending_file_edit", source: "rollout_activity_heuristic", observedAt: pendingFileEdit.timestamp };
@@ -702,7 +704,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     return writerLockIsActive(path.join(writerLocksRoot, `${localId}.lock`)) === true;
   }
 
-  function rolloutEvidence(file, nowMs) {
+  function rolloutEvidence(file, nowMs, parseOptions = {}) {
     if (!file) return null;
     let stat;
     try { stat = fs.statSync(file); } catch { return null; }
@@ -715,7 +717,7 @@ export function createCodexLivenessCoordinator(options = {}) {
       stats.rolloutFiles += 1;
       stats.rolloutBytes += Math.min(stat.size, maximumTailBytes);
     }
-    return parseCodexRolloutLiveness(cached.records, { now: nowMs });
+    return parseCodexRolloutLiveness(cached.records, { now: nowMs, ...parseOptions });
   }
 
   function rolloutMetadataCanBeLive(thread, nowMs, maximumAge = CODEX_ROLLOUT_LIVE_WINDOW_MS) {
@@ -758,6 +760,11 @@ export function createCodexLivenessCoordinator(options = {}) {
       }
     }
     const resourceOwnersByThreadId = new Map();
+    const topLevelSourceBySessionId = new Map(
+      threads
+        .filter((thread) => !thread.parentThreadId)
+        .map((thread) => [thread.sessionId || thread.localId, thread.sourceKind]),
+    );
     let coldDesktopRollouts = 0;
     let coldCliRollouts = 0;
     const observedThreads = threads.map((thread) => {
@@ -796,13 +803,14 @@ export function createCodexLivenessCoordinator(options = {}) {
       if (coldCliCandidate) coldCliRollouts += 1;
       const coldRolloutCandidate = coldDesktopCandidate || coldCliCandidate;
       const inspectRollout = metadataCanBeLive || coldRolloutCandidate;
+      const topLevelSourceKind = topLevelSourceBySessionId.get(thread.sessionId || thread.localId)
+        || thread.sourceKind;
       const rollout = inspectRollout
-        ? rolloutEvidence(thread.rolloutFile, checkedAt)
+        ? rolloutEvidence(thread.rolloutFile, checkedAt, {
+            allowPendingFileEdit: topLevelSourceKind === "cli",
+          })
         : null;
-      const appIdleFileEdit = app?.status === "idle"
-        && thread.sourceKind === "vscode"
-        && rollout?.needsInputKind === "pending_file_edit";
-      const liveness = canSupplementIdle && rollout?.needsInput && !appIdleFileEdit ? rollout : primary || rollout;
+      const liveness = canSupplementIdle && rollout?.needsInput ? rollout : primary || rollout;
       return {
         ...thread,
         liveStatus: liveness?.status || null,

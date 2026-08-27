@@ -375,7 +375,7 @@ test("proposed plan confirmation supplements an idle app-server status", async (
   assert.equal(expired.stats().rolloutFiles, 0);
 });
 
-test("pending file edits do not override an idle VS Code app status", async (context) => {
+test("pending file edits never create rollout-only needs-input for Codex Desktop", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-app-idle-edit-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout-pending-edit.jsonl");
@@ -418,9 +418,31 @@ test("pending file edits do not override an idle VS Code app status", async (con
     updatedAt: staleTime.toISOString(),
     rolloutFile,
   })]);
-  assert.equal(coldObserved.sessions.get("cold-edit").needsInput, true);
-  assert.equal(coldObserved.threads[0].liveStatus, "needs_input");
+  assert.equal(coldObserved.sessions.get("cold-edit").isLive, true);
+  assert.equal(coldObserved.sessions.get("cold-edit").needsInput, false);
+  assert.equal(coldObserved.threads[0].liveStatus, "active");
   assert.equal(coldObserved.threads[0].liveness.source, "rollout_activity_heuristic");
+
+  const descendantObserved = createCodexLivenessCoordinator({
+    root: path.join(root, "descendant-liveness"),
+    now: () => now,
+    cacheMs: 0,
+  }).observe([
+    thread("desktop-root", {
+      sourceKind: "vscode",
+      updatedAt: staleTime.toISOString(),
+    }),
+    thread("desktop-child", {
+      sessionId: "desktop-root",
+      parentThreadId: "desktop-root",
+      sourceKind: "subAgentThreadSpawn",
+      updatedAt: new Date(now).toISOString(),
+      rolloutFile,
+    }),
+  ]);
+  assert.equal(descendantObserved.sessions.get("desktop-root").isLive, true);
+  assert.equal(descendantObserved.sessions.get("desktop-root").needsInput, false);
+  assert.equal(descendantObserved.threads[1].liveStatus, "active");
 
   await appendFile(rolloutFile, `\n${JSON.stringify({
     timestamp: new Date(now - 1_000).toISOString(),
