@@ -9,6 +9,7 @@ import type {
   ProviderId,
   ProviderSource,
   SessionApprovalMode,
+  SessionActivityStatus,
   SessionProgress,
   SessionReportedSignal,
   UsageLimits,
@@ -23,6 +24,7 @@ export type ProviderSessionReference = {
   updatedAt: string;
   isLive: boolean;
   needsInput: boolean;
+  activityStatus: SessionActivityStatus;
   /** Monitor-private verified process identity. Never expose it in browser session catalogs. */
   resourceOwner?: {
     pid: number;

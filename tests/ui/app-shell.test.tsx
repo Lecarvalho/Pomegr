@@ -19,8 +19,11 @@ function response(body: object) {
 }
 
 const sessions = [
-  { id: "claude:live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Pomegr", updatedAt: "2026-08-24T12:00:00.000Z", isLive: true, needsInput: false },
-  { id: "codex:history-1", provider: "codex", source: "Codex", title: "Recorded work", project: "Pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: false, needsInput: false },
+  { id: "claude:live-1", provider: "claude", source: "Claude Code", title: "Live work", project: "Pomegr", updatedAt: "2026-08-24T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working" },
+  { id: "codex:input-1", provider: "codex", source: "Codex", title: "Awaiting approval", project: "Pomegr", updatedAt: "2026-08-24T11:59:00.000Z", isLive: true, needsInput: true, activityStatus: "needs_input" },
+  { id: "claude:idle-1", provider: "claude", source: "Claude Code", title: "Open yesterday", project: "Pomegr", updatedAt: "2026-08-23T14:00:00.000Z", isLive: true, needsInput: false, activityStatus: "idle" },
+  { id: "codex:open-1", provider: "codex", source: "Codex", title: "Unobserved open session", project: "Pomegr", updatedAt: "2026-08-23T13:00:00.000Z", isLive: true, needsInput: false, activityStatus: "unknown" },
+  { id: "codex:history-1", provider: "codex", source: "Codex", title: "Recorded work", project: "Pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: false, needsInput: false, activityStatus: "unknown" },
 ] as const;
 
 afterEach(() => {
@@ -47,9 +50,13 @@ describe("shared app shell", () => {
 
     render(<AppShell><main><h1>Home content</h1></main></AppShell>);
 
-    expect(await screen.findByRole("link", { name: "Home — running sessions" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("link", { name: "Home — open sessions" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("HISTORY")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Live work/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Live work.*Working now/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Awaiting approval.*Needs input/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open yesterday.*Idle/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Unobserved open session.*Open/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Pomegr1$/ })).toBeInTheDocument();
   });
 

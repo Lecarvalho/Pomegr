@@ -651,7 +651,7 @@ export function createCodexProvider(options = {}) {
     const discovered = await discoveredMetadata();
     const { threads, sessions } = liveness.observe(discovered);
     return threads.filter(isTopLevelCodexSession).map((thread) => {
-      const state = sessions.get(thread.localId) || { isLive: false, needsInput: false, observedAt: null };
+      const state = sessions.get(thread.localId) || { isLive: false, needsInput: false, activityStatus: "unknown", observedAt: null };
       return {
         localId: thread.localId,
         title: thread.title,
@@ -659,6 +659,7 @@ export function createCodexProvider(options = {}) {
         updatedAt: [thread.updatedAt, thread.createdAt, state.observedAt].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
         isLive: state.isLive,
         needsInput: state.needsInput,
+        activityStatus: state.activityStatus,
         resourceOwner: state.resourceOwner || null,
       };
     }).sort(compareMetadata).slice(0, catalogLimit);

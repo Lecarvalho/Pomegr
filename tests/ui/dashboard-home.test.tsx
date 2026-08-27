@@ -108,6 +108,7 @@ const snapshot = {
       project: "pomegr",
       updatedAt: "2026-08-23T12:00:00.000Z",
       needsInput: false,
+      activityStatus: "working",
       agentCount: 2,
       activeAgentCount: 1,
       latestContextTotal: 12000,
@@ -128,6 +129,7 @@ const snapshot = {
       project: "other-repo",
       updatedAt: "2026-08-23T11:57:00.000Z",
       needsInput: true,
+      activityStatus: "needs_input",
       agentCount: 1,
       activeAgentCount: 1,
       latestContextTotal: 8000,
@@ -142,6 +144,7 @@ const snapshot = {
       project: "other-repo",
       updatedAt: "2026-08-23T11:55:00.000Z",
       needsInput: false,
+      activityStatus: "idle",
       agentCount: 1,
       activeAgentCount: 1,
       latestContextTotal: 4000,
@@ -162,8 +165,13 @@ describe("home dashboard", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
 
-    expect(await screen.findByRole("heading", { name: "Running sessions" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Running now" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
+    const activeRegion = screen.getByRole("region", { name: "Active now" });
+    const idleRegion = screen.getByRole("region", { name: "Open · Idle" });
+    expect(within(activeRegion).getByText("Working now")).toBeInTheDocument();
+    expect(within(activeRegion).getByText("Needs input")).toBeInTheDocument();
+    expect(within(activeRegion).queryByText("Idle")).not.toBeInTheDocument();
+    expect(within(idleRegion).getByText("Idle")).toBeInTheDocument();
     expect(container.querySelectorAll(".homeSessionCard")).toHaveLength(3);
     expect(container.querySelector(".homeSessionGrid")).toBeInTheDocument();
     expect(screen.getAllByText("pomegr").length).toBeGreaterThan(0);
@@ -172,7 +180,7 @@ describe("home dashboard", () => {
     expect(screen.getByText("ETA 3–6 min")).toBeInTheDocument();
     expect(screen.queryByText("ETA 2–4 min")).not.toBeInTheDocument();
     expect(container.querySelectorAll('progress[aria-label="Agent-reported session progress"]')).toHaveLength(2);
-    expect(container.querySelector('a[aria-label="Open Review report · other-repo · Claude Code"]')?.closest(".homeSessionCard")?.querySelector(".homeSessionProgress")).not.toBeInTheDocument();
+    expect(container.querySelector('a[aria-label="Open Review report · other-repo · Claude Code · Needs input"]')?.closest(".homeSessionCard")?.querySelector(".homeSessionProgress")).not.toBeInTheDocument();
     expect(container.querySelector(".homeFolio")).not.toBeInTheDocument();
     expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
   });
@@ -180,7 +188,7 @@ describe("home dashboard", () => {
   it("joins usage limits and provider-local limit activity", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
-    expect(await screen.findByRole("heading", { name: "Running sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
     expect(screen.getByText("Build home")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
     expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
@@ -406,7 +414,7 @@ describe("home dashboard", () => {
   it("keeps resource telemetry quiet on the home surface", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(snapshot));
     const { container } = render(<HomeDashboard />);
-    await screen.findByRole("heading", { name: "Running sessions" });
+    await screen.findByRole("heading", { name: "Open sessions" });
     expect(container.querySelector(".homeChartLine, .homeChartCpu, .homeChartMemory")).not.toBeInTheDocument();
     expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
     expect(screen.queryByText("42% · 64 MB")).not.toBeInTheDocument();
@@ -415,7 +423,7 @@ describe("home dashboard", () => {
   it("shows no-live and offline states without hanging polling", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], limitActivities: [], projects: [] }));
     render(<HomeDashboard />);
-    expect(await screen.findByText("No running sessions yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No open sessions yet.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/home", expect.objectContaining({ cache: "no-store" }));
 
     fetchMock.mockImplementation(() => response({}, 503));

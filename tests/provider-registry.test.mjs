@@ -27,6 +27,7 @@ function session(localId, updatedAt, options = {}) {
     updatedAt,
     isLive: options.isLive ?? true,
     needsInput: options.needsInput ?? false,
+    activityStatus: options.activityStatus || (options.needsInput ? "needs_input" : options.isLive === false ? "unknown" : "working"),
     ...(options.resourceOwner ? { resourceOwner: options.resourceOwner } : {}),
   };
 }
@@ -55,6 +56,7 @@ test("merges provider catalogs with qualified IDs and deterministic ordering", a
     "claude:claude-old",
   ]);
   assert.doesNotMatch(JSON.stringify(catalog), /PRIVATE_PATH_MUST_NOT_LEAK|localId|providerIndex/);
+  assert.equal(catalog.every(({ activityStatus }) => ["working", "needs_input", "idle", "unknown"].includes(activityStatus)), true);
 });
 
 test("keeps resource ownership internal while classifying live inspection targets", async () => {

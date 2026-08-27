@@ -70,6 +70,7 @@ test("keeps optional resource ownership private while passing it to the monitor"
         updatedAt: "2026-08-14T12:00:00.000Z",
         isLive: true,
         needsInput: false,
+        activityStatus: "working",
         resourceOwner: {
           pid: 987_654_321,
           processStartIdentity: "ProcessStartMustNotLeak",
@@ -95,6 +96,7 @@ test("keeps optional resource ownership private while passing it to the monitor"
     updatedAt: "2026-08-14T12:00:00.000Z",
     isLive: true,
     needsInput: false,
+    activityStatus: "working",
   }]);
   assert.deepEqual(await registry.listSessions(), inspected.sessions);
   assert.doesNotMatch(

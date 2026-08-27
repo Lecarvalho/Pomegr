@@ -70,6 +70,7 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
   assert.deepEqual(observed.sessions.get("live-root"), {
     isLive: true,
     needsInput: false,
+    activityStatus: "idle",
     observedAt: new Date(now).toISOString(),
     resourceOwner: {
       pid: OWNER.ownerPid,
@@ -80,12 +81,15 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
 
   now += 1_000;
   hook(root, now, "UserPromptSubmit");
-  assert.equal(coordinator.observe(threads).threads[0].liveStatus, "active");
+  observed = coordinator.observe(threads);
+  assert.equal(observed.threads[0].liveStatus, "active");
+  assert.equal(observed.sessions.get("live-root").activityStatus, "working");
 
   now += 1_000;
   hook(root, now, "PreToolUse", { toolName: "request_user_input" });
   observed = coordinator.observe(threads);
   assert.equal(observed.sessions.get("live-root").needsInput, true);
+  assert.equal(observed.sessions.get("live-root").activityStatus, "needs_input");
   assert.equal(observed.threads[0].liveStatus, "needs_input");
 
   now += 1_000;
@@ -94,7 +98,9 @@ test("lifecycle bridge deterministically starts, waits, answers, idles, and clos
 
   now += 1_000;
   hook(root, now, "Stop");
-  assert.equal(coordinator.observe(threads).threads[0].liveStatus, "idle");
+  observed = coordinator.observe(threads);
+  assert.equal(observed.threads[0].liveStatus, "idle");
+  assert.equal(observed.sessions.get("live-root").activityStatus, "idle");
 
   now += 1_000;
   hook(root, now, "SessionEnd");
@@ -734,6 +740,7 @@ test("conflicting current bridge owners keep a live session resource-ownerless",
   assert.deepEqual(observed.sessions.get("conflict-root"), {
     isLive: true,
     needsInput: false,
+    activityStatus: "working",
     observedAt: new Date(START).toISOString(),
     resourceOwner: null,
   });
@@ -833,8 +840,8 @@ test("active descendants keep the session live and propagate waiting through the
   };
   const provider = createCodexProvider({ codexHome: root, livenessRoot: path.join(root, "liveness"), appServer, includeArchived: false, cacheMs: 0, now: () => START + 2_000 });
   const catalog = await provider.listSessions();
-  assert.deepEqual(catalog.map(({ localId, isLive, needsInput }) => ({ localId, isLive, needsInput })), [
-    { localId: "app-root", isLive: true, needsInput: false },
+  assert.deepEqual(catalog.map(({ localId, isLive, needsInput, activityStatus }) => ({ localId, isLive, needsInput, activityStatus })), [
+    { localId: "app-root", isLive: true, needsInput: false, activityStatus: "working" },
   ]);
   const evidence = await provider.readSession("app-root", { historical: false });
   assert.equal(evidence.historical, false);

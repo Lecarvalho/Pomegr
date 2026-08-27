@@ -553,6 +553,14 @@ function registryTimestamp(entry) {
   return entry?.updatedAt ? new Date(entry.updatedAt).toISOString() : null;
 }
 
+function sessionActivityStatus(isLive, registryEntry) {
+  if (!isLive) return "unknown";
+  if (registryEntry?.needsInput) return "needs_input";
+  if (registryEntry?.status === "active" || registryEntry?.status === "waiting") return "working";
+  if (registryEntry?.status === "idle") return "idle";
+  return "unknown";
+}
+
 function hasStrongWorkflowLiveness(agent, historical) {
   return !historical && (
     agent?.status === "active"
@@ -900,6 +908,7 @@ export function createClaudeProvider(options = {}) {
       const liveState = {
         isLive,
         needsInput: Boolean(registryEntry?.needsInput),
+        activityStatus: sessionActivityStatus(isLive, registryEntry),
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
       if (cached?.key === cacheKey) {

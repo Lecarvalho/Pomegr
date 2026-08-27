@@ -161,11 +161,28 @@ function HomeUsageLimits({ providers, activities }: { providers: HomeProviderUsa
 
 function sessionHref(session: HomeSessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
 
+function sessionActivity(session: HomeSessionSummary) {
+  if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", className: "needsInput" };
+  if (session.activityStatus === "working") return { label: "Working now", className: "working" };
+  if (session.activityStatus === "idle") return { label: "Idle", className: "idle" };
+  return { label: "Open", className: "unknown" };
+}
+
+function isActiveSession(session: HomeSessionSummary) {
+  return session.needsInput || session.activityStatus === "needs_input" || session.activityStatus === "working";
+}
+
 function SessionCard({ session }: { session: HomeSessionSummary }) {
   const progress = session.progress;
+  const activity = sessionActivity(session);
   const showEta = progress && !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
   const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
-  return <div className="homeSessionCard"><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source}`}><span className={`homeLiveDot${session.needsInput ? " needsInput" : ""}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus${session.needsInput ? " needsInput" : ""}`}>{session.needsInput ? "Needs input" : "Active"}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}><div><strong>{progress.phase}</strong><b>{progress.percent}%</b></div><progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${progress.phase}`} />{eta && <small>{eta}</small>}</div>}</div>;
+  return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}><div><strong>{progress.phase}</strong><b>{progress.percent}%</b></div><progress max={100} value={progress.percent} aria-label="Agent-reported session progress" aria-valuetext={`${progress.percent}% complete · ${progress.phase}`} />{eta && <small>{eta}</small>}</div>}</div>;
+}
+
+function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: HomeSessionSummary[] }) {
+  if (!sessions.length) return null;
+  return <section className="homeLiveGrid" aria-labelledby={id}><div className="homeSectionHeader"><h2 id={id}>{title}</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>;
 }
 
 export function HomeDashboard() {
@@ -173,6 +190,8 @@ export function HomeDashboard() {
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(true);
   const sessions = useMemo(() => (snapshot.projects || []).flatMap((project) => project.sessions || []), [snapshot.projects]);
+  const activeSessions = useMemo(() => sessions.filter(isActiveSession), [sessions]);
+  const idleSessions = useMemo(() => sessions.filter((session) => !isActiveSession(session)), [sessions]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -216,12 +235,12 @@ export function HomeDashboard() {
             <div className="topActions"><span className={`connection ${loading ? "connecting" : connected ? "online" : "offline"}`}><i />{loading ? "Connecting to monitor" : connected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
           </header>
           <section className="homeContent" aria-labelledby="home-heading">
-            <div className="homeIntro"><h1 id="home-heading">Running sessions</h1><p>Active work across every project.</p></div>
+            <div className="homeIntro"><h1 id="home-heading">Open sessions</h1><p>Current agent work and open sessions across every project.</p></div>
             {loading && <p className="homeStatus" role="status">Loading the local monitor…</p>}
             {!loading && !connected && <p className="homeStatus" role="status">Home overview is unavailable. Pomegr will reconnect automatically.</p>}
-            {!loading && connected && sessions.length === 0 && <p className="homeStatus" role="status">No running sessions yet.</p>}
+            {!loading && connected && sessions.length === 0 && <p className="homeStatus" role="status">No open sessions yet.</p>}
             {!loading && connected && <HomeUsageLimits providers={snapshot.providerLimits || []} activities={snapshot.limitActivities || []} />}
-            {!loading && connected && sessions.length > 0 && <section className="homeLiveGrid" aria-labelledby="home-live-heading"><div className="homeSectionHeader"><h2 id="home-live-heading">Running now</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>}
+            {!loading && connected && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} /></>}
           </section>
           <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{connected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
       </main>

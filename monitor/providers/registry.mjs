@@ -27,6 +27,14 @@ function automaticCandidates(entries) {
   return [...needsInput, ...otherLive, ...historical];
 }
 
+const SESSION_ACTIVITY_STATUSES = new Set(["working", "needs_input", "idle", "unknown"]);
+
+function normalizedSessionActivityStatus(entry) {
+  if (!entry?.isLive) return "unknown";
+  if (entry.needsInput) return "needs_input";
+  return SESSION_ACTIVITY_STATUSES.has(entry.activityStatus) ? entry.activityStatus : "unknown";
+}
+
 function publicCatalogEntry(entry) {
   return {
     id: entry.id,
@@ -37,6 +45,7 @@ function publicCatalogEntry(entry) {
     updatedAt: entry.updatedAt,
     isLive: Boolean(entry.isLive),
     needsInput: Boolean(entry.needsInput),
+    activityStatus: normalizedSessionActivityStatus(entry),
   };
 }
 

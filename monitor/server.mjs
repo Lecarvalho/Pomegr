@@ -181,6 +181,7 @@ function homeSessionSummary(entry, evidence, resourceUsage) {
     updatedAt: entry.updatedAt,
     recordedUpdatedAt: evidence.session.updatedAt || entry.updatedAt,
     needsInput: Boolean(entry.needsInput),
+    activityStatus: entry.activityStatus || "unknown",
     agentCount: agents.length,
     activeAgentCount: agents.filter(isRunningAgent).length,
     latestContextTotal: Number.isFinite(tokenUsage.allAgents) ? tokenUsage.allAgents : null,
@@ -211,6 +212,7 @@ function unavailableHomeSessionSummary(entry, resourceUsage) {
     updatedAt: entry.updatedAt,
     recordedUpdatedAt: entry.updatedAt,
     needsInput: Boolean(entry.needsInput),
+    activityStatus: entry.activityStatus || "unknown",
     agentCount: null,
     activeAgentCount: null,
     latestContextTotal: null,
@@ -442,7 +444,7 @@ export function createMonitorRuntime(options = {}) {
   }
 
   function homeSummaryCacheKey(entry) {
-    return `${entry.id}|${entry.updatedAt}|${entry.isLive ? "live" : "history"}`;
+    return `${entry.id}|${entry.updatedAt}|${entry.isLive ? "live" : "history"}|${entry.needsInput ? "input" : entry.activityStatus || "unknown"}`;
   }
 
   function cachedHomeSummary(entry, endMs, resourceUsageFor) {

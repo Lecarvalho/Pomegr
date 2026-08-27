@@ -266,6 +266,8 @@ export type ResourceUsage = {
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
 export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
+/** Bounded current work state. Provider-native lifecycle values stay monitor-private. */
+export type SessionActivityStatus = "working" | "needs_input" | "idle" | "unknown";
 export type SessionSummary = {
   id: string;
   provider: ProviderId;
@@ -275,6 +277,7 @@ export type SessionSummary = {
   updatedAt: string;
   isLive: boolean;
   needsInput: boolean;
+  activityStatus: SessionActivityStatus;
 };
 
 export type HomeContextHistory = {
@@ -291,6 +294,7 @@ export type HomeSessionSummary = {
   project: string;
   updatedAt: string;
   needsInput: boolean;
+  activityStatus: SessionActivityStatus;
   agentCount: number | null;
   activeAgentCount: number | null;
   latestContextTotal: number | null;

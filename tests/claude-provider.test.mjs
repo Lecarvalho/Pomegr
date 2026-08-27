@@ -147,11 +147,12 @@ test("Claude adapter returns sanitized provider evidence without changing normal
     usageRequest: async () => { throw new Error("not requested"); },
   });
   const catalog = await provider.listSessions();
-  assert.deepEqual(catalog.map(({ localId: id, title, isLive, needsInput }) => ({ id, title, isLive, needsInput })), [{
+  assert.deepEqual(catalog.map(({ localId: id, title, isLive, needsInput, activityStatus }) => ({ id, title, isLive, needsInput, activityStatus })), [{
     id: localId,
     title: "Synthetic provider fixture",
     isLive: true,
     needsInput: true,
+    activityStatus: "needs_input",
   }]);
 
   const evidence = await provider.readSession(localId, { historical: false });
@@ -696,7 +697,20 @@ test("Claude adapter exposes a resource owner only for a verified live registry 
   });
   const unavailable = (await unavailableProvider.listSessions())[0];
   assert.equal(unavailable.isLive, true);
+  assert.equal(unavailable.activityStatus, "working");
   assert.equal(Object.hasOwn(unavailable, "resourceOwner"), false);
+
+  await writeFile(path.join(registryRoot, `${localId}.json`), JSON.stringify({
+    sessionId: localId,
+    status: "idle",
+    updatedAt: Date.parse("2026-08-14T12:00:02.000Z"),
+    ...owner,
+  }), "utf8");
+  const idleProvider = createClaudeProvider({
+    ...providerOptions,
+    registryProcessIdentities: () => new Map([[owner.pid, owner.procStart]]),
+  });
+  assert.equal((await idleProvider.listSessions())[0].activityStatus, "idle");
 });
 
 test("Claude adapter retires a stale registry file whose owner process exited", async (context) => {
@@ -733,6 +747,7 @@ test("Claude adapter retires a stale registry file whose owner process exited", 
 
   const catalog = await provider.listSessions();
   assert.equal(catalog[0].isLive, false);
+  assert.equal(catalog[0].activityStatus, "unknown");
   assert.equal(Object.hasOwn(catalog[0], "resourceOwner"), false);
   const evidence = await provider.readSession(localId, { historical: true });
   assert.equal(evidence.historical, true);

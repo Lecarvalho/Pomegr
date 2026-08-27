@@ -8,9 +8,16 @@ import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { CloseButton } from "../CloseButton";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
+import type { DesktopState } from "../DesktopControls";
 import { SessionRelativeTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
-import type { DesktopState } from "../DesktopControls";
+
+function sessionActivityLabel(session: SessionSummary) {
+  if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", className: "needsInput" };
+  if (session.activityStatus === "working") return { label: "Working now", className: "working" };
+  if (session.activityStatus === "idle") return { label: "Idle", className: "idle" };
+  return { label: "Open", className: "unknown" };
+}
 
 export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect }: {
   open: boolean;
@@ -44,22 +51,23 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
         </div>
         <nav className="sessionNav">
           <div className="liveHeading"><span>HOME</span><small>{liveProjectCount}</small></div>
-          <Link className={`liveSessionLink ${homeSelected ? "selected" : ""}`} href="/" onClick={onClose} aria-label="Home — running sessions" aria-current={homeSelected ? "page" : undefined}>
+          <Link className={`liveSessionLink ${homeSelected ? "selected" : ""}`} href="/" onClick={onClose} aria-label="Home — open sessions" aria-current={homeSelected ? "page" : undefined}>
             <i />
-            <span><strong>Running sessions</strong><small>{liveSessions.length} live across projects</small></span>
+            <span><strong>Open sessions</strong><small>{liveSessions.length} open across projects</small></span>
           </Link>
-          <div className="historyHeading"><span>LIVE SESSIONS</span><small>{liveSessions.length}</small></div>
+          <div className="historyHeading"><span>OPEN SESSIONS</span><small>{liveSessions.length}</small></div>
           <div className="liveSessionList">
             {liveSessions.map((session) => {
               const selected = selectedSessionId ? selectedSessionId === session.id : currentSessionId === session.id && !viewingHistory;
+              const activity = sessionActivityLabel(session);
               return (
-                <button type="button" className={`liveSessionLink ${selected ? "selected" : ""}`} data-needs-input={session.needsInput || undefined} key={session.id} onClick={() => onSelect(session)} aria-current={selected ? "page" : undefined}>
+                <button type="button" className={`liveSessionLink ${selected ? "selected" : ""}`} data-needs-input={session.needsInput || undefined} data-activity-status={activity.className} key={session.id} onClick={() => onSelect(session)} aria-current={selected ? "page" : undefined}>
                   <i />
-                  <span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project} · {session.needsInput ? <em>Needs input</em> : <SessionRelativeTimeText value={session.updatedAt} />}</small></span>
+                  <span><strong>{session.title}</strong><small><ProviderBadge source={session.source} compact /> · {session.project} · <em className={activity.className}>{activity.label}</em> · <SessionRelativeTimeText value={session.updatedAt} /></small></span>
                 </button>
               );
             })}
-            {liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>No live sessions</strong><small>New sessions appear automatically</small></span></div>}
+            {liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>No open sessions</strong><small>New sessions appear automatically</small></span></div>}
           </div>
           <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
           <div className="historyList">

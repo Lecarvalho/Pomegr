@@ -829,9 +829,18 @@ export function createCodexLivenessCoordinator(options = {}) {
       const resourceOwner = live.length > 0
         ? uniqueResourceOwner(related.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean))
         : null;
+      const needsInput = live.some((thread) => thread.liveStatus === "needs_input");
+      const activityStatus = needsInput
+        ? "needs_input"
+        : live.some((thread) => thread.liveStatus === "active")
+          ? "working"
+          : live.some((thread) => thread.liveStatus === "idle")
+            ? "idle"
+            : "unknown";
       sessions.set(rootThread.localId, {
         isLive: live.length > 0,
-        needsInput: live.some((thread) => thread.liveStatus === "needs_input"),
+        needsInput,
+        activityStatus,
         observedAt: newest?.observedAt || null,
         resourceOwner,
       });
