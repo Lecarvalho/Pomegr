@@ -352,10 +352,12 @@ export function createMonitorRuntime(options = {}) {
         : Promise.resolve(registry.listSessions()).then((sessions) => ({ sessions, resourceTargets: [] }));
     const [providerLimits, inspected] = await Promise.all([providerLimitsPromise, inspectedPromise]);
     homeLimitActivityTracker.observe(providerLimits, policiesById);
-    try {
-      await resourceUsageSampler.sample(inspected.resourceTargets || []);
-    } catch {
-      // Resource telemetry must never make the home snapshot unavailable.
+    if (!observation.observationActive()) {
+      try {
+        await resourceUsageSampler.sample(inspected.resourceTargets || []);
+      } catch {
+        // Resource telemetry must never make the home snapshot unavailable.
+      }
     }
     const catalog = Array.isArray(inspected.sessions) ? inspected.sessions : [];
     const resourceUsageFor = (sessionId) => {

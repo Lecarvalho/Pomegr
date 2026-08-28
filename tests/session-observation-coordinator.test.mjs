@@ -158,6 +158,38 @@ test("a newer candidate supersedes queued work and failed derivation keeps known
   assert.equal(store.getByQualifiedId("claude:one").publicState.version, 2);
 });
 
+test("downstream dependency refreshes rederive a committed session without provider acquisition", async () => {
+  const scheduler = immediateScheduler();
+  const store = memoryStore();
+  let publisher;
+  let resourceStatus = "collecting";
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store,
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+    async deriveSession({ evidence }) {
+      return {
+        readiness: { resources: resourceStatus === "unavailable" ? "unavailable" : "loading" },
+        publicState: { version: evidence.version, resourceStatus },
+      };
+    },
+  });
+  await coordinator.start();
+  publisher.publishSession("codex", "one", { version: 1, historical: false, session: {} });
+  await scheduler.flush();
+  assert.equal(store.getByQualifiedId("codex:one").publicState.resourceStatus, "collecting");
+
+  resourceStatus = "unavailable";
+  assert.equal(coordinator.refreshProjection("codex:one"), true);
+  await scheduler.flush();
+  assert.equal(store.getByQualifiedId("codex:one").publicState.resourceStatus, "unavailable");
+  assert.equal(store.getByQualifiedId("codex:one").readiness.resources, "unavailable");
+});
+
 test("checkpoint writes debounce until quiet but never drift past the continuous-activity maximum", async () => {
   let clock = 0;
   const jobs = [];

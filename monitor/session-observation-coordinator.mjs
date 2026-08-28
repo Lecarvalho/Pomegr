@@ -307,6 +307,25 @@ export function createSessionObservationCoordinator(options = {}) {
     return true;
   }
 
+  function refreshProjection(qualifiedId) {
+    if (stopped || typeof qualifiedId !== "string" || !qualifiedId) return false;
+    if (pendingSessions.has(qualifiedId)) return true;
+    const snapshot = store.getByQualifiedId(qualifiedId);
+    if (!snapshot) return false;
+    pendingSessions.set(qualifiedId, Object.freeze({
+      providerId: snapshot.providerId,
+      localSessionId: snapshot.localSessionId,
+      evidence: snapshot.evidence,
+      source: "",
+      checkpointSource: snapshot.source,
+      observedAt: snapshot.observedAt,
+      pinned: Boolean(snapshot.evidence?.historical === false),
+    }));
+    sessionRetryAttempts.delete(qualifiedId);
+    scheduleSessionCommit(qualifiedId);
+    return true;
+  }
+
   async function stop() {
     stopped = true;
     generation += 1;
@@ -335,6 +354,7 @@ export function createSessionObservationCoordinator(options = {}) {
     start,
     stop,
     hydrate,
+    refreshProjection,
     catalog: (revision) => catalogCache.read(revision),
     session(requestedSessionId, revision) {
       const catalog = catalogCache.current()?.value?.sessions || [];

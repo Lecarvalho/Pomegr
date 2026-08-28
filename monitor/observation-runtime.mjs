@@ -167,7 +167,11 @@ export function createObservationRuntime(options = {}) {
   async function refreshObservedResources() {
     if (resourceRefreshInFlight || typeof registry.inspectSessions !== "function") return resourceRefreshInFlight;
     const refresh = registry.inspectSessions()
-      .then((inspected) => resourceUsageSampler.sample(inspected.resourceTargets || []))
+      .then(async (inspected) => {
+        const resourceTargets = inspected.resourceTargets || [];
+        await resourceUsageSampler.sample(resourceTargets);
+        for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
+      })
       .catch(() => {})
       .finally(() => {
         if (resourceRefreshInFlight === refresh) resourceRefreshInFlight = null;
@@ -287,7 +291,10 @@ export function createObservationRuntime(options = {}) {
       const usageReadiness = usageResponseCache.current()?.value?.readiness?.[candidate.providerId] || "loading";
       const readiness = createSessionReadiness("ready", {
         repository: candidate.evidence.historical || publicState.session?.repository?.available ? "ready" : "loading",
-        resources: candidate.evidence.historical || publicState.metrics?.resources?.status === "ready" ? "ready" : "loading",
+        resources: candidate.evidence.historical
+          ? "ready"
+          : publicState.metrics?.resources?.status === "unavailable" ? "unavailable"
+            : publicState.metrics?.resources?.status === "ready" ? "ready" : "loading",
         usageLimits: candidate.evidence.historical ? "unavailable" : usageReadiness,
       });
       return { publicState: { ...publicState, readiness }, readiness };

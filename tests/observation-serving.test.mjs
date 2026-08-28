@@ -14,6 +14,8 @@ async function listen(server) {
 test("concurrent state GETs consume one committed response without provider transcript reads", async (context) => {
   let compatibilityReads = 0;
   let stopped = false;
+  let resourceState = null;
+  const resourceSamples = [];
   const provider = {
     id: "codex",
     source: "Codex",
@@ -27,6 +29,12 @@ test("concurrent state GETs consume one committed response without provider tran
     async resolveCapabilities() { return provider.capabilities; },
     async readUsageLimits() { return createEmptyUsageLimits(); },
     async readSession() { compatibilityReads += 1; throw new Error("raw request path read"); },
+    async inspectSessions() {
+      return {
+        sessions: [],
+        resourceTargets: [{ sessionId: `codex:${evidence.localId}`, status: "unavailable" }],
+      };
+    },
     unavailableMessage: () => "Unavailable",
     async startObservers(publisher) {
       publisher.publishCatalog("codex", [{
@@ -47,14 +55,31 @@ test("concurrent state GETs consume one committed response without provider tran
     checkpointStore: false,
     observationCommitDelayMs: 0,
     scheduleObservation: (task) => setTimeout(task, 0),
-    resourceUsageSampler: { async sample() {}, get() { return null; } },
+    resourceUsageSampler: {
+      async sample(targets) {
+        resourceSamples.push(targets);
+        resourceState = {
+          status: "unavailable",
+          reason: "missing_owner",
+          current: null,
+          observedPeak: null,
+          samples: [],
+        };
+      },
+      get() { return resourceState; },
+    },
   });
   await runtime.startObservation();
   context.after(async () => runtime.stopObservation());
   for (let attempt = 0; attempt < 50 && runtime.serveSession(`codex:${evidence.localId}`).status !== "ready"; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+  for (let attempt = 0; attempt < 50 && runtime.serveSession(`codex:${evidence.localId}`).snapshot?.readiness?.resources !== "unavailable"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
   assert.equal(runtime.serveSession(`codex:${evidence.localId}`).status, "ready");
+  assert.equal(runtime.serveSession(`codex:${evidence.localId}`).snapshot.readiness.resources, "unavailable");
+  assert.deepEqual(resourceSamples, [[{ sessionId: `codex:${evidence.localId}`, status: "unavailable" }]]);
 
   const server = createMonitorServer({ runtime });
   const origin = await listen(server);
@@ -67,6 +92,13 @@ test("concurrent state GETs consume one committed response without provider tran
   const bodies = await Promise.all(responses.map((response) => response.text()));
   assert.equal(new Set(bodies).size, 1);
   assert.equal(compatibilityReads, 0);
+  assert.deepEqual(JSON.parse(bodies[0]).metrics.resources, {
+    status: "unavailable",
+    reason: "missing_owner",
+    current: null,
+    observedPeak: null,
+    samples: [],
+  });
   assert.doesNotMatch(bodies[0], /raw request path read|prompt|response|credential/i);
 
   const unchanged = await fetch(`${origin}/api/state?sessionId=codex%3Acodex-fixture-parent&revision=${revision}`);
