@@ -403,7 +403,6 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
           assert.equal(occurrence.cacheLifetimeInference.cause, "cache_lifetime_elapsed");
           assert.match(occurrence.cacheLifetimeInference.cacheLifetime, /^(5m|1h|mixed)$/);
           assert.equal(Number.isSafeInteger(occurrence.cacheLifetimeInference.elapsedMs) && occurrence.cacheLifetimeInference.elapsedMs >= 0, true);
-          assert.equal(occurrence.providerStatus, "previous_cache_entry_unavailable");
         }
         if (occurrence.toolChangeAttribution !== null) {
           assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), ["cause", "changes"]);
@@ -439,6 +438,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
         }
       }
     }
+    assert.doesNotMatch(JSON.stringify(state), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
     assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {

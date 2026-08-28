@@ -146,8 +146,10 @@ export function buildCacheEvents({
         ? snapshot.cacheMissProviderStatus
         : null;
       const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
+      const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
+        || snapshot.cacheMissDiagnosticState === "absent";
       const cacheLifetimeInference = !recognizedReason
-        && providerStatus === "previous_cache_entry_unavailable"
+        && expiryEvidenceAvailable
         && Number.isSafeInteger(cacheLifetimeMs)
         && gapMs >= cacheLifetimeMs
         ? {

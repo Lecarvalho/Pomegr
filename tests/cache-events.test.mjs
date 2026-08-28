@@ -14,6 +14,7 @@ function snapshot(id, timestamp, {
   cacheLifetime = null,
   cacheMissReason = null,
   cacheMissProviderStatus = null,
+  cacheMissDiagnosticState = "absent",
   cacheToolChangeCause = null,
 } = {}) {
   return {
@@ -30,6 +31,7 @@ function snapshot(id, timestamp, {
     cacheLifetime,
     cacheMissReason,
     cacheMissProviderStatus,
+    cacheMissDiagnosticState,
     cacheToolChangeCause,
   };
 }
@@ -228,8 +230,12 @@ test("never retains a reuse whose related refill falls outside the event cap", (
   )), true);
 });
 
-test("infers cache expiry from the preceding resolved lifetime and bounded provider status", () => {
-  for (const [cacheLifetime, gapMs] of [["5m", 6 * 60_000], ["1h", 61 * 60_000], ["mixed", 61 * 60_000]]) {
+test("infers cache expiry from the preceding resolved lifetime and bounded provider evidence", () => {
+  for (const [cacheLifetime, gapMs, cacheMissProviderStatus] of [
+    ["5m", 6 * 60_000, null],
+    ["1h", 61 * 60_000, "previous_cache_entry_unavailable"],
+    ["mixed", 61 * 60_000, null],
+  ]) {
     const start = Date.parse("2026-08-10T10:00:00.000Z");
     const feed = buildCacheEvents({
       sessionId: "session",
@@ -240,27 +246,30 @@ test("infers cache expiry from the preceding resolved lifetime and bounded provi
         snapshot(`after-${cacheLifetime}`, new Date(start + gapMs).toISOString(), {
           input: 1_000,
           cacheWrite: 9_000,
-          cacheMissProviderStatus: "previous_cache_entry_unavailable",
+          cacheMissProviderStatus,
+          cacheMissDiagnosticState: cacheMissProviderStatus ? "previous_cache_entry_unavailable" : "absent",
         }),
       ],
     });
     assert.deepEqual(feed.possibleFullRefills[0].occurrences[0], {
       observedAt: new Date(start + gapMs).toISOString(),
       reason: null,
-      providerStatus: "previous_cache_entry_unavailable",
+      providerStatus: cacheMissProviderStatus,
       cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime, elapsedMs: gapMs },
       toolChangeAttribution: null,
     });
   }
 });
 
-test("fails cache-expiry inference closed below the TTL or without matching evidence", () => {
+test("fails cache-expiry inference closed below the TTL or with competing or inconclusive evidence", () => {
   const start = Date.parse("2026-08-10T10:00:00.000Z");
   for (const current of [
     snapshot("too-soon", new Date(start + 59 * 60_000).toISOString(), {
       input: 1_000, cacheWrite: 9_000, cacheMissProviderStatus: "previous_cache_entry_unavailable",
     }),
-    snapshot("missing-status", new Date(start + 61 * 60_000).toISOString(), { input: 1_000, cacheWrite: 9_000 }),
+    snapshot("inconclusive-diagnostic", new Date(start + 61 * 60_000).toISOString(), {
+      input: 1_000, cacheWrite: 9_000, cacheMissDiagnosticState: "inconclusive",
+    }),
     snapshot("direct-reason", new Date(start + 61 * 60_000).toISOString(), {
       input: 1_000,
       cacheWrite: 9_000,
@@ -295,4 +304,5 @@ test("evaluates refill and lifetime evidence independently for primary, subagent
   const feed = buildCacheEvents({ sessionId: "session", agents, enabled: true, usageSnapshots });
   assert.deepEqual(feed.possibleFullRefills.map(({ agentId }) => agentId), ["child", "fork", "primary"]);
   assert.deepEqual(feed.possibleFullRefills.map(({ occurrences }) => occurrences[0].cacheLifetimeInference.cacheLifetime), ["5m", "1h", "1h"]);
+  assert.doesNotMatch(JSON.stringify(feed), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
 });
