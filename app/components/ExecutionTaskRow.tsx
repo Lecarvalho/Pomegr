@@ -1,11 +1,15 @@
 import type { ExecutionTask } from "../../shared/monitor-contract";
 import { AgentChip } from "./AgentChip";
 import { ExecutionTaskWallTimeText } from "./LiveTime";
+import { WorkKindIcon } from "./WorkKindIcon";
 
-function taskGlyph(task: ExecutionTask) {
-  if (task.status === "running") return "◷";
-  if (task.status === "completed") return "✓";
-  return task.status === "failed" ? "!" : "×";
+function TaskStatusGlyph({ status }: { status: ExecutionTask["status"] }) {
+  return <svg aria-hidden="true" focusable="false" viewBox="0 0 12 12">
+    {status === "running" && <circle cx="6" cy="6" r="2.25" />}
+    {status === "completed" && <path d="m2.5 6 2.25 2.25L9.5 3.5" />}
+    {status === "failed" && <path d="M6 2.5v4M6 9.25v.01" />}
+    {status === "stopped" && <path d="m3 3 6 6M9 3 3 9" />}
+  </svg>;
 }
 
 const FAILURE_CAUSE_COPY: Record<NonNullable<ExecutionTask["failureCause"]>, string> = {
@@ -30,11 +34,12 @@ function failureTooltip(task: ExecutionTask) {
 export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
   const running = task.status === "running";
   const failureDetails = task.status === "failed" ? failureTooltip(task) : null;
+  const marker = <><WorkKindIcon kind={task.workKind} /><span className="executionTaskStatusBadge"><TaskStatusGlyph status={task.status} /></span></>;
   return (
     <div className={`executionTaskRow ${task.status}`}>
       {failureDetails
-        ? <AgentChip className="executionTaskState executionTaskFailureTrigger" title={failureDetails} ariaLabel={`Show failure cause. ${failureDetails}`}>{taskGlyph(task)}</AgentChip>
-        : <span className="executionTaskState" aria-hidden="true">{taskGlyph(task)}</span>}
+        ? <AgentChip className="executionTaskMark executionTaskFailureTrigger" title={failureDetails} ariaLabel={`Show failure cause. ${failureDetails}`}>{marker}</AgentChip>
+        : <span className="executionTaskMark" aria-hidden="true">{marker}</span>}
       <div>
         <div className="executionTaskTitleLine">
           <strong>{task.label}</strong>

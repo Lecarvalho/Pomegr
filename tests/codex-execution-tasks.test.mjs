@@ -458,6 +458,7 @@ test("deduplicates canonical lifecycle events and exposes only safe background p
     id: "background-task",
     label: "Watch fixture",
     kind: "shell",
+    workKind: "shell",
     status: "completed",
     background: true,
     backgroundId: "42",

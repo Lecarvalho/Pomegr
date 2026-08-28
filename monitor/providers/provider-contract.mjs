@@ -322,8 +322,10 @@ const evidenceSignal = z.object({
   reportedAt: evidenceNullableTimestamp,
   description: evidenceOneLine(512).optional(),
 }).strict();
+const evidenceWorkKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
 const evidenceTask = z.object({
   id: evidenceId, label: evidenceOneLine(512), kind: z.literal("shell"),
+  workKind: evidenceWorkKind.optional(),
   status: z.enum(["running", "completed", "failed", "stopped"]), background: z.boolean(), backgroundId: evidenceNullableId,
   startedAt: evidenceTimestamp, finishedAt: evidenceNullableTimestamp, exitCode: z.number().int().finite().nullable(),
   failureCause: z.enum(["command_not_found", "invalid_path", "network_error", "not_found", "non_zero_exit", "permission_denied", "provider_error", "syntax_error", "tests_failed", "timed_out"]).nullable(),
@@ -363,10 +365,11 @@ const evidenceUsageSnapshot = z.object({
 }).strict();
 const evidenceToolCall = z.object({
   id: evidenceId, timestamp: evidenceTimestamp, actor: z.object({ id: evidenceId, label: evidenceOneLine(512) }).strict(), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024),
+  workKind: evidenceWorkKind.optional(),
   status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512),
   mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)).max(64) }).strict().nullable(),
 }).strict();
-const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable() }).strict();
+const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable() }).strict();
 const evidencePlanTask = z.object({ id: evidenceId, subject: evidenceOneLine(512), status: z.enum(["pending", "in_progress", "completed"]), blocks: z.array(evidenceId).max(128), blockedBy: z.array(evidenceId).max(128) }).strict();
 const evidenceWorkflow = z.object({
   id: evidenceId, name: evidenceText(256), summary: evidenceText(1_024).nullable(), status: z.enum(["running", "completed", "unknown"]), metadataStatus: z.enum(["pending", "ready", "unavailable"]),

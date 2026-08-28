@@ -7,6 +7,7 @@ import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { buildRequestSnapshots } from "./request-snapshots.mjs";
 import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
+import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 
 function groupToolEvidence(toolCalls) {
   const repetitionMap = new Map();
@@ -140,6 +141,10 @@ export function projectProviderSessionEvidence({
     };
     return {
       ...normalized,
+      executionTasks: (normalized.executionTasks || []).map((task) => ({
+        ...task,
+        workKind: normalizedWorkKind(task.workKind),
+      })),
       role: resolveAgentRole({
         id: normalized.id,
         kind,
@@ -203,6 +208,7 @@ export function projectProviderSessionEvidence({
       timestamp: call.timestamp,
       actor: call.actor.label,
       tool: call.tool,
+      workKind: normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })),
       detail: call.detail,
       status: call.status === "failed" ? "failed" : null,
     })),

@@ -258,6 +258,9 @@ raw diagnostics, provider message/event IDs, or transcript paths. Cache filename
 safe hash of normalized identity and never contain a source path.
 
 Browser responses remain subject to every allowlist and privacy invariant in `AGENTS.md`.
+Caches and browser responses may carry only the bounded provider-neutral work-kind enum
+derived during U2 normalization. Raw commands and provider-native tool schemas remain
+adapter-private; missing or ambiguous classification degrades to the generic shell kind.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather
 than arbitrary exception text.
 

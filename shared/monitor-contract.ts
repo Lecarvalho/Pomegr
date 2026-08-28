@@ -59,6 +59,9 @@ export type CacheLifetime = "5m" | "1h" | "mixed";
 /** Readiness describes the publication state of normalized evidence, not support. */
 export type Readiness = "loading" | "ready" | "unavailable";
 
+/** Bounded monitor-derived purpose. Raw commands and provider-native tool schemas stay private. */
+export type WorkKind = "shell" | "search" | "read" | "write" | "test" | "build" | "git" | "git_push" | "pull_request" | "process" | "web" | "image" | "input" | "transfer" | "skill" | "report" | "agent" | "integration" | "wait";
+
 export type HomeReadiness = {
   catalog: Readiness;
   providerLimits: Record<ProviderId, Readiness>;
@@ -82,6 +85,7 @@ export type ExecutionTask = {
   id: string;
   label: string;
   kind: "shell";
+  workKind: WorkKind;
   status: "running" | "completed" | "failed" | "stopped";
   background: boolean;
   backgroundId: string | null;
@@ -164,6 +168,7 @@ export type Activity = {
   timestamp: string;
   actor: string;
   tool: string;
+  workKind: WorkKind;
   detail: string;
   status: "failed" | null;
 };

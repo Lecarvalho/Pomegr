@@ -43,7 +43,7 @@
     "typecheck:provider-contract": "tsc -p tsconfig.provider-contract.json",
     "typecheck:provider-adapters": "tsc -p tsconfig.provider-adapters.json",
     "typecheck:landing": "npm --prefix landing run typecheck",
-    "test:contracts": "node --test tests/provider-contract.test.mjs tests/provider-registry.test.mjs tests/provider-conformance.test.mjs tests/provider-fixtures.test.mjs",
+    "test:contracts": "node --test tests/work-kind.test.mjs tests/provider-contract.test.mjs tests/provider-registry.test.mjs tests/provider-conformance.test.mjs tests/provider-fixtures.test.mjs",
     "docs:providers": "node scripts/provider-capability-docs.mjs --write",
     "check:provider-docs": "node scripts/provider-capability-docs.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",

@@ -35,6 +35,7 @@ test("tracks a background shell command until its completion notification", () =
     id: "toolu_wait",
     label: "Wait for Codex round 5",
     kind: "shell",
+    workKind: "shell",
     status: "completed",
     background: true,
     backgroundId: "bjy59kbpg",

@@ -30,6 +30,7 @@ export const task: ExecutionTask = {
   id: "task-1",
   label: "Run verification",
   kind: "shell",
+  workKind: "test",
   status: "completed",
   background: true,
   backgroundId: "7",

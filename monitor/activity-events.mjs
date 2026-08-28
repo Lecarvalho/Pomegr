@@ -1,3 +1,5 @@
+import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
+
 const INPUT_KIND_LABELS = [
   ["text", "Text"],
   ["document", "Document"],
@@ -44,6 +46,7 @@ export function shellFailureActivityEvents(executionTasks, actor = "Primary agen
       timestamp: task.finishedAt,
       actor,
       tool: "Shell failed",
+      workKind: normalizedWorkKind(task.workKind),
       detail: `${task.label}${exitDetail}`,
       status: "failed",
     }];
@@ -58,11 +61,12 @@ export function recentActivityEvents(events, maximum = 30) {
       || String(left.id).localeCompare(String(right.id))
     ))
     .slice(0, limit)
-    .map(({ id, timestamp, actor, tool, detail, status }) => ({
+    .map(({ id, timestamp, actor, tool, workKind, detail, status }) => ({
       id,
       timestamp,
       actor,
       tool,
+      workKind: normalizedWorkKind(workKind, toolWorkKind(tool, { detail })),
       detail,
       status: status === "failed" ? "failed" : null,
     }));

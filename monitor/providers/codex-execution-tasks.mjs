@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { classifyExecutionFailure, safeExecutionFailureCause } from "../execution-failures.mjs";
+import { executionWorkKind, normalizedWorkKind } from "../work-kind.mjs";
 
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const MAX_LABEL_LENGTH = 160;
@@ -139,7 +140,7 @@ function execCellShellEvidence(payload) {
       if (assignment) command = quotedLiteral(prefix, assignment.index + assignment[0].length);
     }
     if (!command && matches.length === 1) command = payload.input;
-    return { label: safeCommandDescription(command) };
+    return { label: safeCommandDescription(command), workKind: executionWorkKind(command) };
   });
 }
 
@@ -168,6 +169,7 @@ function commandMetadata(value, input = value) {
   );
   return {
     label: safeLabel(value?.description ?? input?.description),
+    workKind: executionWorkKind([value, input]),
     background: Boolean(
       backgroundId
       || value?.background === true
@@ -181,7 +183,7 @@ function commandMetadata(value, input = value) {
   };
 }
 
-function makeTask({ id, timestamp, status = "running", label, background = false, backgroundId = null, exitCode = null, finishedAt = null, failureCause = null }) {
+function makeTask({ id, timestamp, status = "running", label, workKind = "shell", background = false, backgroundId = null, exitCode = null, finishedAt = null, failureCause = null }) {
   const taskId = safeId(id);
   const startedAt = codexTimestamp(timestamp);
   if (!taskId || !startedAt) return null;
@@ -191,6 +193,7 @@ function makeTask({ id, timestamp, status = "running", label, background = false
     id: taskId,
     label: safeLabel(label),
     kind: "shell",
+    workKind: normalizedWorkKind(workKind),
     status: normalizedTaskStatus,
     background: background === true || Boolean(backgroundId),
     backgroundId: safeId(backgroundId),
@@ -211,6 +214,7 @@ function cachedTask(value) {
     timestamp: value.startedAt,
     status: value.status,
     label: value.label,
+    workKind: value.workKind,
     background: value.background,
     backgroundId: value.backgroundId,
     exitCode: value.exitCode,
@@ -241,6 +245,7 @@ function mergeTask(previous, next) {
   return {
     ...previous,
     label: nextSpecificLabel || !previousSpecificLabel ? next.label : previous.label,
+    workKind: next.workKind !== "shell" || previous.workKind === "shell" ? next.workKind : previous.workKind,
     status: nextStatusWins ? next.status : previous.status,
     background: previous.background || next.background,
     backgroundId: next.backgroundId || previous.backgroundId,
@@ -426,7 +431,7 @@ export function parseCodexExecutionTaskStateRecords(records, options = {}) {
         const taskIds = new Map();
         for (const [index, evidence] of shellEvidence.entries()) {
           const id = `${callId}-shell-${index + 1}`;
-          const task = makeTask({ id, timestamp, status: "running", label: evidence.label });
+          const task = makeTask({ id, timestamp, status: "running", ...evidence });
           if (!task) continue;
           taskIds.set(index, task.id);
           add(task);

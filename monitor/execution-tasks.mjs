@@ -1,4 +1,5 @@
 import { classifyExecutionFailure } from "./execution-failures.mjs";
+import { executionWorkKind } from "./work-kind.mjs";
 
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const MAX_LABEL_LENGTH = 160;
@@ -70,6 +71,7 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
           id,
           label: safeLabel(part.input?.description),
           kind: "shell",
+          workKind: executionWorkKind(part.input?.command),
           status: "running",
           background: part.input?.run_in_background === true,
           backgroundId: null,

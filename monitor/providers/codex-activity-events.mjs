@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
+import { toolWorkKind } from "../work-kind.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -270,6 +271,7 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     timestamp,
     actor: { id: actor.id, label: actor.label },
     tool: descriptor.tool,
+    workKind: toolWorkKind(descriptor.tool, { detail: descriptor.detail, input: descriptor.repetitionInput }),
     detail: boundedText(descriptor.detail, MAX_DETAIL_LENGTH),
     status,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
@@ -295,6 +297,7 @@ export function mergeCodexToolCalls(callGroups) {
     calls.set(call.id, {
       ...previous,
       tool: call.tool,
+      workKind: call.workKind || previous.workKind,
       detail: call.detail || previous.detail,
       repetitionSignature: call.repetitionSignature,
       mutation: call.mutation || previous.mutation,

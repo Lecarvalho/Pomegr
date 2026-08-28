@@ -38,6 +38,7 @@ const task: ExecutionTask = {
   id: "shell-1",
   label: "Run verification",
   kind: "shell",
+  workKind: "test",
   status: "running",
   background: false,
   backgroundId: null,

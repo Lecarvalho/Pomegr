@@ -26,6 +26,7 @@ import { latestSessionApprovalMode } from "../session-approval-mode.mjs";
 import { buildSkillUsage, normalizedSkillName } from "../skill-usage.mjs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
+import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
@@ -563,6 +564,7 @@ export function createClaudeProvider(options = {}) {
           timestamp: timestamp || stat.mtime.toISOString(),
           actor: "User",
           tool: "User input",
+          workKind: "input",
           detail: userInputType,
           status: null,
         });
@@ -583,6 +585,7 @@ export function createClaudeProvider(options = {}) {
             timestamp: timestamp || stat.mtime.toISOString(),
             actor: { id: actor.id, label: actor.label },
             tool,
+            workKind: toolWorkKind(tool, { detail, input }),
             detail,
             status: null,
             repetitionSignature: repetitionSignature(tool, input),

@@ -53,7 +53,7 @@ describe("session progress estimate", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-11T12:11:00.000Z"));
     const primary = progressAgent("active", reportedAt);
-    const { container } = render(<LiveClockProvider running={false}><SessionProgressPanel progress={progress} agents={[primary]} activity={[{ id: "activity-1", timestamp: "2026-08-11T12:10:30.000Z", actor: "primary", tool: "Read", detail: "bounded", status: null }]} connected /></LiveClockProvider>);
+    const { container } = render(<LiveClockProvider running={false}><SessionProgressPanel progress={progress} agents={[primary]} activity={[{ id: "activity-1", timestamp: "2026-08-11T12:10:30.000Z", actor: "primary", tool: "Read", workKind: "read", detail: "bounded", status: null }]} connected /></LiveClockProvider>);
 
     expect(screen.getByText(/May be stale/)).toBeInTheDocument();
     expect(screen.getAllByText(/may be stale/i)).toHaveLength(1);

@@ -8,6 +8,7 @@ import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
+import { WORK_KINDS } from "../monitor/work-kind.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   readProviderFixture,
@@ -382,6 +383,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(claudeState.metrics.tokens.cacheEvents.status, "ready");
   assert.equal(codexState.metrics.tokens.cacheEvents.status, "unavailable");
   for (const state of [claudeState, codexState]) {
+    const allowedWorkKinds = new Set(WORK_KINDS);
+    assert.equal(state.activity.every((event) => allowedWorkKinds.has(event.workKind)), true);
+    assert.equal(state.agents.flatMap((agent) => agent.executionTasks || []).every((task) => allowedWorkKinds.has(task.workKind)), true);
     for (const observedAgent of state.agents) {
       assert.equal(Object.hasOwn(observedAgent, "cacheLifetime"), true);
       assert.equal(observedAgent.cacheLifetime === null || /^(5m|1h|mixed)$/.test(observedAgent.cacheLifetime), true);
