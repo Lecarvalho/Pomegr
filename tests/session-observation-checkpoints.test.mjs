@@ -54,6 +54,27 @@ test("writes atomic privacy-filtered checkpoint payloads and restores them after
   assert.equal(l1.get("provider-a", "session-1").source.completeOffset, 42);
 });
 
+test("startup restore can skip stale checkpoints before public projection", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  const recent = snapshot("provider-a", "recent");
+  const stale = { ...snapshot("provider-a", "stale"), observedAt: "2020-01-01T00:00:00.000Z" };
+  await checkpoints.write(recent);
+  await checkpoints.write(stale);
+  const projected = [];
+  const loaded = await checkpoints.load({
+    includeRecord: (record) => record.observedAt === recent.observedAt,
+    projectState(record) {
+      projected.push(record.localSessionId);
+      return record.evidence;
+    },
+  });
+  assert.deepEqual(loaded.records.map((record) => record.localSessionId), ["recent"]);
+  assert.deepEqual(projected, ["recent"]);
+  assert.equal(loaded.skipped, 1);
+  assert.equal(loaded.ignored, 0);
+});
+
 test("ignores corrupted, unknown-version, and validation-rejected checkpoints without blocking valid restart state", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({

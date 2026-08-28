@@ -1,3 +1,5 @@
+import { isObservationWorkingSetEntry } from "../observation-working-set.mjs";
+
 /**
  * Transitional adapter-local observer.  It intentionally knows nothing about
  * a provider's transcript format: an adapter supplies acquisition and
@@ -13,9 +15,13 @@ export function createNormalizedPollingObserver(options) {
     list,
     read,
     ingest,
+    prepare,
     intervalMs = 10_000,
     concurrency = 2,
     watchTargets = [],
+    yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
+    now = Date.now,
+    shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
   } = options || {};
   const acquire = ingest || read;
   if (typeof list !== "function" || typeof acquire !== "function") {
@@ -27,6 +33,15 @@ export function createNormalizedPollingObserver(options) {
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
     throw new TypeError("Normalized polling observer concurrency must be between 1 and 16");
   }
+  if (prepare !== undefined && typeof prepare !== "function") {
+    throw new TypeError("Normalized polling observer prepare hook must be a function");
+  }
+  if (typeof yieldControl !== "function") {
+    throw new TypeError("Normalized polling observer yieldControl hook must be a function");
+  }
+  if (typeof now !== "function" || typeof shouldEagerHydrate !== "function") {
+    throw new TypeError("Normalized polling observer working-set hooks must be functions");
+  }
 
   let publisher = null;
   let signal = null;
@@ -36,16 +51,24 @@ export function createNormalizedPollingObserver(options) {
   let stopped = false;
   const watchers = [];
   const hydrating = new Map();
+  const latestEntries = new Map();
   const qa = { reconciliationRuns: 0, watcherWakeups: 0, hydrationAttempts: 0, candidatesPublished: 0, acquisitionFailures: 0 };
 
-  async function hydrate(localSessionId) {
+  async function hydrate(localSessionId, prepared) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     const active = hydrating.get(localSessionId);
     if (active) return active;
     const task = (async () => {
       try {
-        const candidate = await acquire(localSessionId, publisher);
+        // Acquisition and provider reducers still contain bounded synchronous
+        // work. Yield before every unit so cache-only HTTP handlers can run
+        // between sessions, including when hydration was queued by a GET.
+        await yieldControl();
+        const context = prepared === undefined && prepare
+          ? await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }])
+          : prepared;
+        const candidate = await acquire(localSessionId, publisher, context);
         if (!stopped && !signal?.aborted && candidate) {
           publisher.publishSession(localSessionId, candidate);
           qa.candidatesPublished += 1;
@@ -64,13 +87,13 @@ export function createNormalizedPollingObserver(options) {
     return task;
   }
 
-  async function hydrateEntries(entries) {
+  async function hydrateEntries(entries, prepared) {
     const queue = entries.map((entry) => entry.localId);
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
       while (!stopped && !signal?.aborted) {
         const localSessionId = queue.shift();
         if (!localSessionId) return;
-        await hydrate(localSessionId);
+        await hydrate(localSessionId, prepared);
       }
     });
     await Promise.all(workers);
@@ -87,8 +110,14 @@ export function createNormalizedPollingObserver(options) {
     try {
       const entries = await list();
       if (!Array.isArray(entries) || stopped || signal?.aborted) return;
+      latestEntries.clear();
+      for (const entry of entries) {
+        if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
+      }
       publisher.publishCatalog(entries);
-      await hydrateEntries(entries);
+      const eagerEntries = entries.filter((entry) => shouldEagerHydrate(entry));
+      const prepared = prepare && eagerEntries.length ? await prepare(eagerEntries) : undefined;
+      await hydrateEntries(eagerEntries, prepared);
     } catch {
       // The registry records observer failures.  Do not erase an existing
       // catalog or publish an incomplete replacement here.
@@ -96,7 +125,9 @@ export function createNormalizedPollingObserver(options) {
       refreshPending = false;
       if (refreshQueued && !stopped && !signal?.aborted) {
         refreshQueued = false;
-        queueMicrotask(() => { void refresh(); });
+        // A queued watcher/reconciliation pass must not form a microtask-only
+        // loop that starves the monitor's HTTP server.
+        void yieldControl().then(() => refresh(), () => {});
       }
     }
   }

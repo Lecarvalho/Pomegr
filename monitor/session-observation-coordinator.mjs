@@ -1,4 +1,5 @@
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
+import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
@@ -235,6 +236,13 @@ export function createSessionObservationCoordinator(options = {}) {
     startPromise = (async () => {
       if (checkpointStore) {
         const loaded = await checkpointStore.load({
+          includeRecord(record) {
+            return isObservationWorkingSetEntry({
+              isLive: record.evidence?.historical === false,
+              needsInput: record.evidence?.session?.needsInput,
+              updatedAt: record.observedAt,
+            }, now());
+          },
           projectState: options.restoreState || (({ evidence }) => evidence),
         });
         for (const record of loaded.records) {

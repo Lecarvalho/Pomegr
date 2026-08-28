@@ -12,6 +12,7 @@ export function createIncrementalJsonlIngestor(options) {
     reduce,
     chunkBytes = 64 * 1024,
     maximumFragmentBytes = 256 * 1024,
+    yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
   } = options || {};
   if (typeof readChunk !== "function" || typeof parseRecord !== "function"
     || typeof initialState !== "function" || typeof reduce !== "function") {
@@ -22,6 +23,9 @@ export function createIncrementalJsonlIngestor(options) {
   }
   if (!Number.isInteger(maximumFragmentBytes) || maximumFragmentBytes < chunkBytes || maximumFragmentBytes > 8 * 1024 * 1024) {
     throw new TypeError("Incremental JSONL ingestor maximumFragmentBytes must be bounded");
+  }
+  if (typeof yieldControl !== "function") {
+    throw new TypeError("Incremental JSONL ingestor yieldControl must be a function");
   }
 
   /** @type {{identity: string, completeOffset: number, fragment: Buffer, candidate: unknown, malformedRecords: number, oversizedFragments: number} | null} */
@@ -84,6 +88,9 @@ export function createIncrementalJsonlIngestor(options) {
       if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
       appendCompleteLines(state, bytes);
       consumed = true;
+      // Reading all available chunks is required for correctness, but doing it
+      // in one microtask chain can starve the monitor's cache-serving socket.
+      await yieldControl();
     }
     return consumed;
   }

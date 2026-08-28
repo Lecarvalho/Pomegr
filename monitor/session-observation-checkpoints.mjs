@@ -137,7 +137,7 @@ export class SessionObservationCheckpointStore {
     this.maxEntries = maxEntries;
     this.maxBytes = maxBytes;
     this.privacySentinels = Object.freeze([...privacySentinels]);
-    this.qa = { writes: 0, writtenBytes: 0, loads: 0, restored: 0, ignored: 0, pruned: 0 };
+    this.qa = { writes: 0, writtenBytes: 0, loads: 0, restored: 0, skipped: 0, ignored: 0, pruned: 0 };
   }
 
   async write(snapshot) {
@@ -173,14 +173,21 @@ export class SessionObservationCheckpointStore {
    * Read compatible records on startup. The caller supplies projection because
    * public response state is intentionally not stored in the checkpoint.
    */
-  async load({ projectState = ({ evidence }) => evidence } = {}) {
-    if (typeof projectState !== "function") throw new TypeError("projectState must be a function");
+  async load({ projectState = ({ evidence }) => evidence, includeRecord = () => true } = {}) {
+    if (typeof projectState !== "function" || typeof includeRecord !== "function") {
+      throw new TypeError("checkpoint load hooks must be functions");
+    }
     const records = [];
     let ignored = 0;
+    let skipped = 0;
     for (const filename of await this.#filenames()) {
       const payload = await this.#readPayload(filename);
       if (!payload) {
         ignored += 1;
+        continue;
+      }
+      if (!includeRecord(payload)) {
+        skipped += 1;
         continue;
       }
       try {
@@ -203,8 +210,9 @@ export class SessionObservationCheckpointStore {
     await this.prune();
     this.qa.loads += 1;
     this.qa.restored += records.length;
+    this.qa.skipped += skipped;
     this.qa.ignored += ignored;
-    return Object.freeze({ records: Object.freeze(records), ignored });
+    return Object.freeze({ records: Object.freeze(records), skipped, ignored });
   }
 
   async prune({ preserveFilename = null } = {}) {

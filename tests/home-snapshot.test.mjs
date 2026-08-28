@@ -462,7 +462,7 @@ test("seven-day history verifies the recorded session timestamp", async () => {
   assert.deepEqual(state.projects[0].history.finalContexts, []);
 });
 
-test("seven-day history includes recent recorded evidence despite a stale catalog timestamp", async () => {
+test("seven-day history does not open an old catalog row merely to inspect newer evidence", async () => {
   const entries = [
     { id: "codex:live", provider: "codex", source: "Codex", title: "Live", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false },
     { id: "codex:stale-catalog", provider: "codex", source: "Codex", title: "Stale catalog", project: "pomegr", updatedAt: "2026-08-10T11:59:00.000Z", isLive: false, needsInput: false },
@@ -471,7 +471,7 @@ test("seven-day history includes recent recorded evidence despite a stale catalo
     ["codex:live", evidence()],
     ["codex:stale-catalog", evidence({ updatedAt: "2026-08-22T11:59:00.000Z" })],
   ])).homeSnapshot();
-  assert.equal(state.projects[0].history.completed, 1);
+  assert.equal(state.projects[0].history.completed, 0);
 });
 
 test("home snapshot coalesces concurrent builds and reuses the completed snapshot", async () => {

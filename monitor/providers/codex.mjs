@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
-import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
+import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import {
   mergeCodexToolCalls,
   parseCodexCanonicalTurns,
@@ -778,7 +778,7 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
-    createObserver: () => createIncrementalProviderObserver({ providerId: "codex", list: listSessions, readEvidence: readSession, resolveSource: async (localId) => { const metadata = await discoveredMetadata(); const primary = metadata.find((item) => item.localId === localId)?.rolloutFile; return incrementalSourceSetDescriptor(metadata.map((item) => item.rolloutFile), primary, false); }, intervalMs: options.observerIntervalMs ?? 10_000, concurrency: options.observerConcurrency ?? 2, watchTargets }),
+    createObserver: () => createCodexIncrementalObserver({ list: listSessions, readEvidence: readSession, discoveredMetadata, transcriptPathsBySessionId, intervalMs: options.observerIntervalMs ?? 10_000, concurrency: options.observerConcurrency ?? 2, watchTargets }),
     readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {

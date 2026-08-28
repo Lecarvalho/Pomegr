@@ -8,6 +8,8 @@ document and `AGENTS.md` govern repository changes.
 ## Non-negotiable invariants
 
 - Provider acquisition and normalization run before and independently of browser GETs.
+- Background acquisition and normalization must yield between bounded chunks and session
+  hydration units so the monitor's cache-serving event loop remains responsive.
 - Production `/api/sessions`, `/api/state`, `/api/home`, and `/api/usage-limits` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage service.
@@ -78,6 +80,24 @@ Every provider adapter must expose the observation lifecycle required by
 Adapters may watch files, poll a local API, or subscribe to provider events. The transport
 does not change the shared store or browser contract.
 
+### Startup working set and lazy history
+
+- Catalog discovery remains lightweight and includes bounded historical rows so the
+  sidebar can show and select them without parsing their session sources.
+- Startup source preparation, transcript hydration, normalization, and checkpoint restore
+  are eager only for live or needs-input sessions and sessions updated within the last
+  seven days. Seven days is the provider-neutral maximum window required by current Home
+  correlations; missing or malformed timestamps remain catalog-only.
+- Selecting any known uncached historical row queues hydration for that one session. The
+  API immediately returns its safe catalog identity with loading readiness, and the UI
+  shows the session skeleton until a committed revision is ready.
+- Home never schedules history work older than seven days. Shorter provider windows still
+  filter their own correlation inputs, while provider usage-limit values remain an
+  independent committed domain.
+- A reconciliation publishes the complete bounded catalog first, then prepares source
+  topology only for the eager working set. It must never prepare every old source merely
+  because its catalog row exists.
+
 ### Complete-record ingestion
 
 - Append-only JSONL acquisition uses 64 KiB chunks and continues until every currently
@@ -88,6 +108,9 @@ does not change the shared store or browser contract.
   safely without exposing raw content or blocking later complete records.
 - Compatible checkpoints resume at the last complete-record offset. After restart, any
   unfinished record is reread from that offset.
+- Multi-session reconciliation prepares provider-private source topology once per catalog
+  pass. A provider must not repeatedly scan or fingerprint its full catalog separately for
+  every session.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
 
@@ -238,8 +261,9 @@ restart/corruption/privacy, cache-only concurrent GETs, endpoint revision handli
 independent readiness, last-known-good rendering, accessibility, and retry cadence.
 
 The structural performance acceptance criterion is: once a committed response exists,
-GET latency and provider-source I/O are independent of raw transcript length, and the GET
-path performs zero transcript reads.
+GET latency and provider-source I/O are independent of raw transcript length, the GET path
+performs zero transcript reads, and a background catalog hydration pass cannot starve
+`/health` or committed API responses until a frontend proxy deadline expires.
 
 When this contract changes, update this document, the executable provider/monitor
 contracts, frontend and API types, focused regression tests, and `AGENTS.md` if a

@@ -56,15 +56,17 @@ export function incrementalSourceSetDescriptor(files, primaryFile, historical = 
  * offset suitable for monitor-private checkpoint matching.
  */
 export function createIncrementalProviderObserver(options = {}) {
-  const { providerId, list, readEvidence, resolveSource, intervalMs, concurrency, watchTargets } = options;
+  const { providerId, list, readEvidence, resolveSource, prepareSources, intervalMs, concurrency, watchTargets, yieldControl, now, shouldEagerHydrate } = options;
   if (typeof providerId !== "string" || !providerId || typeof list !== "function"
     || typeof readEvidence !== "function" || typeof resolveSource !== "function") {
     throw new TypeError("Incremental provider observer requires provider identity, list, evidence reader, and source resolver");
   }
   const ingestors = new Map();
 
-  async function acquire(localSessionId, publisher) {
-    const source = await resolveSource(localSessionId);
+  async function acquire(localSessionId, publisher, preparedSources) {
+    const source = preparedSources instanceof Map
+      ? preparedSources.get(localSessionId) || null
+      : await resolveSource(localSessionId);
     if (!source || typeof source.file !== "string" || typeof source.identity !== "string"
       || !Number.isSafeInteger(source.size) || source.size < 0) return null;
     const sourceFingerprint = fingerprint(providerId, localSessionId, source.identity);
@@ -83,6 +85,7 @@ export function createIncrementalProviderObserver(options = {}) {
         parseRecord(line) { return JSON.parse(line.toString("utf8")); },
         initialState: () => ({ completeRecords: 0 }),
         reduce(state) { return { completeRecords: state.completeRecords + 1 }; },
+        yieldControl,
       });
       const checkpoint = typeof publisher?.checkpointFor === "function" ? publisher.checkpointFor(localSessionId) : null;
       if (checkpoint?.fingerprint === sourceFingerprint) {
@@ -117,8 +120,12 @@ export function createIncrementalProviderObserver(options = {}) {
   return createNormalizedPollingObserver({
     list,
     ingest: acquire,
+    prepare: prepareSources,
     intervalMs,
     concurrency,
     watchTargets,
+    yieldControl,
+    now,
+    shouldEagerHydrate,
   });
 }

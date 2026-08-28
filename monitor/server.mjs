@@ -424,6 +424,7 @@ export function createMonitorRuntime(options = {}) {
     const startMs = endMs - 7 * 24 * 60 * 60_000;
     const relevantHistory = catalog.filter((entry) => !entry.isLive
       && !displayImmediateEntryIds.has(entry.id)
+      && Date.parse(entry.updatedAt || "") >= startMs
       && projectNames.has(entry.project || "Unknown project"));
     const history = [];
     const missingHistory = [];

@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { createIncrementalJsonlIngestor } from "../monitor/providers/incremental-jsonl-ingestor.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
+import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
+import { OBSERVATION_WORKING_SET_MS } from "../monitor/observation-working-set.mjs";
 
 function sourceReader(buffers) {
   return async (offset, bytes, source) => buffers.get(source.identity).subarray(offset, offset + bytes);
@@ -42,6 +44,134 @@ test("incremental provider framing consumes multi-chunk growth and parses each c
   await ingestor.observe({ identity: "two", size: completed.length }, (candidate) => published.push(candidate));
   assert.deepEqual(published.at(-1), ["x", "y"]);
   assert.equal(parsed, 5);
+});
+
+test("incremental framing yields between bounded chunks so serving can run", async () => {
+  const source = Buffer.from('{"id":"a"}\n{"id":"b"}\n{"id":"c"}\n');
+  let yields = 0;
+  const ingestor = createIncrementalJsonlIngestor({
+    readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes),
+    parseRecord: (line) => JSON.parse(line.toString("utf8")),
+    initialState: () => [],
+    reduce: (state, record) => [...state, record.id],
+    chunkBytes: 5,
+    maximumFragmentBytes: 20,
+    async yieldControl() { yields += 1; },
+  });
+  await ingestor.observe({ identity: "cooperative", size: source.length }, () => {});
+  assert.equal(yields, Math.ceil(source.length / 5));
+});
+
+test("queued hydration yields before provider work begins", async (context) => {
+  let releaseYield;
+  let acquisitions = 0;
+  const controller = new AbortController();
+  const observer = createNormalizedPollingObserver({
+    list: async () => [],
+    ingest: async () => {
+      acquisitions += 1;
+      return null;
+    },
+    intervalMs: 60_000,
+    yieldControl: () => new Promise((resolve) => { releaseYield = resolve; }),
+  });
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog() {},
+    publishSession() {},
+    invalidateSession() {},
+  }, controller.signal);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const hydration = observer.hydrate("one");
+  assert.equal(acquisitions, 0);
+  assert.equal(typeof releaseYield, "function");
+  releaseYield();
+  await hydration;
+  assert.equal(acquisitions, 1);
+});
+
+test("one reconciliation prepares shared source topology once for every session", async (context) => {
+  const observedAt = "2026-08-28T12:00:00.000Z";
+  const controller = new AbortController();
+  const prepared = new Map([["one", { source: "one" }], ["two", { source: "two" }]]);
+  const observed = [];
+  let prepareCalls = 0;
+  let finish;
+  const finished = new Promise((resolve) => { finish = resolve; });
+  const observer = createNormalizedPollingObserver({
+    list: async () => [{ localId: "one", updatedAt: observedAt }, { localId: "two", updatedAt: observedAt }],
+    now: () => Date.parse(observedAt),
+    async prepare(entries) {
+      prepareCalls += 1;
+      assert.deepEqual(entries.map((entry) => entry.localId), ["one", "two"]);
+      return prepared;
+    },
+    ingest: async (localSessionId, _publisher, sourceMap) => {
+      observed.push([localSessionId, sourceMap.get(localSessionId).source]);
+      if (observed.length === 2) finish();
+      return null;
+    },
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog() {},
+    publishSession() {},
+    invalidateSession() {},
+  }, controller.signal);
+  await finished;
+  assert.equal(prepareCalls, 1);
+  assert.deepEqual(observed.sort(), [["one", "one"], ["two", "two"]]);
+});
+
+test("startup hydrates only the seven-day working set while old catalog rows remain lazy-loadable", async (context) => {
+  const nowMs = Date.parse("2026-08-28T12:00:00.000Z");
+  const entries = [
+    { localId: "live-old", isLive: true, updatedAt: "2020-01-01T00:00:00.000Z" },
+    { localId: "needs-input-old", needsInput: true, updatedAt: "2020-01-01T00:00:00.000Z" },
+    { localId: "boundary", updatedAt: new Date(nowMs - OBSERVATION_WORKING_SET_MS).toISOString() },
+    { localId: "stale", updatedAt: new Date(nowMs - OBSERVATION_WORKING_SET_MS - 1).toISOString() },
+    { localId: "invalid", updatedAt: "not-a-timestamp" },
+  ];
+  const controller = new AbortController();
+  const preparedBatches = [];
+  const acquired = [];
+  let catalog = [];
+  let finishStartup;
+  const startupFinished = new Promise((resolve) => { finishStartup = resolve; });
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    now: () => nowMs,
+    async prepare(batch) {
+      preparedBatches.push(batch.map((entry) => entry.localId));
+      return new Map(batch.map((entry) => [entry.localId, entry]));
+    },
+    ingest: async (localSessionId) => {
+      acquired.push(localSessionId);
+      if (acquired.length === 3) finishStartup();
+      return null;
+    },
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog(entriesValue) { catalog = entriesValue; },
+    publishSession() {},
+    invalidateSession() {},
+  }, controller.signal);
+  await startupFinished;
+
+  assert.deepEqual(catalog.map((entry) => entry.localId), entries.map((entry) => entry.localId));
+  assert.deepEqual(preparedBatches[0], ["live-old", "needs-input-old", "boundary"]);
+  assert.deepEqual(acquired, ["live-old", "needs-input-old", "boundary"]);
+
+  await observer.hydrate("stale");
+  assert.deepEqual(preparedBatches[1], ["stale"]);
+  assert.equal(acquired.at(-1), "stale");
+  assert.equal(acquired.includes("invalid"), false);
 });
 
 test("replacement staging never mixes source generations and deterministic reducers retain stronger evidence", async () => {

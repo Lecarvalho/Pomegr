@@ -3,6 +3,7 @@ import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
+import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
 import { createHomeReadiness, createSessionReadiness } from "./observation-readiness.mjs";
 import { SessionObservationCheckpointStore } from "./session-observation-checkpoints.mjs";
 import { createSessionObservationCoordinator } from "./session-observation-coordinator.mjs";
@@ -183,13 +184,14 @@ export function createObservationRuntime(options = {}) {
       return homeResponseCache.current();
     }
     const catalogEntries = observationCoordinator?.catalog()?.snapshot?.value?.sessions || [];
+    const homeEntries = catalogEntries.filter((entry) => isObservationWorkingSetEntry(entry, now()));
     const providerLimitReadiness = usageResponseCache.current()?.value?.readiness || {};
     const limitActivityReadiness = {};
     for (const { provider, usageLimits } of snapshot.providerLimits) {
       for (const limit of usageLimits.limits || []) {
         const key = `${provider}:${limit.id}`;
         const providerReady = providerLimitReadiness[provider] === "ready";
-        const summariesReady = catalogEntries
+        const summariesReady = homeEntries
           .filter((entry) => entry.provider === provider)
           .every((entry) => observationStore.getByQualifiedId(entry.id));
         limitActivityReadiness[key] = providerReady && summariesReady ? "ready" : "loading";
@@ -199,7 +201,7 @@ export function createObservationRuntime(options = {}) {
       catalog: observationCoordinator?.catalog()?.status === "empty" ? "loading" : "ready",
       providerLimits: providerLimitReadiness,
       limitActivity: limitActivityReadiness,
-      sessionSummaries: Object.fromEntries(catalogEntries.map((entry) => [
+      sessionSummaries: Object.fromEntries(homeEntries.map((entry) => [
         entry.id,
         observationStore.getByQualifiedId(entry.id) ? "ready" : "loading",
       ])),
