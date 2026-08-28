@@ -42,6 +42,7 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
   assert.equal(reuse.relatedEventId, refill.id);
   assert.equal(reuse.gapMs, 5 * 60 * 1_000);
   assert.match(refill.id, /^cache-[a-f0-9]{16}$/);
+  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1 }]);
   assert.doesNotMatch(JSON.stringify(feed), /codex:thread|dedupeId|model/);
 });
 
@@ -55,7 +56,7 @@ test("does not infer a miss without a recorded large refill", () => {
       snapshot("after", "2026-08-10T10:30:00.000Z", { input: 9_500, cacheRead: 500, cacheWrite: 7_999 }),
     ],
   });
-  assert.deepEqual(feed, { status: "ready", items: [] });
+  assert.deepEqual(feed, { status: "ready", items: [], possibleFullRefills: [] });
 });
 
 test("enforces comparison boundaries and cache event thresholds", () => {
@@ -80,13 +81,14 @@ test("enforces comparison boundaries and cache event thresholds", () => {
   });
   assert.equal(compacted.items.some((event) => event.kind === "miss_refill"), false);
   assert.equal(CACHE_EVENT_RULES.maximumSessionEvents, 20);
+  assert.equal(CACHE_EVENT_RULES.maximumAgentRefillCount, 999);
 });
 
 test("returns unavailable without classifiable evidence and caps newest session events", () => {
-  assert.deepEqual(buildCacheEvents({ agents: [agent], enabled: false }), { status: "unavailable", items: [] });
+  assert.deepEqual(buildCacheEvents({ agents: [agent], enabled: false }), { status: "unavailable", items: [], possibleFullRefills: [] });
   assert.deepEqual(buildCacheEvents({ agents: [agent], enabled: true, usageSnapshots: [
     { ...snapshot("bad", "2026-08-10T10:00:00.000Z", { cacheWrite: 8_000 }), cacheComparable: false },
-  ] }), { status: "unavailable", items: [] });
+  ] }), { status: "unavailable", items: [], possibleFullRefills: [] });
 
   const usageSnapshots = Array.from({ length: 25 }, (_, index) => snapshot(
     `refill-${index}`,
@@ -96,6 +98,26 @@ test("returns unavailable without classifiable evidence and caps newest session 
   const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
   assert.equal(feed.items.length, 20);
   assert.equal(feed.items[0].observedAt, usageSnapshots.at(-1).timestamp);
+});
+
+test("retains a possible full-refill count after its detailed event falls outside the cap", () => {
+  const startedAt = Date.parse("2026-08-10T10:00:00.000Z");
+  const rewriteAt = new Date(startedAt + 5 * 60_000).toISOString();
+  const usageSnapshots = [
+    snapshot("before", new Date(startedAt).toISOString(), { input: 1_000, cacheRead: 99_000 }),
+    snapshot("short-gap-rewrite", rewriteAt, { input: 1_000, cacheWrite: 99_000 }),
+    ...Array.from({ length: 21 }, (_, index) => snapshot(
+      `later-refill-${index}`,
+      new Date(startedAt + (index + 6) * 60_000).toISOString(),
+      { input: 1_000, cacheRead: 99_000, cacheWrite: 8_000 },
+    )),
+  ];
+
+  const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
+  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1 }]);
+  assert.equal(feed.items.length, CACHE_EVENT_RULES.maximumSessionEvents);
+  assert.equal(feed.items.some((event) => event.observedAt === rewriteAt), false);
+  assert.equal(feed.items.some((event) => event.kind === "miss_refill"), false);
 });
 
 test("never retains a reuse whose related refill falls outside the event cap", () => {

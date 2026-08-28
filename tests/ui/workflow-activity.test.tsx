@@ -5,7 +5,7 @@ import { Dashboard } from "../../app/Dashboard";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { WorkflowActivityPanel } from "../../app/components/dashboard/WorkflowActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import type { Agent, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
+import type { Agent, CacheRefillCount, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 function worker(overrides: Partial<Agent> = {}): Agent {
@@ -113,6 +113,40 @@ describe("workflow activity and agent tree view", () => {
     const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 compactions/ });
     expect(within(cluster).getByRole("button", { name: "2 compactions across 5 agents · 1 automatic · 1 manual." })).toHaveTextContent("2");
     expect(screen.getByRole("treeitem", { name: /Primary, orchestrator, active, 1 compaction/ })).toBeInTheDocument();
+  });
+
+  it("shows a counted stack-refill mark only for possible full cache refills", async () => {
+    const user = userEvent.setup();
+    const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
+    const child = worker({ id: "child", parentId: "primary", label: "Child agent", workflowId: null, workflowPhaseId: null });
+    const cacheRefills: CacheRefillCount[] = [{ agentId: "primary", count: 2 }];
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cache-refills" viewMode="list" workflows={[]} /></LiveClockProvider>);
+
+    const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, 2 possible full cache refills/ });
+    const childRow = screen.getByRole("listitem", { name: "Child agent agent" });
+    const refillMark = within(primaryRow).getByRole("button", { name: "Possible full cache refill observed 2 times." });
+    expect(refillMark).toHaveTextContent("2");
+    expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
+    expect(within(childRow).queryByRole("button", { name: /cache refill/i })).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".agentCacheRefillIndicator")).toHaveLength(1);
+
+    await user.hover(refillMark);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Possible full cache refill observed 2 times.");
+  });
+
+  it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {
+    const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
+    const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));
+    const cacheRefills: CacheRefillCount[] = [
+      { agentId: "clustered-0", count: 1 },
+      { agentId: "clustered-3", count: 1 },
+      { agentId: "primary", count: 1 },
+    ];
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cluster-cache-refills" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+
+    const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 possible full cache refills/ });
+    expect(within(cluster).getByRole("button", { name: "Possible full cache refill observed 2 times across 5 agents." })).toHaveTextContent("2");
+    expect(screen.getByRole("treeitem", { name: /Primary, orchestrator, active, 1 possible full cache refill/ })).toBeInTheDocument();
   });
 
   it("toggles terminal subagents in List and Tree and remembers the choice per session", async () => {

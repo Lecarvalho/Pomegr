@@ -78,7 +78,7 @@ Pomegr derives usage-limit color severity from the normalized percentage with fi
 
 ## Cache events
 
-`metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. It reports only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest events enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities. If that cap would exclude a reuse event's related refill, the reuse is omitted so normalized relations never dangle.
+`metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. Its detailed `items` report only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest event details enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities. If that cap would exclude a reuse event's related refill, the reuse is omitted so normalized relations never dangle. A separate bounded `possibleFullRefills` summary counts qualifying transitions per normalized agent before the detail cap is applied.
 
 - **Refill** — the provider records at least 8,000 cache-write tokens on one request.
 - **Reuse** — after a tracked refill or miss-refill for the same agent, model, and comparison group, the first comparable request with at least 8,000 prompt-input tokens and at least an 80% cache-read share. Later high-read requests do not flood the feed.
@@ -87,6 +87,10 @@ Pomegr derives usage-limit color severity from the normalized percentage with fi
 Automatic or manual compaction, a fork boundary for miss classification, a model or comparison-group change, invalid timestamps, or missing/malformed intermediate usage makes observations incomparable. A normal resume does not. The feed status is `unavailable` when no cache-classifiable observation exists and `ready` when an observed bounded window contains valid evidence, including when no event meets the thresholds.
 
 Cache events expose only their fixed kind, normalized agent ID, observation time, prompt-input count, cache-read percentage, cache-write count, optional preceding percentage and elapsed gap, and an opaque relation from reuse to its tracked refill. They never expose prompts, cached prefixes, cache keys, TTL/configuration, routing, service tier, provider-private fields, raw usage, cumulative usage, price, charges, or claimed savings. An event is deterministic evidence, not proof of expiration, eviction, causation, quality, or billing impact.
+
+The `possibleFullRefills` summary uses the same comparable-adjacent-request checks as `miss_refill`: both requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, and the current request has at most a 10% share while recording at least 8,000 cache-write tokens. Unlike `miss_refill`, this summary does not require a 30-minute gap, so it also retains short-gap evidence of a possible full rewrite. Initial cache creation, forks, compaction boundaries, and model or comparison-group changes do not qualify. Counts are capped at 999 per agent and are computed before the 20-event detail cap.
+
+Agent activity renders an amber stack-refill symbol from that per-agent summary. Tree clusters sum only the bounded counts belonging to agents represented by the cluster. The wording remains cautious because the transition does not prove expiration, eviction, a full-prefix rewrite, or billing impact.
 
 ## Live resource use
 

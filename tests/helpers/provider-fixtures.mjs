@@ -133,7 +133,7 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
       tokens: {
         ...tokenTotals,
         contextHistory: { bucketMs: 0, buckets: [], boundaries: [] },
-        cacheEvents: { status: "unavailable", items: [] },
+        cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
         requestSnapshots: { status: "unavailable", items: [] },
       },
     },

@@ -178,9 +178,16 @@ export type CacheEvent = {
   relatedEventId: string | null;
 };
 
+export type CacheRefillCount = {
+  agentId: string;
+  count: number;
+};
+
 export type CacheEventFeed = {
   status: "ready" | "unavailable";
   items: CacheEvent[];
+  /** Bounded per-agent counts of comparable high-read to low-read large rewrites. */
+  possibleFullRefills: CacheRefillCount[];
 };
 
 export type RequestSnapshot = {

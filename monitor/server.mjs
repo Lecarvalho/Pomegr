@@ -310,7 +310,7 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionI
       agentIds: agents.map((agent) => agent.id),
       compactions,
     }),
-    cacheEvents: { status: "unavailable", items: [] },
+    cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
     requestSnapshots: buildRequestSnapshots({ sessionId, agents, usageSnapshots }),
   };
 }

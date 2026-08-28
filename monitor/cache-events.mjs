@@ -7,6 +7,7 @@ export const CACHE_EVENT_RULES = Object.freeze({
   maximumMissReadShare: 0.1,
   minimumMissGapMs: 30 * 60 * 1_000,
   maximumSessionEvents: 20,
+  maximumAgentRefillCount: 999,
 });
 
 function timestampMs(value) {
@@ -73,7 +74,7 @@ export function buildCacheEvents({
   compactions = [],
   enabled = false,
 } = {}) {
-  if (!enabled) return { status: "unavailable", items: [] };
+  if (!enabled) return { status: "unavailable", items: [], possibleFullRefills: [] };
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
   const unique = new Map();
@@ -86,10 +87,11 @@ export function buildCacheEvents({
   const observations = [...unique.values()].sort((left, right) => (
     timestampMs(left.timestamp) - timestampMs(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
   ));
-  if (!observations.length) return { status: "unavailable", items: [] };
+  if (!observations.length) return { status: "unavailable", items: [], possibleFullRefills: [] };
 
   const previousByActor = new Map();
   const trackedRefillByActor = new Map();
+  const possibleFullRefillsByActor = new Map();
   const events = [];
   for (const snapshot of observations) {
     const observedAt = timestampMs(snapshot.timestamp);
@@ -105,14 +107,20 @@ export function buildCacheEvents({
       && model === previous.model
       && !hasCompactionBetween(compactions, snapshot.actorId, previous.observedAt, observedAt);
     const gapMs = comparableToPrevious ? observedAt - previous.observedAt : null;
-    const missRefill = agent?.role !== "fork"
+    const possibleFullRefill = agent?.role !== "fork"
       && comparableToPrevious
       && previous.parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && previous.parts.cacheReadShare >= CACHE_EVENT_RULES.minimumReuseReadShare
       && parts.cacheReadShare <= CACHE_EVENT_RULES.maximumMissReadShare
-      && gapMs >= CACHE_EVENT_RULES.minimumMissGapMs
       && parts.cacheWrite >= CACHE_EVENT_RULES.minimumCacheWriteTokens;
+    if (possibleFullRefill) {
+      possibleFullRefillsByActor.set(snapshot.actorId, Math.min(
+        CACHE_EVENT_RULES.maximumAgentRefillCount,
+        (possibleFullRefillsByActor.get(snapshot.actorId) || 0) + 1,
+      ));
+    }
+    const missRefill = possibleFullRefill && gapMs >= CACHE_EVENT_RULES.minimumMissGapMs;
 
     let emitted = null;
     if (missRefill) {
@@ -166,5 +174,8 @@ export function buildCacheEvents({
       event.kind !== "reuse"
       || (event.relatedEventId !== null && retainedIds.has(event.relatedEventId))
     )),
+    possibleFullRefills: [...possibleFullRefillsByActor]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([agentId, refillCount]) => ({ agentId, count: refillCount })),
   };
 }

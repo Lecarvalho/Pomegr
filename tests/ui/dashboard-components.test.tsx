@@ -737,7 +737,7 @@ describe("context history", () => {
     cacheWrite: 0,
     cacheRead: 0,
     contextHistory: { bucketMs: 60_000, buckets, boundaries: [{ id: "boundary-1", agentId: "primary", timestamp: "2026-08-09T12:01:30.000Z", kind: "snapshot_drop" as const, preTokens: 100_000 }] },
-    cacheEvents: { status: "ready" as const, items: [] },
+    cacheEvents: { status: "ready" as const, items: [], possibleFullRefills: [] },
     requestSnapshots: { status: "ready" as const, items: [] },
   };
 
@@ -806,7 +806,11 @@ describe("request snapshots and cache evidence", () => {
     relatedEventId: index === 1 ? "cache-0" : null,
   });
   const requestSnapshots = { status: "ready" as const, items: snapshots };
-  const cacheEvents = { status: "ready" as const, items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)) };
+  const cacheEvents = {
+    status: "ready" as const,
+    items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)),
+    possibleFullRefills: [{ agentId: "primary", count: 1 }],
+  };
 
   it("canonicalizes equivalent timestamp offsets and rejects invalid join keys", () => {
     expect(snapshotEventKey("primary", "2026-08-09T08:04:00.000-04:00")).toBe(
@@ -990,7 +994,7 @@ describe("request snapshots and cache evidence", () => {
 
   it("uses factual request and cache empty states in live and recorded views", () => {
     const emptySnapshots = { status: "unavailable" as const, items: [] };
-    const emptyEvents = { status: "unavailable" as const, items: [] };
+    const emptyEvents = { status: "unavailable" as const, items: [], possibleFullRefills: [] };
     const { rerender } = render(<RequestSnapshotsPanel agents={[agent]} requestSnapshots={emptySnapshots} cacheEvents={emptyEvents} cacheWriteAvailable historical={false} />);
     expect(screen.getByText("Independent request snapshots are not available yet for this session.")).toBeInTheDocument();
     expect(screen.getByText("Comparable cache snapshots are not available yet for this session.")).toBeInTheDocument();

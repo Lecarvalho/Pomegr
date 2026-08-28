@@ -382,6 +382,12 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, state.metrics.tokens.allAgents);
     assert.equal(Array.isArray(state.metrics.tokens.contextHistory.boundaries), true);
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
+    assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.possibleFullRefills), true);
+    for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
+      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count"]);
+      assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);
+      assert.equal(Number.isSafeInteger(refill.count) && refill.count > 0 && refill.count <= 999, true);
+    }
     assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {

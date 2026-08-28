@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Agent, ContextHistoryBoundary, ExecutionTask, PlanTask, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, PlanTask, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
 import { agentAssignment, agentDisplayLabel, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
@@ -11,7 +11,7 @@ import { ExecutionTaskRow } from "../ExecutionTaskRow";
 import { AgentWallTimeText, CoarseRelativeTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
-import { AgentHistoryIndicators, summarizeCompactions } from "./AgentHistoryIndicators";
+import { AgentHistoryIndicators, summarizeCacheRefills, summarizeCompactions } from "./AgentHistoryIndicators";
 import { AgentTreeView } from "./agent-tree/AgentTreeView";
 
 export type AgentActivityViewMode = "list" | "tree";
@@ -41,8 +41,9 @@ function storedFinishedAgentVisibility(sessionId: string) {
   }
 }
 
-export function AgentActivityPanel({ agents, contextBoundaries = [], executionTasks, planTasks, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
+export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundaries = [], executionTasks, planTasks, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
   agents: Agent[];
+  cacheRefills?: CacheRefillCount[];
   contextBoundaries?: ContextHistoryBoundary[];
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
@@ -105,7 +106,8 @@ export function AgentActivityPanel({ agents, contextBoundaries = [], executionTa
       ? `${displayLabel} agent ${agent.id.slice(-6)}`
       : `${displayLabel} agent`;
     const compactions = summarizeCompactions(contextBoundaries, [agent.id]);
-    const accessibleLabel = `${identityLabel}${compactions.total > 0 ? `, ${compactions.total} ${compactions.total === 1 ? "compaction" : "compactions"}` : ""}`;
+    const cacheRefillCount = summarizeCacheRefills(cacheRefills, [agent.id]);
+    const accessibleLabel = `${identityLabel}${compactions.total > 0 ? `, ${compactions.total} ${compactions.total === 1 ? "compaction" : "compactions"}` : ""}${cacheRefillCount > 0 ? `, ${cacheRefillCount} possible full cache ${cacheRefillCount === 1 ? "refill" : "refills"}` : ""}`;
 
     return (
       <div
@@ -161,7 +163,7 @@ export function AgentActivityPanel({ agents, contextBoundaries = [], executionTa
                 )}
               </div>
             )}
-            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} />
+            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} cacheRefills={cacheRefills} />
           </div>
           <div className="agentMeta">
             {assignment && <span className="agentMetaIdentity" dir="auto">{agent.label}</span>}
@@ -188,7 +190,7 @@ export function AgentActivityPanel({ agents, contextBoundaries = [], executionTa
       {viewMode === "list" ? <div className="agentList">
         {agents.length === 0 && <EmptyState text="No agents have appeared in this session yet." />}
         {agentRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{agentRows.map(renderAgentRow)}</div>}
-      </div> : <AgentTreeView agents={visibleAgents} contextBoundaries={contextBoundaries} historical={historical} sessionId={sessionId} workflows={workflows} />}
+      </div> : <AgentTreeView agents={visibleAgents} cacheRefills={cacheRefills} contextBoundaries={contextBoundaries} historical={historical} sessionId={sessionId} workflows={workflows} />}
     </article>
   );
 }
