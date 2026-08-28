@@ -47,6 +47,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
   const scheduledSessions = new Map();
+  const sessionRetryAttempts = new Map();
   const checkpointTimers = new Map();
   const subscribers = new Set();
   let catalogTimer = null;
@@ -136,7 +137,6 @@ export function createSessionObservationCoordinator(options = {}) {
         scheduleSessionCommit(qualifiedId);
         return;
       }
-      pendingSessions.delete(qualifiedId);
       const snapshot = store.publish({
         providerId: candidate.providerId,
         localSessionId: candidate.localSessionId,
@@ -148,23 +148,45 @@ export function createSessionObservationCoordinator(options = {}) {
         pinned: candidate.pinned,
       });
       if (snapshot?.accepted && !snapshot.unchanged) {
+        pendingSessions.delete(qualifiedId);
+        sessionRetryAttempts.delete(qualifiedId);
         qa.sessionCommits += 1;
         scheduleCatalogCommit();
         notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision });
         scheduleCheckpoint(snapshot.snapshot);
         options.onCommitted?.(snapshot.snapshot);
-      } else if (snapshot?.accepted) qa.unchangedCandidates += 1;
-      else qa.rejectedCandidates += 1;
+      } else if (snapshot?.accepted) {
+        pendingSessions.delete(qualifiedId);
+        sessionRetryAttempts.delete(qualifiedId);
+        qa.unchangedCandidates += 1;
+      } else {
+        qa.rejectedCandidates += 1;
+        pendingSessions.delete(qualifiedId);
+        sessionRetryAttempts.delete(qualifiedId);
+      }
     } catch {
-      // D failures retain the previous committed revision. A later observer wake retries.
+      // D failures retain both the previous committed revision and this
+      // normalized candidate. Retry without requiring another source append.
       qa.rejectedCandidates += 1;
-      pendingSessions.delete(qualifiedId);
+      scheduleSessionRetry(qualifiedId);
     }
   }
 
-  function scheduleSessionCommit(qualifiedId) {
+  function scheduleSessionRetry(qualifiedId) {
+    if (stopped || !pendingSessions.has(qualifiedId)) return;
+    const attempt = (sessionRetryAttempts.get(qualifiedId) || 0) + 1;
+    sessionRetryAttempts.set(qualifiedId, attempt);
+    if (attempt > 5) {
+      pendingSessions.delete(qualifiedId);
+      sessionRetryAttempts.delete(qualifiedId);
+      return;
+    }
+    scheduleSessionCommit(qualifiedId, Math.min(30_000, Math.max(1_000, commitDelayMs) * (2 ** Math.min(attempt - 1, 5))));
+  }
+
+  function scheduleSessionCommit(qualifiedId, delay = commitDelayMs) {
     if (scheduledSessions.has(qualifiedId)) return;
-    const timer = schedule(() => { void commitSession(qualifiedId); }, commitDelayMs);
+    const timer = schedule(() => { void commitSession(qualifiedId); }, delay);
     scheduledSessions.set(qualifiedId, timer);
   }
 
@@ -191,6 +213,11 @@ export function createSessionObservationCoordinator(options = {}) {
       qa.sessionCandidates += 1;
       const qualifiedId = qualifiedSessionId(providerId, localSessionId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
+      const scheduled = scheduledSessions.get(qualifiedId);
+      if (scheduled) {
+        cancel(scheduled);
+        scheduledSessions.delete(qualifiedId);
+      }
       pendingSessions.set(qualifiedId, Object.freeze({
         providerId,
         localSessionId,
@@ -200,6 +227,7 @@ export function createSessionObservationCoordinator(options = {}) {
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
         pinned: Boolean(evidence?.historical === false),
       }));
+      sessionRetryAttempts.delete(qualifiedId);
       scheduleSessionCommit(qualifiedId);
     },
 
@@ -208,6 +236,7 @@ export function createSessionObservationCoordinator(options = {}) {
       qa.invalidations += 1;
       const qualifiedId = qualifiedSessionId(providerId, localSessionId);
       pendingSessions.delete(qualifiedId);
+      sessionRetryAttempts.delete(qualifiedId);
       const previous = store.getByQualifiedId(qualifiedId);
       if (previous && (reason === "source_unavailable" || reason === "provider_unavailable")) {
         const readiness = Object.fromEntries(Object.keys(previous.readiness).map((key) => [key, "unavailable"]));
@@ -287,6 +316,7 @@ export function createSessionObservationCoordinator(options = {}) {
     for (const timer of scheduledSessions.values()) cancel(timer);
     scheduledSessions.clear();
     pendingSessions.clear();
+    sessionRetryAttempts.clear();
     for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
       cancel(pendingCheckpoint.timer);
       const snapshot = store.getByQualifiedId(qualifiedId);

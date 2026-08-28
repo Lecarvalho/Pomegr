@@ -105,7 +105,7 @@ export function createIncrementalProviderObserver(options = {}) {
     let candidate = null;
     await entry.ingestor.observe({ identity: observedIdentity, size: source.size }, async (_state, metadata) => {
       const evidence = await readEvidence(localSessionId, { historical: Boolean(source.historical) });
-      if (!evidence) return;
+      if (!evidence) throw new Error("Normalized evidence is temporarily unavailable");
       candidate = {
         ...evidence,
         observationSource: {

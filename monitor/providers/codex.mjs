@@ -370,6 +370,13 @@ export function createCodexProvider(options = {}) {
   async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
     const historical = readOptions.historical !== false;
+    const completeStory = readOptions.completeStory === true;
+    const incrementalRecordsByFile = readOptions.incrementalRecordsByFile instanceof Map
+      ? readOptions.incrementalRecordsByFile
+      : null;
+    const incrementalGenerationsByFile = readOptions.incrementalGenerationsByFile instanceof Map
+      ? readOptions.incrementalGenerationsByFile
+      : null;
     const discovered = await discoveredMetadata();
     const appServerTree = await readAppServerSessionTree(localSessionId);
     const mergedMetadata = mergeFreshCodexSessionTreeMetadata(discovered, appServerTree);
@@ -392,9 +399,15 @@ export function createCodexProvider(options = {}) {
       for (const thread of pending) {
         parsedIds.add(thread.localId);
         if (!thread.rolloutFile) continue;
-        const { records, generation } = readRolloutRecords(
+        const incremental = incrementalRecordsByFile
+          ? {
+            records: incrementalRecordsByFile.get(thread.rolloutFile) || [],
+            generation: incrementalGenerationsByFile?.get(thread.rolloutFile) || null,
+          }
+          : null;
+        const { records, generation } = incremental || readRolloutRecords(
           thread.rolloutFile,
-          historical,
+          historical || completeStory,
           thread.approvalReviewer ? maximumLiveTaskHistoryBytes : maximumLiveTailBytes,
         );
         recordsByThreadId.set(thread.localId, records);

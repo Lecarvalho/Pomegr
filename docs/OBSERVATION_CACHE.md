@@ -113,6 +113,18 @@ does not change the shared store or browser contract.
   every session.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
+- For multi-file Codex sessions, U1 owns an independent cursor and bounded private
+  lookbehind for every root or child rollout. After the initial complete build, U2 receives
+  only newly completed records plus that lookbehind; it does not rescan the complete
+  transcript or the generic live tail for session-story normalization.
+- "Delta" describes upstream acquisition and normalization, not a partial browser payload.
+  S returns one complete committed revision so a fresh page, a second client, or a client
+  that missed revisions always receives a self-contained view. React replaces its prior
+  revision only after that complete successor is ready.
+- L2 restores the last privacy-filtered normalized revision immediately. Codex rebuilds
+  its provider-private per-file cursor map in the background because the provider-neutral
+  checkpoint exposes no paths or native cursor map; the restored revision remains visible
+  until that rebuild validates.
 
 ### Replacement and discontinuity
 

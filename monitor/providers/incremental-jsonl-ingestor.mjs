@@ -32,6 +32,8 @@ export function createIncrementalJsonlIngestor(options) {
   let committed = null;
   /** @type {{identity: string, completeOffset: number, fragment: Buffer, candidate: unknown, malformedRecords: number, oversizedFragments: number} | null} */
   let staged = null;
+  /** @type {{state: NonNullable<typeof committed>, replacement: boolean} | null} */
+  let pendingPublication = null;
 
   function validSource(source) {
     return source && typeof source.identity === "string" && source.identity.length > 0
@@ -78,7 +80,7 @@ export function createIncrementalJsonlIngestor(options) {
   }
 
   async function consume(state, source) {
-    let consumed = false;
+    const startingCompleteOffset = state.completeOffset;
     while (state.completeOffset + state.fragment.length < source.size) {
       const offset = state.completeOffset + state.fragment.length;
       const requested = Math.min(chunkBytes, source.size - offset);
@@ -87,12 +89,11 @@ export function createIncrementalJsonlIngestor(options) {
       if (!bytes.length) break;
       if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
       appendCompleteLines(state, bytes);
-      consumed = true;
       // Reading all available chunks is required for correctness, but doing it
       // in one microtask chain can starve the monitor's cache-serving socket.
       await yieldControl();
     }
-    return consumed;
+    return state.completeOffset > startingCompleteOffset;
   }
 
   function metadata(state, replacement) {
@@ -105,12 +106,19 @@ export function createIncrementalJsonlIngestor(options) {
     });
   }
 
+  async function publishState(state, replacement, publish) {
+    pendingPublication = { state, replacement };
+    await publish(state.candidate, metadata(state, replacement));
+    if (pendingPublication?.state === state) pendingPublication = null;
+  }
+
   return Object.freeze({
     restore(checkpoint) {
       if (!checkpoint || typeof checkpoint.identity !== "string" || !checkpoint.identity
         || !Number.isSafeInteger(checkpoint.completeOffset) || checkpoint.completeOffset < 0) return false;
       committed = { ...generation(checkpoint.identity), completeOffset: checkpoint.completeOffset };
       staged = null;
+      pendingPublication = null;
       return true;
     },
     /**
@@ -131,7 +139,7 @@ export function createIncrementalJsonlIngestor(options) {
         // previous revision to retain, and publishing this first staged view
         // would make a partial write indistinguishable from ready evidence.
         if (changed && committed.fragment.length === 0) {
-          await publish(committed.candidate, metadata(committed, false));
+          await publishState(committed, false, publish);
         }
         return;
       }
@@ -146,12 +154,14 @@ export function createIncrementalJsonlIngestor(options) {
         if (staged.completeOffset + staged.fragment.length >= source.size && staged.fragment.length === 0) {
           committed = staged;
           staged = null;
-          await publish(committed.candidate, metadata(committed, true));
+          await publishState(committed, true, publish);
         }
         return;
       }
       const changed = await consume(committed, source);
-      if (changed) await publish(committed.candidate, metadata(committed, false));
+      if (changed || pendingPublication?.state === committed) {
+        await publishState(committed, pendingPublication?.replacement || false, publish);
+      }
     },
     snapshot() {
       if (!committed) return null;

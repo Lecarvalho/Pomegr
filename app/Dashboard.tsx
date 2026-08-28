@@ -68,7 +68,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const revisionRef = useRef<number | string | null>(null);
+  const revisionsBySessionRef = useRef(new Map<string, number | string>());
   const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
   const capabilities = data.capabilities || createEmptyProviderCapabilities();
   const sharedProviderUsage = sharedUsage.providers.find((entry) => entry.provider === (data.source === "Codex" ? "codex" : "claude"));
@@ -104,15 +104,16 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch(stateEndpoint(selectedSessionId, revisionRef.current), { cache: "no-store", signal });
+      const revisionKey = selectedSessionId ?? "__current__";
+      const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store", signal });
       if (!response.ok) throw new Error("Monitor unavailable");
       if (response.status === 204) return "unchanged" as const;
       const nextData = await response.json() as MonitorState;
       if (signal?.aborted) return "aborted" as const;
       startTransition(() => {
         const headerRevision = response.headers.get("x-pomegr-revision");
-        if (typeof nextData.revision === "number" || typeof nextData.revision === "string") revisionRef.current = nextData.revision;
-        else if (headerRevision) revisionRef.current = headerRevision;
+        if (typeof nextData.revision === "number" || typeof nextData.revision === "string") revisionsBySessionRef.current.set(revisionKey, nextData.revision);
+        else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
         setSelectedSessionId((current) => current ?? nextData.session?.id ?? null);
         setData(nextData);
         setLastRefresh(new Date());
@@ -165,10 +166,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
       document.removeEventListener("visibilitychange", foreground);
     };
   }, [paused, refresh, selectedIsHistorical]);
-
-  useEffect(() => {
-    revisionRef.current = null;
-  }, [selectedSessionId]);
 
   const togglePause = useCallback(() => {
     const next = !paused;
@@ -224,13 +221,14 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     let reportState = data;
     try {
       try {
-        const response = await fetch(stateEndpoint(selectedSessionId, revisionRef.current), { cache: "no-store" });
+        const revisionKey = selectedSessionId ?? "__current__";
+        const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store" });
         if (response.ok) {
           const latestState = await response.json() as MonitorState;
           if (latestState.session) {
             const headerRevision = response.headers.get("x-pomegr-revision");
-            if (typeof latestState.revision === "number" || typeof latestState.revision === "string") revisionRef.current = latestState.revision;
-            else if (headerRevision) revisionRef.current = headerRevision;
+            if (typeof latestState.revision === "number" || typeof latestState.revision === "string") revisionsBySessionRef.current.set(revisionKey, latestState.revision);
+            else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
             reportState = latestState;
             setData(latestState);
             setLastRefresh(new Date());

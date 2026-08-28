@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createIncrementalJsonlIngestor } from "../monitor/providers/incremental-jsonl-ingestor.mjs";
+import { createCodexIncrementalObserver, mergeCodexObservationEvidence } from "../monitor/providers/codex-observation.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
 import { OBSERVATION_WORKING_SET_MS } from "../monitor/observation-working-set.mjs";
@@ -228,6 +229,136 @@ test("a restarted ingestor resumes from the checkpointed complete-record offset"
   assert.equal(reads[0], checkpoint.completeOffset);
   assert.deepEqual(commits[0].candidate, ["c"]);
   assert.equal(commits[0].meta.completeOffset, sources.get("session").length);
+});
+
+test("a failed publication remains retryable without another source append", async () => {
+  const source = Buffer.from('{"id":"a"}\n');
+  let attempts = 0;
+  const ingestor = createIncrementalJsonlIngestor({
+    readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes),
+    parseRecord: (line) => JSON.parse(line.toString("utf8")),
+    initialState: () => [],
+    reduce: (state, record) => [...state, record.id],
+  });
+  await assert.rejects(() => ingestor.observe({ identity: "retry", size: source.length }, () => {
+    attempts += 1;
+    throw new Error("temporary normalization failure");
+  }));
+  const published = [];
+  await ingestor.observe({ identity: "retry", size: source.length }, (candidate) => {
+    attempts += 1;
+    published.push(candidate);
+  });
+  assert.equal(attempts, 2);
+  assert.deepEqual(published, [["a"]]);
+});
+
+test("Codex delta merging accepts an explicit empty plan and never downgrades compaction evidence", () => {
+  const base = {
+    session: { pomegrPlugin: null }, agents: [], usageSnapshots: [], toolCalls: [], activity: [], pullRequestCreations: [],
+    planTasks: [{ id: "old", subject: "Old plan", status: "in_progress", blocks: [], blockedBy: [] }],
+    compactions: [{ actorId: "primary", timestamp: "2026-08-28T10:00:00.000Z", trigger: "auto", preTokens: 200_000 }],
+    efficiencyRuleEvidence: { repetition: false },
+  };
+  const merged = mergeCodexObservationEvidence(base, {
+    ...base,
+    planTasks: [],
+    compactions: [{ actorId: "primary", timestamp: "2026-08-28T10:00:00.000Z", trigger: "auto", preTokens: null }],
+  });
+  assert.deepEqual(merged.planTasks, []);
+  assert.equal(merged.compactions[0].preTokens, 200_000);
+});
+
+test("Codex observation retains the complete story while a child source advances independently", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-observation-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const rootFile = path.join(directory, "root.jsonl");
+  const childFile = path.join(directory, "child.jsonl");
+  await writeFile(rootFile, '{"compaction":"root-old","timestamp":"2026-08-28T10:00:00.000Z"}\n', "utf8");
+  await writeFile(childFile, '{"compaction":"child-old","timestamp":"2026-08-28T10:01:00.000Z"}\n', "utf8");
+  const metadata = [
+    { localId: "root", sessionId: "root", rolloutFile: rootFile },
+    { localId: "child", sessionId: "root", parentThreadId: "root", rolloutFile: childFile },
+  ];
+  const reads = [];
+  const published = [];
+  let notify;
+  let nextPublication = new Promise((resolve) => { notify = resolve; });
+  const evidence = (compactions) => ({
+    localId: "root",
+    historical: false,
+    session: { updatedAt: compactions.at(-1)?.timestamp || "2026-08-28T10:00:00.000Z" },
+    agents: [{ id: "primary", skills: [], toolCalls: 0 }],
+    workflows: [], usageSnapshots: [], toolCalls: [], activity: [], planTasks: [],
+    compactions,
+    efficiencyRuleEvidence: { repetition: false, concurrentMutation: false, unsharedContext: false, healthyFallback: false, cacheUsageClassification: false },
+    pullRequestCreations: [],
+  });
+  const readRecords = async (file) => (await import("node:fs/promises")).readFile(file, "utf8")
+    .then((text) => text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)));
+  const observer = createCodexIncrementalObserver({
+    list: async () => [{ localId: "root", isLive: true, updatedAt: "2026-08-28T10:01:00.000Z" }],
+    discoveredMetadata: async () => metadata,
+    transcriptPathsBySessionId: new Map(),
+    intervalMs: 60_000,
+    async yieldControl() {},
+    readEvidence: async (_localId, options) => {
+      reads.push(options);
+      const all = [...await readRecords(rootFile), ...await readRecords(childFile)]
+        .map((item) => ({ actorId: item.compaction.startsWith("child") ? "agent-child" : "primary", timestamp: item.timestamp, trigger: "auto", preTokens: null }));
+      return evidence(options.completeStory ? all : all.slice(-1));
+    },
+  });
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog() {},
+    publishSession(_id, candidate) { published.push(candidate); notify(); },
+    invalidateSession() {},
+  }, controller.signal);
+  await nextPublication;
+  assert.equal(reads[0].completeStory, true);
+  assert.equal(published[0].compactions.length, 2);
+
+  nextPublication = new Promise((resolve) => { notify = resolve; });
+  await appendFile(childFile, '{"compaction":"child-new","timestamp":"2026-08-28T10:02:00.000Z"}\n', "utf8");
+  await observer.hydrate("root");
+  await nextPublication;
+  assert.equal(reads.at(-1).completeStory, false);
+  assert.deepEqual([...reads.at(-1).incrementalRecordsByFile.keys()], [childFile]);
+  assert.deepEqual(published.at(-1).compactions.map((item) => item.timestamp), [
+    "2026-08-28T10:00:00.000Z",
+    "2026-08-28T10:01:00.000Z",
+    "2026-08-28T10:02:00.000Z",
+  ]);
+  assert.equal(published.at(-1).observationSource.completeOffset, Buffer.byteLength(await (await import("node:fs/promises")).readFile(rootFile, "utf8")) + Buffer.byteLength(await (await import("node:fs/promises")).readFile(childFile, "utf8")));
+
+  const beforePartial = published.length;
+  await appendFile(childFile, '{"compaction":"child-partial"', "utf8");
+  assert.equal(await observer.hydrate("root"), false);
+  assert.equal(published.length, beforePartial);
+  await appendFile(childFile, ',"timestamp":"2026-08-28T10:03:00.000Z"}\n', "utf8");
+  nextPublication = new Promise((resolve) => { notify = resolve; });
+  await observer.hydrate("root");
+  await nextPublication;
+  assert.equal(published.at(-1).compactions.length, 4);
+
+  const beforeReplacement = published.length;
+  await writeFile(childFile, '{"compaction":"child-replaced"', "utf8");
+  assert.equal(await observer.hydrate("root"), false);
+  await appendFile(rootFile, '{"compaction":"root-new","timestamp":"2026-08-28T10:04:00.000Z"}\n', "utf8");
+  assert.equal(await observer.hydrate("root"), false);
+  assert.equal(published.length, beforeReplacement);
+  await appendFile(childFile, ',"timestamp":"2026-08-28T10:05:00.000Z"}\n', "utf8");
+  nextPublication = new Promise((resolve) => { notify = resolve; });
+  await observer.hydrate("root");
+  await nextPublication;
+  assert.equal(reads.at(-1).completeStory, true);
+  assert.deepEqual(published.at(-1).compactions.map((item) => item.timestamp), [
+    "2026-08-28T10:00:00.000Z",
+    "2026-08-28T10:04:00.000Z",
+    "2026-08-28T10:05:00.000Z",
+  ]);
 });
 
 test("a child transcript change updates its session source fingerprint without advancing the primary cursor", async (context) => {

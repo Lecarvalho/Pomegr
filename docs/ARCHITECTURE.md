@@ -201,13 +201,18 @@ An agent's optional `currentActivity` contains only a bounded, one-line provider
 
 Codex selected-state serving does not parse rollouts. The provider observer acquires source
 changes upstream, consumes append-compatible JSONL through complete-record offsets, and
-publishes only bounded normalized candidates. The default 64 KiB acquisition chunk is a
+retains an independent cursor for each root and child rollout. After an initial complete
+candidate, only newly completed records plus a bounded provider-private structural
+lookbehind enter normalization; the resulting candidate is merged into the complete
+bounded session story. The default 64 KiB acquisition chunk is a
 per-read work bound, not a history window; the observer keeps consuming available chunks
 and committed evidence has an independent bounded lifetime in L1 and compatible L2
 checkpoints. Truncation, replacement, or failed continuity stages a complete rebuild while
 the last known-good revision remains visible. Separate bounded rollout tails may still be
 used adapter-private for explicitly heuristic liveness or other narrow capabilities, but
 they cannot define selected-state evidence retention or run in an API serving path.
+Browser responses remain complete immutable revisions rather than patch payloads; the delta
+boundary is upstream, before the normalized observation cache.
 
 ### Codex live state
 
