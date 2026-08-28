@@ -312,7 +312,7 @@ test("local desktop packaging helper validates repository processes before repla
   assert.doesNotMatch(helper, /(?:Move-Item|Remove-Item)[^\n]*\$releaseRoot/);
   assert.match(helper, /\$devWasRunning -and -not \$LeaveDevStopped/);
   assert.match(documentation, /\.\\scripts\\package-desktop-local\.ps1/);
-  assert.match(documentation, /node node_modules\\electron\\install\.js/);
+  assert.match(documentation, /npm run desktop:runtime/);
   assert.match(documentation, /npm run desktop:inspect/);
   assert.match(documentation, /local-package-backups/);
   assert.match(documentation, /-LeaveDevStopped/);

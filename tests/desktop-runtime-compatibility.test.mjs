@@ -34,6 +34,8 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
     readFile(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8"),
   ]);
 
+  assert.equal(packageJson.scripts["desktop:runtime"], "node node_modules/electron/install.js");
+  assert.match(packageJson.scripts["verify:desktop"], /^npm run desktop:runtime && npm run desktop:smoke/);
   assert.match(packageJson.scripts["desktop:smoke"], /ELECTRON_RUN_AS_NODE=1/);
   assert.match(packageJson.scripts["desktop:smoke"], /electron[\\/]dist[\\/]electron\.exe desktop[\\/]smoke-runner\.mjs/);
   assert.doesNotMatch(packageJson.scripts["desktop:smoke"], /(^|\s)node(?:\.exe)?(?:\s|$)/i);
