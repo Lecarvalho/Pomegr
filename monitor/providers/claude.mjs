@@ -837,11 +837,13 @@ export function createClaudeProvider(options = {}) {
     }
   }
 
-  function liveUsageSnapshots(file, records, actor, stat, historical) {
+  function liveUsageSnapshots(file, records, actor, stat, historical, sessionId) {
     const parsed = parseClaudeContextRecords(records, {
       actorId: actor.id,
       sourceKey: actor.id,
       fallbackTimestamp: stat.mtime.toISOString(),
+      completeHistory: stat.size <= MAX_BYTES_PER_FILE,
+      expectedSessionId: sessionId,
     });
     if (historical) return parsed;
 
@@ -1018,7 +1020,7 @@ export function createClaudeProvider(options = {}) {
       if (file !== mainFile) transcriptPaths.set(actor.id, file);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
-      usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical));
+      usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical, sessionId));
       let observedCompactions = contextCompactionsCache.get(file);
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));

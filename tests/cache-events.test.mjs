@@ -4,7 +4,7 @@ import { buildCacheEvents, CACHE_EVENT_RULES } from "../monitor/cache-events.mjs
 
 const agent = { id: "primary", label: "Primary agent", role: "orchestrator" };
 
-function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, model = "model", group = 0 } = {}) {
+function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, model = "model", group = 0, cacheMissReason = null, cacheToolChangeCause = null } = {}) {
   return {
     dedupeId: id,
     actorId: "primary",
@@ -16,6 +16,8 @@ function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, mod
     model,
     comparisonGroup: group,
     cacheComparable: true,
+    cacheMissReason,
+    cacheToolChangeCause,
   };
 }
 
@@ -28,7 +30,7 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
       snapshot("refill", "2026-08-10T10:00:00.000Z", { input: 1_000, cacheWrite: 8_000 }),
       snapshot("reuse", "2026-08-10T10:05:00.000Z", { input: 1_000, cacheRead: 9_000 }),
       snapshot("extra-reuse", "2026-08-10T10:06:00.000Z", { input: 1_000, cacheRead: 9_000 }),
-      snapshot("miss", "2026-08-10T10:36:00.000Z", { input: 1_000, cacheRead: 500, cacheWrite: 8_500 }),
+      snapshot("miss", "2026-08-10T10:36:00.000Z", { input: 1_000, cacheRead: 500, cacheWrite: 8_500, cacheMissReason: "tools_changed", cacheToolChangeCause: "remote_control_connected" }),
     ],
   });
 
@@ -42,8 +44,21 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
   assert.equal(reuse.relatedEventId, refill.id);
   assert.equal(reuse.gapMs, 5 * 60 * 1_000);
   assert.match(refill.id, /^cache-[a-f0-9]{16}$/);
-  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1 }]);
-  assert.doesNotMatch(JSON.stringify(feed), /codex:thread|dedupeId|model/);
+  assert.deepEqual(feed.possibleFullRefills, [{
+    agentId: "primary",
+    count: 1,
+    reasons: [{ reason: "tools_changed", count: 1 }],
+    toolChangeAttributions: [{
+      cause: "remote_control_connected",
+      count: 1,
+      changes: [
+        { tool: "RemoteTrigger", kind: "added" },
+        { tool: "PushNotification", kind: "added" },
+        { tool: "ListAgents", kind: "definition_changed" },
+      ],
+    }],
+  }]);
+  assert.doesNotMatch(JSON.stringify(feed), /codex:thread|dedupeId|model|cache_missed_input_tokens|diagnostics/);
 });
 
 test("does not infer a miss without a recorded large refill", () => {
@@ -114,10 +129,35 @@ test("retains a possible full-refill count after its detailed event falls outsid
   ];
 
   const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
-  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1 }]);
+  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1, reasons: [], toolChangeAttributions: [] }]);
   assert.equal(feed.items.length, CACHE_EVENT_RULES.maximumSessionEvents);
   assert.equal(feed.items.some((event) => event.observedAt === rewriteAt), false);
   assert.equal(feed.items.some((event) => event.kind === "miss_refill"), false);
+});
+
+test("allowlists refill reasons and keeps reason counts within the bounded refill count", () => {
+  const usageSnapshots = [];
+  const startedAt = Date.parse("2026-08-10T10:00:00.000Z");
+  for (let index = 0; index < CACHE_EVENT_RULES.maximumAgentRefillCount + 2; index += 1) {
+    usageSnapshots.push(
+      snapshot(`reuse-${index}`, new Date(startedAt + index * 120_000).toISOString(), { input: 1_000, cacheRead: 10_000 }),
+      snapshot(`refill-${index}`, new Date(startedAt + index * 120_000 + 60_000).toISOString(), {
+        input: 1_000,
+        cacheWrite: 9_000,
+        cacheMissReason: index === 0 ? "private_provider_reason" : "tools_changed",
+        cacheToolChangeCause: index === 1 ? "private_tool_change_cause" : null,
+      }),
+    );
+  }
+
+  const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
+  assert.deepEqual(feed.possibleFullRefills, [{
+    agentId: "primary",
+    count: CACHE_EVENT_RULES.maximumAgentRefillCount,
+    reasons: [{ reason: "tools_changed", count: CACHE_EVENT_RULES.maximumAgentRefillCount - 1 }],
+    toolChangeAttributions: [],
+  }]);
+  assert.doesNotMatch(JSON.stringify(feed), /private_provider_reason|private_tool_change_cause/);
 });
 
 test("never retains a reuse whose related refill falls outside the event cap", () => {

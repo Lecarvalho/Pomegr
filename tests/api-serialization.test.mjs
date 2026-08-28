@@ -384,9 +384,30 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.possibleFullRefills), true);
     for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
-      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count"]);
+      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "reasons", "toolChangeAttributions"]);
       assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);
       assert.equal(Number.isSafeInteger(refill.count) && refill.count > 0 && refill.count <= 999, true);
+      assert.equal(Array.isArray(refill.reasons), true);
+      for (const reason of refill.reasons) {
+        assert.deepEqual(Object.keys(reason).sort(), ["count", "reason"]);
+        assert.match(reason.reason, /^(model_changed|system_changed|tools_changed|messages_changed)$/);
+        assert.equal(Number.isSafeInteger(reason.count) && reason.count > 0 && reason.count <= refill.count, true);
+      }
+      assert.equal(Array.isArray(refill.toolChangeAttributions), true);
+      const attributedRefills = refill.toolChangeAttributions.reduce((total, attribution) => total + attribution.count, 0);
+      const diagnosedToolChanges = refill.reasons.find((reason) => reason.reason === "tools_changed")?.count || 0;
+      assert.equal(attributedRefills <= diagnosedToolChanges, true);
+      for (const attribution of refill.toolChangeAttributions) {
+        assert.deepEqual(Object.keys(attribution).sort(), ["cause", "changes", "count"]);
+        assert.equal(attribution.cause, "remote_control_connected");
+        assert.equal(Number.isSafeInteger(attribution.count) && attribution.count > 0 && attribution.count <= refill.count, true);
+        assert.equal(Array.isArray(attribution.changes) && attribution.changes.length > 0 && attribution.changes.length <= 8, true);
+        for (const change of attribution.changes) {
+          assert.deepEqual(Object.keys(change).sort(), ["kind", "tool"]);
+          assert.match(change.tool, /^(RemoteTrigger|PushNotification|ListAgents)$/);
+          assert.match(change.kind, /^(added|definition_changed)$/);
+        }
+      }
     }
     assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);

@@ -1,6 +1,7 @@
 import type {
   Activity,
   Agent,
+  CacheRefillReason,
   ContextMachinery,
   ExecutionTask,
   MonitorState,
@@ -52,6 +53,10 @@ export type ProviderUsageSnapshot = {
   comparisonGroup?: number;
   /** True only when this observation can safely classify cache behavior. */
   cacheComparable?: boolean;
+  /** Bounded provider-diagnosed request divergence; absent means unavailable. */
+  cacheMissReason?: CacheRefillReason | null;
+  /** Monitor-private lifecycle attribution for a recognized tool-definition transition. */
+  cacheToolChangeCause?: "remote_control_connected" | null;
 };
 
 /**

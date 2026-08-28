@@ -3,8 +3,8 @@ import test from "node:test";
 import { buildCacheEvents } from "../monitor/cache-events.mjs";
 import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
 
-function assistant(id, timestamp, usage, model = "claude-test") {
-  return { type: "assistant", timestamp, message: { id, model, usage, content: [] } };
+function assistant(id, timestamp, usage, model = "claude-test", diagnostics = undefined) {
+  return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics ? { diagnostics } : {}) } };
 }
 
 function assistantWithoutIdentity(timestamp, usage, model = "claude-test") {
@@ -19,7 +19,7 @@ test("strictly normalizes bounded Claude request usage and cache comparability",
       cache_creation_input_tokens: 8_000,
       cache_read_input_tokens: 0,
       cache_creation: { private_ttl_breakdown: "PRIVATE_MUST_NOT_LEAK" },
-    }),
+    }, "claude-test", { cache_miss_reason: { type: "tools_changed", cache_missed_input_tokens: 8_000, private: "PRIVATE_MUST_NOT_LEAK" } }),
     assistant("two", "2026-08-10T10:05:00.000Z", {
       input_tokens: 1_000,
       output_tokens: 100,
@@ -31,7 +31,106 @@ test("strictly normalizes bounded Claude request usage and cache comparability",
   assert.equal(snapshots.length, 2);
   assert.equal(snapshots.every((snapshot) => snapshot.cacheComparable), true);
   assert.equal(snapshots[0].model, "claude-test");
-  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|cache_creation[^I]/);
+  assert.equal(snapshots[0].cacheMissReason, "tools_changed");
+  assert.equal(snapshots[0].cacheToolChangeCause, null);
+  assert.equal(snapshots[1].cacheMissReason, null);
+  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|cache_creation[^I]|cache_missed_input_tokens|diagnostics/);
+});
+
+test("attributes the next tools-changed request to a proven Remote Control connection transition", () => {
+  const usage = { input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0 };
+  const records = [
+    assistant("baseline", "2026-08-10T10:00:00.000Z", { ...usage, cache_creation_input_tokens: 0, cache_read_input_tokens: 9_000 }),
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("activation-request", "2026-08-10T10:01:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active. PRIVATE_STATUS_MUST_NOT_LEAK" },
+    assistant("activation-request", "2026-08-10T10:01:01.000Z", usage),
+    { type: "last-prompt", sessionId: "session" },
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 2 },
+    assistant("changed-request", "2026-08-10T10:02:00.000Z", usage, "claude-test", {
+      cache_miss_reason: { type: "tools_changed", cache_missed_input_tokens: 8_000 },
+    }),
+  ];
+
+  const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(snapshots.find((snapshot) => snapshot.dedupeId.endsWith(":changed-request"))?.cacheToolChangeCause, "remote_control_connected");
+  assert.doesNotMatch(JSON.stringify(snapshots), /bridgeSessionId|PRIVATE_STATUS|cache_missed_input_tokens/);
+
+  const incomplete = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source", completeHistory: false, expectedSessionId: "session" });
+  assert.equal(incomplete.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+});
+
+test("does not attribute textual mentions, bridge presence from session start, or a later unrelated request", () => {
+  const usage = { input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0 };
+  const textualMention = parseClaudeContextRecords([
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "attachment", attachment: { type: "skill_listing", content: "/remote-control is active RemoteTrigger PushNotification" } },
+    assistant("after", "2026-08-10T10:01:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "text", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(textualMention.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+
+  const activeFromStart = parseClaudeContextRecords([
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active" },
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 2 },
+    assistant("after", "2026-08-10T10:01:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "start", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(activeFromStart.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+
+  const mismatchedBridge = parseClaudeContextRecords([
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge-a", lastSequenceNum: 1 },
+    assistant("activation", "2026-08-10T10:01:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active" },
+    { type: "last-prompt", sessionId: "session" },
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge-b", lastSequenceNum: 2 },
+    assistant("after", "2026-08-10T10:02:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "mismatch", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(mismatchedBridge.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+
+  const duplicatedBridge = parseClaudeContextRecords([
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("activation", "2026-08-10T10:01:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active" },
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("after", "2026-08-10T10:02:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "duplicate", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(duplicatedBridge.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+
+  const foreignSession = parseClaudeContextRecords([
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "bridge-session", sessionId: "other-session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("activation", "2026-08-10T10:01:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active" },
+    { type: "last-prompt", sessionId: "other-session" },
+    { type: "bridge-session", sessionId: "other-session", bridgeSessionId: "bridge", lastSequenceNum: 2 },
+    assistant("after", "2026-08-10T10:02:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "foreign", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(foreignSession.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+
+  const laterRequest = parseClaudeContextRecords([
+    assistant("before", "2026-08-10T10:00:00.000Z", usage),
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 1 },
+    assistant("activation", "2026-08-10T10:01:00.000Z", usage),
+    { type: "system", subtype: "bridge_status", content: "/remote-control is active" },
+    { type: "last-prompt", sessionId: "session" },
+    { type: "bridge-session", sessionId: "session", bridgeSessionId: "bridge", lastSequenceNum: 2 },
+    assistant("next-without-diagnostic", "2026-08-10T10:02:00.000Z", usage),
+    assistant("later-changed", "2026-08-10T10:03:00.000Z", usage, "claude-test", { cache_miss_reason: { type: "tools_changed" } }),
+  ], { actorId: "primary", sourceKey: "later", completeHistory: true, expectedSessionId: "session" });
+  assert.equal(laterRequest.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
+});
+
+test("unrecognized or inconclusive Claude cache diagnostics remain unavailable", () => {
+  const records = ["previous_message_not_found", "unavailable", "future_private_reason"].map((type, index) => (
+    assistant(`diagnostic-${index}`, `2026-08-10T10:0${index}:00.000Z`, {
+      input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0,
+    }, "claude-test", { cache_miss_reason: { type, cache_missed_input_tokens: 8_000 } })
+  ));
+  const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source" });
+  assert.equal(snapshots.every((snapshot) => snapshot.cacheMissReason === null), true);
 });
 
 test("missing or malformed cache evidence breaks comparison without losing valid context", () => {

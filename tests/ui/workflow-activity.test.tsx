@@ -119,33 +119,47 @@ describe("workflow activity and agent tree view", () => {
     const user = userEvent.setup();
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
     const child = worker({ id: "child", parentId: "primary", label: "Child agent", workflowId: null, workflowPhaseId: null });
-    const cacheRefills: CacheRefillCount[] = [{ agentId: "primary", count: 2 }];
+    const cacheRefills: CacheRefillCount[] = [{
+      agentId: "primary",
+      count: 2,
+      reasons: [{ reason: "tools_changed", count: 1 }],
+      toolChangeAttributions: [{
+        cause: "remote_control_connected",
+        count: 1,
+        changes: [
+          { tool: "RemoteTrigger", kind: "added" },
+          { tool: "PushNotification", kind: "added" },
+          { tool: "ListAgents", kind: "definition_changed" },
+        ],
+      }],
+    }];
     const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cache-refills" viewMode="list" workflows={[]} /></LiveClockProvider>);
 
     const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, 2 possible full cache refills/ });
     const childRow = screen.getByRole("listitem", { name: "Child agent agent" });
-    const refillMark = within(primaryRow).getByRole("button", { name: "Possible full cache refill observed 2 times." });
+    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Pomegr inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
+    const refillMark = within(primaryRow).getByRole("button", { name: refillDescription });
     expect(refillMark).toHaveTextContent("2");
     expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
     expect(within(childRow).queryByRole("button", { name: /cache refill/i })).not.toBeInTheDocument();
     expect(container.querySelectorAll(".agentCacheRefillIndicator")).toHaveLength(1);
 
     await user.hover(refillMark);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Possible full cache refill observed 2 times.");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(refillDescription);
   });
 
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
     const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));
     const cacheRefills: CacheRefillCount[] = [
-      { agentId: "clustered-0", count: 1 },
-      { agentId: "clustered-3", count: 1 },
-      { agentId: "primary", count: 1 },
+      { agentId: "clustered-0", count: 1, reasons: [{ reason: "system_changed", count: 1 }], toolChangeAttributions: [] },
+      { agentId: "clustered-3", count: 1, reasons: [{ reason: "tools_changed", count: 1 }], toolChangeAttributions: [] },
+      { agentId: "primary", count: 1, reasons: [], toolChangeAttributions: [] },
     ];
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cluster-cache-refills" viewMode="tree" workflows={[]} /></LiveClockProvider>);
 
     const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 possible full cache refills/ });
-    expect(within(cluster).getByRole("button", { name: "Possible full cache refill observed 2 times across 5 agents." })).toHaveTextContent("2");
+    expect(within(cluster).getByRole("button", { name: "Possible full cache refill observed 2 times across 5 agents. Provider diagnostic: system instructions changed · tool definitions changed." })).toHaveTextContent("2");
     expect(screen.getByRole("treeitem", { name: /Primary, orchestrator, active, 1 possible full cache refill/ })).toBeInTheDocument();
   });
 

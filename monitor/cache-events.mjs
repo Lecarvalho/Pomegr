@@ -10,6 +10,15 @@ export const CACHE_EVENT_RULES = Object.freeze({
   maximumAgentRefillCount: 999,
 });
 
+const CACHE_REFILL_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
+const CACHE_TOOL_CHANGE_CAUSES = new Map([
+  ["remote_control_connected", Object.freeze([
+    Object.freeze({ tool: "RemoteTrigger", kind: "added" }),
+    Object.freeze({ tool: "PushNotification", kind: "added" }),
+    Object.freeze({ tool: "ListAgents", kind: "definition_changed" }),
+  ])],
+]);
+
 function timestampMs(value) {
   const milliseconds = Date.parse(value || "");
   return Number.isFinite(milliseconds) ? milliseconds : null;
@@ -92,6 +101,8 @@ export function buildCacheEvents({
   const previousByActor = new Map();
   const trackedRefillByActor = new Map();
   const possibleFullRefillsByActor = new Map();
+  const possibleFullRefillReasonsByActor = new Map();
+  const possibleToolChangeAttributionsByActor = new Map();
   const events = [];
   for (const snapshot of observations) {
     const observedAt = timestampMs(snapshot.timestamp);
@@ -115,10 +126,36 @@ export function buildCacheEvents({
       && parts.cacheReadShare <= CACHE_EVENT_RULES.maximumMissReadShare
       && parts.cacheWrite >= CACHE_EVENT_RULES.minimumCacheWriteTokens;
     if (possibleFullRefill) {
+      const previousRefillCount = possibleFullRefillsByActor.get(snapshot.actorId) || 0;
       possibleFullRefillsByActor.set(snapshot.actorId, Math.min(
         CACHE_EVENT_RULES.maximumAgentRefillCount,
-        (possibleFullRefillsByActor.get(snapshot.actorId) || 0) + 1,
+        previousRefillCount + 1,
       ));
+      if (
+        previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
+        && typeof snapshot.cacheMissReason === "string"
+        && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
+      ) {
+        const reasons = possibleFullRefillReasonsByActor.get(snapshot.actorId) || new Map();
+        reasons.set(snapshot.cacheMissReason, Math.min(
+          CACHE_EVENT_RULES.maximumAgentRefillCount,
+          (reasons.get(snapshot.cacheMissReason) || 0) + 1,
+        ));
+        possibleFullRefillReasonsByActor.set(snapshot.actorId, reasons);
+      }
+      if (
+        previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
+        && snapshot.cacheMissReason === "tools_changed"
+        && typeof snapshot.cacheToolChangeCause === "string"
+        && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
+      ) {
+        const attributions = possibleToolChangeAttributionsByActor.get(snapshot.actorId) || new Map();
+        attributions.set(snapshot.cacheToolChangeCause, Math.min(
+          CACHE_EVENT_RULES.maximumAgentRefillCount,
+          (attributions.get(snapshot.cacheToolChangeCause) || 0) + 1,
+        ));
+        possibleToolChangeAttributionsByActor.set(snapshot.actorId, attributions);
+      }
     }
     const missRefill = possibleFullRefill && gapMs >= CACHE_EVENT_RULES.minimumMissGapMs;
 
@@ -176,6 +213,19 @@ export function buildCacheEvents({
     )),
     possibleFullRefills: [...possibleFullRefillsByActor]
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([agentId, refillCount]) => ({ agentId, count: refillCount })),
+      .map(([agentId, refillCount]) => ({
+        agentId,
+        count: refillCount,
+        reasons: [...(possibleFullRefillReasonsByActor.get(agentId) || new Map())]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([reason, count]) => ({ reason, count })),
+        toolChangeAttributions: [...(possibleToolChangeAttributionsByActor.get(agentId) || new Map())]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([cause, count]) => ({
+            cause,
+            count,
+            changes: CACHE_TOOL_CHANGE_CAUSES.get(cause).map((change) => ({ ...change })),
+          })),
+      })),
   };
 }

@@ -63,6 +63,122 @@ function normalizedUsage(record) {
   return { input, output, cacheRead, cacheWrite, cacheComparable: readPresent };
 }
 
+const CACHE_MISS_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
+const REMOTE_CONTROL_ACTIVE_PREFIX = "/remote-control is active";
+const MAX_BRIDGE_STATUS_DISTANCE = 12;
+
+function normalizedCacheMissReason(record) {
+  const value = record?.message?.diagnostics?.cache_miss_reason?.type;
+  return typeof value === "string" && CACHE_MISS_REASONS.has(value) ? value : null;
+}
+
+function assistantIdentity(record) {
+  return assistantRecord(record)
+    ? boundedIdentity(record.message?.id ?? record.requestId ?? record.uuid)
+    : "";
+}
+
+function normalizedBridgeSession(record, expectedSessionId) {
+  const sessionId = boundedIdentity(record?.sessionId);
+  const bridgeSessionId = boundedIdentity(record?.bridgeSessionId);
+  return record?.type === "bridge-session"
+    && sessionId.length > 0
+    && sessionId === expectedSessionId
+    && bridgeSessionId.length > 0
+    && sessionId !== bridgeSessionId
+    && Number.isSafeInteger(record.lastSequenceNum)
+    && record.lastSequenceNum >= 0
+    ? { sessionId, bridgeSessionId, sequence: record.lastSequenceNum }
+    : null;
+}
+
+function remoteControlActiveRecord(record) {
+  return record?.type === "system"
+    && record.subtype === "bridge_status"
+    && typeof record.content === "string"
+    && record.content.startsWith(REMOTE_CONTROL_ACTIVE_PREFIX);
+}
+
+function inferredToolChangeCauses(records, completeHistory, expectedSessionId) {
+  const causes = new Map();
+  if (!completeHistory || !Array.isArray(records) || !expectedSessionId) return causes;
+  let lastAssistantId = "";
+  let distinctAssistantRequests = 0;
+  let sawBridgeSession = false;
+  let candidate = null;
+
+  for (const [index, record] of records.entries()) {
+    const identity = assistantIdentity(record);
+    if (identity && identity !== lastAssistantId) {
+      lastAssistantId = identity;
+      distinctAssistantRequests = Math.min(1_000, distinctAssistantRequests + 1);
+      if (candidate?.active && identity !== candidate.activationRequestId) {
+        if (!candidate.targetRequestId) candidate.targetRequestId = identity;
+        else if (candidate.targetRequestId !== identity) candidate = null;
+      }
+    }
+
+    const bridgeSession = normalizedBridgeSession(record, expectedSessionId);
+    if (bridgeSession) {
+      if (!sawBridgeSession) {
+        sawBridgeSession = true;
+        if (distinctAssistantRequests > 0) candidate = {
+          active: false,
+          activationRequestId: "",
+          bridgeCount: 1,
+          bridgeSessionId: bridgeSession.bridgeSessionId,
+          lastBridgeSequence: bridgeSession.sequence,
+          firstBridgeIndex: index,
+          targetRequestId: "",
+          turnBoundaryObserved: false,
+        };
+      } else if (candidate && candidate.bridgeSessionId === bridgeSession.bridgeSessionId) {
+        if (candidate.active
+          && candidate.turnBoundaryObserved
+          && bridgeSession.sequence >= candidate.lastBridgeSequence) {
+          candidate.bridgeCount += 1;
+          candidate.lastBridgeSequence = bridgeSession.sequence;
+          candidate.turnBoundaryObserved = false;
+        } else if (bridgeSession.sequence < candidate.lastBridgeSequence) {
+          candidate = null;
+        }
+      } else {
+        candidate = null;
+      }
+      continue;
+    }
+
+    if (candidate?.active
+      && record?.type === "last-prompt"
+      && boundedIdentity(record.sessionId) === expectedSessionId) {
+      candidate.turnBoundaryObserved = true;
+      continue;
+    }
+
+    if (record?.type === "system" && record.subtype === "bridge_status") {
+      if (remoteControlActiveRecord(record)
+        && candidate
+        && index - candidate.firstBridgeIndex <= MAX_BRIDGE_STATUS_DISTANCE
+        && lastAssistantId) {
+        candidate.active = true;
+        candidate.activationRequestId = lastAssistantId;
+      } else {
+        candidate = null;
+      }
+      continue;
+    }
+
+    if (identity
+      && candidate?.active
+      && candidate.bridgeCount >= 2
+      && identity === candidate.targetRequestId
+      && normalizedCacheMissReason(record) === "tools_changed") {
+      causes.set(identity, "remote_control_connected");
+    }
+  }
+  return causes;
+}
+
 function laterEvidence(previous, next) {
   if (!previous) return next;
   const previousTime = Date.parse(previous.timestamp || "");
@@ -73,8 +189,10 @@ function laterEvidence(previous, next) {
 export function parseClaudeContextRecords(records, options = {}) {
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
+  const expectedSessionId = boundedIdentity(options.expectedSessionId);
   const fallbackTimestamp = validTimestamp(options.fallbackTimestamp);
   const snapshots = new Map();
+  const toolChangeCauses = inferredToolChangeCauses(records, options.completeHistory === true, expectedSessionId);
   let comparisonGroup = 0;
 
   for (const record of Array.isArray(records) ? records : []) {
@@ -102,6 +220,8 @@ export function parseClaudeContextRecords(records, options = {}) {
       model: boundedModel(record.message.model),
       comparisonGroup,
       cacheComparable: usage.cacheComparable && Boolean(observedTimestamp),
+      cacheMissReason: normalizedCacheMissReason(record),
+      cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
     };
     snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
     if (!snapshot.cacheComparable) comparisonGroup += 1;

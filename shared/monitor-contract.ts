@@ -178,9 +178,32 @@ export type CacheEvent = {
   relatedEventId: string | null;
 };
 
+export type CacheRefillReason = "model_changed" | "system_changed" | "tools_changed" | "messages_changed";
+
+export type CacheRefillReasonCount = {
+  reason: CacheRefillReason;
+  count: number;
+};
+
+export type CacheToolDefinitionChange = {
+  tool: "RemoteTrigger" | "PushNotification" | "ListAgents";
+  kind: "added" | "definition_changed";
+};
+
+export type CacheToolChangeAttributionCount = {
+  cause: "remote_control_connected";
+  count: number;
+  /** Fixed monitor-derived tool delta; provider schemas remain private. */
+  changes: CacheToolDefinitionChange[];
+};
+
 export type CacheRefillCount = {
   agentId: string;
   count: number;
+  /** Provider-diagnosed causes for a bounded subset of these refills. */
+  reasons: CacheRefillReasonCount[];
+  /** Bounded Pomegr inferences tied to recognized provider lifecycle evidence. */
+  toolChangeAttributions: CacheToolChangeAttributionCount[];
 };
 
 export type CacheEventFeed = {

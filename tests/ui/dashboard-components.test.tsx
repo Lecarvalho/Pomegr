@@ -809,7 +809,7 @@ describe("request snapshots and cache evidence", () => {
   const cacheEvents = {
     status: "ready" as const,
     items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)),
-    possibleFullRefills: [{ agentId: "primary", count: 1 }],
+    possibleFullRefills: [{ agentId: "primary", count: 1, reasons: [], toolChangeAttributions: [] }],
   };
 
   it("canonicalizes equivalent timestamp offsets and rejects invalid join keys", () => {
