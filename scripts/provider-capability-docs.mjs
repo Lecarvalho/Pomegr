@@ -17,13 +17,13 @@ function cell(provider, capability) {
     : `Unsupported — ${declaration.limitation.documentation}`;
 }
 
-export function renderProviderCapabilityMatrix(providers = providerRegistry.providers) {
+export function renderProviderCapabilityMatrix(providers = providerRegistry.providers, newline = "\n") {
   const header = `| Capability | Normalized evidence | ${providers.map((provider) => provider.source).join(" | ")} |`;
   const separator = `| --- | --- | ${providers.map(() => "---").join(" | ")} |`;
   const rows = PROVIDER_CAPABILITY_CATALOG.map((capability) => (
     `| ${capability.label} | \`${capability.evidencePath}\` | ${providers.map((provider) => cell(provider, capability.key)).join(" | ")} |`
   ));
-  return [START, header, separator, ...rows, END].join("\n");
+  return [START, header, separator, ...rows, END].join(newline);
 }
 
 function replaceGeneratedSection(documentation, generated) {
@@ -34,11 +34,14 @@ function replaceGeneratedSection(documentation, generated) {
 }
 
 const current = await readFile(documentationFile, "utf8");
-const expected = replaceGeneratedSection(current, renderProviderCapabilityMatrix());
+const newline = current.includes("\r\n") ? "\r\n" : "\n";
+const expected = replaceGeneratedSection(current, renderProviderCapabilityMatrix(providerRegistry.providers, newline));
+const normalizedCurrent = current.replace(/\r\n/g, "\n");
+const normalizedExpected = expected.replace(/\r\n/g, "\n");
 if (process.argv.includes("--write")) {
   await writeFile(documentationFile, expected, "utf8");
   console.log("Updated docs/CONFIGURATION.md provider capability matrix.");
-} else if (current !== expected) {
+} else if (normalizedCurrent !== normalizedExpected) {
   console.error("Provider capability documentation is out of sync. Run: npm run docs:providers");
   process.exitCode = 1;
 } else {
