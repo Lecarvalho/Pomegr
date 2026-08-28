@@ -25,6 +25,7 @@ function agent(id: string, parentId: string | null, startedAt = "2026-08-23T12:0
     startedAt,
     updatedAt: startedAt,
     durationMs: 0,
+    cacheLifetime: null,
     tokens: { total: 10, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     ...overrides,
   };

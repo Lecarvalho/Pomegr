@@ -60,6 +60,8 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     model: "",
     comparisonGroup: 0,
     cacheComparable: true,
+    cacheLifetime: null,
+    cacheMissProviderStatus: null,
   }]);
   assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_620);
   assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);

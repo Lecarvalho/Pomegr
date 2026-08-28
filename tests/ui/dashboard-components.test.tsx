@@ -71,6 +71,7 @@ const agent: Agent = {
   startedAt: "2026-08-08T12:00:00.000Z",
   updatedAt: "2026-08-08T12:00:05.000Z",
   durationMs: 5_000,
+  cacheLifetime: "1h",
   tokens: { total: 1200, input: 100, output: 100, cacheWrite: 500, cacheRead: 500 },
 };
 
@@ -412,7 +413,7 @@ describe("agent assignment hierarchy", () => {
 
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[assignedAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
 
-    const row = screen.getByRole("listitem", { name: "Trace cli title — Erdos agent" });
+    const row = screen.getByRole("listitem", { name: "Trace cli title — Erdos agent, cache TTL 1h" });
     expect(within(row).getByText("Trace cli title").tagName).toBe("STRONG");
     expect(within(row).getByText("Erdos")).toHaveClass("agentMetaIdentity");
     expect(within(row).getByText("explore")).toHaveClass("agentMetaKind");
@@ -787,9 +788,9 @@ describe("context history", () => {
 describe("request snapshots and cache evidence", () => {
   const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", tokens: { ...agent.tokens, total: 5_000 } };
   const snapshots = [
-    { id: "snapshot-write", agentId: "primary", observedAt: "2026-08-09T12:03:00.000Z", uncachedInputTokens: 1_000, cacheWriteTokens: 146_282, cacheReadTokens: 0, outputTokens: 2_000, totalTokens: 149_282 },
-    { id: "snapshot-read", agentId: "primary", observedAt: "2026-08-09T12:04:00.000Z", uncachedInputTokens: 1_000, cacheWriteTokens: 759, cacheReadTokens: 146_282, outputTokens: 2_000, totalTokens: 150_041 },
-    { id: "snapshot-child", agentId: "child", observedAt: "2026-08-09T12:05:00.000Z", uncachedInputTokens: 4_000, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 1_000, totalTokens: 5_000 },
+    { id: "snapshot-write", agentId: "primary", observedAt: "2026-08-09T12:03:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 1_000, cacheWriteTokens: 146_282, cacheReadTokens: 0, outputTokens: 2_000, totalTokens: 149_282 },
+    { id: "snapshot-read", agentId: "primary", observedAt: "2026-08-09T12:04:00.000Z", cacheLifetime: null, uncachedInputTokens: 1_000, cacheWriteTokens: 759, cacheReadTokens: 146_282, outputTokens: 2_000, totalTokens: 150_041 },
+    { id: "snapshot-child", agentId: "child", observedAt: "2026-08-09T12:05:00.000Z", cacheLifetime: null, uncachedInputTokens: 4_000, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 1_000, totalTokens: 5_000 },
   ];
   const cacheEvent = (index: number) => ({
     id: `cache-${index}`,
@@ -809,7 +810,7 @@ describe("request snapshots and cache evidence", () => {
   const cacheEvents = {
     status: "ready" as const,
     items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)),
-    possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-09T12:03:00.000Z", reason: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }],
+    possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-09T12:03:00.000Z", reason: null, providerStatus: null, cacheLifetimeInference: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }],
   };
 
   it("canonicalizes equivalent timestamp offsets and rejects invalid join keys", () => {

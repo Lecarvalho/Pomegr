@@ -4,10 +4,21 @@ import { buildCacheEvents, CACHE_EVENT_RULES } from "../monitor/cache-events.mjs
 
 const agent = { id: "primary", label: "Primary agent", role: "orchestrator" };
 
-function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, model = "model", group = 0, cacheMissReason = null, cacheToolChangeCause = null } = {}) {
+function snapshot(id, timestamp, {
+  actorId = "primary",
+  input = 0,
+  cacheRead = 0,
+  cacheWrite = 0,
+  model = "model",
+  group = 0,
+  cacheLifetime = null,
+  cacheMissReason = null,
+  cacheMissProviderStatus = null,
+  cacheToolChangeCause = null,
+} = {}) {
   return {
     dedupeId: id,
-    actorId: "primary",
+    actorId,
     timestamp,
     input,
     output: 10,
@@ -16,7 +27,9 @@ function snapshot(id, timestamp, { input = 0, cacheRead = 0, cacheWrite = 0, mod
     model,
     comparisonGroup: group,
     cacheComparable: true,
+    cacheLifetime,
     cacheMissReason,
+    cacheMissProviderStatus,
     cacheToolChangeCause,
   };
 }
@@ -50,6 +63,8 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
     occurrences: [{
       observedAt: "2026-08-10T10:36:00.000Z",
       reason: "tools_changed",
+      providerStatus: null,
+      cacheLifetimeInference: null,
       toolChangeAttribution: {
         cause: "remote_control_connected",
         changes: [
@@ -144,7 +159,7 @@ test("retains a possible full-refill count after its detailed event falls outsid
   assert.deepEqual(feed.possibleFullRefills, [{
     agentId: "primary",
     count: 1,
-    occurrences: [{ observedAt: rewriteAt, reason: null, toolChangeAttribution: null }],
+    occurrences: [{ observedAt: rewriteAt, reason: null, providerStatus: null, cacheLifetimeInference: null, toolChangeAttribution: null }],
     reasons: [],
     toolChangeAttributions: [],
   }]);
@@ -177,11 +192,15 @@ test("allowlists refill reasons and keeps reason counts within the bounded refil
   assert.deepEqual(summary.occurrences[0], {
     observedAt: new Date(startedAt + 60_000).toISOString(),
     reason: null,
+    providerStatus: null,
+    cacheLifetimeInference: null,
     toolChangeAttribution: null,
   });
   assert.deepEqual(summary.occurrences[1], {
     observedAt: new Date(startedAt + 180_000).toISOString(),
     reason: "tools_changed",
+    providerStatus: null,
+    cacheLifetimeInference: null,
     toolChangeAttribution: null,
   });
   assert.deepEqual(summary.reasons, [{ reason: "tools_changed", count: CACHE_EVENT_RULES.maximumAgentRefillCount - 1 }]);
@@ -207,4 +226,73 @@ test("never retains a reuse whose related refill falls outside the event cap", (
   assert.equal(feed.items.every((event) => (
     event.kind !== "reuse" || feed.items.some((related) => related.id === event.relatedEventId)
   )), true);
+});
+
+test("infers cache expiry from the preceding resolved lifetime and bounded provider status", () => {
+  for (const [cacheLifetime, gapMs] of [["5m", 6 * 60_000], ["1h", 61 * 60_000], ["mixed", 61 * 60_000]]) {
+    const start = Date.parse("2026-08-10T10:00:00.000Z");
+    const feed = buildCacheEvents({
+      sessionId: "session",
+      agents: [agent],
+      enabled: true,
+      usageSnapshots: [
+        snapshot(`before-${cacheLifetime}`, new Date(start).toISOString(), { input: 1_000, cacheRead: 9_000, cacheLifetime }),
+        snapshot(`after-${cacheLifetime}`, new Date(start + gapMs).toISOString(), {
+          input: 1_000,
+          cacheWrite: 9_000,
+          cacheMissProviderStatus: "previous_cache_entry_unavailable",
+        }),
+      ],
+    });
+    assert.deepEqual(feed.possibleFullRefills[0].occurrences[0], {
+      observedAt: new Date(start + gapMs).toISOString(),
+      reason: null,
+      providerStatus: "previous_cache_entry_unavailable",
+      cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime, elapsedMs: gapMs },
+      toolChangeAttribution: null,
+    });
+  }
+});
+
+test("fails cache-expiry inference closed below the TTL or without matching evidence", () => {
+  const start = Date.parse("2026-08-10T10:00:00.000Z");
+  for (const current of [
+    snapshot("too-soon", new Date(start + 59 * 60_000).toISOString(), {
+      input: 1_000, cacheWrite: 9_000, cacheMissProviderStatus: "previous_cache_entry_unavailable",
+    }),
+    snapshot("missing-status", new Date(start + 61 * 60_000).toISOString(), { input: 1_000, cacheWrite: 9_000 }),
+    snapshot("direct-reason", new Date(start + 61 * 60_000).toISOString(), {
+      input: 1_000,
+      cacheWrite: 9_000,
+      cacheMissReason: "tools_changed",
+      cacheMissProviderStatus: "previous_cache_entry_unavailable",
+    }),
+  ]) {
+    const feed = buildCacheEvents({
+      sessionId: "session",
+      agents: [agent],
+      enabled: true,
+      usageSnapshots: [
+        snapshot("before", new Date(start).toISOString(), { input: 1_000, cacheRead: 9_000, cacheLifetime: "1h" }),
+        current,
+      ],
+    });
+    assert.equal(feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, null);
+  }
+});
+
+test("evaluates refill and lifetime evidence independently for primary, subagent, and fork", () => {
+  const agents = [agent, { id: "child", role: "builder" }, { id: "fork", role: "fork" }];
+  const start = Date.parse("2026-08-10T10:00:00.000Z");
+  const usageSnapshots = agents.flatMap(({ id }, index) => [
+    snapshot("shared-before", new Date(start + index * 1_000).toISOString(), {
+      actorId: id, input: 1_000, cacheRead: 9_000, cacheLifetime: id === "child" ? "5m" : "1h",
+    }),
+    snapshot("shared-after", new Date(start + index * 1_000 + (id === "child" ? 6 : 61) * 60_000).toISOString(), {
+      actorId: id, input: 1_000, cacheWrite: 9_000, cacheMissProviderStatus: "previous_cache_entry_unavailable",
+    }),
+  ]);
+  const feed = buildCacheEvents({ sessionId: "session", agents, enabled: true, usageSnapshots });
+  assert.deepEqual(feed.possibleFullRefills.map(({ agentId }) => agentId), ["child", "fork", "primary"]);
+  assert.deepEqual(feed.possibleFullRefills.map(({ occurrences }) => occurrences[0].cacheLifetimeInference.cacheLifetime), ["5m", "1h", "1h"]);
 });

@@ -265,8 +265,25 @@ function groupToolEvidence(toolCalls) {
   };
 }
 
+function aggregateCacheLifetime(snapshots) {
+  let sawFiveMinutes = false;
+  let sawOneHour = false;
+  for (const snapshot of snapshots) {
+    if (snapshot.cacheLifetime === "5m") sawFiveMinutes = true;
+    else if (snapshot.cacheLifetime === "1h") sawOneHour = true;
+    else if (snapshot.cacheLifetime === "mixed") {
+      sawFiveMinutes = true;
+      sawOneHour = true;
+    }
+  }
+  if (sawFiveMinutes && sawOneHour) return "mixed";
+  if (sawOneHour) return "1h";
+  if (sawFiveMinutes) return "5m";
+  return null;
+}
+
 function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionId, compactions) {
-  const snapshotsById = new Map(usageSnapshots.map((snapshot) => [snapshot.dedupeId, snapshot]));
+  const snapshotsById = new Map(usageSnapshots.map((snapshot) => [`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot]));
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const boundedByAgent = new Map();
   for (const snapshot of snapshotsById.values()) {
@@ -296,6 +313,7 @@ function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionI
       ...(Number.isFinite(latest.reasoningOutput) ? { reasoningOutput: latest.reasoningOutput } : {}),
       ...(Number.isFinite(latest.modelContextWindow) ? { modelContextWindow: latest.modelContextWindow } : {}),
     };
+    agent.cacheLifetime = aggregateCacheLifetime(boundedByAgent.get(agent.id) || []);
   }
   return {
     allAgents: agents.reduce((total, agent) => total + agent.tokens.total, 0),

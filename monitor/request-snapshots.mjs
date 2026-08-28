@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 const MAX_REQUEST_SNAPSHOTS_PER_AGENT = 100;
+const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed"]);
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -65,6 +66,9 @@ export function buildRequestSnapshots({ sessionId = "session", agents = [], usag
     id: opaqueId(sessionId, snapshot, timestamp),
     agentId: snapshot.actorId,
     observedAt: timestamp,
+    cacheLifetime: typeof snapshot.cacheLifetime === "string" && CACHE_LIFETIMES.has(snapshot.cacheLifetime)
+      ? snapshot.cacheLifetime
+      : null,
     ...parts,
   }));
 

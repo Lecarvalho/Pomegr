@@ -1,7 +1,7 @@
 "use client";
 
-import type { CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
-import { timelineTime } from "../../dashboard-utils";
+import type { CacheLifetimeInference, CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
+import { formatDuration, timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 
 export type CompactionSummary = {
@@ -113,6 +113,16 @@ function cacheRefillOccurrenceInference(attribution: CacheToolChangeAttributionC
   return `${cause}${changes ? `; likely changed ${changes}` : ""}`;
 }
 
+function cacheLifetimeInferenceLabel(inference: CacheLifetimeInference | null) {
+  if (!inference || inference.cause !== "cache_lifetime_elapsed") return "";
+  const lifetime = inference.cacheLifetime === "5m"
+    ? "Five-minute cache"
+    : inference.cacheLifetime === "1h"
+      ? "One-hour cache"
+      : "Mixed cache lifetimes";
+  return `${lifetime} likely expired; ${formatDuration(inference.elapsedMs)} elapsed since the preceding request`;
+}
+
 export function cacheRefillOccurrenceDescriptions(
   count: number,
   reasons: ReturnType<typeof summarizeCacheRefillReasons> = [],
@@ -138,8 +148,13 @@ export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[]
         observedAt: occurrence.observedAt,
         reason: occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason)
           ? CACHE_REFILL_REASON_LABELS[occurrence.reason]
-          : "reason unavailable",
-        inference: cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
+          : occurrence.providerStatus === "previous_cache_entry_unavailable"
+            ? "previous cache entry unavailable"
+            : "reason unavailable",
+        inference: [
+          cacheLifetimeInferenceLabel(occurrence.cacheLifetimeInference),
+          cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
+        ].filter(Boolean).join(" · "),
       })));
       continue;
     }
@@ -158,7 +173,24 @@ export function cacheRefillDescription(
   representedAgents = 1,
   reasons: ReturnType<typeof summarizeCacheRefillReasons> = [],
   toolChangeAttributions: ReturnType<typeof summarizeCacheToolChangeAttributions> = [],
+  occurrences: ReturnType<typeof summarizeCacheRefillOccurrences> = [],
 ) {
+  if (occurrences.length > 0) {
+    const summarizeLabels = (labels: string[], limit: number, overflowLabel: string) => {
+      const counts = new Map<string, number>();
+      for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1);
+      const entries = [...counts.entries()];
+      const visible = entries.slice(0, limit).map(([label, labelCount]) => (
+        `${label}${labelCount > 1 ? ` (${labelCount})` : ""}`
+      ));
+      const omitted = entries.length - visible.length;
+      if (omitted > 0) visible.push(`${omitted} additional ${overflowLabel}`);
+      return visible.join(" · ");
+    };
+    const evidence = summarizeLabels(occurrences.map(({ reason }) => reason), 5, "diagnostic categories");
+    const inference = summarizeLabels(occurrences.map((occurrence) => occurrence.inference).filter(Boolean), 3, "inference categories");
+    return `${cacheRefillSummary(count, representedAgents)} Provider diagnostic: ${evidence}.${inference ? ` Inference: ${inference}.` : ""}`;
+  }
   const diagnosed = reasons.reduce((total, item) => total + item.count, 0);
   const reasonText = reasons.map(({ reason, count: reasonCount }) => (
     `${CACHE_REFILL_REASON_LABELS[reason]}${reasonCount > 1 ? ` (${reasonCount})` : ""}`
@@ -166,7 +198,7 @@ export function cacheRefillDescription(
   const unavailable = Math.max(0, count - diagnosed);
   const evidence = [reasonText, unavailable > 0 ? `reason unavailable${unavailable > 1 ? ` (${unavailable})` : ""}` : ""].filter(Boolean).join(" · ");
   const inference = cacheRefillInference(toolChangeAttributions);
-  return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Pomegr inference: ${inference}.` : ""}`;
+  return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
 export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], className = "" }: {
@@ -179,8 +211,8 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   const cacheRefillCount = summarizeCacheRefills(cacheRefills, agentIds);
   const cacheRefillReasons = summarizeCacheRefillReasons(cacheRefills, agentIds);
   const cacheToolChangeAttributions = summarizeCacheToolChangeAttributions(cacheRefills, agentIds);
-  const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions);
   const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
+  const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions, cacheRefillOccurrences);
   const cacheRefillTooltip = <span className="cacheRefillTooltipContent">
     <span className="cacheRefillTooltipSummary">{cacheRefillSummary(cacheRefillCount, agentIds.length)}</span>
     <span className="cacheRefillTooltipSectionLabel">Provider diagnostic</span>
@@ -193,7 +225,7 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
             : <span className="cacheRefillTooltipOccurrenceTimeUnavailable">Time unavailable</span>}
           <span className="cacheRefillTooltipOccurrenceReason">{occurrence.reason}</span>
           {occurrence.inference && <span className="cacheRefillTooltipInference">
-            <strong>Pomegr inference:</strong>
+            <strong>Inference:</strong>
             <span>{occurrence.inference}.</span>
           </span>}
         </span>

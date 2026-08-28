@@ -1,6 +1,8 @@
 import type {
   Activity,
   Agent,
+  CacheLifetime,
+  CacheRefillProviderStatus,
   CacheRefillReason,
   ContextMachinery,
   ExecutionTask,
@@ -53,8 +55,12 @@ export type ProviderUsageSnapshot = {
   comparisonGroup?: number;
   /** True only when this observation can safely classify cache behavior. */
   cacheComparable?: boolean;
+  /** Provider-recorded cache lifetime, normalized once by the adapter. */
+  cacheLifetime?: CacheLifetime | null;
   /** Bounded provider-diagnosed request divergence; absent means unavailable. */
   cacheMissReason?: CacheRefillReason | null;
+  /** Bounded provider status; raw diagnostics never leave the adapter. */
+  cacheMissProviderStatus?: CacheRefillProviderStatus | null;
   /** Monitor-private lifecycle attribution for a recognized tool-definition transition. */
   cacheToolChangeCause?: "remote_control_connected" | null;
 };
@@ -105,7 +111,7 @@ export type ProviderEfficiencyRuleEvidence = {
 };
 
 /** Provider-private agent type evidence. `kind` never enters MonitorState. */
-export type ProviderAgentEvidence = Omit<Agent, "role" | "tokens" | "executionTasks"> & {
+export type ProviderAgentEvidence = Omit<Agent, "role" | "tokens" | "executionTasks" | "cacheLifetime"> & {
   kind: string;
   /** Live provider-authored heading only; never reasoning prose or a task association. */
   currentActivity?: Agent["currentActivity"];

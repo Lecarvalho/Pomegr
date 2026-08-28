@@ -32,6 +32,8 @@ test("strictly normalizes bounded Claude request usage and cache comparability",
   assert.equal(snapshots.every((snapshot) => snapshot.cacheComparable), true);
   assert.equal(snapshots[0].model, "claude-test");
   assert.equal(snapshots[0].cacheMissReason, "tools_changed");
+  assert.equal(snapshots[0].cacheLifetime, null);
+  assert.equal(snapshots[0].cacheMissProviderStatus, null);
   assert.equal(snapshots[0].cacheToolChangeCause, null);
   assert.equal(snapshots[1].cacheMissReason, null);
   assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|cache_creation[^I]|cache_missed_input_tokens|diagnostics/);
@@ -131,6 +133,27 @@ test("unrecognized or inconclusive Claude cache diagnostics remain unavailable",
   ));
   const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source" });
   assert.equal(snapshots.every((snapshot) => snapshot.cacheMissReason === null), true);
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.cacheMissProviderStatus), [
+    "previous_cache_entry_unavailable", null, null,
+  ]);
+});
+
+test("resolves only complete provider cache-lifetime breakdowns", () => {
+  const records = [
+    ["five", 8_000, { ephemeral_5m_input_tokens: 8_000, ephemeral_1h_input_tokens: 0 }],
+    ["hour", 8_000, { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 8_000 }],
+    ["mixed", 8_000, { ephemeral_5m_input_tokens: 3_000, ephemeral_1h_input_tokens: 5_000 }],
+    ["mismatch", 8_000, { ephemeral_5m_input_tokens: 1, ephemeral_1h_input_tokens: 1, private: "PRIVATE_MUST_NOT_LEAK" }],
+  ].map(([id, cacheWrite, cacheCreation], index) => assistant(id, `2026-08-10T10:0${index}:00.000Z`, {
+    input_tokens: 1_000,
+    output_tokens: 10,
+    cache_creation_input_tokens: cacheWrite,
+    cache_read_input_tokens: 0,
+    cache_creation: cacheCreation,
+  }));
+  const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source" });
+  assert.deepEqual(snapshots.map(({ cacheLifetime }) => cacheLifetime), ["5m", "1h", "mixed", null]);
+  assert.doesNotMatch(JSON.stringify(snapshots), /ephemeral|PRIVATE|cache_creation/);
 });
 
 test("missing or malformed cache evidence breaks comparison without losing valid context", () => {

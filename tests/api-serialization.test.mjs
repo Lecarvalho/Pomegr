@@ -379,6 +379,10 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(claudeState.metrics.tokens.cacheEvents.status, "ready");
   assert.equal(codexState.metrics.tokens.cacheEvents.status, "unavailable");
   for (const state of [claudeState, codexState]) {
+    for (const observedAgent of state.agents) {
+      assert.equal(Object.hasOwn(observedAgent, "cacheLifetime"), true);
+      assert.equal(observedAgent.cacheLifetime === null || /^(5m|1h|mixed)$/.test(observedAgent.cacheLifetime), true);
+    }
     assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, state.metrics.tokens.allAgents);
     assert.equal(Array.isArray(state.metrics.tokens.contextHistory.boundaries), true);
     assert.equal(Array.isArray(state.metrics.tokens.cacheEvents.items), true);
@@ -390,9 +394,17 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.equal(Array.isArray(refill.occurrences), true);
       assert.equal(refill.occurrences.length, refill.count);
       for (const occurrence of refill.occurrences) {
-        assert.deepEqual(Object.keys(occurrence).sort(), ["observedAt", "reason", "toolChangeAttribution"]);
+        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
         assert.equal(Number.isFinite(Date.parse(occurrence.observedAt)), true);
         assert.equal(occurrence.reason === null || /^(model_changed|system_changed|tools_changed|messages_changed)$/.test(occurrence.reason), true);
+        assert.equal(occurrence.providerStatus === null || occurrence.providerStatus === "previous_cache_entry_unavailable", true);
+        if (occurrence.cacheLifetimeInference !== null) {
+          assert.deepEqual(Object.keys(occurrence.cacheLifetimeInference).sort(), ["cacheLifetime", "cause", "elapsedMs"]);
+          assert.equal(occurrence.cacheLifetimeInference.cause, "cache_lifetime_elapsed");
+          assert.match(occurrence.cacheLifetimeInference.cacheLifetime, /^(5m|1h|mixed)$/);
+          assert.equal(Number.isSafeInteger(occurrence.cacheLifetimeInference.elapsedMs) && occurrence.cacheLifetimeInference.elapsedMs >= 0, true);
+          assert.equal(occurrence.providerStatus, "previous_cache_entry_unavailable");
+        }
         if (occurrence.toolChangeAttribution !== null) {
           assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), ["cause", "changes"]);
           assert.equal(occurrence.reason, "tools_changed");
@@ -431,8 +443,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {
       assert.deepEqual(Object.keys(item).sort(), [
-        "agentId", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
+        "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
       ]);
+      assert.equal(item.cacheLifetime === null || /^(5m|1h|mixed)$/.test(item.cacheLifetime), true);
       assert.equal(item.totalTokens, item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens);
       assert.match(item.id, /^request-[a-f0-9]{16}$/);
     }
@@ -563,6 +576,7 @@ test("preserves busy full-session context history while keeping request snapshot
     output: 10,
     cacheWrite: 0,
     cacheRead: 0,
+    cacheLifetime: index === 0 ? "5m" : index === 149 ? "1h" : null,
   }));
   const runtime = createMonitorRuntime({
     providerRegistry: {
@@ -633,6 +647,9 @@ test("preserves busy full-session context history while keeping request snapshot
   const firstContextBucket = state.metrics.tokens.contextHistory.buckets.find((bucket) => bucket.total > 0);
 
   assert.equal(state.metrics.tokens.requestSnapshots.items.length, 100);
+  assert.equal(state.agents[0].cacheLifetime, "mixed");
+  assert.equal(state.metrics.tokens.requestSnapshots.items.some((item) => item.cacheLifetime === "5m"), false);
+  assert.equal(state.metrics.tokens.requestSnapshots.items.at(-1).cacheLifetime, "1h");
   assert.equal(Date.parse(firstContextBucket.start) <= startedAtMs + 10 * 60_000, true);
   assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, 1_159);
   assert.equal(Date.parse(state.metrics.tokens.requestSnapshots.items[0].observedAt) > Date.parse(firstContextBucket.start), true);

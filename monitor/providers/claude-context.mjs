@@ -63,6 +63,18 @@ function normalizedUsage(record) {
   return { input, output, cacheRead, cacheWrite, cacheComparable: readPresent };
 }
 
+function normalizedCacheLifetime(record, cacheWrite) {
+  const creation = record?.message?.usage?.cache_creation;
+  if (!creation || typeof creation !== "object" || Array.isArray(creation)) return null;
+  const fiveMinute = nonNegativeInteger(creation.ephemeral_5m_input_tokens);
+  const oneHour = nonNegativeInteger(creation.ephemeral_1h_input_tokens);
+  if (fiveMinute === null || oneHour === null || fiveMinute + oneHour !== cacheWrite) return null;
+  if (fiveMinute > 0 && oneHour > 0) return "mixed";
+  if (oneHour > 0) return "1h";
+  if (fiveMinute > 0) return "5m";
+  return null;
+}
+
 const CACHE_MISS_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
 const REMOTE_CONTROL_ACTIVE_PREFIX = "/remote-control is active";
 const MAX_BRIDGE_STATUS_DISTANCE = 12;
@@ -70,6 +82,12 @@ const MAX_BRIDGE_STATUS_DISTANCE = 12;
 function normalizedCacheMissReason(record) {
   const value = record?.message?.diagnostics?.cache_miss_reason?.type;
   return typeof value === "string" && CACHE_MISS_REASONS.has(value) ? value : null;
+}
+
+function normalizedCacheMissProviderStatus(record) {
+  return record?.message?.diagnostics?.cache_miss_reason?.type === "previous_message_not_found"
+    ? "previous_cache_entry_unavailable"
+    : null;
 }
 
 function assistantIdentity(record) {
@@ -220,7 +238,9 @@ export function parseClaudeContextRecords(records, options = {}) {
       model: boundedModel(record.message.model),
       comparisonGroup,
       cacheComparable: usage.cacheComparable && Boolean(observedTimestamp),
+      cacheLifetime: normalizedCacheLifetime(record, usage.cacheWrite),
       cacheMissReason: normalizedCacheMissReason(record),
+      cacheMissProviderStatus: normalizedCacheMissProviderStatus(record),
       cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
     };
     snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));

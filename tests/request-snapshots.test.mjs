@@ -16,6 +16,7 @@ function snapshot(dedupeId, actorId, timestamp, parts = {}) {
     model: "PRIVATE_MODEL_MUST_NOT_LEAK",
     comparisonGroup: 7,
     totalTokens: 999_999_999,
+    cacheLifetime: parts.cacheLifetime,
     privateProviderField: "PRIVATE_MUST_NOT_LEAK",
   };
 }
@@ -26,10 +27,10 @@ test("normalizes independent chronological request snapshots with only recompute
     agents,
     usageSnapshots: [
       snapshot("PRIVATE_PROVIDER_EVENT_TWO", "child", "2026-08-10T10:02:00-04:00", {
-        input: 2_000, cacheWrite: 3_000, cacheRead: 4_000, output: 500,
+        input: 2_000, cacheWrite: 3_000, cacheRead: 4_000, output: 500, cacheLifetime: "5m",
       }),
       snapshot("PRIVATE_PROVIDER_EVENT_ONE", "primary", "2026-08-10T14:01:00.000Z", {
-        input: 1_000, cacheWrite: 2_000, cacheRead: 3_000, output: 400,
+        input: 1_000, cacheWrite: 2_000, cacheRead: 3_000, output: 400, cacheLifetime: "mixed",
       }),
     ],
   });
@@ -58,6 +59,7 @@ test("normalizes independent chronological request snapshots with only recompute
     },
   ]);
   assert.equal(feed.items.every((item) => /^request-[a-f0-9]{16}$/.test(item.id)), true);
+  assert.deepEqual(feed.items.map(({ cacheLifetime }) => cacheLifetime), ["mixed", "5m"]);
   assert.deepEqual(buildRequestSnapshots({
     sessionId: "provider:PRIVATE_SESSION_ID",
     agents,
@@ -68,6 +70,19 @@ test("normalizes independent chronological request snapshots with only recompute
     usageSnapshots: [snapshot("PRIVATE_PROVIDER_EVENT_ONE", "primary", "2026-08-10T14:01:00.000Z", { input: 1 })],
   }).items[0].id);
   assert.doesNotMatch(JSON.stringify(feed), /PRIVATE|dedupeId|model|comparisonGroup|privateProviderField|999999999/);
+});
+
+test("exposes only allowlisted request cache lifetimes", () => {
+  const usageSnapshots = [
+    snapshot("five", "primary", "2026-08-10T10:00:00.000Z", { input: 1, cacheLifetime: "5m" }),
+    snapshot("hour", "primary", "2026-08-10T10:01:00.000Z", { input: 1, cacheLifetime: "1h" }),
+    snapshot("mixed", "child", "2026-08-10T10:02:00.000Z", { input: 1, cacheLifetime: "mixed" }),
+    snapshot("private", "child", "2026-08-10T10:03:00.000Z", { input: 1, cacheLifetime: "PRIVATE_TTL" }),
+  ];
+  assert.deepEqual(
+    buildRequestSnapshots({ sessionId: "session", agents, usageSnapshots }).items.map(({ cacheLifetime }) => cacheLifetime),
+    ["5m", "1h", "mixed", null],
+  );
 });
 
 test("keeps model observations monitor-private and aligned to opaque request IDs", () => {

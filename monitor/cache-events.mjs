@@ -11,6 +11,13 @@ export const CACHE_EVENT_RULES = Object.freeze({
 });
 
 const CACHE_REFILL_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
+const CACHE_REFILL_PROVIDER_STATUSES = new Set(["previous_cache_entry_unavailable"]);
+const CACHE_LIFETIME_MS = new Map([
+  ["5m", 5 * 60 * 1_000],
+  ["1h", 60 * 60 * 1_000],
+  // A mixed request is fully expired only after its longest-lived entry expires.
+  ["mixed", 60 * 60 * 1_000],
+]);
 const CACHE_TOOL_CHANGE_CAUSES = new Map([
   ["remote_control_connected", Object.freeze([
     Object.freeze({ tool: "RemoteTrigger", kind: "added" }),
@@ -85,13 +92,13 @@ export function buildCacheEvents({
 } = {}) {
   if (!enabled) return { status: "unavailable", items: [], possibleFullRefills: [] };
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
-  const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
   const unique = new Map();
   for (const snapshot of usageSnapshots) {
     if (!snapshot || typeof snapshot.dedupeId !== "string" || snapshot.cacheComparable !== true) continue;
     if (!visibleAgentIds.has(snapshot.actorId) || timestampMs(snapshot.timestamp) === null || !cacheParts(snapshot)) continue;
-    const previous = unique.get(snapshot.dedupeId);
-    if (!previous || timestampMs(snapshot.timestamp) >= timestampMs(previous.timestamp)) unique.set(snapshot.dedupeId, snapshot);
+    const identity = `${snapshot.actorId}\u0000${snapshot.dedupeId}`;
+    const previous = unique.get(identity);
+    if (!previous || timestampMs(snapshot.timestamp) >= timestampMs(previous.timestamp)) unique.set(identity, snapshot);
   }
   const observations = [...unique.values()].sort((left, right) => (
     timestampMs(left.timestamp) - timestampMs(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
@@ -111,7 +118,6 @@ export function buildCacheEvents({
     const previous = previousByActor.get(snapshot.actorId) || null;
     const group = Number.isSafeInteger(snapshot.comparisonGroup) ? snapshot.comparisonGroup : null;
     const model = typeof snapshot.model === "string" ? snapshot.model : "";
-    const agent = agentsById.get(snapshot.actorId);
     const comparableToPrevious = previous
       && group !== null
       && group === previous.group
@@ -119,8 +125,7 @@ export function buildCacheEvents({
       && model === previous.model
       && !hasCompactionBetween(compactions, snapshot.actorId, previous.observedAt, observedAt);
     const gapMs = comparableToPrevious ? observedAt - previous.observedAt : null;
-    const possibleFullRefill = agent?.role !== "fork"
-      && comparableToPrevious
+    const possibleFullRefill = comparableToPrevious
       && previous.parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && previous.parts.cacheReadShare >= CACHE_EVENT_RULES.minimumReuseReadShare
@@ -136,6 +141,21 @@ export function buildCacheEvents({
         && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
         ? snapshot.cacheMissReason
         : null;
+      const providerStatus = typeof snapshot.cacheMissProviderStatus === "string"
+        && CACHE_REFILL_PROVIDER_STATUSES.has(snapshot.cacheMissProviderStatus)
+        ? snapshot.cacheMissProviderStatus
+        : null;
+      const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
+      const cacheLifetimeInference = !recognizedReason
+        && providerStatus === "previous_cache_entry_unavailable"
+        && Number.isSafeInteger(cacheLifetimeMs)
+        && gapMs >= cacheLifetimeMs
+        ? {
+            cause: "cache_lifetime_elapsed",
+            cacheLifetime: previous.cacheLifetime,
+            elapsedMs: gapMs,
+          }
+        : null;
       const recognizedToolChangeCause = recognizedReason === "tools_changed"
         && typeof snapshot.cacheToolChangeCause === "string"
         && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
@@ -146,6 +166,8 @@ export function buildCacheEvents({
         occurrences.push({
           observedAt: snapshot.timestamp,
           reason: recognizedReason,
+          providerStatus,
+          cacheLifetimeInference,
           toolChangeAttribution: recognizedToolChangeCause ? {
             cause: recognizedToolChangeCause,
             changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),
@@ -217,7 +239,13 @@ export function buildCacheEvents({
       }
     }
 
-    previousByActor.set(snapshot.actorId, { observedAt, group, model, parts });
+    previousByActor.set(snapshot.actorId, {
+      observedAt,
+      group,
+      model,
+      parts,
+      cacheLifetime: CACHE_LIFETIME_MS.has(snapshot.cacheLifetime) ? snapshot.cacheLifetime : null,
+    });
   }
 
   const capped = events
@@ -237,6 +265,9 @@ export function buildCacheEvents({
         count: refillCount,
         occurrences: (possibleFullRefillOccurrencesByActor.get(agentId) || []).map((occurrence) => ({
           ...occurrence,
+          cacheLifetimeInference: occurrence.cacheLifetimeInference
+            ? { ...occurrence.cacheLifetimeInference }
+            : null,
           toolChangeAttribution: occurrence.toolChangeAttribution ? {
             ...occurrence.toolChangeAttribution,
             changes: occurrence.toolChangeAttribution.changes.map((change) => ({ ...change })),

@@ -84,6 +84,16 @@ export function monitorStateFromProviderEvidence(providerId, evidence) {
       workflowOrder: null,
       workflowState: null,
       ...agent,
+      cacheLifetime: (() => {
+        const lifetimes = new Set(evidence.usageSnapshots
+          .filter((item) => item.actorId === agent.id)
+          .map((item) => item.cacheLifetime)
+          .filter((value) => value === "5m" || value === "1h" || value === "mixed"));
+        if (lifetimes.has("mixed") || (lifetimes.has("5m") && lifetimes.has("1h"))) return "mixed";
+        if (lifetimes.has("1h")) return "1h";
+        if (lifetimes.has("5m")) return "5m";
+        return null;
+      })(),
       tokens: {
         total: snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead,
         input: snapshot.input,

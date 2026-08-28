@@ -1,4 +1,4 @@
-import type { Agent, ExecutionTask, SessionSummary } from "../shared/monitor-contract";
+import type { Agent, CacheLifetime, ExecutionTask, SessionSummary } from "../shared/monitor-contract";
 
 export function relativeTime(value: string | null, now = Date.now()) {
   if (!value) return "—";
@@ -178,6 +178,10 @@ export function agentTreeRows(agents: Agent[]) {
   for (const root of roots) visit(root, 0);
   for (const agent of agents) visit(agent, 0);
   return rows;
+}
+
+export function cacheLifetimeLabel(value: CacheLifetime | null | undefined) {
+  return `cache TTL ${value || "unavailable"}`;
 }
 
 export function agentAssignment(agent: Pick<Agent, "assignment" | "label">) {

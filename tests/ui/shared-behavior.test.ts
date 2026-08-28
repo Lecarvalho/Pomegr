@@ -123,6 +123,7 @@ describe("agent tree order", () => {
     startedAt,
     updatedAt: startedAt,
     durationMs: 0,
+    cacheLifetime: null,
     tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
   });
 

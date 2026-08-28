@@ -53,6 +53,9 @@ export type AgentRole =
   | "compaction"
   | "unknown";
 
+/** Provider-recorded prompt-cache lifetime evidence, normalized monitor-side. */
+export type CacheLifetime = "5m" | "1h" | "mixed";
+
 export type ExecutionTask = {
   id: string;
   label: string;
@@ -121,6 +124,8 @@ export type Agent = {
   startedAt: string;
   updatedAt: string;
   durationMs: number;
+  /** Aggregate of every resolved request cache lifetime observed for this agent. */
+  cacheLifetime: CacheLifetime | null;
   tokens: {
     total: number;
     input: number;
@@ -179,6 +184,14 @@ export type CacheEvent = {
 };
 
 export type CacheRefillReason = "model_changed" | "system_changed" | "tools_changed" | "messages_changed";
+export type CacheRefillProviderStatus = "previous_cache_entry_unavailable";
+
+export type CacheLifetimeInference = {
+  cause: "cache_lifetime_elapsed";
+  /** Lifetime recorded on the preceding comparable request. */
+  cacheLifetime: CacheLifetime;
+  elapsedMs: number;
+};
 
 export type CacheRefillReasonCount = {
   reason: CacheRefillReason;
@@ -201,7 +214,11 @@ export type CacheRefillOccurrence = {
   observedAt: string;
   /** Provider-diagnosed cause when recognized; otherwise unavailable. */
   reason: CacheRefillReason | null;
-  /** Pomegr inference tied to this occurrence's recognized lifecycle evidence. */
+  /** Bounded provider status; raw diagnostics remain monitor-private. */
+  providerStatus: CacheRefillProviderStatus | null;
+  /** Deterministic inference from the preceding request's resolved lifetime. */
+  cacheLifetimeInference: CacheLifetimeInference | null;
+  /** Inference tied to this occurrence's recognized lifecycle evidence. */
   toolChangeAttribution: Omit<CacheToolChangeAttributionCount, "count"> | null;
 };
 
@@ -227,6 +244,7 @@ export type RequestSnapshot = {
   id: string;
   agentId: string;
   observedAt: string;
+  cacheLifetime: CacheLifetime | null;
   uncachedInputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;

@@ -302,6 +302,8 @@ export function parseCodexContextRecords(records, options = {}) {
         model,
         comparisonGroup,
         cacheComparable: true,
+        cacheLifetime: null,
+        cacheMissProviderStatus: null,
       };
       snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
     } else if (isTokenCountRecord(record)) {

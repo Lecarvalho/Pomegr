@@ -30,6 +30,7 @@ const baseAgent: Agent = {
   startedAt: "2026-08-12T12:00:00.000Z",
   updatedAt: "2026-08-12T12:00:05.000Z",
   durationMs: 5_000,
+  cacheLifetime: null,
   tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
 };
 
