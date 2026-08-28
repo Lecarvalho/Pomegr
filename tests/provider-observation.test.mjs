@@ -255,18 +255,22 @@ test("a failed publication remains retryable without another source append", asy
 
 test("Codex delta merging accepts an explicit empty plan and never downgrades compaction evidence", () => {
   const base = {
-    session: { pomegrPlugin: null }, agents: [], usageSnapshots: [], toolCalls: [], activity: [], pullRequestCreations: [],
+    session: { pomegrPlugin: null },
+    agents: [{ id: "agent-noether", label: "Noether", assignment: "Agent identity history", skills: [], toolCalls: 0 }],
+    usageSnapshots: [], toolCalls: [], activity: [], pullRequestCreations: [],
     planTasks: [{ id: "old", subject: "Old plan", status: "in_progress", blocks: [], blockedBy: [] }],
     compactions: [{ actorId: "primary", timestamp: "2026-08-28T10:00:00.000Z", trigger: "auto", preTokens: 200_000 }],
     efficiencyRuleEvidence: { repetition: false },
   };
   const merged = mergeCodexObservationEvidence(base, {
     ...base,
+    agents: [{ ...base.agents[0], assignment: null }],
     planTasks: [],
     compactions: [{ actorId: "primary", timestamp: "2026-08-28T10:00:00.000Z", trigger: "auto", preTokens: null }],
   });
   assert.deepEqual(merged.planTasks, []);
   assert.equal(merged.compactions[0].preTokens, 200_000);
+  assert.equal(merged.agents[0].assignment, "Agent identity history");
 });
 
 test("Codex observation retains the complete story while a child source advances independently", async (context) => {

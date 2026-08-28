@@ -56,6 +56,7 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
     const older = previousById.get(agent.id);
     return {
       ...agent,
+      assignment: agent.assignment || older?.assignment || null,
       skills: mergeSkills(older?.skills, agent.skills),
       toolCalls: callsByActor.get(agent.id) || 0,
     };
