@@ -5,6 +5,9 @@ import {
   createProviderEvidenceAvailability,
   createProviderCapabilities,
   createProviderRuntimeReadiness,
+  assertNormalizedObservationPublisher,
+  assertProviderObserver,
+  createScopedNormalizedObservationPublisher,
   parseProviderSessionReference,
   parseProviderSessionId,
   parseProviderSessionEvidence,
@@ -110,6 +113,9 @@ export function createProviderRegistry(adapters) {
     "sessionEvidenceRejected",
     "usageLimitReadFailures",
     "usageLimitEvidenceRejected",
+    "observerStartFailures",
+    "observerHydrationFailures",
+    "observerPublicationRejected",
   ]);
   const diagnosticsByProvider = new Map();
   function recordDiagnostic(providerId, category) {
@@ -125,6 +131,91 @@ export function createProviderRegistry(adapters) {
   });
 
   let catalogInFlight = null;
+
+  /**
+   * Start provider-owned acquisition/normalization workers.  The registry is
+   * the sole bridge to the monitor-owned store publisher, so all values are
+   * validated and scoped before crossing the provider boundary.  Existing
+   * request-driven reads deliberately remain available during migration.
+   *
+   * @param {unknown} publisher
+   * @param {AbortSignal | undefined} [parentSignal]
+   */
+  async function startObservers(publisher, parentSignal) {
+    const target = assertNormalizedObservationPublisher(publisher);
+    const controller = new AbortController();
+    const abortFromParent = () => controller.abort();
+    if (parentSignal) {
+      if (parentSignal.aborted) controller.abort();
+      else parentSignal.addEventListener("abort", abortFromParent, { once: true });
+    }
+    const observersByProvider = new Map();
+
+    for (const provider of providers) {
+      if (typeof provider.createObserver !== "function") continue;
+      let observer;
+      try {
+        observer = assertProviderObserver(provider.createObserver());
+        const scopedPublisher = createScopedNormalizedObservationPublisher(provider.id, {
+          publishCatalog(providerId, entries) {
+            try { target.publishCatalog(providerId, entries); }
+            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+          },
+          publishSession(providerId, localSessionId, evidence) {
+            try { target.publishSession(providerId, localSessionId, evidence); }
+            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+          },
+          invalidateSession(providerId, localSessionId, reason) {
+            try { target.invalidateSession(providerId, localSessionId, reason); }
+            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+          },
+          checkpointFor(providerId, localSessionId) {
+            try { return typeof target.checkpointFor === "function" ? target.checkpointFor(providerId, localSessionId) : null; }
+            catch { recordDiagnostic(providerId, "observerPublicationRejected"); return null; }
+          },
+        });
+        await observer.start(scopedPublisher, controller.signal);
+        observersByProvider.set(provider.id, observer);
+      } catch {
+        try { await observer?.stop?.(); } catch { /* provider failure remains isolated */ }
+        recordDiagnostic(provider.id, "observerStartFailures");
+        try { target.publishCatalog(provider.id, [], "unavailable"); } catch {
+          recordDiagnostic(provider.id, "observerPublicationRejected");
+        }
+      }
+    }
+
+    let stopped = false;
+    return Object.freeze({
+      observers: Object.freeze([...observersByProvider.values()]),
+      diagnostics() {
+        return Object.freeze(Object.fromEntries([...observersByProvider].map(([providerId, observer]) => [
+          providerId,
+          typeof observer.diagnostics === "function" ? observer.diagnostics() : null,
+        ])));
+      },
+      async hydrate(requestedSessionId) {
+        const parsed = parseProviderSessionId(requestedSessionId);
+        const observer = parsed ? observersByProvider.get(parsed.providerId) : null;
+        if (!parsed || !observer || controller.signal.aborted) return false;
+        try {
+          return Boolean(await observer.hydrate(parsed.localSessionId));
+        } catch {
+          recordDiagnostic(parsed.providerId, "observerHydrationFailures");
+          return false;
+        }
+      },
+      async stop() {
+        if (stopped) return;
+        stopped = true;
+        controller.abort();
+        if (parentSignal) parentSignal.removeEventListener("abort", abortFromParent);
+        await Promise.allSettled([...observersByProvider.values()].map((observer) => (
+          typeof observer.stop === "function" ? observer.stop() : undefined
+        )));
+      },
+    });
+  }
 
   async function loadCatalogEntries() {
     const results = await Promise.all(providers.map(async (provider, providerIndex) => {
@@ -243,6 +334,10 @@ export function createProviderRegistry(adapters) {
     },
 
     inspectSessions,
+
+    startObservers,
+
+    createObserverLifecycle: startObservers,
 
     resolveReadiness,
 

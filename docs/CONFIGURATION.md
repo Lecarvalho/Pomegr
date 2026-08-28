@@ -2,6 +2,9 @@
 
 Pomegr discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`; only the web dashboard binds to the LAN interface in development.
 
+Operational cache tiers, checkpoint rules, readiness states, and frontend refresh cadence
+are defined canonically in [Observation cache and progressive readiness](OBSERVATION_CACHE.md).
+
 ## Supported desktop modes
 
 Pomegr desktop supports Windows x64 only. The per-user installer is the normal user path and requires neither administrator credentials, Node.js, Git, nor a repository checkout. Git and GitHub metadata degrade independently when their optional command-line tools are unavailable. macOS, Linux, Windows ARM64, app-store builds, and LAN access from the desktop app are not supported.
@@ -24,7 +27,7 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost snapshots, bounded Codex lifecycle snapshots, and reserved cache data. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
 
@@ -160,6 +163,8 @@ This is expected in the desktop app: both services bind to dynamic `127.0.0.1` p
 - Remove `CLAUDE_SESSION_FILE` if it points to a deleted file.
 - Confirm the session ID contains only letters, digits, `.`, `_`, or `-`; browser parameters are opaque provider-qualified IDs such as `codex:thread-id`, never paths.
 - Check `http://127.0.0.1:4317/health` on the host. The monitor should return HTTP 204.
+
+On startup, compatible normalized checkpoints may make prior session state visible before provider reconciliation finishes. A missing, corrupt, oversized, unknown-version, or source-incompatible checkpoint is ignored and rebuilt in the background; it must not block other providers or make raw provider data browser-visible. During that rebuild, the affected UI regions remain geometry-matched skeletons while already committed regions continue rendering.
 
 ### Codex appears historical while it is open
 

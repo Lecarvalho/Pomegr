@@ -6,6 +6,7 @@ import test from "node:test";
 import { buildContextHistory } from "../monitor/context-history.mjs";
 import { evaluateEfficiencySignals } from "../monitor/efficiency-signals.mjs";
 import { parseCodexContextRecords } from "../monitor/providers/codex-context.mjs";
+import { createCodexLiveState } from "../monitor/providers/codex-live-state.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import {
   assertNoPrivateFixtureSentinels,
@@ -680,4 +681,27 @@ test("stable live Codex fallback identities do not depend on tail turn context o
   }).usageSnapshots;
 
   assert.equal(withTurn[0].dedupeId, tailOnly[0].dedupeId);
+});
+
+test("keeps last-known Codex compaction evidence when a non-continuous tail has not rebuilt", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-context-continuity-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "rollout.jsonl");
+  await writeFile(file, '{"type":"padding"}\n', "utf8");
+  const liveState = createCodexLiveState({ scanLimit: 4, maximumLiveTailBytes: 64, maximumLiveTaskHistoryBytes: 128 });
+  const { generation } = liveState.readRolloutRecords(file, false);
+  const compaction = { actorId: "primary", timestamp: "2026-08-25T15:00:03.000Z", trigger: "auto", preTokens: 215_025, inferred: true };
+  liveState.mergeLiveContextEvidence(file, generation, { usageSnapshots: [], compactions: [compaction] });
+
+  const unprovenReplacement = { ...generation, identity: "different-generation", size: generation.size + 10 };
+  assert.equal(liveState.hasLiveContextContinuity(file, unprovenReplacement), false);
+  const retained = liveState.mergeLiveContextEvidence(file, unprovenReplacement, { usageSnapshots: [], compactions: [] });
+  assert.deepEqual(retained.compactions, [compaction]);
+
+  const rebuilt = liveState.mergeLiveContextEvidence(file, unprovenReplacement, {
+    usageSnapshots: [],
+    compactions: [],
+    preservePreviousOnDiscontinuity: false,
+  });
+  assert.deepEqual(rebuilt.compactions, []);
 });

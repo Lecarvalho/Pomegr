@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const sessionId = requestUrl.searchParams.get("sessionId") || "";
+  const revision = requestUrl.searchParams.get("revision");
   const monitorParams = new URLSearchParams();
   if (sessionId) monitorParams.set("sessionId", sessionId);
+  if (revision !== null && revision !== "") monitorParams.set("revision", revision);
   const path = `/api/state${monitorParams.size ? `?${monitorParams}` : ""}`;
 
   return proxyMonitorJson({

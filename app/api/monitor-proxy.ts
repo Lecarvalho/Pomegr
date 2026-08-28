@@ -32,11 +32,21 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`Monitor returned ${response.status}`);
+    if (response.status === 204) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": "no-store",
+          ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
+        },
+      });
+    }
     return new Response(await response.text(), {
       status: 200,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
+        ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
       },
     });
   } catch {

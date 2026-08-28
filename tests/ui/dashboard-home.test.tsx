@@ -12,6 +12,10 @@ function pollResponse(body: object, status = 200) {
   return Promise.resolve({ ok: status >= 200 && status < 300, json: async () => body } as Response);
 }
 
+function homeRequestCount(fetchMock: { mock: { calls: readonly (readonly unknown[])[] } }) {
+  return fetchMock.mock.calls.filter((call) => String(call[0]).startsWith("/api/home")).length;
+}
+
 const snapshot = {
   generatedAt: "2026-08-23T12:00:00.000Z",
   providerLimits: [{
@@ -216,7 +220,7 @@ describe("home dashboard", () => {
     const view = renderHome();
 
     expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Working now" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(homeRequestCount(fetchMock)).toBe(1);
 
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
@@ -225,7 +229,7 @@ describe("home dashboard", () => {
 
     expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
     expect(screen.getByText("complete")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(homeRequestCount(fetchMock)).toBe(1);
   });
 
   it("polls aggregate usage on a 30-second cadence while catalog cards update immediately", async () => {
@@ -233,19 +237,19 @@ describe("home dashboard", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
     const view = renderHome();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(homeRequestCount(fetchMock)).toBe(1);
 
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
       : session);
     view.rerender(<SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider>);
     expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(homeRequestCount(fetchMock)).toBe(1);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(homeRequestCount(fetchMock)).toBe(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(homeRequestCount(fetchMock)).toBe(2);
   });
 
   it("keeps live cards visible when aggregate usage polling fails", async () => {

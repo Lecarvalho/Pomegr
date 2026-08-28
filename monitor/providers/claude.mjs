@@ -27,6 +27,7 @@ import { buildSkillUsage, normalizedSkillName } from "../skill-usage.mjs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { defineProvider } from "./provider-contract.mjs";
+import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
@@ -710,6 +711,15 @@ export function createClaudeProvider(options = {}) {
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
 
+  function observerSource(localSessionId) {
+    const discovered = discoveredSessions();
+    const file = discovered.files.find(({ file: candidate }) => path.basename(candidate, ".jsonl") === localSessionId)?.file || null;
+    if (!file) return null;
+    const agentDir = path.join(path.dirname(file), localSessionId, "subagents");
+    const workflowFiles = discoverClaudeWorkflowAgents(agentDir).files.map((item) => item.file);
+    return incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, !discovered.liveFiles.has(file));
+  }
+
   return defineProvider({
     id: "claude",
     source: "Claude Code",
@@ -741,6 +751,17 @@ export function createClaudeProvider(options = {}) {
     },
     listSessions,
     readSession,
+    createObserver() {
+      return createIncrementalProviderObserver({
+        providerId: "claude",
+        list: listSessions,
+        readEvidence: readSession,
+        resolveSource: observerSource,
+        intervalMs: options.observerIntervalMs ?? 10_000,
+        concurrency: options.observerConcurrency ?? 2,
+        watchTargets: [projectsRoot],
+      });
+    },
     readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {

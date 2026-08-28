@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   capabilitiesFromManifest,
+  assertNormalizedObservationPublisher,
+  assertProviderObserver,
+  createScopedNormalizedObservationPublisher,
   createProviderCapabilityManifest,
   createProviderCapabilities,
   createProviderRuntimeReadiness,
@@ -76,6 +79,35 @@ test("validates provider declarations and optional usage readers", () => {
   assert.throws(() => defineProvider({ ...base, resolveReadiness: async () => ({}) }), /declared together/);
   assert.throws(() => defineProvider({ ...base, readinessCapabilities: ["liveSessions"] }), /declared together/);
   assert.throws(() => defineProvider({ ...base, controlSession() {} }), /Unknown provider observation API/);
+  assert.throws(() => defineProvider({ ...base, createObserver: true }), /createObserver/);
+});
+
+test("scopes and validates normalized observer publication before it crosses providers", () => {
+  const published = [];
+  const publisher = assertNormalizedObservationPublisher({
+    publishCatalog(providerId, entries) { published.push(["catalog", providerId, entries]); },
+    publishSession(providerId, localSessionId, value) { published.push(["session", providerId, localSessionId, value]); },
+    invalidateSession(providerId, localSessionId, reason) { published.push(["invalidate", providerId, localSessionId, reason]); },
+  });
+  const scoped = createScopedNormalizedObservationPublisher("codex", publisher);
+  scoped.publishCatalog([{
+    localId: "session-1",
+    title: "Session",
+    project: "pomegr",
+    updatedAt: "2026-08-10T12:00:00.000Z",
+    isLive: true,
+    needsInput: false,
+    activityStatus: "working",
+  }]);
+  scoped.invalidateSession("session-1", "source_replaced");
+  assert.deepEqual(published.map(([kind, providerId]) => [kind, providerId]), [
+    ["catalog", "codex"],
+    ["invalidate", "codex"],
+  ]);
+  assert.throws(() => scoped.invalidateSession("session-1", "private_reason"), /invalidation reason/);
+  assert.throws(() => assertNormalizedObservationPublisher({}), /publishCatalog/);
+  assert.throws(() => assertProviderObserver({}), /implement start/);
+  assert.equal(assertProviderObserver({ start() {}, hydrate() {}, listSessions() {} }).hydrate instanceof Function, true);
 });
 
 test("keeps static support distinct from runtime readiness and session evidence", async () => {

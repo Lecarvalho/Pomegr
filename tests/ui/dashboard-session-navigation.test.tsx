@@ -350,7 +350,7 @@ describe("dashboard session navigation", () => {
   });
 
   it("pins the first displayed session so live polling cannot navigate elsewhere", async () => {
-    const firstSession = liveState("claude:live-1", "First live session");
+    const firstSession = { ...liveState("claude:live-1", "First live session"), revision: 7 };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/state") return Promise.resolve(jsonResponse(firstSession));
@@ -366,6 +366,9 @@ describe("dashboard session navigation", () => {
       "/api/state?sessionId=claude%3Alive-1",
       expect.objectContaining({ cache: "no-store" }),
     ));
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(
+      "/api/state?sessionId=claude%3Alive-1&revision=7",
+    );
   });
 
   it("selects only a normalized session ID from native notification navigation", async () => {

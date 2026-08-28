@@ -220,6 +220,16 @@ export function createCodexLiveState({
     return { approvalMode: parseCodexApprovalPlanRecords(hydrated.records).approvalMode };
   }
 
+  function hasLiveContextContinuity(file, generation) {
+    const previous = liveContextUsageCache.get(file);
+    return Boolean(previous && generation
+      && previous.identity === generation.identity
+      && generation.size >= previous.size
+      && generation.mtimeMs >= previous.mtimeMs
+      && (generation.size > previous.size || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
+      && priorSuffixStillMatches(file, previous));
+  }
+
   function mergeLiveContextEvidence(file, generation, context) {
     const snapshots = context?.usageSnapshots || [];
     const compactions = context?.compactions || [];
@@ -232,9 +242,13 @@ export function createCodexLiveState({
       return { snapshots, compactions };
     }
     const previous = liveContextUsageCache.get(file);
-    const monotonic = previous && previous.identity === generation.identity && generation.size >= previous.size && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous);
+    const monotonic = hasLiveContextContinuity(file, generation);
+    // A tail-only read is not evidence that a retained source generation was
+    // replaced.  Keep the last complete normalized context until acquisition
+    // can establish a compatible append or an authoritative replacement.
+    if (previous && !monotonic && context?.preservePreviousOnDiscontinuity !== false) {
+      return { snapshots: previous.snapshots, compactions: previous.compactions };
+    }
     const byId = new Map(monotonic ? previous.snapshots.map((snapshot) => [snapshot.dedupeId, snapshot]) : []);
     for (const snapshot of snapshots) {
       const existing = byId.get(snapshot.dedupeId);
@@ -348,6 +362,7 @@ export function createCodexLiveState({
     hydrateLiveAgentAssignments,
     hydrateLiveApprovalMode,
     hydrateLiveStateEvidence,
+    hasLiveContextContinuity,
     liveAgentAssignmentCache,
     liveApprovalModeCache,
     liveContextUsageCache,
