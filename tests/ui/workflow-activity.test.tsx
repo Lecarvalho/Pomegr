@@ -137,7 +137,7 @@ describe("workflow activity and agent tree view", () => {
 
     const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, 2 possible full cache refills/ });
     const childRow = screen.getByRole("listitem", { name: "Child agent agent" });
-    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Pomegr inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
+    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
     const refillMark = within(primaryRow).getByRole("button", { name: refillDescription });
     expect(refillMark).toHaveTextContent("2");
     expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
@@ -145,7 +145,12 @@ describe("workflow activity and agent tree view", () => {
     expect(container.querySelectorAll(".agentCacheRefillIndicator")).toHaveLength(1);
 
     await user.hover(refillMark);
-    expect(screen.getByRole("tooltip")).toHaveTextContent(refillDescription);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Possible full cache refill observed 2 times.");
+    expect(within(tooltip).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(tooltip).getAllByRole("listitem")[0]).toHaveTextContent("1tool definitions changed");
+    expect(within(tooltip).getAllByRole("listitem")[1]).toHaveTextContent("2reason unavailable");
+    expect(tooltip).toHaveTextContent("Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).");
   });
 
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {

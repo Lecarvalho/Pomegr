@@ -9,7 +9,7 @@ type AgentChipProps = {
   as?: "span" | "button";
   children: ReactNode;
   className?: string;
-  title?: string;
+  title?: ReactNode;
   ariaLabel?: string;
   onClick?: () => void;
   expanded?: boolean;
@@ -34,7 +34,7 @@ type TooltipPosition = {
   top: number;
 };
 
-function TooltippedAgentChip({ children, classes, tooltip, ariaLabel }: { children: ReactNode; classes: string; tooltip: string; ariaLabel?: string }) {
+function TooltippedAgentChip({ children, classes, tooltip, ariaLabel }: { children: ReactNode; classes: string; tooltip: ReactNode; ariaLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);

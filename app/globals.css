@@ -435,6 +435,12 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .agentChipTooltipTrigger::before { content: ""; position: absolute; inset: -5px -4px; }
 .tooltipPopover { display: block; padding: 9px 11px; border: 1px solid var(--popover-line); background: var(--popover); color: var(--ink); box-shadow: var(--popover-shadow); font-size: 10px; line-height: 1.45; text-align: left; overflow-wrap: anywhere; pointer-events: none; }
 .tooltipPopoverText { display: block; max-width: 34ch; }
+.cacheRefillTooltipContent { display: grid; max-width: 34ch; gap: 7px; }
+.cacheRefillTooltipSummary, .cacheRefillTooltipInference { display: block; }
+.cacheRefillTooltipSectionLabel { display: block; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.cacheRefillTooltipOccurrences { display: grid; gap: 3px; }
+.cacheRefillTooltipOccurrence { display: grid; grid-template-columns: 2ch minmax(0, 1fr); gap: 6px; }
+.cacheRefillTooltipOccurrenceIndex { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .signalTooltip { position: fixed; z-index: 100; width: max-content; max-width: min(280px, calc(100vw - 24px)); animation: signalTooltipIn .14s cubic-bezier(.2,.8,.2,1); }
 .signalTooltip::after { content: ""; position: absolute; left: calc(var(--signal-tooltip-arrow-left) - 5px); width: 9px; height: 9px; background: var(--popover); transform: rotate(45deg); }
 .signalTooltip[data-placement="top"]::after { bottom: -5px; border-right: 1px solid var(--popover-line); border-bottom: 1px solid var(--popover-line); }

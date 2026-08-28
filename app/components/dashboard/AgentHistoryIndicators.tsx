@@ -88,27 +88,49 @@ export function summarizeCacheToolChangeAttributions(cacheRefills: CacheRefillCo
   return [...attributions.values()].sort((left, right) => left.cause.localeCompare(right.cause));
 }
 
+function cacheRefillSummary(count: number, representedAgents = 1) {
+  const occurrences = count === 1 ? "1 time" : `${count} times`;
+  const scope = representedAgents > 1 ? ` across ${representedAgents} agents` : "";
+  return `Possible full cache refill observed ${occurrences}${scope}.`;
+}
+
+function cacheRefillInference(toolChangeAttributions: ReturnType<typeof summarizeCacheToolChangeAttributions>) {
+  return toolChangeAttributions.map((attribution) => {
+    const cause = CACHE_TOOL_CHANGE_CAUSE_LABELS[attribution.cause];
+    const causeCount = attribution.count > 1 ? ` (${attribution.count} refills)` : "";
+    const changes = attribution.changes.map((change) => `${change.tool} (${CACHE_TOOL_CHANGE_KIND_LABELS[change.kind]})`).join(", ");
+    return `${cause}${causeCount}${changes ? `; likely changed ${changes}` : ""}`;
+  }).join(" · ");
+}
+
+export function cacheRefillOccurrenceDescriptions(
+  count: number,
+  reasons: ReturnType<typeof summarizeCacheRefillReasons> = [],
+) {
+  const occurrences: string[] = [];
+  for (const { reason, count: reasonCount } of reasons) {
+    for (let index = 0; index < reasonCount && occurrences.length < count; index += 1) {
+      occurrences.push(CACHE_REFILL_REASON_LABELS[reason]);
+    }
+  }
+  while (occurrences.length < count) occurrences.push("reason unavailable");
+  return occurrences;
+}
+
 export function cacheRefillDescription(
   count: number,
   representedAgents = 1,
   reasons: ReturnType<typeof summarizeCacheRefillReasons> = [],
   toolChangeAttributions: ReturnType<typeof summarizeCacheToolChangeAttributions> = [],
 ) {
-  const occurrences = count === 1 ? "1 time" : `${count} times`;
-  const scope = representedAgents > 1 ? ` across ${representedAgents} agents` : "";
   const diagnosed = reasons.reduce((total, item) => total + item.count, 0);
   const reasonText = reasons.map(({ reason, count: reasonCount }) => (
     `${CACHE_REFILL_REASON_LABELS[reason]}${reasonCount > 1 ? ` (${reasonCount})` : ""}`
   )).join(" · ");
   const unavailable = Math.max(0, count - diagnosed);
   const evidence = [reasonText, unavailable > 0 ? `reason unavailable${unavailable > 1 ? ` (${unavailable})` : ""}` : ""].filter(Boolean).join(" · ");
-  const inference = toolChangeAttributions.map((attribution) => {
-    const cause = CACHE_TOOL_CHANGE_CAUSE_LABELS[attribution.cause];
-    const causeCount = attribution.count > 1 ? ` (${attribution.count} refills)` : "";
-    const changes = attribution.changes.map((change) => `${change.tool} (${CACHE_TOOL_CHANGE_KIND_LABELS[change.kind]})`).join(", ");
-    return `${cause}${causeCount}${changes ? `; likely changed ${changes}` : ""}`;
-  }).join(" · ");
-  return `Possible full cache refill observed ${occurrences}${scope}.${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Pomegr inference: ${inference}.` : ""}`;
+  const inference = cacheRefillInference(toolChangeAttributions);
+  return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
 export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], className = "" }: {
@@ -121,13 +143,27 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   const cacheRefillCount = summarizeCacheRefills(cacheRefills, agentIds);
   const cacheRefillReasons = summarizeCacheRefillReasons(cacheRefills, agentIds);
   const cacheToolChangeAttributions = summarizeCacheToolChangeAttributions(cacheRefills, agentIds);
+  const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions);
+  const cacheRefillOccurrences = cacheRefillOccurrenceDescriptions(cacheRefillCount, cacheRefillReasons);
+  const cacheRefillInferenceText = cacheRefillInference(cacheToolChangeAttributions);
+  const cacheRefillTooltip = cacheRefillCount > 1 ? <span className="cacheRefillTooltipContent">
+    <span className="cacheRefillTooltipSummary">{cacheRefillSummary(cacheRefillCount, agentIds.length)}</span>
+    <span className="cacheRefillTooltipSectionLabel">Provider diagnostic</span>
+    <span className="cacheRefillTooltipOccurrences" role="list" aria-label="Cache refill occurrences">
+      {cacheRefillOccurrences.map((occurrence, index) => <span className="cacheRefillTooltipOccurrence" role="listitem" key={`${occurrence}-${index}`}>
+        <span className="cacheRefillTooltipOccurrenceIndex">{index + 1}</span>
+        <span>{occurrence}</span>
+      </span>)}
+    </span>
+    {cacheRefillInferenceText && <span className="cacheRefillTooltipInference">Inference: {cacheRefillInferenceText}.</span>}
+  </span> : cacheRefillLabel;
   if (summary.total === 0 && cacheRefillCount === 0) return null;
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>
       <svg aria-hidden="true" className="agentHistoryIcon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
       <span aria-hidden="true" className="agentHistoryCount">{summary.total > 99 ? "99+" : summary.total}</span>
     </AgentChip>}
-    {cacheRefillCount > 0 && <AgentChip className="agentHistoryIndicator agentCacheRefillIndicator" title={cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions)} ariaLabel={cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions)}>
+    {cacheRefillCount > 0 && <AgentChip className="agentHistoryIndicator agentCacheRefillIndicator" title={cacheRefillTooltip} ariaLabel={cacheRefillLabel}>
       <svg aria-hidden="true" className="agentHistoryIcon agentCacheRefillIcon" viewBox="0 0 24 24">
         <path d="M12 2.5v8M8.5 7l3.5 3.5L15.5 7M4 14h16M6.5 18h11M9 22h6" />
       </svg>
