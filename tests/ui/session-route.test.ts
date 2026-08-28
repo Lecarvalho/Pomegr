@@ -5,6 +5,7 @@ describe("session route segments", () => {
   it.each([
     ["codex:thread-with-hyphen.one_2", "codex-thread-with-hyphen.one_2"],
     ["claude:task-with-hyphen.one_2", "claude-task-with-hyphen.one_2"],
+    ["cursor:future-provider", "cursor-future-provider"],
   ])("encodes %s as %s", (internal, segment) => {
     expect(encodeSessionRoute(internal)).toBe(segment);
     expect(decodeSessionRoute(segment)).toBe(internal);
@@ -20,7 +21,6 @@ describe("session route segments", () => {
     "codex",
     "codex-",
     "claude-",
-    "openai-thread",
     "codex%3Athread",
     `codex-${"x".repeat(129)}`,
     "codex-thread/extra",
@@ -28,8 +28,13 @@ describe("session route segments", () => {
     expect(decodeSessionRoute(segment)).toBeNull();
   });
 
+  it("decodes syntactically valid unknown providers for registry validation", () => {
+    expect(decodeSessionRoute("openai-thread")).toBe("openai:thread");
+  });
+
   it("rejects malformed internal IDs before encoding", () => {
     expect(() => encodeSessionRoute("codex:thread/extra")).toThrow("Invalid session ID");
     expect(() => encodeSessionRoute("codex:" + "x".repeat(129))).toThrow("Invalid session ID");
+    expect(() => encodeSessionRoute("open-ai:thread")).toThrow("Invalid session ID");
   });
 });

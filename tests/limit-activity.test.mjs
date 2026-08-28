@@ -2,6 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHomeLimitActivityTracker } from "../monitor/limit-activity.mjs";
 
+const LIMIT_POLICIES = {
+  claude: {
+    usageLimitActivity: {
+      trackedLimitIds: ["current-session", "all-models", "model-fable"],
+      modelScopes: [{ limitId: "model-fable", modelSegments: ["fable"] }],
+      selection: { mode: "all" },
+    },
+  },
+  codex: {
+    usageLimitActivity: {
+      trackedLimitIds: null,
+      modelScopes: [],
+      selection: {
+        mode: "dominant_model_window",
+        defaultWindow: "7d",
+        defaultExcludedLimitSegments: ["gpt-5.3-codex-spark"],
+        overrides: [{ models: ["gpt-5.3-codex-spark"], window: "5h", preferredLimitSegments: ["gpt-5.3-codex-spark"] }],
+      },
+    },
+  },
+};
+
 const limit = (fetchedAt, percent, resetsAt = "2026-08-25T17:00:00.000Z") => ({
   provider: "claude",
   source: "Claude Code",
@@ -21,7 +43,12 @@ const claudeLimits = (fetchedAt = "2026-08-25T17:00:00.000Z") => ({
 });
 const rejection = (observedAt, resetsAt = "2026-08-25T17:00:00.000Z") => ({ observedAt, resetsAt });
 const session = (id, requestObservations, extra = {}) => ({ id, provider: "claude", source: "Claude Code", createdAt: "2026-08-25T11:00:00.000Z", title: id, project: "repo", isLive: false, requestObservations, usageLimitRejections: [], ...extra });
-const build = (tracker, providerLimits, sessions = [], generatedAt = "2026-08-25T17:00:00.000Z") => tracker.build({ providerLimits, sessions, generatedAt });
+const build = (tracker, providerLimits, sessions = [], generatedAt = "2026-08-25T17:00:00.000Z") => tracker.build({
+  providerLimits,
+  sessions,
+  policiesByProvider: LIMIT_POLICIES,
+  generatedAt,
+});
 const codexLimits = (fetchedAt = "2026-08-25T17:00:00.000Z") => ({
   provider: "codex",
   source: "Codex",
@@ -137,6 +164,7 @@ test("uses a wider bounded model sample without adding those sessions to chart l
     providerLimits: [codexLimits()],
     sessions: displayed,
     modelSelectionSessions,
+    policiesByProvider: LIMIT_POLICIES,
     generatedAt: "2026-08-25T17:00:00.000Z",
   });
 
@@ -364,7 +392,7 @@ test("bounds retained limit histories and supports an explicitly empty history",
     item("middle", "2026-08-25T12:01:00.000Z"),
     item("latest", "2026-08-25T12:02:00.000Z"),
   ];
-  const activities = build(tracker, limits);
+  const activities = tracker.build({ providerLimits: limits, generatedAt: "2026-08-25T17:00:00.000Z" });
   assert.deepEqual(activities.map(({ limitId }) => limitId), ["middle", "latest"]);
 
   const empty = createHomeLimitActivityTracker({ maxObservations: 0 });

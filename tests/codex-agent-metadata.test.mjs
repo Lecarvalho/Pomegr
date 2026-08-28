@@ -305,6 +305,45 @@ test("hydrates a bounded live assignment after its spawn record leaves the ordin
   assertNoPrivateFixtureSentinels(evidence, "live hydrated Codex agent assignment");
 });
 
+test("hydrates a primary model and effort after turn context leaves the live state tail", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-primary-runtime-tail-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "08", "25");
+  await mkdir(directory, { recursive: true });
+  const rootId = "live-primary-runtime";
+  const records = [
+    {
+      timestamp: "2026-08-25T15:00:00.000Z",
+      type: "session_meta",
+      payload: { id: rootId, session_id: rootId, timestamp: "2026-08-25T15:00:00.000Z", cwd: root, source: "vscode" },
+    },
+    {
+      timestamp: "2026-08-25T15:00:01.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-primary", effort: "high", developer_instructions: "DEVELOPER_INSTRUCTIONS_MUST_NOT_LEAK" },
+    },
+    { timestamp: "2026-08-25T15:00:02.000Z", type: "event_msg", payload: { type: "agent_message", message: "x".repeat(2_000) } },
+  ];
+  await writeFile(path.join(directory, `rollout-2026-08-25T15-00-00-${rootId}.jsonl`), `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({
+    id: rootId,
+    thread_name: "Primary runtime fixture",
+    updated_at: "2026-08-25T15:00:02.000Z",
+  })}\n`, "utf8");
+
+  const provider = createCodexProvider({
+    codexHome: root,
+    cacheMs: 0,
+    scanLimit: 20,
+    maximumStateTailBytes: 256,
+    maximumTaskHistoryBytes: 8_192,
+  });
+  const evidence = await provider.readSession(rootId, { historical: false });
+  const primary = evidence.agents.find((agent) => agent.id === "primary");
+  assert.deepEqual({ model: primary.model, effort: primary.effort }, { model: "gpt-primary", effort: "high" });
+  assertNoPrivateFixtureSentinels(evidence, "live hydrated Codex primary runtime");
+});
+
 test("names Codex guardians and exposes only bounded normalized review decisions", () => {
   const guardian = parseCodexAgentRecords([
     {

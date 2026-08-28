@@ -252,12 +252,12 @@ describe("home dashboard", () => {
     let resolveInitial!: (next: Response) => void;
     let scheduledPoll: (() => void) | null = null;
     const nativeSetTimeout = window.setTimeout;
-    vi.spyOn(window, "setTimeout").mockImplementation(((handler, timeout, ...args) => {
+    vi.spyOn(window, "setTimeout").mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
       if (timeout === 30_000 && typeof handler === "function") {
-        scheduledPoll = () => handler(...args);
+        scheduledPoll = () => handler();
         return 0;
       }
-      return nativeSetTimeout(handler, timeout, ...args);
+      return nativeSetTimeout(handler, timeout, ...args as never[]);
     }) as typeof window.setTimeout);
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveInitial = resolve; }))
@@ -347,8 +347,8 @@ describe("home dashboard", () => {
     const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
-    const weeklyRow = container.querySelector('.homeLimitRow.critical[aria-label="All models, 7 days, 85% used"]')!;
-    const disclosure = weeklyRow.querySelector("details.homeLimitProjects")!;
+    const weeklyRow = container.querySelector<HTMLElement>('.homeLimitRow.critical[aria-label="All models, 7 days, 85% used"]')!;
+    const disclosure = weeklyRow.querySelector<HTMLElement>("details.homeLimitProjects")!;
     expect(disclosure).toBeInTheDocument();
     expect(disclosure.querySelector("summary")).toHaveAttribute("aria-label", "Show 2 projects observed during the 7 days window");
     fireEvent.click(disclosure.querySelector("summary")!);
@@ -389,13 +389,13 @@ describe("home dashboard", () => {
     const { container } = renderHome();
     await screen.findByRole("heading", { name: "Usage & activity" });
 
-    const fableRow = container.querySelector('.homeLimitRow[aria-label="Fable, 7 days, 19% used"]')!;
+    const fableRow = container.querySelector<HTMLElement>('.homeLimitRow[aria-label="Fable, 7 days, 19% used"]')!;
     const ticks = within(fableRow).getByRole("img", { name: "Local request activity for Fable, 7 days: 3 request observations across 2 projects." });
     expect(ticks.querySelectorAll("b")).toHaveLength(3);
     expect(ticks.querySelector('[title^="pomegr · Fable request observed at"]')).toBeInTheDocument();
     expect(ticks.querySelector('[title^="other-repo · Fable request observed at"]')).toBeInTheDocument();
 
-    const disclosure = fableRow.querySelector("details.homeLimitProjects")!;
+    const disclosure = fableRow.querySelector<HTMLElement>("details.homeLimitProjects")!;
     expect(disclosure.querySelector("summary")).toHaveTextContent("2 projects");
     fireEvent.click(disclosure.querySelector("summary")!);
     expect(within(disclosure).getByText("Observed Fable activity")).toBeInTheDocument();

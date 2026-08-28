@@ -1,11 +1,16 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 import {
+  assertProviderConformance,
+  capabilitiesFromManifest,
+  createProviderEvidenceAvailability,
   createProviderCapabilities,
+  createProviderRuntimeReadiness,
+  parseProviderSessionReference,
   parseProviderSessionId,
+  parseProviderSessionEvidence,
+  parseProviderUsageLimits,
   qualifyProviderSessionId,
 } from "./provider-contract.mjs";
-
-/** @typedef {import("./provider-contract").ProviderAdapter} ProviderAdapter */
 
 function timestampValue(value) {
   const timestamp = typeof value === "string" ? Date.parse(value) : Number.NaN;
@@ -89,7 +94,7 @@ function inspectCatalogEntries(entries) {
  * Browser session IDs are parsed only as opaque provider-qualified IDs; they
  * are never interpreted as filesystem paths or handed to another provider.
  *
- * @param {ProviderAdapter[]} adapters
+ * @param {any[]} adapters
  */
 export function createProviderRegistry(adapters) {
   if (!Array.isArray(adapters) || adapters.length === 0) {
@@ -97,7 +102,24 @@ export function createProviderRegistry(adapters) {
   }
   const providers = Object.freeze([...adapters]);
   const providersById = new Map();
+  const diagnosticCategories = Object.freeze([
+    "catalogReadFailures",
+    "catalogEntriesRejected",
+    "readinessProbeFailures",
+    "sessionReadFailures",
+    "sessionEvidenceRejected",
+    "usageLimitReadFailures",
+    "usageLimitEvidenceRejected",
+  ]);
+  const diagnosticsByProvider = new Map();
+  function recordDiagnostic(providerId, category) {
+    if (!diagnosticCategories.includes(category)) return;
+    const current = diagnosticsByProvider.get(providerId) || Object.fromEntries(diagnosticCategories.map((key) => [key, 0]));
+    current[category] = Math.min(Number.MAX_SAFE_INTEGER, current[category] + 1);
+    diagnosticsByProvider.set(providerId, current);
+  }
   providers.forEach((provider, providerIndex) => {
+    assertProviderConformance(provider);
     if (providersById.has(provider.id)) throw new TypeError(`Duplicate provider: ${provider.id}`);
     providersById.set(provider.id, { provider, providerIndex });
   });
@@ -111,18 +133,21 @@ export function createProviderRegistry(adapters) {
         if (!Array.isArray(sessions)) return [];
         return sessions.flatMap((session) => {
           try {
-            const id = qualifyProviderSessionId(provider.id, session.localId);
+            const reference = parseProviderSessionReference(session);
+            const id = qualifyProviderSessionId(provider.id, reference.localId);
             return [{
-              ...session,
+              ...reference,
               id,
               provider,
               providerIndex,
             }];
           } catch {
+            recordDiagnostic(provider.id, "catalogEntriesRejected");
             return [];
           }
         });
       } catch {
+        recordDiagnostic(provider.id, "catalogReadFailures");
         return [];
       }
     }));
@@ -149,23 +174,57 @@ export function createProviderRegistry(adapters) {
     return inspectCatalogEntries(await catalogEntries());
   }
 
-  async function resolveCapabilities(provider, options = {}) {
-    const declared = provider?.capabilities || createProviderCapabilities();
-    if (options.historical || typeof provider?.resolveCapabilities !== "function") return declared;
+  async function resolveReadiness(provider, options = {}) {
+    const manifest = provider?.capabilityManifest;
+    if (!manifest) return {};
+    if (options.historical) return createProviderRuntimeReadiness(manifest);
     try {
-      const resolved = await provider.resolveCapabilities();
-      return createProviderCapabilities({ ...declared, ...(resolved || {}) });
+      const resolved = typeof provider.resolveReadiness === "function"
+        ? await provider.resolveReadiness()
+        : {};
+      const readinessCapabilitySet = new Set(provider.readinessCapabilities || []);
+      const resolvedKeys = Object.keys(resolved || {});
+      if (resolvedKeys.length !== readinessCapabilitySet.size
+        || resolvedKeys.some((key) => !readinessCapabilitySet.has(key))) {
+        throw new TypeError("Provider readiness must report every declared readiness capability exactly once");
+      }
+      return createProviderRuntimeReadiness(manifest, resolved || {});
     } catch {
-      return createProviderCapabilities({ ...declared, usageLimits: false });
+      recordDiagnostic(provider.id, "readinessProbeFailures");
+      return createProviderRuntimeReadiness(manifest, Object.fromEntries(
+        (provider.readinessCapabilities || []).map((key) => [key, { status: "unavailable", reason: "probe_failed" }]),
+      ));
     }
   }
 
+  async function resolveCapabilities(provider, options = {}) {
+    const manifest = provider?.capabilityManifest;
+    if (!manifest) return provider?.capabilities || createProviderCapabilities();
+    return capabilitiesFromManifest(manifest, await resolveReadiness(provider, options));
+  }
+
   async function readCandidate(entry, historical) {
+    let evidence;
     try {
-      const evidence = await entry.provider.readSession(entry.localId, { historical });
-      if (!evidence || evidence.localId !== entry.localId) return null;
-      return { provider: entry.provider, evidence, sessionId: entry.id };
+      evidence = await entry.provider.readSession(entry.localId, { historical });
     } catch {
+      recordDiagnostic(entry.provider.id, "sessionReadFailures");
+      return null;
+    }
+    if (!evidence) return null;
+    try {
+      const parsedEvidence = parseProviderSessionEvidence(evidence, entry.localId);
+      return {
+        provider: entry.provider,
+        evidence: parsedEvidence,
+        evidenceAvailability: createProviderEvidenceAvailability(
+          entry.provider.capabilityManifest,
+          parsedEvidence,
+        ),
+        sessionId: entry.id,
+      };
+    } catch {
+      recordDiagnostic(entry.provider.id, "sessionEvidenceRejected");
       return null;
     }
   }
@@ -185,7 +244,17 @@ export function createProviderRegistry(adapters) {
 
     inspectSessions,
 
+    resolveReadiness,
+
     resolveCapabilities,
+
+    diagnostics() {
+      return Object.freeze(Object.fromEntries(providers.map((provider) => [
+        provider.id,
+        Object.freeze({ ...(diagnosticsByProvider.get(provider.id)
+          || Object.fromEntries(diagnosticCategories.map((key) => [key, 0]))) }),
+      ])));
+    },
 
     async readSession(requestedSessionId = "", options = {}) {
       if (requestedSessionId) {
@@ -222,7 +291,19 @@ export function createProviderRegistry(adapters) {
         return createEmptyUsageLimits();
       }
       try {
-        return await provider.readUsageLimits();
+        let value;
+        try {
+          value = await provider.readUsageLimits();
+        } catch {
+          recordDiagnostic(provider.id, "usageLimitReadFailures");
+          return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
+        }
+        try {
+          return parseProviderUsageLimits(value);
+        } catch {
+          recordDiagnostic(provider.id, "usageLimitEvidenceRejected");
+          return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
+        }
       } catch {
         return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }

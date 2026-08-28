@@ -29,7 +29,6 @@ for (const commandLineSwitch of [
   "disable-crash-reporter",
   "disable-gpu",
   "disable-gpu-compositing",
-  "disable-software-rasterizer",
   "noerrdialogs",
 ]) app.commandLine.appendSwitch(commandLineSwitch);
 
@@ -43,8 +42,13 @@ let smokeWindow;
 let finishing = false;
 let watchdog;
 let runtimePaths;
+let lastStage = "MODULE_LOADING";
+const rendererMode = environmentValue(process.env, "POMEGR_SMOKE_RENDERER_MODE") === "runtime"
+  ? "runtime"
+  : "window";
 
 function recordStage(stage) {
+  lastStage = stage;
   const stagePath = environmentValue(process.env, "POMEGR_SMOKE_MAIN_STAGE_PATH");
   if (!stagePath) return;
   try { writeFileSync(stagePath, stage, "utf8"); } catch { /* Fixed smoke diagnostics are best-effort. */ }
@@ -151,14 +155,18 @@ async function finish(exitCode) {
   if (finishing) return;
   finishing = true;
   clearTimeout(watchdog);
+  const failedAt = exitCode === 0 ? null : lastStage;
+  let cleanupFailed = false;
   try {
     await stopAll();
   } catch {
     exitCode = 1;
+    cleanupFailed = true;
     recordStage("CLEANUP_FAILED");
   }
   if (exitCode === 0) recordStage("FINISHED_PASS");
-  if (exitCode === 0) await writeResult("Pomegr desktop runtime compatibility: PASS", process.stdout);
+  else if (!cleanupFailed && failedAt) recordStage(failedAt);
+  if (exitCode === 0) await writeResult(`Pomegr desktop runtime compatibility: PASS (${rendererMode})`, process.stdout);
   else await writeResult("Pomegr desktop runtime compatibility: FAIL (DESKTOP_SMOKE_FAILED)", process.stderr);
   setImmediate(() => process.exit(exitCode));
 }
@@ -247,6 +255,12 @@ async function executeSmoke() {
       throw new Error("DESKTOP_PROVIDER_DISCOVERY_FAILED");
     }
     recordStage("WEB_HEALTH_VERIFIED");
+    if (rendererMode === "runtime") {
+      recordStage("RENDERER_UNAVAILABLE");
+      recordStage("RUNTIME_VERIFIED");
+      await finish(0);
+      return;
+    }
     recordStage("WINDOW_CREATING");
     const browserSession = session.fromPartition("pomegr-smoke", { cache: false });
     installSessionSecurity(browserSession, {

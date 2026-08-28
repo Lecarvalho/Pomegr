@@ -11,6 +11,7 @@ import {
   readExplicitSessionTitle,
   SESSION_TITLE_MAX_LENGTH,
   sessionIdFromTranscriptPath,
+  trustedFileIdentityMatches,
 } from "../plugins/claude-code/scripts/session-title.mjs";
 import { runRenameSessionHook } from "../plugins/claude-code/scripts/rename-session.mjs";
 
@@ -33,6 +34,12 @@ test("normalizes bounded plain-text session titles", () => {
   assert.equal(normalizeSessionTitle("unsafe \u202etitle"), null);
   assert.equal(normalizeSessionTitle("x".repeat(SESSION_TITLE_MAX_LENGTH + 1)), null);
   assert.equal(normalizeSessionTitle("🍎".repeat(SESSION_TITLE_MAX_LENGTH)), "🍎".repeat(SESSION_TITLE_MAX_LENGTH));
+});
+
+test("matches Windows file identities when one stat API omits the device ID", () => {
+  assert.equal(trustedFileIdentityMatches({ dev: 12n, ino: 34n }, { dev: 0n, ino: 34n }), true);
+  assert.equal(trustedFileIdentityMatches({ dev: 12n, ino: 34n }, { dev: 13n, ino: 34n }), false);
+  assert.equal(trustedFileIdentityMatches({ dev: 12n, ino: 34n }, { dev: 12n, ino: 35n }), false);
 });
 
 test("reads only genuine custom-title records from the trusted current transcript", async (t) => {

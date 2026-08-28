@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "incremental": false,
+    "noEmit": true,
+    "strict": false,
+    "target": "ES2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true
+  },
+  "files": [
+    "monitor/providers/provider-contract.mjs",
+    "monitor/providers/registry.mjs",
+    "monitor/providers/claude.mjs",
+    "monitor/providers/codex.mjs"
+  ],
+  "exclude": ["node_modules"]
+}

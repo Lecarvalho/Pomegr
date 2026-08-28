@@ -5,6 +5,6 @@ description: Implement using the provided instructions. Use when the user asks t
 
 # Implement
 
-This skill is defined once, in the Codex package, so both harnesses run the same
-procedure. Read `.codex/skills/implement/SKILL.md` from the repository root and follow
+This skill is defined once in the shared agent package, so both harnesses run the same
+procedure. Read `.agents/skills/implement/SKILL.md` from the repository root and follow
 it exactly.

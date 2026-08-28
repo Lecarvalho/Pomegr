@@ -14,7 +14,7 @@ The helper stops only validated Pomegr development, local Electron, and current-
 
 ```powershell
 npm ci
-node node_modules\electron\install.js
+npm run desktop:runtime
 npm run desktop:package
 npm run desktop:inspect
 ```
@@ -49,7 +49,7 @@ The helper handles the usual repository-owned lock holders automatically. Use th
 
    Never stop every `node.exe` process; other development tools and applications may also use Node.js.
 4. Run `npm ci` again. Administrator privileges are not normally required when the checkout belongs to the current user.
-5. Run `node node_modules\electron\install.js` to populate Electron's on-demand `dist` runtime, then continue with `npm run desktop:package` or restart development with `npm run dev`.
+5. Run `npm run desktop:runtime` to populate Electron's on-demand `dist` runtime, then continue with `npm run desktop:package` or restart development with `npm run dev`.
 
 ### Publish signed artifacts
 

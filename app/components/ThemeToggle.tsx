@@ -23,7 +23,7 @@ export function ThemeToggle() {
       };
     },
     currentTheme,
-    () => "light",
+    () => "light" as Theme,
   );
 
   useEffect(() => {

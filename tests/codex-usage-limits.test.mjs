@@ -243,6 +243,21 @@ test("disables only the usage-limit capability when the native Codex CLI is unav
   });
   const registry = createProviderRegistry([provider]);
 
+  assert.deepEqual(await registry.resolveReadiness(provider), {
+    approvalMode: { status: "ready" },
+    automaticCompactions: { status: "ready" },
+    contextMachinery: { status: "not_applicable" },
+    estimatedCost: { status: "not_applicable" },
+    liveSessions: { status: "ready" },
+    needsInput: { status: "ready" },
+    planTasks: { status: "ready" },
+    cacheWriteUsage: { status: "not_applicable" },
+    cacheUsageClassification: { status: "not_applicable" },
+    sessionSummary: { status: "not_applicable" },
+    signals: { status: "ready" },
+    usageLimits: { status: "unavailable", reason: "runtime_unavailable" },
+    workflows: { status: "not_applicable" },
+  });
   const capabilities = await registry.resolveCapabilities(provider);
   assert.equal(capabilities.usageLimits, false);
   assert.equal(capabilities.liveSessions, true);
@@ -254,7 +269,7 @@ test("disables only the usage-limit capability when the native Codex CLI is unav
     limits: [],
     error: "",
   });
-  assert.equal(availabilityCalls, 1);
+  assert.equal(availabilityCalls, 2);
   assert.equal(limitCalls, 0);
 });
 
