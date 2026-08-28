@@ -46,9 +46,12 @@ export async function readExplicitSessionTitle(transcriptPath, sessionId) {
   let lines;
   try {
     handle = await fs.promises.open(transcriptPath, "r");
-    const [opened, linked] = await Promise.all([handle.stat(), fs.promises.lstat(transcriptPath)]);
+    const [opened, linked] = await Promise.all([
+      handle.stat({ bigint: true }),
+      fs.promises.lstat(transcriptPath, { bigint: true }),
+    ]);
     if (!opened.isFile() || !linked.isFile() || linked.isSymbolicLink()) return { status: "unavailable", title: null };
-    if (opened.size > MAX_TRANSCRIPT_BYTES) return { status: "unavailable", title: null };
+    if (opened.size > BigInt(MAX_TRANSCRIPT_BYTES)) return { status: "unavailable", title: null };
     if (opened.dev !== linked.dev || opened.ino !== linked.ino) return { status: "unavailable", title: null };
 
     input = handle.createReadStream({ encoding: "utf8", autoClose: false });
