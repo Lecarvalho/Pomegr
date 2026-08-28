@@ -84,6 +84,16 @@ npm test
 npm run lint
 ```
 
+### Git and GitHub from Codex
+
+- Run Git and GitHub CLI operations for this repository in the user's host environment,
+  outside the managed Codex sandbox. This includes authentication checks, branch and index
+  mutations, commits, pushes, and pull-request operations, so the user's keyring,
+  credential helpers, SSH configuration, and `gh` session are available.
+- Never diagnose GitHub authentication from a sandboxed `gh` result. Retry through the
+  host environment before reporting an authentication problem or asking the user to sign
+  in again.
+
 ### Codex on Windows
 
 - In a managed Codex filesystem sandbox, run `npm run build` with escalated sandbox permissions because it overwrites the generated plugin bundles under `plugins/claude-code` and `plugins/pomegr`. A sandboxed run can report `Access is denied` or `EPERM` for a bundle even when Windows has no open handle or ACL restriction; do not diagnose that message as a process lock without independent handle evidence.
