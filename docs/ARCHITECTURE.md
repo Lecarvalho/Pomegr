@@ -54,6 +54,20 @@ Resource collection is driven by live catalog requests and limited by a fixed mo
 
 It listens only on `127.0.0.1`.
 
+### Codex signal transcript evidence
+
+The Codex adapter reconstructs Pomegr session, agent, task, and progress state from completed or provider-recorded MCP evidence. Client identity is not used to choose a parser: Codex Desktop, the IDE extension, the CLI, and remote clients can share execution layers, and one rollout may contain more than one representation of the same call.
+
+| Transcript representation | Accepted evidence |
+| --- | --- |
+| Direct `response_item` with `function_call` or `custom_tool_call` | The exact allowlisted Pomegr MCP tool name and its arguments. This is retained for provider formats that do not persist a separate completion record. |
+| App-server `event_msg` with `item_completed` / `McpToolCall` | Exact `pomegr` server, allowlisted tool, completed status, no reported error, and the item's arguments. |
+| Nested `event_msg` with `mcp_tool_call_end` | Exact `pomegr` invocation server, allowlisted tool, an `Ok` result whose `isError` flag is not true, and the invocation arguments. |
+
+When multiple recognized records have the same bounded call ID and tool, an authoritative completion record replaces a direct invocation record; a failed completion therefore cannot be reinterpreted as a successful report. Records without a usable call ID retain transcript order. After representation-specific checks, every format passes through the same strict argument normalizers and timestamp validation. Reports and clears are then applied chronologically. Session progress is taken only from the primary rollout, agent signals remain scoped to the reporting rollout, and task signals attach only after monitor-side resolution to a recognized normalized execution-task ID.
+
+The adapter never returns MCP call IDs, server metadata, plugin metadata, raw arguments, results, errors, or surrounding transcript content. Unknown servers or tools, incomplete or failed completions, invalid timestamps, extra arguments, malformed values, and unmatched task targets fail closed. New Codex transcript representations must extend this matrix and its focused privacy and provider-integration tests before they are accepted.
+
 ### Workflow evidence boundary
 
 Workflow visibility is provider-neutral in normalized state and provider-specific only inside adapters. A provider advertises the optional `workflows` capability and returns a bounded workflow ID, provider-authored name and one-line summary, `running`/`completed`/`unknown` lifecycle, timestamps, linked normalized agent IDs, and optional ordered phase labels with verified agent associations.

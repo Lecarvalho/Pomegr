@@ -28,6 +28,7 @@ const SIGNAL_TOOLS = new Set([
 const CODEX_APP_MCP_SERVER = "pomegr";
 const MAX_RECENT_CODEX_TRANSCRIPT_BYTES = 512 * 1024;
 const MAX_CODEX_SIGNAL_CACHE_ENTRIES = 512;
+const MAX_SIGNAL_CALL_ID_LENGTH = 512;
 const signalCache = new Map();
 const signalStateMetadata = new WeakMap();
 
@@ -77,6 +78,12 @@ function setProgress(state, progress, reportedAt) {
   signalStateMetadata.set(state, metadata);
 }
 
+function boundedCallId(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= MAX_SIGNAL_CALL_ID_LENGTH
+    ? value
+    : null;
+}
+
 function directSignalCall(record) {
   const payload = record?.payload;
   if (record?.type !== "response_item"
@@ -89,6 +96,9 @@ function directSignalCall(record) {
     name: payload.name,
     input: payload.arguments ?? payload.input,
     timestamp: record.timestamp ?? payload.timestamp,
+    callId: boundedCallId(payload.call_id),
+    authoritative: false,
+    successful: true,
   };
 }
 
@@ -102,15 +112,79 @@ function completedAppMcpSignalCall(record) {
     || Array.isArray(item)
     || item.type !== "McpToolCall"
     || item.server !== CODEX_APP_MCP_SERVER
-    || item.status !== "completed"
     || typeof item.tool !== "string") return null;
   const name = `mcp__pomegr__${item.tool}`;
   if (!SIGNAL_TOOLS.has(name)) return null;
-  return { name, input: item.arguments, timestamp: record.timestamp };
+  return {
+    name,
+    input: item.arguments,
+    timestamp: record.timestamp,
+    callId: boundedCallId(item.id),
+    authoritative: true,
+    successful: item.status === "completed" && item.error == null && item.result?.isError !== true,
+  };
+}
+
+function completedNestedMcpSignalCall(record) {
+  const payload = record?.payload;
+  const invocation = payload?.invocation;
+  if (record?.type !== "event_msg"
+    || payload?.type !== "mcp_tool_call_end"
+    || !invocation
+    || typeof invocation !== "object"
+    || Array.isArray(invocation)
+    || invocation.server !== CODEX_APP_MCP_SERVER
+    || typeof invocation.tool !== "string") return null;
+  const name = `mcp__pomegr__${invocation.tool}`;
+  if (!SIGNAL_TOOLS.has(name)) return null;
+  const result = payload.result;
+  const ok = result && typeof result === "object" && !Array.isArray(result)
+    && Object.hasOwn(result, "Ok")
+    && result.Ok && typeof result.Ok === "object" && !Array.isArray(result.Ok)
+    ? result.Ok
+    : null;
+  return {
+    name,
+    input: invocation.arguments,
+    timestamp: record.timestamp,
+    callId: boundedCallId(payload.call_id),
+    authoritative: true,
+    successful: Boolean(ok) && ok.isError !== true,
+  };
 }
 
 function signalCall(record) {
-  return directSignalCall(record) || completedAppMcpSignalCall(record);
+  return directSignalCall(record)
+    || completedAppMcpSignalCall(record)
+    || completedNestedMcpSignalCall(record);
+}
+
+function signalCalls(records) {
+  return (Array.isArray(records) ? records : []).map(signalCall).filter(Boolean);
+}
+
+function signalCallKey(call) {
+  return call.callId ? `${call.name}\u0000${call.callId}` : null;
+}
+
+function preferredSignalCalls(calls) {
+  const selectedByCallId = new Map();
+  const callsWithoutIds = [];
+  for (const [index, call] of (Array.isArray(calls) ? calls : []).entries()) {
+    const candidate = { ...call, index };
+    const key = signalCallKey(call);
+    if (!key) {
+      callsWithoutIds.push(candidate);
+      continue;
+    }
+    const previous = selectedByCallId.get(key);
+    if (!previous
+      || (call.authoritative && !previous.authoritative)
+      || call.authoritative === previous.authoritative) {
+      selectedByCallId.set(key, candidate);
+    }
+  }
+  return [...callsWithoutIds, ...selectedByCallId.values()].sort((left, right) => left.index - right.index);
 }
 
 export function mergeCodexSignals(target, source) {
@@ -130,11 +204,10 @@ export function mergeCodexSignals(target, source) {
   return target;
 }
 
-export function parseCodexSignalRecords(records) {
+function parseCodexSignalCalls(calls) {
   const signals = signalState();
-  for (const record of Array.isArray(records) ? records : []) {
-    const call = signalCall(record);
-    if (!call) continue;
+  for (const call of preferredSignalCalls(calls)) {
+    if (!call.successful) continue;
     const reportedAt = codexTimestamp(call.timestamp);
     if (!reportedAt) continue;
     const input = parseObject(call.input);
@@ -165,6 +238,10 @@ export function parseCodexSignalRecords(records) {
   return signals;
 }
 
+export function parseCodexSignalRecords(records) {
+  return parseCodexSignalCalls(signalCalls(records));
+}
+
 export function readCodexSignalRollout(file) {
   let text;
   try { text = fs.readFileSync(file, "utf8"); } catch { return signalState(); }
@@ -182,17 +259,21 @@ export function readCodexSignalRollout(file) {
 }
 
 async function scanCompleteCodexTranscript(file) {
-  const latest = signalState();
+  const calls = [];
   const input = fs.createReadStream(file, { encoding: "utf8" });
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
   for await (const line of lines) {
     try {
-      mergeCodexSignals(latest, parseCodexSignalRecords([JSON.parse(line)]));
+      const call = signalCall(JSON.parse(line));
+      if (call) calls.push(call);
     } catch {
       // Malformed and partially written JSONL records do not invalidate earlier signals.
     }
   }
-  return latest;
+  return {
+    signals: parseCodexSignalCalls(calls),
+    authoritativeCallKeys: new Set(calls.filter(({ authoritative }) => authoritative).map(signalCallKey).filter(Boolean)),
+  };
 }
 
 function digest(buffer) {
@@ -237,22 +318,36 @@ export async function readCodexSignals(file, recentRecords = [], generation = nu
   if (unchanged) return cached.signals;
 
   let signals;
+  let authoritativeCallKeys;
+  const recentCalls = signalCalls(recentRecords);
+  const hasNewAuthoritativeCall = cached && recentCalls.some((call) => (
+    call.authoritative
+    && signalCallKey(call)
+    && !cached.authoritativeCallKeys?.has(signalCallKey(call))
+  ));
   if (cached
     && generation
     && cached.generation?.identity === generation.identity
     && generation.size > cached.size
     && generation.mtimeMs >= cached.mtimeMs
     && generation.size - cached.size <= MAX_RECENT_CODEX_TRANSCRIPT_BYTES
-    && priorSuffixStillMatches(file, cached.generation)) {
+    && priorSuffixStillMatches(file, cached.generation)
+    && !hasNewAuthoritativeCall) {
     signals = mergeCodexSignals(
       mergeCodexSignals(signalState(), cached.signals),
-      parseCodexSignalRecords(recentRecords),
+      parseCodexSignalCalls(recentCalls),
     );
+    authoritativeCallKeys = new Set([
+      ...(cached.authoritativeCallKeys || []),
+      ...recentCalls.filter(({ authoritative }) => authoritative).map(signalCallKey).filter(Boolean),
+    ]);
   } else {
-    signals = await scanCompleteCodexTranscript(file);
+    const scanned = await scanCompleteCodexTranscript(file);
+    signals = scanned.signals;
+    authoritativeCallKeys = scanned.authoritativeCallKeys;
   }
   signalCache.delete(file);
-  signalCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, generation, signals });
+  signalCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, generation, signals, authoritativeCallKeys });
   while (signalCache.size > MAX_CODEX_SIGNAL_CACHE_ENTRIES) {
     signalCache.delete(signalCache.keys().next().value);
   }

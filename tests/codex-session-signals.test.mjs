@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
-import { mergeCodexSignals, parseCodexSignalRecords } from "../monitor/providers/codex-session-signals.mjs";
+import { mergeCodexSignals, parseCodexSignalRecords, readCodexSignals } from "../monitor/providers/codex-session-signals.mjs";
 import { assertNoPrivateFixtureSentinels, monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
 
 const record = (timestamp, type, payload) => ({ timestamp, type, payload });
@@ -26,6 +26,20 @@ const appMcpSignalCall = (timestamp, tool, input, options = {}) => record(timest
     readOnlyHint: true,
     status: options.status || "completed",
     result: options.result || { content: [{ type: "text", text: "PRIVATE_TOOL_RESULT_MUST_NOT_LEAK" }] },
+  },
+});
+const nestedMcpSignalCall = (timestamp, tool, input, options = {}) => record(timestamp, "event_msg", {
+  type: "mcp_tool_call_end",
+  call_id: options.callId || `nested-${tool}`,
+  invocation: {
+    server: options.server || "pomegr",
+    tool,
+    arguments: input,
+  },
+  plugin_id: options.pluginId || "pomegr@synthetic",
+  read_only_hint: true,
+  result: options.result || {
+    Ok: { content: [{ type: "text", text: "PRIVATE_NESTED_TOOL_RESULT_MUST_NOT_LEAK" }] },
   },
 });
 const PLUGIN_MCP_PREFIX = "mcp__plugin_pomegr_pomegr__";
@@ -139,6 +153,115 @@ test("accepts completed Codex app MCP items without exposing wrapper metadata or
   assert.doesNotMatch(JSON.stringify(signals), /pluginId|readOnlyHint|PRIVATE_TOOL_RESULT_MUST_NOT_LEAK/);
 });
 
+test("accepts completed nested Codex MCP events without exposing wrapper metadata or results", () => {
+  const signals = parseCodexSignalRecords([
+    nestedMcpSignalCall("2026-08-11T14:00:00.000Z", "report_agent_signal", {
+      label: "Investigating",
+      tone: "info",
+      description: "Reviewing the nested provider boundary.",
+    }),
+    nestedMcpSignalCall("2026-08-11T14:01:00.000Z", "report_session_progress", {
+      phase: "implementing",
+      percent: 45,
+      remaining_minutes_min: 5,
+      remaining_minutes_max: 10,
+      confidence: "high",
+    }),
+    nestedMcpSignalCall("2026-08-11T14:02:00.000Z", "report_task_signal", {
+      task_id: "command-1",
+      label: "Checks passed",
+      tone: "positive",
+    }),
+  ]);
+
+  assert.deepEqual(signals.agent, {
+    label: "Investigating",
+    tone: "info",
+    reportedAt: "2026-08-11T14:00:00.000Z",
+    description: "Reviewing the nested provider boundary.",
+  });
+  assert.deepEqual(signals.progress, {
+    phase: "implementing",
+    percent: 45,
+    remainingMinutesMin: 5,
+    remainingMinutesMax: 10,
+    confidence: "high",
+    reportedAt: "2026-08-11T14:01:00.000Z",
+  });
+  assert.deepEqual([...signals.tasks], [["command-1", {
+    label: "Checks passed",
+    tone: "positive",
+    reportedAt: "2026-08-11T14:02:00.000Z",
+  }]]);
+  assertNoPrivateFixtureSentinels(signals, "nested Codex signal evidence");
+  assert.doesNotMatch(JSON.stringify(signals), /pluginId|readOnlyHint|PRIVATE_NESTED_TOOL_RESULT_MUST_NOT_LEAK/);
+});
+
+test("requires successful nested MCP completion and deduplicates authoritative call IDs", () => {
+  const duplicateCallId = "progress-duplicate";
+  const signals = parseCodexSignalRecords([
+    signalCall("2026-08-11T14:00:00.000Z", "mcp__pomegr__report_session_progress", "progress-baseline", {
+      phase: "planning", percent: 10, confidence: "low",
+    }),
+    signalCall("2026-08-11T14:01:00.000Z", "mcp__pomegr__report_session_progress", duplicateCallId, {
+      phase: "implementing", percent: 80, confidence: "high",
+    }),
+    nestedMcpSignalCall("2026-08-11T14:01:01.000Z", "report_session_progress", {
+      phase: "implementing", percent: 80, confidence: "high",
+    }, {
+      callId: duplicateCallId,
+      result: { Ok: { isError: true, content: [{ type: "text", text: "PRIVATE_REJECTION_MUST_NOT_LEAK" }] } },
+    }),
+    nestedMcpSignalCall("2026-08-11T14:02:00.000Z", "report_session_progress", {
+      phase: "verifying", percent: 90, confidence: "high",
+    }, { callId: "foreign", server: "another" }),
+    nestedMcpSignalCall("2026-08-11T14:03:00.000Z", "report_session_progress", {
+      phase: "complete", percent: 100, confidence: "high",
+    }, { callId: "failed", result: { Err: { message: "PRIVATE_ERROR_MUST_NOT_LEAK" } } }),
+  ]);
+
+  assert.deepEqual(signals.progress, {
+    phase: "planning",
+    percent: 10,
+    confidence: "low",
+    reportedAt: "2026-08-11T14:00:00.000Z",
+  });
+  assertNoPrivateFixtureSentinels(signals, "deduplicated Codex signal evidence");
+});
+
+test("reconciles a later authoritative completion across the live signal cache boundary", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-signal-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "rollout.jsonl");
+  const duplicateCallId = "cached-progress";
+  const baseline = signalCall("2026-08-11T14:00:00.000Z", "mcp__pomegr__report_session_progress", "baseline-progress", {
+    phase: "planning", percent: 10, confidence: "low",
+  });
+  const direct = signalCall("2026-08-11T14:01:00.000Z", "mcp__pomegr__report_session_progress", duplicateCallId, {
+    phase: "implementing", percent: 80, confidence: "high",
+  });
+  await writeFile(file, `${[baseline, direct].map(JSON.stringify).join("\n")}\n`, "utf8");
+
+  assert.equal((await readCodexSignals(file)).progress.percent, 80);
+
+  const failedCompletion = nestedMcpSignalCall("2026-08-11T14:01:01.000Z", "report_session_progress", {
+    phase: "implementing", percent: 80, confidence: "high",
+  }, {
+    callId: duplicateCallId,
+    result: { Ok: { isError: true, content: [{ type: "text", text: "PRIVATE_CACHED_REJECTION_MUST_NOT_LEAK" }] } },
+  });
+  await appendFile(file, `${JSON.stringify(failedCompletion)}\n`, "utf8");
+
+  const reconciled = await readCodexSignals(file, [failedCompletion]);
+  assert.deepEqual(reconciled.progress, {
+    phase: "planning",
+    percent: 10,
+    confidence: "low",
+    reportedAt: "2026-08-11T14:00:00.000Z",
+  });
+  assertNoPrivateFixtureSentinels(reconciled, "cached Codex signal evidence");
+});
+
 test("ignores incomplete, foreign, malformed, and non-signal Codex app MCP items", () => {
   const signals = parseCodexSignalRecords([
     appMcpSignalCall("2026-08-11T14:00:00.000Z", "report_session_signal", { label: "Failed", tone: "negative" }, { status: "failed" }),
@@ -213,6 +336,7 @@ test("derives the reporting agent from each rollout and resolves task targets mo
     signalCall("2026-08-11T15:00:04.000Z", "mcp__pomegr__report_task_signal", "task-private", { task_id: "unknown-task", label: "MCP_ARGUMENT_MUST_NOT_LEAK", tone: "negative" }),
     signalCall("2026-08-11T15:00:05.000Z", "mcp__pomegr__report_session_signal", "session-valid", { label: "Ready", tone: "positive", description: "The session is ready for handoff." }),
     signalCall("2026-08-11T15:00:05.500Z", "mcp__pomegr__report_session_progress", "progress-valid", { phase: "implementing", percent: 30, remaining_minutes_min: 10, remaining_minutes_max: 20, confidence: "medium" }),
+    nestedMcpSignalCall("2026-08-11T15:00:05.750Z", "report_session_progress", { phase: "implementing", percent: 45, remaining_minutes_min: 5, remaining_minutes_max: 10, confidence: "high" }, { callId: "progress-nested" }),
   ];
   const child = [
     record("2026-08-11T15:00:06.000Z", "session_meta", { id: "signal-child", parent_thread_id: "signal-parent", cwd: "C:\\synthetic\\repo", source: { subagent: "review" } }),
@@ -233,11 +357,11 @@ test("derives the reporting agent from each rollout and resolves task targets mo
   assert.equal(evidence.session.signal, null);
   assert.deepEqual(evidence.session.progress, {
     phase: "implementing",
-    percent: 30,
-    remainingMinutesMin: 10,
-    remainingMinutesMax: 20,
-    confidence: "medium",
-    reportedAt: "2026-08-11T15:00:05.500Z",
+    percent: 45,
+    remainingMinutesMin: 5,
+    remainingMinutesMax: 10,
+    confidence: "high",
+    reportedAt: "2026-08-11T15:00:05.750Z",
   });
   assert.deepEqual(childAgent.signal, { label: "Reviewed", tone: "info", reportedAt: "2026-08-11T15:00:07.000Z", description: "No blocking findings." });
   assert.deepEqual(task.signal, { label: "Checks passed", tone: "positive", reportedAt: "2026-08-11T15:00:03.000Z" });

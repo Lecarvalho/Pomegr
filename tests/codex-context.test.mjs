@@ -319,6 +319,46 @@ test("classifies the current in-turn windowed compaction receipt as automatic", 
   assertNoPrivateFixtureSentinels(compactions, "automatic receipt evidence");
 });
 
+test("classifies the current nested context_compacted receipt without creating a duplicate boundary", () => {
+  const { compactions } = parseCodexContextRecords([
+    { timestamp: "2026-08-28T04:30:00.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "active-turn" } },
+    { timestamp: "2026-08-28T04:30:00.100Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-28T04:32:14.905Z", {
+      input_tokens: 220_000,
+      cached_input_tokens: 210_000,
+      output_tokens: 5_481,
+      total_tokens: 225_481,
+    }, { event_id: "before-nested-auto" }),
+    { timestamp: "2026-08-28T04:32:15.464Z", type: "event_msg", payload: { type: "patch_apply_end", status: "completed", stdout: "RESPONSE_MUST_NOT_LEAK" } },
+    { timestamp: "2026-08-28T04:32:15.790Z", type: "response_item", payload: { type: "message", content: "RESPONSE_MUST_NOT_LEAK" } },
+    {
+      timestamp: "2026-08-28T04:33:02.205Z",
+      type: "compacted",
+      payload: {
+        replacement_history: [{ private: "RESPONSE_MUST_NOT_LEAK" }],
+        window_number: 2,
+        first_window_id: "PRIVATE_PROVIDER_ID",
+        previous_window_id: "PRIVATE_PROVIDER_ID",
+        window_id: "PRIVATE_PROVIDER_ID",
+      },
+    },
+    { timestamp: "2026-08-28T04:33:02.223Z", type: "world_state", payload: { state: "RESPONSE_MUST_NOT_LEAK" } },
+    { timestamp: "2026-08-28T04:33:02.223Z", type: "turn_context", payload: { turn_id: "active-turn" } },
+    tokenCount("2026-08-28T04:33:02.301Z", { input_tokens: 50_000, output_tokens: 2_714 }, { event_id: "after-nested-auto" }),
+    { timestamp: "2026-08-28T04:33:02.372Z", type: "event_msg", payload: { type: "context_compacted" } },
+    { timestamp: "2026-08-28T04:33:02.669Z", type: "response_item", payload: { type: "message", content: "RESPONSE_MUST_NOT_LEAK" } },
+  ], { actorId: "primary", sourceKey: "thread-nested-auto-receipt" });
+
+  assert.deepEqual(compactions, [{
+    actorId: "primary",
+    timestamp: "2026-08-28T04:33:02.205Z",
+    trigger: "auto",
+    preTokens: 225_481,
+    inferred: true,
+  }]);
+  assertNoPrivateFixtureSentinels(compactions, "nested automatic compaction receipt evidence");
+});
+
 test("classifies a dedicated windowed compaction task receipt as manual", () => {
   const { compactions } = parseCodexContextRecords([
     { timestamp: "2026-08-25T01:03:53.000Z", type: "event_msg", payload: { type: "task_started" } },

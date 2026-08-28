@@ -74,6 +74,13 @@ function compactionPayload(record) {
     : {};
   const outerType = normalizedType(record.type);
   const payloadType = normalizedType(payload.type);
+  if (outerType === "eventmsg" && payloadType === "contextcompacted") {
+    const hasBoundaryMetadata = [
+      "compactMetadata", "compact_metadata", "trigger", "compaction_trigger", "compactionTrigger",
+      "pre_tokens", "preTokens", "pre_compaction_tokens", "preCompactionTokens",
+    ].some((key) => Object.hasOwn(payload, key));
+    if (!hasBoundaryMetadata) return null;
+  }
   if (![outerType, payloadType].some((type) => [
     "compactboundary",
     "compacted",
@@ -94,8 +101,9 @@ function isTaskEvent(record, type) {
 }
 
 function isContextCompactionCompletion(record) {
-  return isTaskEvent(record, "itemcompleted")
-    && normalizedType(record?.payload?.item?.type) === "contextcompaction";
+  return (isTaskEvent(record, "itemcompleted")
+      && normalizedType(record?.payload?.item?.type) === "contextcompaction")
+    || isTaskEvent(record, "contextcompacted");
 }
 
 function isWindowedCompactionRecord(record) {
@@ -124,8 +132,18 @@ function inferredWindowedCompaction(records, index) {
   ) return { trigger: "manual", preTokens: null };
 
   const resetContextIndex = beforeCompletion.findIndex((candidate) => normalizedType(candidate?.type) === "turncontext");
+  let activeTask = false;
+  for (const candidate of records.slice(0, index)) {
+    if (isTaskEvent(candidate, "taskstarted")) activeTask = true;
+    if (isTaskEvent(candidate, "taskcomplete")) activeTask = false;
+  }
+  const priorUsage = [...records.slice(Math.max(0, index - 8), index)]
+    .reverse()
+    .map(usageFromRecord)
+    .find(Boolean) || null;
   if (
-    isTokenCountRecord(previous)
+    (isTokenCountRecord(previous) || activeTask)
+    && priorUsage
     && resetContextIndex > 0
     && normalizedType(beforeCompletion[resetContextIndex - 1]?.type) === "worldstate"
     && !beforeCompletion.some((candidate) => isTaskEvent(candidate, "taskcomplete"))
@@ -134,7 +152,7 @@ function inferredWindowedCompaction(records, index) {
   ) {
     return {
       trigger: "auto",
-      preTokens: usageFromRecord(previous)?.totalTokens ?? null,
+      preTokens: priorUsage.totalTokens,
     };
   }
 
