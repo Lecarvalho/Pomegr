@@ -1,7 +1,6 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { createHash } from "node:crypto";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import {
@@ -15,7 +14,6 @@ import {
   parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
 import {
-  latestCodexApprovalMode,
   latestCodexPlanSnapshot,
   parseCodexApprovalPlanRecords,
 } from "./codex-approval-plan.mjs";
@@ -35,6 +33,17 @@ import {
 import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
+import { createCodexLiveState } from "./codex-live-state.mjs";
+import {
+  appServerResponseData,
+  appServerResponseThread,
+  boundedInteger,
+  compareCodexMetadata,
+  expandCodexSelectedMetadata,
+  mergeCodexMetadata,
+  mergeFreshCodexSessionTreeMetadata,
+  trustedAppServerRolloutFile,
+} from "./codex-session-discovery.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
@@ -43,15 +52,12 @@ import {
   isTopLevelCodexSession,
   listCodexRolloutMetadata,
   normalizeCodexThreadMetadata,
-  readCodexRolloutHeader,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
 
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
-const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
-const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 const ALL_SOURCE_KINDS = [
   ...TOP_LEVEL_SOURCE_KINDS,
@@ -66,141 +72,6 @@ export function resolveCodexHome(options = {}) {
   const environment = options.env ?? process.env;
   const configured = options.codexHome ?? environment.CODEX_HOME;
   return path.resolve(configured || path.join(options.homeDir || os.homedir(), ".codex"));
-}
-
-function timestampValue(value) {
-  const timestamp = typeof value === "string" ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
-}
-
-function compareMetadata(left, right) {
-  const updated = timestampValue(right.updatedAt) - timestampValue(left.updatedAt);
-  if (updated) return updated;
-  return left.localId.localeCompare(right.localId);
-}
-
-function boundedInteger(value, fallback, maximum) {
-  return Number.isInteger(value) ? Math.max(1, Math.min(maximum, value)) : fallback;
-}
-
-function mergeMetadata(items) {
-  const byId = new Map();
-  for (const item of [...items].sort(compareMetadata)) {
-    const previous = byId.get(item.localId);
-    if (!previous) {
-      byId.set(item.localId, item);
-      continue;
-    }
-    const preferred = timestampValue(item.updatedAt) > timestampValue(previous.updatedAt) ? item : previous;
-    const alternate = preferred === item ? previous : item;
-    byId.set(item.localId, {
-      ...preferred,
-      title: preferred.title !== "Untitled session" ? preferred.title : alternate.title,
-      cwd: preferred.cwd || alternate.cwd,
-      project: preferred.cwd ? preferred.project : alternate.project,
-      createdAt: preferred.createdAt || alternate.createdAt,
-      recordedGitBranch: preferred.recordedGitBranch || alternate.recordedGitBranch,
-      sessionId: preferred.sessionId || alternate.sessionId,
-      parentThreadId: preferred.parentThreadId || alternate.parentThreadId,
-      forkedFromId: preferred.forkedFromId || alternate.forkedFromId,
-      agentPath: preferred.agentPath || alternate.agentPath,
-      approvalReviewer: preferred.approvalReviewer || alternate.approvalReviewer,
-      agentNickname: preferred.agentNickname || alternate.agentNickname,
-      agentRole: preferred.agentRole || alternate.agentRole,
-      agentAssignment: preferred.agentAssignment || alternate.agentAssignment,
-      runtimeStatus: preferred.runtimeStatus || alternate.runtimeStatus,
-      liveStatus: preferred.liveStatus || alternate.liveStatus,
-      liveness: preferred.liveness || alternate.liveness,
-      archived: item.archived && previous.archived,
-      rolloutFile: item.rolloutFile || previous.rolloutFile,
-    });
-  }
-  return [...byId.values()].sort(compareMetadata);
-}
-
-function expandSelectedMetadata(metadataById, selectedIds) {
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const relatedSessionIds = new Set(
-      [...selectedIds].flatMap((id) => {
-        const sessionId = metadataById.get(id)?.sessionId;
-        return sessionId ? [id, sessionId] : [id];
-      }),
-    );
-    for (const metadata of metadataById.values()) {
-      if (selectedIds.has(metadata.localId)) continue;
-      const hasSelectedParent = [metadata.parentThreadId, metadata.forkedFromId]
-        .some((id) => id && selectedIds.has(id));
-      const sharesSelectedSession = metadata.sessionId
-        && metadata.sessionId !== metadata.localId
-        && relatedSessionIds.has(metadata.sessionId);
-      if (!hasSelectedParent && !sharesSelectedSession) continue;
-      selectedIds.add(metadata.localId);
-      changed = true;
-    }
-  }
-}
-
-function mergeFreshSessionTreeMetadata(discovered, sessionTree) {
-  const merged = mergeMetadata([...discovered, ...sessionTree.metadata]);
-  const freshById = new Map(
-    sessionTree.metadata
-      .filter((item) => sessionTree.freshIds.has(item.localId))
-      .map((item) => [item.localId, item]),
-  );
-  return merged.map((item) => {
-    const fresh = freshById.get(item.localId);
-    return fresh ? {
-      ...item,
-      updatedAt: fresh.updatedAt || item.updatedAt,
-      sessionId: fresh.sessionId,
-      parentThreadId: fresh.parentThreadId,
-      forkedFromId: fresh.forkedFromId,
-      agentPath: fresh.agentPath || item.agentPath,
-      approvalReviewer: fresh.approvalReviewer || item.approvalReviewer,
-      sourceKind: fresh.sourceKind,
-      agentNickname: fresh.agentNickname,
-      agentRole: fresh.agentRole,
-      agentAssignment: fresh.agentAssignment || item.agentAssignment,
-      runtimeStatus: fresh.runtimeStatus,
-    } : item;
-  });
-}
-
-function appServerResponseData(response) {
-  const value = response?.result ?? response;
-  return Array.isArray(value) ? value : Array.isArray(value?.data) ? value.data : null;
-}
-
-function appServerResponseThread(response) {
-  const value = response?.result ?? response;
-  return value?.thread && typeof value.thread === "object" ? value.thread : null;
-}
-
-function pathIsWithin(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return Boolean(relative)
-    && relative !== ".."
-    && !relative.startsWith(`..${path.sep}`)
-    && !path.isAbsolute(relative);
-}
-
-function trustedAppServerRolloutFile(thread, roots) {
-  if (!isSafeCodexSessionId(thread?.id) || typeof thread?.path !== "string" || !thread.path.trim()) return null;
-  let candidate;
-  try {
-    candidate = fs.realpathSync(path.resolve(thread.path));
-    if (!fs.statSync(candidate).isFile()) return null;
-  } catch {
-    return null;
-  }
-  const allowed = roots.some((root) => {
-    try { return pathIsWithin(fs.realpathSync(root), candidate); } catch { return false; }
-  });
-  if (!allowed) return null;
-  const header = readCodexRolloutHeader(candidate);
-  return header?.localId === thread.id ? candidate : null;
 }
 
 function mergeSkillUsage(groups) {
@@ -221,7 +92,6 @@ function mergeSkillUsage(groups) {
   ));
 }
 
-/** @returns {import("./provider-contract").ProviderAdapter} */
 export function createCodexProvider(options = {}) {
   const codexHome = resolveCodexHome(options);
   const sessionsRoot = options.sessionsRoot || path.join(codexHome, "sessions");
@@ -276,485 +146,39 @@ export function createCodexProvider(options = {}) {
   }).get;
   let catalogCache = null;
   let catalogPending = null;
-  const rolloutCache = new Map();
-  const liveAgentAssignmentCache = new Map();
-  const liveContextUsageCache = new Map();
-  const liveExecutionTaskCache = new Map();
-  const liveCurrentActivityCache = new Map();
-  const liveApprovalModeCache = new Map();
-  const livePlanTaskCache = new Map();
+  const liveState = createCodexLiveState({
+    scanLimit,
+    maximumLiveTailBytes,
+    maximumLiveTaskHistoryBytes,
+  });
   const transcriptPathsBySessionId = new Map();
-  const rolloutStats = {
-    reads: 0,
-    bytes: 0,
-    cacheHits: 0,
-    taskHydrationReads: 0,
-    taskHydrationBytes: 0,
-    approvalHydrationReads: 0,
-    approvalHydrationBytes: 0,
-  };
-
-  const invalidateRolloutFile = (file, { clearContext = false } = {}) => {
-    rolloutCache.delete(file);
-    liveAgentAssignmentCache.delete(file);
-    if (clearContext) liveContextUsageCache.delete(file);
-    liveExecutionTaskCache.delete(file);
-    liveCurrentActivityCache.delete(file);
-    liveApprovalModeCache.delete(file);
-    livePlanTaskCache.delete(file);
-  };
-
-  function mergeLiveContextEvidence(file, generation, context) {
-    const snapshots = context?.usageSnapshots || [];
-    const compactions = context?.compactions || [];
-    if (!generation) {
-      try {
-        const stat = fs.statSync(file);
-        if (stat.isFile() && stat.size > 0) return liveContextUsageCache.get(file) || { snapshots, compactions };
-      } catch {
-        // A deleted rollout must not retain its previous context evidence.
-      }
-      liveContextUsageCache.delete(file);
-      return { snapshots, compactions };
-    }
-    const previous = liveContextUsageCache.get(file);
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size
-        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous);
-    const byId = new Map(monotonic ? previous.snapshots.map((snapshot) => [snapshot.dedupeId, snapshot]) : []);
-    for (const snapshot of snapshots) {
-      const existing = byId.get(snapshot.dedupeId);
-      if (!existing || Date.parse(snapshot.timestamp) >= Date.parse(existing.timestamp)) {
-        byId.set(snapshot.dedupeId, snapshot);
-      }
-    }
-    const merged = [...byId.values()]
-      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
-        || left.dedupeId.localeCompare(right.dedupeId))
-      .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
-    const compactionKey = (compaction) => `${compaction.actorId}:${compaction.timestamp}`;
-    const compactionStrength = (compaction) => {
-      if (compaction.trigger === "unknown") return 0;
-      return compaction.inferred === true ? 1 : 2;
-    };
-    const compactionsById = new Map(monotonic
-      ? (previous.compactions || []).map((compaction) => [compactionKey(compaction), compaction])
-      : []);
-    for (const compaction of compactions) {
-      const key = compactionKey(compaction);
-      const existing = compactionsById.get(key);
-      const incomingStrength = compactionStrength(compaction);
-      const existingStrength = compactionStrength(existing || {});
-      if (
-        !existing
-        || incomingStrength > existingStrength
-        || (incomingStrength === existingStrength && existing.preTokens === null && compaction.preTokens !== null)
-      ) compactionsById.set(key, compaction);
-    }
-    const mergedCompactions = [...compactionsById.values()]
-      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
-      .slice(-MAX_LIVE_COMPACTIONS);
-    liveContextUsageCache.set(file, {
-      identity: generation.identity,
-      size: generation.size,
-      mtimeMs: generation.mtimeMs,
-      suffixBytes: generation.suffixBytes,
-      suffixDigest: generation.suffixDigest,
-      snapshots: merged,
-      compactions: mergedCompactions,
-    });
-    return { snapshots: merged, compactions: mergedCompactions };
-  }
-
-  const rolloutIdentity = (stat) => {
-    const device = Number.isFinite(stat?.dev) ? stat.dev : null;
-    const inode = Number.isFinite(stat?.ino) && stat.ino > 0 ? stat.ino : null;
-    return inode !== null
-      ? `${device ?? "device"}:${inode}`
-      : `birth:${Number.isFinite(stat?.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
-  };
-
-  const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
-
-  function priorSuffixStillMatches(file, generation) {
-    if (!generation?.suffixDigest || !Number.isInteger(generation.suffixBytes) || generation.suffixBytes < 1) return false;
-    let descriptor;
-    try {
-      descriptor = fs.openSync(file, "r");
-      const buffer = Buffer.alloc(generation.suffixBytes);
-      const read = fs.readSync(
-        descriptor,
-        buffer,
-        0,
-        generation.suffixBytes,
-        generation.size - generation.suffixBytes,
-      );
-      return read === generation.suffixBytes && digest(buffer) === generation.suffixDigest;
-    } catch {
-      return false;
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-  }
-
-  function assignmentCollaborations(collaborations = []) {
-    const byReference = new Map();
-    for (const collaboration of collaborations) {
-      if (!collaboration?.label || collaboration.label === "Unnamed subagent") continue;
-      const reference = collaboration.childThreadId || collaboration.agentReference;
-      if (!reference) continue;
-      byReference.set(reference, collaboration);
-    }
-    return [...byReference.values()].slice(-scanLimit);
-  }
-
-  function reusableLiveAgentAssignments(file, threadId, generation) {
-    const cached = liveAgentAssignmentCache.get(file);
-    if (!cached || cached.threadId !== threadId || !generation) return null;
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && generation.size - previous.size <= maximumLiveTailBytes
-      && (generation.size > previous.size
-        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous);
-    if (!monotonic) {
-      liveAgentAssignmentCache.delete(file);
-      return null;
-    }
-    return cached.collaborations;
-  }
-
-  function hydrateLiveAgentAssignments(file, generation, fallback) {
-    if (!generation || generation.size <= maximumLiveTailBytes) return [];
-    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
-    const position = generation.size - bytes;
-    let descriptor;
-    let buffer;
-    try {
-      descriptor = fs.openSync(file, "r");
-      buffer = Buffer.alloc(bytes);
-      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
-      if (read !== bytes) return [];
-    } catch {
-      return [];
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-    let confirmed;
-    try { confirmed = fs.statSync(file); } catch { return []; }
-    if (
-      !confirmed.isFile()
-      || confirmed.size !== generation.size
-      || confirmed.mtimeMs !== generation.mtimeMs
-      || rolloutIdentity(confirmed) !== generation.identity
-    ) return [];
-
-    let text = buffer.toString("utf8");
-    if (position > 0) {
-      const newline = text.indexOf("\n");
-      text = newline >= 0 ? text.slice(newline + 1) : "";
-    }
-    const records = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const record = JSON.parse(line);
-        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch {
-        // Assignment hydration ignores malformed and partially read records independently.
-      }
-    }
-    return assignmentCollaborations(parseCodexAgentRecords(records, fallback).collaborations);
-  }
-
-  function reusableLiveTaskState(file, threadId, generation) {
-    const cached = liveExecutionTaskCache.get(file);
-    if (
-      !cached
-      || cached.schemaVersion !== CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA
-      || cached.threadId !== threadId
-      || !generation
-    ) {
-      if (cached) liveExecutionTaskCache.delete(file);
-      return null;
-    }
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
-    if (!monotonic || !priorSuffixStillMatches(file, previous)) {
-      liveExecutionTaskCache.delete(file);
-      return null;
-    }
-    return cached.state;
-  }
-
-  function reusableLiveCurrentActivity(file, threadId, generation) {
-    const cached = liveCurrentActivityCache.get(file);
-    if (!cached || cached.threadId !== threadId || !generation) {
-      if (cached) liveCurrentActivityCache.delete(file);
-      return null;
-    }
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size
-        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous);
-    if (!monotonic) {
-      liveCurrentActivityCache.delete(file);
-      return null;
-    }
-    return cached;
-  }
-
-  function hydrateLiveStateEvidence(file, generation, {
-    fallbackTimestamp,
-    actorId,
-    sourceKey,
-    currentActivityOptions = {},
-  }) {
-    if (!generation || generation.size <= maximumLiveTailBytes) return null;
-    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
-    const position = generation.size - bytes;
-    let descriptor;
-    let buffer;
-    try {
-      descriptor = fs.openSync(file, "r");
-      buffer = Buffer.alloc(bytes);
-      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
-      if (read !== bytes) return null;
-    } catch {
-      return null;
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-    let confirmed;
-    try { confirmed = fs.statSync(file); } catch { return null; }
-    if (
-      !confirmed.isFile()
-      || confirmed.size !== generation.size
-      || confirmed.mtimeMs !== generation.mtimeMs
-      || rolloutIdentity(confirmed) !== generation.identity
-    ) return null;
-
-    let text = buffer.toString("utf8");
-    if (position > 0) {
-      const newline = text.indexOf("\n");
-      text = newline >= 0 ? text.slice(newline + 1) : "";
-    }
-    const records = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const record = JSON.parse(line);
-        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch {
-        // Task hydration ignores malformed and partially read records independently.
-      }
-    }
-    rolloutStats.taskHydrationReads += 1;
-    rolloutStats.taskHydrationBytes += bytes;
-    const context = parseCodexContextRecords(records, {
-      actorId,
-      fallbackTimestamp,
-      sourceKey,
-      stableFallbackIdentity: true,
-    });
-    return {
-      taskState: parseCodexExecutionTaskStateRecords(records, { fallbackTimestamp }),
-      currentActivityState: parseCodexCurrentActivityStateRecords(records, currentActivityOptions),
-      usageSnapshots: context.usageSnapshots,
-      compactions: context.compactions,
-    };
-  }
-
-  function reusableLivePlanTasks(file, threadId, generation) {
-    const cached = livePlanTaskCache.get(file);
-    if (!cached || cached.threadId !== threadId || !generation) return null;
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
-    if (!monotonic || !priorSuffixStillMatches(file, previous)) {
-      livePlanTaskCache.delete(file);
-      return null;
-    }
-    return cached.planTasks;
-  }
-
-  function reusableLiveApprovalMode(file, threadId, generation) {
-    const cached = liveApprovalModeCache.get(file);
-    if (!cached || cached.threadId !== threadId || !generation) return null;
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size
-        || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous);
-    if (!monotonic) {
-      liveApprovalModeCache.delete(file);
-      return null;
-    }
-    return cached;
-  }
-
-  function hydrateLiveApprovalMode(file, generation) {
-    if (!generation || generation.size <= maximumLiveTailBytes) return null;
-    const bytes = Math.min(generation.size, maximumLiveTaskHistoryBytes);
-    const position = generation.size - bytes;
-    let descriptor;
-    let buffer;
-    try {
-      descriptor = fs.openSync(file, "r");
-      buffer = Buffer.alloc(bytes);
-      const read = fs.readSync(descriptor, buffer, 0, bytes, position);
-      if (read !== bytes) return null;
-    } catch {
-      return null;
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-    let confirmed;
-    try { confirmed = fs.statSync(file); } catch { return null; }
-    if (
-      !confirmed.isFile()
-      || rolloutIdentity(confirmed) !== generation.identity
-      || confirmed.size !== generation.size
-      || confirmed.mtimeMs !== generation.mtimeMs
-      || !Number.isInteger(generation.suffixBytes)
-      || generation.suffixBytes < 1
-      || generation.suffixBytes > buffer.length
-      || digest(buffer.subarray(buffer.length - generation.suffixBytes)) !== generation.suffixDigest
-    ) return null;
-    let text = buffer.toString("utf8");
-    if (position > 0) {
-      const newline = text.indexOf("\n");
-      text = newline >= 0 ? text.slice(newline + 1) : "";
-    }
-    const records = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const record = JSON.parse(line);
-        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch {
-        // Approval hydration ignores malformed and partially read records independently.
-      }
-    }
-    rolloutStats.approvalHydrationReads += 1;
-    rolloutStats.approvalHydrationBytes += bytes;
-    return { approvalMode: latestCodexApprovalMode(records) };
-  }
+  const {
+    assignmentCollaborations,
+    hydrateLiveAgentAssignments,
+    hydrateLiveApprovalMode,
+    hydrateLiveStateEvidence,
+    liveAgentAssignmentCache,
+    liveApprovalModeCache,
+    liveContextUsageCache,
+    liveCurrentActivityCache,
+    liveExecutionTaskCache,
+    livePlanTaskCache,
+    mergeLiveContextEvidence,
+    pruneKnownFiles,
+    readRolloutRecords,
+    resolveLiveAgentRuntime,
+    reusableLiveAgentAssignments,
+    reusableLiveApprovalMode,
+    reusableLiveCurrentActivity,
+    reusableLivePlanTasks,
+    reusableLiveTaskState,
+  } = liveState;
 
   function normalizeAppServerMetadata(thread, metadataOptions = {}) {
     const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
     if (!metadata) return null;
     const rolloutFile = trustedAppServerRolloutFile(thread, [sessionsRoot, archivedRoot]);
     return rolloutFile ? { ...metadata, rolloutFile } : metadata;
-  }
-
-  function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes) {
-    let stat;
-    try { stat = fs.statSync(file); } catch {
-      invalidateRolloutFile(file, { clearContext: true });
-      return { records: [], generation: null };
-    }
-    if (!stat.isFile() || stat.size <= 0) {
-      invalidateRolloutFile(file, { clearContext: true });
-      return { records: [], generation: null };
-    }
-    const bytes = historical ? stat.size : Math.min(stat.size, liveMaximumBytes);
-    const identity = rolloutIdentity(stat);
-    const key = `${historical ? "history" : "live"}:${identity}:${stat.size}:${stat.mtimeMs}:${bytes}`;
-    const cached = rolloutCache.get(file);
-    if (cached?.key === key) {
-      if (priorSuffixStillMatches(file, cached.generation)) {
-        rolloutStats.cacheHits += 1;
-        return { records: cached.records, generation: cached.generation };
-      }
-      invalidateRolloutFile(file, { clearContext: true });
-    }
-    let text = "";
-    let buffer;
-    let descriptor;
-    try {
-      descriptor = fs.openSync(file, "r");
-      buffer = Buffer.alloc(bytes);
-      const read = fs.readSync(descriptor, buffer, 0, bytes, historical ? 0 : Math.max(0, stat.size - bytes));
-      if (read !== bytes) throw new Error("Incomplete Codex rollout read");
-      text = buffer.toString("utf8");
-    } catch {
-      invalidateRolloutFile(file, { clearContext: true });
-      return { records: [], generation: null };
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-    let confirmed;
-    try { confirmed = fs.statSync(file); } catch {
-      invalidateRolloutFile(file, { clearContext: true });
-      return { records: [], generation: null };
-    }
-    if (
-      !confirmed.isFile()
-      || confirmed.size !== stat.size
-      || confirmed.mtimeMs !== stat.mtimeMs
-      || rolloutIdentity(confirmed) !== identity
-    ) {
-      invalidateRolloutFile(file, { clearContext: true });
-      return { records: [], generation: null };
-    }
-    if (!historical && stat.size > bytes) {
-      const newline = text.indexOf("\n");
-      text = newline >= 0 ? text.slice(newline + 1) : "";
-    }
-    const records = [];
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const record = JSON.parse(line);
-        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch {
-        // A malformed or partially written line does not invalidate other records.
-      }
-    }
-    rolloutStats.reads += 1;
-    rolloutStats.bytes += bytes;
-    const suffixBytes = Math.min(256, buffer.length);
-    const generation = {
-      identity,
-      size: stat.size,
-      mtimeMs: stat.mtimeMs,
-      suffixBytes,
-      suffixDigest: digest(buffer.subarray(buffer.length - suffixBytes)),
-    };
-    rolloutCache.delete(file);
-    rolloutCache.set(file, { key, records, generation });
-    while (rolloutCache.size > scanLimit) {
-      const evictedFile = rolloutCache.keys().next().value;
-      rolloutCache.delete(evictedFile);
-      liveContextUsageCache.delete(evictedFile);
-      liveExecutionTaskCache.delete(evictedFile);
-      liveCurrentActivityCache.delete(evictedFile);
-      liveApprovalModeCache.delete(evictedFile);
-      livePlanTaskCache.delete(evictedFile);
-    }
-    return { records, generation };
   }
 
   async function appServerCall(method, params) {
@@ -787,7 +211,7 @@ export function createCodexProvider(options = {}) {
           return metadata ? [metadata] : [];
         });
       }));
-      return mergeMetadata(pages.flat()).slice(0, scanLimit);
+      return mergeCodexMetadata(pages.flat()).slice(0, scanLimit);
     } catch {
       return null;
     }
@@ -818,22 +242,11 @@ export function createCodexProvider(options = {}) {
       const appServerMetadata = await readAppServerCatalog();
       const fallbackMetadata = readFallbackMetadata();
       const combined = appServerMetadata?.length
-        ? mergeMetadata([...fallbackMetadata, ...appServerMetadata])
+        ? mergeCodexMetadata([...fallbackMetadata, ...appServerMetadata])
         : fallbackMetadata;
       const value = combined;
       const knownRolloutFiles = new Set(value.map((item) => item.rolloutFile).filter(Boolean));
-      for (const file of liveExecutionTaskCache.keys()) {
-        if (!knownRolloutFiles.has(file)) liveExecutionTaskCache.delete(file);
-      }
-      for (const file of liveCurrentActivityCache.keys()) {
-        if (!knownRolloutFiles.has(file)) liveCurrentActivityCache.delete(file);
-      }
-      for (const file of liveAgentAssignmentCache.keys()) {
-        if (!knownRolloutFiles.has(file)) liveAgentAssignmentCache.delete(file);
-      }
-      for (const file of liveApprovalModeCache.keys()) {
-        if (!knownRolloutFiles.has(file)) liveApprovalModeCache.delete(file);
-      }
+      pruneKnownFiles(knownRolloutFiles);
       catalogCache = { expiresAt: now() + cacheMs, value };
       return value;
     })();
@@ -859,7 +272,7 @@ export function createCodexProvider(options = {}) {
         activityStatus: state.activityStatus,
         resourceOwner: state.resourceOwner || null,
       };
-    }).sort(compareMetadata).slice(0, catalogLimit);
+    }).sort(compareCodexMetadata).slice(0, catalogLimit);
   }
 
   async function readAppServerSession(localSessionId) {
@@ -920,7 +333,7 @@ export function createCodexProvider(options = {}) {
     } catch {
       // Descendant filtering is experimental; rollout relationships remain the fallback.
     }
-    return { metadata: mergeMetadata(discovered), descendantIds, freshIds };
+    return { metadata: mergeCodexMetadata(discovered), descendantIds, freshIds };
   }
 
   async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
@@ -957,13 +370,13 @@ export function createCodexProvider(options = {}) {
     const historical = readOptions.historical !== false;
     const discovered = await discoveredMetadata();
     const appServerTree = await readAppServerSessionTree(localSessionId);
-    const mergedMetadata = mergeFreshSessionTreeMetadata(discovered, appServerTree);
+    const mergedMetadata = mergeFreshCodexSessionTreeMetadata(discovered, appServerTree);
     const metadataById = new Map(mergedMetadata.map((item) => [item.localId, item]));
     const rootMetadata = metadataById.get(localSessionId) || null;
     if (appServer && !appServerTree.metadata.length && !rootMetadata?.rolloutFile) return null;
     if (!rootMetadata || !isTopLevelCodexSession(rootMetadata)) return null;
     const selectedIds = new Set([localSessionId, ...appServerTree.descendantIds]);
-    expandSelectedMetadata(metadataById, selectedIds);
+    expandCodexSelectedMetadata(metadataById, selectedIds);
     const summaries = new Map();
     const recordsByThreadId = new Map();
     const generationsByThreadId = new Map();
@@ -986,6 +399,7 @@ export function createCodexProvider(options = {}) {
         if (generation) generationsByThreadId.set(thread.localId, generation);
         let summary = parseCodexAgentRecords(records, thread);
         if (!historical && generation) {
+          summary = { ...summary, runtime: resolveLiveAgentRuntime(thread.rolloutFile, thread.localId, generation, thread, summary.runtime) };
           const retained = reusableLiveAgentAssignments(thread.rolloutFile, thread.localId, generation)
             ?? hydrateLiveAgentAssignments(thread.rolloutFile, generation, thread);
           const collaborations = assignmentCollaborations([...retained, ...summary.collaborations]);
@@ -1001,17 +415,17 @@ export function createCodexProvider(options = {}) {
           if (metadataById.has(collaboration.childThreadId)) selectedIds.add(collaboration.childThreadId);
         }
       }
-      expandSelectedMetadata(metadataById, selectedIds);
+      expandCodexSelectedMetadata(metadataById, selectedIds);
     }
     const selectedMetadata = mergedMetadata.filter((item) => selectedIds.has(item.localId));
     const allMetadata = liveness.observe(selectedMetadata, { historical }).threads;
     const metadata = allMetadata.find((item) => item.localId === localSessionId) || rootMetadata;
-    const agents = buildCodexAgentTree({
+    const agents = /** @type {any[]} */ (buildCodexAgentTree({
       rootThreadId: localSessionId,
       threads: allMetadata,
       summaries,
       historical,
-    });
+    }));
     const transcriptPaths = new Map();
     for (const agent of agents) {
       const threadId = agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length);
@@ -1239,6 +653,8 @@ export function createCodexProvider(options = {}) {
     for (const agent of agents) {
       agent.workflowId = null;
       agent.workflowPhaseId = null;
+      agent.workflowOrder = null;
+      agent.workflowState = null;
       const signals = signalsByActor.get(agent.id) || { agent: null, session: null, tasks: new Map() };
       agent.signal = signals.agent;
       const currentActivity = rolloutActivityByActor.get(agent.id);
@@ -1298,16 +714,20 @@ export function createCodexProvider(options = {}) {
     };
   }
 
-  const capabilities = {
-    approvalMode: true,
-    automaticCompactions: true,
-    liveSessions: true,
-    needsInput: true,
-    planTasks: true,
-    cacheWriteUsage: false,
-    cacheUsageClassification: false,
-    signals: true,
-    usageLimits: true,
+  const capabilityManifest = {
+    approvalMode: { status: "supported" },
+    automaticCompactions: { status: "supported" },
+    contextMachinery: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose normalized context-machinery categories." } },
+    estimatedCost: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose a provider cost estimate." } },
+    liveSessions: { status: "supported" },
+    needsInput: { status: "supported" },
+    planTasks: { status: "supported" },
+    cacheWriteUsage: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex usage evidence does not provide normalized cache-write tokens." } },
+    cacheUsageClassification: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex usage evidence cannot safely classify cache-write behavior." } },
+    sessionSummary: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose a bounded provider session summary." } },
+    signals: { status: "supported" },
+    usageLimits: { status: "supported" },
+    workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
 
   async function readTranscriptPath(localSessionId = "", agentId = "") {
@@ -1318,15 +738,40 @@ export function createCodexProvider(options = {}) {
   return defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities,
-    async resolveCapabilities() {
+    capabilityManifest,
+    homePolicy: {
+      requestModelObservations: true,
+      modelSelection: true,
+      usageLimitActivity: {
+        enabled: true,
+        weeklyLimitIds: null,
+        trackedLimitIds: null,
+        modelScopes: [],
+        selection: {
+          mode: "dominant_model_window",
+          defaultWindow: "7d",
+          defaultExcludedLimitSegments: ["gpt-5.3-codex-spark"],
+          overrides: [{
+            models: ["gpt-5.3-codex-spark"],
+            window: "5h",
+            preferredLimitSegments: ["gpt-5.3-codex-spark"],
+          }],
+        },
+      },
+    },
+    readinessCapabilities: ["usageLimits"],
+    async resolveReadiness() {
       let usageLimitsAvailable = Boolean(appServer);
       if (rateLimitsReader) {
         usageLimitsAvailable = typeof rateLimitsReader.isAvailable === "function"
           ? await rateLimitsReader.isAvailable()
           : typeof rateLimitsReader.readRateLimits === "function";
       }
-      return { ...capabilities, usageLimits: Boolean(usageLimitsAvailable) };
+      return {
+        usageLimits: usageLimitsAvailable
+          ? { status: "ready" }
+          : { status: "unavailable", reason: "runtime_unavailable" },
+      };
     },
     listSessions,
     readSession,
@@ -1337,27 +782,12 @@ export function createCodexProvider(options = {}) {
     },
     qaStats(reset = false) {
       const livenessStats = liveness.stats();
-      const value = {
-        ...rolloutStats,
-        cacheEntries: rolloutCache.size,
-        liveExecutionTaskEntries: liveExecutionTaskCache.size,
-        liveCurrentActivityEntries: liveCurrentActivityCache.size,
-        liveApprovalModeEntries: liveApprovalModeCache.size,
-        livePlanTaskEntries: livePlanTaskCache.size,
+      return {
+        ...liveState.stats(reset),
         catalogPending: Boolean(catalogPending),
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,
       };
-      if (reset) Object.assign(rolloutStats, {
-        reads: 0,
-        bytes: 0,
-        cacheHits: 0,
-        taskHydrationReads: 0,
-        taskHydrationBytes: 0,
-        approvalHydrationReads: 0,
-        approvalHydrationBytes: 0,
-      });
-      return value;
     },
     watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot],
   });

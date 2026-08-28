@@ -15,6 +15,11 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - The user grants standing permission to use subagents for repository work whenever parallel or independent assessment would improve the result. Do not ask for subagent permission again.
 - Default subagents and workflow workers to the cheapest capable model, such as Sonnet, Haiku (Claude), Terra, Luna (Codex). Reserve larger models for stages that genuinely need stronger reasoning, and never leave investigative or probe agents on the session's default model by accident.
 
+## Change routing
+
+- Use `docs/AGENT-WORKFLOW.md` to locate the behavior owner, focused test command, and forbidden dependency direction for monitor, provider, UI, desktop, landing, or generated-plugin work.
+- Provider adapters must satisfy the executable catalog, manifest, readiness, evidence, and conformance rules in `monitor/providers/provider-contract.mjs`; provider-specific transcript schemas stay inside their adapter modules.
+
 ## Architecture
 
 - `monitor/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.

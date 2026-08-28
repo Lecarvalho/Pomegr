@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { normalizePullRequest, pullRequestUrls, readPullRequests } from "../monitor/pull-requests.mjs";
+import { pullRequestCreationEvents, readClaudePullRequestCreations } from "../monitor/providers/claude-pull-requests.mjs";
 import { parseCodexPullRequestRecords } from "../monitor/providers/codex-pull-requests.mjs";
 
 function bashCall(id, command) {
@@ -24,8 +25,10 @@ test("associates only canonical PR URLs returned by successful PR creation tools
     toolResult("create-2", "https://github.com/PomegrHQ/pomegr/pull/43", true),
   ];
 
-  assert.deepEqual(pullRequestUrls(records), ["https://github.com/PomegrHQ/pomegr/pull/42"]);
-  assert.doesNotMatch(JSON.stringify(pullRequestUrls(records)), /safe|failed|Created/);
+  const creations = pullRequestCreationEvents(records);
+  assert.deepEqual(pullRequestUrls(creations), ["https://github.com/PomegrHQ/pomegr/pull/42"]);
+  assert.deepEqual(pullRequestUrls(records), [], "generic enrichment accepts normalized evidence, not Claude records");
+  assert.doesNotMatch(JSON.stringify(pullRequestUrls(creations)), /safe|failed|Created/);
 });
 
 test("normalizes bounded GitHub metadata without carrying extra fields", () => {
@@ -73,7 +76,13 @@ test("combines transcript-created and current-branch PRs while preserving sessio
     ]);
   };
 
-  const result = await readPullRequests(records, { cwd: "C:\\repo", branch: "feature/pr-drawer", historical: false, ghRunner });
+  const result = await readPullRequests([], {
+    cwd: "C:\\repo",
+    branch: "feature/pr-drawer",
+    historical: false,
+    sessionCreations: pullRequestCreationEvents(records),
+    ghRunner,
+  });
 
   assert.equal(result.status, "ready");
   assert.deepEqual(result.items.map(({ number, association }) => ({ number, association })), [
@@ -109,7 +118,7 @@ test("reconstructs session PR associations from the complete transcript", async 
     cwd: directory,
     branch: "feature/history",
     historical: true,
-    transcripts: [{ file, records: [] }],
+    sessionCreations: await readClaudePullRequestCreations([{ file, records: [] }]),
     ghRunner: async () => JSON.stringify({
       number: 40,
       title: "Recovered from full history",

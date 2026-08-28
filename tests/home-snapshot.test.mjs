@@ -5,6 +5,30 @@ import { createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 
 const provider = { source: "Codex", capabilities: createEmptyProviderCapabilities() };
 
+function providerFixture(id, source) {
+  return {
+    id,
+    source,
+    capabilities: createEmptyProviderCapabilities(),
+    homePolicy: {
+      requestModelObservations: true,
+      modelSelection: id === "codex",
+      usageLimitActivity: {
+        enabled: true,
+        weeklyLimitIds: id === "claude" ? ["all-models", "model-fable"] : null,
+        trackedLimitIds: id === "claude" ? ["current-session", "all-models", "model-fable"] : null,
+        modelScopes: id === "claude" ? [{ limitId: "model-fable", modelSegments: ["fable"] }] : [],
+        selection: id === "codex" ? {
+          mode: "dominant_model_window",
+          defaultWindow: "7d",
+          defaultExcludedLimitSegments: ["gpt-5.3-codex-spark"],
+          overrides: [{ models: ["gpt-5.3-codex-spark"], window: "5h", preferredLimitSegments: ["gpt-5.3-codex-spark"] }],
+        } : { mode: "all" },
+      },
+    },
+  };
+}
+
 function evidence({ project = "pomegr", startedAt = "2026-08-23T11:00:00.000Z", updatedAt = "2026-08-23T12:00:00.000Z", agents = [], usageSnapshots = [], usageLimitRejections = [], progress = null, progressPrivate = undefined } = {}) {
   return {
     historical: false,
@@ -23,7 +47,13 @@ function runtimeFixture(entries, evidenceById, options = {}) {
   const registry = {
     defaultProvider: provider,
     async inspectSessions() { return { sessions: entries, resourceTargets: options.resourceTargets || [] }; },
-    async readSession(id) { const value = evidenceById.get(id); if (value instanceof Error) throw value; return { evidence: value, provider, sessionId: id }; },
+    async readSession(id) {
+      const value = evidenceById.get(id);
+      if (value instanceof Error) throw value;
+      const selectedProvider = this.providers?.find((candidate) => candidate.id === id.split(":", 1)[0])
+        || this.defaultProvider;
+      return { evidence: value, provider: selectedProvider, sessionId: id };
+    },
     providerForSessionId() { return provider; },
     ...options.registry,
   };
@@ -42,8 +72,8 @@ function runtimeFixture(entries, evidenceById, options = {}) {
 
 test("home snapshot includes independent Claude and Codex usage limits without live sessions", async () => {
   const providers = [
-    { id: "claude", source: "Claude Code" },
-    { id: "codex", source: "Codex" },
+    providerFixture("claude", "Claude Code"),
+    providerFixture("codex", "Codex"),
   ];
   const calls = [];
   const state = await runtimeFixture([], new Map(), {
@@ -66,7 +96,7 @@ test("home snapshot includes independent Claude and Codex usage limits without l
 });
 
 test("home snapshot selects the Codex activity window from bounded dominant-model evidence", async () => {
-  const codexProvider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities() };
+  const codexProvider = providerFixture("codex", "Codex");
   const entry = { id: "codex:recent", provider: "codex", source: "Codex", title: "Recent Codex", project: "repo", updatedAt: "2026-08-23T16:30:00.000Z", isLive: false, needsInput: false };
   const limits = [
     { id: "gpt-5.3-codex-spark-primary", label: "GPT-5.3-Codex-Spark", window: "5 hours", percent: 20, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: false },
@@ -110,7 +140,7 @@ test("home snapshot selects the Codex activity window from bounded dominant-mode
 });
 
 test("home snapshot correlates Claude limit movement across live-only projects", async () => {
-  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const claudeProvider = providerFixture("claude", "Claude Code");
   const entries = [
     { id: "claude:live", provider: "claude", source: "Claude Code", title: "Live session", project: "repo-live", updatedAt: "2026-08-23T12:10:00.000Z", isLive: true, needsInput: false },
     { id: "claude:closed", provider: "claude", source: "Claude Code", title: "Closed session", project: "repo-closed", updatedAt: "2026-08-23T12:05:00.000Z", isLive: false, needsInput: false },
@@ -200,7 +230,7 @@ test("home snapshot correlates Claude limit movement across live-only projects",
 });
 
 test("home snapshot loads seven-day Claude history for a Fable-only activity limit", async () => {
-  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const claudeProvider = providerFixture("claude", "Claude Code");
   const entry = { id: "claude:fable-history", provider: "claude", source: "Claude Code", title: "Fable history", project: "repo-fable", updatedAt: "2026-08-20T13:00:00.000Z", isLive: false, needsInput: false };
   const usageSnapshots = [{
     dedupeId: "fable-request",
@@ -241,7 +271,7 @@ test("home snapshot loads seven-day Claude history for a Fable-only activity lim
 });
 
 test("home limit activity marks failed live request evidence as truncated", async () => {
-  const claudeProvider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const claudeProvider = providerFixture("claude", "Claude Code");
   const entry = { id: "claude:failed", provider: "claude", source: "Claude Code", title: "Failed live session", project: "repo", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false };
   const state = await runtimeFixture([entry], new Map([[entry.id, new Error("PRIVATE_FAILURE")]]), {
     registry: {

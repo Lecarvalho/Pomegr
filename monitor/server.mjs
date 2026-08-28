@@ -1,18 +1,13 @@
-import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
-import { isRunningAgent } from "./agent-metadata.mjs";
-import { repositoryRoleMappings, resolveAgentRole } from "./agent-roles.mjs";
-import { buildCacheEvents } from "./cache-events.mjs";
-import { buildContextHistory } from "./context-history.mjs";
-import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
+import { repositoryRoleMappings } from "./agent-roles.mjs";
+import { homeSessionSummary, median, unavailableHomeSessionSummary } from "./home-session-summary.mjs";
 import { readGitStateAsync } from "./git-state.mjs";
 import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
-import { buildRequestModelObservations, buildRequestSnapshots } from "./request-snapshots.mjs";
+import { publicResourceUsage, unavailableResourceUsage } from "./public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
-import { concurrentMutationOverlaps } from "./tool-efficiency.mjs";
+import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
@@ -27,15 +22,6 @@ import {
 
 const PORT = Number(process.env.SESSION_PULSE_PORT || 4317);
 const HOST = "127.0.0.1";
-const RESOURCE_USAGE_STATUSES = new Set(["collecting", "ready", "unavailable"]);
-const RESOURCE_USAGE_REASONS = new Set([
-  "unsupported_platform",
-  "missing_owner",
-  "shared_owner",
-  "owner_not_found",
-  "owner_identity_mismatch",
-  "collection_failed",
-]);
 const HOME_FIVE_HOUR_LIMIT_WINDOW_MS = 5 * 60 * 60_000;
 const HOME_SEVEN_DAY_LIMIT_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const MAX_HOME_LIMIT_ACTIVITY_SESSIONS = 24;
@@ -47,12 +33,13 @@ function isLimitActivityWindow(value) {
     || window === "7 days" || window === "7 day" || window === "7d";
 }
 
-function limitActivityWindowMs(provider, providerLimits) {
+function limitActivityWindowMs(provider, providerLimits, homePolicy) {
+  const weeklyLimitIds = homePolicy?.usageLimitActivity?.weeklyLimitIds;
   const limits = providerLimits.find((item) => item?.provider === provider)?.usageLimits?.limits;
   return Array.isArray(limits) && limits.some((limit) => {
     const window = String(limit?.window || "").trim().toLowerCase().replace(/\s+/g, " ");
     const isSevenDays = window === "7 days" || window === "7 day" || window === "7d";
-    return isSevenDays && (provider !== "claude" || limit?.id === "all-models" || limit?.id === "model-fable");
+    return isSevenDays && (weeklyLimitIds === null || weeklyLimitIds?.includes(limit?.id));
   }) ? HOME_SEVEN_DAY_LIMIT_WINDOW_MS : HOME_FIVE_HOUR_LIMIT_WINDOW_MS;
 }
 
@@ -89,248 +76,10 @@ function unavailablePullRequests() {
   return { status: "unavailable", checkedAt: null, items: [] };
 }
 
-function unavailableResourceUsage() {
-  return {
-    status: "unavailable",
-    reason: "collection_failed",
-    current: null,
-    observedPeak: null,
-    samples: [],
-  };
-}
-
 function safeTranscriptPath(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 32_768) return null;
   if (!path.isAbsolute(value) || /[\u0000-\u001f\u007f]/.test(value)) return null;
   return value;
-}
-
-function resourceNumber(value, nullable = false) {
-  if (nullable && value === null) return null;
-  return Number.isFinite(value) && value >= 0 ? value : null;
-}
-
-function publicResourceUsage(value) {
-  if (!value || !RESOURCE_USAGE_STATUSES.has(value.status)) return null;
-  const status = value.status;
-  const reason = status === "unavailable" && RESOURCE_USAGE_REASONS.has(value.reason)
-    ? value.reason
-    : null;
-  if (status === "unavailable" && !reason) return unavailableResourceUsage();
-  const memoryBytes = resourceNumber(value.current?.memoryBytes);
-  const current = value.current && memoryBytes !== null ? {
-    cpuCores: resourceNumber(value.current.cpuCores, true),
-    cpuMachinePercent: resourceNumber(value.current.cpuMachinePercent, true),
-    memoryBytes,
-    readBytesPerSecond: resourceNumber(value.current.readBytesPerSecond, true),
-    writeBytesPerSecond: resourceNumber(value.current.writeBytesPerSecond, true),
-  } : null;
-  const peakMemoryBytes = resourceNumber(value.observedPeak?.memoryBytes);
-  const samples = Array.isArray(value.samples) ? value.samples.flatMap((sample) => {
-    const timestamp = typeof sample?.timestamp === "string" && Number.isFinite(Date.parse(sample.timestamp))
-      ? sample.timestamp
-      : null;
-    if (!timestamp) return [];
-    return [{
-      timestamp,
-      cpuCores: resourceNumber(sample.cpuCores, true),
-      cpuMachinePercent: resourceNumber(sample.cpuMachinePercent, true),
-      memoryBytes: resourceNumber(sample.memoryBytes, true),
-      readBytesPerSecond: resourceNumber(sample.readBytesPerSecond, true),
-      writeBytesPerSecond: resourceNumber(sample.writeBytesPerSecond, true),
-    }];
-  }) : [];
-  return {
-    status,
-    reason,
-    current,
-    observedPeak: peakMemoryBytes === null ? null : { memoryBytes: peakMemoryBytes },
-    samples,
-  };
-}
-
-function median(values) {
-  const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right);
-  if (sorted.length === 0) return null;
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
-}
-
-function homeSessionSummary(entry, evidence, resourceUsage) {
-  if (!evidence?.session) return null;
-  const agents = Array.isArray(evidence.agents) ? evidence.agents.map((agent) => ({ ...agent })) : [];
-  const tokenUsage = applyLatestUsage(
-    agents,
-    Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [],
-    evidence.session.startedAt,
-    evidence.session.updatedAt,
-    entry.id,
-    Array.isArray(evidence.compactions) ? evidence.compactions : [],
-  );
-  const startedAt = Date.parse(evidence.session.startedAt || "");
-  const updatedAt = Date.parse(evidence.session.updatedAt || "");
-  const wallTimeMs = Number.isFinite(startedAt) && Number.isFinite(updatedAt)
-    ? Math.max(0, updatedAt - startedAt)
-    : null;
-  return {
-    id: entry.id,
-    provider: entry.provider,
-    source: entry.source,
-    title: entry.title,
-    project: entry.project,
-    updatedAt: entry.updatedAt,
-    recordedUpdatedAt: evidence.session.updatedAt || entry.updatedAt,
-    needsInput: Boolean(entry.needsInput),
-    activityStatus: entry.activityStatus || "unknown",
-    agentCount: agents.length,
-    activeAgentCount: agents.filter(isRunningAgent).length,
-    latestContextTotal: Number.isFinite(tokenUsage.allAgents) ? tokenUsage.allAgents : null,
-    contextHistory: tokenUsage.contextHistory,
-    progress: evidence.session.progress ?? null,
-    isLive: Boolean(entry.isLive),
-    createdAt: evidence.session.startedAt,
-    requestObservationsAvailable: true,
-    requestObservations: tokenUsage.requestSnapshots.items.map(({ id, observedAt }) => ({ id, observedAt })),
-    requestModelObservations: entry.provider === "codex" || entry.provider === "claude"
-      ? buildRequestModelObservations({ sessionId: entry.id, agents, usageSnapshots: Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [] })
-      : [],
-    usageLimitRejections: Array.isArray(evidence.usageLimitRejections)
-      ? evidence.usageLimitRejections.map(({ observedAt, resetsAt }) => ({ observedAt, resetsAt }))
-      : [],
-    wallTimeMs,
-    resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
-  };
-}
-
-function unavailableHomeSessionSummary(entry, resourceUsage) {
-  return {
-    id: entry.id,
-    provider: entry.provider,
-    source: entry.source,
-    title: entry.title,
-    project: entry.project,
-    updatedAt: entry.updatedAt,
-    recordedUpdatedAt: entry.updatedAt,
-    needsInput: Boolean(entry.needsInput),
-    activityStatus: entry.activityStatus || "unknown",
-    agentCount: null,
-    activeAgentCount: null,
-    latestContextTotal: null,
-    contextHistory: null,
-    progress: null,
-    isLive: Boolean(entry.isLive),
-    createdAt: null,
-    requestObservationsAvailable: false,
-    requestObservations: [],
-    requestModelObservations: [],
-    usageLimitRejections: [],
-    wallTimeMs: null,
-    resources: resourceUsage ? publicResourceUsage(resourceUsage) : null,
-  };
-}
-
-function groupToolEvidence(toolCalls) {
-  const repetitionMap = new Map();
-  const patternMap = new Map();
-  const mutationEvents = [];
-  for (const call of toolCalls) {
-    const repetitionKey = `${call.actor.id}|${call.repetitionSignature}`;
-    const repetition = repetitionMap.get(repetitionKey);
-    repetitionMap.set(repetitionKey, {
-      count: (repetition?.count || 0) + 1,
-      actor: call.actor,
-      tool: call.tool,
-      detail: call.detail,
-      sig: call.repetitionSignature,
-    });
-    const patternKey = `${call.actor.id}|${call.tool}|${call.detail}`;
-    const pattern = patternMap.get(patternKey);
-    patternMap.set(patternKey, {
-      count: (pattern?.count || 0) + 1,
-      actor: call.actor,
-      tool: call.tool,
-      detail: call.detail,
-    });
-    if (call.mutation) mutationEvents.push({
-      actorId: call.actor.id,
-      timestamp: call.timestamp,
-      display: call.mutation.display,
-      scopes: call.mutation.scopes,
-    });
-  }
-  return {
-    repetitionCandidates: [...repetitionMap.values()],
-    groupedTools: [...patternMap.values()].sort((a, b) => b.count - a.count),
-    mutationEvents,
-  };
-}
-
-function aggregateCacheLifetime(snapshots) {
-  let sawFiveMinutes = false;
-  let sawOneHour = false;
-  for (const snapshot of snapshots) {
-    if (snapshot.cacheLifetime === "5m") sawFiveMinutes = true;
-    else if (snapshot.cacheLifetime === "1h") sawOneHour = true;
-    else if (snapshot.cacheLifetime === "mixed") {
-      sawFiveMinutes = true;
-      sawOneHour = true;
-    }
-  }
-  if (sawFiveMinutes && sawOneHour) return "mixed";
-  if (sawOneHour) return "1h";
-  if (sawFiveMinutes) return "5m";
-  return null;
-}
-
-function applyLatestUsage(agents, usageSnapshots, startedAt, updatedAt, sessionId, compactions) {
-  const snapshotsById = new Map(usageSnapshots.map((snapshot) => [`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot]));
-  const visibleAgentIds = new Set(agents.map((agent) => agent.id));
-  const boundedByAgent = new Map();
-  for (const snapshot of snapshotsById.values()) {
-    if (!visibleAgentIds.has(snapshot.actorId)) continue;
-    boundedByAgent.set(snapshot.actorId, [...(boundedByAgent.get(snapshot.actorId) || []), snapshot]);
-  }
-  const snapshots = [...boundedByAgent.values()].flatMap((items) => items
-    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)));
-  const latestByAgent = new Map();
-  for (const usage of snapshots) {
-    const usageTime = new Date(usage.timestamp).getTime();
-    const previous = latestByAgent.get(usage.actorId);
-    const snapshotTotal = usage.input + usage.output + usage.cacheWrite + usage.cacheRead;
-    if (snapshotTotal > 0 && (!previous || usageTime >= new Date(previous.timestamp).getTime())) {
-      latestByAgent.set(usage.actorId, usage);
-    }
-  }
-  for (const agent of agents) {
-    const latest = latestByAgent.get(agent.id) || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
-    const total = latest.input + latest.output + latest.cacheWrite + latest.cacheRead;
-    agent.tokens = {
-      input: latest.input,
-      output: latest.output,
-      cacheWrite: latest.cacheWrite,
-      cacheRead: latest.cacheRead,
-      total,
-      ...(Number.isFinite(latest.reasoningOutput) ? { reasoningOutput: latest.reasoningOutput } : {}),
-      ...(Number.isFinite(latest.modelContextWindow) ? { modelContextWindow: latest.modelContextWindow } : {}),
-    };
-    agent.cacheLifetime = aggregateCacheLifetime(boundedByAgent.get(agent.id) || []);
-  }
-  return {
-    allAgents: agents.reduce((total, agent) => total + agent.tokens.total, 0),
-    input: agents.reduce((total, agent) => total + agent.tokens.input, 0),
-    output: agents.reduce((total, agent) => total + agent.tokens.output, 0),
-    cacheWrite: agents.reduce((total, agent) => total + agent.tokens.cacheWrite, 0),
-    cacheRead: agents.reduce((total, agent) => total + agent.tokens.cacheRead, 0),
-    contextHistory: buildContextHistory(snapshots, {
-      startedAt,
-      updatedAt,
-      sessionId,
-      agentIds: agents.map((agent) => agent.id),
-      compactions,
-    }),
-    cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
-    requestSnapshots: buildRequestSnapshots({ sessionId, agents, usageSnapshots }),
-  };
 }
 
 export function createMonitorRuntime(options = {}) {
@@ -518,9 +267,9 @@ export function createMonitorRuntime(options = {}) {
         try {
           const selection = await registry.readSession(entry.id, { catalogEntry: entry });
           summary = selection?.evidence
-            ? homeSessionSummary(entry, selection.evidence, null)
+            ? homeSessionSummary(entry, selection.evidence, selection.provider?.homePolicy)
             : entry.isLive
-              ? unavailableHomeSessionSummary(entry, null)
+              ? unavailableHomeSessionSummary(entry)
               : null;
         } catch {
           summary = entry.isLive ? unavailableHomeSessionSummary(entry, null) : null;
@@ -567,8 +316,10 @@ export function createMonitorRuntime(options = {}) {
   }
 
   async function buildHomeSnapshot() {
-    const providerLimitsPromise = Promise.all((Array.isArray(registry.providers) ? registry.providers : [])
-      .filter((provider) => provider?.id === "claude" || provider?.id === "codex")
+    const providers = Array.isArray(registry.providers) ? registry.providers : [];
+    const policiesById = new Map(providers.map((provider) => [provider.id, provider.homePolicy]));
+    const providerLimitsPromise = Promise.all(providers
+      .filter((provider) => provider?.homePolicy?.usageLimitActivity?.enabled)
       .map(async (provider) => {
         let usageLimits = createEmptyUsageLimits();
         if (typeof registry.readUsageLimits === "function") {
@@ -584,7 +335,7 @@ export function createMonitorRuntime(options = {}) {
       ? registry.inspectSessions()
       : Promise.resolve(registry.listSessions()).then((sessions) => ({ sessions, resourceTargets: [] }));
     const [providerLimits, inspected] = await Promise.all([providerLimitsPromise, inspectedPromise]);
-    homeLimitActivityTracker.observe(providerLimits);
+    homeLimitActivityTracker.observe(providerLimits, policiesById);
     try {
       await resourceUsageSampler.sample(inspected.resourceTargets || []);
     } catch {
@@ -606,14 +357,15 @@ export function createMonitorRuntime(options = {}) {
     }
 
     const activityProviderIds = new Set(providerLimits.flatMap(({ provider, usageLimits }) => (
-      usageLimits?.limits?.some((limit) => isLimitActivityWindow(limit?.window))
+      policiesById.get(provider)?.usageLimitActivity?.enabled
+        && usageLimits?.limits?.some((limit) => isLimitActivityWindow(limit?.window))
         ? [provider]
         : []
     )));
     const activityEntries = [];
     const limitedActivityProviders = new Set();
     for (const provider of activityProviderIds) {
-      const activityWindowMs = limitActivityWindowMs(provider, providerLimits);
+      const activityWindowMs = limitActivityWindowMs(provider, providerLimits, policiesById.get(provider));
       const candidates = catalog
         .filter((entry) => entry?.provider === provider && (
           entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - activityWindowMs
@@ -623,8 +375,12 @@ export function createMonitorRuntime(options = {}) {
       if (candidates.length > MAX_HOME_LIMIT_ACTIVITY_SESSIONS) limitedActivityProviders.add(provider);
       activityEntries.push(...candidates.slice(0, MAX_HOME_LIMIT_ACTIVITY_SESSIONS));
     }
-    const modelSelectionEntries = (activityProviderIds.has("codex") ? catalog : [])
-      .filter((entry) => entry?.provider === "codex" && (
+    const modelSelectionProviderIds = new Set(providers
+      .filter((provider) => provider?.homePolicy?.modelSelection)
+      .map((provider) => provider.id));
+    const modelSelectionEntries = catalog
+      .filter((entry) => activityProviderIds.has(entry?.provider)
+        && modelSelectionProviderIds.has(entry?.provider) && (
         entry.isLive || Date.parse(entry.updatedAt || "") >= endMs - HOME_SEVEN_DAY_LIMIT_WINDOW_MS
       ))
       .sort((left, right) => Number(Boolean(right.isLive)) - Number(Boolean(left.isLive))
@@ -675,6 +431,7 @@ export function createMonitorRuntime(options = {}) {
       generatedAt,
       sessions: immediate.map(({ summary }) => summary).filter(Boolean),
       modelSelectionSessions: modelSelection.map(({ summary }) => summary).filter(Boolean),
+      policiesByProvider: policiesById,
     }).map((activity) => limitedActivityProviders.has(activity.provider)
       ? { ...activity, eventsTruncated: true }
       : activity);
@@ -798,89 +555,6 @@ export function createMonitorRuntime(options = {}) {
   const capabilities = typeof registry.resolveCapabilities === "function"
     ? await registry.resolveCapabilities(provider, { historical })
     : provider.capabilities;
-  const repositoryRoles = repositoryRoleMappings(evidence.session.cwd);
-  const agents = evidence.agents.map(({ kind, ...agent }) => {
-    const normalized = {
-      workflowId: null,
-      workflowPhaseId: null,
-      workflowOrder: null,
-      workflowState: null,
-      assignment: null,
-      ...agent,
-    };
-    return {
-      ...normalized,
-      role: resolveAgentRole({
-        id: normalized.id,
-        kind,
-        workflowId: normalized.workflowId,
-        repositoryRoles,
-      }),
-    };
-  });
-  const compactions = evidence.compactions.map((compaction) => ({
-    ...compaction,
-    actor: {
-      id: compaction.actorId,
-      label: agents.find((agent) => agent.id === compaction.actorId)?.label || "Agent",
-    },
-  }));
-  const tokenUsage = applyLatestUsage(
-    agents,
-    evidence.usageSnapshots,
-    evidence.session.startedAt,
-    evidence.session.updatedAt,
-    sessionId,
-    compactions,
-  );
-  const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
-  const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
-  tokenUsage.cacheEvents = buildCacheEvents({
-    sessionId,
-    agents,
-    usageSnapshots: evidence.usageSnapshots,
-    compactions,
-    enabled: evidence.efficiencyRuleEvidence.cacheUsageClassification,
-  });
-  const { insights, loops } = evaluateEfficiencySignals({
-    agents,
-    repetitionCandidates,
-    overlaps,
-    compactions,
-    cacheEvents: tokenUsage.cacheEvents.items,
-    availableEvidence: evidence.efficiencyRuleEvidence,
-  });
-  const repeatedCalls = loops.reduce((total, item) => total + item.count - 1, 0);
-  const toolPatterns = groupedTools.map((item) => ({
-    id: crypto.createHash("sha1").update(`${item.actor.id}|${item.tool}|${item.detail}`).digest("hex").slice(0, 12),
-    agent: item.actor.label,
-    tool: item.tool,
-    detail: item.detail,
-    calls: item.count,
-  }));
-  const loopPatterns = loops.map((loop, loopIndex) => ({
-    id: `loop-${loop.actor.id}-${loopIndex}`,
-    agent: loop.actor.label,
-    tool: loop.tool,
-    detail: loop.detail,
-    calls: loop.count,
-    repeats: loop.count - 1,
-  }));
-  const allEvents = [
-    ...evidence.activity,
-    ...evidence.toolCalls.map((call) => ({
-      id: call.id,
-      timestamp: call.timestamp,
-      actor: call.actor.label,
-      tool: call.tool,
-      detail: call.detail,
-      status: call.status === "failed" ? "failed" : null,
-    })),
-  ];
-  const executionTasks = agents.find((agent) => agent.id === "primary")?.executionTasks || [];
-  const primaryActor = agents.find((agent) => agent.id === "primary")?.label || "Primary agent";
-  allEvents.push(...shellFailureActivityEvents(executionTasks, primaryActor));
-
   let repository;
   let pullRequests;
   let enqueueLiveEnrichment = null;
@@ -902,60 +576,24 @@ export function createMonitorRuntime(options = {}) {
     enqueueLiveEnrichment = live.enqueue;
   }
   const currentUsageLimits = await registry.readUsageLimits(provider, { historical, capabilities });
-  const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
-  const activeAgents = agents.filter(isRunningAgent).length;
-  agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
-
-  const state = {
-    connected: true,
+  const resources = historical ? null : (() => {
+    try {
+      return publicResourceUsage(resourceUsageSampler.get(sessionId));
+    } catch {
+      return unavailableResourceUsage();
+    }
+  })();
+  const state = projectProviderSessionEvidence({
+    evidence,
+    sessionId,
     source: provider.source,
     capabilities,
-    view: historical ? "history" : "live",
-    session: {
-      id: sessionId,
-      title: evidence.session.title,
-      project: evidence.session.project,
-      cwd: evidence.session.cwd,
-      repository,
-      pullRequests,
-      startedAt: evidence.session.startedAt,
-      updatedAt: evidence.session.updatedAt,
-      durationMs: evidence.session.startedAt && evidence.session.updatedAt
-        ? Math.max(0, new Date(evidence.session.updatedAt).getTime() - new Date(evidence.session.startedAt).getTime())
-        : 0,
-      cost: evidence.session.cost,
-      approvalMode: evidence.session.approvalMode,
-      contextMachinery: evidence.session.contextMachinery,
-      summary: evidence.session.summary,
-      signal: evidence.session.signal,
-      progress: evidence.session.progress ?? null,
-      pomegrPlugin: evidence.session.pomegrPlugin ?? null,
-    },
-    score,
-    metrics: {
-      agents: agents.length,
-      activeAgents,
-      toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0),
-      repeatedCalls,
-      resources: historical ? null : (() => {
-        try {
-          return publicResourceUsage(resourceUsageSampler.get(sessionId));
-        } catch {
-          return unavailableResourceUsage();
-        }
-      })(),
-      tokens: tokenUsage,
-    },
-    agents,
-    workflows: evidence.workflows || [],
-    toolPatterns,
-    loops: loopPatterns,
-    activity: recentActivityEvents(allEvents),
-    executionTasks,
-    planTasks: evidence.planTasks,
-    insights,
+    repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
+    repository,
+    pullRequests,
     usageLimits: currentUsageLimits,
-  };
+    resources,
+  });
   enqueueLiveEnrichment?.();
   return state;
   }

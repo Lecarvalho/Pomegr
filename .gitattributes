@@ -1,0 +1,6 @@
+# Generated plugin bundles and rendered skills are build outputs. Keep them
+# reviewable, but make their generated status explicit to every checkout.
+plugins/**/mcp/*.bundle.mjs linguist-generated=true
+plugins/**/scripts/*.bundle.mjs linguist-generated=true
+plugins/**/skills/**/SKILL.md linguist-generated=true
+plugins/**/skills/**/policy-template.md linguist-generated=true

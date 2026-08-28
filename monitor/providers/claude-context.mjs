@@ -79,6 +79,10 @@ const CACHE_MISS_REASONS = new Set(["model_changed", "system_changed", "tools_ch
 const REMOTE_CONTROL_ACTIVE_PREFIX = "/remote-control is active";
 const MAX_BRIDGE_STATUS_DISTANCE = 12;
 
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
 function normalizedCacheMissReason(record) {
   const value = record?.message?.diagnostics?.cache_miss_reason?.type;
   return typeof value === "string" && CACHE_MISS_REASONS.has(value) ? value : null;
@@ -88,6 +92,18 @@ function normalizedCacheMissProviderStatus(record) {
   return record?.message?.diagnostics?.cache_miss_reason?.type === "previous_message_not_found"
     ? "previous_cache_entry_unavailable"
     : null;
+}
+
+function normalizedCacheMissDiagnosticState(record) {
+  const diagnostics = record?.message?.diagnostics;
+  if (diagnostics === undefined || diagnostics === null) return "absent";
+  if (!plainObject(diagnostics)) return "inconclusive";
+  if (!Object.hasOwn(diagnostics, "cache_miss_reason")) return "absent";
+  const cacheMissReason = diagnostics.cache_miss_reason;
+  if (!plainObject(cacheMissReason) || typeof cacheMissReason.type !== "string") return "inconclusive";
+  if (CACHE_MISS_REASONS.has(cacheMissReason.type)) return "recognized_reason";
+  if (cacheMissReason.type === "previous_message_not_found") return "previous_cache_entry_unavailable";
+  return "inconclusive";
 }
 
 function assistantIdentity(record) {
@@ -241,6 +257,8 @@ export function parseClaudeContextRecords(records, options = {}) {
       cacheLifetime: normalizedCacheLifetime(record, usage.cacheWrite),
       cacheMissReason: normalizedCacheMissReason(record),
       cacheMissProviderStatus: normalizedCacheMissProviderStatus(record),
+      // Monitor-private evidence state. Cache-event serialization never exposes it.
+      cacheMissDiagnosticState: normalizedCacheMissDiagnosticState(record),
       cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
     };
     snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));

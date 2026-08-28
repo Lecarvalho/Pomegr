@@ -139,7 +139,7 @@ describe("workflow activity and agent tree view", () => {
       }, {
         observedAt: "2026-08-15T12:02:00.000Z",
         reason: null,
-        providerStatus: "previous_cache_entry_unavailable",
+        providerStatus: null,
         cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime: "1h", elapsedMs: 61 * 60_000 },
         toolChangeAttribution: null,
       }],
@@ -159,7 +159,7 @@ describe("workflow activity and agent tree view", () => {
     const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, cache TTL 1h, 2 possible full cache refills/ });
     const childRow = screen.getByRole("listitem", { name: /Child agent agent, cache TTL 1h/ });
     expect(within(primaryRow).getByText("cache TTL 1h")).toBeInTheDocument();
-    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · previous cache entry unavailable. Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed) · One-hour cache likely expired; 1h 1m elapsed since the preceding request.";
+    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed) · One-hour cache likely expired; 1h 1m elapsed since the preceding request.";
     const refillMark = within(primaryRow).getByRole("button", { name: refillDescription });
     expect(refillMark).toHaveTextContent("2");
     expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe("workflow activity and agent tree view", () => {
     expect(occurrences[0].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:01:00.000Z");
     expect(occurrences[0]).toHaveTextContent("Inference:Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).");
     expect(occurrences[1].querySelector(".cacheRefillTooltipOccurrenceIndex")).toHaveTextContent("2");
-    expect(occurrences[1].querySelector(".cacheRefillTooltipOccurrenceReason")).toHaveTextContent("previous cache entry unavailable");
+    expect(occurrences[1].querySelector(".cacheRefillTooltipOccurrenceReason")).toHaveTextContent("reason unavailable");
     expect(occurrences[1].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:02:00.000Z");
     expect(occurrences[1]).toHaveTextContent("Inference:One-hour cache likely expired; 1h 1m elapsed since the preceding request.");
   });

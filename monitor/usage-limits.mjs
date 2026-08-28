@@ -47,6 +47,14 @@ function normalizedUsageLimits(body) {
   return wanted.map((id) => normalized.find((limit) => limit.id === id)).filter(Boolean);
 }
 
+/**
+ * @param {{
+ *   read: () => Promise<any[]>,
+ *   errorMessage?: (error: any) => string,
+ *   retryDelay?: (error: any, currentTime: number) => number,
+ *   now?: () => number,
+ * }} options
+ */
 export function createCoordinatedUsageLimitsReader({
   read,
   errorMessage = () => "Usage limits are temporarily unavailable.",
@@ -102,9 +110,10 @@ export function createUsageLimitsCoordinator({ request, now = () => Date.now() }
     async read() {
       const response = await request();
       if (!response.ok) {
-        const error = new Error(`Anthropic usage endpoint returned ${response.status}`);
-        error.status = response.status;
-        error.retryAfter = response.headers.get("retry-after");
+        const error = Object.assign(new Error(`Anthropic usage endpoint returned ${response.status}`), {
+          status: response.status,
+          retryAfter: response.headers.get("retry-after"),
+        });
         throw error;
       }
       return normalizedUsageLimits(await response.json());

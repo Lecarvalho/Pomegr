@@ -238,6 +238,8 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
   ]);
   assert.equal(POMEGR_WINDOWS_PUBLISHER, "Leandro Carvalho");
+  assert.match(workflow, /runs-on: windows-2022/);
+  assert.doesNotMatch(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /persist-credentials: false/);
@@ -246,8 +248,8 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
   assert.match(workflow, /DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE/);
   assert.match(workflow, /forceCodeSigning=true/);
-  const qualityStep = workflow.match(/- name: Run release quality gates[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm test", "npm run desktop:smoke", "npm run desktop:security", "npm run lint"]) {
+  const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  for (const command of ["npm run verify", "npm run verify:desktop:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
   assert.match(workflow, /verify-signature\.ps1/);
@@ -312,7 +314,7 @@ test("local desktop packaging helper validates repository processes before repla
   assert.doesNotMatch(helper, /(?:Move-Item|Remove-Item)[^\n]*\$releaseRoot/);
   assert.match(helper, /\$devWasRunning -and -not \$LeaveDevStopped/);
   assert.match(documentation, /\.\\scripts\\package-desktop-local\.ps1/);
-  assert.match(documentation, /node node_modules\\electron\\install\.js/);
+  assert.match(documentation, /npm run desktop:runtime/);
   assert.match(documentation, /npm run desktop:inspect/);
   assert.match(documentation, /local-package-backups/);
   assert.match(documentation, /-LeaveDevStopped/);

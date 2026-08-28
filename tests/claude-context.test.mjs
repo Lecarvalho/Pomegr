@@ -4,7 +4,7 @@ import { buildCacheEvents } from "../monitor/cache-events.mjs";
 import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
 
 function assistant(id, timestamp, usage, model = "claude-test", diagnostics = undefined) {
-  return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics ? { diagnostics } : {}) } };
+  return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics !== undefined ? { diagnostics } : {}) } };
 }
 
 function assistantWithoutIdentity(timestamp, usage, model = "claude-test") {
@@ -32,10 +32,12 @@ test("strictly normalizes bounded Claude request usage and cache comparability",
   assert.equal(snapshots.every((snapshot) => snapshot.cacheComparable), true);
   assert.equal(snapshots[0].model, "claude-test");
   assert.equal(snapshots[0].cacheMissReason, "tools_changed");
+  assert.equal(snapshots[0].cacheMissDiagnosticState, "recognized_reason");
   assert.equal(snapshots[0].cacheLifetime, null);
   assert.equal(snapshots[0].cacheMissProviderStatus, null);
   assert.equal(snapshots[0].cacheToolChangeCause, null);
   assert.equal(snapshots[1].cacheMissReason, null);
+  assert.equal(snapshots[1].cacheMissDiagnosticState, "absent");
   assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|cache_creation[^I]|cache_missed_input_tokens|diagnostics/);
 });
 
@@ -131,11 +133,24 @@ test("unrecognized or inconclusive Claude cache diagnostics remain unavailable",
       input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0,
     }, "claude-test", { cache_miss_reason: { type, cache_missed_input_tokens: 8_000 } })
   ));
+  records.push(assistant("malformed-diagnostic", "2026-08-10T10:03:00.000Z", {
+    input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0,
+  }, "claude-test", { cache_miss_reason: "invalid" }));
+  records.push(assistant("unrelated-diagnostic", "2026-08-10T10:04:00.000Z", {
+    input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0,
+  }, "claude-test", { unrelated_private_field: "PRIVATE_MUST_NOT_LEAK" }));
+  records.push(assistant("null-diagnostic", "2026-08-10T10:05:00.000Z", {
+    input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 8_000, cache_read_input_tokens: 0,
+  }, "claude-test", null));
   const snapshots = parseClaudeContextRecords(records, { actorId: "primary", sourceKey: "source" });
   assert.equal(snapshots.every((snapshot) => snapshot.cacheMissReason === null), true);
   assert.deepEqual(snapshots.map((snapshot) => snapshot.cacheMissProviderStatus), [
-    "previous_cache_entry_unavailable", null, null,
+    "previous_cache_entry_unavailable", null, null, null, null, null,
   ]);
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.cacheMissDiagnosticState), [
+    "previous_cache_entry_unavailable", "inconclusive", "inconclusive", "inconclusive", "absent", "absent",
+  ]);
+  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|unrelated_private_field/);
 });
 
 test("resolves only complete provider cache-lifetime breakdowns", () => {

@@ -1,14 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  capabilitiesFromManifest,
+  createProviderCapabilityManifest,
   createProviderCapabilities,
+  createProviderRuntimeReadiness,
   defineProvider,
+  PROVIDER_CAPABILITY_KEYS,
   parseProviderSessionId,
   providerSource,
   qualifyProviderSessionId,
 } from "../monitor/providers/provider-contract.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
+
+function capabilityManifest(supported = {}) {
+  return Object.fromEntries(PROVIDER_CAPABILITY_KEYS.map((key) => [key, supported[key]
+    ? { status: "supported" }
+    : { status: "unsupported", limitation: { code: "monitor_not_implemented", documentation: `Synthetic adapter does not implement ${key}.` } }]));
+}
 
 test("qualifies provider-local session IDs without accepting paths", () => {
   assert.equal(qualifyProviderSessionId("claude", "session_123"), "claude:session_123");
@@ -21,7 +31,7 @@ test("qualifies provider-local session IDs without accepting paths", () => {
   assert.throws(() => qualifyProviderSessionId("codex", "../private"), /Unsafe provider-local session ID/);
 });
 
-test("keeps optional provider capabilities deny-by-default", () => {
+test("derives browser capabilities from explicit support and runtime readiness", () => {
   const capabilities = createProviderCapabilities({ liveSessions: true, needsInput: true });
   assert.equal(capabilities.liveSessions, true);
   assert.equal(capabilities.needsInput, true);
@@ -32,13 +42,22 @@ test("keeps optional provider capabilities deny-by-default", () => {
   assert.equal(Object.isFrozen(capabilities), true);
   assert.throws(() => createProviderCapabilities({ futureCapability: true }), /Unknown provider capability/);
   assert.throws(() => createProviderCapabilities({ liveSessions: "yes" }), /must be boolean/);
+  assert.throws(() => createProviderCapabilityManifest({}), /explicitly classify every capability/);
+  assert.throws(() => createProviderCapabilityManifest({ ...capabilityManifest(), liveSessions: { status: "unsupported" } }), /requires a bounded limitation/);
+  const manifest = createProviderCapabilityManifest(capabilityManifest({ liveSessions: true, usageLimits: true }));
+  const readiness = createProviderRuntimeReadiness(manifest, { usageLimits: { status: "unavailable", reason: "runtime_unavailable" } });
+  assert.equal(readiness.liveSessions.status, "ready");
+  assert.deepEqual(readiness.usageLimits, { status: "unavailable", reason: "runtime_unavailable" });
+  assert.equal(capabilitiesFromManifest(manifest, readiness).liveSessions, true);
+  assert.equal(capabilitiesFromManifest(manifest, readiness).usageLimits, false);
+  assert.deepEqual(createProviderRuntimeReadiness(manifest).estimatedCost, { status: "not_applicable" });
 });
 
 test("validates provider declarations and optional usage readers", () => {
   const base = {
     id: "codex",
     source: "Codex",
-    capabilities: { liveSessions: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
     watchTargets: ["synthetic-root"],
     async listSessions() { return []; },
     async readSession() { return null; },
@@ -50,18 +69,42 @@ test("validates provider declarations and optional usage readers", () => {
   assert.equal(Object.isFrozen(provider.watchTargets), true);
   assert.equal(Object.isFrozen(provider), true);
   assert.throws(() => defineProvider({ ...base, source: "Claude Code" }), /source must be Codex/);
-  assert.throws(() => defineProvider({ ...base, capabilities: { usageLimits: true } }), /must implement readUsageLimits/);
+  assert.throws(() => defineProvider({ ...base, capabilityManifest: capabilityManifest({ usageLimits: true }) }), /must implement readUsageLimits/);
   assert.throws(() => defineProvider({ ...base, watchTargets: [""] }), /watchTargets/);
   assert.throws(() => defineProvider({ ...base, unavailableMessage: "private" }), /unavailableMessage/);
   assert.throws(() => defineProvider({ ...base, resolveCapabilities: true }), /resolveCapabilities/);
+  assert.throws(() => defineProvider({ ...base, resolveReadiness: async () => ({}) }), /declared together/);
+  assert.throws(() => defineProvider({ ...base, readinessCapabilities: ["liveSessions"] }), /declared together/);
   assert.throws(() => defineProvider({ ...base, controlSession() {} }), /Unknown provider observation API/);
+});
+
+test("keeps static support distinct from runtime readiness and session evidence", async () => {
+  const provider = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilityManifest: capabilityManifest({ liveSessions: true, usageLimits: true }),
+    readinessCapabilities: ["usageLimits"],
+    async resolveReadiness() { return {}; },
+    async listSessions() { return []; },
+    async readSession() { return null; },
+    async readUsageLimits() { return createEmptyMonitorState().usageLimits; },
+  });
+  const registry = createProviderRegistry([provider]);
+  const readiness = await registry.resolveReadiness(provider);
+  const capabilities = await registry.resolveCapabilities(provider);
+
+  assert.equal(provider.capabilityManifest.usageLimits.status, "supported");
+  assert.deepEqual(readiness.usageLimits, { status: "unavailable", reason: "probe_failed" });
+  assert.equal(capabilities.usageLimits, false);
+  assert.equal(capabilities.liveSessions, true);
+  assert.equal(registry.diagnostics().codex.readinessProbeFailures, 2);
 });
 
 test("keeps optional resource ownership private while passing it to the monitor", async () => {
   const provider = defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: { liveSessions: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
     async listSessions() {
       return [{
         localId: "resource-session",

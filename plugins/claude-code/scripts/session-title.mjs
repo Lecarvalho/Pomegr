@@ -31,6 +31,11 @@ export function sessionIdFromTranscriptPath(transcriptPath) {
   return match && validSessionId(match[1]) ? match[1] : null;
 }
 
+export function trustedFileIdentityMatches(opened, linked) {
+  const deviceIdentityMatches = opened.dev === linked.dev || opened.dev === 0n || linked.dev === 0n;
+  return deviceIdentityMatches && opened.ino === linked.ino;
+}
+
 /**
  * The Agent SDK currently folds an automatic `ai-title` into
  * SDKSessionInfo.customTitle, despite documenting that field as user-set. Read
@@ -46,10 +51,13 @@ export async function readExplicitSessionTitle(transcriptPath, sessionId) {
   let lines;
   try {
     handle = await fs.promises.open(transcriptPath, "r");
-    const [opened, linked] = await Promise.all([handle.stat(), fs.promises.lstat(transcriptPath)]);
+    const [opened, linked] = await Promise.all([
+      handle.stat({ bigint: true }),
+      fs.promises.lstat(transcriptPath, { bigint: true }),
+    ]);
     if (!opened.isFile() || !linked.isFile() || linked.isSymbolicLink()) return { status: "unavailable", title: null };
-    if (opened.size > MAX_TRANSCRIPT_BYTES) return { status: "unavailable", title: null };
-    if (opened.dev !== linked.dev || opened.ino !== linked.ino) return { status: "unavailable", title: null };
+    if (opened.size > BigInt(MAX_TRANSCRIPT_BYTES)) return { status: "unavailable", title: null };
+    if (!trustedFileIdentityMatches(opened, linked)) return { status: "unavailable", title: null };
 
     input = handle.createReadStream({ encoding: "utf8", autoClose: false });
     lines = readline.createInterface({ input, crlfDelay: Infinity });
