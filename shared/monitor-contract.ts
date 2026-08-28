@@ -197,9 +197,19 @@ export type CacheToolChangeAttributionCount = {
   changes: CacheToolDefinitionChange[];
 };
 
+export type CacheRefillOccurrence = {
+  observedAt: string;
+  /** Provider-diagnosed cause when recognized; otherwise unavailable. */
+  reason: CacheRefillReason | null;
+  /** Pomegr inference tied to this occurrence's recognized lifecycle evidence. */
+  toolChangeAttribution: Omit<CacheToolChangeAttributionCount, "count"> | null;
+};
+
 export type CacheRefillCount = {
   agentId: string;
   count: number;
+  /** Chronological, bounded details for each counted refill. */
+  occurrences: CacheRefillOccurrence[];
   /** Provider-diagnosed causes for a bounded subset of these refills. */
   reasons: CacheRefillReasonCount[];
   /** Bounded Pomegr inferences tied to recognized provider lifecycle evidence. */

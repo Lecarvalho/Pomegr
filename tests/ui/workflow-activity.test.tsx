@@ -122,6 +122,22 @@ describe("workflow activity and agent tree view", () => {
     const cacheRefills: CacheRefillCount[] = [{
       agentId: "primary",
       count: 2,
+      occurrences: [{
+        observedAt: "2026-08-15T12:01:00.000Z",
+        reason: "tools_changed",
+        toolChangeAttribution: {
+          cause: "remote_control_connected",
+          changes: [
+            { tool: "RemoteTrigger", kind: "added" },
+            { tool: "PushNotification", kind: "added" },
+            { tool: "ListAgents", kind: "definition_changed" },
+          ],
+        },
+      }, {
+        observedAt: "2026-08-15T12:02:00.000Z",
+        reason: null,
+        toolChangeAttribution: null,
+      }],
       reasons: [{ reason: "tools_changed", count: 1 }],
       toolChangeAttributions: [{
         cause: "remote_control_connected",
@@ -137,7 +153,7 @@ describe("workflow activity and agent tree view", () => {
 
     const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, 2 possible full cache refills/ });
     const childRow = screen.getByRole("listitem", { name: "Child agent agent" });
-    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
+    const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · reason unavailable. Pomegr inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
     const refillMark = within(primaryRow).getByRole("button", { name: refillDescription });
     expect(refillMark).toHaveTextContent("2");
     expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
@@ -148,18 +164,24 @@ describe("workflow activity and agent tree view", () => {
     const tooltip = screen.getByRole("tooltip");
     expect(tooltip).toHaveTextContent("Possible full cache refill observed 2 times.");
     expect(within(tooltip).getAllByRole("listitem")).toHaveLength(2);
-    expect(within(tooltip).getAllByRole("listitem")[0]).toHaveTextContent("1tool definitions changed");
-    expect(within(tooltip).getAllByRole("listitem")[1]).toHaveTextContent("2reason unavailable");
-    expect(tooltip).toHaveTextContent("Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).");
+    const occurrences = within(tooltip).getAllByRole("listitem");
+    expect(occurrences[0].querySelector(".cacheRefillTooltipOccurrenceIndex")).toHaveTextContent("1");
+    expect(occurrences[0].querySelector(".cacheRefillTooltipOccurrenceReason")).toHaveTextContent("tool definitions changed");
+    expect(occurrences[0].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:01:00.000Z");
+    expect(occurrences[0]).toHaveTextContent("Pomegr inference:Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).");
+    expect(occurrences[1].querySelector(".cacheRefillTooltipOccurrenceIndex")).toHaveTextContent("2");
+    expect(occurrences[1].querySelector(".cacheRefillTooltipOccurrenceReason")).toHaveTextContent("reason unavailable");
+    expect(occurrences[1].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:02:00.000Z");
+    expect(occurrences[1]).not.toHaveTextContent("Pomegr inference");
   });
 
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
     const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));
     const cacheRefills: CacheRefillCount[] = [
-      { agentId: "clustered-0", count: 1, reasons: [{ reason: "system_changed", count: 1 }], toolChangeAttributions: [] },
-      { agentId: "clustered-3", count: 1, reasons: [{ reason: "tools_changed", count: 1 }], toolChangeAttributions: [] },
-      { agentId: "primary", count: 1, reasons: [], toolChangeAttributions: [] },
+      { agentId: "clustered-0", count: 1, occurrences: [{ observedAt: "2026-08-15T12:01:00.000Z", reason: "system_changed", toolChangeAttribution: null }], reasons: [{ reason: "system_changed", count: 1 }], toolChangeAttributions: [] },
+      { agentId: "clustered-3", count: 1, occurrences: [{ observedAt: "2026-08-15T12:02:00.000Z", reason: "tools_changed", toolChangeAttribution: null }], reasons: [{ reason: "tools_changed", count: 1 }], toolChangeAttributions: [] },
+      { agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-15T12:03:00.000Z", reason: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] },
     ];
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cluster-cache-refills" viewMode="tree" workflows={[]} /></LiveClockProvider>);
 

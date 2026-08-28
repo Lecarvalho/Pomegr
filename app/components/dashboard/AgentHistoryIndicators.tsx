@@ -1,6 +1,7 @@
 "use client";
 
 import type { CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
+import { timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 
 export type CompactionSummary = {
@@ -103,6 +104,15 @@ function cacheRefillInference(toolChangeAttributions: ReturnType<typeof summariz
   }).join(" · ");
 }
 
+function cacheRefillOccurrenceInference(attribution: CacheToolChangeAttributionCount | Omit<CacheToolChangeAttributionCount, "count"> | null) {
+  if (!attribution || !Object.hasOwn(CACHE_TOOL_CHANGE_CAUSE_LABELS, attribution.cause)) return "";
+  const cause = CACHE_TOOL_CHANGE_CAUSE_LABELS[attribution.cause];
+  const changes = (attribution.changes || []).filter((change) => (
+    CACHE_TOOL_NAMES.has(change.tool) && Object.hasOwn(CACHE_TOOL_CHANGE_KIND_LABELS, change.kind)
+  )).map((change) => `${change.tool} (${CACHE_TOOL_CHANGE_KIND_LABELS[change.kind]})`).join(", ");
+  return `${cause}${changes ? `; likely changed ${changes}` : ""}`;
+}
+
 export function cacheRefillOccurrenceDescriptions(
   count: number,
   reasons: ReturnType<typeof summarizeCacheRefillReasons> = [],
@@ -115,6 +125,32 @@ export function cacheRefillOccurrenceDescriptions(
   }
   while (occurrences.length < count) occurrences.push("reason unavailable");
   return occurrences;
+}
+
+export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+  const observedAgents = new Set(agentIds);
+  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string }> = [];
+  for (const refill of cacheRefills) {
+    if (!observedAgents.has(refill.agentId)) continue;
+    if (Array.isArray(refill.occurrences) && refill.occurrences.length > 0) {
+      occurrences.push(...refill.occurrences.map((occurrence) => ({
+        agentId: refill.agentId,
+        observedAt: occurrence.observedAt,
+        reason: occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason)
+          ? CACHE_REFILL_REASON_LABELS[occurrence.reason]
+          : "reason unavailable",
+        inference: cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
+      })));
+      continue;
+    }
+    occurrences.push(...cacheRefillOccurrenceDescriptions(refill.count, summarizeCacheRefillReasons([refill], [refill.agentId]))
+      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "" })));
+  }
+  return occurrences.sort((left, right) => {
+    if (!left.observedAt) return 1;
+    if (!right.observedAt) return -1;
+    return Date.parse(left.observedAt) - Date.parse(right.observedAt);
+  });
 }
 
 export function cacheRefillDescription(
@@ -130,7 +166,7 @@ export function cacheRefillDescription(
   const unavailable = Math.max(0, count - diagnosed);
   const evidence = [reasonText, unavailable > 0 ? `reason unavailable${unavailable > 1 ? ` (${unavailable})` : ""}` : ""].filter(Boolean).join(" · ");
   const inference = cacheRefillInference(toolChangeAttributions);
-  return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
+  return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Pomegr inference: ${inference}.` : ""}`;
 }
 
 export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], className = "" }: {
@@ -144,19 +180,26 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   const cacheRefillReasons = summarizeCacheRefillReasons(cacheRefills, agentIds);
   const cacheToolChangeAttributions = summarizeCacheToolChangeAttributions(cacheRefills, agentIds);
   const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions);
-  const cacheRefillOccurrences = cacheRefillOccurrenceDescriptions(cacheRefillCount, cacheRefillReasons);
-  const cacheRefillInferenceText = cacheRefillInference(cacheToolChangeAttributions);
-  const cacheRefillTooltip = cacheRefillCount > 1 ? <span className="cacheRefillTooltipContent">
+  const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
+  const cacheRefillTooltip = <span className="cacheRefillTooltipContent">
     <span className="cacheRefillTooltipSummary">{cacheRefillSummary(cacheRefillCount, agentIds.length)}</span>
     <span className="cacheRefillTooltipSectionLabel">Provider diagnostic</span>
     <span className="cacheRefillTooltipOccurrences" role="list" aria-label="Cache refill occurrences">
-      {cacheRefillOccurrences.map((occurrence, index) => <span className="cacheRefillTooltipOccurrence" role="listitem" key={`${occurrence}-${index}`}>
+      {cacheRefillOccurrences.map((occurrence, index) => <span className="cacheRefillTooltipOccurrence" role="listitem" key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
         <span className="cacheRefillTooltipOccurrenceIndex">{index + 1}</span>
-        <span>{occurrence}</span>
+        <span className="cacheRefillTooltipOccurrenceDetail">
+          {occurrence.observedAt
+            ? <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>
+            : <span className="cacheRefillTooltipOccurrenceTimeUnavailable">Time unavailable</span>}
+          <span className="cacheRefillTooltipOccurrenceReason">{occurrence.reason}</span>
+          {occurrence.inference && <span className="cacheRefillTooltipInference">
+            <strong>Pomegr inference:</strong>
+            <span>{occurrence.inference}.</span>
+          </span>}
+        </span>
       </span>)}
     </span>
-    {cacheRefillInferenceText && <span className="cacheRefillTooltipInference">Inference: {cacheRefillInferenceText}.</span>}
-  </span> : cacheRefillLabel;
+  </span>;
   if (summary.total === 0 && cacheRefillCount === 0) return null;
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>

@@ -101,6 +101,7 @@ export function buildCacheEvents({
   const previousByActor = new Map();
   const trackedRefillByActor = new Map();
   const possibleFullRefillsByActor = new Map();
+  const possibleFullRefillOccurrencesByActor = new Map();
   const possibleFullRefillReasonsByActor = new Map();
   const possibleToolChangeAttributionsByActor = new Map();
   const events = [];
@@ -131,28 +132,46 @@ export function buildCacheEvents({
         CACHE_EVENT_RULES.maximumAgentRefillCount,
         previousRefillCount + 1,
       ));
+      const recognizedReason = typeof snapshot.cacheMissReason === "string"
+        && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
+        ? snapshot.cacheMissReason
+        : null;
+      const recognizedToolChangeCause = recognizedReason === "tools_changed"
+        && typeof snapshot.cacheToolChangeCause === "string"
+        && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
+        ? snapshot.cacheToolChangeCause
+        : null;
+      if (previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
+        const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
+        occurrences.push({
+          observedAt: snapshot.timestamp,
+          reason: recognizedReason,
+          toolChangeAttribution: recognizedToolChangeCause ? {
+            cause: recognizedToolChangeCause,
+            changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),
+          } : null,
+        });
+        possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
+      }
       if (
         previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
-        && typeof snapshot.cacheMissReason === "string"
-        && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
+        && recognizedReason
       ) {
         const reasons = possibleFullRefillReasonsByActor.get(snapshot.actorId) || new Map();
-        reasons.set(snapshot.cacheMissReason, Math.min(
+        reasons.set(recognizedReason, Math.min(
           CACHE_EVENT_RULES.maximumAgentRefillCount,
-          (reasons.get(snapshot.cacheMissReason) || 0) + 1,
+          (reasons.get(recognizedReason) || 0) + 1,
         ));
         possibleFullRefillReasonsByActor.set(snapshot.actorId, reasons);
       }
       if (
         previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
-        && snapshot.cacheMissReason === "tools_changed"
-        && typeof snapshot.cacheToolChangeCause === "string"
-        && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
+        && recognizedToolChangeCause
       ) {
         const attributions = possibleToolChangeAttributionsByActor.get(snapshot.actorId) || new Map();
-        attributions.set(snapshot.cacheToolChangeCause, Math.min(
+        attributions.set(recognizedToolChangeCause, Math.min(
           CACHE_EVENT_RULES.maximumAgentRefillCount,
-          (attributions.get(snapshot.cacheToolChangeCause) || 0) + 1,
+          (attributions.get(recognizedToolChangeCause) || 0) + 1,
         ));
         possibleToolChangeAttributionsByActor.set(snapshot.actorId, attributions);
       }
@@ -216,6 +235,13 @@ export function buildCacheEvents({
       .map(([agentId, refillCount]) => ({
         agentId,
         count: refillCount,
+        occurrences: (possibleFullRefillOccurrencesByActor.get(agentId) || []).map((occurrence) => ({
+          ...occurrence,
+          toolChangeAttribution: occurrence.toolChangeAttribution ? {
+            ...occurrence.toolChangeAttribution,
+            changes: occurrence.toolChangeAttribution.changes.map((change) => ({ ...change })),
+          } : null,
+        })),
         reasons: [...(possibleFullRefillReasonsByActor.get(agentId) || new Map())]
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([reason, count]) => ({ reason, count })),

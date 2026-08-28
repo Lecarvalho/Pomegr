@@ -47,6 +47,18 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
   assert.deepEqual(feed.possibleFullRefills, [{
     agentId: "primary",
     count: 1,
+    occurrences: [{
+      observedAt: "2026-08-10T10:36:00.000Z",
+      reason: "tools_changed",
+      toolChangeAttribution: {
+        cause: "remote_control_connected",
+        changes: [
+          { tool: "RemoteTrigger", kind: "added" },
+          { tool: "PushNotification", kind: "added" },
+          { tool: "ListAgents", kind: "definition_changed" },
+        ],
+      },
+    }],
     reasons: [{ reason: "tools_changed", count: 1 }],
     toolChangeAttributions: [{
       cause: "remote_control_connected",
@@ -129,7 +141,13 @@ test("retains a possible full-refill count after its detailed event falls outsid
   ];
 
   const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
-  assert.deepEqual(feed.possibleFullRefills, [{ agentId: "primary", count: 1, reasons: [], toolChangeAttributions: [] }]);
+  assert.deepEqual(feed.possibleFullRefills, [{
+    agentId: "primary",
+    count: 1,
+    occurrences: [{ observedAt: rewriteAt, reason: null, toolChangeAttribution: null }],
+    reasons: [],
+    toolChangeAttributions: [],
+  }]);
   assert.equal(feed.items.length, CACHE_EVENT_RULES.maximumSessionEvents);
   assert.equal(feed.items.some((event) => event.observedAt === rewriteAt), false);
   assert.equal(feed.items.some((event) => event.kind === "miss_refill"), false);
@@ -151,12 +169,23 @@ test("allowlists refill reasons and keeps reason counts within the bounded refil
   }
 
   const feed = buildCacheEvents({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots });
-  assert.deepEqual(feed.possibleFullRefills, [{
-    agentId: "primary",
-    count: CACHE_EVENT_RULES.maximumAgentRefillCount,
-    reasons: [{ reason: "tools_changed", count: CACHE_EVENT_RULES.maximumAgentRefillCount - 1 }],
-    toolChangeAttributions: [],
-  }]);
+  assert.equal(feed.possibleFullRefills.length, 1);
+  const [summary] = feed.possibleFullRefills;
+  assert.equal(summary.agentId, "primary");
+  assert.equal(summary.count, CACHE_EVENT_RULES.maximumAgentRefillCount);
+  assert.equal(summary.occurrences.length, CACHE_EVENT_RULES.maximumAgentRefillCount);
+  assert.deepEqual(summary.occurrences[0], {
+    observedAt: new Date(startedAt + 60_000).toISOString(),
+    reason: null,
+    toolChangeAttribution: null,
+  });
+  assert.deepEqual(summary.occurrences[1], {
+    observedAt: new Date(startedAt + 180_000).toISOString(),
+    reason: "tools_changed",
+    toolChangeAttribution: null,
+  });
+  assert.deepEqual(summary.reasons, [{ reason: "tools_changed", count: CACHE_EVENT_RULES.maximumAgentRefillCount - 1 }]);
+  assert.deepEqual(summary.toolChangeAttributions, []);
   assert.doesNotMatch(JSON.stringify(feed), /private_provider_reason|private_tool_change_cause/);
 });
 
