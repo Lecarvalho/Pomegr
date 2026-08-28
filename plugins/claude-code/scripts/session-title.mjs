@@ -31,6 +31,11 @@ export function sessionIdFromTranscriptPath(transcriptPath) {
   return match && validSessionId(match[1]) ? match[1] : null;
 }
 
+export function trustedFileIdentityMatches(opened, linked) {
+  const deviceIdentityMatches = opened.dev === linked.dev || opened.dev === 0n || linked.dev === 0n;
+  return deviceIdentityMatches && opened.ino === linked.ino;
+}
+
 /**
  * The Agent SDK currently folds an automatic `ai-title` into
  * SDKSessionInfo.customTitle, despite documenting that field as user-set. Read
@@ -52,7 +57,7 @@ export async function readExplicitSessionTitle(transcriptPath, sessionId) {
     ]);
     if (!opened.isFile() || !linked.isFile() || linked.isSymbolicLink()) return { status: "unavailable", title: null };
     if (opened.size > BigInt(MAX_TRANSCRIPT_BYTES)) return { status: "unavailable", title: null };
-    if (opened.dev !== linked.dev || opened.ino !== linked.ino) return { status: "unavailable", title: null };
+    if (!trustedFileIdentityMatches(opened, linked)) return { status: "unavailable", title: null };
 
     input = handle.createReadStream({ encoding: "utf8", autoClose: false });
     lines = readline.createInterface({ input, crlfDelay: Infinity });
