@@ -45,6 +45,7 @@ next-env.d.ts
 /release-acceptance/
 /work/
 /.codex-remote-attachments/
+/.generated-check-*/
 
 # claude code machine-local settings
 /.claude/settings.local.json

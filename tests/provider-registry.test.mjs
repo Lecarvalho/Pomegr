@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defineProvider } from "../monitor/providers/provider-contract.mjs";
+import { PROVIDER_CAPABILITY_KEYS, defineProvider } from "../monitor/providers/provider-contract.mjs";
 import { providerRegistry } from "../monitor/providers/index.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 
@@ -8,7 +8,7 @@ function provider(id, sessions, reads = new Map(), calls = []) {
   return defineProvider({
     id,
     source: id === "claude" ? "Claude Code" : "Codex",
-    capabilities: { liveSessions: true, needsInput: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true, needsInput: true }),
     async listSessions() { return sessions; },
     async readSession(localId, options) {
       calls.push({ id, localId, options });
@@ -32,8 +32,22 @@ function session(localId, updatedAt, options = {}) {
   };
 }
 
+function capabilityManifest(supported = {}) {
+  return Object.fromEntries(PROVIDER_CAPABILITY_KEYS.map((key) => [key, supported[key]
+    ? { status: "supported" }
+    : { status: "unsupported", limitation: { code: "monitor_not_implemented", documentation: `Synthetic adapter does not implement ${key}.` } }]));
+}
+
 function evidence(localId, historical = false) {
-  return { localId, historical };
+  const at = "2026-08-10T12:00:00.000Z";
+  return {
+    localId,
+    historical,
+    session: { title: localId, project: "pomegr", cwd: "C:\\workspace", startedAt: at, updatedAt: at, recordedGitBranch: "main", cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null, progress: null, pomegrPlugin: null },
+    agents: [{ id: "primary", parentId: null, workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null, label: "Primary", kind: "orchestrator", model: "unknown", effort: "unknown", status: "idle", signal: null, toolCalls: 0, skills: [], executionTasks: [], lastSeen: at, startedAt: at, updatedAt: at, durationMs: 0 }],
+    workflows: [], usageSnapshots: [], toolCalls: [], activity: [], planTasks: [], compactions: [],
+    efficiencyRuleEvidence: { repetition: false, concurrentMutation: false, unsharedContext: false, healthyFallback: false, cacheUsageClassification: false }, pullRequestCreations: [],
+  };
 }
 
 test("merges provider catalogs with qualified IDs and deterministic ordering", async () => {
@@ -50,7 +64,6 @@ test("merges provider catalogs with qualified IDs and deterministic ordering", a
 
   const catalog = await registry.listSessions();
   assert.deepEqual(catalog.map(({ id }) => id), [
-    "codex:codex-new",
     "claude:claude-tie",
     "codex:codex-tie",
     "claude:claude-old",
@@ -86,7 +99,6 @@ test("keeps resource ownership internal while classifying live inspection target
     { sessionId: "claude:shared-a", status: "shared" },
     { sessionId: "codex:shared-b", status: "shared" },
     { sessionId: "claude:missing", status: "unavailable" },
-    { sessionId: "codex:invalid", status: "unavailable" },
   ]);
   assert.equal(inspected.sessions.some(({ id }) => id === "claude:history"), true);
   assert.equal(inspected.resourceTargets.some(({ sessionId }) => sessionId === "claude:history"), false);
@@ -182,7 +194,7 @@ test("provider failures degrade independently during catalog and automatic selec
   const broken = defineProvider({
     id: "claude",
     source: "Claude Code",
-    capabilities: {},
+    capabilityManifest: capabilityManifest(),
     async listSessions() { throw new Error("private provider failure"); },
     async readSession() { throw new Error("private provider failure"); },
   });
@@ -197,6 +209,21 @@ test("provider failures degrade independently during catalog and automatic selec
   assert.equal((await registry.readSession()).sessionId, "codex:healthy");
 });
 
+test("strict normalized evidence validation degrades only the malformed provider", async () => {
+  const malformed = evidence("broken");
+  malformed.rawPrompt = "PROMPT_MUST_NOT_LEAK";
+  const registry = createProviderRegistry([
+    provider("claude", [session("broken", "2026-08-10T13:00:00.000Z")], new Map([["broken", malformed]])),
+    provider("codex", [session("healthy", "2026-08-10T12:00:00.000Z")], new Map([["healthy", evidence("healthy")]])),
+  ]);
+
+  const selected = await registry.readSession();
+  assert.equal(selected.sessionId, "codex:healthy");
+  assert.doesNotMatch(JSON.stringify(selected), /PROMPT_MUST_NOT_LEAK/);
+  assert.equal(registry.diagnostics().claude.sessionEvidenceRejected, 1);
+  assert.equal(registry.diagnostics().codex.sessionEvidenceRejected, 0);
+});
+
 test("coalesces only concurrent catalog reads", async () => {
   let catalogCalls = 0;
   let releaseCatalog;
@@ -204,7 +231,7 @@ test("coalesces only concurrent catalog reads", async () => {
   const codex = defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: { liveSessions: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
     async listSessions() {
       catalogCalls += 1;
       await catalogReady;
@@ -232,7 +259,7 @@ test("uses an inspected catalog entry without rediscovering sessions", async () 
   const codex = defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: { liveSessions: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
     async listSessions() {
       catalogCalls += 1;
       return [session("live", "2026-08-10T12:00:00.000Z")];
@@ -259,7 +286,7 @@ test("explicit reads refresh the catalog before deciding historical state", asyn
   const codex = defineProvider({
     id: "codex",
     source: "Codex",
-    capabilities: { liveSessions: true },
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
     async listSessions() {
       catalogCalls += 1;
       return sessions;

@@ -53,14 +53,13 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Run release quality gates
-        shell: pwsh
+      - name: Install locked landing dependencies
+        run: npm ci --prefix landing
+
+      - name: Run canonical verifier and desktop extension
         run: |
-          $ErrorActionPreference = 'Stop'
-          npm test
-          npm run desktop:smoke
-          npm run desktop:security
-          npm run lint
+          npm run verify
+          npm run verify:desktop
 
       - name: Build and sign Windows artifacts
         shell: pwsh
@@ -70,7 +69,7 @@ jobs:
           WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run desktop:prepare
+          npm run desktop:prepare:from-build
           npx electron-builder --win nsis portable --x64 --publish never -c.forceCodeSigning=true "-c.win.signtoolOptions.publisherName=$env:WINDOWS_PUBLISHER_SUBJECT"
           node desktop/finalize-package.mjs
 

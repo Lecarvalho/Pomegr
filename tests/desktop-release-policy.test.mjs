@@ -246,8 +246,8 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
   assert.match(workflow, /DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE/);
   assert.match(workflow, /forceCodeSigning=true/);
-  const qualityStep = workflow.match(/- name: Run release quality gates[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm test", "npm run desktop:smoke", "npm run desktop:security", "npm run lint"]) {
+  const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  for (const command of ["npm run verify", "npm run verify:desktop"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
   assert.match(workflow, /verify-signature\.ps1/);

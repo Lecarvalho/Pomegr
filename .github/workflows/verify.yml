@@ -1,0 +1,41 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install locked root dependencies
+        run: npm ci
+
+      - name: Install locked landing dependencies
+        run: npm ci --prefix landing
+
+      - name: Run canonical verifier
+        run: npm run verify
+      - name: Run desktop verification extension
+        run: npm run verify:desktop

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { providerSource, qualifyProviderSessionId } from "../../monitor/providers/provider-contract.mjs";
-import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
+import { projectProviderSessionEvidence } from "../../monitor/session-projection.mjs";
+import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
 export const PROVIDER_FIXTURE_ROOT = new URL("../fixtures/providers/", import.meta.url);
 
@@ -64,100 +65,28 @@ export function assertNoPrivateFixtureSentinels(value, label = "serialized provi
 
 /**
  * @param {"claude" | "codex"} providerId
- * @param {import("../../monitor/providers/provider-contract").ProviderSessionEvidence} evidence
+ * @param {import("../../monitor/providers/provider-contract.mjs").ProviderSessionEvidence} evidence
  * @returns {import("../../shared/monitor-contract").MonitorState}
  */
 export function monitorStateFromProviderEvidence(providerId, evidence) {
   const source = providerSource(providerId);
-  const latestUsage = new Map();
-  for (const snapshot of evidence.usageSnapshots) {
-    const total = snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead;
-    if (!(total > 0)) continue;
-    const previous = latestUsage.get(snapshot.actorId);
-    if (!previous || Date.parse(snapshot.timestamp) >= Date.parse(previous.timestamp)) latestUsage.set(snapshot.actorId, snapshot);
-  }
-  const agents = evidence.agents.map((agent) => {
-    const snapshot = latestUsage.get(agent.id) || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
-    return {
-      workflowId: null,
-      workflowPhaseId: null,
-      workflowOrder: null,
-      workflowState: null,
-      ...agent,
-      cacheLifetime: (() => {
-        const lifetimes = new Set(evidence.usageSnapshots
-          .filter((item) => item.actorId === agent.id)
-          .map((item) => item.cacheLifetime)
-          .filter((value) => value === "5m" || value === "1h" || value === "mixed"));
-        if (lifetimes.has("mixed") || (lifetimes.has("5m") && lifetimes.has("1h"))) return "mixed";
-        if (lifetimes.has("1h")) return "1h";
-        if (lifetimes.has("5m")) return "5m";
-        return null;
-      })(),
-      tokens: {
-        total: snapshot.input + snapshot.output + snapshot.cacheWrite + snapshot.cacheRead,
-        input: snapshot.input,
-        output: snapshot.output,
-        cacheWrite: snapshot.cacheWrite,
-        cacheRead: snapshot.cacheRead,
-        ...(Number.isFinite(snapshot.reasoningOutput) ? { reasoningOutput: snapshot.reasoningOutput } : {}),
-        ...(Number.isFinite(snapshot.modelContextWindow) ? { modelContextWindow: snapshot.modelContextWindow } : {}),
-      },
-    };
+  return projectProviderSessionEvidence({
+    evidence,
+    sessionId: qualifyProviderSessionId(providerId, evidence.localId),
+    source,
+    capabilities: createEmptyProviderCapabilities(),
+    repository: {
+      available: Boolean(evidence.session.recordedGitBranch),
+      branch: evidence.session.recordedGitBranch,
+      files: [],
+      historical: evidence.historical,
+      isMain: false,
+      comparison: null,
+      commits: [],
+      remote: { status: "unavailable", checkedAt: null },
+    },
+    pullRequests: { status: "ready", checkedAt: null, items: [] },
+    usageLimits: createEmptyUsageLimits(),
+    resources: null,
   });
-  const tokenTotals = agents.reduce((totals, agent) => ({
-    allAgents: totals.allAgents + agent.tokens.total,
-    input: totals.input + agent.tokens.input,
-    output: totals.output + agent.tokens.output,
-    cacheWrite: totals.cacheWrite + agent.tokens.cacheWrite,
-    cacheRead: totals.cacheRead + agent.tokens.cacheRead,
-  }), { allAgents: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 });
-  const started = Date.parse(evidence.session.startedAt || "");
-  const updated = Date.parse(evidence.session.updatedAt || "");
-  const { recordedGitBranch, ...sessionEvidence } = evidence.session;
-  const base = createEmptyMonitorState({ connected: true, source, view: evidence.historical ? "history" : "live" });
-
-  return {
-    ...base,
-    session: {
-      ...sessionEvidence,
-      id: qualifyProviderSessionId(providerId, evidence.localId),
-      repository: {
-        available: Boolean(recordedGitBranch),
-        branch: recordedGitBranch,
-        files: [],
-        historical: evidence.historical,
-        isMain: false,
-        comparison: null,
-        commits: [],
-        remote: { status: "unavailable", checkedAt: null },
-      },
-      pullRequests: { status: "ready", checkedAt: null, items: [] },
-      durationMs: Number.isFinite(started) && Number.isFinite(updated) ? Math.max(0, updated - started) : 0,
-    },
-    metrics: {
-      agents: agents.length,
-      activeAgents: agents.filter((agent) => agent.status === "active" || agent.status === "waiting").length,
-      toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0),
-      repeatedCalls: 0,
-      tokens: {
-        ...tokenTotals,
-        contextHistory: { bucketMs: 0, buckets: [], boundaries: [] },
-        cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
-        requestSnapshots: { status: "unavailable", items: [] },
-      },
-    },
-    agents,
-    workflows: evidence.workflows || [],
-    toolPatterns: evidence.toolCalls.map((call) => ({
-      id: call.id,
-      agent: call.actor.label,
-      tool: call.tool,
-      detail: call.detail,
-      calls: 1,
-    })),
-    activity: evidence.activity,
-    executionTasks: agents.find((agent) => agent.id === "primary")?.executionTasks || [],
-    planTasks: evidence.planTasks,
-  };
 }

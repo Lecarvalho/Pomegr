@@ -42,7 +42,7 @@ export function createEmptyProviderCapabilities() {
  * @returns {MonitorState}
  */
 export function createEmptyMonitorState(options = {}) {
-  const state = {
+  const state = /** @type {MonitorState} */ ({
     connected: options.connected ?? false,
     source: options.source ?? "Claude Code",
     capabilities: options.capabilities ?? createEmptyProviderCapabilities(),
@@ -75,6 +75,6 @@ export function createEmptyMonitorState(options = {}) {
     planTasks: [],
     insights: [],
     usageLimits: options.usageLimits ?? createEmptyUsageLimits(),
-  };
+  });
   return options.error ? { ...state, error: options.error } : state;
 }

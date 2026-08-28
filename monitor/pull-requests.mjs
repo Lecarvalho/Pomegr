@@ -1,7 +1,4 @@
 import { execFile } from "node:child_process";
-import { pullRequestUrls, readClaudePullRequestUrls } from "./providers/claude-pull-requests.mjs";
-
-export { pullRequestUrls } from "./providers/claude-pull-requests.mjs";
 
 const MAX_PULL_REQUESTS = 8;
 const CACHE_TTL_MS = 60_000;
@@ -10,6 +7,24 @@ const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-
 const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt";
 const metadataCache = new Map();
 const branchCache = new Map();
+
+/**
+ * Read bounded URLs from normalized provider evidence. Provider transcript
+ * parsing belongs in adapters; this generic enrichment module never receives
+ * a provider-native record or transcript path.
+ *
+ * @param {unknown} creations
+ */
+export function pullRequestUrls(creations) {
+  if (!Array.isArray(creations)) return [];
+  const urls = new Set();
+  for (const creation of creations) {
+    if (typeof creation?.url !== "string" || !pullRequestReference(creation.url)) continue;
+    urls.add(creation.url);
+    if (urls.size >= MAX_PULL_REQUESTS) break;
+  }
+  return [...urls];
+}
 
 function safeText(value, maximumLength) {
   return typeof value === "string"
@@ -118,15 +133,21 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
     : { loaded: await load(), checkedAt: new Date().toISOString() };
 }
 
-export async function readPullRequests(records, options = {}) {
+/**
+ * Enrich normalized pull-request creation evidence with GitHub metadata.
+ * The first argument is retained for existing callers, but it accepts only
+ * normalized creation objects (never provider records).
+ *
+ * @param {unknown} sessionCreations
+ * @param {{ sessionCreations?: unknown, sessionUrls?: unknown, cwd?: string, branch?: string, historical?: boolean, ghRunner?: typeof runGh }} [options]
+ */
+export async function readPullRequests(sessionCreations = [], options = {}) {
   const ghRunner = options.ghRunner || runGh;
   const transcriptUrls = Array.isArray(options.sessionCreations)
-    ? [...new Set(options.sessionCreations.map((event) => event?.url).filter((url) => typeof url === "string"))].slice(0, MAX_PULL_REQUESTS)
+    ? pullRequestUrls(options.sessionCreations)
     : Array.isArray(options.sessionUrls)
-      ? [...new Set(options.sessionUrls)].slice(0, MAX_PULL_REQUESTS)
-    : Array.isArray(options.transcripts)
-      ? await readClaudePullRequestUrls(options.transcripts)
-      : pullRequestUrls(records);
+      ? pullRequestUrls(options.sessionUrls.map((url) => ({ url })))
+      : pullRequestUrls(sessionCreations);
   const metadata = await Promise.all(transcriptUrls.map(async (url) => ({ url, result: await metadataForUrl(options.cwd, url, ghRunner) })));
   const branchResult = options.historical ? null : await pullRequestsForBranch(options.cwd, options.branch, ghRunner);
   const branchValues = branchResult?.loaded ?? null;

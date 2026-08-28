@@ -113,11 +113,11 @@ export function concurrentMutationOverlaps(events, windowMs = CONCURRENT_MUTATIO
 
   const overlapsByTarget = new Map();
   for (const scopedEvents of byScope.values()) {
-    const sorted = scopedEvents.toSorted((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sorted = scopedEvents.toSorted((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     const colliding = new Set();
     for (let left = 0; left < sorted.length; left += 1) {
       for (let right = left + 1; right < sorted.length; right += 1) {
-        const delta = new Date(sorted[right].timestamp) - new Date(sorted[left].timestamp);
+        const delta = new Date(sorted[right].timestamp).getTime() - new Date(sorted[left].timestamp).getTime();
         if (delta > windowMs) break;
         if (sorted[left].actorId !== sorted[right].actorId) {
           colliding.add(sorted[left]);

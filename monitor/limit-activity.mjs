@@ -29,24 +29,25 @@ function windowDurationMs(value) {
   return null;
 }
 
-function sparkModel(value) {
-  return boundedText(value, 120)?.toLowerCase().replace(/[\s_]+/g, "-") === "gpt-5.3-codex-spark";
+function normalizedModel(value) {
+  return boundedText(value, 120)?.toLowerCase().replace(/[\s_.:]+/g, "-") || null;
 }
 
-function sparkLimit(limit) {
-  return /(?:^|[^a-z0-9])(?:gpt-)?5[.-]3-codex-spark(?:[^a-z0-9]|$)/i.test(`${limit.limitId} ${limit.label}`);
+function textMatchesSegments(value, segments) {
+  const text = normalizedModel(value);
+  return Boolean(text && segments.some((segment) => text.includes(segment)));
 }
 
-function fableModel(value) {
-  const model = boundedText(value, 120)?.toLowerCase().replace(/[\s_.:]+/g, "-");
-  return Boolean(model && /(?:^|-)fable(?:-|$)/.test(model));
+function policyFor(policiesByProvider, provider) {
+  if (policiesByProvider instanceof Map) return policiesByProvider.get(provider)?.usageLimitActivity || null;
+  return policiesByProvider?.[provider]?.usageLimitActivity || null;
 }
 
 function modelMatchesLimit(limit, model) {
-  return limit.provider === "claude" && limit.limitId === "model-fable" && fableModel(model);
+  return limit.scope === "model" && textMatchesSegments(model, limit.modelSegments || []);
 }
 
-function normalizedProviderLimits(item) {
+function normalizedProviderLimits(item, policy = null) {
   if (!item || typeof item !== "object") return null;
   const provider = boundedText(item.provider, 80);
   const source = boundedText(item.source, 120);
@@ -55,15 +56,12 @@ function normalizedProviderLimits(item) {
   const observedAt = timestamp(usageLimits.fetchedAt);
   if (!observedAt || !Array.isArray(usageLimits.limits)) return null;
 
-  const candidates = usageLimits.limits.filter((limit) => limit && typeof limit === "object");
-  const eligible = provider === "codex"
-    ? candidates.filter((limit) => windowDurationMs(limit.window) !== null)
-    : [
-        candidates.find((limit) => boundedText(limit.id, 120) === "current-session" && windowDurationMs(limit.window) === FIVE_HOURS_MS)
-          || candidates.find((limit) => windowDurationMs(limit.window) === FIVE_HOURS_MS),
-        candidates.find((limit) => boundedText(limit.id, 120) === "all-models" && windowDurationMs(limit.window) === SEVEN_DAYS_MS),
-        candidates.find((limit) => boundedText(limit.id, 120) === "model-fable" && windowDurationMs(limit.window) === SEVEN_DAYS_MS),
-      ].filter(Boolean);
+  const candidates = usageLimits.limits.filter((limit) => limit && typeof limit === "object"
+    && windowDurationMs(limit.window) !== null);
+  const trackedLimitIds = policy?.trackedLimitIds;
+  const eligible = Array.isArray(trackedLimitIds)
+    ? trackedLimitIds.flatMap((id) => candidates.find((limit) => boundedText(limit.id, 120) === id) || [])
+    : candidates;
   return eligible.flatMap((selected) => {
     const limitId = boundedText(selected.id, 120) || "current-session";
     const label = boundedText(selected.label, 160) || "Current session";
@@ -75,8 +73,21 @@ function normalizedProviderLimits(item) {
       ? null
       : timestamp(selected.resetsAt);
     if (selected.resetsAt !== null && selected.resetsAt !== undefined && !resetsAt) return [];
-    const scope = provider === "claude" && limitId === "model-fable" ? "model" : "account";
-    return [{ provider, source, limitId, label, window, scope, durationMs, percent, resetsAt, observedAt }];
+    const modelScope = policy?.modelScopes?.find((entry) => entry.limitId === limitId);
+    const scope = modelScope ? "model" : "account";
+    return [{
+      provider,
+      source,
+      limitId,
+      label,
+      window,
+      scope,
+      modelSegments: modelScope?.modelSegments || [],
+      durationMs,
+      percent,
+      resetsAt,
+      observedAt,
+    }];
   });
 }
 
@@ -157,12 +168,12 @@ function limitKey(limit) {
   return `${limit.provider}\u0000${limit.limitId}\u0000${limit.durationMs}`;
 }
 
-function dominantCodexModel(sessions, generatedAt) {
+function dominantProviderModel(sessions, provider, generatedAt) {
   const endMs = Date.parse(generatedAt);
   const startMs = endMs - SEVEN_DAYS_MS;
   const counts = new Map();
   for (const session of sessions) {
-    if (session.provider !== "codex") continue;
+    if (session.provider !== provider) continue;
     for (const observation of session.requestModelObservations) {
       const at = Date.parse(observation.observedAt);
       if (!Number.isFinite(at) || at < startMs || at > endMs) continue;
@@ -175,25 +186,32 @@ function dominantCodexModel(sessions, generatedAt) {
   return ordered[0][0];
 }
 
-function selectedProviderLimits(providerLimits, sessions, generatedAt) {
-  const normalized = providerLimits.flatMap((item) => normalizedProviderLimits(item) || []);
+function selectedProviderLimits(providerLimits, sessions, generatedAt, policiesByProvider) {
+  const normalized = providerLimits.flatMap((item) => normalizedProviderLimits(
+    item,
+    policyFor(policiesByProvider, item?.provider),
+  ) || []);
   const selected = [];
   for (const provider of new Set(normalized.map((limit) => limit.provider))) {
     const candidates = normalized.filter((limit) => limit.provider === provider);
-    if (provider !== "codex") {
+    const selection = policyFor(policiesByProvider, provider)?.selection || { mode: "all" };
+    if (selection.mode === "all") {
       selected.push(...candidates);
       continue;
     }
-    const dominantModel = dominantCodexModel(sessions, generatedAt);
-    if (sparkModel(dominantModel)) {
-      const fiveHour = candidates.find((limit) => limit.durationMs === FIVE_HOURS_MS && sparkLimit(limit))
-        || candidates.find((limit) => limit.durationMs === FIVE_HOURS_MS);
-      if (fiveHour) selected.push(fiveHour);
-      continue;
-    }
-    const weekly = candidates.find((limit) => limit.durationMs === SEVEN_DAYS_MS && !sparkLimit(limit))
-      || candidates.find((limit) => limit.durationMs === SEVEN_DAYS_MS);
-    if (weekly) selected.push(weekly);
+    const dominantModel = dominantProviderModel(sessions, provider, generatedAt);
+    const override = selection.overrides.find((entry) => entry.models.includes(dominantModel));
+    const selectedWindow = override?.window || selection.defaultWindow;
+    const durationMs = selectedWindow === "5h" ? FIVE_HOURS_MS : SEVEN_DAYS_MS;
+    const preferredSegments = override?.preferredLimitSegments || [];
+    const excludedSegments = override ? [] : selection.defaultExcludedLimitSegments;
+    const selectedLimit = candidates.find((limit) => limit.durationMs === durationMs
+      && preferredSegments.length > 0
+      && textMatchesSegments(`${limit.limitId}-${limit.label}`, preferredSegments))
+      || candidates.find((limit) => limit.durationMs === durationMs
+        && !textMatchesSegments(`${limit.limitId}-${limit.label}`, excludedSegments))
+      || candidates.find((limit) => limit.durationMs === durationMs);
+    if (selectedLimit) selected.push(selectedLimit);
   }
   return selected;
 }
@@ -223,10 +241,10 @@ export function createHomeLimitActivityTracker({
     }
   }
 
-  function observe(providerLimits) {
+  function observe(providerLimits, policiesByProvider = {}) {
     if (!Array.isArray(providerLimits)) return;
     for (const item of providerLimits) {
-      for (const current of normalizedProviderLimits(item) || []) {
+      for (const current of normalizedProviderLimits(item, policyFor(policiesByProvider, item?.provider)) || []) {
         const key = limitKey(current);
         const previous = histories.get(key);
         const samples = previous?.samples ? [...previous.samples] : [];
@@ -265,6 +283,7 @@ export function createHomeLimitActivityTracker({
           label: current.label,
           window: current.window,
           scope: current.scope,
+          modelSegments: current.modelSegments,
           durationMs: current.durationMs,
           windowStartsAt,
           windowStartsAtExact,
@@ -275,8 +294,8 @@ export function createHomeLimitActivityTracker({
     }
   }
 
-  function build({ providerLimits = [], sessions = [], modelSelectionSessions = sessions, generatedAt } = {}) {
-    observe(providerLimits);
+  function build({ providerLimits = [], sessions = [], modelSelectionSessions = sessions, policiesByProvider = {}, generatedAt } = {}) {
+    observe(providerLimits, policiesByProvider);
     const generated = timestamp(generatedAt) || new Date().toISOString();
     const safeSessions = Array.isArray(sessions) ? sessions.map(safeSession).filter(Boolean) : [];
     const safeModelSelectionSessions = Array.isArray(modelSelectionSessions)
@@ -284,7 +303,12 @@ export function createHomeLimitActivityTracker({
       : safeSessions;
     const activities = [];
     const seen = new Set();
-    for (const current of selectedProviderLimits(Array.isArray(providerLimits) ? providerLimits : [], safeModelSelectionSessions, generated)) {
+    for (const current of selectedProviderLimits(
+      Array.isArray(providerLimits) ? providerLimits : [],
+      safeModelSelectionSessions,
+      generated,
+      policiesByProvider,
+    )) {
       const key = limitKey(current);
       if (seen.has(key)) continue;
       seen.add(key);

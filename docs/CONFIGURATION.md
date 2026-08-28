@@ -65,19 +65,25 @@ An authenticated connection to the app-server process that owns a Codex thread i
 
 ## Capability availability
 
-| Capability | Claude Code | Codex |
-| --- | --- | --- |
-| Catalog and persisted history | Supported | Supported |
-| Agent tree, activity, execution tasks, skills, signals, and PR creation evidence | Supported | Supported for recognized records |
-| Latest context snapshot | Supported | Supported from `last_token_usage` only |
-| Live and needs-input state | Registry-backed with transcript fallback | Owning app-server or lifecycle bridge; rollout fallback is heuristic |
-| Approval mode | Supported | Supported for recognized policies |
-| Structured plan checklist | Supported | Best effort; no natural-language plan inference |
-| Usage-limit windows | Supported with provider authentication | Supported through an installed, authenticated native Codex CLI |
-| Automatic-compaction warning | Supported for explicit automatic records | Best effort; requires an explicit automatic trigger |
-| Estimated API cost | Optional Claude status-line estimate | Unavailable |
-| Context-machinery snapshot | Optional recorded Claude `/context` output | Unavailable |
-| Provider-generated session summary | Supported for recognized records | Unavailable |
+This matrix is generated from the same explicit manifests enforced for every provider adapter. Runtime readiness and the presence of evidence in one session are separate: “Supported” does not imply that an optional executable is installed or that every session contains the evidence.
+
+<!-- provider-capabilities:start -->
+| Capability | Normalized evidence | Claude Code | Codex |
+| --- | --- | --- | --- |
+| Approval mode | `session.approvalMode` | Supported | Supported |
+| Automatic compactions | `compactions` | Supported | Supported |
+| Context machinery | `session.contextMachinery` | Supported | Unsupported — Codex session evidence does not expose normalized context-machinery categories. |
+| Estimated cost | `session.cost` | Supported | Unsupported — Codex session evidence does not expose a provider cost estimate. |
+| Live sessions | `catalog.isLive` | Supported | Supported |
+| Needs-input state | `catalog.needsInput` | Supported | Supported |
+| Plan tasks | `planTasks` | Supported | Supported |
+| Cache-write usage | `usageSnapshots.cacheWrite` | Supported | Unsupported — Codex usage evidence does not provide normalized cache-write tokens. |
+| Cache usage classification | `usageSnapshots.cacheComparable` | Supported | Unsupported — Codex usage evidence cannot safely classify cache-write behavior. |
+| Session summary | `session.summary` | Supported | Unsupported — Codex session evidence does not expose a bounded provider session summary. |
+| Agent-reported signals | `session.signal` | Supported | Supported |
+| Usage limits | `usageLimits` | Supported | Supported |
+| Workflows | `workflows` | Supported | Unsupported — Codex does not expose the structured workflow artifacts required by the normalized workflow contract. |
+<!-- provider-capabilities:end -->
 
 Unavailable features are capability-gated and omitted. A missing value is not rendered as zero.
 
