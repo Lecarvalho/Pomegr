@@ -18,6 +18,7 @@ export function createCodexLiveState({
 }) {
   const rolloutCache = new Map();
   const liveAgentAssignmentCache = new Map();
+  const liveAgentRuntimeCache = new Map();
   const liveContextUsageCache = new Map();
   const liveExecutionTaskCache = new Map();
   const liveCurrentActivityCache = new Map();
@@ -60,6 +61,7 @@ export function createCodexLiveState({
   function invalidateRolloutFile(file, { clearContext = false } = {}) {
     rolloutCache.delete(file);
     liveAgentAssignmentCache.delete(file);
+    liveAgentRuntimeCache.delete(file);
     if (clearContext) liveContextUsageCache.delete(file);
     liveExecutionTaskCache.delete(file);
     liveCurrentActivityCache.delete(file);
@@ -141,6 +143,35 @@ export function createCodexLiveState({
   function hydrateLiveAgentAssignments(file, generation, fallback) {
     const hydrated = parseHydrationRecords(file, generation);
     return hydrated ? assignmentCollaborations(parseCodexAgentRecords(hydrated.records, fallback).collaborations) : [];
+  }
+
+  function reusableLiveAgentRuntime(file, threadId, generation) {
+    const cached = reusable(liveAgentRuntimeCache, file, threadId, generation);
+    if (!cached || generation.size - cached.generation.size > maximumLiveTailBytes) {
+      if (cached) liveAgentRuntimeCache.delete(file);
+      return null;
+    }
+    return cached.runtime;
+  }
+
+  function hydrateLiveAgentRuntime(file, generation, fallback) {
+    const hydrated = parseHydrationRecords(file, generation);
+    return hydrated ? parseCodexAgentRecords(hydrated.records, fallback).runtime : null;
+  }
+
+  function resolveLiveAgentRuntime(file, threadId, generation, fallback, runtime) {
+    const retained = runtime.model === "unknown" || runtime.effort === "unspecified"
+      ? reusableLiveAgentRuntime(file, threadId, generation) ?? hydrateLiveAgentRuntime(file, generation, fallback)
+      : null;
+    const resolved = retained ? {
+      ...runtime,
+      model: runtime.model === "unknown" ? retained.model : runtime.model,
+      effort: runtime.effort === "unspecified" ? retained.effort : runtime.effort,
+    } : runtime;
+    liveAgentRuntimeCache.delete(file);
+    liveAgentRuntimeCache.set(file, { threadId, generation, runtime: resolved });
+    while (liveAgentRuntimeCache.size > scanLimit) liveAgentRuntimeCache.delete(liveAgentRuntimeCache.keys().next().value);
+    return resolved;
   }
 
   function reusableLiveTaskState(file, threadId, generation) {
@@ -293,7 +324,7 @@ export function createCodexLiveState({
   }
 
   function pruneKnownFiles(knownRolloutFiles) {
-    for (const cache of [liveExecutionTaskCache, liveCurrentActivityCache, liveAgentAssignmentCache, liveApprovalModeCache]) {
+    for (const cache of [liveExecutionTaskCache, liveCurrentActivityCache, liveAgentAssignmentCache, liveAgentRuntimeCache, liveApprovalModeCache]) {
       for (const file of cache.keys()) if (!knownRolloutFiles.has(file)) cache.delete(file);
     }
   }
@@ -303,6 +334,7 @@ export function createCodexLiveState({
       ...rolloutStats,
       cacheEntries: rolloutCache.size,
       liveExecutionTaskEntries: liveExecutionTaskCache.size,
+      liveAgentRuntimeEntries: liveAgentRuntimeCache.size,
       liveCurrentActivityEntries: liveCurrentActivityCache.size,
       liveApprovalModeEntries: liveApprovalModeCache.size,
       livePlanTaskEntries: livePlanTaskCache.size,
@@ -325,6 +357,7 @@ export function createCodexLiveState({
     mergeLiveContextEvidence,
     pruneKnownFiles,
     readRolloutRecords,
+    resolveLiveAgentRuntime,
     reusableLiveAgentAssignments,
     reusableLiveApprovalMode,
     reusableLiveCurrentActivity,

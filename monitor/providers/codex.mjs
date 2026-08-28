@@ -166,6 +166,7 @@ export function createCodexProvider(options = {}) {
     mergeLiveContextEvidence,
     pruneKnownFiles,
     readRolloutRecords,
+    resolveLiveAgentRuntime,
     reusableLiveAgentAssignments,
     reusableLiveApprovalMode,
     reusableLiveCurrentActivity,
@@ -398,6 +399,7 @@ export function createCodexProvider(options = {}) {
         if (generation) generationsByThreadId.set(thread.localId, generation);
         let summary = parseCodexAgentRecords(records, thread);
         if (!historical && generation) {
+          summary = { ...summary, runtime: resolveLiveAgentRuntime(thread.rolloutFile, thread.localId, generation, thread, summary.runtime) };
           const retained = reusableLiveAgentAssignments(thread.rolloutFile, thread.localId, generation)
             ?? hydrateLiveAgentAssignments(thread.rolloutFile, generation, thread);
           const collaborations = assignmentCollaborations([...retained, ...summary.collaborations]);
