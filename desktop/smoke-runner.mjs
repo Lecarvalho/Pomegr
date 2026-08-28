@@ -150,7 +150,6 @@ async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvir
     "--disable-crash-reporter",
     "--disable-gpu",
     "--disable-gpu-compositing",
-    "--disable-software-rasterizer",
     "--noerrdialogs",
     `--user-data-dir=${profileRoot}`,
     archivePath,

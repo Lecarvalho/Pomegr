@@ -231,13 +231,18 @@ test("release preparation requires a clean exact tag and emits a closed checksum
 });
 
 test("release workflow fails closed around signing, drafts, and exact-source publication", async () => {
-  const [workflow, signatureVerifier, preparer, documentation] = await Promise.all([
+  const [workflow, verificationWorkflow, signatureVerifier, preparer, documentation] = await Promise.all([
     readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8"),
     readFile(new URL("../desktop/verify-signature.ps1", import.meta.url), "utf8"),
     readFile(new URL("../desktop/prepare-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
   ]);
   assert.equal(POMEGR_WINDOWS_PUBLISHER, "Leandro Carvalho");
+  for (const windowsWorkflow of [workflow, verificationWorkflow]) {
+    assert.match(windowsWorkflow, /runs-on: windows-2022/);
+    assert.doesNotMatch(windowsWorkflow, /runs-on: windows-latest/);
+  }
   assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /persist-credentials: false/);

@@ -41,12 +41,16 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.doesNotMatch(packageJson.scripts["desktop:smoke"], /(^|\s)node(?:\.exe)?(?:\s|$)/i);
   assert.ok(main.indexOf("app.disableHardwareAcceleration()") < main.indexOf("app.whenReady()"));
   assert.match(main, /disable-gpu/);
+  assert.doesNotMatch(main, /disable-software-rasterizer/);
+  assert.doesNotMatch(runner, /disable-software-rasterizer/);
   assert.match(main, /noerrdialogs/);
   assert.match(main, /POMEGR_SMOKE_PROFILE_ROOT/);
   assert.match(main, /resolveDesktopPaths\(\{/);
   assert.match(main, /DESKTOP_DATA_ROOT_NOT_ISOLATED/);
   assert.doesNotMatch(main, /recordStage\(["']FINISHED_FAIL["']\)/);
   assert.match(main, /recordStage\(["']CLEANUP_FAILED["']\)/);
+  assert.match(main, /const failedAt = exitCode === 0 \? null : lastStage/);
+  assert.match(main, /else if \(!cleanupFailed && failedAt\) recordStage\(failedAt\)/);
   assert.match(main, /recordStage\(["']WATCHDOG_TIMEOUT["']\)/);
   assert.match(main, /recordStage\(["']UNEXPECTED_QUIT["']\)/);
   assert.match(main, /new Worker\(/);
