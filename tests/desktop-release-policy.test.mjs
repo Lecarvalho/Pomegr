@@ -252,7 +252,7 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE/);
   assert.match(workflow, /forceCodeSigning=true/);
   const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm run verify", "npm run verify:desktop"]) {
+  for (const command of ["npm run verify", "npm run verify:desktop:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
   assert.match(workflow, /verify-signature\.ps1/);

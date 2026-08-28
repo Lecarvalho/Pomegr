@@ -36,6 +36,8 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
 
   assert.equal(packageJson.scripts["desktop:runtime"], "node node_modules/electron/install.js");
   assert.match(packageJson.scripts["verify:desktop"], /^npm run desktop:runtime && npm run desktop:smoke/);
+  assert.match(packageJson.scripts["verify:desktop:ci"], /^npm run desktop:runtime && npm run desktop:smoke:ci/);
+  assert.match(packageJson.scripts["desktop:smoke:ci"], /POMEGR_SMOKE_RENDERER_MODE=offscreen/);
   assert.match(packageJson.scripts["desktop:smoke"], /ELECTRON_RUN_AS_NODE=1/);
   assert.match(packageJson.scripts["desktop:smoke"], /electron[\\/]dist[\\/]electron\.exe desktop[\\/]smoke-runner\.mjs/);
   assert.doesNotMatch(packageJson.scripts["desktop:smoke"], /(^|\s)node(?:\.exe)?(?:\s|$)/i);
@@ -55,6 +57,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /recordStage\(["']UNEXPECTED_QUIT["']\)/);
   assert.match(main, /new Worker\(/);
   assert.match(main, /new BrowserWindow\(/);
+  assert.match(main, /new WebContentsView\(/);
   assert.match(main, /secureBrowserWindowOptions\(/);
   assert.match(main, /installSessionSecurity\(/);
   assert.match(main, /installWebContentsSecurity\(/);
@@ -91,7 +94,8 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /UPDATER_RUNTIME_VERIFIED/);
   assert.match(main, /stream\.write\(`\$\{message\}\\n`, resolve\)/);
   assert.match(main, /app\.on\(["']window-all-closed["'], \(\) => \{\}\)/);
-  assert.ok(main.indexOf("smokeWindow?.destroy()") < main.indexOf("webHandle.close()"));
+  assert.ok(main.indexOf("smokeWindow.destroy()") < main.indexOf("webHandle.close()"));
+  assert.ok(main.indexOf("smokeContentsView.webContents.close") < main.indexOf("webHandle.close()"));
   assert.match(main, /withDeadline\(webHandle\.close\(\), STOP_TIMEOUT_MS/);
   assert.match(main, /CLEANUP_WEB_STOPPED/);
 });

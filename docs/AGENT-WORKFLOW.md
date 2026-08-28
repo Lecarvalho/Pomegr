@@ -32,6 +32,13 @@ that generated files are in sync. Desktop packaging uses
 web output; `npm run desktop:prepare` remains the compatibility wrapper that builds
 from scratch.
 
+`npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
+`BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so PR and
+release workflows use `npm run verify:desktop:ci`: it exercises the same Electron main
+process, ASAR/native runtime, sandboxed preload and renderer, loopback services, APIs,
+privacy checks, and shutdown through an unattached `WebContentsView`. A full
+`BrowserWindow` smoke remains a local or interactive-VM release acceptance requirement.
+
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry
 point; do not delete a module solely because a static graph cannot see a runtime load.

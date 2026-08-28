@@ -38,4 +38,4 @@ jobs:
       - name: Run canonical verifier
         run: npm run verify
       - name: Run desktop verification extension
-        run: npm run verify:desktop
+        run: npm run verify:desktop:ci

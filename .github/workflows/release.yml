@@ -59,7 +59,7 @@ jobs:
       - name: Run canonical verifier and desktop extension
         run: |
           npm run verify
-          npm run verify:desktop
+          npm run verify:desktop:ci
 
       - name: Build and sign Windows artifacts
         shell: pwsh

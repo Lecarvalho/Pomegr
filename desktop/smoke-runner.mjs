@@ -139,10 +139,12 @@ async function createFixture(fixtureRoot) {
 }
 
 async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath) {
+  const rendererMode = process.env.POMEGR_SMOKE_RENDERER_MODE === "offscreen" ? "offscreen" : "window";
   const environment = minimalRuntimeEnvironment(process.env, {
     POMEGR_SMOKE_MAIN_STAGE_PATH: mainStagePath,
     POMEGR_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
     POMEGR_SMOKE_PROFILE_ROOT: profileRoot,
+    POMEGR_SMOKE_RENDERER_MODE: rendererMode,
   });
   if (!executableOnPath(environment, "git.exe")) throw new Error("DESKTOP_GIT_PATH_MISSING");
   const child = spawn(process.execPath, [

@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow, session, WebContentsView } from "electron";
 import {
   assertNoSystemNodeInPath,
   environmentValue,
@@ -39,6 +39,7 @@ const OVERALL_TIMEOUT_MS = 75_000;
 const children = [];
 let webHandle;
 let smokeWindow;
+let smokeContentsView;
 let finishing = false;
 let watchdog;
 let runtimePaths;
@@ -123,7 +124,12 @@ async function startService(filename, args, environment, stagePrefix, workerData
 async function stopAll() {
   let failed = false;
   recordStage("CLEANUP_WINDOW_CLOSING");
-  try { smokeWindow?.destroy(); } catch { failed = true; }
+  try {
+    if (smokeWindow) smokeWindow.destroy();
+    else if (smokeContentsView && !smokeContentsView.webContents.isDestroyed()) {
+      smokeContentsView.webContents.close({ waitForBeforeUnload: false });
+    }
+  } catch { failed = true; }
   recordStage("CLEANUP_WINDOW_CLOSED");
   for (const child of [...children].reverse()) {
     recordStage("CLEANUP_WORKER_STOPPING");
@@ -252,22 +258,28 @@ async function executeSmoke() {
       throw new Error("DESKTOP_PROVIDER_DISCOVERY_FAILED");
     }
     recordStage("WEB_HEALTH_VERIFIED");
-    recordStage("WINDOW_CREATING");
+    const rendererMode = environmentValue(process.env, "POMEGR_SMOKE_RENDERER_MODE") === "offscreen"
+      ? "offscreen"
+      : "window";
+    recordStage(rendererMode === "offscreen" ? "OFFSCREEN_RENDERER_CREATING" : "WINDOW_CREATING");
     const browserSession = session.fromPartition("pomegr-smoke", { cache: false });
     installSessionSecurity(browserSession, {
       webOrigin: webHandle.origin,
       authorizationToken,
     });
-    smokeWindow = new BrowserWindow(secureBrowserWindowOptions({
+    const windowOptions = secureBrowserWindowOptions({
       preloadPath: path.join(runtimePaths.applicationRoot, "desktop", "preload.cjs"),
       browserSession,
-    }));
-    installWebContentsSecurity(smokeWindow.webContents, {
+    });
+    const rendererContents = rendererMode === "offscreen"
+      ? (smokeContentsView = new WebContentsView({ webPreferences: windowOptions.webPreferences })).webContents
+      : (smokeWindow = new BrowserWindow(windowOptions)).webContents;
+    installWebContentsSecurity(rendererContents, {
       webOrigin: webHandle.origin,
       openExternal: async () => {},
     });
-    await smokeWindow.loadURL(webHandle.origin);
-    const rendererBoundary = await smokeWindow.webContents.executeJavaScript(`(async () => {
+    await rendererContents.loadURL(webHandle.origin);
+    const rendererBoundary = await rendererContents.executeJavaScript(`(async () => {
       const deadline = Date.now() + 15000;
       while (Date.now() < deadline) {
         const frame = document.querySelector('.appFrame');
@@ -308,7 +320,7 @@ async function executeSmoke() {
       || rendererBoundary.privacySafe !== true) {
       throw new Error("DESKTOP_RENDERER_BOUNDARY_FAILED");
     }
-    recordStage("WINDOW_VERIFIED");
+    recordStage(rendererMode === "offscreen" ? "OFFSCREEN_RENDERER_VERIFIED" : "WINDOW_VERIFIED");
     recordStage("RUNTIME_VERIFIED");
     await finish(0);
   } catch {
