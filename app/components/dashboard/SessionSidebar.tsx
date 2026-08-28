@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import type { SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeReadiness, SessionSummary } from "../../../shared/monitor-contract";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { groupSessionsByProject, sessionListTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
@@ -19,7 +19,7 @@ function sessionActivityLabel(session: SessionSummary) {
   return { label: "Open", className: "unknown" };
 }
 
-export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect }: {
+export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect, readiness }: {
   open: boolean;
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -31,6 +31,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
   onInstallUpdate?: () => void;
   onClose: () => void;
   onSelect: (session: SessionSummary) => void;
+  readiness?: Pick<HomeReadiness, "catalog" | "sessionSummaries">;
 }) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const sidebarRef = useRef<HTMLElement | null>(null);
@@ -40,6 +41,8 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
   const historySessions = sessions.filter((session) => !session.isLive);
   const historyGroups = groupSessionsByProject(historySessions);
   const liveProjectCount = new Set(liveSessions.map((session) => session.project)).size;
+  const catalogReady = readiness?.catalog !== "loading";
+  const catalogUnavailable = readiness?.catalog === "unavailable";
 
   return (
     <>
@@ -49,14 +52,15 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
           <div><span className="label">POMEGR</span><strong>Sessions</strong></div>
           <CloseButton label="Close session navigation" onClick={onClose} />
         </div>
-        <nav className="sessionNav">
-          <div className="liveHeading"><span>HOME</span><small>{liveProjectCount}</small></div>
+        <nav className="sessionNav" aria-busy={!catalogReady}>
+          <div className="liveHeading"><span>HOME</span><small>{catalogReady ? liveProjectCount : <span className="sidebarUnknownCount" aria-label="Session count loading">—</span>}</small></div>
           <Link className={`liveSessionLink ${homeSelected ? "selected" : ""}`} href="/" onClick={onClose} aria-label="Home — open sessions" aria-current={homeSelected ? "page" : undefined}>
             <i />
             <span><strong>Open sessions</strong><small>{liveSessions.length} open across projects</small></span>
           </Link>
-          <div className="historyHeading"><span>OPEN SESSIONS</span><small>{liveSessions.length}</small></div>
+          <div className="historyHeading"><span>OPEN SESSIONS</span><small>{catalogReady ? liveSessions.length : <span className="sidebarUnknownCount" aria-label="Session count loading">—</span>}</small></div>
           <div className="liveSessionList">
+            {!catalogReady && !sessions.length && <div className="sidebarSkeletonList" aria-hidden="true">{[0, 1, 2, 3].map((key) => <div className="sidebarSkeletonRow" key={key}><i /><span><b /><em /></span></div>)}</div>}
             {liveSessions.map((session) => {
               const selected = selectedSessionId ? selectedSessionId === session.id : currentSessionId === session.id && !viewingHistory;
               const activity = sessionActivityLabel(session);
@@ -67,9 +71,9 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
                 </button>
               );
             })}
-            {liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>No open sessions</strong><small>New sessions appear automatically</small></span></div>}
+            {catalogReady && liveSessions.length === 0 && <div className="liveSessionEmpty"><i /><span><strong>{catalogUnavailable ? "Open sessions unavailable" : "No open sessions"}</strong><small>{catalogUnavailable ? "Pomegr will retry automatically" : "New sessions appear automatically"}</small></span></div>}
           </div>
-          <div className="historyHeading"><span>HISTORY</span><small>{historySessions.length}</small></div>
+          <div className="historyHeading"><span>HISTORY</span><small>{catalogReady ? historySessions.length : <span className="sidebarUnknownCount" aria-label="Session count loading">—</span>}</small></div>
           <div className="historyList">
             {historySessions.length === 0 && <p>No recorded sessions yet.</p>}
             {historyGroups.map((group) => {

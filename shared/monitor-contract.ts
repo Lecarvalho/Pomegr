@@ -56,6 +56,28 @@ export type AgentRole =
 /** Provider-recorded prompt-cache lifetime evidence, normalized monitor-side. */
 export type CacheLifetime = "5m" | "1h" | "mixed";
 
+/** Readiness describes the publication state of normalized evidence, not support. */
+export type Readiness = "loading" | "ready" | "unavailable";
+
+export type HomeReadiness = {
+  catalog: Readiness;
+  providerLimits: Record<ProviderId, Readiness>;
+  /** Qualified provider + limit identity, for example `claude:current-session`. */
+  limitActivity: Record<string, Readiness>;
+  /** Qualified session identity, for example `codex:abc123`. */
+  sessionSummaries: Record<string, Readiness>;
+};
+
+export type SessionReadiness = {
+  core: Readiness;
+  agentEvidence: Readiness;
+  contextEvidence: Readiness;
+  activityEvidence: Readiness;
+  repository: Readiness;
+  resources: Readiness;
+  usageLimits: Readiness;
+};
+
 export type ExecutionTask = {
   id: string;
   label: string;
@@ -351,6 +373,9 @@ export type LiveSessionSummary = SessionSummary & {
 export type SessionCatalogSnapshot = {
   sessions: SessionSummary[];
   liveSessions: LiveSessionSummary[];
+  /** Optional during migration; absent means legacy catalog semantics. */
+  revision?: number | string | null;
+  readiness?: Pick<HomeReadiness, "catalog" | "sessionSummaries">;
 };
 
 export type HomeContextHistory = {
@@ -396,6 +421,7 @@ export type HomeProjectSummary = {
 export type HomeProviderUsageLimits = {
   provider: ProviderId;
   source: ProviderSource;
+  readiness?: Readiness;
   usageLimits: UsageLimits;
 };
 
@@ -452,6 +478,9 @@ export type HomeLimitActivity = {
 
 export type HomeSnapshot = {
   generatedAt: string | null;
+  revision?: number | string | null;
+  providerLimitRevision?: number | string | null;
+  readiness?: HomeReadiness;
   providerLimits: HomeProviderUsageLimits[];
   limitActivities: HomeLimitActivity[];
   projects: HomeProjectSummary[];
@@ -461,6 +490,9 @@ export type HomeSnapshot = {
 /** Home data that is independent from project and live-session presentation. */
 export type HomeAggregateSnapshot = {
   generatedAt: string | null;
+  revision?: number | string | null;
+  providerLimitRevision?: number | string | null;
+  readiness?: HomeReadiness;
   providerLimits: HomeProviderUsageLimits[];
   limitActivities: HomeLimitActivity[];
   error?: string;
@@ -536,7 +568,17 @@ export type UsageLimits = {
   }>;
 };
 
+/** Provider/account-scoped usage cache shared by Home and session surfaces. */
+export type UsageLimitsSnapshot = {
+  revision: number | string | null;
+  generatedAt: string | null;
+  providers: HomeProviderUsageLimits[];
+  readiness: Record<ProviderId, Readiness>;
+};
+
 export type MonitorState = {
+  revision?: number | string | null;
+  readiness?: SessionReadiness;
   connected: boolean;
   source: ProviderSource;
   capabilities: ProviderCapabilities;

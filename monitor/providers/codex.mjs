@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
+import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
 import {
   mergeCodexToolCalls,
   parseCodexCanonicalTurns,
@@ -157,6 +158,7 @@ export function createCodexProvider(options = {}) {
     hydrateLiveAgentAssignments,
     hydrateLiveApprovalMode,
     hydrateLiveStateEvidence,
+    hasLiveContextContinuity,
     liveAgentAssignmentCache,
     liveApprovalModeCache,
     liveContextUsageCache,
@@ -545,9 +547,8 @@ export function createCodexProvider(options = {}) {
         : reusableLiveTaskState(thread.rolloutFile, thread.localId, generation);
       let hydratedStateEvidence = null;
       const previousContext = liveContextUsageCache.get(thread.rolloutFile);
-      const skippedContextGap = previousContext
-        && generation
-        && generation.size - previousContext.size > maximumLiveTailBytes;
+      const skippedContextGap = previousContext && generation
+        && (!hasLiveContextContinuity(thread.rolloutFile, generation) || generation.size - previousContext.size > maximumLiveTailBytes);
       const skippedActivityGap = cachedCurrentActivity
         && generation
         && generation.size - cachedCurrentActivity.generation.size > maximumLiveTailBytes;
@@ -619,6 +620,8 @@ export function createCodexProvider(options = {}) {
         : mergeLiveContextEvidence(thread.rolloutFile, generation, {
           usageSnapshots: [...(hydratedStateEvidence?.usageSnapshots || []), ...context.usageSnapshots],
           compactions: [...(hydratedStateEvidence?.compactions || []), ...context.compactions],
+          // An unhydrated bounded tail cannot replace the prior complete context.
+          preservePreviousOnDiscontinuity: !(hydratedStateEvidence || generation?.size <= maximumLiveTailBytes),
         });
       usageSnapshots.push(...normalizedContext.snapshots);
       compactions.push(...normalizedContext.compactions);
@@ -713,7 +716,6 @@ export function createCodexProvider(options = {}) {
       pullRequestCreations: mergeCodexPullRequestCreations(pullRequestCreationGroups),
     };
   }
-
   const capabilityManifest = {
     approvalMode: { status: "supported" },
     automaticCompactions: { status: "supported" },
@@ -735,6 +737,7 @@ export function createCodexProvider(options = {}) {
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
 
+  const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot];
   return defineProvider({
     id: "codex",
     source: "Codex",
@@ -775,6 +778,7 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
+    createObserver: () => createIncrementalProviderObserver({ providerId: "codex", list: listSessions, readEvidence: readSession, resolveSource: async (localId) => { const metadata = await discoveredMetadata(); const primary = metadata.find((item) => item.localId === localId)?.rolloutFile; return incrementalSourceSetDescriptor(metadata.map((item) => item.rolloutFile), primary, false); }, intervalMs: options.observerIntervalMs ?? 10_000, concurrency: options.observerConcurrency ?? 2, watchTargets }),
     readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
@@ -789,7 +793,7 @@ export function createCodexProvider(options = {}) {
         livenessRolloutBytes: livenessStats.rolloutBytes,
       };
     },
-    watchTargets: [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot],
+    watchTargets,
   });
 }
 

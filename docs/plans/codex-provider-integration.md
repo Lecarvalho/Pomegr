@@ -729,7 +729,11 @@ npm run lint
 
 - Added end-to-end synthetic HTTP serialization audits for `/api/state` and `/api/sessions`, covering both providers, every forbidden privacy category, fixed fail-closed errors, provider/Git/pull-request/usage failure isolation, deleted history, and historical exclusion of current Git and limits.
 - Added snake_case/camelCase rollout fixtures plus direct/JSON-RPC app-server compatibility coverage for malformed, truncated, unknown, missing-child, unavailable-app-server, usage-failure, and deleted-history behavior.
-- Made Codex selected-state reads parse each rollout once, bound live parsing to a cached 512 KiB tail, cache full historical parses, cap cache entries, and coalesce concurrent catalog polls; focused QA verifies bounded reads across eight synthetic large rollouts.
+- Historical POMEGR-CX-08 implementation: Codex selected-state reads parsed each rollout
+  once and bounded live parsing to a cached 512 KiB tail. This was superseded by the
+  provider-neutral observation lifecycle: production selected-state GETs now serve only
+  committed revisions, and raw acquisition chunks no longer define normalized evidence
+  retention. See `docs/OBSERVATION_CACHE.md`.
 - Updated provider support/setup, architecture and liveness flow, Codex metric mappings and unavailable evidence, complete environment-variable reference, and troubleshooting guidance.
 - Full build, 171 Node tests, 28 UI tests, focused privacy/performance QA, lint, and diff checks pass; lint reports only pre-existing warnings under `.agents/skills/impeccable`.
 

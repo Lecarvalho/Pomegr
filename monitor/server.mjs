@@ -7,10 +7,10 @@ import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
 import { publicResourceUsage, unavailableResourceUsage } from "./public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
-import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
-import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
+import { createObservationRuntime } from "./observation-runtime.mjs";
+import { createRequestHandler } from "./request-handler.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -200,6 +200,9 @@ export function createMonitorRuntime(options = {}) {
   }
 
   async function sessionCatalog() {
+    if (observation.observationActive()) {
+      return observation.coordinator?.catalog()?.snapshot?.value?.sessions || [];
+    }
     const inspected = typeof registry.inspectSessions === "function"
       ? await registry.inspectSessions()
       : { sessions: await registry.listSessions(), resourceTargets: [] };
@@ -265,7 +268,10 @@ export function createMonitorRuntime(options = {}) {
       refresh = (async () => {
         let summary;
         try {
-          const selection = await registry.readSession(entry.id, { catalogEntry: entry });
+          const observed = observation.observationActive() ? observation.store.getByQualifiedId(entry.id) : null;
+          const selection = observed
+            ? { evidence: observed.evidence, provider: registry.providerForSessionId(entry.id), sessionId: entry.id }
+            : observation.observationActive() ? null : await registry.readSession(entry.id, { catalogEntry: entry });
           summary = selection?.evidence
             ? homeSessionSummary(entry, selection.evidence, selection.provider?.homePolicy)
             : entry.isLive
@@ -318,22 +324,32 @@ export function createMonitorRuntime(options = {}) {
   async function buildHomeSnapshot() {
     const providers = Array.isArray(registry.providers) ? registry.providers : [];
     const policiesById = new Map(providers.map((provider) => [provider.id, provider.homePolicy]));
-    const providerLimitsPromise = Promise.all(providers
-      .filter((provider) => provider?.homePolicy?.usageLimitActivity?.enabled)
-      .map(async (provider) => {
-        let usageLimits = createEmptyUsageLimits();
-        if (typeof registry.readUsageLimits === "function") {
-          try {
-            usageLimits = await registry.readUsageLimits(provider);
-          } catch {
-            usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
+    const providerLimitsPromise = observation.observationActive()
+      ? Promise.resolve(providers
+        .filter((provider) => provider?.homePolicy?.usageLimitActivity?.enabled)
+        .map((provider) => ({
+          provider: provider.id,
+          source: provider.source,
+          usageLimits: observation.observedUsageLimits(provider.id),
+        })))
+      : Promise.all(providers
+        .filter((provider) => provider?.homePolicy?.usageLimitActivity?.enabled)
+        .map(async (provider) => {
+          let usageLimits = createEmptyUsageLimits();
+          if (typeof registry.readUsageLimits === "function") {
+            try {
+              usageLimits = await registry.readUsageLimits(provider);
+            } catch {
+              usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
+            }
           }
-        }
-        return { provider: provider.id, source: provider.source, usageLimits };
-      }));
-    const inspectedPromise = typeof registry.inspectSessions === "function"
-      ? registry.inspectSessions()
-      : Promise.resolve(registry.listSessions()).then((sessions) => ({ sessions, resourceTargets: [] }));
+          return { provider: provider.id, source: provider.source, usageLimits };
+        }));
+    const inspectedPromise = observation.observationActive()
+      ? Promise.resolve({ sessions: observation.coordinator?.catalog()?.snapshot?.value?.sessions || [], resourceTargets: [] })
+      : typeof registry.inspectSessions === "function"
+        ? registry.inspectSessions()
+        : Promise.resolve(registry.listSessions()).then((sessions) => ({ sessions, resourceTargets: [] }));
     const [providerLimits, inspected] = await Promise.all([providerLimitsPromise, inspectedPromise]);
     homeLimitActivityTracker.observe(providerLimits, policiesById);
     try {
@@ -550,52 +566,7 @@ export function createMonitorRuntime(options = {}) {
     });
   }
 
-  const { evidence, provider, sessionId } = selection;
-  const historical = evidence.historical;
-  const capabilities = typeof registry.resolveCapabilities === "function"
-    ? await registry.resolveCapabilities(provider, { historical })
-    : provider.capabilities;
-  let repository;
-  let pullRequests;
-  let enqueueLiveEnrichment = null;
-  if (historical) {
-    repository = recordedGitState(evidence.session.recordedGitBranch);
-    try {
-      pullRequests = await pullRequestReader([], {
-        cwd: evidence.session.cwd,
-        branch: repository.branch,
-        historical: true,
-        sessionCreations: evidence.pullRequestCreations,
-      });
-    } catch {
-      pullRequests = unavailablePullRequests();
-    }
-  } else {
-    const live = liveEnrichment(sessionId, evidence);
-    ({ repository, pullRequests } = live.value);
-    enqueueLiveEnrichment = live.enqueue;
-  }
-  const currentUsageLimits = await registry.readUsageLimits(provider, { historical, capabilities });
-  const resources = historical ? null : (() => {
-    try {
-      return publicResourceUsage(resourceUsageSampler.get(sessionId));
-    } catch {
-      return unavailableResourceUsage();
-    }
-  })();
-  const state = projectProviderSessionEvidence({
-    evidence,
-    sessionId,
-    source: provider.source,
-    capabilities,
-    repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
-    repository,
-    pullRequests,
-    usageLimits: currentUsageLimits,
-    resources,
-  });
-  enqueueLiveEnrichment?.();
-  return state;
+  return observation.projectSelection(selection);
   }
 
   async function transcriptPath(requestedSessionId = "", agentId = "") {
@@ -611,114 +582,52 @@ export function createMonitorRuntime(options = {}) {
     return createEmptyMonitorState({ source: registry.defaultProvider.source, usageLimits: emptyUsageLimits() });
   }
 
-  return Object.freeze({ analyze, analyzeEmpty, sessionCatalog, sessionFeed, homeSnapshot, transcriptPath });
+  const observation = createObservationRuntime({
+    ...options,
+    registry,
+    resourceUsageSampler,
+    pullRequestReader,
+    now,
+    scheduleHomeRefresh,
+    buildHomeSnapshot: () => buildHomeSnapshot(),
+    liveEnrichment,
+    recordedGitState,
+    unavailableGitState,
+    unavailablePullRequests,
+    repositoryRoleMappings,
+    publicResourceUsage,
+    unavailableResourceUsage,
+    createEmptyMonitorState,
+    createEmptyUsageLimits,
+    onSessionCommitted(qualifiedId) {
+      for (const key of homeSummaryCache.keys()) {
+        if (key.startsWith(`${qualifiedId}|`)) homeSummaryCache.delete(key);
+      }
+      homeSnapshotCached = null;
+    },
+  });
+
+  return Object.freeze({
+    analyze,
+    analyzeEmpty,
+    sessionCatalog,
+    sessionFeed,
+    homeSnapshot,
+    transcriptPath,
+    startObservation: observation.startObservation,
+    stopObservation: observation.stopObservation,
+    observationActive: observation.observationActive,
+    serveCatalog: observation.serveCatalog,
+    serveSession: observation.serveSession,
+    serveHome: observation.serveHome,
+    serveUsageLimits: observation.serveUsageLimits,
+    observationDiagnostics: observation.diagnostics,
+  });
 }
 
 export function createMonitorRequestHandler(options = {}) {
   const runtime = options.runtime || createMonitorRuntime(options);
-  const authorizationToken = options.authorizationToken
-    ? requireDesktopToken(options.authorizationToken, "MONITOR_INVALID_AUTHORIZATION")
-    : "";
-  return async (request, response) => {
-  const localAddress = request.socket?.localAddress;
-  const localPort = request.socket?.localPort;
-  const expectedHost = localAddress && localPort ? `${localAddress}:${localPort}` : "";
-  const desktopRequestAllowed = !authorizationToken || (
-    ["GET", "HEAD"].includes(request.method || "")
-    && request.headers.host === expectedHost
-    && request.headers.origin === undefined
-    && requestHasDesktopAuthorization(request, authorizationToken)
-  );
-  if (!desktopRequestAllowed) {
-    response.writeHead(401, {
-      "Cache-Control": "no-store",
-      "Content-Type": "text/plain; charset=utf-8",
-    });
-    response.end("Unauthorized");
-    return;
-  }
-  if (!authorizationToken) {
-    response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  }
-  response.setHeader("Cache-Control", "no-store");
-  if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
-  const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
-  if (requestUrl.pathname === "/api/sessions") {
-    try {
-      const body = JSON.stringify(await runtime.sessionFeed());
-      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(body);
-    } catch {
-      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ sessions: [], liveSessions: [], error: "Session catalog error" }));
-    }
-    return;
-  }
-  if (requestUrl.pathname === "/api/home") {
-    try {
-      const snapshot = await runtime.homeSnapshot();
-      const body = JSON.stringify(requestUrl.searchParams.get("scope") === "aggregates"
-        ? {
-          generatedAt: snapshot.generatedAt,
-          providerLimits: snapshot.providerLimits,
-          limitActivities: snapshot.limitActivities,
-          ...(snapshot.error ? { error: snapshot.error } : {}),
-        }
-        : snapshot);
-      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(body);
-    } catch {
-      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(requestUrl.searchParams.get("scope") === "aggregates"
-        ? { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home snapshot error" }
-        : { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" }));
-    }
-    return;
-  }
-  if (requestUrl.pathname === "/api/transcript-path") {
-    if (request.method !== "GET" || request.headers.origin !== undefined) {
-      response.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ error: "Transcript path request denied." }));
-      return;
-    }
-    const sessionId = requestUrl.searchParams.get("sessionId") || "";
-    const agentId = requestUrl.searchParams.get("agentId") || "";
-    if (!sessionId || !agentId || sessionId.length > 256 || agentId.length > 256) {
-      response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ error: "A valid session and agent are required." }));
-      return;
-    }
-    try {
-      const transcriptPath = await runtime.transcriptPath(sessionId, agentId);
-      if (!transcriptPath) {
-        response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({ error: "Transcript path unavailable." }));
-        return;
-      }
-      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ path: transcriptPath }));
-    } catch {
-      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ error: "Transcript path unavailable." }));
-    }
-    return;
-  }
-  if (requestUrl.pathname === "/api/state") {
-    try {
-      const sessionId = requestUrl.searchParams.get("sessionId") || "";
-      const body = JSON.stringify(await runtime.analyze(sessionId));
-      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(body);
-    } catch {
-      response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ ...runtime.analyzeEmpty(), error: "Monitor error" }));
-    }
-    return;
-  }
-  if (requestUrl.pathname === "/health") { response.writeHead(204); response.end(); return; }
-  response.writeHead(404); response.end("Not found");
-  };
+  return createRequestHandler({ runtime, authorizationToken: options.authorizationToken });
 }
 
 export function createMonitorServer(options = {}) {
@@ -728,23 +637,37 @@ export function createMonitorServer(options = {}) {
 export async function startMonitorServer(options = {}) {
   let server;
   let handle;
+  let runtime;
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
     const registry = options.providerRegistry || providerRegistry;
-    server = (options.serverFactory || createMonitorServer)(options);
+    runtime = options.runtime || createMonitorRuntime(options);
+    server = (options.serverFactory || createMonitorServer)({ ...options, runtime });
     await listen(server, { host, port, startupErrorCode: "MONITOR_START_FAILED" });
     handle = createLocalServiceHandle(server, {
       host,
       normalExitCode: "MONITOR_CLOSED",
       unexpectedExitCode: "MONITOR_EXIT_UNEXPECTED",
+      onClose: () => { void runtime.stopObservation?.(); },
     });
-    // Initialize provider-owned watch targets only after the listener is ready.
-    // The values are intentionally neither logged nor exposed by this seam.
+    await runtime.startObservation?.();
+    // Provider-owned watch targets remain private and are initialized only
+    // after the listener and background observation lifecycle are ready.
     await registry.watchTargets();
     options.logger?.log?.(`[pomegr] Monitor ready on ${handle.origin}.`);
-    return handle;
+    let closePromise = null;
+    const close = () => {
+      if (closePromise) return closePromise;
+      closePromise = (async () => {
+        await runtime.stopObservation?.();
+        await handle.close();
+      })();
+      return closePromise;
+    };
+    return Object.freeze({ ...handle, close });
   } catch (error) {
+    try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();
     else await closeServer(server);
     throw safeServiceError(error, "MONITOR_START_FAILED");

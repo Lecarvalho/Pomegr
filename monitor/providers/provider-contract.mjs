@@ -7,6 +7,9 @@ import { z } from "zod";
 /** @typedef {{status: "ready"} | {status: "unavailable", reason: string} | {status: "not_applicable"}} ProviderReadinessEntry */
 /** @typedef {Record<string, ProviderReadinessEntry>} ProviderRuntimeReadiness */
 /** @typedef {{requestModelObservations: boolean, modelSelection: boolean, usageLimitActivity: object}} ProviderHomePolicy */
+/** @typedef {{publishCatalog: (providerId: ProviderId, entries: z.infer<typeof providerSessionReferenceSchema>[], readiness?: "ready" | "unavailable") => void, publishSession: (providerId: ProviderId, localSessionId: string, evidence: ProviderSessionEvidence) => void, invalidateSession: (providerId: ProviderId, localSessionId: string, reason: string) => void, checkpointFor?: (providerId: ProviderId, localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} NormalizedObservationPublisher */
+/** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
+/** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
 
 export const PROVIDER_IDS = Object.freeze(["claude", "codex"]);
 
@@ -62,12 +65,26 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "unavailableMessage",
   "qaStats",
   "watchTargets",
+  "createObserver",
+]);
+
+/**
+ * Reasons are intentionally provider-neutral.  Native filesystem, event, or
+ * API failure details stay inside the adapter and must never cross into a
+ * committed observation or browser response.
+ */
+export const PROVIDER_OBSERVATION_INVALIDATION_REASONS = Object.freeze([
+  "source_replaced",
+  "source_unavailable",
+  "source_invalid",
+  "provider_unavailable",
 ]);
 
 const providerIdSet = new Set(PROVIDER_IDS);
 const capabilityKeySet = new Set(PROVIDER_CAPABILITY_KEYS);
 const limitationCodeSet = new Set(PROVIDER_LIMITATION_CODES);
 const providerObservationApiKeySet = new Set(PROVIDER_OBSERVATION_API_KEYS);
+const providerObservationInvalidationReasonSet = new Set(PROVIDER_OBSERVATION_INVALIDATION_REASONS);
 const SAFE_LOCAL_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** @param {unknown} value @returns {value is ProviderId} */
@@ -366,6 +383,10 @@ const evidenceCompaction = z.object({ actorId: evidenceId, timestamp: evidenceTi
 export const providerSessionEvidenceSchema = z.object({
   localId: z.string().regex(SAFE_LOCAL_SESSION_ID, "Unsafe provider-local session ID"),
   historical: z.boolean(),
+  observationSource: z.object({
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    completeOffset: evidenceCount,
+  }).strict().optional(),
   session: z.object({
     title: evidenceText(512), project: evidenceText(512), cwd: evidenceText(2_048), startedAt: evidenceNullableTimestamp, updatedAt: evidenceNullableTimestamp,
     recordedGitBranch: evidenceText(512),
@@ -425,6 +446,90 @@ export function parseProviderSessionEvidence(value, expectedLocalId) {
   return evidence;
 }
 
+/**
+ * Validate the monitor-owned publication boundary.  Provider adapters receive
+ * a scoped publisher from the registry, but the monitor/store-facing shape
+ * always retains the provider ID so no adapter can publish into another
+ * provider's namespace.
+ *
+ * @param {unknown} publisher
+ * @returns {NormalizedObservationPublisher}
+ */
+export function assertNormalizedObservationPublisher(publisher) {
+  if (!publisher || typeof publisher !== "object" || Array.isArray(publisher)) {
+    throw new TypeError("Normalized observation publisher must be an object");
+  }
+  const value = /** @type {Record<string, unknown>} */ (publisher);
+  for (const key of ["publishCatalog", "publishSession", "invalidateSession"]) {
+    if (typeof value[key] !== "function") {
+      throw new TypeError(`Normalized observation publisher must implement ${key}`);
+    }
+  }
+  return /** @type {NormalizedObservationPublisher} */ (value);
+}
+
+/**
+ * Scope a monitor-owned publisher to a single adapter.  The wrapper validates
+ * catalog references and evidence before the provider-neutral store ever sees
+ * them.  It intentionally contains no native source data or paths.
+ *
+ * @param {ProviderId} providerId
+ * @param {unknown} publisher
+ * @returns {ScopedNormalizedObservationPublisher}
+ */
+export function createScopedNormalizedObservationPublisher(providerId, publisher) {
+  if (!isProviderId(providerId)) throw new TypeError(`Unknown provider: ${String(providerId)}`);
+  const target = assertNormalizedObservationPublisher(publisher);
+  return Object.freeze({
+    /** @param {unknown[]} entries */
+    publishCatalog(entries) {
+      if (!Array.isArray(entries)) throw new TypeError("Provider observer catalog must be an array");
+      const normalized = entries.map((entry) => parseProviderSessionReference(entry));
+      target.publishCatalog(providerId, normalized);
+    },
+    /** @param {string} localSessionId @param {unknown} candidate */
+    publishSession(localSessionId, candidate) {
+      qualifyProviderSessionId(providerId, localSessionId);
+      target.publishSession(providerId, localSessionId, parseProviderSessionEvidence(candidate, localSessionId));
+    },
+    /** @param {string} localSessionId @param {string} reason */
+    invalidateSession(localSessionId, reason) {
+      qualifyProviderSessionId(providerId, localSessionId);
+      if (!providerObservationInvalidationReasonSet.has(reason)) {
+        throw new TypeError("Unknown provider observation invalidation reason");
+      }
+      target.invalidateSession(providerId, localSessionId, reason);
+    },
+    checkpointFor(localSessionId) {
+      qualifyProviderSessionId(providerId, localSessionId);
+      return typeof target.checkpointFor === "function" ? target.checkpointFor(providerId, localSessionId) : null;
+    },
+  });
+}
+
+/**
+ * Provider observers are long-lived acquisition/normalization workers.  The
+ * contract stays deliberately small: adapters own source schemas and cursors;
+ * the shared layer sees only validated normalized candidates.
+ *
+ * @param {unknown} observer
+ * @returns {ProviderObserver}
+ */
+export function assertProviderObserver(observer) {
+  if (!observer || typeof observer !== "object" || Array.isArray(observer)) {
+    throw new TypeError("Provider observer must be an object");
+  }
+  const value = /** @type {Record<string, unknown>} */ (observer);
+  if (typeof value.start !== "function" || typeof value.hydrate !== "function"
+    || typeof value.listSessions !== "function") {
+    throw new TypeError("Provider observer must implement start, hydrate, and listSessions");
+  }
+  if (value.stop !== undefined && typeof value.stop !== "function") {
+    throw new TypeError("Provider observer stop must be a function");
+  }
+  return /** @type {ProviderObserver} */ (value);
+}
+
 /** @param {unknown} value */
 export function parseProviderSessionReference(value) {
   return providerSessionReferenceSchema.parse(value);
@@ -481,6 +586,9 @@ export function assertProviderConformance(adapter, fixtures = []) {
     throw new TypeError("Provider browser capabilities must be derived from its manifest");
   }
   createProviderHomePolicy(adapter.homePolicy);
+  if (adapter.createObserver !== undefined && typeof adapter.createObserver !== "function") {
+    throw new TypeError("Provider createObserver must be a function");
+  }
   for (const capability of PROVIDER_CAPABILITY_CATALOG) {
     if (manifest[capability.key].status === "supported" && typeof adapter[capability.requiredOperation] !== "function") {
       throw new TypeError(`Provider with ${capability.key} capability must implement ${capability.requiredOperation}`);
@@ -509,6 +617,9 @@ export function defineProvider(adapter) {
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
   if (adapter.readTranscriptPath !== undefined && typeof adapter.readTranscriptPath !== "function") {
     throw new TypeError("Provider readTranscriptPath must be a function");
+  }
+  if (adapter.createObserver !== undefined && typeof adapter.createObserver !== "function") {
+    throw new TypeError("Provider createObserver must be a function");
   }
   if (adapter.resolveReadiness !== undefined && typeof adapter.resolveReadiness !== "function") {
     throw new TypeError("Provider resolveReadiness must be a function");

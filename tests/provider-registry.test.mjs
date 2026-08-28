@@ -317,3 +317,59 @@ test("explicit reads refresh the catalog before deciding historical state", asyn
 test("production registry loads Claude and Codex through the provider registry", () => {
   assert.deepEqual(providerRegistry.providers.map(({ id }) => id), ["claude", "codex"]);
 });
+
+test("starts isolated provider observers and validates their normalized publications", async () => {
+  let scopedPublisher;
+  let stopped = false;
+  const healthy = defineProvider({
+    id: "codex",
+    source: "Codex",
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
+    async listSessions() { return []; },
+    async readSession() { return null; },
+    createObserver() {
+      return {
+        async start(publisher) {
+          scopedPublisher = publisher;
+          publisher.publishCatalog([session("observed", "2026-08-10T12:00:00.000Z")]);
+        },
+        async hydrate(localId) {
+          scopedPublisher.publishSession(localId, evidence(localId));
+          return true;
+        },
+        async listSessions() { return [session("observed", "2026-08-10T12:00:00.000Z")]; },
+        stop() { stopped = true; },
+      };
+    },
+  });
+  const broken = defineProvider({
+    id: "claude",
+    source: "Claude Code",
+    capabilityManifest: capabilityManifest(),
+    async listSessions() { return []; },
+    async readSession() { return null; },
+    createObserver() { throw new Error("private source failure"); },
+  });
+  const catalog = [];
+  const candidates = [];
+  const registry = createProviderRegistry([broken, healthy]);
+  const lifecycle = await registry.startObservers({
+    publishCatalog(providerId, entries, readiness) { catalog.push({ providerId, entries, readiness }); },
+    publishSession(providerId, localSessionId, value) { candidates.push({ providerId, localSessionId, value }); },
+    invalidateSession() {},
+  });
+
+  assert.equal(lifecycle.observers.length, 1);
+  assert.deepEqual(catalog.find((entry) => entry.providerId === "claude"), {
+    providerId: "claude",
+    entries: [],
+    readiness: "unavailable",
+  });
+  assert.equal(catalog.find((entry) => entry.providerId === "codex").entries[0].localId, "observed");
+  assert.equal(await lifecycle.hydrate("codex:observed"), true);
+  assert.equal(candidates[0].value.localId, "observed");
+  assert.equal(await lifecycle.hydrate("claude:missing"), false);
+  assert.equal(registry.diagnostics().claude.observerStartFailures, 1);
+  await lifecycle.stop();
+  assert.equal(stopped, true);
+});

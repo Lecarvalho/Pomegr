@@ -285,8 +285,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     fetch(`${origin}/api/state?sessionId=codex%3Acodex-fixture-parent`),
     fetch(`${origin}/api/home`),
     fetch(`${origin}/api/home?scope=aggregates`),
+    fetch(`${origin}/api/usage-limits`),
   ]);
-  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200, 200, 200]);
+  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200, 200, 200, 200]);
   const serialized = await Promise.all(responses.map((response) => response.text()));
   serialized.forEach((body, index) => assertNoPrivateFixtureSentinels(body, `API response ${index + 1}`));
   assert.doesNotMatch(serialized.join("\n"), /AUTH_FILE_MUST_NOT_LEAK/);
@@ -312,6 +313,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   const codexState = JSON.parse(serialized[2]);
   const home = JSON.parse(serialized[3]);
   const aggregates = JSON.parse(serialized[4]);
+  const usageLimits = JSON.parse(serialized[5]);
   assert.equal(Array.isArray(home.projects), true);
   assert.deepEqual(aggregates, {
     generatedAt: home.generatedAt,
@@ -321,6 +323,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   });
   assert.equal(Object.hasOwn(aggregates, "projects"), false);
   assert.equal(Object.hasOwn(aggregates, "liveSessions"), false);
+  assert.deepEqual(usageLimits, { revision: 0, readiness: {}, providers: [] });
   assert.deepEqual(claudeState.session.progress, {
     phase: "implementing",
     percent: 42,
@@ -722,22 +725,25 @@ test("HTTP fallbacks never serialize arbitrary exception messages", async (conte
     },
   };
   const origin = await startSyntheticMonitor(context, { runtime });
-  const [sessions, state, home, aggregates] = await Promise.all([
+  const [sessions, state, home, aggregates, usageLimits] = await Promise.all([
     fetch(`${origin}/api/sessions`),
     fetch(`${origin}/api/state`),
     fetch(`${origin}/api/home`),
     fetch(`${origin}/api/home?scope=aggregates`),
+    fetch(`${origin}/api/usage-limits`),
   ]);
   assert.equal(sessions.status, 500);
   assert.equal(state.status, 500);
   assert.equal(home.status, 500);
   assert.equal(aggregates.status, 500);
-  const [sessionsBody, stateBody, homeBody, aggregatesBody] = await Promise.all([
-    sessions.text(), state.text(), home.text(), aggregates.text(),
+  assert.equal(usageLimits.status, 200);
+  const [sessionsBody, stateBody, homeBody, aggregatesBody, usageLimitsBody] = await Promise.all([
+    sessions.text(), state.text(), home.text(), aggregates.text(), usageLimits.text(),
   ]);
   assert.deepEqual(JSON.parse(homeBody), { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" });
   assert.deepEqual(JSON.parse(aggregatesBody), { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home snapshot error" });
-  const serialized = `${sessionsBody}\n${stateBody}\n${homeBody}\n${aggregatesBody}`;
+  assert.deepEqual(JSON.parse(usageLimitsBody), { revision: 0, readiness: {}, providers: [] });
+  const serialized = `${sessionsBody}\n${stateBody}\n${homeBody}\n${aggregatesBody}\n${usageLimitsBody}`;
   assert.doesNotMatch(serialized, /MUST_NOT_LEAK/);
   assert.match(serialized, /Session catalog error/);
   assert.match(serialized, /Monitor error/);

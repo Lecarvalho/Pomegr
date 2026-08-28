@@ -54,9 +54,10 @@ export function sessionListTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
-export function stateEndpoint(sessionId: string | null) {
+export function stateEndpoint(sessionId: string | null, revision: number | string | null = null) {
   const params = new URLSearchParams();
   if (sessionId) params.set("sessionId", sessionId);
+  if (revision !== null && revision !== undefined) params.set("revision", String(revision));
   return `/api/state${params.size ? `?${params}` : ""}`;
 }
 

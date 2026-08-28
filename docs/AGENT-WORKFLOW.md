@@ -6,6 +6,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
 | Provider discovery, parsing, normalization | `monitor/providers/` and `monitor/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
+| Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `monitor/observation-runtime.mjs`, and `monitor/session-observation-*.mjs` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Monitor indexing, projection, enrichment | `monitor/server.mjs`, `monitor/` utilities | Browser credentials, prompts, responses, and provider-native payloads |
 | Browser/API state | `app/`, `shared/`, `app/api/` | `monitor/providers/` imports from React |
 | Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw monitor files |

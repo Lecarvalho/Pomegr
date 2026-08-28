@@ -8,8 +8,14 @@ export async function GET(request: Request) {
   const monitorParams = new URLSearchParams();
   if (revision !== null && revision !== "") monitorParams.set("revision", revision);
   return proxyMonitorJson({
-    path: `/api/sessions${monitorParams.size ? `?${monitorParams}` : ""}`,
+    path: `/api/usage-limits${monitorParams.size ? `?${monitorParams}` : ""}`,
     timeoutMs: 7500,
-    unavailableBody: { sessions: [], liveSessions: [], error: "Historical sessions are unavailable." },
+    unavailableBody: {
+      revision: null,
+      generatedAt: null,
+      providers: [],
+      readiness: { claude: "unavailable", codex: "unavailable" },
+      error: "Usage limits are unavailable.",
+    },
   });
 }

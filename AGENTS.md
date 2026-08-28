@@ -18,15 +18,19 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 ## Change routing
 
 - Use `docs/AGENT-WORKFLOW.md` to locate the behavior owner, focused test command, and forbidden dependency direction for monitor, provider, UI, desktop, landing, or generated-plugin work.
+- Treat `docs/OBSERVATION_CACHE.md` as the canonical operational contract for provider observation phases, cache ownership and bounds, checkpoint cadence, endpoint serving, revision semantics, readiness, UI polling, and skeleton behavior. Plans under `docs/plans/` are historical records, not runtime authority.
 - Provider adapters must satisfy the executable catalog, manifest, readiness, evidence, and conformance rules in `monitor/providers/provider-contract.mjs`; provider-specific transcript schemas stay inside their adapter modules.
 
 ## Architecture
 
 - `monitor/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.
 - `app/Dashboard.tsx` renders normalized state and must not access credentials or raw session files.
-- `app/api/state/route.ts` and `app/api/sessions/route.ts` are same-origin proxies to the loopback monitor.
+- `app/api/state/route.ts`, `app/api/sessions/route.ts`, `app/api/home/route.ts`, and `app/api/usage-limits/route.ts` are same-origin proxies to the loopback monitor.
 - `scripts/dev.mjs` starts the monitor and web application together.
 - Keep provider transcript schemas out of React components.
+- Production session, catalog, Home, and usage-limit GETs serve only committed response caches. A request may queue asynchronous hydration, but it must never synchronously acquire, parse, or normalize provider data.
+- Source read/chunk bounds control upstream acquisition cost only; they must never control the lifetime of already-normalized evidence. Preserve the last known-good revision until a complete replacement validates and commits atomically.
+- Keep U1 Acquisition, U2 Normalization, C Commit, D Derivation, P Persistence, S Serving, and F Presentation ownership aligned with `docs/OBSERVATION_CACHE.md`.
 
 ## Security and privacy invariants
 
@@ -50,6 +54,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Keep monitoring read-only. Future control actions require an explicit confirmation boundary.
 - Cache external usage requests and sanitize failures.
 - Historical views must never expose current plan limits or substitute the current Git working tree for recorded session state.
+- Observation checkpoints may persist only contract-valid normalized evidence, bounded source fingerprints and complete-record offsets, readiness, revision, and observation timestamps. Never persist raw provider records, incomplete fragments, transcript paths, or other browser-forbidden content.
 
 ## Metric conventions
 
@@ -94,3 +99,4 @@ The dashboard binds to `0.0.0.0:3003` and is reachable at `http://<LAN-IP>:3003`
 3. Run `npm run build` for implementation changes.
 4. Run `npm test` for rendering, metric, parser, or structure changes.
 5. Never commit `.env`, transcripts, credentials, build output, or Wrangler state.
+6. For observation, cache, API-readiness, or polling changes, update `docs/OBSERVATION_CACHE.md` and verify cache-only GET behavior, last-known-good retention, revision handling, and checkpoint/browser privacy.
