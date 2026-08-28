@@ -37,7 +37,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.equal(packageJson.scripts["desktop:runtime"], "node node_modules/electron/install.js");
   assert.match(packageJson.scripts["verify:desktop"], /^npm run desktop:runtime && npm run desktop:smoke/);
   assert.match(packageJson.scripts["verify:desktop:ci"], /^npm run desktop:runtime && npm run desktop:smoke:ci/);
-  assert.match(packageJson.scripts["desktop:smoke:ci"], /POMEGR_SMOKE_RENDERER_MODE=offscreen/);
+  assert.match(packageJson.scripts["desktop:smoke:ci"], /POMEGR_SMOKE_RENDERER_MODE=runtime/);
   assert.match(packageJson.scripts["desktop:smoke"], /ELECTRON_RUN_AS_NODE=1/);
   assert.match(packageJson.scripts["desktop:smoke"], /electron[\\/]dist[\\/]electron\.exe desktop[\\/]smoke-runner\.mjs/);
   assert.doesNotMatch(packageJson.scripts["desktop:smoke"], /(^|\s)node(?:\.exe)?(?:\s|$)/i);
@@ -47,6 +47,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.doesNotMatch(runner, /disable-software-rasterizer/);
   assert.match(main, /noerrdialogs/);
   assert.match(main, /POMEGR_SMOKE_PROFILE_ROOT/);
+  assert.ok(main.indexOf('POMEGR_SMOKE_RENDERER_MODE') < main.indexOf('keepOnlyRuntimeEnvironment(process.env'));
   assert.match(main, /resolveDesktopPaths\(\{/);
   assert.match(main, /DESKTOP_DATA_ROOT_NOT_ISOLATED/);
   assert.doesNotMatch(main, /recordStage\(["']FINISHED_FAIL["']\)/);
@@ -57,7 +58,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /recordStage\(["']UNEXPECTED_QUIT["']\)/);
   assert.match(main, /new Worker\(/);
   assert.match(main, /new BrowserWindow\(/);
-  assert.match(main, /new WebContentsView\(/);
+  assert.match(main, /recordStage\(["']RENDERER_UNAVAILABLE["']\)/);
   assert.match(main, /secureBrowserWindowOptions\(/);
   assert.match(main, /installSessionSecurity\(/);
   assert.match(main, /installWebContentsSecurity\(/);
@@ -83,6 +84,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(runner, /user-data-dir=/);
   assert.match(runner, /original-fs/);
   assert.match(runner, /POMEGR_SMOKE_MAIN_STAGE_PATH/);
+  assert.match(runner, /PASS \(\$\{rendererMode\}\)/);
   assert.match(runner, /ELECTRON_EXIT_MISSING_DLL/);
   assert.match(runner, /ELECTRON_EXIT_BREAKPOINT/);
   assert.match(runner, /ELECTRON_EXIT_STACK_BUFFER/);
@@ -94,8 +96,7 @@ test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", asy
   assert.match(main, /UPDATER_RUNTIME_VERIFIED/);
   assert.match(main, /stream\.write\(`\$\{message\}\\n`, resolve\)/);
   assert.match(main, /app\.on\(["']window-all-closed["'], \(\) => \{\}\)/);
-  assert.ok(main.indexOf("smokeWindow.destroy()") < main.indexOf("webHandle.close()"));
-  assert.ok(main.indexOf("smokeContentsView.webContents.close") < main.indexOf("webHandle.close()"));
+  assert.ok(main.indexOf("smokeWindow?.destroy()") < main.indexOf("webHandle.close()"));
   assert.match(main, /withDeadline\(webHandle\.close\(\), STOP_TIMEOUT_MS/);
   assert.match(main, /CLEANUP_WEB_STOPPED/);
 });

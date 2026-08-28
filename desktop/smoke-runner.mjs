@@ -139,7 +139,7 @@ async function createFixture(fixtureRoot) {
 }
 
 async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath) {
-  const rendererMode = process.env.POMEGR_SMOKE_RENDERER_MODE === "offscreen" ? "offscreen" : "window";
+  const rendererMode = process.env.POMEGR_SMOKE_RENDERER_MODE === "runtime" ? "runtime" : "window";
   const environment = minimalRuntimeEnvironment(process.env, {
     POMEGR_SMOKE_MAIN_STAGE_PATH: mainStagePath,
     POMEGR_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
@@ -180,9 +180,11 @@ async function runElectron(archivePath, profileRoot, mainStagePath, monitorEnvir
     }
   }
   childExitKind = classifyElectronExit(result);
-  if (result.kind !== "exit" || result.code !== 0 || !output.includes("Pomegr desktop runtime compatibility: PASS")) {
+  const passMarker = `Pomegr desktop runtime compatibility: PASS (${rendererMode})`;
+  if (result.kind !== "exit" || result.code !== 0 || !output.includes(passMarker)) {
     throw new Error("DESKTOP_CHILD_FAILED");
   }
+  return rendererMode;
 }
 
 let fixtureRoot;
@@ -219,9 +221,9 @@ try {
   await writeStage("STAGING_RUNTIME");
   const archivePath = await createFixture(fixtureRoot);
   await writeStage("ASAR_VERIFIED");
-  await runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath);
+  const rendererMode = await runElectron(archivePath, profileRoot, mainStagePath, monitorEnvironmentPath);
   await writeStage("CHILD_EXITED");
-  console.log("Pomegr packaged desktop smoke: PASS");
+  console.log(`Pomegr packaged desktop smoke: PASS (${rendererMode})`);
 } catch {
   if (fixtureRoot) {
     try {

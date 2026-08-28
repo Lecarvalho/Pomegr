@@ -37,7 +37,7 @@
     "desktop:start": "npm run desktop:prepare && electron .",
     "desktop:runtime": "node node_modules/electron/install.js",
     "desktop:smoke": "set NODE_NO_WARNINGS=1&& set ELECTRON_RUN_AS_NODE=1&& node_modules\\electron\\dist\\electron.exe desktop/smoke-runner.mjs",
-    "desktop:smoke:ci": "set POMEGR_SMOKE_RENDERER_MODE=offscreen&& npm run desktop:smoke",
+    "desktop:smoke:ci": "set POMEGR_SMOKE_RENDERER_MODE=runtime&& npm run desktop:smoke",
     "desktop:security": "node --test --test-concurrency=1 tests/desktop-security.test.mjs tests/api-serialization.test.mjs tests/desktop-shell.test.mjs tests/desktop-behavior.test.mjs tests/desktop-notifications.test.mjs tests/desktop-updater.test.mjs tests/desktop-runtime-seams.test.mjs tests/desktop-packaging.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "typecheck:provider-contract": "tsc -p tsconfig.provider-contract.json",
