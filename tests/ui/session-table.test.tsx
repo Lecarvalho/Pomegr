@@ -27,7 +27,11 @@ describe("sessions table", () => {
     const unavailableRow = within(table).getByText("Progress unavailable").closest("tr");
     expect(progressRow).not.toBeNull();
     expect(unavailableRow).not.toBeNull();
+    expect(within(progressRow!).getByText("Active").closest("td")).toHaveAttribute("data-label", "State");
+    expect(within(progressRow!).getByText("2").closest("td")).toHaveAttribute("data-label", "Agents");
+    expect(within(progressRow!).getByText("12k").closest("td")).toHaveAttribute("data-label", "Context");
     expect(within(progressRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("42%");
+    expect(within(progressRow!).getByTitle("Agent-reported session progress").closest("td")).toHaveAttribute("data-label", "Progress");
     expect(within(unavailableRow!).getByTitle("Agent-reported session progress is unavailable")).toHaveTextContent("—");
     expect(within(progressRow!).getAllByText("Preparing tab4 for header measurement")).toHaveLength(2);
     expect(within(progressRow!).getAllByTitle(/Provider-reported · observed/)).toHaveLength(2);

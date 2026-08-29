@@ -102,12 +102,12 @@ export function SessionsView() {
         <table className="commandTable"><caption className="commandVisuallyHidden">Observed Pomegr sessions</caption><colgroup><col className="commandSessionColSession" /><col className="commandSessionColState" /><col className="commandSessionColActivity" /><col className="commandSessionColAgents" /><col className="commandSessionColContext" /><col className="commandSessionColProgress" /><col className="commandSessionColUpdated" /><col className="commandSessionColAction" /></colgroup><thead><tr><th>Session</th><th>State</th><th className="commandTableActivityColumn">Current activity</th><th className="commandTableAgents">Agents</th><th>Context</th><th>Progress</th><th className="commandTableUpdated">Updated</th><th aria-label="Open session" /></tr></thead>
           <tbody>{visibleSessions.map((session) => { const detail = liveById.get(session.id); const state = sessionState(session); return <tr key={session.id}>
             <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity activity={detail?.currentActivity} compact /></Link></td>
-            <td><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
+            <td data-label="State"><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
             <td className="commandTableActivityColumn"><SessionCurrentActivity activity={detail?.currentActivity} /></td>
-            <td className="commandTableAgents">{detail?.agentCount ?? <span title="Agent count is only available in live session evidence">—</span>}</td>
-            <td>{detail?.latestContextTotal === null || detail?.latestContextTotal === undefined ? <span title="Context is only available in live session evidence">—</span> : `${Math.round(detail.latestContextTotal / 1000)}k`}</td>
-            <td><span className="commandTableProgress" title={detail?.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{detail?.progress ? `${Math.round(detail.progress.percent)}%` : "—"}</span></td>
-            <td className="commandTableUpdated">{sessionTimestamp(session.updatedAt)}</td>
+            <td className="commandTableAgents" data-label="Agents">{detail?.agentCount ?? <span title="Agent count is only available in live session evidence">—</span>}</td>
+            <td data-label="Context">{detail?.latestContextTotal === null || detail?.latestContextTotal === undefined ? <span title="Context is only available in live session evidence">—</span> : `${Math.round(detail.latestContextTotal / 1000)}k`}</td>
+            <td data-label="Progress"><span className="commandTableProgress" title={detail?.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{detail?.progress ? `${Math.round(detail.progress.percent)}%` : "—"}</span></td>
+            <td className="commandTableUpdated" data-label="Updated">{sessionTimestamp(session.updatedAt)}</td>
             <td><Link className="commandIconLink" href={sessionHref(session)} aria-label={`Open ${session.title}`}><CommandIcon name="arrow" size="small" /></Link></td>
           </tr>; })}</tbody>
         </table>

@@ -171,7 +171,7 @@ test("production web server uses explicit runtime inputs from any working direct
     process.chdir(originalCwd);
     await web?.close();
     await monitor.close();
-    await rm(otherDirectory, { recursive: true, force: true });
+    await rm(otherDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
   assert.deepEqual(await web.exit, { code: "WEB_CLOSED" });
   assert.deepEqual(stages, [
