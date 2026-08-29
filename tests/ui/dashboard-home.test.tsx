@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import type { HomeAggregateSnapshot, HomeSnapshot, LiveSessionSummary } from "../../shared/monitor-contract";
 
@@ -166,7 +167,7 @@ const snapshot = {
 } satisfies HomeSnapshot;
 
 const liveSessions = snapshot.projects.flatMap((project) => project.sessions.map((session) => {
-  const liveSession = { ...session, isLive: true };
+  const liveSession = { ...session, isLive: true, currentActivity: null };
   Reflect.deleteProperty(liveSession, "contextHistory");
   Reflect.deleteProperty(liveSession, "resources");
   return liveSession;
@@ -182,7 +183,7 @@ function homeAggregate(overrides: Partial<HomeAggregateSnapshot> = {}): HomeAggr
 }
 
 function renderHome(live = liveSessions, lifecycle: { loading?: boolean; connected?: boolean } = {}) {
-  return render(<SessionCatalogProvider sessions={[]} liveSessions={live} {...lifecycle}><HomeDashboard /></SessionCatalogProvider>);
+  return render(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={live} {...lifecycle}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
 }
 
 afterEach(() => {
@@ -195,7 +196,7 @@ describe("home dashboard", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
     const { container } = renderHome();
 
-    expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspace overview" })).toBeInTheDocument();
     const activeRegion = screen.getByRole("region", { name: "Active now" });
     const idleRegion = screen.getByRole("region", { name: "Open · Idle" });
     expect(within(activeRegion).getByText("Working now")).toBeInTheDocument();
@@ -225,7 +226,7 @@ describe("home dashboard", () => {
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
       : session);
-    view.rerender(<SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider>);
+    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
 
     expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
     expect(screen.getByText("complete")).toBeInTheDocument();
@@ -242,7 +243,7 @@ describe("home dashboard", () => {
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
       : session);
-    view.rerender(<SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider>);
+    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
     expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
     expect(homeRequestCount(fetchMock)).toBe(1);
 
@@ -274,13 +275,13 @@ describe("home dashboard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Working now" })).toBeInTheDocument();
     expect(screen.getByText("Usage and activity overview is unavailable. Pomegr will retry automatically.")).toBeInTheDocument();
-    expect(screen.getByText("Monitor connected")).toBeInTheDocument();
+    expect(screen.getByText("Local monitor connected")).toBeInTheDocument();
   });
 
   it("joins usage limits and provider-local limit activity", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
     const { container } = renderHome();
-    expect(await screen.findByRole("heading", { name: "Open sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workspace overview" })).toBeInTheDocument();
     expect(screen.getByText("Build home")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Usage & activity" })).toBeInTheDocument();
     expect(container.querySelectorAll(".homeProviderLimit")).toHaveLength(2);
@@ -496,7 +497,7 @@ describe("home dashboard", () => {
   it("keeps resource telemetry quiet on the home surface", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
     const { container } = renderHome();
-    await screen.findByRole("heading", { name: "Open sessions" });
+    await screen.findByRole("heading", { name: "Workspace overview" });
     expect(container.querySelector(".homeChartLine, .homeChartCpu, .homeChartMemory")).not.toBeInTheDocument();
     expect(screen.queryByText("Resource use · live samples")).not.toBeInTheDocument();
     expect(screen.queryByText("42% · 64 MB")).not.toBeInTheDocument();
@@ -505,7 +506,7 @@ describe("home dashboard", () => {
   it("shows no-live and offline states without hanging polling", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ generatedAt: "2026-08-23T12:00:00.000Z", providerLimits: [], limitActivities: [] }));
     const noLive = renderHome([]);
-    expect(await screen.findByText("No open sessions yet.")).toBeInTheDocument();
+    expect(await screen.findByText(/No open sessions yet\./)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/home", expect.objectContaining({ cache: "no-store" }));
 
     noLive.unmount();

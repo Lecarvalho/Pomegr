@@ -1,14 +1,24 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
 describe("public landing surfaces", () => {
+  it("uses the lightweight established mark in landing chrome", () => {
+    const source = read("app/components/PomegrBrand.tsx");
+    expect(source).toContain('src="/favicon.svg"');
+    expect(source).toContain('alt="" width="35" height="35"');
+    expect(statSync(new URL("../../public/favicon.svg", import.meta.url)).size).toBeLessThan(statSync(new URL("../../public/pomegr-logo.png", import.meta.url)).size);
+  });
+
   it("keeps the landing page inside the isolated package", () => {
     const source = read("app/components/LandingPage.tsx");
     expect(source).toContain('<SiteHeader current="home" />');
     expect(source).toContain('<SiteFooter current="home" />');
     expect(source).toContain('id="waitlist"');
+    expect(source).toContain("Planned platforms · desktop, iOS, Android");
+    expect(source).toContain("Desktop · planned");
+    expect(source).not.toContain("Field release · desktop, iOS, Android");
     expect(source).not.toMatch(/from\s+["'](?:\.\.\/){3,}/);
     expect(source).not.toContain("issues/new");
   });

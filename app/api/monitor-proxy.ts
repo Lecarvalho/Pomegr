@@ -56,3 +56,33 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
     });
   }
 }
+
+export async function proxyMonitorEventStream(signal?: AbortSignal) {
+  try {
+    const authorizationToken = process.env.POMEGR_MONITOR_TOKEN;
+    const response = await fetch(`${monitorOrigin()}/api/events`, {
+      cache: "no-store",
+      headers: authorizationToken
+        ? { "x-pomegr-desktop-authorization": authorizationToken }
+        : undefined,
+      signal,
+    });
+    if (!response.ok || !response.body) throw new Error("Monitor revision stream unavailable");
+    return new Response(response.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  } catch {
+    return new Response("Revision events unavailable", {
+      status: 503,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+}

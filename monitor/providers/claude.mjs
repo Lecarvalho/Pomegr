@@ -29,6 +29,7 @@ import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
+import { createClaudeSourceEventRouter } from "./claude-source-routing.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
@@ -226,11 +227,17 @@ function recordedGitBranch(records) {
 function sessionTitleState(records, initial = {}) {
   let aiTitle = initial.aiTitle || "";
   let customTitle = initial.customTitle || "";
+  let createdAt = initial.createdAt || "";
   for (const record of records) {
+    const timestamp = record.timestamp || record.message?.timestamp;
+    const timestampMs = Date.parse(timestamp || "");
+    if (Number.isFinite(timestampMs) && (!createdAt || timestampMs < Date.parse(createdAt))) {
+      createdAt = new Date(timestampMs).toISOString();
+    }
     if (record.type === "ai-title" && typeof record.aiTitle === "string") aiTitle = record.aiTitle;
     if (record.type === "custom-title") customTitle = record.customTitle || record.title || record.name || customTitle;
   }
-  return { aiTitle, customTitle };
+  return { aiTitle, customTitle, createdAt };
 }
 
 function sessionTitle(records) {
@@ -256,13 +263,14 @@ async function scanSessionTitleState(file, stat, initial = {}, start = 0) {
         firstLine = false;
         if (start > 0) continue;
       }
-      if ((!line.includes("ai-title") && !line.includes("custom-title"))
+      if ((state.createdAt && !line.includes("ai-title") && !line.includes("custom-title"))
         || Buffer.byteLength(line, "utf8") > MAX_SESSION_TITLE_RECORD_BYTES) continue;
       let record;
       try { record = JSON.parse(line); } catch { continue; }
       const next = sessionTitleState([record], state);
       state.aiTitle = next.aiTitle;
       state.customTitle = next.customTitle;
+      state.createdAt = next.createdAt;
     }
     return state;
   } finally {
@@ -437,10 +445,14 @@ export function createClaudeProvider(options = {}) {
         continue;
       }
       const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
+      const title = await cachedSessionTitle(file, stat);
+      const cachedMetadata = sessionTitleCache.get(file);
+      const fallbackCreatedAtMs = Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
       const value = {
         localId: path.basename(file, ".jsonl"),
-        title: await cachedSessionTitle(file, stat),
+        title,
         project: projectName(file, records),
+        createdAt: cachedMetadata?.createdAt || new Date(fallbackCreatedAtMs).toISOString(),
         updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
       };
       sessionSummaryCache.set(file, { key: cacheKey, value });
@@ -723,6 +735,8 @@ export function createClaudeProvider(options = {}) {
     return incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, !discovered.liveFiles.has(file));
   }
 
+  const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot);
+
   return defineProvider({
     id: "claude",
     source: "Claude Code",
@@ -760,9 +774,11 @@ export function createClaudeProvider(options = {}) {
         list: listSessions,
         readEvidence: readSession,
         resolveSource: observerSource,
+        routeSourceEvent: routeClaudeSourceEvent,
         intervalMs: options.observerIntervalMs ?? 10_000,
         concurrency: options.observerConcurrency ?? 2,
         watchTargets: [projectsRoot],
+        watchSource: options.observerWatchSource,
       });
     },
     readTranscriptPath,

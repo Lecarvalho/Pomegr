@@ -21,7 +21,7 @@ function timestampValue(value) {
 }
 
 function compareCatalogEntries(left, right) {
-  const timeDifference = timestampValue(right.updatedAt) - timestampValue(left.updatedAt);
+  const timeDifference = timestampValue(right.createdAt || right.updatedAt) - timestampValue(left.createdAt || left.updatedAt);
   if (timeDifference) return timeDifference;
   const providerDifference = left.providerIndex - right.providerIndex;
   if (providerDifference) return providerDifference;
@@ -50,6 +50,7 @@ function publicCatalogEntry(entry) {
     source: entry.provider.source,
     title: entry.title,
     project: entry.project,
+    createdAt: entry.createdAt || entry.updatedAt,
     updatedAt: entry.updatedAt,
     isLive: Boolean(entry.isLive),
     needsInput: Boolean(entry.needsInput),

@@ -6,28 +6,29 @@ import AboutPage from "../../app/about/page";
 
 const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
+const shellSource = readFileSync(join(process.cwd(), "app", "components", "command-center", "CommandCenterShell.tsx"), "utf8");
+const brandSource = readFileSync(join(process.cwd(), "app", "components", "PomegrBrand.tsx"), "utf8");
 const contextHistorySource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "ContextHistoryPanel.tsx"), "utf8");
 const requestSnapshotsSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestSnapshotsPanel.tsx"), "utf8");
 const sessionProgressSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionProgressPanel.tsx"), "utf8");
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
-  it("renders the wordmark-only header identity and the product mark on About", () => {
+  it("keeps the application identity wordmark-only", () => {
     const { container } = render(<AboutPage />);
 
-    expect(screen.getByRole("link", { name: "Pomegr dashboard" })).toHaveTextContent("POMEGR");
-    expect(screen.getByText("ABOUT POMEGR")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Pomegr pomegranate mark" })).toContainElement(document.querySelector(".aboutBrandMarkImage"));
-    expect(document.querySelector(".aboutBrandMarkImage")).toHaveAttribute("src", expect.stringContaining("pomegr-logo.png"));
-    expect(container.querySelector(".brandWordmark path")).toBeInTheDocument();
-    expect(container.querySelector(".brandMark")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "A quiet view into active work." })).toBeInTheDocument();
+    expect(shellSource).toMatch(/<PomegrBrand href="\/" label="Pomegr home"/);
+    expect(brandSource).toMatch(/className="brandWordmark"/);
+    expect(brandSource).not.toMatch(/brandMark|pomegr-logo/);
+    expect(container.querySelector("img, svg")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "openai/codex#35300" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/pomegr-logo\.png/);
   });
 
   it("uses restrained typography, a single inspectable context line, and square framed controls", () => {
-    expect(styles).not.toMatch(/Georgia|Times New Roman|Arial|Helvetica/);
+    expect(styles).not.toMatch(/Arial|Helvetica/);
     expect(styles).toMatch(/:is\(button,[\s\S]*?\)\s*\{\s*border-radius:\s*0;/);
     expect(styles).toMatch(/\.contextHistoryLine\s*\{[^}]*stroke:\s*var\(--blue\);[^}]*stroke-width:\s*2\.25/);
     expect(styles).toMatch(/\.contextBoundary line\s*\{[^}]*stroke-dasharray:\s*3 4/);
@@ -52,8 +53,22 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 420px\)[\s\S]*?\.requestSnapshotReadout\s*\{\s*margin-left:\s*0/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
     expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
-    expect(styles).toMatch(/\.aboutBack\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*line-height:\s*1/);
+    expect(styles).toMatch(/\.commandNavItem\s*\{[^}]*display:\s*grid;[^}]*align-items:\s*center/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSidebar\.isOpen\s*\{[^}]*transform:\s*translateX\(0\)/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader \.brand, \.commandProfileWrap\s*\{\s*display:\s*none/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*display:\s*flex;[^}]*transform:\s*translateX\(44px\)/);
+    expect(styles).toMatch(/\.commandHeader\.isSearchOpen > \.commandSearch\s*\{[^}]*transform:\s*none;[^}]*transform \.22s cubic-bezier\(\.16, 1, \.3, 1\)/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*transform:\s*none/);
+    expect(styles).toMatch(/\.commandSearch:focus-within\s*\{\s*border-color:\s*var\(--command-faint\);\s*outline:\s*2px solid var\(--command-green\);\s*outline-offset:\s*2px/);
+    expect(styles).toMatch(/\.commandSearch input:focus-visible\s*\{\s*outline:\s*none/);
+    expect(styles).toMatch(/\.commandSessionColActivity\s*\{\s*width:\s*280px/);
+    expect(styles).toMatch(/\.commandTableActivityLabel\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityColumn\s*\{\s*display:\s*none/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityCompact\s*\{[^}]*display:\s*flex/);
+    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-rokkitt\)/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
+    expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*#fffefa/);
     expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--popover:\s*#1c1a20/);
     expect(styles).toMatch(/\.agentPopover\s*\{[^}]*background:\s*var\(--popover\)[^}]*box-shadow:\s*var\(--popover-shadow\)/);
@@ -68,6 +83,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.sessionProgressPanel\s*\{[^}]*overflow:\s*hidden/);
     expect(styles).toMatch(/\.animatedProgressSemantic\s*\{[^}]*appearance:\s*none/);
     expect(styles).toMatch(/\.animatedProgressFill\s*\{[^}]*transform-origin:\s*left center/);
-    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation-duration:\s*\.01ms/);
+    expect(styles).not.toMatch(/(?:animation|transition)-duration:\s*\.01ms/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.attentionGlyph[\s\S]*?\.uiSkeleton \{ animation: none; \}/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.limitTrack i[\s\S]*?\.homeLimitTrack b \{ transition: none; \}/);
   });
 });

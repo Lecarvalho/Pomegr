@@ -412,6 +412,7 @@ export const providerSessionReferenceSchema = z.object({
   localId: z.string().regex(SAFE_LOCAL_SESSION_ID, "Unsafe provider-local session ID"),
   title: evidenceOneLine(512),
   project: evidenceOneLine(512),
+  createdAt: evidenceTimestamp.optional(),
   updatedAt: evidenceTimestamp,
   isLive: z.boolean(),
   needsInput: z.boolean(),

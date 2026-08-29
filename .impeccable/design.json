@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-29T19:07:09.581Z",
+  "title": "Design System: Pomegr",
+  "extensions": {
+    "colorMeta": {
+      "command-ground-dark": { "role": "neutral", "displayName": "Operations Ground (dark)", "canonical": "#0b0b0e", "tonalRamp": ["#050507", "#08080a", "#0b0b0e", "#111116", "#17171c", "#222128", "#343039", "#f2f0eb"] },
+      "command-panel-dark": { "role": "neutral", "displayName": "Evidence Panel (dark)", "canonical": "#121216", "tonalRamp": ["#08080a", "#0c0c0f", "#121216", "#17171c", "#1d1c22", "#29262e", "#3b353e", "#f2f0eb"] },
+      "command-line-dark": { "role": "neutral", "displayName": "Quiet Rule (dark)", "canonical": "#2d292f", "tonalRamp": ["#121115", "#1b181d", "#242127", "#2d292f", "#3b353e", "#514951", "#736a73", "#f2f0eb"] },
+      "command-ink-dark": { "role": "neutral", "displayName": "Operational Ink (dark)", "canonical": "#f2edef", "tonalRamp": ["#1b181d", "#29252b", "#3d373f", "#5b525b", "#7b7079", "#a49ca1", "#d3cdd0", "#f2edef"] },
+      "command-faint-light": { "role": "neutral", "displayName": "Faint Metadata (light)", "canonical": "#6f6863", "tonalRamp": ["#29231f", "#453c36", "#5b514a", "#6f6863", "#8b827a", "#aaa39a", "#d2cdc6", "#f2f0eb"] },
+      "command-ground-light": { "role": "neutral", "displayName": "Operations Ground (light)", "canonical": "#f2f0eb", "tonalRamp": ["#29241f", "#4a433b", "#6b6258", "#8e8479", "#b3aaa1", "#d4cfc6", "#e5e1da", "#f2f0eb"] },
+      "command-panel-light": { "role": "neutral", "displayName": "Evidence Panel (light)", "canonical": "#fbfaf7", "tonalRamp": ["#28231e", "#4d453d", "#71675d", "#958b80", "#b9b0a7", "#d8d2ca", "#ece9e3", "#fbfaf7"] },
+      "command-brand-dark": { "role": "primary", "displayName": "Pomegranate Brand Ink", "canonical": "#a63c32", "tonalRamp": ["#35100d", "#541813", "#72231c", "#8b3028", "#a63c32", "#bd5b50", "#d4867c", "#f3d9d5"] },
+      "command-brand-text-dark": { "role": "primary", "displayName": "Accessible Brand Text (dark)", "canonical": "#e58b80", "tonalRamp": ["#4a1713", "#6b211c", "#8d3028", "#ad453c", "#c86156", "#e58b80", "#f0b2aa", "#f9e1de"] },
+      "command-brand-light": { "role": "primary", "displayName": "Pomegranate Brand Ink (light)", "canonical": "#994238", "tonalRamp": ["#32100d", "#4f1b16", "#692a23", "#80362e", "#994238", "#b26055", "#ce8a82", "#f0d7d3"] },
+      "command-brand-text-light": { "role": "primary", "displayName": "Accessible Brand Text (light)", "canonical": "#994238", "tonalRamp": ["#32100d", "#4f1b16", "#692a23", "#80362e", "#994238", "#b26055", "#ce8a82", "#f0d7d3"] },
+      "landing-faint": { "role": "neutral", "displayName": "Landing Faint Ink", "canonical": "#8f8983", "tonalRamp": ["#302d28", "#4f4b44", "#6c675f", "#8f8983", "#aaa69e", "#c7c3bc", "#e2ded6", "#f3f0e8"] },
+      "command-green-dark": { "role": "secondary", "displayName": "Signal Green", "canonical": "#b6d95f", "tonalRamp": ["#28330f", "#40531a", "#5c7726", "#789a35", "#95b946", "#b6d95f", "#d0e996", "#eef7d5"] },
+      "command-green-light": { "role": "secondary", "displayName": "Signal Green (light)", "canonical": "#547a64", "tonalRamp": ["#142319", "#1f3929", "#2d503a", "#3e664c", "#547a64", "#719886", "#9cb7a6", "#dce8df"] },
+      "command-amber-dark": { "role": "secondary", "displayName": "Signal Amber", "canonical": "#d1a343", "tonalRamp": ["#38250b", "#5d3d11", "#815519", "#a17028", "#d1a343", "#e0bc70", "#edd39e", "#faefd3"] },
+      "command-lavender-dark": { "role": "secondary", "displayName": "Context Lavender", "canonical": "#bbb3d3", "tonalRamp": ["#302c40", "#4a435f", "#685f80", "#8b82a4", "#aaa1c0", "#bbb3d3", "#d2cde0", "#efedf5"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Rokkitt Display", "purpose": "Route titles and major operating propositions." },
+      "body": { "displayName": "Inter Body", "purpose": "Descriptions, explanations, and readable controls." },
+      "label": { "displayName": "Geist Mono Label", "purpose": "Execution metadata, timestamps, counts, statuses, and footer state." }
+    },
+    "shadows": [
+      { "name": "command-overlay-dark", "value": "0 22px 58px rgba(0, 0, 0, .52)", "purpose": "Profile and notification overlays above the dark shell." },
+      { "name": "command-overlay-light", "value": "0 18px 46px rgba(38, 31, 28, .16)", "purpose": "Profile and notification overlays above the light shell." }
+    ],
+    "motion": [
+      { "name": "command-state", "value": "cubic-bezier(.2, .8, .2, 1)", "purpose": "Short, restrained shell state transitions; remove nonessential motion for reduced-motion users." }
+    ],
+    "breakpoints": [
+      { "name": "compact-rail", "value": "1080px" },
+      { "name": "wrapped-routes", "value": "760px" },
+      { "name": "narrow-mobile", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Command Wordmark",
+      "kind": "nav",
+      "refersTo": "command-nav-active",
+      "description": "Application identity is the POMEGR wordmark only; no pomegranate icon is paired with it.",
+      "html": "<a class=\"ds-wordmark\" href=\"#\" aria-label=\"Pomegr home\"><svg viewBox=\"80 660 1310 180\" aria-hidden=\"true\"><path d=\"M100 820V680H183C225 680 251 700 251 733C251 766 225 786 183 786H100M390 675C340 675 309 704 309 750C309 796 340 825 390 825C440 825 471 796 471 750C471 704 440 675 390 675Z M550 820V680L625 762L700 680V820 M790 680V820M790 680H916M790 750H891M790 820H916 M1153 706C1138 686 1116 675 1087 675C1037 675 1006 704 1006 750C1006 796 1037 825 1087 825C1115 825 1138 815 1154 797V752H1096 M1242 820V680H1304C1343 680 1366 699 1366 732C1366 764 1343 783 1304 783H1242M1303 783L1369 820\"/></svg></a>",
+      "css": ".ds-wordmark { width: 76px; height: 22px; display: block; color: #f2edef; } .ds-wordmark svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; } .ds-wordmark:hover { color: #b6d95f; } .ds-wordmark:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Global Search",
+      "kind": "input",
+      "refersTo": "command-search",
+      "description": "A compact destination search with an optional keyboard shortcut hint.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"6\"/><path d=\"m16 16 4 4\"/></svg><input placeholder=\"Search dashboards, sessions, and agents\" aria-label=\"Search Pomegr destinations\"><kbd>Ctrl K</kbd></label>",
+      "css": ".ds-search { width: 100%; height: 38px; padding: 0 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #2d292f; border-radius: 8px; background: #0b0b0e; color: #a49ca1; } .ds-search:focus-within { border-color: #464047; } .ds-search svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; } .ds-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #f2edef; font: 10px Inter, Arial, sans-serif; } .ds-search input::placeholder { color: #a49ca1; } .ds-search kbd { padding: 3px 5px; border: 1px solid #2d292f; border-bottom-color: #464047; border-radius: 4px; color: #8b8389; font: 8px Geist Mono, Consolas, monospace; } .ds-search input:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Active Rail Item",
+      "kind": "nav",
+      "refersTo": "command-nav-active",
+      "description": "Selected route in the desktop rail; labels collapse at compact widths and return inside the mobile off-canvas drawer.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m4 10 8-6 8 6v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z\"/><path d=\"M9 20v-6h6v6\"/></svg><span>Home</span></a>",
+      "css": ".ds-nav-active { min-height: 40px; padding: 0 10px; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 9px; border: 1px solid #2d292f; border-radius: 7px; background: #1d1c22; color: #f2edef; text-decoration: none; font: 9px Inter, Arial, sans-serif; } .ds-nav-active svg { width: 17px; height: 17px; fill: none; stroke: #a63c32; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-active:hover { background: #17171c; } .ds-nav-active:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Primary Action",
+      "kind": "button",
+      "refersTo": "command-primary-action",
+      "description": "Pomegranate action for supported operations; unavailable actions are disabled rather than simulated.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Open workspace</button>",
+      "css": ".ds-primary { min-height: 36px; padding: 0 12px; border: 1px solid #c4584d; border-radius: 6px; background: #a63c32; color: #fff; cursor: pointer; font: 650 9px/1 Geist Mono, Consolas, monospace; } .ds-primary:hover { background: #bd4d42; } .ds-primary:active { transform: translateY(1px); } .ds-primary:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; } .ds-primary:disabled { cursor: default; opacity: .48; }"
+    },
+    {
+      "name": "Secondary Action",
+      "kind": "button",
+      "refersTo": "command-secondary-action",
+      "description": "Quiet bordered action for route-level navigation or supported secondary work.",
+      "html": "<button class=\"ds-secondary\" type=\"button\">View details</button>",
+      "css": ".ds-secondary { min-height: 36px; padding: 0 12px; border: 1px solid #464047; border-radius: 6px; background: transparent; color: #f2edef; cursor: pointer; font: 650 9px/1 Geist Mono, Consolas, monospace; } .ds-secondary:hover { background: #17171c; } .ds-secondary:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; } .ds-secondary:disabled { cursor: default; opacity: .48; }"
+    },
+    {
+      "name": "Signal Panel",
+      "kind": "card",
+      "refersTo": "command-signal-panel",
+      "description": "Flat operational evidence surface with one-pixel boundary and semantic value color.",
+      "html": "<section class=\"ds-signal-panel\"><header><strong>All-agent context</strong><span>Current snapshot</span></header><b>1M</b><p>Sum of visible latest snapshots</p></section>",
+      "css": ".ds-signal-panel { min-height: 142px; padding: 14px; border: 1px solid #2d292f; border-radius: 1px; background: #121216; color: #f2edef; } .ds-signal-panel header { display: flex; justify-content: space-between; gap: 10px; } .ds-signal-panel strong { font: 650 10px Inter, Arial, sans-serif; } .ds-signal-panel header span, .ds-signal-panel p { color: #a49ca1; font: 8px/1.55 Inter, Arial, sans-serif; } .ds-signal-panel b { display: block; margin-top: 24px; color: #bbb3d3; font: 500 30px/1 Geist Mono, Consolas, monospace; } .ds-signal-panel p { margin: 9px 0 0; }"
+    },
+    {
+      "name": "Notification Tray",
+      "kind": "custom",
+      "refersTo": "command-signal-panel",
+      "description": "Non-modal local event tray with grouped attention, explicit empty states, and connection honesty.",
+      "html": "<aside class=\"ds-notification-tray\" aria-label=\"Notifications\"><header><div><h2>Notifications</h2><p>Local events that may need your attention</p></div><button type=\"button\" aria-label=\"Close notifications\">×</button></header><div class=\"ds-notification-group\">Needs attention <b>1</b></div><article><i></i><div><strong>Local monitor connected</strong><p>The latest committed normalized state is available.</p><a href=\"#\">View workspace</a></div><time>Now</time></article></aside>",
+      "css": ".ds-notification-tray { width: 390px; max-width: calc(100vw - 28px); border: 1px solid #464047; background: #121216; color: #f2edef; box-shadow: 0 22px 58px rgba(0, 0, 0, .52); } .ds-notification-tray header { min-height: 70px; padding: 13px 14px; display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #2d292f; } .ds-notification-tray h2 { margin: 0; font: 650 16px/1 Rokkitt, Rockwell, Georgia, serif; } .ds-notification-tray p { margin: 5px 0 0; color: #a49ca1; font: 8px/1.5 Inter, Arial, sans-serif; } .ds-notification-tray button { width: 30px; height: 30px; border: 1px solid transparent; background: transparent; color: #a49ca1; font-size: 18px; } .ds-notification-tray button:hover { border-color: #2d292f; color: #f2edef; } .ds-notification-tray button:focus-visible { outline: 2px solid #b6d95f; outline-offset: 2px; } .ds-notification-group { min-height: 30px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2d292f; color: #8b8389; font: 7px Geist Mono, Consolas, monospace; text-transform: uppercase; letter-spacing: .1em; } .ds-notification-group b { padding: 3px 5px; border-radius: 8px; background: #1d1c22; color: #a49ca1; } .ds-notification-tray article { min-height: 98px; padding: 13px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; border-bottom: 1px solid #2d292f; } .ds-notification-tray article i { width: 7px; height: 7px; margin-top: 3px; border-radius: 50%; background: #b6d95f; } .ds-notification-tray strong { font: 650 10px Inter, Arial, sans-serif; } .ds-notification-tray article a { color: #d1a343; font: 8px Inter, Arial, sans-serif; } .ds-notification-tray time { color: #8b8389; font: 7px Geist Mono, Consolas, monospace; }"
+    },
+    {
+      "name": "Settings Row",
+      "kind": "custom",
+      "refersTo": "command-signal-panel",
+      "description": "Flat preference row pairing an effect description with a native switch or bounded state label.",
+      "html": "<div class=\"ds-setting-row\"><div><strong>Compact density</strong><span>A denser evidence layout will arrive in a future release.</span></div><span class=\"ds-coming\">Coming soon</span></div>",
+      "css": ".ds-setting-row { min-height: 76px; padding: 0 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 22px; border-top: 1px solid #2d292f; background: #121216; color: #f2edef; } .ds-setting-row strong, .ds-setting-row span { display: block; } .ds-setting-row strong { font: 650 10px Inter, Arial, sans-serif; } .ds-setting-row div > span { margin-top: 6px; color: #a49ca1; font: 8px/1.45 Inter, Arial, sans-serif; } .ds-coming { padding: 6px 8px; border: 1px solid #2d292f; border-radius: 5px; color: #8b8389; font: 8px Geist Mono, Consolas, monospace; text-transform: uppercase; letter-spacing: .05em; }"
+    },
+    {
+      "name": "Coming Soon State",
+      "kind": "custom",
+      "refersTo": "command-signal-panel",
+      "description": "Honest boundary for planned evidence; it does not imitate a loaded or successful state.",
+      "html": "<section class=\"ds-coming-soon\"><span>Coming soon</span><h2>Global agent detail is not available yet</h2><p>Pomegr will add a normalized roster when that evidence can be served safely.</p></section>",
+      "css": ".ds-coming-soon { min-height: 134px; padding: 20px; border: 1px solid #2d292f; background: #121216; color: #f2edef; } .ds-coming-soon > span { display: inline-block; padding: 5px 7px; border: 1px solid #2d292f; border-radius: 5px; color: #8b8389; font: 7px Geist Mono, Consolas, monospace; text-transform: uppercase; letter-spacing: .07em; } .ds-coming-soon h2 { margin: 12px 0 0; font: 650 13px Inter, Arial, sans-serif; } .ds-coming-soon p { max-width: 72ch; margin: 8px 0 0; color: #a49ca1; font: 9px/1.55 Inter, Arial, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Measured Command Center",
+    "overview": "Pomegr is a local-first operations instrument for making coding-agent activity legible without exposing the work itself. The application shell is a dark, precise evidence wall: warm near-black surfaces, one-pixel rules, compact labels, and semantic color marks give the operator a stable scan order. Light mode keeps the same measured geometry on paper-like neutrals rather than becoming a separate visual language.\n\nThe landing/marketing surface remains the expressive companion to this instrument: drafting paper, clipped edges, tape, handwriting, and the full Pomegr mark are valid there when used sparingly. The application shell is intentionally quieter and more operational. Its identity is the POMEGR wordmark only; it does not place a pomegranate icon beside the wordmark. The full logo asset is a landing/marketing exception and may remain where that surface uses it.",
+    "keyCharacteristics": ["Near-black or warm-paper operational surfaces with flat one-pixel evidence boundaries.", "Rokkitt propositions, Inter explanation, and Geist Mono execution metadata.", "Pomegranate brand ink plus semantic green, amber, and lavender signals.", "A 220px desktop rail that becomes a 54px icon rail at compact widths and an off-canvas drawer on mobile.", "Honest unavailable and coming-soon states that never imply unsupported evidence.", "Read-only, provider-neutral language with local monitor status always visible."],
+    "rules": [
+      { "name": "The Semantic Color Rule", "body": "Green, amber, and lavender carry operational meaning; never spend them as decoration.", "section": "colors" },
+      { "name": "The Theme-Pair Rule", "body": "Dark and light tokens preserve the same role and contrast hierarchy; switching theme must not change the meaning of a signal.", "section": "colors" },
+      { "name": "The Red Rarity Rule", "body": "Pomegranate ink is identity and action emphasis, not a general surface fill.", "section": "colors" },
+      { "name": "The Instrument-Type Rule", "body": "Use Rokkitt for propositions, Inter for explanation, and Geist Mono for evidence; never swap their roles to create novelty.", "section": "typography" },
+      { "name": "The Flat-Evidence Rule", "body": "Panels, tables, metrics, and settings panes use tone and a one-pixel rule; shadows belong to overlays or the landing composition.", "section": "elevation" }
+    ],
+    "dos": ["Do keep the Command Center shell wordmark-only; reserve the full pomegranate logo asset for landing/marketing expression.", "Do preserve the 220px desktop rail, 54px compact rail, mobile off-canvas drawer, 58px desktop header, 56px compact header, and 38px footer rhythm.", "Do use semantic green, amber, and lavender only where their operational roles are truthful.", "Do keep evidence surfaces flat with one-pixel boundaries and put depth only on profile/notification overlays or landing artifacts.", "Do label provider-reported estimates, agent-reported signals, deterministic heuristics, unavailable data, and coming-soon work honestly.", "Do maintain visible focus, keyboard tab behavior, reduced motion, accessible names, 24px precision-pointer minimums, and 44px coarse/mobile targets.", "Do preserve the landing surface’s drafting-paper, torn, taped, and stamped details when working on landing/marketing components."],
+    "donts": ["Don't add the pomegranate icon to the Command Center header or treat the full logo as required application-shell identity.", "Don't turn operational panels into glossy gradients, glass cards, soft pill controls, or floating shadow stacks.", "Don't use torn edges, tape, handwriting, or stamps on application evidence panels; those are landing-only irregularities.", "Don't use signal colors as decoration or imply that a heuristic, estimate, or illustrative value is authoritative.", "Don't expose prompts, responses, commands, credentials, raw transcript content, or unsupported repository/agent detail.", "Don't replace a missing or unavailable value with a plausible-looking number or a generic success state."]
+  }
+}

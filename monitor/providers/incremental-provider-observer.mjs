@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 import { createNormalizedPollingObserver } from "./normalized-polling-observer.mjs";
 
@@ -24,7 +25,7 @@ export function incrementalSourceDescriptor(file, historical = false) {
       fs.readSync(descriptor, suffix, 0, bytes, stat.size - bytes);
       suffixDigest = crypto.createHash("sha256").update(suffix).digest("hex");
     } finally { fs.closeSync(descriptor); }
-    return { file, identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixDigest, historical };
+    return { file, identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixDigest, historical, sourceFiles: [file] };
   } catch { return null; }
 }
 
@@ -45,7 +46,11 @@ export function incrementalSourceSetDescriptor(files, primaryFile, historical = 
         : `${file}\0${descriptor.identity}\0${descriptor.size}\0${descriptor.suffixDigest}`] : [];
     });
   if (!parts.length) return primary;
-  return { ...primary, identity: crypto.createHash("sha256").update(parts.join("\n")).digest("hex") };
+  return {
+    ...primary,
+    identity: crypto.createHash("sha256").update(parts.join("\n")).digest("hex"),
+    sourceFiles: [...new Set(files.filter((file) => typeof file === "string" && file))],
+  };
 }
 
 /**
@@ -56,12 +61,55 @@ export function incrementalSourceSetDescriptor(files, primaryFile, historical = 
  * offset suitable for monitor-private checkpoint matching.
  */
 export function createIncrementalProviderObserver(options = {}) {
-  const { providerId, list, readEvidence, resolveSource, prepareSources, intervalMs, concurrency, watchTargets, yieldControl, now, shouldEagerHydrate } = options;
+  const {
+    providerId,
+    list,
+    readEvidence,
+    resolveSource,
+    prepareSources,
+    routeSourceEvent,
+    intervalMs,
+    concurrency,
+    watchTargets,
+    watchSource,
+    yieldControl,
+    now,
+    shouldEagerHydrate,
+  } = options;
   if (typeof providerId !== "string" || !providerId || typeof list !== "function"
     || typeof readEvidence !== "function" || typeof resolveSource !== "function") {
     throw new TypeError("Incremental provider observer requires provider identity, list, evidence reader, and source resolver");
   }
   const ingestors = new Map();
+  const sourceSessions = new Map();
+  const sourcesBySession = new Map();
+
+  const sourceKey = (file) => {
+    try {
+      const resolved = path.resolve(file);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    } catch { return ""; }
+  };
+
+  function indexSource(localSessionId, source) {
+    const previous = sourcesBySession.get(localSessionId) || [];
+    for (const file of previous) {
+      const key = sourceKey(file);
+      const owners = sourceSessions.get(key);
+      owners?.delete(localSessionId);
+      if (owners?.size === 0) sourceSessions.delete(key);
+    }
+    const files = [...new Set((Array.isArray(source?.sourceFiles) ? source.sourceFiles : [source?.file])
+      .filter((file) => typeof file === "string" && file))];
+    sourcesBySession.set(localSessionId, files);
+    for (const file of files) {
+      const key = sourceKey(file);
+      if (!key) continue;
+      const owners = sourceSessions.get(key) || new Set();
+      owners.add(localSessionId);
+      sourceSessions.set(key, owners);
+    }
+  }
 
   async function acquire(localSessionId, publisher, preparedSources) {
     const source = preparedSources instanceof Map
@@ -69,6 +117,7 @@ export function createIncrementalProviderObserver(options = {}) {
       : await resolveSource(localSessionId);
     if (!source || typeof source.file !== "string" || typeof source.identity !== "string"
       || !Number.isSafeInteger(source.size) || source.size < 0) return null;
+    indexSource(localSessionId, source);
     const sourceFingerprint = fingerprint(providerId, localSessionId, source.identity);
     let entry = ingestors.get(localSessionId);
     if (!entry) {
@@ -117,6 +166,27 @@ export function createIncrementalProviderObserver(options = {}) {
     return candidate;
   }
 
+  async function resolveSourceEvent(change) {
+    const filename = typeof change?.filename === "string" && change.filename ? change.filename : null;
+    const candidate = filename ? path.resolve(change.target, filename) : null;
+    const known = candidate ? sourceSessions.get(sourceKey(candidate)) : null;
+    if (typeof routeSourceEvent === "function") {
+      const routed = await routeSourceEvent({
+        ...change,
+        candidate,
+        knownSessionIds: known ? [...known] : [],
+      });
+      if (routed) return routed;
+    }
+    if (known?.size) {
+      return {
+        catalog: change.eventType === "rename",
+        sessionIds: [...known],
+      };
+    }
+    return { catalog: true, sessionIds: [] };
+  }
+
   return createNormalizedPollingObserver({
     list,
     ingest: acquire,
@@ -124,6 +194,8 @@ export function createIncrementalProviderObserver(options = {}) {
     intervalMs,
     concurrency,
     watchTargets,
+    routeSourceEvent: resolveSourceEvent,
+    watchSource,
     yieldControl,
     now,
     shouldEagerHydrate,

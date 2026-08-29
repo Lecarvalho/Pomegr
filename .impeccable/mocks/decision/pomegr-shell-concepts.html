@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pomegr — Professional shell concepts</title>
+  <style>
+    @font-face {
+      font-family: "Rokkitt Pomegr";
+      src: url("/landing/public/fonts/rokkitt-variable.ttf") format("truetype");
+      font-weight: 400 900;
+      font-display: swap;
+    }
+
+    :root {
+      --ink: #f2edef;
+      --muted: #a49ca1;
+      --faint: #8b8389;
+      --ground: #09090b;
+      --sidebar: #0d0d10;
+      --panel: #121216;
+      --panel-2: #17171c;
+      --panel-3: #1d1c22;
+      --line: #2d292f;
+      --line-strong: #464047;
+      --brand: #a63c32;
+      --brand-dark: #a63c32;
+      --green: #b6d95f;
+      --amber: #d1a343;
+      --lavender: #bbb3d3;
+      --red: #a63c32;
+      --paper: #eeeae1;
+      --paper-ink: #211e20;
+      --shadow: 0 28px 80px rgba(0, 0, 0, .42);
+      --font-sans: Inter, "Segoe UI", Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #050506; color-scheme: dark; scroll-behavior: smooth; }
+    body { margin: 0; background: #050506; color: var(--ink); font-family: var(--font-sans); }
+    button, a { font: inherit; }
+    button { color: inherit; }
+    ::selection { background: var(--brand); color: #fff; }
+    :where(button, a):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+    * { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+
+    .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+    .iconSmall { width: 14px; height: 14px; }
+    .brandLockup { min-width: 0; display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+    .brandLockup strong { font-family: "Rokkitt Pomegr", Rockwell, Georgia, serif; font-size: 18px; font-weight: 720; letter-spacing: .01em; }
+    .brandLockup small { display: block; margin-top: 2px; color: var(--muted); font: 9px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .statusDot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); }
+    .statusDot.amber { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 12%, transparent); }
+    .statusDot.idle { border: 1px solid var(--faint); background: transparent; box-shadow: none; }
+
+    .studyBar { position: sticky; z-index: 100; top: 0; min-height: 68px; padding: 10px clamp(14px, 3vw, 32px); display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr); align-items: center; gap: 18px; border-bottom: 1px solid #29262b; background: rgba(6, 6, 8, .96); box-shadow: 0 12px 32px rgba(0,0,0,.25); }
+    .studyTitle { min-width: 0; }
+    .studyTitle strong { display: block; font-size: 13px; font-weight: 680; }
+    .studyTitle span { display: block; margin-top: 3px; overflow: hidden; color: #8e878d; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .studyTabs { display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #312e33; border-radius: 10px; background: #0e0e11; }
+    .studyTab { min-height: 38px; padding: 0 16px; border: 0; border-radius: 7px; background: transparent; color: #938c92; cursor: pointer; font-size: 11px; font-weight: 650; transition: background-color .18s ease, color .18s ease, transform .18s cubic-bezier(.2,.8,.2,1); }
+    .studyTab:hover { color: var(--ink); }
+    .studyTab[aria-selected="true"] { background: #29242a; color: #fff; box-shadow: inset 0 0 0 1px #3f3941, 0 4px 16px rgba(0,0,0,.3); }
+    .studyTab:active { transform: translateY(1px); }
+    .studyMeta { justify-self: end; color: #837c82; font: 9px/1.4 var(--font-mono); text-align: right; }
+    .studyMeta strong { color: #c3bcc1; font-weight: 600; }
+
+    .concept { display: none; min-height: calc(100vh - 68px); background: var(--ground); }
+    .concept.isActive { display: block; animation: conceptReveal .32s cubic-bezier(.16,1,.3,1) both; }
+    @keyframes conceptReveal { from { opacity: .65; clip-path: inset(0 0 2% 0); } to { opacity: 1; clip-path: inset(0); } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .concept.isActive { animation: none; } * { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+
+    .conceptNote { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+    .conceptNote b { color: var(--ink); font-weight: 620; }
+    .profileButton { min-width: 0; min-height: 40px; padding: 4px 8px 4px 5px; display: flex; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; }
+    .profileButton:hover, .profileButton[aria-expanded="true"] { border-color: var(--line); background: var(--panel-2); }
+    .avatar { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: var(--brand-dark); color: var(--paper); font-size: 11px; font-weight: 760; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 18%, transparent); }
+    .profileCopy { min-width: 0; }
+    .profileCopy strong, .profileCopy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .profileCopy strong { font-size: 10px; font-weight: 650; }
+    .profileCopy small { margin-top: 3px; color: var(--muted); font: 8px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+    .profileWrap { position: relative; }
+    .profileMenu { position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; width: 250px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: #1a191e; box-shadow: var(--shadow); }
+    .profileMenu[hidden] { display: none; }
+    .profileMenu header { padding: 10px 10px 12px; border-bottom: 1px solid var(--line); }
+    .profileMenu header strong { display: block; font-size: 12px; }
+    .profileMenu header span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .profileMenu button { width: 100%; min-height: 38px; margin-top: 6px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: not-allowed; text-align: left; font-size: 10px; }
+    .profileMenu button:hover { background: var(--panel-3); }
+
+    .searchBox { min-width: 220px; height: 38px; padding: 0 11px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 8px; background: #0d0d10; color: var(--muted); }
+    .searchBox span { flex: 1; font-size: 10px; }
+    .searchBox input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: 10px/1.2 var(--font-sans); }
+    .searchBox input::placeholder { color: var(--muted); opacity: 1; }
+    .searchBox:focus-within { border-color: var(--line-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 18%, transparent); }
+    .searchBox:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; box-shadow: none; }
+    .searchBox kbd { padding: 3px 5px; border: 1px solid var(--line); border-bottom-color: var(--line-strong); border-radius: 4px; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .iconButton { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+    .iconButton:hover { border-color: var(--line); background: var(--panel-2); color: var(--ink); }
+    .notificationButton { position: relative; }
+    .notificationButton::after { position: absolute; top: 9px; right: 9px; width: 5px; height: 5px; border: 2px solid var(--panel); border-radius: 50%; background: var(--amber); content: ""; }
+
+    .navItem { width: 100%; min-height: 38px; padding: 0 10px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; font-size: 10px; font-weight: 580; text-decoration: none; }
+    .navItem:hover { background: var(--panel-2); color: var(--ink); }
+    .navItem.active { background: var(--panel-3); color: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+    .navItem.active .icon { color: var(--brand); }
+    .navItem em { margin-left: auto; padding: 2px 5px; border-radius: 5px; background: color-mix(in srgb, var(--amber) 15%, transparent); color: var(--amber); font: 8px/1 var(--font-mono); font-style: normal; }
+
+    .pageHeading { min-width: 0; }
+    .pageHeading h1 { margin: 0; font-family: "Rokkitt Pomegr", Rockwell, Georgia, serif; font-size: clamp(28px, 3vw, 42px); font-weight: 660; letter-spacing: -.025em; line-height: .98; }
+    .pageHeading p { max-width: 66ch; margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .sectionTitle { margin: 0; font-size: 12px; font-weight: 660; }
+    .sectionMeta { color: var(--muted); font: 9px/1 var(--font-mono); }
+    .metricValue { color: var(--ink); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .chart { width: 100%; height: 150px; display: block; overflow: visible; }
+    .chart .gridLine { stroke: var(--line); stroke-width: 1; }
+    .chart .area { fill: color-mix(in srgb, var(--lavender) 9%, transparent); }
+    .chart .series { fill: none; stroke: var(--lavender); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chart .marker { fill: var(--panel); stroke: var(--lavender); stroke-width: 2; }
+    .miniBars { height: 62px; display: flex; align-items: end; gap: 5px; }
+    .miniBars i { flex: 1; min-width: 3px; height: var(--h); display: block; border-radius: 2px 2px 0 0; background: color-mix(in srgb, var(--lavender) 62%, var(--panel)); }
+    .miniBars i.hot { background: var(--amber); }
+
+    /* Concept A: contextual operations desk */
+    .deskShell { min-height: calc(100vh - 68px); display: grid; grid-template-columns: 232px minmax(0,1fr); grid-template-rows: 64px minmax(0,1fr) 34px; background: #0a0a0c; }
+    .deskSidebar { grid-row: 1 / -1; padding: 18px 12px 12px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #0d0d10; }
+    .deskDrawerHead { height: 36px; margin: 0 7px 24px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .deskDrawerHead .brandLockup { min-width: 0; }
+    .drawerClose { display: none; }
+    .mobileBackdrop { display: none; }
+    .deskNavLabel { margin: 18px 10px 7px; color: var(--faint); font: 8px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+    .deskNavLabel:first-of-type { margin-top: 0; }
+    .deskProject { margin-top: auto; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #121216; }
+    .deskProject strong { display: block; font-size: 10px; }
+    .deskProject span { display: block; margin-top: 5px; overflow: hidden; color: var(--muted); font: 8px/1.4 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+    .deskHeader { grid-column: 2; padding: 0 18px 0 24px; display: flex; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); background: #0c0c0f; }
+    .breadcrumbs { min-width: 160px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+    .breadcrumbs strong { color: var(--ink); font-weight: 620; }
+    .deskHeader .searchBox { width: min(440px, 35vw); margin-left: auto; }
+    .headerTools { display: flex; align-items: center; gap: 5px; }
+    .deskBody { grid-column: 2; min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) 284px; overflow: hidden; }
+    .deskMain { min-width: 0; padding: 30px clamp(20px, 3vw, 40px) 36px; overflow: auto; }
+    .deskMainHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .liveBadge { min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line)); border-radius: 7px; color: var(--green); font: 8px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+    .deskMetrics { margin-top: 28px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-block: 1px solid var(--line); }
+    .deskMetric { min-width: 0; padding: 17px 18px 18px 0; }
+    .deskMetric + .deskMetric { padding-left: 18px; border-left: 1px solid var(--line); }
+    .deskMetric span { display: block; color: var(--muted); font-size: 9px; }
+    .deskMetric strong { display: block; margin-top: 8px; font: 500 22px/1 var(--font-mono); }
+    .deskMetric small { display: block; margin-top: 6px; color: var(--faint); font-size: 8px; }
+    .deskGrid { margin-top: 24px; display: grid; grid-template-columns: minmax(0,1.35fr) minmax(240px,.65fr); gap: 14px; }
+    .deskPanel { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .deskPanel > header { margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .deskSessionRows { display: grid; }
+    .deskSessionRow { min-width: 0; min-height: 58px; display: grid; grid-template-columns: 10px minmax(0,1fr) auto; align-items: center; gap: 11px; border-top: 1px solid var(--line); }
+    .deskSessionCopy { min-width: 0; }
+    .deskSessionCopy strong, .deskSessionCopy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .deskSessionCopy strong { font-size: 10px; }
+    .deskSessionCopy span { margin-top: 5px; color: var(--muted); font: 8px/1 var(--font-mono); }
+    .deskSessionRow > b { color: var(--lavender); font: 10px/1 var(--font-mono); font-weight: 600; }
+    .deskAside { padding: 22px 18px; overflow: auto; border-left: 1px solid var(--line); background: #0d0d10; }
+    .asideHead { padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .asideHead strong { font-size: 11px; }
+    .asideHead span { color: var(--faint); font: 8px/1 var(--font-mono); }
+    .attentionItem { padding: 15px 0; display: grid; grid-template-columns: 8px minmax(0,1fr); gap: 10px; border-bottom: 1px solid var(--line); }
+    .attentionItem strong { display: block; font-size: 10px; line-height: 1.4; }
+    .attentionItem p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .asideAction { width: 100%; min-height: 38px; margin-top: 18px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--panel-2); color: var(--ink); cursor: pointer; font-size: 9px; }
+    .deskFooter { grid-column: 2; padding: 0 18px 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); background: #0c0c0f; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .deskFooter div { display: flex; align-items: center; gap: 16px; }
+
+    /* Concept B: dual-rail fleet workspace */
+    .fleetShell { min-height: calc(100vh - 68px); display: grid; grid-template-columns: 62px 264px minmax(0,1fr); grid-template-rows: 70px minmax(0,1fr) 38px; background: #0a0a0c; }
+    .fleetIconRail { grid-row: 1 / -1; padding: 15px 10px 12px; display: flex; flex-direction: column; align-items: center; border-right: 1px solid var(--line); background: #09090b; }
+    .fleetWordmark { margin: 7px 0 28px; color: var(--ink); font: 760 9px/1 var(--font-sans); letter-spacing: .08em; text-decoration: none; }
+    .railButton { width: 42px; height: 42px; margin-bottom: 5px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--faint); cursor: pointer; }
+    .railButton:hover { background: var(--panel-2); color: var(--ink); }
+    .railButton.active { background: #211d22; color: var(--brand); box-shadow: inset 0 0 0 1px #3b3239; }
+    .railSpacer { flex: 1; }
+    .fleetSessionRail { grid-column: 2; grid-row: 1 / -1; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #0e0e11; }
+    .fleetRailHead { height: 70px; padding: 0 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .fleetRailHead strong { font-size: 12px; }
+    .fleetRailHead button { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); cursor: pointer; }
+    .fleetFilter { margin: 14px 14px 6px; height: 34px; padding: 0 9px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 9px; }
+    .fleetGroupLabel { margin: 18px 16px 7px; color: var(--faint); font: 8px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+    .fleetSession { margin: 2px 8px; min-height: 58px; padding: 9px 9px; display: grid; grid-template-columns: 8px minmax(0,1fr); align-items: start; gap: 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; }
+    .fleetSession:hover { background: var(--panel); }
+    .fleetSession.active { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+    .fleetSession .statusDot { margin-top: 3px; }
+    .fleetSession strong, .fleetSession small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fleetSession strong { font-size: 9px; }
+    .fleetSession small { margin-top: 5px; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .fleetHeader { grid-column: 3; padding: 0 20px 0 26px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--line); background: #0c0c0f; }
+    .fleetHeaderTitle { min-width: 0; }
+    .fleetHeaderTitle strong, .fleetHeaderTitle span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fleetHeaderTitle strong { font-family: "Rokkitt Pomegr", Rockwell, Georgia, serif; font-size: 16px; font-weight: 650; }
+    .fleetHeaderTitle span { margin-top: 4px; color: var(--muted); font: 8px/1 var(--font-mono); }
+    .fleetHeader .searchBox { width: min(360px, 32vw); margin-left: auto; }
+    .fleetContent { grid-column: 3; min-width: 0; padding: 28px clamp(20px,3vw,40px) 34px; overflow: auto; }
+    .fleetHero { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 24px; }
+    .fleetModeTabs { display: flex; align-items: center; gap: 4px; }
+    .fleetModeTabs button { min-height: 34px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 9px; }
+    .fleetModeTabs button.active { background: var(--panel-2); color: var(--ink); }
+    .fleetTimeline { margin-top: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+    .timelineHead { min-height: 48px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .timelineHead strong { font-size: 11px; }
+    .timelineHead span { color: var(--muted); font: 8px/1 var(--font-mono); }
+    .timelineBody { padding: 14px 18px 16px; }
+    .agentLane { min-width: 0; min-height: 44px; display: grid; grid-template-columns: 120px minmax(0,1fr) 54px; align-items: center; gap: 14px; }
+    .agentLane + .agentLane { border-top: 1px solid var(--line); }
+    .agentIdentity { min-width: 0; }
+    .agentIdentity strong, .agentIdentity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agentIdentity strong { font-size: 9px; }
+    .agentIdentity span { margin-top: 3px; color: var(--faint); font-size: 8px; }
+    .laneTrack { position: relative; height: 8px; border-radius: 4px; background: #242229; }
+    .laneTrack i { position: absolute; top: 0; left: var(--x); width: var(--w); height: 8px; border-radius: 4px; background: var(--c, var(--green)); }
+    .agentLane > b { color: var(--lavender); font: 9px/1 var(--font-mono); text-align: right; }
+    .fleetLower { margin-top: 14px; display: grid; grid-template-columns: minmax(0,1.2fr) minmax(250px,.8fr); gap: 14px; }
+    .fleetPanel { padding: 17px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .fleetPanel header { margin-bottom: 13px; display: flex; align-items: center; justify-content: space-between; }
+    .activityLine { min-height: 44px; display: grid; grid-template-columns: 58px minmax(0,1fr) auto; align-items: center; gap: 10px; border-top: 1px solid var(--line); }
+    .activityLine time { color: var(--faint); font: 8px/1 var(--font-mono); }
+    .activityLine strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .activityLine span { color: var(--muted); font-size: 8px; }
+    .fleetFooter { grid-column: 3; padding: 0 20px 0 26px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); background: #0b0b0e; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .fleetFooter div { display: flex; align-items: center; gap: 18px; }
+
+    /* Concept C: familiar command center */
+    .commandShell { position: relative; min-height: calc(100vh - 68px); display: grid; grid-template-columns: 220px minmax(0,1fr); grid-template-rows: 58px minmax(0,1fr) 38px; background: #0b0b0e; }
+    .commandHeader { grid-column: 1 / -1; padding: 0 16px; display: grid; grid-template-columns: 204px minmax(240px,520px) 1fr auto; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); background: #0d0d10; }
+    .commandHeader .searchBox { min-width: 0; width: 100%; }
+    .environmentBadge { justify-self: start; min-height: 28px; padding: 0 9px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font: 8px/1 var(--font-mono); }
+    .commandSidebar { grid-column: 1; grid-row: 2 / -1; padding: 12px 10px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #0f0f12; }
+    .commandSidebar .navItem { min-height: 40px; }
+    .commandDivider { height: 1px; margin: 12px 8px; background: var(--line); }
+    .commandHelp { margin-top: auto; padding: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .commandHelp strong { display: block; margin-bottom: 4px; color: var(--ink); }
+    .commandMain { grid-column: 2; grid-row: 2; min-width: 0; padding: 22px clamp(18px,2.5vw,34px) 30px; overflow: auto; background: #0a0a0c; }
+    .commandPageBar { min-height: 50px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+    .commandPageTitle { min-width: 0; }
+    .commandPageTitle .crumb { display: block; margin-bottom: 8px; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .commandPageTitle h1 { margin: 0; font-family: "Rokkitt Pomegr", Rockwell, Georgia, serif; font-size: 26px; font-weight: 650; letter-spacing: -.02em; line-height: 1; }
+    .timeRange { min-height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font-size: 9px; }
+    .commandAlerts { margin-top: 18px; min-height: 46px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--amber) 6%, var(--panel)); }
+    .commandAlerts div { display: flex; align-items: center; gap: 9px; }
+    .commandAlerts strong { font-size: 9px; }
+    .commandAlerts span { color: var(--muted); font-size: 9px; }
+    .commandAlerts button { border: 0; background: none; color: var(--amber); cursor: pointer; font-size: 8px; text-decoration: underline; text-underline-offset: 3px; }
+    .commandGrid { margin-top: 12px; display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); gap: 12px; }
+    .commandPanel { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .commandPanel.span4 { grid-column: span 4; }
+    .commandPanel.span5 { grid-column: span 5; }
+    .commandPanel.span7 { grid-column: span 7; }
+    .commandPanelHead { min-height: 40px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .commandPanelHead strong { font-size: 10px; }
+    .commandPanelHead button { border: 0; background: none; color: var(--faint); cursor: pointer; }
+    .commandPanelBody { padding: 13px; }
+    .commandStat { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .commandStat strong { font: 500 25px/1 var(--font-mono); }
+    .commandStat span { color: var(--green); font: 8px/1 var(--font-mono); }
+    .commandStat small { display: block; margin-top: 8px; color: var(--muted); font-size: 8px; }
+    .commandTable { width: 100%; border-collapse: collapse; }
+    .commandTable th, .commandTable td { height: 38px; padding: 0 10px; border-bottom: 1px solid var(--line); font-size: 8px; text-align: left; white-space: nowrap; }
+    .commandTable th { color: var(--faint); font-weight: 560; }
+    .commandTable td { color: var(--muted); }
+    .commandTable td strong { color: var(--ink); }
+    .commandTable td:last-child { text-align: right; }
+    .commandFooter { grid-column: 2; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); background: #0c0c0f; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .commandFooter div { display: flex; align-items: center; gap: 14px; }
+
+    .commandView[hidden] { display: none; }
+    .commandView { animation: viewReveal .2s cubic-bezier(.16,1,.3,1) both; }
+    @keyframes viewReveal { from { opacity: .72; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    .commandViewIntro { min-height: 58px; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .commandViewIntro h1 { margin: 0; font-family: "Rokkitt Pomegr", Rockwell, Georgia, serif; font-size: 28px; font-weight: 650; letter-spacing: -.02em; line-height: 1; }
+    .commandViewIntro p { max-width: 64ch; margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .commandToolbar { min-height: 44px; margin-top: 12px; padding: 0 11px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .commandToolbar .searchBox { width: min(360px, 42vw); height: 32px; background: #0d0d10; }
+    .filterChip { min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; }
+    .filterChip:hover, .filterChip.active { border-color: var(--line-strong); background: var(--panel-2); color: var(--ink); }
+    .toolbarCount { margin-left: auto; color: var(--faint); font: 8px/1 var(--font-mono); }
+    .primaryAction { min-height: 34px; padding: 0 12px; border: 1px solid var(--brand); border-radius: 6px; background: var(--brand); color: var(--paper); cursor: pointer; font-size: 9px; font-weight: 650; }
+    .primaryAction:hover { border-color: #bc5146; background: #bc5146; }
+    .secondaryAction { min-height: 34px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer; font-size: 9px; }
+    .secondaryAction:hover { background: var(--panel-2); }
+
+    .commandNotificationTray { position: absolute; z-index: 80; top: 58px; right: 0; width: min(380px, calc(100% - 220px)); max-height: min(680px, calc(100vh - 150px)); overflow: auto; border-bottom: 1px solid var(--line-strong); border-left: 1px solid var(--line-strong); background: #111114; box-shadow: -24px 24px 64px rgba(0,0,0,.5); }
+    .commandNotificationTray[hidden] { display: none; }
+    .notificationTrayHead { min-height: 64px; padding: 0 14px 0 17px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+    .notificationTrayHead strong { display: block; font-size: 12px; }
+    .notificationTrayHead span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .notificationTrayActions { display: flex; align-items: center; gap: 4px; }
+    .notificationTrayActions button { min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; }
+    .notificationTrayActions button:hover { background: var(--panel-2); color: var(--ink); }
+    .notificationGroupLabel { min-height: 30px; padding: 0 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: var(--faint); font: 8px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
+    .notificationGroupLabel b { min-width: 18px; padding: 3px 5px; border-radius: 5px; background: var(--panel-2); color: var(--muted); font: inherit; text-align: center; }
+    .notificationEntry { min-height: 84px; padding: 13px 17px; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: start; gap: 10px; border-bottom: 1px solid var(--line); }
+    .notificationEntry:hover { background: var(--panel); }
+    .notificationEntry .statusDot { margin-top: 4px; }
+    .notificationEntry strong { display: block; font-size: 10px; line-height: 1.35; }
+    .notificationEntry p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+    .notificationEntry time { color: var(--faint); font: 8px/1 var(--font-mono); white-space: nowrap; }
+    .notificationEntry button { margin-top: 8px; padding: 0; border: 0; background: none; color: var(--amber); cursor: pointer; font-size: 8px; text-decoration: underline; text-underline-offset: 3px; }
+    .notificationEntry.isRead { opacity: .58; }
+    .notificationEntry.isRead .statusDot { border: 1px solid var(--faint); background: transparent; box-shadow: none; }
+    .notificationButton.notificationsCleared::after { display: none; }
+    .notificationTrayFoot { min-height: 44px; padding: 0 17px; display: flex; align-items: center; color: var(--faint); font-size: 8px; }
+
+    .dashboardDirectory { margin-top: 12px; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(300px,.85fr); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .dashboardRows { min-width: 0; border-right: 1px solid var(--line); }
+    .directoryHead { min-height: 38px; padding: 0 13px; display: grid; grid-template-columns: minmax(0,1fr) 110px 90px; align-items: center; border-bottom: 1px solid var(--line); color: var(--faint); font: 8px/1 var(--font-mono); }
+    .dashboardRow { width: 100%; min-height: 58px; padding: 0 13px; display: grid; grid-template-columns: minmax(0,1fr) 110px 90px; align-items: center; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; text-align: left; }
+    .dashboardRow:hover, .dashboardRow.active { background: var(--panel-2); color: var(--ink); }
+    .dashboardRow strong, .dashboardRow small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dashboardRow strong { color: var(--ink); font-size: 10px; }
+    .dashboardRow small { margin-top: 4px; color: var(--muted); font-size: 8px; }
+    .dashboardRow > span, .dashboardRow > time { font: 8px/1 var(--font-mono); }
+    .dashboardPreview { min-width: 0; padding: 18px; }
+    .dashboardPreview h2 { margin: 0; font-size: 13px; }
+    .dashboardPreview p { margin: 7px 0 18px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .previewMetric { padding: 13px 0; display: flex; align-items: baseline; justify-content: space-between; border-top: 1px solid var(--line); }
+    .previewMetric span { color: var(--muted); font-size: 9px; }
+    .previewMetric strong { font: 560 15px/1 var(--font-mono); }
+
+    .sessionWorkspace, .agentWorkspace { margin-top: 12px; display: grid; grid-template-columns: minmax(0,1.35fr) minmax(280px,.65fr); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .dataTable { width: 100%; border-collapse: collapse; }
+    .dataTable th, .dataTable td { height: 48px; padding: 0 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; text-align: left; }
+    .dataTable th { height: 36px; color: var(--faint); font: 8px/1 var(--font-mono); font-weight: 500; }
+    .dataTable td strong { color: var(--ink); }
+    .dataTable tbody tr { cursor: pointer; }
+    .dataTable tbody tr:hover, .dataTable tbody tr.selected { background: var(--panel-2); }
+    .dataTable td:last-child, .dataTable th:last-child { text-align: right; }
+    .statusText { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }
+    .statusText.active { color: var(--green); }
+    .statusText.attention { color: var(--amber); }
+    .detailInspector { padding: 18px; border-left: 1px solid var(--line); background: #101014; }
+    .detailInspector h2 { margin: 0; font-size: 13px; }
+    .detailInspector > p { margin: 7px 0 18px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .detailList { margin: 0; }
+    .detailList div { padding: 10px 0; display: grid; grid-template-columns: 1fr auto; gap: 12px; border-top: 1px solid var(--line); }
+    .detailList dt { color: var(--muted); font-size: 8px; }
+    .detailList dd { margin: 0; color: var(--ink); font: 9px/1 var(--font-mono); text-align: right; }
+
+    .agentRoleMark { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--lavender); font: 8px/1 var(--font-mono); }
+    .agentNameCell { display: flex; align-items: center; gap: 9px; }
+    .agentNameCell span strong, .agentNameCell span small { display: block; }
+    .agentNameCell span small { margin-top: 3px; color: var(--faint); }
+
+    .usageProvider { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .usageProviderHead { min-height: 52px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .usageProviderHead strong { font-size: 11px; }
+    .usageProviderHead span { color: var(--green); font: 8px/1 var(--font-mono); }
+    .usageRows { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .usageWindow { padding: 17px 15px 18px; }
+    .usageWindow + .usageWindow { border-left: 1px solid var(--line); }
+    .usageWindow header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .usageWindow header strong { font-size: 10px; }
+    .usageWindow header b { font: 560 18px/1 var(--font-mono); }
+    .usageTrack { height: 7px; margin: 14px 0 10px; overflow: hidden; border-radius: 4px; background: #26242a; }
+    .usageTrack i { display: block; width: var(--usage); height: 100%; border-radius: inherit; background: var(--green); }
+    .usageWindow.warning .usageTrack i { background: var(--amber); }
+    .usageWindow footer { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 8px; }
+    .usageCaution { margin: 12px 0 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+
+    .repositoryList { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .repositoryRow { min-height: 72px; padding: 11px 14px; display: grid; grid-template-columns: minmax(200px,1fr) minmax(150px,.75fr) repeat(3,90px); align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
+    .repositoryRow:last-child { border-bottom: 0; }
+    .repositoryIdentity strong, .repositoryIdentity small { display: block; }
+    .repositoryIdentity strong { font-size: 11px; }
+    .repositoryIdentity small { margin-top: 5px; color: var(--muted); font-size: 8px; }
+    .branchName { overflow: hidden; color: var(--lavender); font: 8px/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+    .repoStat { color: var(--muted); font-size: 8px; text-align: right; }
+    .repoStat strong { display: block; margin-bottom: 4px; color: var(--ink); font: 10px/1 var(--font-mono); }
+
+    .settingsLayout { margin-top: 12px; display: grid; grid-template-columns: 210px minmax(0,1fr); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .settingsNav { padding: 10px; border-right: 1px solid var(--line); }
+    .settingsNav button { width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 9px; text-align: left; }
+    .settingsNav button.active { background: var(--panel-2); color: var(--ink); }
+    .settingsPane { padding: 18px 20px; }
+    .settingsPane h2 { margin: 0; font-size: 13px; }
+    .settingsPane > p { margin: 7px 0 17px; color: var(--muted); font-size: 9px; }
+    .settingRow { min-height: 64px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 18px; border-top: 1px solid var(--line); }
+    .settingRow strong, .settingRow span { display: block; }
+    .settingRow strong { font-size: 10px; }
+    .settingRow span { margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+    .settingsSwitch { width: 36px; height: 20px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 10px; background: #242329; cursor: pointer; }
+    .settingsSwitch i { width: 14px; height: 14px; display: block; border-radius: 50%; background: var(--faint); transition: transform .18s ease, background-color .18s ease; }
+    .settingsSwitch[aria-checked="true"] { border-color: color-mix(in srgb, var(--green) 52%, var(--line)); background: color-mix(in srgb, var(--green) 18%, #111114); }
+    .settingsSwitch[aria-checked="true"] i { background: var(--green); transform: translateX(16px); }
+
+    .mobileMenuButton { display: none; }
+    .concept :where(small, .sectionMeta, .deskNavLabel, .fleetGroupLabel, .crumb, .commandTable th, .commandTable td, .deskFooter, .fleetFooter, .commandFooter) { font-size: max(9px, .5625rem); }
+    @media (max-width: 1080px) {
+      .deskBody { grid-template-columns: minmax(0,1fr); }
+      .deskAside { display: none; }
+      .deskGrid { grid-template-columns: 1fr; }
+      .deskMetrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .deskMetric:nth-child(3) { border-left: 0; }
+      .deskMetric:nth-child(n+3) { border-top: 1px solid var(--line); }
+      .fleetLower { grid-template-columns: 1fr; }
+      .commandPanel.span4 { grid-column: span 6; }
+      .commandPanel.span7, .commandPanel.span5 { grid-column: span 12; }
+      .dashboardDirectory, .sessionWorkspace, .agentWorkspace { grid-template-columns: 1fr; }
+      .dashboardRows, .detailInspector { border-right: 0; border-left: 0; }
+      .detailInspector, .dashboardPreview { border-top: 1px solid var(--line); }
+      .repositoryRow { grid-template-columns: minmax(180px,1fr) minmax(130px,.7fr) repeat(3,72px); }
+      .studyMeta { display: none; }
+      .studyBar { grid-template-columns: minmax(150px,1fr) auto; }
+    }
+    @media (max-width: 820px) {
+      .studyBar { position: sticky; min-height: auto; padding: 13px 14px; grid-template-columns: 1fr; }
+      .studyTabs { width: 100%; overflow-x: auto; }
+      .studyTab { flex: 1 0 118px; padding-inline: 10px; }
+      .concept { min-height: calc(100vh - 128px); }
+      .deskShell, .fleetShell, .commandShell { min-height: calc(100vh - 128px); }
+      .deskShell { grid-template-columns: minmax(0,1fr); grid-template-rows: 58px minmax(0,1fr) 38px; }
+      .deskSidebar { display: none; }
+      .deskSidebar.isMobileOpen { position: fixed; z-index: 220; top: 128px; bottom: 0; left: 0; width: min(286px, 84vw); height: auto; display: flex; box-shadow: 28px 0 70px rgba(0,0,0,.55); animation: drawerIn .22s cubic-bezier(.16,1,.3,1) both; }
+      .deskDrawerHead { margin-bottom: 20px; }
+      .drawerClose { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); cursor: pointer; }
+      .mobileBackdrop.isVisible { position: fixed; z-index: 210; inset: 128px 0 0; display: block; border: 0; background: rgba(0,0,0,.68); }
+      @keyframes drawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+      .deskHeader, .deskBody, .deskFooter { grid-column: 1; }
+      .deskHeader { padding-inline: 13px; }
+      .deskHeader .searchBox, .breadcrumbs { display: none; }
+      .mobileMenuButton { display: grid; }
+      .deskHeader .brandLockup { display: flex !important; }
+      .deskHeader .brandLockup small { display: none; }
+      .headerTools { margin-left: auto; }
+      .profileCopy { display: none; }
+      .deskMain { padding: 22px 16px 28px; }
+      .deskMainHead { align-items: flex-start; }
+      .deskMetrics { margin-top: 20px; }
+      .deskMetric { padding: 13px 12px 14px 0; }
+      .deskMetric + .deskMetric { padding-left: 12px; }
+      .deskMetric strong { font-size: 18px; }
+      .deskFooter { padding-inline: 14px; }
+      .deskFooter div span:nth-child(n+2) { display: none; }
+
+      .fleetShell { grid-template-columns: 54px minmax(0,1fr); grid-template-rows: 60px minmax(0,1fr) 38px; }
+      .fleetIconRail { grid-row: 1 / -1; padding-inline: 6px; }
+      .fleetWordmark { margin-top: 9px; font-size: 7px; letter-spacing: .02em; }
+      .fleetSessionRail { display: none; }
+      .fleetHeader, .fleetContent, .fleetFooter { grid-column: 2; }
+      .fleetHeader { padding-inline: 13px; }
+      .fleetHeader .searchBox { display: none; }
+      .fleetHeader .headerTools { margin-left: auto; }
+      .fleetContent { padding: 22px 16px 26px; }
+      .fleetHero { grid-template-columns: 1fr; align-items: start; }
+      .fleetModeTabs { overflow-x: auto; }
+      .agentLane { grid-template-columns: 90px minmax(0,1fr) 45px; }
+      .fleetFooter { padding-inline: 13px; }
+      .fleetFooter div span:nth-child(n+2) { display: none; }
+
+      .commandShell { grid-template-columns: 54px minmax(0,1fr); grid-template-rows: 56px minmax(0,1fr) 38px; }
+      .commandHeader { grid-template-columns: 72px minmax(0,1fr) auto; padding-inline: 9px; gap: 9px; }
+      .commandHeader .brandLockup small, .environmentBadge { display: none; }
+      .commandHeader .brandLockup strong { font-size: 15px; }
+      .commandHeader .searchBox { grid-column: 2; }
+      .commandSidebar { padding-inline: 6px; }
+      .commandSidebar .navItem { justify-content: center; padding: 0; }
+      .commandSidebar .navItem span, .commandSidebar .navItem em, .commandHelp, .commandDivider { display: none; }
+      .commandMain, .commandFooter { grid-column: 2; }
+      .commandMain { padding: 18px 14px 24px; }
+      .commandPanel.span4, .commandPanel.span5, .commandPanel.span7 { grid-column: span 12; }
+      .commandAlerts span { display: none; }
+      .commandFooter div span:nth-child(n+2) { display: none; }
+      .commandNotificationTray { top: 56px; width: calc(100% - 54px); max-height: calc(100vh - 184px); }
+      .commandViewIntro { display: block; }
+      .commandViewIntro .secondaryAction, .commandViewIntro .primaryAction { margin-top: 12px; }
+      .commandToolbar { align-items: stretch; flex-wrap: wrap; padding-block: 8px; }
+      .commandToolbar .searchBox { width: 100%; }
+      .toolbarCount { width: 100%; margin: 2px 0 0; }
+      .directoryHead, .dashboardRow { grid-template-columns: minmax(0,1fr) 80px; }
+      .directoryHead span:nth-child(3), .dashboardRow > time { display: none; }
+      .usageRows { grid-template-columns: 1fr; }
+      .usageWindow + .usageWindow { border-top: 1px solid var(--line); border-left: 0; }
+      .repositoryRow { grid-template-columns: minmax(0,1fr) 92px; gap: 10px; }
+      .repositoryRow .branchName { grid-column: 1; }
+      .repositoryRow .repoStat:nth-last-child(n+2) { display: none; }
+      .settingsLayout { grid-template-columns: 1fr; }
+      .settingsNav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .settingsNav button { flex: 0 0 auto; width: auto; }
+    }
+    @media (max-width: 520px) {
+      .studyTitle span { white-space: normal; }
+      .iconButton, .profileButton { min-width: 44px; min-height: 44px; }
+      .deskMetrics { grid-template-columns: 1fr 1fr; }
+      .deskMainHead { display: block; }
+      .liveBadge { margin-top: 14px; }
+      .deskPanel { padding: 14px; }
+      .deskSessionRow { grid-template-columns: 8px minmax(0,1fr); }
+      .deskSessionRow > b { grid-column: 2; margin-top: -11px; }
+      .fleetShell { grid-template-columns: 48px minmax(0,1fr); }
+      .railButton { width: 40px; height: 40px; }
+      .fleetContent { padding-inline: 12px; }
+      .fleetTimeline { border-radius: 9px; }
+      .timelineBody { padding-inline: 13px; }
+      .agentLane { min-height: 58px; grid-template-columns: minmax(0,1fr) 45px; grid-template-rows: auto auto; gap: 7px; }
+      .agentIdentity { grid-column: 1; }
+      .laneTrack { grid-column: 1; grid-row: 2; }
+      .agentLane > b { grid-column: 2; grid-row: 1 / 3; }
+      .commandHeader .searchBox span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .commandPageBar { align-items: end; }
+      .commandPageTitle h1 { font-size: 22px; }
+      .commandAlerts { min-height: 54px; }
+      .commandTable th:nth-child(3), .commandTable td:nth-child(3) { display: none; }
+      .dataTable th:nth-child(3), .dataTable td:nth-child(3) { display: none; }
+      .notificationTrayHead { align-items: flex-start; padding-block: 12px; }
+      .notificationTrayActions { align-items: flex-end; flex-direction: column-reverse; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+  THESIS: The selected Command Center turns Pomegr into a focused operational workspace, while the two earlier directions remain available as comparison references.
+  OWN-WORLD: Near-black operations surfaces, pomegranate identity, semantic green/amber/lavender evidence, one-pixel rules, and precise sans-plus-mono typography.
+  STORY: The user can open a non-modal notification center and walk through dashboards, sessions, agents, usage limits, repositories, and local settings using illustrative monitoring data.
+  FIRST VIEWPORT: A compact concept switcher stays above one complete responsive application shell; every option includes header, menu, content, profile, and footer.
+  FORM: Established-world application prototype using the chosen Command Center shell; seed f4dae4f2.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+  -->
+  <svg class="srOnly" aria-hidden="true" focusable="false">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m4 10 8-6 8 6v9H4zM9 19v-6h6v6"/></symbol>
+    <symbol id="i-session" viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 9h8M8 12h5M8 15h7"/></symbol>
+    <symbol id="i-agents" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><circle cx="6" cy="15" r="2"/><circle cx="18" cy="15" r="2"/><path d="M12 10v2M6 13v-1h12v1M6 17v2h12v-2"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M7 15l3-4 3 2 4-6 3 2"/></symbol>
+    <symbol id="i-git" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="12" r="2"/><path d="M7 8v8M9 7c4 0 4 5 6 5"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v4zM10 19h4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.6-.7-1.7 1-1.8-2.1-2.1-1.8 1-1.7-.7-.6-2h-3l-.6 2-1.7.7-1.8-1L2.9 6.4l1 1.8-.7 1.7-2 .6v3l2 .6.7 1.7-1 1.8L5 19.7l1.8-1 1.7.7.6 2h3l.6-2 1.7-.7 1.8 1 2.1-2.1-1-1.8.7-1.7z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.4 2.2c-.9.4-1.2.9-1.2 1.8M12 17h.01"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-command" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12M6 9h12M6 15h12"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  </svg>
+
+  <header class="studyBar">
+    <div class="studyTitle">
+      <strong>Pomegr shell study</strong>
+      <span>Three professional structures · illustrative data · click through the controls</span>
+    </div>
+    <div class="studyTabs" role="tablist" aria-label="Shell concepts">
+      <button class="studyTab" id="shell-tab-desk" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="concept-desk" data-concept="desk">Operations desk</button>
+      <button class="studyTab" id="shell-tab-fleet" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="concept-fleet" data-concept="fleet">Fleet workspace</button>
+      <button class="studyTab" id="shell-tab-command" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="concept-command" data-concept="command">Command center</button>
+    </div>
+    <div class="studyMeta"><strong>Compare structure first</strong><br/>The identity stays intentionally consistent</div>
+  </header>
+
+  <section class="concept isActive" id="concept-desk" role="tabpanel" aria-labelledby="shell-tab-desk" data-panel="desk">
+    <div class="deskShell">
+      <aside class="deskSidebar" id="desk-mobile-navigation" aria-label="Primary navigation">
+        <div class="deskDrawerHead"><a class="brandLockup" href="#" aria-label="Pomegr home"><span><strong>Pomegr</strong><small>Observer</small></span></a><button class="drawerClose" type="button" data-mobile-close aria-label="Close menu"><svg class="icon"><use href="#i-close"/></svg></button></div>
+        <span class="deskNavLabel">Workspace</span>
+        <button class="navItem active" type="button"><svg class="icon"><use href="#i-home"/></svg><span>Overview</span></button>
+        <button class="navItem" type="button"><svg class="icon"><use href="#i-session"/></svg><span>Sessions</span><em>3</em></button>
+        <button class="navItem" type="button"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></button>
+        <button class="navItem" type="button"><svg class="icon"><use href="#i-chart"/></svg><span>Usage &amp; context</span></button>
+        <span class="deskNavLabel">System</span>
+        <button class="navItem" type="button"><svg class="icon"><use href="#i-settings"/></svg><span>Preferences</span></button>
+        <button class="navItem" type="button"><svg class="icon"><use href="#i-help"/></svg><span>About Pomegr</span></button>
+        <div class="deskProject"><strong>Pomegr</strong><span>codex/professional-shell</span><span>Local repository · read only</span></div>
+      </aside>
+      <header class="deskHeader">
+        <button class="iconButton mobileMenuButton" type="button" data-mobile-menu aria-label="Open menu" aria-controls="desk-mobile-navigation" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
+        <a class="brandLockup" href="#" style="display:none" aria-label="Pomegr home"><span><strong>Pomegr</strong><small>Observer</small></span></a>
+        <div class="breadcrumbs"><span>Workspace</span><span>/</span><strong>Overview</strong></div>
+        <div class="searchBox" role="search"><svg class="icon iconSmall"><use href="#i-search"/></svg><span>Find a session, agent, or repository</span><kbd>⌘ K</kbd></div>
+        <div class="headerTools">
+          <button class="iconButton notificationButton" type="button" aria-label="Notifications"><svg class="icon"><use href="#i-bell"/></svg></button>
+          <div class="profileWrap">
+            <button class="profileButton" type="button" data-profile aria-expanded="false"><span class="avatar">LC</span><span class="profileCopy"><strong>Local profile</strong><small>Coming soon</small></span></button>
+            <div class="profileMenu" hidden><header><strong>Local profile</strong><span>Workspace identity and preferences are coming soon.</span></header><button type="button" disabled>Manage profile · coming soon</button></div>
+          </div>
+        </div>
+      </header>
+      <button class="mobileBackdrop" type="button" data-mobile-backdrop aria-label="Close menu"></button>
+      <div class="deskBody">
+        <main class="deskMain">
+          <div class="deskMainHead">
+            <div class="pageHeading"><h1>Your agent workspace, at a glance.</h1><p>Live session state and deterministic evidence across local coding work. Conversation content stays private.</p></div>
+            <span class="liveBadge"><i class="statusDot"></i> Monitor connected</span>
+          </div>
+          <div class="deskMetrics" aria-label="Illustrative workspace summary">
+            <div class="deskMetric"><span>Live sessions</span><strong>3</strong><small>1 needs attention</small></div>
+            <div class="deskMetric"><span>Active agents</span><strong>7</strong><small>Across 3 repositories</small></div>
+            <div class="deskMetric"><span>Current context</span><strong>128k</strong><small>Latest snapshots</small></div>
+            <div class="deskMetric"><span>Open changes</span><strong>24</strong><small>Git working tree</small></div>
+          </div>
+          <div class="deskGrid">
+            <section class="deskPanel">
+              <header><h2 class="sectionTitle">Context across active agents</h2><span class="sectionMeta">Last 60 min</span></header>
+              <svg class="chart" viewBox="0 0 640 150" preserveAspectRatio="none" aria-label="Illustrative context history">
+                <path class="gridLine" d="M0 18H640M0 62H640M0 106H640M0 149H640"/>
+                <path class="area" d="M0 126L50 121L98 112L146 114L196 96L245 84L294 86L344 73L393 69L442 53L492 56L540 39L590 44L640 25V150H0Z"/>
+                <path class="series" d="M0 126L50 121L98 112L146 114L196 96L245 84L294 86L344 73L393 69L442 53L492 56L540 39L590 44L640 25"/>
+                <circle class="marker" cx="640" cy="25" r="4"/>
+              </svg>
+            </section>
+            <section class="deskPanel">
+              <header><h2 class="sectionTitle">Request observations</h2><span class="sectionMeta">Local only</span></header>
+              <div class="miniBars" aria-label="Illustrative request observations"><i style="--h:30%"></i><i style="--h:46%"></i><i style="--h:34%"></i><i style="--h:67%"></i><i style="--h:45%"></i><i class="hot" style="--h:86%"></i><i style="--h:55%"></i><i style="--h:71%"></i><i style="--h:43%"></i><i style="--h:61%"></i></div>
+              <p class="conceptNote" style="margin:16px 0 0"><span class="statusDot amber"></span><span><b>1 cache refill</b> needs review</span></p>
+            </section>
+            <section class="deskPanel" style="grid-column:1/-1">
+              <header><h2 class="sectionTitle">Live sessions</h2><span class="sectionMeta">Illustrative workspace</span></header>
+              <div class="deskSessionRows">
+                <div class="deskSessionRow"><i class="statusDot amber"></i><span class="deskSessionCopy"><strong>Professional UI shell concepts</strong><span>Pomegr · Codex · needs input</span></span><b>48.2k</b></div>
+                <div class="deskSessionRow"><i class="statusDot"></i><span class="deskSessionCopy"><strong>Codex provider normalization</strong><span>Pomegr · 3 agents · active</span></span><b>63.9k</b></div>
+                <div class="deskSessionRow"><i class="statusDot idle"></i><span class="deskSessionCopy"><strong>Desktop release checks</strong><span>Pomegr · idle 12m</span></span><b>15.8k</b></div>
+              </div>
+            </section>
+          </div>
+        </main>
+        <aside class="deskAside" aria-label="Attention center">
+          <div class="asideHead"><strong>Attention center</strong><span>2 items</span></div>
+          <article class="attentionItem"><i class="statusDot amber"></i><div><strong>Shell concept choice requested</strong><p>The active session is waiting for direction before implementation.</p></div></article>
+          <article class="attentionItem"><i class="statusDot"></i><div><strong>Provider observation healthy</strong><p>Last committed revision remains available to the dashboard.</p></div></article>
+          <article class="attentionItem"><i class="statusDot idle"></i><div><strong>Usage window resets in 2h 18m</strong><p>Provider-reported account limit. No session attribution.</p></div></article>
+          <button class="asideAction" type="button">View all activity</button>
+        </aside>
+      </div>
+      <footer class="deskFooter"><div><span>v0.2.0</span><span>127.0.0.1:4317</span><span>Read-only observer</span></div><span>Normalized metadata only</span></footer>
+    </div>
+  </section>
+
+  <section class="concept" id="concept-fleet" role="tabpanel" aria-labelledby="shell-tab-fleet" data-panel="fleet" hidden>
+    <div class="fleetShell">
+      <nav class="fleetIconRail" aria-label="Workspace areas">
+        <a class="fleetWordmark" href="#" aria-label="Pomegr home">POMEGR</a>
+        <button class="railButton active" type="button" aria-label="Fleet overview"><svg class="icon"><use href="#i-grid"/></svg></button>
+        <button class="railButton" type="button" aria-label="Agents"><svg class="icon"><use href="#i-agents"/></svg></button>
+        <button class="railButton" type="button" aria-label="Usage"><svg class="icon"><use href="#i-chart"/></svg></button>
+        <button class="railButton" type="button" aria-label="Git"><svg class="icon"><use href="#i-git"/></svg></button>
+        <span class="railSpacer"></span>
+        <button class="railButton" type="button" aria-label="Settings"><svg class="icon"><use href="#i-settings"/></svg></button>
+        <button class="railButton" type="button" aria-label="Help"><svg class="icon"><use href="#i-help"/></svg></button>
+      </nav>
+      <aside class="fleetSessionRail" aria-label="Session navigator">
+        <div class="fleetRailHead"><strong>Session fleet</strong><button type="button" aria-label="More options"><svg class="icon iconSmall"><use href="#i-more"/></svg></button></div>
+        <div class="fleetFilter"><svg class="icon iconSmall"><use href="#i-search"/></svg><span>Filter sessions</span></div>
+        <span class="fleetGroupLabel">Live now · 3</span>
+        <button class="fleetSession active" type="button"><i class="statusDot amber"></i><span><strong>Professional UI shell</strong><small>Needs input · 48.2k</small></span></button>
+        <button class="fleetSession" type="button"><i class="statusDot"></i><span><strong>Provider normalization</strong><small>3 agents · 63.9k</small></span></button>
+        <button class="fleetSession" type="button"><i class="statusDot idle"></i><span><strong>Desktop release checks</strong><small>Idle 12m · 15.8k</small></span></button>
+        <span class="fleetGroupLabel">Recent</span>
+        <button class="fleetSession" type="button"><i class="statusDot idle"></i><span><strong>Privacy serialization audit</strong><small>Completed yesterday</small></span></button>
+        <button class="fleetSession" type="button"><i class="statusDot idle"></i><span><strong>Usage limit clock</strong><small>Completed Aug 26</small></span></button>
+      </aside>
+      <header class="fleetHeader">
+        <div class="fleetHeaderTitle"><strong>Professional UI shell concepts</strong><span>Pomegr / codex/professional-shell</span></div>
+        <div class="searchBox" role="search"><svg class="icon iconSmall"><use href="#i-search"/></svg><span>Search this session</span><kbd>⌘ F</kbd></div>
+        <div class="headerTools"><button class="iconButton notificationButton" type="button" aria-label="Notifications"><svg class="icon"><use href="#i-bell"/></svg></button><div class="profileWrap"><button class="profileButton" type="button" data-profile aria-expanded="false"><span class="avatar">LC</span><span class="profileCopy"><strong>Local profile</strong><small>Coming soon</small></span></button><div class="profileMenu" hidden><header><strong>Local profile</strong><span>Workspace identity and preferences are coming soon.</span></header><button type="button" disabled>Manage profile · coming soon</button></div></div></div>
+      </header>
+      <main class="fleetContent">
+        <div class="fleetHero"><div class="pageHeading"><h1>Session topology</h1><p>Agents, context, and work phases stay aligned on one shared operational timeline.</p></div><div class="fleetModeTabs" role="tablist"><button class="active" type="button">Timeline</button><button type="button">Evidence</button><button type="button">Repository</button><button type="button">Report</button></div></div>
+        <section class="fleetTimeline">
+          <header class="timelineHead"><strong>Agent activity · illustrative</strong><span>09:10 — now</span></header>
+          <div class="timelineBody">
+            <div class="agentLane"><span class="agentIdentity"><strong>Main agent</strong><span>active</span></span><span class="laneTrack"><i style="--x:4%;--w:82%;--c:var(--green)"></i></span><b>31.4k</b></div>
+            <div class="agentLane"><span class="agentIdentity"><strong>UI reviewer</strong><span>finished</span></span><span class="laneTrack"><i style="--x:18%;--w:34%;--c:var(--lavender)"></i></span><b>9.8k</b></div>
+            <div class="agentLane"><span class="agentIdentity"><strong>Visual probe</strong><span>finished</span></span><span class="laneTrack"><i style="--x:48%;--w:21%;--c:var(--lavender)"></i></span><b>7.0k</b></div>
+          </div>
+        </section>
+        <div class="fleetLower">
+          <section class="fleetPanel"><header><h2 class="sectionTitle">Context level</h2><span class="sectionMeta">Latest snapshots</span></header><svg class="chart" viewBox="0 0 640 150" preserveAspectRatio="none" aria-label="Illustrative context history"><path class="gridLine" d="M0 18H640M0 62H640M0 106H640M0 149H640"/><path class="area" d="M0 132L72 123L145 115L218 88L291 95L364 75L436 69L509 43L580 52L640 27V150H0Z"/><path class="series" d="M0 132L72 123L145 115L218 88L291 95L364 75L436 69L509 43L580 52L640 27"/><circle class="marker" cx="640" cy="27" r="4"/></svg></section>
+          <section class="fleetPanel"><header><h2 class="sectionTitle">Latest activity</h2><span class="sectionMeta">Wall time</span></header><div class="activityLine"><time>10:42</time><strong>Browser review started</strong><span>main</span></div><div class="activityLine"><time>10:37</time><strong>Shell concepts rendered</strong><span>main</span></div><div class="activityLine"><time>10:29</time><strong>Design context loaded</strong><span>main</span></div></section>
+        </div>
+      </main>
+      <footer class="fleetFooter"><div><span>Monitor connected</span><span>3 providers ready</span><span>Revision 248</span></div><span>Local-first · read only · normalized metadata</span></footer>
+    </div>
+  </section>
+
+  <section class="concept" id="concept-command" role="tabpanel" aria-labelledby="shell-tab-command" data-panel="command" hidden>
+    <div class="commandShell">
+      <header class="commandHeader">
+        <a class="brandLockup" href="#" aria-label="Pomegr home"><span><strong>Pomegr</strong><small>Observer</small></span></a>
+        <label class="searchBox"><svg class="icon iconSmall" aria-hidden="true"><use href="#i-search"/></svg><input type="search" data-global-search aria-label="Search Pomegr" placeholder="Search dashboards, sessions, and agents"/><kbd>⌘ K</kbd></label>
+        <span class="environmentBadge"><i class="statusDot"></i> Local monitor</span>
+        <div class="headerTools"><button class="iconButton notificationButton" id="command-notifications-button" type="button" aria-label="Notifications, 2 unread" aria-controls="command-notification-tray" aria-expanded="false"><svg class="icon"><use href="#i-bell"/></svg></button><div class="profileWrap"><button class="profileButton" type="button" data-profile aria-expanded="false"><span class="avatar">LC</span><span class="profileCopy"><strong>Local profile</strong><small>Coming soon</small></span></button><div class="profileMenu" hidden><header><strong>Local profile</strong><span>Workspace identity and preferences are coming soon.</span></header><button type="button" disabled>Manage profile · coming soon</button></div></div></div>
+      </header>
+      <aside class="commandNotificationTray" id="command-notification-tray" aria-labelledby="notification-tray-title" hidden>
+        <header class="notificationTrayHead">
+          <div><strong id="notification-tray-title">Notifications</strong><span>Local events that may need your attention</span></div>
+          <div class="notificationTrayActions"><button type="button" data-mark-read>Mark all read</button><button class="iconButton" type="button" data-close-notifications aria-label="Close notifications"><svg class="icon iconSmall"><use href="#i-close"/></svg></button></div>
+        </header>
+        <div class="notificationGroupLabel"><span>Needs attention</span><b>1</b></div>
+        <article class="notificationEntry"><i class="statusDot amber"></i><div><strong>Session waiting for input</strong><p>Professional UI shell concepts paused after presenting three directions.</p><button type="button" data-notification-view="sessions">Open session</button></div><time>Now</time></article>
+        <div class="notificationGroupLabel"><span>System</span><b>1</b></div>
+        <article class="notificationEntry"><i class="statusDot"></i><div><strong>Observation revision committed</strong><p>The latest safe normalized state is ready. No conversation content was exposed.</p><button type="button" data-notification-view="home">View workspace</button></div><time>2m</time></article>
+        <div class="notificationGroupLabel"><span>Recent</span><b>1</b></div>
+        <article class="notificationEntry isRead"><i class="statusDot idle"></i><div><strong>Usage window updated</strong><p>Provider-reported limits refreshed successfully.</p><button type="button" data-notification-view="usage">View usage limits</button></div><time>18m</time></article>
+        <footer class="notificationTrayFoot" aria-live="polite" data-notification-status>2 unread notifications</footer>
+      </aside>
+      <aside class="commandSidebar" aria-label="Primary navigation">
+        <button class="navItem active" type="button" data-command-view="home" aria-label="Home"><svg class="icon"><use href="#i-home"/></svg><span>Home</span></button>
+        <button class="navItem" type="button" data-command-view="dashboards" aria-label="Dashboards"><svg class="icon"><use href="#i-grid"/></svg><span>Dashboards</span></button>
+        <button class="navItem" type="button" data-command-view="sessions" aria-label="Sessions, 3 live"><svg class="icon"><use href="#i-session"/></svg><span>Sessions</span><em>3</em></button>
+        <button class="navItem" type="button" data-command-view="agents" aria-label="Agents"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></button>
+        <div class="commandDivider"></div>
+        <button class="navItem" type="button" data-command-view="usage" aria-label="Usage limits"><svg class="icon"><use href="#i-chart"/></svg><span>Usage limits</span></button>
+        <button class="navItem" type="button" data-command-view="repositories" aria-label="Repositories"><svg class="icon"><use href="#i-git"/></svg><span>Repositories</span></button>
+        <button class="navItem" type="button" data-command-view="settings" aria-label="Settings"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></button>
+        <div class="commandHelp"><strong>Pomegr v0.2.0</strong>Local observer connected. Session data remains on this machine.</div>
+      </aside>
+      <main class="commandMain">
+        <section class="commandView" data-command-panel="home">
+        <div class="commandPageBar"><div class="commandPageTitle"><span class="crumb">Dashboards / Workspace overview</span><h1>Workspace overview</h1></div><button class="timeRange" type="button"><svg class="icon iconSmall"><use href="#i-clock"/></svg>Last 60 minutes</button></div>
+        <aside class="commandAlerts"><div><i class="statusDot amber"></i><strong>1 session needs input</strong><span>Professional UI shell concepts has paused for a decision.</span></div><button type="button" data-command-link="sessions">Open session</button></aside>
+        <div class="commandGrid">
+          <section class="commandPanel span4"><header class="commandPanelHead"><strong>Live sessions</strong><button type="button" aria-label="Panel options"><svg class="icon iconSmall"><use href="#i-more"/></svg></button></header><div class="commandPanelBody"><div class="commandStat"><strong>3</strong><span>all connected</span></div><small>Across 3 repositories</small><div class="miniBars" aria-hidden="true"><i style="--h:42%"></i><i style="--h:65%"></i><i class="hot" style="--h:91%"></i><i style="--h:54%"></i><i style="--h:70%"></i></div></div></section>
+          <section class="commandPanel span4"><header class="commandPanelHead"><strong>Active agents</strong><button type="button" aria-label="Panel options"><svg class="icon iconSmall"><use href="#i-more"/></svg></button></header><div class="commandPanelBody"><div class="commandStat"><strong>7</strong><span>+2 in 1h</span></div><small>Latest normalized state</small><div class="miniBars" aria-hidden="true"><i style="--h:30%"></i><i style="--h:38%"></i><i style="--h:50%"></i><i style="--h:70%"></i><i style="--h:88%"></i></div></div></section>
+          <section class="commandPanel span4"><header class="commandPanelHead"><strong>All-agent context</strong><button type="button" aria-label="Panel options"><svg class="icon iconSmall"><use href="#i-more"/></svg></button></header><div class="commandPanelBody"><div class="commandStat"><strong>128k</strong><span>latest</span></div><small>Sum of visible agent snapshots</small><div class="miniBars" aria-hidden="true"><i style="--h:25%"></i><i style="--h:39%"></i><i style="--h:51%"></i><i style="--h:63%"></i><i style="--h:82%"></i></div></div></section>
+          <section class="commandPanel span7"><header class="commandPanelHead"><strong>Context history</strong><span class="sectionMeta">Actual level · not throughput</span></header><div class="commandPanelBody"><svg class="chart" viewBox="0 0 640 150" preserveAspectRatio="none" aria-label="Illustrative context history"><path class="gridLine" d="M0 18H640M0 62H640M0 106H640M0 149H640"/><path class="area" d="M0 132L55 126L110 115L165 116L220 92L275 85L330 68L385 77L440 51L495 55L550 38L600 45L640 27V150H0Z"/><path class="series" d="M0 132L55 126L110 115L165 116L220 92L275 85L330 68L385 77L440 51L495 55L550 38L600 45L640 27"/><circle class="marker" cx="640" cy="27" r="4"/></svg></div></section>
+          <section class="commandPanel span5"><header class="commandPanelHead"><strong>Session states</strong><span class="sectionMeta">Now</span></header><table class="commandTable"><thead><tr><th>Session</th><th>State</th><th>Agents</th><th>Context</th></tr></thead><tbody><tr><td><strong>UI shell</strong></td><td style="color:var(--amber)">Needs input</td><td>1</td><td>48.2k</td></tr><tr><td><strong>Provider normalization</strong></td><td style="color:var(--green)">Active</td><td>3</td><td>63.9k</td></tr><tr><td><strong>Release checks</strong></td><td>Idle</td><td>3</td><td>15.8k</td></tr></tbody></table></section>
+        </div>
+        </section>
+
+        <section class="commandView" data-command-panel="dashboards" hidden>
+          <header class="commandViewIntro"><div><h1>Dashboards</h1><p>Purpose-built views for workspace health, live execution, usage evidence, and repository change.</p></div><button class="primaryAction" type="button" data-demo-action="Dashboard builder is coming next">Create dashboard</button></header>
+          <div class="commandToolbar"><label class="searchBox"><svg class="icon iconSmall" aria-hidden="true"><use href="#i-search"/></svg><input type="search" aria-label="Find a dashboard" placeholder="Find a dashboard" data-filter-selector=".dashboardRow"/></label><button class="filterChip active" type="button" data-filter-mode="all">All</button><button class="filterChip" type="button" data-filter-mode="starred">Starred</button><button class="filterChip" type="button" data-filter-mode="shared">Shared</button><span class="toolbarCount">4 dashboards</span></div>
+          <div class="dashboardDirectory">
+            <div class="dashboardRows">
+              <div class="directoryHead"><span>Dashboard</span><span>Scope</span><span>Updated</span></div>
+              <button class="dashboardRow active" type="button" data-categories="starred"><span><strong>Workspace overview</strong><small>Cross-project operating picture</small></span><span>All sessions</span><time>Just now</time></button>
+              <button class="dashboardRow" type="button" data-categories="shared"><span><strong>Agent operations</strong><small>Topology, context, and execution state</small></span><span>Live agents</span><time>2m ago</time></button>
+              <button class="dashboardRow" type="button" data-categories="starred shared"><span><strong>Usage &amp; cache evidence</strong><small>Provider windows and request observations</small></span><span>Account</span><time>18m ago</time></button>
+              <button class="dashboardRow" type="button" data-categories="shared"><span><strong>Repository activity</strong><small>Branches, changes, commits, and pull requests</small></span><span>3 repos</span><time>1h ago</time></button>
+            </div>
+            <aside class="dashboardPreview"><h2>Workspace overview</h2><p>Your default landing view. Values below are illustrative and remain provider-neutral.</p><div class="previewMetric"><span>Live sessions</span><strong>3</strong></div><div class="previewMetric"><span>Active agents</span><strong>7</strong></div><div class="previewMetric"><span>Current context</span><strong>128k</strong></div><div class="previewMetric"><span>Attention items</span><strong style="color:var(--amber)">1</strong></div><button class="secondaryAction" type="button" style="margin-top:16px">Open dashboard</button></aside>
+          </div>
+        </section>
+
+        <section class="commandView" data-command-panel="sessions" hidden>
+          <header class="commandViewIntro"><div><h1>Sessions</h1><p>Live and historical coding-agent sessions, organized for fast triage without exposing conversation content.</p></div><button class="secondaryAction" type="button" data-demo-action="Session catalog export prepared">Export catalog</button></header>
+          <div class="commandToolbar"><label class="searchBox"><svg class="icon iconSmall" aria-hidden="true"><use href="#i-search"/></svg><input type="search" aria-label="Filter sessions" placeholder="Filter sessions" data-filter-selector=".dataTable tbody tr"/></label><button class="filterChip active" type="button" data-filter-mode="live">Live 3</button><button class="filterChip" type="button" data-filter-mode="needs-input">Needs input 1</button><button class="filterChip" type="button" data-filter-mode="history">History</button><span class="toolbarCount">Updated just now</span></div>
+          <div class="sessionWorkspace">
+            <div><table class="dataTable"><thead><tr><th>Session</th><th>State</th><th>Agents</th><th>Context</th></tr></thead><tbody><tr class="selected"><td><strong>Professional UI shell concepts</strong><br/><small>Pomegr · Codex</small></td><td><span class="statusText attention"><i class="statusDot amber"></i>Needs input</span></td><td>1</td><td>48.2k</td></tr><tr><td><strong>Codex provider normalization</strong><br/><small>Pomegr · Codex</small></td><td><span class="statusText active"><i class="statusDot"></i>Active</span></td><td>3</td><td>63.9k</td></tr><tr><td><strong>Desktop release checks</strong><br/><small>Pomegr · Codex</small></td><td><span class="statusText"><i class="statusDot idle"></i>Idle</span></td><td>3</td><td>15.8k</td></tr><tr><td><strong>Privacy serialization audit</strong><br/><small>Pomegr · Aug 27</small></td><td><span class="statusText">Complete</span></td><td>2</td><td>22.4k</td></tr></tbody></table></div>
+            <aside class="detailInspector"><h2>Professional UI shell concepts</h2><p>Waiting for a product direction. Session-reported state may be stale.</p><dl class="detailList"><div><dt>Provider</dt><dd>Codex</dd></div><div><dt>Repository</dt><dd>Pomegr</dd></div><div><dt>Branch</dt><dd>working tree</dd></div><div><dt>Wall time</dt><dd>42m</dd></div><div><dt>Current context</dt><dd>48.2k</dd></div><div><dt>Agents</dt><dd>1 visible</dd></div></dl><button class="primaryAction" type="button" style="margin-top:16px" data-demo-action="Session detail opened in a new workspace">Open session</button></aside>
+          </div>
+        </section>
+
+        <section class="commandView" data-command-panel="agents" hidden>
+          <header class="commandViewIntro"><div><h1>Agents</h1><p>One normalized roster across providers, with current state, role, context, and parent-session provenance.</p></div><button class="secondaryAction" type="button" data-demo-action="Agent topology view is coming next">View topology</button></header>
+          <div class="commandToolbar"><button class="filterChip active" type="button" data-filter-mode="all">All 7</button><button class="filterChip" type="button" data-filter-mode="active">Active 4</button><button class="filterChip" type="button" data-filter-mode="needs-input">Needs input 1</button><button class="filterChip" type="button" data-filter-mode="finished">Finished 2</button><span class="toolbarCount">Latest normalized state</span></div>
+          <div class="agentWorkspace">
+            <div><table class="dataTable"><thead><tr><th>Agent</th><th>Status</th><th>Session</th><th>Context</th></tr></thead><tbody><tr class="selected"><td><div class="agentNameCell"><i class="agentRoleMark">MA</i><span><strong>Main agent</strong><small>Coordinator</small></span></div></td><td><span class="statusText attention"><i class="statusDot amber"></i>Needs input</span></td><td>UI shell concepts</td><td>31.4k</td></tr><tr><td><div class="agentNameCell"><i class="agentRoleMark">IN</i><span><strong>Investigator</strong><small>Specialist</small></span></div></td><td><span class="statusText active"><i class="statusDot"></i>Active</span></td><td>Provider normalization</td><td>21.8k</td></tr><tr><td><div class="agentNameCell"><i class="agentRoleMark">RV</i><span><strong>UI reviewer</strong><small>Reviewer</small></span></div></td><td><span class="statusText">Finished</span></td><td>UI shell concepts</td><td>9.8k</td></tr><tr><td><div class="agentNameCell"><i class="agentRoleMark">BL</i><span><strong>Release builder</strong><small>Specialist</small></span></div></td><td><span class="statusText active"><i class="statusDot"></i>Active</span></td><td>Desktop checks</td><td>12.7k</td></tr></tbody></table></div>
+            <aside class="detailInspector"><h2>Main agent</h2><p>Coordinates the selected session and owns its current user-facing response.</p><dl class="detailList"><div><dt>Role</dt><dd>Coordinator</dd></div><div><dt>Status</dt><dd style="color:var(--amber)">Needs input</dd></div><div><dt>Cache lifetime</dt><dd>1h</dd></div><div><dt>Current context</dt><dd>31.4k</dd></div><div><dt>Parent</dt><dd>None</dd></div><div><dt>Last activity</dt><dd>Now</dd></div></dl></aside>
+          </div>
+        </section>
+
+        <section class="commandView" data-command-panel="usage" hidden>
+          <header class="commandViewIntro"><div><h1>Usage limits</h1><p>Provider-reported account windows with local request evidence shown only for correlation—not attribution or billing.</p></div><button class="secondaryAction" type="button" data-demo-action="Usage limits refreshed just now">Refresh limits</button></header>
+          <section class="usageProvider"><header class="usageProviderHead"><strong>Codex</strong><span>Connected · refreshed 2m ago</span></header><div class="usageRows"><article class="usageWindow" style="--usage:34%"><header><strong>5-hour window</strong><b>34%</b></header><div class="usageTrack"><i></i></div><footer><span>Resets in 2h 18m</span><span>12 observations</span></footer></article><article class="usageWindow warning" style="--usage:72%"><header><strong>Weekly window</strong><b>72%</b></header><div class="usageTrack"><i></i></div><footer><span>Resets Monday</span><span>48 observations</span></footer></article><article class="usageWindow" style="--usage:18%"><header><strong>Review allowance</strong><b>18%</b></header><div class="usageTrack"><i></i></div><footer><span>Provider window</span><span>6 observations</span></footer></article></div></section>
+          <section class="usageProvider"><header class="usageProviderHead"><strong>Claude Code</strong><span>Connected · refreshed 4m ago</span></header><div class="usageRows"><article class="usageWindow warning" style="--usage:81%"><header><strong>5-hour window</strong><b>81%</b></header><div class="usageTrack"><i></i></div><footer><span>Resets in 46m</span><span>24 observations</span></footer></article><article class="usageWindow" style="--usage:41%"><header><strong>Weekly window</strong><b>41%</b></header><div class="usageTrack"><i></i></div><footer><span>Resets Sunday</span><span>77 observations</span></footer></article><article class="usageWindow" style="--usage:22%"><header><strong>Sonnet window</strong><b>22%</b></header><div class="usageTrack"><i></i></div><footer><span>Provider window</span><span>9 observations</span></footer></article></div></section>
+          <p class="usageCaution">Usage is account-level. Pomegr does not assign provider usage or cost to individual sessions, agents, or repositories.</p>
+        </section>
+
+        <section class="commandView" data-command-panel="repositories" hidden>
+          <header class="commandViewIntro"><div><h1>Repositories</h1><p>Working-tree state and pull-request evidence for repositories associated with live sessions.</p></div><button class="secondaryAction" type="button" data-demo-action="Repository evidence rescanned just now">Rescan repositories</button></header>
+          <div class="commandToolbar"><label class="searchBox"><svg class="icon iconSmall" aria-hidden="true"><use href="#i-search"/></svg><input type="search" aria-label="Filter repositories" placeholder="Filter repositories" data-filter-selector=".repositoryRow"/></label><button class="filterChip active" type="button" data-filter-mode="all">All 3</button><button class="filterChip" type="button" data-filter-mode="with-changes">With changes 2</button><span class="toolbarCount">Local Git inspection</span></div>
+          <div class="repositoryList"><article class="repositoryRow"><span class="repositoryIdentity"><strong>Pomegr</strong><small>C:\Workspace\repos\Pomegr</small></span><code class="branchName">codex/professional-shell</code><span class="repoStat"><strong>24</strong>changes</span><span class="repoStat"><strong>3</strong>commits</span><span class="repoStat"><strong>1</strong>PR</span></article><article class="repositoryRow"><span class="repositoryIdentity"><strong>Provider adapters</strong><small>C:\Workspace\repos\provider-lab</small></span><code class="branchName">main</code><span class="repoStat"><strong>0</strong>changes</span><span class="repoStat"><strong>7</strong>commits</span><span class="repoStat"><strong>0</strong>PRs</span></article><article class="repositoryRow"><span class="repositoryIdentity"><strong>Desktop packaging</strong><small>C:\Workspace\repos\release-tools</small></span><code class="branchName">release/windows-beta</code><span class="repoStat"><strong>6</strong>changes</span><span class="repoStat"><strong>2</strong>commits</span><span class="repoStat"><strong>1</strong>PR</span></article></div>
+        </section>
+
+        <section class="commandView" data-command-panel="settings" hidden>
+          <header class="commandViewIntro"><div><h1>Settings</h1><p>Local display and notification preferences. Monitoring remains read-only.</p></div><button class="primaryAction" type="button" data-demo-action="Local preferences saved">Save changes</button></header>
+          <div class="settingsLayout"><nav class="settingsNav" aria-label="Settings sections" role="tablist"><button class="active" type="button" role="tab" aria-selected="true" aria-controls="settings-appearance" data-settings-tab="appearance">Appearance</button><button type="button" role="tab" aria-selected="false" aria-controls="settings-notifications" data-settings-tab="notifications">Notifications</button><button type="button" role="tab" aria-selected="false" aria-controls="settings-data" data-settings-tab="data">Data display</button><button type="button" role="tab" aria-selected="false" aria-controls="settings-about" data-settings-tab="about">About</button></nav><section class="settingsPane" id="settings-appearance" role="tabpanel" data-settings-panel="appearance"><h2>Workspace appearance</h2><p>These controls affect only this local Pomegr interface.</p><div class="settingRow"><div><strong>Compact density</strong><span>Show more operational evidence without reducing touch targets.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="true" aria-label="Compact density"><i></i></button></div><div class="settingRow"><div><strong>Show historical sessions</strong><span>Keep completed work available in the session catalog.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="true" aria-label="Show historical sessions"><i></i></button></div></section><section class="settingsPane" id="settings-notifications" role="tabpanel" data-settings-panel="notifications" hidden><h2>Notification preferences</h2><p>Choose which local events deserve attention.</p><div class="settingRow"><div><strong>Desktop notifications</strong><span>Notify only when a live session needs attention.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="true" aria-label="Desktop notifications"><i></i></button></div><div class="settingRow"><div><strong>Completed session updates</strong><span>Include a quiet notification when long-running work completes.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="false" aria-label="Completed session updates"><i></i></button></div></section><section class="settingsPane" id="settings-data" role="tabpanel" data-settings-panel="data" hidden><h2>Data display</h2><p>Presentation choices never change the read-only monitor.</p><div class="settingRow"><div><strong>Show exact context values</strong><span>Display current normalized snapshots instead of rounded labels.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="true" aria-label="Show exact context values"><i></i></button></div><div class="settingRow"><div><strong>Show wall-time timestamps</strong><span>Keep elapsed duration visibly labeled as wall time.</span></div><button class="settingsSwitch" type="button" role="switch" aria-checked="true" aria-label="Show wall-time timestamps"><i></i></button></div></section><section class="settingsPane" id="settings-about" role="tabpanel" data-settings-panel="about" hidden><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p><div class="settingRow"><div><strong>Monitor connection</strong><span>Connected on loopback. Normalized metadata stays on this machine.</span></div><span>Ready</span></div><div class="settingRow"><div><strong>Prototype version</strong><span>Command Center interaction study.</span></div><span>v0.2.0</span></div></section></div>
+        </section>
+      </main>
+      <footer class="commandFooter"><div><span>Monitor connected</span><span>Revision 248</span><span>Updated just now</span></div><span id="command-live-status" aria-live="polite">Read-only · normalized metadata only</span></footer>
+    </div>
+  </section>
+
+  <script>
+    const tabs = [...document.querySelectorAll('[data-concept]')];
+    const panels = [...document.querySelectorAll('[data-panel]')];
+    const activate = (id, updateHash = true) => {
+      tabs.forEach((tab) => {
+        const selected = tab.dataset.concept === id;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+      });
+      panels.forEach((panel) => {
+        const active = panel.dataset.panel === id;
+        panel.hidden = !active;
+        panel.classList.toggle('isActive', active);
+      });
+      if (updateHash) history.replaceState(null, '', '#' + id);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+    tabs.forEach((tab) => tab.addEventListener('click', () => activate(tab.dataset.concept)));
+    document.querySelector('.studyTabs').addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const current = tabs.indexOf(document.activeElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].focus();
+      activate(tabs[next].dataset.concept);
+    });
+    const mobileMenu = document.querySelector('[data-mobile-menu]');
+    const mobileNavigation = document.querySelector('#desk-mobile-navigation');
+    const mobileBackdrop = document.querySelector('[data-mobile-backdrop]');
+    const setMobileMenu = (open) => {
+      mobileMenu.setAttribute('aria-expanded', String(open));
+      mobileMenu.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      mobileNavigation.classList.toggle('isMobileOpen', open);
+      mobileBackdrop.classList.toggle('isVisible', open);
+      if (open) document.querySelector('[data-mobile-close]').focus({ preventScroll: true });
+      else mobileMenu.focus({ preventScroll: true });
+    };
+    mobileMenu.addEventListener('click', () => setMobileMenu(mobileMenu.getAttribute('aria-expanded') !== 'true'));
+    document.querySelector('[data-mobile-close]').addEventListener('click', () => setMobileMenu(false));
+    mobileBackdrop.addEventListener('click', () => setMobileMenu(false));
+    mobileNavigation.querySelectorAll('.navItem').forEach((item) => item.addEventListener('click', () => {
+      if (matchMedia('(max-width: 820px)').matches) setMobileMenu(false);
+    }));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && mobileMenu.getAttribute('aria-expanded') === 'true') setMobileMenu(false);
+    });
+    document.querySelectorAll('[data-profile]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const menu = button.nextElementSibling;
+        const open = button.getAttribute('aria-expanded') === 'true';
+        document.querySelectorAll('[data-profile]').forEach((other) => {
+          other.setAttribute('aria-expanded', 'false');
+          other.nextElementSibling.hidden = true;
+        });
+        button.setAttribute('aria-expanded', String(!open));
+        menu.hidden = open;
+      });
+    });
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('.profileWrap')) return;
+      document.querySelectorAll('[data-profile]').forEach((button) => {
+        button.setAttribute('aria-expanded', 'false');
+        button.nextElementSibling.hidden = true;
+      });
+    });
+    document.querySelectorAll('.navItem, .railButton, .fleetSession, .fleetModeTabs button').forEach((control) => {
+      control.addEventListener('click', () => {
+        const group = control.closest('nav, aside, .fleetModeTabs');
+        group?.querySelectorAll('.active').forEach((active) => active.classList.remove('active'));
+        control.classList.add('active');
+      });
+    });
+    const commandNavItems = [...document.querySelectorAll('[data-command-view]')];
+    const commandViews = [...document.querySelectorAll('[data-command-panel]')];
+    const showCommandView = (id, { updateHistory = false, focusHeading = false } = {}) => {
+      if (!commandViews.some((view) => view.dataset.commandPanel === id)) id = 'home';
+      commandNavItems.forEach((item) => {
+        const selected = item.dataset.commandView === id;
+        item.classList.toggle('active', selected);
+        if (selected) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      });
+      commandViews.forEach((view) => { view.hidden = view.dataset.commandPanel !== id; });
+      document.querySelector('.commandMain')?.scrollTo({ top: 0, behavior: 'instant' });
+      if (updateHistory) {
+        const url = new URL(location.href);
+        if (id === 'home') url.searchParams.delete('view');
+        else url.searchParams.set('view', id);
+        history.pushState({ commandView: id }, '', url);
+      }
+      if (focusHeading) {
+        const heading = document.querySelector(`[data-command-panel="${id}"] h1`);
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        }
+      }
+    };
+    commandNavItems.forEach((item) => item.addEventListener('click', () => showCommandView(item.dataset.commandView, { updateHistory: true })));
+    document.querySelectorAll('[data-command-link]').forEach((item) => item.addEventListener('click', () => showCommandView(item.dataset.commandLink, { updateHistory: true, focusHeading: true })));
+    addEventListener('popstate', () => showCommandView(new URL(location.href).searchParams.get('view') || 'home'));
+
+    const notificationButton = document.querySelector('#command-notifications-button');
+    const notificationTray = document.querySelector('#command-notification-tray');
+    const setNotificationsOpen = (open, { returnFocus = true } = {}) => {
+      notificationButton.setAttribute('aria-expanded', String(open));
+      notificationTray.hidden = !open;
+      if (open) notificationTray.querySelector('[data-close-notifications]').focus({ preventScroll: true });
+      else if (returnFocus) notificationButton.focus({ preventScroll: true });
+    };
+    notificationButton.addEventListener('click', () => setNotificationsOpen(notificationButton.getAttribute('aria-expanded') !== 'true'));
+    notificationTray.querySelector('[data-close-notifications]').addEventListener('click', () => setNotificationsOpen(false));
+    notificationTray.querySelector('[data-mark-read]').addEventListener('click', (event) => {
+      notificationTray.querySelectorAll('.notificationEntry').forEach((entry) => entry.classList.add('isRead'));
+      notificationButton.classList.add('notificationsCleared');
+      notificationButton.setAttribute('aria-label', 'Notifications, none unread');
+      event.currentTarget.textContent = 'All read';
+      event.currentTarget.disabled = true;
+      notificationTray.querySelector('[data-notification-status]').textContent = 'You are all caught up';
+      notificationTray.querySelectorAll('.notificationGroupLabel b').forEach((count) => { count.textContent = '0'; });
+    });
+    notificationTray.querySelectorAll('[data-notification-view]').forEach((action) => action.addEventListener('click', () => {
+      setNotificationsOpen(false, { returnFocus: false });
+      showCommandView(action.dataset.notificationView, { updateHistory: true, focusHeading: true });
+      document.querySelector('#command-live-status').textContent = `Opened ${action.dataset.notificationView} from notifications`;
+    }));
+    document.addEventListener('click', (event) => {
+      if (notificationTray.hidden || notificationTray.contains(event.target) || notificationButton.contains(event.target)) return;
+      setNotificationsOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !notificationTray.hidden) setNotificationsOpen(false);
+    });
+    document.querySelectorAll('.settingsSwitch').forEach((control) => control.addEventListener('click', () => {
+      control.setAttribute('aria-checked', String(control.getAttribute('aria-checked') !== 'true'));
+    }));
+    document.querySelectorAll('.dashboardRow, .filterChip').forEach((control) => control.addEventListener('click', () => {
+      const group = control.closest('.dashboardRows, .commandToolbar');
+      group?.querySelectorAll('.active').forEach((active) => active.classList.remove('active'));
+      control.classList.add('active');
+    }));
+    document.querySelectorAll('[data-filter-mode]').forEach((button) => button.addEventListener('click', () => {
+      const panel = button.closest('[data-command-panel]');
+      const mode = button.dataset.filterMode;
+      let rows = [];
+      if (panel.dataset.commandPanel === 'dashboards') rows = [...panel.querySelectorAll('.dashboardRow')];
+      if (['sessions', 'agents'].includes(panel.dataset.commandPanel)) rows = [...panel.querySelectorAll('.dataTable tbody tr')];
+      if (panel.dataset.commandPanel === 'repositories') rows = [...panel.querySelectorAll('.repositoryRow')];
+      rows.forEach((row) => {
+        const copy = row.textContent;
+        const matches = mode === 'all'
+          || (['starred', 'shared'].includes(mode) && row.dataset.categories?.includes(mode))
+          || (mode === 'live' && !copy.includes('Complete'))
+          || (mode === 'needs-input' && copy.includes('Needs input'))
+          || (mode === 'history' && copy.includes('Complete'))
+          || (mode === 'active' && copy.includes('Active'))
+          || (mode === 'finished' && copy.includes('Finished'))
+          || (mode === 'with-changes' && row.querySelector('.repoStat strong')?.textContent !== '0');
+        row.hidden = !matches;
+      });
+      const count = rows.filter((row) => !row.hidden).length;
+      const countLabel = button.closest('.commandToolbar')?.querySelector('.toolbarCount');
+      if (countLabel) countLabel.textContent = `${count} shown`;
+    }));
+    const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')];
+    const showSettingsPanel = (id) => {
+      settingsTabs.forEach((tab) => {
+        const selected = tab.dataset.settingsTab === id;
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+      });
+      document.querySelectorAll('[data-settings-panel]').forEach((panel) => { panel.hidden = panel.dataset.settingsPanel !== id; });
+    };
+    settingsTabs.forEach((tab) => tab.addEventListener('click', () => showSettingsPanel(tab.dataset.settingsTab)));
+    document.querySelector('.settingsNav')?.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const index = settingsTabs.indexOf(document.activeElement);
+      const next = (index + (event.key === 'ArrowRight' ? 1 : -1) + settingsTabs.length) % settingsTabs.length;
+      settingsTabs[next].focus();
+      showSettingsPanel(settingsTabs[next].dataset.settingsTab);
+    });
+    document.querySelectorAll('[data-filter-selector]').forEach((input) => input.addEventListener('input', () => {
+      const query = input.value.trim().toLowerCase();
+      input.closest('[data-command-panel]')?.querySelectorAll(input.dataset.filterSelector).forEach((row) => {
+        row.hidden = query.length > 0 && !row.textContent.toLowerCase().includes(query);
+      });
+    }));
+    const globalSearch = document.querySelector('[data-global-search]');
+    const searchableViews = { dashboard: 'dashboards', session: 'sessions', agent: 'agents', usage: 'usage', limit: 'usage', repo: 'repositories', setting: 'settings', home: 'home', workspace: 'home' };
+    globalSearch.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      const query = globalSearch.value.trim().toLowerCase();
+      const match = Object.entries(searchableViews).find(([term]) => query.includes(term));
+      if (match) showCommandView(match[1], { updateHistory: true, focusHeading: true });
+      else document.querySelector('#command-live-status').textContent = query ? `No destination matches “${query}”` : 'Type a destination to search';
+    });
+    document.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        globalSearch.focus();
+        globalSearch.select();
+      }
+    });
+    document.querySelectorAll('[data-demo-action]').forEach((button) => button.addEventListener('click', () => {
+      document.querySelector('#command-live-status').textContent = button.dataset.demoAction;
+      button.dataset.originalLabel ||= button.textContent;
+      button.textContent = button.dataset.demoAction.includes('coming next') ? 'Coming next' : 'Done';
+      setTimeout(() => { button.textContent = button.dataset.originalLabel; }, 1400);
+    }));
+    showSettingsPanel('appearance');
+    showCommandView(new URL(location.href).searchParams.get('view') || 'home');
+    const initial = ['desk', 'fleet', 'command'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'desk';
+    activate(initial, false);
+  </script>
+</body>
+</html>

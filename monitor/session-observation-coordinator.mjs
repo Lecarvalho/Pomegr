@@ -7,9 +7,7 @@ function qualifiedSessionId(providerId, localSessionId) {
 }
 
 function compareCatalogEntries(left, right) {
-  return Number(Boolean(right.isLive)) - Number(Boolean(left.isLive))
-    || Number(Boolean(right.needsInput)) - Number(Boolean(left.needsInput))
-    || Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "")
+  return Date.parse(right.createdAt || right.updatedAt || "") - Date.parse(left.createdAt || left.updatedAt || "")
     || left.id.localeCompare(right.id);
 }
 
@@ -22,11 +20,19 @@ function publicCatalogEntry(providerId, source, entry) {
     source,
     title: String(entry.title || "Untitled session"),
     project: String(entry.project || "Unknown project"),
+    createdAt: entry.createdAt || entry.updatedAt || null,
     updatedAt: entry.updatedAt || null,
     isLive: Boolean(entry.isLive),
     needsInput: Boolean(entry.needsInput),
     activityStatus: entry.activityStatus || "unknown",
   });
+}
+
+function catalogStructure(entries = []) {
+  return entries
+    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}`)
+    .sort()
+    .join("\n");
 }
 
 /** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
@@ -36,6 +42,7 @@ export function createSessionObservationCoordinator(options = {}) {
     throw new TypeError("Observation coordinator requires registry, store, and deriveSession");
   }
   const commitDelayMs = Math.max(0, Number(options.commitDelayMs ?? 500));
+  const catalogStructuralDelayMs = Math.max(0, Number(options.catalogStructuralDelayMs ?? 0));
   const schedule = options.schedule || ((task, delay) => setTimeout(task, delay));
   const cancel = options.cancel || clearTimeout;
   const catalogCache = options.catalogCache || createCommittedResponseCache({ includeRevision: true });
@@ -51,6 +58,8 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointTimers = new Map();
   const subscribers = new Set();
   let catalogTimer = null;
+  let catalogTimerDueAt = null;
+  let catalogDirtyAt = null;
   let abortController = null;
   let lifecycle = null;
   let startPromise = null;
@@ -66,6 +75,11 @@ export function createSessionObservationCoordinator(options = {}) {
     cacheMisses: 0,
     hydrationsQueued: 0,
     invalidations: 0,
+    catalogStructuralFastPaths: 0,
+    catalogCommitDelaySamples: 0,
+    catalogCommitDelayTotalMs: 0,
+    catalogCommitDelayLastMs: 0,
+    catalogCommitDelayMaxMs: 0,
   };
 
   function scheduleCheckpoint(snapshot) {
@@ -90,16 +104,29 @@ export function createSessionObservationCoordinator(options = {}) {
 
   function commitCatalog() {
     catalogTimer = null;
+    catalogTimerDueAt = null;
+    if (catalogDirtyAt !== null) {
+      const delayMs = Math.max(0, now() - catalogDirtyAt);
+      qa.catalogCommitDelaySamples += 1;
+      qa.catalogCommitDelayTotalMs += delayMs;
+      qa.catalogCommitDelayLastMs = delayMs;
+      qa.catalogCommitDelayMaxMs = Math.max(qa.catalogCommitDelayMaxMs, delayMs);
+      catalogDirtyAt = null;
+    }
     const sessions = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
     const liveSessions = sessions.filter((entry) => entry.isLive).map((entry) => {
       const snapshot = store.getByQualifiedId(entry.id);
       const state = snapshot?.publicState;
+      const primaryAgent = Array.isArray(state?.agents)
+        ? state.agents.find((agent) => agent.id === "primary")
+        : null;
       return {
         ...entry,
         agentCount: Number.isFinite(state?.metrics?.agents) ? state.metrics.agents : null,
         activeAgentCount: Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
         latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents) ? state.metrics.tokens.allAgents : null,
         progress: state?.session?.progress || null,
+        currentActivity: primaryAgent?.currentActivity ?? null,
       };
     });
     const providerStates = [...catalogReadinessByProvider.values()];
@@ -120,9 +147,17 @@ export function createSessionObservationCoordinator(options = {}) {
     notify({ type: "catalog", revision: committed.revision });
   }
 
-  function scheduleCatalogCommit() {
-    if (catalogTimer !== null) return;
-    catalogTimer = schedule(commitCatalog, commitDelayMs);
+  function scheduleCatalogCommit(delayMs = commitDelayMs) {
+    const delay = Math.max(0, Number(delayMs));
+    const scheduledAt = now();
+    if (catalogDirtyAt === null) catalogDirtyAt = scheduledAt;
+    const dueAt = scheduledAt + delay;
+    if (catalogTimer !== null) {
+      if (catalogTimerDueAt !== null && catalogTimerDueAt <= dueAt) return;
+      cancel(catalogTimer);
+    }
+    catalogTimerDueAt = dueAt;
+    catalogTimer = schedule(commitCatalog, delay);
   }
 
   async function commitSession(qualifiedId) {
@@ -203,9 +238,11 @@ export function createSessionObservationCoordinator(options = {}) {
       const normalized = Array.isArray(entries)
         ? entries.map((entry) => publicCatalogEntry(providerId, provider?.source || entry?.source || "", entry)).filter(Boolean)
         : [];
+      const structuralChange = catalogStructure(catalogsByProvider.get(providerId)) !== catalogStructure(normalized);
       catalogsByProvider.set(providerId, normalized);
       catalogReadinessByProvider.set(providerId, readiness === "unavailable" ? "unavailable" : "ready");
-      scheduleCatalogCommit();
+      if (structuralChange) qa.catalogStructuralFastPaths += 1;
+      scheduleCatalogCommit(structuralChange ? catalogStructuralDelayMs : commitDelayMs);
     },
 
     publishSession(providerId, localSessionId, evidence) {
@@ -332,6 +369,8 @@ export function createSessionObservationCoordinator(options = {}) {
     abortController?.abort();
     if (catalogTimer !== null) cancel(catalogTimer);
     catalogTimer = null;
+    catalogTimerDueAt = null;
+    catalogDirtyAt = null;
     for (const timer of scheduledSessions.values()) cancel(timer);
     scheduledSessions.clear();
     pendingSessions.clear();
@@ -398,6 +437,9 @@ export function createSessionObservationCoordinator(options = {}) {
     diagnostics() {
       return Object.freeze({
         ...qa,
+        catalogCommitDelayAverageMs: qa.catalogCommitDelaySamples
+          ? Math.round(qa.catalogCommitDelayTotalMs / qa.catalogCommitDelaySamples)
+          : 0,
         store: store.stats?.() || null,
         checkpoints: checkpointStore?.stats?.() || null,
         observers: lifecycle?.diagnostics?.() || {},

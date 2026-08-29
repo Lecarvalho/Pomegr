@@ -1,16 +1,52 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createIncrementalJsonlIngestor } from "../monitor/providers/incremental-jsonl-ingestor.mjs";
 import { createCodexIncrementalObserver, mergeCodexObservationEvidence } from "../monitor/providers/codex-observation.mjs";
+import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
 import { OBSERVATION_WORKING_SET_MS } from "../monitor/observation-working-set.mjs";
+import { assertNoPrivateFixtureSentinels, readProviderFixture } from "./helpers/provider-fixtures.mjs";
 
 function sourceReader(buffers) {
   return async (offset, bytes, source) => buffers.get(source.identity).subarray(offset, offset + bytes);
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
+async function waitFor(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for observer state");
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function watchHarness() {
+  const listeners = [];
+  return {
+    watch(_target, options, callback) {
+      listeners.push(typeof options === "function" ? options : callback);
+      return { close() {} };
+    },
+    emit(eventType, filename, index = 0) {
+      listeners[index]?.(eventType, filename);
+    },
+  };
+}
+
+async function writeProviderFixture(file, fixture, replacements = []) {
+  let contents = await readProviderFixture(fixture);
+  for (const [from, to] of replacements) contents = contents.replaceAll(from, to);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, contents, "utf8");
 }
 
 test("incremental provider framing consumes multi-chunk growth and parses each complete record once", async () => {
@@ -90,6 +126,145 @@ test("queued hydration yields before provider work begins", async (context) => {
   releaseYield();
   await hydration;
   assert.equal(acquisitions, 1);
+});
+
+test("source events publish a fresh catalog without waiting for slow hydration", async (context) => {
+  const controller = new AbortController();
+  const watcher = watchHarness();
+  const releaseSlow = deferred();
+  let slowStarted = false;
+  let entries = [{ localId: "one", isLive: true }];
+  const catalogs = [];
+  const listOptions = [];
+  const observer = createNormalizedPollingObserver({
+    list: async (options) => {
+      listOptions.push(options);
+      return entries;
+    },
+    ingest: async (localSessionId) => {
+      if (localSessionId === "one" && !slowStarted) {
+        slowStarted = true;
+        await releaseSlow.promise;
+      }
+      return null;
+    },
+    routeSourceEvent: () => ({ catalog: true, sessionIds: [] }),
+    watchTargets: ["synthetic-root"],
+    watchSource: watcher.watch,
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog(value) { catalogs.push(value.map((entry) => entry.localId)); },
+    publishSession() {},
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => slowStarted && catalogs.length === 1);
+
+  entries = [...entries, { localId: "two", isLive: true }];
+  watcher.emit("rename", "two.jsonl");
+  await waitFor(() => catalogs.some((catalog) => catalog.includes("two")));
+
+  assert.equal(listOptions.some((options) => options?.fresh === true), true);
+  assert.equal(observer.diagnostics().activeHydrations >= 1, true);
+  releaseSlow.resolve();
+});
+
+test("session events run different sessions in parallel and coalesce a dirty in-flight session", async (context) => {
+  const controller = new AbortController();
+  const watcher = watchHarness();
+  const releaseA = deferred();
+  const releaseB = deferred();
+  const attempts = new Map();
+  const active = new Set();
+  let maximumActive = 0;
+  const observer = createNormalizedPollingObserver({
+    list: async () => [],
+    ingest: async (localSessionId) => {
+      assert.equal(active.has(localSessionId), false, "one session must never acquire concurrently with itself");
+      active.add(localSessionId);
+      maximumActive = Math.max(maximumActive, active.size);
+      const attempt = (attempts.get(localSessionId) || 0) + 1;
+      attempts.set(localSessionId, attempt);
+      if (localSessionId === "a" && attempt === 1) await releaseA.promise;
+      if (localSessionId === "b" && attempt === 1) await releaseB.promise;
+      active.delete(localSessionId);
+      return null;
+    },
+    routeSourceEvent: ({ filename }) => ({ catalog: false, sessionIds: [filename.slice(0, -6)] }),
+    watchTargets: ["synthetic-root"],
+    watchSource: watcher.watch,
+    concurrency: 2,
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+
+  watcher.emit("change", "a.jsonl");
+  await waitFor(() => attempts.get("a") === 1);
+  watcher.emit("change", "a.jsonl");
+  watcher.emit("change", "a.jsonl");
+  watcher.emit("change", "a.jsonl");
+  watcher.emit("change", "b.jsonl");
+  await waitFor(() => attempts.get("b") === 1);
+  assert.equal(maximumActive, 2);
+
+  releaseA.resolve();
+  releaseB.resolve();
+  await waitFor(() => attempts.get("a") === 2 && active.size === 0);
+  assert.equal(attempts.get("a"), 2);
+  assert.equal(attempts.get("b"), 1);
+  assert.equal(observer.diagnostics().hydrationDirtyAgain, 1);
+  assert.equal(observer.diagnostics().hydrationsCoalesced >= 2, true);
+  assert.equal(observer.diagnostics().sourceEventQueueSamples >= 2, true);
+  assert.equal(observer.diagnostics().sourceEventQueueDelayAverageMs >= 0, true);
+});
+
+test("Claude source notifications route a subagent append directly to its root session", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-source-event-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const projectsRoot = path.join(root, "projects");
+  const localId = "claude-event-root";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const childFile = path.join(projectsRoot, "fixture-project", localId, "subagents", "agent-child.jsonl");
+  await writeProviderFixture(mainFile, "claude/session.jsonl", [["PRIVATE_PATH_MUST_NOT_LEAK", "synthetic-path"]]);
+  await writeProviderFixture(childFile, "claude/subagent.jsonl", [["PRIVATE_PATH_MUST_NOT_LEAK", "synthetic-path"]]);
+  let watcher;
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    explicitSession: mainFile,
+    observerIntervalMs: 60_000,
+    observerWatchSource(_target, options, callback) {
+      watcher = typeof options === "function" ? options : callback;
+      return { close() {} };
+    },
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const observer = provider.createObserver();
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  const published = [];
+  await observer.start({
+    publishCatalog() {},
+    publishSession(sessionId, candidate) { published.push({ sessionId, candidate }); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => published.length === 1 && typeof watcher === "function");
+
+  await appendFile(childFile, `${JSON.stringify({
+    type: "assistant",
+    timestamp: "2026-08-29T18:00:00.000Z",
+    message: { id: "child-event", model: "claude-test", content: [] },
+  })}\n`, "utf8");
+  watcher("change", path.relative(projectsRoot, childFile));
+  await waitFor(() => published.length >= 2);
+
+  assert.equal(published.at(-1).sessionId, localId);
+  assert.equal(observer.diagnostics().routedSourceEvents >= 1, true);
+  assertNoPrivateFixtureSentinels(published.at(-1).candidate, "Claude event-driven candidate");
 });
 
 test("one reconciliation prepares shared source topology once for every session", async (context) => {
@@ -286,6 +461,7 @@ test("Codex observation retains the complete story while a child source advances
   ];
   const reads = [];
   const published = [];
+  let watcher;
   let notify;
   let nextPublication = new Promise((resolve) => { notify = resolve; });
   const evidence = (compactions) => ({
@@ -304,6 +480,12 @@ test("Codex observation retains the complete story while a child source advances
     list: async () => [{ localId: "root", isLive: true, updatedAt: "2026-08-28T10:01:00.000Z" }],
     discoveredMetadata: async () => metadata,
     transcriptPathsBySessionId: new Map(),
+    watchTargets: [directory],
+    catalogWatchTargets: [],
+    watchSource(_target, options, callback) {
+      watcher = typeof options === "function" ? options : callback;
+      return { close() {} };
+    },
     intervalMs: 60_000,
     async yieldControl() {},
     readEvidence: async (_localId, options) => {
@@ -326,7 +508,7 @@ test("Codex observation retains the complete story while a child source advances
 
   nextPublication = new Promise((resolve) => { notify = resolve; });
   await appendFile(childFile, '{"compaction":"child-new","timestamp":"2026-08-28T10:02:00.000Z"}\n', "utf8");
-  await observer.hydrate("root");
+  watcher("change", path.relative(directory, childFile));
   await nextPublication;
   assert.equal(reads.at(-1).completeStory, false);
   assert.deepEqual([...reads.at(-1).incrementalRecordsByFile.keys()], [childFile]);
@@ -336,6 +518,7 @@ test("Codex observation retains the complete story while a child source advances
     "2026-08-28T10:02:00.000Z",
   ]);
   assert.equal(published.at(-1).observationSource.completeOffset, Buffer.byteLength(await (await import("node:fs/promises")).readFile(rootFile, "utf8")) + Buffer.byteLength(await (await import("node:fs/promises")).readFile(childFile, "utf8")));
+  assert.equal(observer.diagnostics().routedSourceEvents >= 1, true);
 
   const beforePartial = published.length;
   await appendFile(childFile, '{"compaction":"child-partial"', "utf8");

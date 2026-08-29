@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { isObservationWorkingSetEntry } from "../observation-working-set.mjs";
 
 /**
@@ -10,6 +11,19 @@ import { isObservationWorkingSetEntry } from "../observation-working-set.mjs";
  */
 export { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 
+function watchFilename(value) {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return null;
+}
+
+function normalizedSourceRoute(value) {
+  if (!value || typeof value !== "object") return { catalog: true, sessionIds: [] };
+  const sessionIds = [...new Set((Array.isArray(value.sessionIds) ? value.sessionIds : [])
+    .filter((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 512))];
+  return { catalog: Boolean(value.catalog), sessionIds };
+}
+
 export function createNormalizedPollingObserver(options) {
   const {
     list,
@@ -19,6 +33,8 @@ export function createNormalizedPollingObserver(options) {
     intervalMs = 10_000,
     concurrency = 2,
     watchTargets = [],
+    routeSourceEvent,
+    watchSource = fs.watch,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     now = Date.now,
     shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
@@ -36,8 +52,11 @@ export function createNormalizedPollingObserver(options) {
   if (prepare !== undefined && typeof prepare !== "function") {
     throw new TypeError("Normalized polling observer prepare hook must be a function");
   }
-  if (typeof yieldControl !== "function") {
-    throw new TypeError("Normalized polling observer yieldControl hook must be a function");
+  if (routeSourceEvent !== undefined && typeof routeSourceEvent !== "function") {
+    throw new TypeError("Normalized polling observer source-event router must be a function");
+  }
+  if (typeof watchSource !== "function" || typeof yieldControl !== "function") {
+    throw new TypeError("Normalized polling observer watcher and yield hooks must be functions");
   }
   if (typeof now !== "function" || typeof shouldEagerHydrate !== "function") {
     throw new TypeError("Normalized polling observer working-set hooks must be functions");
@@ -48,97 +67,246 @@ export function createNormalizedPollingObserver(options) {
   let timer = null;
   let refreshPending = false;
   let refreshQueued = false;
+  let refreshQueuedFresh = false;
+  let eagerPreparationActive = false;
+  let pendingEagerEntries = null;
   let stopped = false;
+  let queueSequence = 0;
   const watchers = [];
-  const hydrating = new Map();
+  const pendingHydrations = new Map();
+  const runningHydrations = new Map();
   const latestEntries = new Map();
-  const qa = { reconciliationRuns: 0, watcherWakeups: 0, hydrationAttempts: 0, candidatesPublished: 0, acquisitionFailures: 0 };
+  const qa = {
+    reconciliationRuns: 0,
+    watcherWakeups: 0,
+    routedSourceEvents: 0,
+    unresolvedSourceEvents: 0,
+    hydrationAttempts: 0,
+    hydrationsQueued: 0,
+    hydrationsCoalesced: 0,
+    hydrationDirtyAgain: 0,
+    sourceEventQueueSamples: 0,
+    sourceEventQueueDelayTotalMs: 0,
+    sourceEventQueueDelayMaxMs: 0,
+    sourceEventQueueDelayLastMs: 0,
+    candidatesPublished: 0,
+    acquisitionFailures: 0,
+  };
 
-  async function hydrate(localSessionId, prepared) {
+  async function runHydration(localSessionId, prepared) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
-    const active = hydrating.get(localSessionId);
-    if (active) return active;
-    const task = (async () => {
-      try {
-        // Acquisition and provider reducers still contain bounded synchronous
-        // work. Yield before every unit so cache-only HTTP handlers can run
-        // between sessions, including when hydration was queued by a GET.
-        await yieldControl();
-        const context = prepared === undefined && prepare
-          ? await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }])
-          : prepared;
-        const candidate = await acquire(localSessionId, publisher, context);
-        if (!stopped && !signal?.aborted && candidate) {
-          publisher.publishSession(localSessionId, candidate);
-          qa.candidatesPublished += 1;
-        }
-        return Boolean(candidate);
-      } catch {
-        // Acquisition errors are intentionally isolated.  A previous committed
-        // value remains visible; adapter-native failure content never escapes.
-        qa.acquisitionFailures += 1;
-        return false;
-      } finally {
-        hydrating.delete(localSessionId);
+    try {
+      // Provider reducers still contain bounded synchronous work. Yield before
+      // every acquisition unit so cache-only serving remains responsive.
+      await yieldControl();
+      const context = prepared === undefined && prepare
+        ? await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }])
+        : prepared;
+      const candidate = await acquire(localSessionId, publisher, context);
+      if (!stopped && !signal?.aborted && candidate) {
+        publisher.publishSession(localSessionId, candidate);
+        qa.candidatesPublished += 1;
       }
-    })();
-    hydrating.set(localSessionId, task);
-    return task;
+      return Boolean(candidate);
+    } catch {
+      // Acquisition failures are isolated and sanitized. The previous
+      // committed revision remains visible and reconciliation can retry.
+      qa.acquisitionFailures += 1;
+      return false;
+    }
   }
 
-  async function hydrateEntries(entries, prepared) {
-    const queue = entries.map((entry) => entry.localId);
-    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-      while (!stopped && !signal?.aborted) {
-        const localSessionId = queue.shift();
-        if (!localSessionId) return;
-        await hydrate(localSessionId, prepared);
+  function nextPendingHydration() {
+    let selected = null;
+    for (const item of pendingHydrations.values()) {
+      if (runningHydrations.has(item.localSessionId)) continue;
+      if (!selected || item.priority < selected.priority
+        || (item.priority === selected.priority && item.sequence < selected.sequence)) selected = item;
+    }
+    return selected;
+  }
+
+  function drainHydrations() {
+    if (stopped || signal?.aborted) return;
+    while (runningHydrations.size < concurrency) {
+      const item = nextPendingHydration();
+      if (!item) return;
+      pendingHydrations.delete(item.localSessionId);
+      if (Number.isFinite(item.sourceEventAt)) {
+        const queueDelayMs = Math.max(0, now() - item.sourceEventAt);
+        qa.sourceEventQueueSamples += 1;
+        qa.sourceEventQueueDelayTotalMs += queueDelayMs;
+        qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
+        qa.sourceEventQueueDelayLastMs = queueDelayMs;
       }
+      const task = runHydration(item.localSessionId, item.prepared);
+      runningHydrations.set(item.localSessionId, task);
+      void task.then((result) => {
+        for (const resolve of item.waiters) resolve(result);
+      }).finally(() => {
+        runningHydrations.delete(item.localSessionId);
+        drainHydrations();
+      });
+    }
+  }
+
+  /**
+   * @param {string} localSessionId
+   * @param {{prepared?: unknown, priority?: number, rerunIfActive?: boolean, wait?: boolean, sourceEventAt?: number}} [hydrationOptions]
+   */
+  function enqueueHydration(localSessionId, {
+    prepared,
+    priority = 1,
+    rerunIfActive = false,
+    wait = false,
+    sourceEventAt,
+  } = {}) {
+    if (stopped || signal?.aborted || typeof localSessionId !== "string" || !localSessionId) {
+      return wait ? Promise.resolve(false) : false;
+    }
+    let resolveWaiter;
+    const result = wait ? new Promise((resolve) => { resolveWaiter = resolve; }) : true;
+    const pending = pendingHydrations.get(localSessionId);
+    if (pending) {
+      pending.priority = Math.min(pending.priority, priority);
+      if (prepared !== undefined) pending.prepared = prepared;
+      if (Number.isFinite(sourceEventAt)) {
+        pending.sourceEventAt = Number.isFinite(pending.sourceEventAt)
+          ? Math.min(pending.sourceEventAt, sourceEventAt)
+          : sourceEventAt;
+      }
+      if (resolveWaiter) pending.waiters.push(resolveWaiter);
+      qa.hydrationsCoalesced += 1;
+      return result;
+    }
+    const active = runningHydrations.get(localSessionId);
+    if (active && !rerunIfActive) return wait ? active : false;
+    if (active) qa.hydrationDirtyAgain += 1;
+    pendingHydrations.set(localSessionId, {
+      localSessionId,
+      prepared,
+      priority,
+      sequence: queueSequence += 1,
+      waiters: resolveWaiter ? [resolveWaiter] : [],
+      sourceEventAt: Number.isFinite(sourceEventAt) ? sourceEventAt : null,
     });
-    await Promise.all(workers);
+    qa.hydrationsQueued += 1;
+    drainHydrations();
+    return result;
   }
 
-  async function refresh() {
+  async function drainEagerPreparation() {
+    if (eagerPreparationActive || stopped || signal?.aborted) return;
+    eagerPreparationActive = true;
+    try {
+      while (pendingEagerEntries && !stopped && !signal?.aborted) {
+        const batch = pendingEagerEntries;
+        pendingEagerEntries = null;
+        let prepared;
+        try {
+          prepared = prepare && batch.length ? await prepare(batch.map(({ entry }) => entry)) : undefined;
+        } catch {
+          qa.acquisitionFailures += 1;
+          continue;
+        }
+        for (const { entry, priority } of batch) {
+          enqueueHydration(entry.localId, { prepared, priority });
+        }
+      }
+    } finally {
+      eagerPreparationActive = false;
+      if (pendingEagerEntries && !stopped && !signal?.aborted) void drainEagerPreparation();
+    }
+  }
+
+  function scheduleEagerHydration(entries, previousIds) {
+    pendingEagerEntries = entries.filter((entry) => shouldEagerHydrate(entry)).map((entry) => ({
+      entry,
+      // Newly discovered sessions enter acquisition ahead of routine
+      // working-set reconciliation without changing public catalog order.
+      priority: previousIds.has(entry.localId) ? 2 : 0,
+    }));
+    void drainEagerPreparation();
+  }
+
+  async function refresh({ fresh = false } = {}) {
     if (refreshPending) {
       refreshQueued = true;
+      refreshQueuedFresh ||= fresh;
       return;
     }
     if (stopped || signal?.aborted || !publisher) return;
     refreshPending = true;
     qa.reconciliationRuns += 1;
     try {
-      const entries = await list();
+      const entries = await list({ fresh });
       if (!Array.isArray(entries) || stopped || signal?.aborted) return;
+      const previousIds = new Set(latestEntries.keys());
       latestEntries.clear();
       for (const entry of entries) {
         if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
       }
       publisher.publishCatalog(entries);
-      const eagerEntries = entries.filter((entry) => shouldEagerHydrate(entry));
-      const prepared = prepare && eagerEntries.length ? await prepare(eagerEntries) : undefined;
-      await hydrateEntries(eagerEntries, prepared);
+      // Catalog discovery is an independent lane. Source preparation and
+      // acquisition continue asynchronously and cannot hold a later catalog
+      // publication behind a complete working-set hydration pass.
+      scheduleEagerHydration(entries, previousIds);
     } catch {
       // The registry records observer failures.  Do not erase an existing
       // catalog or publish an incomplete replacement here.
     } finally {
       refreshPending = false;
       if (refreshQueued && !stopped && !signal?.aborted) {
+        const queuedFresh = refreshQueuedFresh;
         refreshQueued = false;
+        refreshQueuedFresh = false;
         // A queued watcher/reconciliation pass must not form a microtask-only
         // loop that starves the monitor's HTTP server.
-        void yieldControl().then(() => refresh(), () => {});
+        void yieldControl().then(() => refresh({ fresh: queuedFresh }), () => {});
       }
     }
   }
 
-  function watchSource(target) {
-    if (typeof target !== "string" || !target) return;
-    const wake = () => { qa.watcherWakeups += 1; void refresh(); };
+  async function handleSourceEvent(change) {
+    if (stopped || signal?.aborted) return;
+    let routed;
     try {
-      watchers.push(fs.watch(target, { recursive: true }, wake));
+      routed = normalizedSourceRoute(routeSourceEvent
+        ? await routeSourceEvent(change)
+        : { catalog: true, sessionIds: [] });
     } catch {
-      try { watchers.push(fs.watch(target, wake)); } catch { /* reconciliation remains authoritative */ }
+      routed = { catalog: true, sessionIds: [] };
+    }
+    if (routed.sessionIds.length) qa.routedSourceEvents += 1;
+    else qa.unresolvedSourceEvents += 1;
+    // Unknown/new sources require a cache-bypassing catalog pass. Known
+    // sources skip discovery and enter acquisition immediately.
+    if (routed.catalog) void refresh({ fresh: true });
+    const sourceEventAt = now();
+    for (const localSessionId of routed.sessionIds) {
+      enqueueHydration(localSessionId, {
+        priority: 0,
+        rerunIfActive: true,
+        sourceEventAt,
+      });
+    }
+  }
+
+  function watchTarget(target) {
+    if (typeof target !== "string" || !target) return;
+    const wake = (eventType, filename) => {
+      qa.watcherWakeups += 1;
+      void Promise.resolve().then(() => handleSourceEvent({
+        target,
+        eventType: typeof eventType === "string" ? eventType : "change",
+        filename: watchFilename(filename),
+      }));
+    };
+    try {
+      watchers.push(watchSource(target, { recursive: true }, wake));
+    } catch {
+      try { watchers.push(watchSource(target, wake)); } catch { /* reconciliation remains authoritative */ }
     }
   }
 
@@ -150,6 +318,11 @@ export function createNormalizedPollingObserver(options) {
     for (const watcher of watchers.splice(0)) {
       try { watcher.close(); } catch { /* best-effort observer shutdown */ }
     }
+    for (const item of pendingHydrations.values()) {
+      for (const resolve of item.waiters) resolve(false);
+    }
+    pendingHydrations.clear();
+    pendingEagerEntries = null;
   }
 
   return Object.freeze({
@@ -172,13 +345,21 @@ export function createNormalizedPollingObserver(options) {
       signal.addEventListener("abort", stop, { once: true });
       timer = setInterval(() => { void refresh(); }, intervalMs);
       timer.unref?.();
-      for (const target of watchTargets) watchSource(target);
+      for (const target of watchTargets) watchTarget(target);
       void refresh();
     },
-    hydrate,
+    hydrate(localSessionId) {
+      return enqueueHydration(localSessionId, { priority: 0, wait: true });
+    },
     listSessions: list,
     stop,
-    diagnostics: () => Object.freeze({ ...qa, activeHydrations: hydrating.size }),
+    diagnostics: () => Object.freeze({
+      ...qa,
+      sourceEventQueueDelayAverageMs: qa.sourceEventQueueSamples
+        ? Math.round(qa.sourceEventQueueDelayTotalMs / qa.sourceEventQueueSamples)
+        : 0,
+      activeHydrations: runningHydrations.size,
+      pendingHydrations: pendingHydrations.size,
+    }),
   });
 }
-import fs from "node:fs";

@@ -221,6 +221,7 @@ export function createMonitorRuntime(options = {}) {
       source: entry.source,
       title: entry.title,
       project: entry.project,
+      ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
       updatedAt: entry.updatedAt,
       isLive: Boolean(entry.isLive),
       needsInput: Boolean(entry.needsInput),
@@ -229,6 +230,7 @@ export function createMonitorRuntime(options = {}) {
       activeAgentCount: Number.isFinite(summary?.activeAgentCount) ? summary.activeAgentCount : null,
       latestContextTotal: Number.isFinite(summary?.latestContextTotal) ? summary.latestContextTotal : null,
       progress: summary?.progress ?? null,
+      currentActivity: summary?.currentActivity ?? null,
     };
   }
 
@@ -487,6 +489,7 @@ export function createMonitorRuntime(options = {}) {
           delete session.requestObservations;
           delete session.requestModelObservations;
           delete session.usageLimitRejections;
+          delete session.currentActivity;
           return session;
         }),
         history: {
@@ -624,6 +627,7 @@ export function createMonitorRuntime(options = {}) {
     serveSession: observation.serveSession,
     serveHome: observation.serveHome,
     serveUsageLimits: observation.serveUsageLimits,
+    subscribeRevisionEvents: observation.subscribeRevisionEvents,
     observationDiagnostics: observation.diagnostics,
   });
 }

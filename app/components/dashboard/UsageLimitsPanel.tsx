@@ -19,7 +19,7 @@ export function UsageLimitsPanel({ source, usageLimits }: { source: ProviderSour
         {usageLimits.limits.map((limit) => (
           <article className={`limitCard ${usageLimitSeverity(limit.percent)}`} key={limit.id}>
             <div className="limitTop"><div><span>{limit.window}</span><strong>{limit.label}</strong></div><b>{Math.round(limit.percent)}%</b></div>
-            <div className="limitTrack"><i style={{ width: `${Math.min(100, Math.max(0, limit.percent))}%` }} /></div>
+            <div className="limitTrack"><i style={{ transform: `scaleX(${Math.min(100, Math.max(0, limit.percent)) / 100})` }} /></div>
             <div className="limitBottom"><span><ResetCountdownText value={limit.resetsAt} /></span>{limit.active && <em>Active limit</em>}</div>
           </article>
         ))}

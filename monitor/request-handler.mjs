@@ -49,6 +49,54 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       });
       response.end(serialized);
     };
+    if (requestUrl.pathname === "/api/events") {
+      if (request.method !== "GET" || typeof runtime.subscribeRevisionEvents !== "function") {
+        response.writeHead(request.method === "GET" ? 503 : 405, {
+          "Content-Type": "text/plain; charset=utf-8",
+        });
+        response.end(request.method === "GET" ? "Revision events unavailable" : "Method not allowed");
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      response.flushHeaders?.();
+      let closed = false;
+      let unsubscribe = null;
+      const writeRevision = (event) => {
+        if (closed || event?.domain !== "sessions"
+          || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
+        try {
+          response.write(`event: catalog\ndata: ${JSON.stringify({ domain: "sessions", revision: event.revision })}\n\n`);
+        } catch { close(); }
+      };
+      const heartbeat = setInterval(() => {
+        if (!closed) response.write(": keep-alive\n\n");
+      }, 15_000);
+      heartbeat.unref?.();
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        try { unsubscribe?.(); } catch { /* connection cleanup remains best-effort */ }
+        unsubscribe = null;
+      };
+      response.once("close", close);
+      response.once("error", close);
+      request.once("aborted", close);
+      try {
+        const subscription = runtime.subscribeRevisionEvents(writeRevision);
+        if (closed) subscription();
+        else unsubscribe = subscription;
+      } catch {
+        close();
+        response.end();
+      }
+      return;
+    }
     if (requestUrl.pathname === "/api/sessions") {
       try {
         if (runtime.observationActive?.()) {
