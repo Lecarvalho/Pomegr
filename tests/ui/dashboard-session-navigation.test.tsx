@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
+import { DisplayPreferencesProvider, DISPLAY_PREFERENCES_STORAGE_KEY } from "../../app/hooks/DisplayPreferencesContext";
 import type { MonitorState, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
@@ -117,9 +118,11 @@ function catalogSession(state: MonitorState, overrides: Partial<SessionSummary> 
 
 function renderDashboard(sessions: SessionSummary[] = []) {
   return render(
-    <SessionCatalogProvider sessions={sessions} liveSessions={[]}>
-      <Dashboard />
-    </SessionCatalogProvider>,
+    <DisplayPreferencesProvider>
+      <SessionCatalogProvider sessions={sessions} liveSessions={[]}>
+        <Dashboard />
+      </SessionCatalogProvider>
+    </DisplayPreferencesProvider>,
   );
 }
 
@@ -136,6 +139,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
   window.localStorage.removeItem("pomegr-resource-panel-open");
   window.localStorage.removeItem("pomegr-session-details-open");
+  window.localStorage.removeItem(DISPLAY_PREFERENCES_STORAGE_KEY);
 });
 
 describe("dashboard session navigation", () => {
@@ -183,6 +187,25 @@ describe("dashboard session navigation", () => {
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
     expect(requestPanel?.nextElementSibling).toBe(contextPanel);
     expect(contextPanel?.nextElementSibling).toBe(sessionDetails);
+  });
+
+  it("hides optional evidence without changing neighboring session regions", async () => {
+    window.localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, JSON.stringify({ contextHistory: false, estimatedCost: false }));
+    const state = liveState("claude:hidden-evidence", "Focused session");
+    state.capabilities = { ...state.capabilities, estimatedCost: true };
+    state.session = state.session ? {
+      ...state.session,
+      cost: { amount: 1.25, currency: "USD", type: "estimated", observedAt: "2026-08-11T12:01:00.000Z" },
+    } : null;
+    mockDashboardState(state);
+    renderDashboard([catalogSession(state)]);
+
+    expect(await screen.findByRole("heading", { name: "Focused session" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Request snapshots" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
+    expect(screen.getByText("Resource use")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.queryByText("Claude Code API list-rate estimate")).not.toBeInTheDocument();
   });
 
   it("summarizes changed Git state, five-hour usage, and loaded context only while collapsed", async () => {

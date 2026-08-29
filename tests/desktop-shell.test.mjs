@@ -401,6 +401,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:save-report", payload\)/);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notifications", value\)/);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notification-quiet", value\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-display-preference", key, visible\)/);
   assert.match(preload, /ipcRenderer\.on\("pomegr:desktop-state-changed", listener\)/);
   assert.match(preload, /ipcRenderer\.removeListener\("pomegr:desktop-state-changed", listener\)/);
   assert.match(preload, /ipcRenderer\.invoke\(DESKTOP_THEME_CHANNEL, source\)/);

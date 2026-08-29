@@ -5,6 +5,10 @@ export type DesktopState = {
   closeBehavior: "ask" | "tray" | "quit";
   notifications: boolean;
   notificationQuietUntil: string | null;
+  displayPreferences: {
+    contextHistory: boolean;
+    estimatedCost: boolean;
+  };
   update?: {
     status: "disabled" | "idle" | "checking" | "downloading" | "ready" | "installing" | "failed";
     version: string | null;

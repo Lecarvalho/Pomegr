@@ -11,6 +11,7 @@ import type { DesktopState } from "./DesktopControls";
 import { publishNavigationState, subscribeToOpenNavigation } from "./app-navigation";
 import { SessionSidebar } from "./dashboard/SessionSidebar";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
+import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
 
 type AppShellDesktopBridge = {
   getDesktopState(): Promise<DesktopState | null>;
@@ -171,26 +172,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router, selectedSessionId]);
 
   return (
-    <LiveClockProvider running={!desktopState?.paused}>
-      <SessionCatalogProvider sessions={sessions} liveSessions={liveSessions} loading={loading} connected={connected}>
-        <div className="appFrame">
-          <SessionSidebar
-            open={navigationOpen}
-            sessions={sessions}
-            selectedSessionId={selectedSessionId}
-            currentSessionId={selectedSessionId}
-            viewingHistory={Boolean(selectedSession && !selectedSession.isLive)}
-            homeSelected={pathname === "/"}
-            aboutSelected={pathname === "/about"}
-            update={desktopState?.update || null}
-            onInstallUpdate={installUpdate}
-            onClose={() => setNavigationPath(null)}
-            onSelect={selectSession}
-            readiness={catalogReadiness}
-          />
-          <div className="appContent">{children}</div>
-        </div>
-      </SessionCatalogProvider>
-    </LiveClockProvider>
+    <DisplayPreferencesProvider>
+      <LiveClockProvider running={!desktopState?.paused}>
+        <SessionCatalogProvider sessions={sessions} liveSessions={liveSessions} loading={loading} connected={connected}>
+          <div className="appFrame">
+            <SessionSidebar
+              open={navigationOpen}
+              sessions={sessions}
+              selectedSessionId={selectedSessionId}
+              currentSessionId={selectedSessionId}
+              viewingHistory={Boolean(selectedSession && !selectedSession.isLive)}
+              homeSelected={pathname === "/"}
+              aboutSelected={pathname === "/about"}
+              settingsSelected={pathname === "/settings"}
+              update={desktopState?.update || null}
+              onInstallUpdate={installUpdate}
+              onClose={() => setNavigationPath(null)}
+              onSelect={selectSession}
+              readiness={catalogReadiness}
+            />
+            <div className="appContent">{children}</div>
+          </div>
+        </SessionCatalogProvider>
+      </LiveClockProvider>
+    </DisplayPreferencesProvider>
   );
 }

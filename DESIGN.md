@@ -152,6 +152,14 @@ The base geometry is square and technical: one-pixel rules, near-zero radii, rec
 - **Source session:** a larger evidence card with project, branch, wall time, and bounded status.
 - **Pitch ticket:** warm paper, torn clip-path edges, one tape strip, slab headline, and the primary action.
 
+### Settings Controls
+
+- **Preference panel:** keep configuration surfaces flat and quietly bounded: a tonal panel with a one-pixel rule, a clear header, and row dividers rather than stacked cards or decorative elevation.
+- **Preference row:** pair a concise, readable label and supporting sentence with one right-aligned native switch. Rows are generous enough to scan and activate without adding visual density.
+- **Switch state / focus:** an enabled switch uses the existing green semantic signal; keyboard focus remains a clearly offset green outline. The track-and-thumb silhouette is an interaction affordance, not a general-purpose pill treatment.
+
+**The Control-Row Rule.** A settings control changes display or behavior; its description explains the effect, its label remains the activation target, and color only confirms state.
+
 ### Navigation
 
 The paper header uses the official Pomegr mark and wordmark, understated mono links, and a directional dashboard action. On mobile the product lockup remains intact while secondary links disappear.

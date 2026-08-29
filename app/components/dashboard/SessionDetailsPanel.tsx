@@ -96,11 +96,13 @@ export function SessionDetailsPanel({
   historical,
   loading,
   onRefresh,
+  showEstimatedCost = true,
   state,
 }: {
   historical: boolean;
   loading: boolean;
   onRefresh: () => void;
+  showEstimatedCost?: boolean;
   state: MonitorState;
 }) {
   if (!state.session) return null;
@@ -135,7 +137,7 @@ export function SessionDetailsPanel({
           </div>
         </section>
       )}
-      {capabilities.estimatedCost && session.cost && (
+      {showEstimatedCost && capabilities.estimatedCost && session.cost && (
         <div className="sessionCostDetail">
           <div>
             <span>{state.source} API list-rate estimate</span>

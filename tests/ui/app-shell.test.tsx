@@ -47,6 +47,7 @@ afterEach(() => {
   navigation.pathname = "/about";
   navigation.push.mockReset();
   vi.restoreAllMocks();
+  window.localStorage.clear();
 });
 
 describe("shared app shell", () => {
@@ -85,6 +86,10 @@ describe("shared app shell", () => {
     expect(await screen.findByRole("complementary", { name: "Session navigation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "About content" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "About Pomegr" })).toHaveAttribute("aria-current", "page");
+    const settingsLink = screen.getByRole("link", { name: "Settings" });
+    const aboutLink = screen.getByRole("link", { name: "About Pomegr" });
+    expect(settingsLink).toHaveAttribute("href", "/settings");
+    expect(settingsLink.nextElementSibling).toBe(aboutLink);
     expect(screen.getByText("HISTORY")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Live work/ })).toBeInTheDocument();
 
@@ -96,10 +101,18 @@ describe("shared app shell", () => {
     expect(screen.getByRole("complementary", { name: "Session navigation" })).toHaveClass("open");
   });
 
+  it("marks Settings as the current app destination", async () => {
+    navigation.pathname = "/settings";
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [], liveSessions: [] }));
+    render(<AppShell><main>Settings content</main></AppShell>);
+    expect(await screen.findByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "About Pomegr" })).not.toHaveAttribute("aria-current");
+  });
+
   it("keeps the desktop update offer in the persistent sidebar", async () => {
     const user = userEvent.setup();
     let listener: ((next: DesktopState) => void) | undefined;
-    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, update: { status: "ready", version: "1.2.3" } };
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true }, update: { status: "ready", version: "1.2.3" } };
     const installUpdate = vi.fn(async () => ({ ...state, update: { status: "installing" as const, version: "1.2.3" } }));
     (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
       getDesktopState: async () => state,

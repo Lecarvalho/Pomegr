@@ -19,7 +19,7 @@ function sessionActivityLabel(session: SessionSummary) {
   return { label: "Open", className: "unknown" };
 }
 
-export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect, readiness }: {
+export function SessionSidebar({ open, sessions, selectedSessionId, currentSessionId, viewingHistory, homeSelected = false, aboutSelected = false, settingsSelected = false, update = null, onInstallUpdate = () => {}, onClose, onSelect, readiness }: {
   open: boolean;
   sessions: SessionSummary[];
   selectedSessionId: string | null;
@@ -27,6 +27,7 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
   viewingHistory: boolean;
   homeSelected?: boolean;
   aboutSelected?: boolean;
+  settingsSelected?: boolean;
   update?: DesktopState["update"] | null;
   onInstallUpdate?: () => void;
   onClose: () => void;
@@ -98,7 +99,10 @@ export function SessionSidebar({ open, sessions, selectedSessionId, currentSessi
                 </section>
               );
             })}
-            <Link className={`sidebarAboutLink ${aboutSelected ? "selected" : ""}`} href="/about" onClick={onClose} aria-current={aboutSelected ? "page" : undefined}><span>About Pomegr</span><i aria-hidden="true">→</i></Link>
+            <div className="sidebarUtilityLinks">
+              <Link className={`sidebarUtilityLink ${settingsSelected ? "selected" : ""}`} href="/settings" onClick={onClose} aria-current={settingsSelected ? "page" : undefined}><span>Settings</span><i aria-hidden="true">→</i></Link>
+              <Link className={`sidebarUtilityLink ${aboutSelected ? "selected" : ""}`} href="/about" onClick={onClose} aria-current={aboutSelected ? "page" : undefined}><span>About Pomegr</span><i aria-hidden="true">→</i></Link>
+            </div>
           </div>
         </nav>
         <footer className="sidebarFooter">

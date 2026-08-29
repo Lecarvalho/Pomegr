@@ -45,6 +45,16 @@ describe("estimated session cost", () => {
     expect(screen.getByText(/Recorded Aug 9/)).toBeInTheDocument();
   });
 
+  it("hides only the estimate when the display preference is off", () => {
+    const session = {
+      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+      cost: { amount: 1.25, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
+    };
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} showEstimatedCost={false} /></LiveClockProvider>);
+    expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
+  });
+
   it("omits unobserved and unrecorded placeholder estimates", () => {
     const session = { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), updatedAt: "2026-08-09T12:00:00.000Z" };
     const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);

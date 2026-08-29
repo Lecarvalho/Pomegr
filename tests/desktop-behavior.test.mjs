@@ -35,12 +35,13 @@ test("native theme synchronization accepts only bounded values from trusted rend
 function harness(overrides = {}) {
   const calls = [];
   let persisted = {
-    version: 2,
+    version: 3,
     window: { width: 1280, height: 800, x: null, y: null, maximized: false },
     launchAtLogin: false,
     closeBehavior: "ask",
     notifications: true,
     updates: true,
+    displayPreferences: { contextHistory: true, estimatedCost: true },
     ...overrides.settings,
   };
   const controller = createDesktopBehaviorController({
@@ -118,6 +119,7 @@ test("pause changes only bounded UI state and login startup is opt-in and revers
     closeBehavior: "ask",
     notifications: true,
     notificationQuietUntil: null,
+    displayPreferences: { contextHistory: true, estimatedCost: true },
   });
   assert.equal(calls.some(([name]) => /monitor|provider|session|command/i.test(name)), false);
   await controller.initializeLogin();
@@ -163,10 +165,11 @@ test("login registration rolls back when persistence fails and close still honor
 });
 
 test("desktop renderer contract is fixed, bounded, and contains no provider metadata", () => {
-  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "installUpdate", "quit", "setCloseBehavior", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
+  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["getState", "installUpdate", "quit", "setCloseBehavior", "setDisplayPreference", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
   const update = Object.freeze({ status: "ready", version: "1.2.3" });
   const state = harness({ snapshotExtension: () => ({ update }) }).controller.snapshot();
-  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
+  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
+  assert.deepEqual(state.displayPreferences, { contextHistory: true, estimatedCost: true });
   assert.deepEqual(state.update, update);
   assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
 });
@@ -206,6 +209,19 @@ test("notification preference persists while one-hour quiet mode is temporary an
   expiry();
   assert.equal(controller.snapshot().notificationQuietUntil, null);
   assert.ok(calls.some(([name]) => name === "broadcast"));
+});
+
+test("display preferences persist only recognized booleans and serialize concurrent changes", async () => {
+  const { calls, controller, persisted } = harness();
+  await Promise.all([
+    controller.setDisplayPreference("contextHistory", false),
+    controller.setDisplayPreference("estimatedCost", false),
+  ]);
+  assert.deepEqual(persisted().displayPreferences, { contextHistory: false, estimatedCost: false });
+  const saves = calls.filter(([name]) => name === "save").length;
+  assert.deepEqual(await controller.setDisplayPreference("unknown", false), controller.snapshot());
+  assert.deepEqual(await controller.setDisplayPreference("contextHistory", "false"), controller.snapshot());
+  assert.equal(calls.filter(([name]) => name === "save").length, saves);
 });
 
 test("concurrent preference writes serialize without dropping either setting", async () => {

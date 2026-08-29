@@ -23,6 +23,7 @@ import type { DesktopState } from "./components/DesktopControls";
 import { useAppNavigation } from "./components/app-navigation";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-client";
+import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -60,6 +61,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const { sessions } = useSessionCatalog();
   const sharedUsage = useUsageLimits();
+  const { preferences: displayPreferences } = useDisplayPreferences();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
   const appNavigation = useAppNavigation();
   const [paused, setPaused] = useState(false);
@@ -278,10 +280,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
           <SummaryMetrics state={data} historical={viewingHistory} />
           {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <><RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} />
-          <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} /></>}
+          {displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}</>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
-          <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />
+          <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />
         </div> : <>
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} session={selectedSession} readiness={data.readiness} />

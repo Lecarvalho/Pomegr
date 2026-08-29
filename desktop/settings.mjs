@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const DESKTOP_SETTINGS_VERSION = 2;
+export const DESKTOP_SETTINGS_VERSION = 3;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   version: DESKTOP_SETTINGS_VERSION,
   window: Object.freeze({ width: 1280, height: 800, x: null, y: null, maximized: false }),
@@ -10,6 +10,7 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   closeBehavior: "ask",
   notifications: true,
   updates: true,
+  displayPreferences: Object.freeze({ contextHistory: true, estimatedCost: true }),
 });
 
 function boundedInteger(value, minimum, maximum, fallback) {
@@ -23,6 +24,7 @@ function isBoundedInteger(value, minimum, maximum) {
 function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
   if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== version) return false;
   const window = value.window;
+  const displayPreferences = value.displayPreferences;
   return Boolean(window && typeof window === "object" && !Array.isArray(window)
     && isBoundedInteger(window.width, 720, 3840)
     && isBoundedInteger(window.height, 520, 2160)
@@ -32,7 +34,10 @@ function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
     && typeof value.launchAtLogin === "boolean"
     && (version === 1 || ["ask", "tray", "quit"].includes(value.closeBehavior))
     && typeof value.notifications === "boolean"
-    && typeof value.updates === "boolean");
+    && typeof value.updates === "boolean"
+    && (version < 3 || (displayPreferences && typeof displayPreferences === "object" && !Array.isArray(displayPreferences)
+      && typeof displayPreferences.contextHistory === "boolean"
+      && typeof displayPreferences.estimatedCost === "boolean")));
 }
 
 function loadResult(settings, status, canPersist) {
@@ -57,6 +62,10 @@ export function normalizeDesktopSettings(input) {
     closeBehavior: ["ask", "tray", "quit"].includes(source.closeBehavior) ? source.closeBehavior : "ask",
     notifications: typeof source.notifications === "boolean" ? source.notifications : true,
     updates: typeof source.updates === "boolean" ? source.updates : true,
+    displayPreferences: {
+      contextHistory: typeof source.displayPreferences?.contextHistory === "boolean" ? source.displayPreferences.contextHistory : true,
+      estimatedCost: typeof source.displayPreferences?.estimatedCost === "boolean" ? source.displayPreferences.estimatedCost : true,
+    },
   };
 }
 
@@ -105,7 +114,7 @@ export function createDesktopSettingsStore(settingsFile, io = {}) {
           state = "future-version";
           return loadResult(normalizeDesktopSettings(), state, false);
         }
-        if (parsed?.version === 1 && isPersistedSettings(parsed, 1)) {
+        if ([1, 2].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
           state = "loaded";
           return loadResult(normalizeDesktopSettings(parsed), "migrated", true);
         }

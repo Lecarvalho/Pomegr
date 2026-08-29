@@ -92,7 +92,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .liveSessionLink[data-needs-input="true"] > i { background: var(--amber); box-shadow: 0 0 0 4px rgba(185,111,45,.14); animation: attentionPulse 1.8s ease-in-out infinite; }.liveSessionLink[data-activity-status="idle"] > i, .liveSessionLink[data-activity-status="unknown"] > i { border: 1px solid var(--muted); background: transparent; box-shadow: none; }.liveSessionLink small em { color: var(--muted); font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }.liveSessionLink small em.working { color: var(--green); }.liveSessionLink small em.needsInput { color: var(--amber); }
 .historyList { min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; }.historyList > p { margin: 18px 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }.historyProject + .historyProject { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); }.historyProjectHeader { min-height: 30px; padding: 0 10px 5px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); background: transparent; }.historyProjectHeader > span { min-width: 0; display: flex; align-items: center; gap: 7px; }.historyProjectHeader i { flex: 0 0 auto; font-style: normal; font-size: 10px; transition: transform .16s ease; }.historyProject.collapsed .historyProjectHeader i { transform: rotate(-90deg); }.historyProjectHeader strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }.historyProjectHeader small { flex: 0 0 auto; font-size: 8px; }.historyProjectSessions button { min-height: 58px; padding: 10px 11px; border-radius: 8px; background: transparent; }.historyProjectSessions button:hover { background: rgba(251,250,246,.65); }.historyProjectSessions button strong, .historyProjectSessions button time { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.historyProjectSessions button strong { font-size: 11px; }.historyProjectSessions button time { margin-top: 6px; color: #8a908c; font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .historySessionMeta { min-width: 0; margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }.historySessionMeta .providerTag { flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.historyProjectSessions .historySessionMeta time { min-width: 0; flex: 1 1 auto; margin-top: 0; text-align: right; }
-.sidebarAboutLink { min-height: 44px; margin-top: 16px; padding: 0 10px; border-top: 1px solid var(--line); color: var(--muted); text-decoration: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 10px; font-weight: 800; letter-spacing: .06em; }.sidebarAboutLink:hover { color: var(--ink); }.sidebarAboutLink.selected { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }.sidebarAboutLink i { font-style: normal; font-size: 13px; }
+.sidebarUtilityLinks { margin-top: 16px; padding-top: 7px; border-top: 1px solid var(--line); }.sidebarUtilityLink { min-height: 44px; padding: 0 10px; color: var(--muted); text-decoration: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 10px; font-weight: 800; letter-spacing: .06em; }.sidebarUtilityLink:hover { color: var(--ink); }.sidebarUtilityLink.selected { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }.sidebarUtilityLink i { font-style: normal; font-size: 13px; }
 .sessionMenuButton { display: none; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; background: transparent; color: var(--green); cursor: pointer; }.sessionMenuButton svg { width: 20px; height: 20px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; vector-effect: non-scaling-stroke; }.sidebarBackdrop { display: none; }
 .shell { width: min(1400px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
 .attentionNotice { width: 100%; margin: -9px 0 22px; padding: 12px 15px; border: 1px solid #e7c7a8; border-radius: 10px; background: var(--amber-soft); color: var(--ink); display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; }.attentionGlyph { width: 28px; height: 28px; border-radius: 50%; background: var(--amber); color: white; display: grid; place-items: center; font-weight: 900; animation: attentionPulse 1.8s ease-in-out infinite; }.attentionNotice strong, .attentionNotice small { display: block; }.attentionNotice strong { font-size: 12px; }.attentionNotice small { margin-top: 3px; color: #7f5d40; font-size: 10px; }
@@ -134,6 +134,32 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .aboutPage { padding: clamp(70px, 10vw, 130px) 0 90px; }
 .aboutPage > h1 { max-width: 850px; margin: 0 0 25px; font: 400 clamp(48px, 8vw, 92px)/.98 var(--font-inter), sans-serif; letter-spacing: -.04em; }
 .aboutLead { max-width: 760px; margin: 0; color: var(--muted); font: 400 clamp(20px, 2.5vw, 30px)/1.45 var(--font-inter), sans-serif; }
+
+.settingsShell { width: min(980px, calc(100% - 56px)); margin: 0 auto; min-height: 100vh; }
+.settingsShell .topbar { gap: 16px; }
+.settingsBack { display: inline-flex; align-items: center; justify-content: center; color: var(--ink); line-height: 1; text-decoration: none; }
+.settingsPage { padding: clamp(58px, 8vw, 96px) 0 90px; }
+.settingsIntro { max-width: 700px; }
+.settingsIntro h1 { margin: 0; font: 480 clamp(44px, 6vw, 68px)/.98 var(--font-inter), sans-serif; letter-spacing: -.035em; }
+.settingsPanel { margin-top: 58px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.settingsPanelHeader { min-height: 112px; padding: 24px 26px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); }
+.settingsPanelHeader h2 { margin: 0; font-size: 20px; font-weight: 560; letter-spacing: -.015em; }
+.settingsPanelHeader p { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.settingsReset { min-height: 40px; flex: 0 0 auto; padding: 0 13px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; font-size: 10px; font-weight: 750; letter-spacing: .04em; }
+.settingsReset:hover:not(:disabled) { border-color: var(--line-strong); background: var(--panel-2); }
+.settingsReset:disabled { color: var(--muted); cursor: default; opacity: .55; }
+.displayPreferenceList { padding: 0 26px; }
+.displayPreferenceRow { min-height: 96px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; }
+.displayPreferenceRow + .displayPreferenceRow { border-top: 1px solid var(--line); }
+.displayPreferenceRow label { min-width: 0; cursor: pointer; }
+.displayPreferenceRow label strong, .displayPreferenceRow label span { display: block; }
+.displayPreferenceRow label strong { font-size: 13px; font-weight: 650; }
+.displayPreferenceRow label span { max-width: 68ch; margin-top: 7px; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+.displayPreferenceRow input { appearance: none; position: relative; width: 44px; height: 26px; margin: 0; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel-2); cursor: pointer; transition: border-color .16s ease, background-color .16s ease; }
+.displayPreferenceRow input::after { content: ""; position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: transform .18s cubic-bezier(.2,.8,.2,1), background-color .16s ease; }
+.displayPreferenceRow input:checked { border-color: color-mix(in srgb, var(--green) 70%, var(--line)); background: color-mix(in srgb, var(--green) 24%, var(--panel)); }
+.displayPreferenceRow input:checked::after { background: var(--green); transform: translateX(18px); }
+.displayPreferenceRow input:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .aboutGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 80px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
 .aboutGrid > div { min-height: 210px; padding: 28px; background: rgba(251,250,246,.94); }
 .aboutGrid h2 { margin: 28px 0 10px; font: 400 23px/1.15 var(--font-inter), sans-serif; }
@@ -737,6 +763,7 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .cacheEvidenceRow { min-height: 48px; padding: 8px 14px; grid-template-columns: 22px minmax(0, 1fr) auto; }
   .cacheEvidenceState { padding-right: 14px; padding-left: 14px; }
   .aboutShell { width: min(100% - 28px, 1120px); }.aboutPage { padding: 58px 0 60px; }.aboutPage > h1 { font-size: 48px; }.aboutLead { font-size: 21px; }.aboutGrid { margin-top: 50px; }.aboutGrid > div { padding: 23px; }
+  .settingsShell { width: min(100% - 28px, 980px); }.settingsPage { padding: 44px 0 60px; }.settingsIntro h1 { font-size: 46px; }.settingsPanel { margin-top: 38px; }.settingsPanelHeader { min-height: 0; padding: 20px; align-items: flex-start; flex-direction: column; gap: 18px; }.settingsReset { width: 100%; }.displayPreferenceList { padding: 0 20px; }.displayPreferenceRow { min-height: 112px; gap: 18px; }.displayPreferenceRow label span { font-size: 10px; }
   .pullRequestPopover { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100vh - 28px); border-radius: 14px; box-shadow: 0 24px 70px rgba(25,32,29,.28); }.pullRequestList { max-height: min(58vh, 420px); }.pullRequestRow { grid-template-columns: 36px minmax(0, 1fr); }.pullRequestTitle { align-items: flex-start; flex-direction: column; gap: 5px; }.pullRequestTitle strong { overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.35; }.pullRequestStats { grid-column: 2; display: flex; justify-content: flex-start; min-width: 0; }.pullRequestStats i { margin: 0 0 0 auto; }
   .hero { padding: 36px 0 24px; }.hero h1 { font-size: 40px; }.sessionMeta { margin-top: 23px; }
   .summaryStrip { grid-template-columns: 1fr; }
@@ -995,7 +1022,7 @@ body { font-size: 14px; line-height: 1.55; font-weight: 400; }
 .machineryCategory small, .machineryItem span, .machineryCaution, .skillPopoverRow small,
 .executionTaskSection h3, .executionTaskRow small, .currentActivityRow small,
 .planTaskRow small, .planTaskCaution strong, .planTaskCaution span, .activityHead,
-.sidebarAboutLink, .label, .sessionIdentity, .sessionIdentity code, .heroSummarySource,
+.sidebarUtilityLink, .label, .sessionIdentity, .sessionIdentity code, .heroSummarySource,
 .sessionMetaLabel, .sessionMetaGroup > small, .pullRequestBody small, .pullRequestBody code,
 .pullRequestStats b, .gitListHeader > span:last-child, .gitCommit code, .gitCommit strong,
 .gitCommit time, .gitFile code, .limitTop div > span, .limitBottom, .cacheLead p,
@@ -1078,6 +1105,7 @@ html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: #7130
   .aboutShell .brandWordmark { width: 82px; }
   .aboutShell .topbar { gap: 10px; }
   .aboutBack { padding-right: 10px; padding-left: 10px; white-space: nowrap; }
+  .settingsBack { padding-right: 9px; padding-left: 9px; white-space: nowrap; }
 }
 
 

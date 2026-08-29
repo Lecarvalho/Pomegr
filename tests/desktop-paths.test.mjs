@@ -89,8 +89,9 @@ test("desktop settings persist only the bounded allowlist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-settings-é-"));
   const file = path.join(root, "Data With Spaces", "settings.json");
   try {
-    const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
-    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates"]);
+    const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, displayPreferences: { contextHistory: false, estimatedCost: true, arbitraryPanel: false, sessionId: "PRIVATE" }, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
+    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "displayPreferences"]);
+    assert.deepEqual(normalized.displayPreferences, { contextHistory: false, estimatedCost: true });
     const store = createDesktopSettingsStore(file);
     assert.deepEqual(await store.load(), { settings: normalizeDesktopSettings(), status: "missing", canPersist: true });
     await store.save(normalized);
@@ -182,7 +183,31 @@ test("version-one settings migrate in memory without unsafe fields or destructiv
   assert.equal(loaded.canPersist, true);
   assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.equal(loaded.settings.closeBehavior, "ask");
+  assert.deepEqual(loaded.settings.displayPreferences, { contextHistory: true, estimatedCost: true });
   assert.equal(writes, 0, "migration waits for an ordinary explicit settings save");
+});
+
+test("version-two settings migrate with visible display defaults", async () => {
+  const versionTwo = {
+    version: 2,
+    window: { width: 1280, height: 800, x: null, y: null, maximized: false },
+    launchAtLogin: false,
+    closeBehavior: "tray",
+    notifications: true,
+    updates: true,
+  };
+  let writes = 0;
+  const store = createDesktopSettingsStore("C:\\Pomegr\\settings.json", {
+    async readFile() { return JSON.stringify(versionTwo); },
+    async writeFile() { writes += 1; },
+  });
+  const loaded = await store.load();
+  assert.equal(loaded.status, "migrated");
+  assert.equal(loaded.canPersist, true);
+  assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
+  assert.equal(loaded.settings.closeBehavior, "tray");
+  assert.deepEqual(loaded.settings.displayPreferences, { contextHistory: true, estimatedCost: true });
+  assert.equal(writes, 0);
 });
 
 test("desktop report save is explicit, bounded, and rejects untrusted IPC", async () => {
