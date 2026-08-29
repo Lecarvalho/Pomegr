@@ -16,15 +16,15 @@ Then open [http://localhost:3003](http://localhost:3003).
   <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
 </p>
 
-## Windows desktop app (soon)
+## Windows desktop app (planned)
 
-On Windows x64, download and run the installer from the [latest release](https://github.com/Lecarvalho/pomegr/releases/latest).
+Pomegr’s planned desktop app targets Windows x64. No public installer is currently documented as available.
 
-LAN sharing is unavailable in the Windows desktop app.
+When released, LAN sharing will be unavailable in the Windows desktop app.
 
-## Portable beta (soon)
+## Portable beta (planned)
 
-Download the [latest release](https://github.com/Lecarvalho/pomegr/releases/latest) and run it.
+A portable Windows x64 beta is planned. No public download is currently documented as available.
 
 ## How to contribute
 
@@ -43,7 +43,7 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 ## Current limitations
 
-- The desktop app currently supports Windows x64 only.
+- The planned desktop app targets Windows x64 only.
 - Claude Code and Codex expose different amounts of session data.
 - Efficiency signals are deterministic heuristics, not authoritative judgments.
 

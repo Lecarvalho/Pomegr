@@ -59,6 +59,7 @@
 
 .header nav a,
 .footer nav a {
+  min-width: 44px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;

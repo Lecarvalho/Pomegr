@@ -361,6 +361,7 @@ export type SessionSummary = {
   source: ProviderSource;
   title: string;
   project: string;
+  createdAt?: string | null;
   updatedAt: string;
   isLive: boolean;
   needsInput: boolean;
@@ -373,6 +374,8 @@ export type LiveSessionSummary = SessionSummary & {
   activeAgentCount: number | null;
   latestContextTotal: number | null;
   progress: SessionProgress | null;
+  /** Latest bounded provider-authored heading from the normalized primary agent. */
+  currentActivity: AgentCurrentActivity | null;
 };
 
 export type SessionCatalogSnapshot = {

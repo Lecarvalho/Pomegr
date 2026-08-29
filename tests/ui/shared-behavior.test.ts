@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
-import { proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, preserveSessionOrder, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
+import { proxyMonitorEventStream, proxyMonitorJson } from "../../app/api/monitor-proxy";
+import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -75,30 +75,27 @@ describe("session attention", () => {
 });
 
 describe("session catalog order", () => {
-  const session = (id: string, updatedAt: string): SessionSummary => ({
+  const session = (id: string, createdAt: string, updatedAt = createdAt): SessionSummary => ({
     id,
     provider: "claude",
     source: "Claude Code",
     title: id,
     project: "Pomegr",
+    createdAt,
     updatedAt,
     isLive: true,
     needsInput: false,
     activityStatus: "working",
   });
 
-  it("keeps existing rows in place while refreshing metadata and appending discoveries", () => {
-    const current = [session("first", "2026-08-11T12:00:00.000Z"), session("second", "2026-08-11T12:01:00.000Z"), session("removed", "2026-08-11T12:02:00.000Z")];
-    const incoming = [session("second", "2026-08-11T12:04:00.000Z"), session("new", "2026-08-11T12:03:00.000Z"), session("first", "2026-08-11T12:05:00.000Z")];
-
-    const ordered = preserveSessionOrder(current, incoming);
-
-    expect(ordered.map(({ id }) => id)).toEqual(["first", "second", "new"]);
-    expect(ordered.map(({ updatedAt }) => updatedAt)).toEqual([
-      "2026-08-11T12:05:00.000Z",
-      "2026-08-11T12:04:00.000Z",
-      "2026-08-11T12:03:00.000Z",
+  it("orders rows by creation time descending without letting later activity move them", () => {
+    const ordered = newestSessionsFirst([
+      session("older-active", "2026-08-11T12:00:00.000Z", "2026-08-11T12:05:00.000Z"),
+      session("newest", "2026-08-11T12:03:00.000Z"),
+      session("middle", "2026-08-11T12:01:00.000Z", "2026-08-11T12:04:00.000Z"),
     ]);
+
+    expect(ordered.map(({ id }) => id)).toEqual(["newest", "middle", "older-active"]);
   });
 });
 
@@ -195,5 +192,25 @@ describe("monitor proxy", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4317/api/sessions");
+  });
+
+  it("streams only the monitor event body through the loopback proxy", async () => {
+    const upstream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: catalog\ndata: {"domain":"sessions","revision":3}\n\n'));
+        controller.close();
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(upstream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await proxyMonitorEventStream();
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4317/api/events");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: "no-store" });
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toBe('event: catalog\ndata: {"domain":"sessions","revision":3}\n\n');
   });
 });

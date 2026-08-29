@@ -29,13 +29,14 @@ test("server-renders the composed Pomegr dashboard", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Pomegr<\/title>/i);
-  assert.match(html, /Open sessions/);
-  assert.match(html, /Connecting to monitor/);
+  assert.match(html, /Workspace overview/);
+  assert.match(html, /Connecting/);
   assert.doesNotMatch(html, /Local monitor offline/);
-  assert.match(html, /Local observer · Read-only/);
-  assert.match(html, />Source<\/a>/);
-  assert.match(html, /AGPL-3\.0-only/);
-  assert.doesNotMatch(html, /Generate report|Flow score|Usage limits|Agent activity|Recent activity/);
+  assert.match(html, /Read-only · normalized metadata only/);
+  assert.match(html, /Dashboards/);
+  assert.match(html, /Usage limits/);
+  assert.match(html, /Local profile/);
+  assert.doesNotMatch(html, /Generate report|Flow score|Recent activity/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -45,7 +46,7 @@ test("keeps the privacy explanation on the about page", async () => {
   const html = await response.text();
   assert.match(html, /About .* Pomegr/);
   assert.match(html, /Observe coding-agent sessions without exposing prompts or responses/);
-  assert.match(html, /Pomegr analyzes execution metadata only/);
+  assert.match(html, /Pomegr analyzes normalized execution metadata only/);
   assert.match(html, /What the estimate means/);
   assert.match(html, /cost\.total_cost_usd/);
   assert.match(html, /may differ from an actual API bill/);
@@ -53,7 +54,7 @@ test("keeps the privacy explanation on the about page", async () => {
   assert.match(html, /GNU Affero General Public License version 3/);
   assert.match(html, /provided without warranty/);
   assert.match(html, /corresponding source code/);
-  assert.match(html, /Back to dashboard/);
+  assert.match(html, /Pomegr home/);
 });
 
 test("keeps browser modules provider-safe and reuses the vector close control", async () => {

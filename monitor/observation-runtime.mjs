@@ -369,6 +369,20 @@ export function createObservationRuntime(options = {}) {
     observationStartPromise = null;
   }
 
+  function subscribeRevisionEvents(subscriber) {
+    if (typeof subscriber !== "function") throw new TypeError("Revision subscriber must be a function");
+    const publish = (event) => {
+      if (event?.type !== "catalog" || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
+      subscriber(Object.freeze({ domain: "sessions", revision: event.revision }));
+    };
+    const unsubscribe = observationCoordinator.subscribe(publish);
+    const currentRevision = observationCoordinator.catalog()?.snapshot?.revision;
+    if (Number.isSafeInteger(currentRevision) && currentRevision >= 0) {
+      subscriber(Object.freeze({ domain: "sessions", revision: currentRevision }));
+    }
+    return unsubscribe;
+  }
+
   return Object.freeze({
     projectSelection,
     store: observationStore,
@@ -386,6 +400,7 @@ export function createObservationRuntime(options = {}) {
     },
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),
       providers: registry.diagnostics?.() || {},

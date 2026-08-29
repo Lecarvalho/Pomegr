@@ -71,6 +71,8 @@ Every provider adapter must expose the observation lifecycle required by
 
 - start and stop its observer with the monitor lifecycle;
 - publish a bounded normalized catalog independently from detailed hydration;
+- include normalized creation and update timestamps in catalog references, with committed
+  catalog rows ordered by creation time descending and opaque session ID as the tie-breaker;
 - hydrate a known local session asynchronously;
 - publish only contract-valid normalized evidence;
 - keep provider-native source identities, paths, cursors, fragments, and schemas private;
@@ -79,6 +81,63 @@ Every provider adapter must expose the observation lifecycle required by
 
 Adapters may watch files, poll a local API, or subscribe to provider events. The transport
 does not change the shared store or browser contract.
+
+### Event-driven acquisition pipeline
+
+Provider notifications are the primary acquisition trigger. The ten-second poll is a
+reconciliation safety net for missed or unsupported notifications, not the normal path to
+discovering transcript changes.
+
+```text
+ Claude transcript tree       Codex rollout/index/liveness       Future provider source
+          |                              |                                |
+          +---------------- provider-native change notification ----------+
+                                         |
+                      adapter-private source-event router
+                  (path/header/reverse-index data stays private)
+                          /                         \
+             catalog dirty                         session dirty(local ID)
+          fresh bounded discovery                           |
+                    |                                       |
+                    +--------- provider observation scheduler ---------+
+                               | separate catalog lane                  |
+                               | one coalesced queue entry per session  |
+                               | same session serialized + dirty-again  |
+                               | different sessions run concurrently   |
+                               +------------------+---------------------+
+                                                  |
+                              U1 acquire appended complete records
+                                                  |
+                                  U2 provider-owned normalization
+                                                  |
+                          C commit -> D derive -> P persist -> S cache
+                                                  |
+                         safe catalog revision event (no session data)
+                                                  |
+                         browser cache-only GET -> F presentation
+
+                  10-second safety reconciliation -----^ (low priority)
+```
+
+Each provider owns an independent observer and bounded worker concurrency, so a busy or
+failed Claude adapter cannot occupy Codex workers, and vice versa. Within one observer,
+duplicate events for a queued session coalesce. If a source changes while that session is
+already being acquired, one dirty-again pass is retained so the newest complete records
+are not lost. Sessions may acquire in parallel, but one session is never acquired by two
+workers concurrently.
+
+The adapter may map a known source directly through its private reverse index. A newly
+created or unresolved source requests a fresh catalog read that bypasses short-lived
+provider discovery caches; bounded provider-header inspection may identify the owning
+session sooner. The router emits only provider-local session IDs and a catalog-dirty bit
+to the shared scheduler. Native paths, filenames, headers, and schemas never enter the
+normalized candidate, checkpoint, diagnostics, or browser response.
+
+Committed catalog revisions wake the browser through a same-origin server-sent event.
+The event contains only the fixed `sessions` domain and a non-negative revision; it is an
+invalidation hint, never a state payload. The browser responds by fetching `/api/sessions`
+with its current revision. That GET still reads only the committed response cache. A
+dropped event is harmless because focus refresh and serialized recovery polling remain.
 
 ### Startup working set and lazy history
 
@@ -111,6 +170,12 @@ does not change the shared store or browser contract.
 - Multi-session reconciliation prepares provider-private source topology once per catalog
   pass. A provider must not repeatedly scan or fingerprint its full catalog separately for
   every session.
+- Source notifications for known files use the adapter's private source-to-session reverse
+  index and queue that session immediately without waiting for a catalog pass. Unknown or
+  newly created files trigger cache-bypassing bounded discovery, then join the same queue.
+- One provider worker pool may hydrate different sessions concurrently. Work for the same
+  session is serialized, duplicate queued notifications coalesce, and a notification that
+  arrives during acquisition retains one dirty-again follow-up.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
 - For multi-file Codex sessions, U1 owns an independent cursor and bounded private
@@ -146,11 +211,14 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 
 | Work | Owner / phase | Cache relationship | Cadence |
 | --- | --- | --- | --- |
-| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Wake immediately on a provider event or filesystem notification |
-| Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources, with default concurrency 2 |
+| Source-change routing | Backend adapter / U1 | Maps a provider-native notification privately to catalog-dirty and/or session-dirty work | Wake immediately on a provider event or filesystem notification; known sessions enter the worker queue in the same event-loop turn |
+| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start when a provider worker is available; default concurrency is 2 sessions per provider, with same-session serialization and event coalescing |
+| Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce for 500 ms after a normalized candidate arrives; watcher wakeups are immediate and the 10-second reconciliation is the missed-event ceiling |
-| Public projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Rebuild after a relevant commit, using the same 500 ms coalescing ceiling |
+| Structural catalog projection | Backend monitor / D | Commits additions, removals, live transitions, and needs-input transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh |
+| Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Rebuild after a relevant commit, using the 500 ms coalescing ceiling |
+| Catalog revision notification | Backend serving / S | Carries no state; announces only the committed `sessions` revision | Emit immediately after a catalog response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
 | Routine checkpoint | Backend writer / P | Reads L1 evidence and atomically replaces L2 JSON | Five seconds after quiet; at least once per 60 seconds during continuous activity |
 | Graceful shutdown | Backend writer / P | Flushes the latest committed L1 revision for every pending checkpoint | After uncommitted scheduled candidates are cancelled and before the observer lifecycle is released |
@@ -166,6 +234,7 @@ remain the source of truth.
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
 | `/api/sessions` | Provider-neutral catalog, bounded live summaries, catalog readiness | Application shell, sidebar, Home session cards |
+| `/api/events` | No committed data; server-sent invalidation events containing only a fixed domain and revision | Application shell immediate refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Home aggregation regions |
 | `/api/usage-limits` | Central provider/account-scoped usage values and per-provider readiness | Shared frontend usage store used by Home and session views |
@@ -225,13 +294,19 @@ Polls are serialized, scheduled after the preceding response, aborted on navigat
 never overlap. Focus or return to the foreground triggers an immediate fetch. Desktop
 **Pause updates** pauses F only and never controls backend observation.
 
+For the catalog/sidebar, a committed revision event is the primary visible refresh
+trigger. The application shell immediately issues its normal revisioned cache-only GET
+and applies session identity, live count, and attention state as an urgent React update.
+Ready-state polling remains at five seconds only as lost-event and disconnected-stream
+recovery; it is not the expected propagation path.
+
 | Consumer | Visible cadence |
 | --- | --- |
 | Loading session | `/api/state` every 1 second until required regions are ready |
 | Selected live session | `/api/state` every 2 seconds |
 | Ready historical session | Fetch once, then stop |
 | Loading catalog/sidebar | `/api/sessions` every 1 second |
-| Ready catalog/sidebar | `/api/sessions` every 5 seconds |
+| Ready catalog/sidebar | Immediately on a safe catalog revision event; `/api/sessions` every 5 seconds as recovery |
 | Home with unresolved regions | `/api/home` every 1 second |
 | Ready Home with live sessions | `/api/home` every 5 seconds |
 | Ready Home without live sessions | `/api/home` every 30 seconds |
@@ -261,15 +336,21 @@ Browser responses remain subject to every allowlist and privacy invariant in `AG
 Caches and browser responses may carry only the bounded provider-neutral work-kind enum
 derived during U2 normalization. Raw commands and provider-native tool schemas remain
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.
+Caches and `/api/sessions` live summaries may carry only the normalized primary agent's
+nullable current-activity label and observation timestamp. Subagent activity, provider
+records, and every other agent field remain outside the catalog response.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather
 than arbitrary exception text.
 
 ## Diagnostics and acceptance
 
-Monitor-private QA counters may measure observer wakeups, bytes and records acquired,
-normalization failures, commits, rebuilds, cache hits/misses, memory, response revisions,
-checkpoint writes, and checkpoint bytes. These counters and source metadata are not
-browser API fields.
+Monitor-private QA counters may measure observer wakeups, routed and unresolved source
+events, active and pending hydrations, coalesced and dirty-again work, aggregate
+notification-to-acquisition queue delay, bytes and records acquired, normalization
+failures, structural catalog fast paths, catalog commit delay, commits, rebuilds, cache
+hits/misses, memory, response revisions, checkpoint
+writes, and checkpoint bytes. Delay diagnostics are aggregate numbers only; they contain
+no native source identity. These counters and source metadata are not browser API fields.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

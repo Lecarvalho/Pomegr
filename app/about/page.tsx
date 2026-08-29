@@ -1,8 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { NavigationMenuButton } from "../components/NavigationMenuButton";
-import { PomegrBrand } from "../components/PomegrBrand";
-import { ThemeToggle } from "../components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "About · Pomegr",
@@ -16,25 +12,8 @@ export default function About() {
     { label: "DETERMINISTIC", title: "Signals are explainable", detail: "Efficiency signals come from concrete execution events and documented rules, not hidden AI judgment." },
   ];
   return (
-    <main className="aboutShell">
-      <header className="topbar">
-        <div className="topbarLead">
-          <NavigationMenuButton />
-          <PomegrBrand label="Pomegr dashboard" />
-        </div>
-        <div className="topActions">
-          <ThemeToggle />
-          <Link className="ghostButton aboutBack" href="/">Back to dashboard</Link>
-        </div>
-      </header>
-
-      <article className="aboutPage">
-        <span className="aboutBrandMark" role="img" aria-label="Pomegr pomegranate mark">
-          <img className="aboutBrandMarkImage" src="/pomegr-logo.png" alt="" width="64" height="64" />
-        </span>
-        <div className="eyebrow"><span /> ABOUT POMEGR</div>
-        <h1>A quiet view into active work.</h1>
-        <p className="aboutLead">Observe coding-agent sessions without exposing prompts or responses. Pomegr analyzes execution metadata only.</p>
+      <article className="aboutPage commandAbout">
+        <header className="commandPageHeader"><div><h1>A quiet view into active work.</h1><p>Observe coding-agent sessions without exposing prompts or responses. Pomegr analyzes normalized execution metadata only.</p></div></header>
 
         <section className="aboutGrid" aria-label="Pomegr principles">
           {principles.map((principle) => <PrincipleCard key={principle.label} {...principle} />)}
@@ -70,7 +49,6 @@ export default function About() {
           </div>
         </section>
       </article>
-    </main>
   );
 }
 

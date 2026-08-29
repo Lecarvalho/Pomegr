@@ -66,7 +66,7 @@ export function LandingPage() {
                 <a className={styles.repoAction} href={GITHUB_URL} target="_blank" rel="noreferrer">View public repo</a>
               </div>
               <p className={styles.platformLine}>
-                <span><LaptopIcon />Desktop</span><i>·</i><span><PhoneIcon />iOS</span><i>·</i><span><PhoneIcon />Android</span>
+                <span><LaptopIcon />Desktop · planned</span><i>·</i><span><PhoneIcon />iOS · planned</span><i>·</i><span><PhoneIcon />Android · planned</span>
               </p>
               <span className={styles.localStamp}>Local<br />first<br /><small>by design</small></span>
             </div>
@@ -203,9 +203,9 @@ export function LandingPage() {
 
       <section className={styles.waitlist} id="waitlist" aria-labelledby="waitlist-title">
         <div className={styles.waitlistIntro}>
-          <p className={styles.annotation}>Field release · desktop, iOS, Android</p>
+          <p className={styles.annotation}>Planned platforms · desktop, iOS, Android</p>
           <h2 id="waitlist-title">Take the observer with you.</h2>
-          <p>Choose where you want Pomegr next. The current source stays public and free to use now.</p>
+          <p>Tell us where you want Pomegr next. The current source is public and free to use now.</p>
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">Explore the public repository <ArrowIcon /></a>
         </div>
         <div className={styles.waitlistTicket}>

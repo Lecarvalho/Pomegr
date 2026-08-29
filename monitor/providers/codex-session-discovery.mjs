@@ -13,6 +13,20 @@ export function compareCodexMetadata(left, right) {
   return left.localId.localeCompare(right.localId);
 }
 
+export function codexSessionReference(thread, state = {}) {
+  return {
+    localId: thread.localId,
+    title: thread.title,
+    project: thread.project,
+    createdAt: thread.createdAt || thread.updatedAt || new Date(0).toISOString(),
+    updatedAt: [thread.updatedAt, thread.createdAt, state.observedAt].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
+    isLive: Boolean(state.isLive),
+    needsInput: Boolean(state.needsInput),
+    activityStatus: state.activityStatus || "unknown",
+    resourceOwner: state.resourceOwner || null,
+  };
+}
+
 export function boundedInteger(value, fallback, maximum) {
   return Number.isInteger(value) ? Math.max(1, Math.min(maximum, value)) : fallback;
 }

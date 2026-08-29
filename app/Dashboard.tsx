@@ -6,7 +6,7 @@ import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
 import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
-import { DashboardHeader } from "./components/dashboard/DashboardHeader";
+import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
 import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
@@ -20,7 +20,6 @@ import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import type { DesktopState } from "./components/DesktopControls";
-import { useAppNavigation } from "./components/app-navigation";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-client";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
@@ -63,7 +62,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const sharedUsage = useUsageLimits();
   const { preferences: displayPreferences } = useDisplayPreferences();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
-  const appNavigation = useAppNavigation();
   const [paused, setPaused] = useState(false);
   useUsageLimitsPollingPause(paused);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
@@ -263,8 +261,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
   return (
     <LiveClockProvider running={clockRunning}>
-      <main className="shell" id="top">
-        <DashboardHeader connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} sessionsOpen={appNavigation.open} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onOpenSessions={appNavigation.openNavigation} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
+      <section className="commandSessionView" id="top">
+        <SessionCommandBar connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
@@ -289,7 +287,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} session={selectedSession} readiness={data.readiness} />
         </>}
           <DashboardFooter connected={data.connected} connecting={connecting} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
-      </main>
+      </section>
     </LiveClockProvider>
   );
 }

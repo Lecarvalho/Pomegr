@@ -1,17 +1,15 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { HomeReadiness, SessionCatalogSnapshot, SessionSummary } from "../../shared/monitor-contract";
-import { decodeSessionRoute, encodeSessionRoute } from "../../shared/session-route.mjs";
-import { preserveSessionOrder } from "../dashboard-utils";
+import { newestSessionsFirst } from "../dashboard-utils";
 import { LiveClockProvider } from "../hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../hooks/SessionCatalogContext";
 import type { DesktopState } from "./DesktopControls";
-import { publishNavigationState, subscribeToOpenNavigation } from "./app-navigation";
-import { SessionSidebar } from "./dashboard/SessionSidebar";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
+import { CommandCenterShell } from "./command-center/CommandCenterShell";
 
 type AppShellDesktopBridge = {
   getDesktopState(): Promise<DesktopState | null>;
@@ -23,27 +21,18 @@ function desktopBridge() {
   return (window as Window & { pomegrDesktop?: AppShellDesktopBridge }).pomegrDesktop;
 }
 
-function selectedSessionFromPath(pathname: string) {
-  const match = /^\/sessions\/([^/]+)$/.exec(pathname);
-  return match ? decodeSessionRoute(match[1]) : null;
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
-  const router = useRouter();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [liveSessions, setLiveSessions] = useState<SessionCatalogSnapshot["liveSessions"]>([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(true);
   const [catalogReadiness, setCatalogReadiness] = useState<Pick<HomeReadiness, "catalog" | "sessionSummaries">>({ catalog: "loading", sessionSummaries: {} });
   const catalogRevisionRef = useRef<number | string | null>(null);
+  const catalogNotificationStartedAtRef = useRef<number | null>(null);
   const catalogReadinessRef = useRef(catalogReadiness);
   const sessionCountRef = useRef(0);
-  const [navigationPath, setNavigationPath] = useState<string | null>(null);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
-  const navigationOpen = navigationPath === pathname;
-  const selectedSessionId = useMemo(() => selectedSessionFromPath(pathname), [pathname]);
-  const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
 
   useEffect(() => {
@@ -56,6 +45,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     let timer: number | null = null;
     let retryAttempt = 0;
     let requestInFlight = false;
+    let refreshAfterFlight = false;
+    let pendingEventRevision: number | null = null;
+    let eventSource: EventSource | null = null;
     let focusListener: (() => void) | null = null;
     let visibilityListener: (() => void) | null = null;
     if (desktopState?.paused) return () => controller.abort();
@@ -73,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         const query = catalogRevisionRef.current === null ? "" : `?revision=${encodeURIComponent(String(catalogRevisionRef.current))}`;
         const response = await fetch(`/api/sessions${query}`, { cache: "no-store", signal: controller.signal });
         if (response.status === 204) {
+          catalogNotificationStartedAtRef.current = null;
           succeeded = true;
           retryAttempt = 0;
           return;
@@ -90,18 +83,29 @@ export function AppShell({ children }: { children: ReactNode }) {
         const nextLiveSessions = Array.isArray(catalog.liveSessions) ? catalog.liveSessions : null;
         if (!controller.signal.aborted && nextSessions && nextLiveSessions) {
           const nextReadiness = catalog.readiness || { catalog: "ready" as const, sessionSummaries: {} };
-          startTransition(() => {
-            setSessions((current) => preserveSessionOrder(current, nextSessions));
-            setLiveSessions((current) => preserveSessionOrder(current, nextLiveSessions));
-            const headerRevision = response.headers.get("x-pomegr-revision");
-            const revision = typeof catalog.revision === "number" || typeof catalog.revision === "string" ? catalog.revision : headerRevision || catalogRevisionRef.current;
-            catalogRevisionRef.current = revision;
-            catalogReadinessRef.current = nextReadiness;
-            sessionCountRef.current = nextSessions.length;
-            setCatalogReadiness(nextReadiness);
-            setConnected(true);
-            setLoading(false);
-          });
+          setSessions(newestSessionsFirst(nextSessions));
+          setLiveSessions(newestSessionsFirst(nextLiveSessions));
+          const headerRevision = response.headers.get("x-pomegr-revision");
+          const revision = typeof catalog.revision === "number" || typeof catalog.revision === "string" ? catalog.revision : headerRevision || catalogRevisionRef.current;
+          catalogRevisionRef.current = revision;
+          catalogReadinessRef.current = nextReadiness;
+          sessionCountRef.current = nextSessions.length;
+          setCatalogReadiness(nextReadiness);
+          setConnected(true);
+          setLoading(false);
+          const notificationStartedAt = catalogNotificationStartedAtRef.current;
+          catalogNotificationStartedAtRef.current = null;
+          if (notificationStartedAt !== null) {
+            window.requestAnimationFrame(() => {
+              try {
+                performance.clearMeasures("pomegr.catalog-notification-to-render");
+                performance.measure("pomegr.catalog-notification-to-render", {
+                  start: notificationStartedAt,
+                  end: performance.now(),
+                });
+              } catch { /* timing diagnostics must never affect presentation */ }
+            });
+          }
           succeeded = true;
         } else if (!controller.signal.aborted) {
           setConnected(false);
@@ -117,6 +121,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       } finally {
         requestInFlight = false;
         if (!controller.signal.aborted) {
+          if (refreshAfterFlight) {
+            refreshAfterFlight = false;
+            const currentRevision = catalogRevisionRef.current;
+            if (pendingEventRevision !== null && String(pendingEventRevision) !== String(currentRevision ?? "")) {
+              pendingEventRevision = null;
+              schedule(0);
+              return;
+            }
+            pendingEventRevision = null;
+          }
           const delay = succeeded
           ? (document.hidden ? 30_000 : catalogReadinessRef.current.catalog === "loading" ? 1_000 : 5_000)
             : [2_000, 5_000, 10_000, 30_000][Math.min(retryAttempt++, 3)];
@@ -131,8 +145,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("focus", focusListener);
     document.addEventListener("visibilitychange", visibilityListener);
     void poll();
+    if (typeof EventSource === "function") {
+      eventSource = new EventSource("/api/events");
+      eventSource.addEventListener("catalog", (message) => {
+        if (controller.signal.aborted || document.hidden) return;
+        try {
+          const event = JSON.parse((message as MessageEvent<string>).data) as { domain?: unknown; revision?: unknown };
+          if (event.domain !== "sessions" || !Number.isSafeInteger(event.revision) || Number(event.revision) < 0
+            || String(event.revision) === String(catalogRevisionRef.current ?? "")) return;
+          pendingEventRevision = Number(event.revision);
+          catalogNotificationStartedAtRef.current = performance.now();
+          if (requestInFlight) refreshAfterFlight = true;
+          else {
+            if (timer !== null) window.clearTimeout(timer);
+            timer = null;
+            void poll();
+          }
+        } catch {
+          // Malformed or future event shapes cannot alter browser state.
+        }
+      });
+    }
     return () => {
       controller.abort();
+      eventSource?.close();
       if (timer !== null) window.clearTimeout(timer);
       if (focusListener) window.removeEventListener("focus", focusListener);
       if (visibilityListener) document.removeEventListener("visibilitychange", visibilityListener);
@@ -151,48 +187,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  useEffect(() => {
-    const open = () => setNavigationPath(pathname);
-    return subscribeToOpenNavigation(open);
-  }, [pathname]);
-
-  useEffect(() => {
-    publishNavigationState(navigationOpen);
-    return () => publishNavigationState(false);
-  }, [navigationOpen]);
-
   const installUpdate = useCallback(() => {
     void desktopBridge()?.installUpdate().then((state) => { if (state) setDesktopState(state); }, () => {});
   }, []);
-
-  const selectSession = useCallback((session: SessionSummary) => {
-    setNavigationPath(null);
-    if (session.id === selectedSessionId) return;
-    router.push(`/sessions/${encodeSessionRoute(session.id)}`);
-  }, [router, selectedSessionId]);
 
   return (
     <DisplayPreferencesProvider>
       <LiveClockProvider running={!desktopState?.paused}>
         <SessionCatalogProvider sessions={sessions} liveSessions={liveSessions} loading={loading} connected={connected}>
-          <div className="appFrame">
-            <SessionSidebar
-              open={navigationOpen}
-              sessions={sessions}
-              selectedSessionId={selectedSessionId}
-              currentSessionId={selectedSessionId}
-              viewingHistory={Boolean(selectedSession && !selectedSession.isLive)}
-              homeSelected={pathname === "/"}
-              aboutSelected={pathname === "/about"}
-              settingsSelected={pathname === "/settings"}
-              update={desktopState?.update || null}
-              onInstallUpdate={installUpdate}
-              onClose={() => setNavigationPath(null)}
-              onSelect={selectSession}
-              readiness={catalogReadiness}
-            />
-            <div className="appContent">{children}</div>
-          </div>
+          <CommandCenterShell
+            pathname={pathname}
+            sessions={sessions}
+            liveSessions={liveSessions}
+            connected={connected}
+            loading={loading}
+            update={desktopState?.update || null}
+            onInstallUpdate={installUpdate}
+          >
+            {children}
+          </CommandCenterShell>
         </SessionCatalogProvider>
       </LiveClockProvider>
     </DisplayPreferencesProvider>

@@ -70,19 +70,12 @@ export function groupSessionsByProject(sessions: SessionSummary[]) {
   return [...groups].map(([project, projectSessions]) => ({ project, sessions: projectSessions }));
 }
 
-export function preserveSessionOrder<T extends SessionSummary>(current: T[], incoming: T[]) {
-  const incomingById = new Map(incoming.map((session) => [session.id, session]));
-  const ordered: T[] = [];
-  const seen = new Set<string>();
-  const append = (id: string) => {
-    const session = incomingById.get(id);
-    if (!session || seen.has(id)) return;
-    seen.add(id);
-    ordered.push(session);
+export function newestSessionsFirst<T extends SessionSummary>(sessions: T[]) {
+  const timestamp = (session: T) => {
+    const value = Date.parse(session.createdAt || session.updatedAt || "");
+    return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
   };
-  for (const session of current) append(session.id);
-  for (const session of incoming) append(session.id);
-  return ordered;
+  return [...sessions].sort((left, right) => timestamp(right) - timestamp(left) || left.id.localeCompare(right.id));
 }
 
 export function sessionNeedingAttention(sessions: SessionSummary[], currentSessionId: string | null, viewingHistory: boolean) {

@@ -12,6 +12,7 @@ export function median(values) {
 export function homeSessionSummary(entry, evidence, homePolicy) {
   if (!evidence?.session) return null;
   const agents = Array.isArray(evidence.agents) ? evidence.agents.map((agent) => ({ ...agent })) : [];
+  const primaryAgent = agents.find((agent) => agent.id === "primary");
   const usageSnapshots = Array.isArray(evidence.usageSnapshots) ? evidence.usageSnapshots : [];
   const tokenUsage = buildProviderTokenUsage(
     agents,
@@ -41,6 +42,7 @@ export function homeSessionSummary(entry, evidence, homePolicy) {
     latestContextTotal: Number.isFinite(tokenUsage.allAgents) ? tokenUsage.allAgents : null,
     contextHistory: tokenUsage.contextHistory,
     progress: evidence.session.progress ?? null,
+    currentActivity: primaryAgent?.currentActivity ?? null,
     isLive: Boolean(entry.isLive),
     createdAt: evidence.session.startedAt,
     requestObservationsAvailable: true,
@@ -72,6 +74,7 @@ export function unavailableHomeSessionSummary(entry) {
     latestContextTotal: null,
     contextHistory: null,
     progress: null,
+    currentActivity: null,
     isLive: Boolean(entry.isLive),
     createdAt: null,
     requestObservationsAvailable: false,

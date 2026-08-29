@@ -84,6 +84,14 @@ test("concurrent state GETs consume one committed response without provider tran
   const server = createMonitorServer({ runtime });
   const origin = await listen(server);
   context.after(() => new Promise((resolve) => server.close(resolve)));
+  const eventResponse = await fetch(`${origin}/api/events`);
+  assert.equal(eventResponse.status, 200);
+  assert.match(eventResponse.headers.get("content-type") || "", /^text\/event-stream/u);
+  const eventReader = eventResponse.body.getReader();
+  const initialEvent = new TextDecoder().decode((await eventReader.read()).value);
+  assert.match(initialEvent, /^event: catalog\ndata: \{"domain":"sessions","revision":\d+\}\n\n$/u);
+  assert.doesNotMatch(initialEvent, /codex-fixture|prompt|response|path|credential/iu);
+  await eventReader.cancel();
   const responses = await Promise.all(Array.from({ length: 8 }, () => (
     fetch(`${origin}/api/state?sessionId=codex%3Acodex-fixture-parent`)
   )));

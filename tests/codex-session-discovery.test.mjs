@@ -193,6 +193,32 @@ test("normalizes source kinds internally while the registry keeps Codex IDs prov
   assert.equal((await registry.readSession("codex:qualified-thread")).sessionId, "codex:qualified-thread");
 });
 
+test("a fresh Codex catalog read bypasses the short metadata cache after a new rollout appears", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-fresh-catalog-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessionsRoot = path.join(root, "sessions", "2026", "08", "29");
+  const writeSyntheticRollout = async (id, timestamp) => {
+    await mkdir(sessionsRoot, { recursive: true });
+    await writeFile(path.join(sessionsRoot, `rollout-${id}.jsonl`), `${JSON.stringify({
+      timestamp,
+      type: "session_meta",
+      payload: { id, session_id: id, cwd: "C:\\synthetic\\repo", source: "cli" },
+    })}\n`, "utf8");
+  };
+  await writeSyntheticRollout("cached-one", "2026-08-29T12:00:00.000Z");
+  const provider = createCodexProvider({
+    codexHome: root,
+    sessionsRoot: path.join(root, "sessions"),
+    includeArchived: false,
+    cacheMs: 60_000,
+  });
+  assert.deepEqual((await provider.listSessions()).map(({ localId }) => localId), ["cached-one"]);
+
+  await writeSyntheticRollout("fresh-two", "2026-08-29T12:01:00.000Z");
+  assert.deepEqual((await provider.listSessions()).map(({ localId }) => localId), ["cached-one"]);
+  assert.deepEqual((await provider.listSessions({ fresh: true })).map(({ localId }) => localId), ["fresh-two", "cached-one"]);
+});
+
 test("does not promote session-index fallback text into an agent assignment", () => {
   const metadata = normalizeCodexThreadMetadata(appThread("indexed-child", {
     name: "",

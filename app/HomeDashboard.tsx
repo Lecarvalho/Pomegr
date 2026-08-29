@@ -5,13 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits, LiveSessionSummary, Readiness } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
-import { NavigationMenuButton } from "./components/NavigationMenuButton";
 import { AnimatedProgressBar, useAnimatedProgressValue } from "./components/AnimatedProgress";
-import { PomegrBrand } from "./components/PomegrBrand";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useUsageLimits } from "./usage-limits-client";
 
@@ -152,7 +148,7 @@ function HomeUsageLimits({ providers, activities, readiness }: { providers: Home
                         <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
                           <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
                           <div className="homeLimitTrackStack">
-                            <i className="homeLimitTrack" aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
+                            <i className="homeLimitTrack" aria-hidden="true"><b style={{ transform: `scaleX(${percent / 100})` }} /></i>
                             {activity ? <LimitRequestTicks activity={activity} percent={percent} /> : activityLoading ? <span className="homeLimitActivitySkeleton" aria-hidden="true"><InlineSkeleton className="skeletonActivity" /></span> : null}
                           </div>
                           <em>{Math.round(limit.percent)}%</em>
@@ -235,6 +231,9 @@ export function HomeDashboard() {
   useEffect(() => { sessionCountRef.current = sessions.length; }, [sessions.length]);
   const activeSessions = useMemo(() => sessions.filter(isActiveSession), [sessions]);
   const idleSessions = useMemo(() => sessions.filter((session) => !isActiveSession(session)), [sessions]);
+  const activeAgents = sessions.reduce((total, session) => total + (session.activeAgentCount || 0), 0);
+  const allAgentContext = sessions.reduce((total, session) => total + (session.latestContextTotal || 0), 0);
+  const needsInput = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input");
   const usageRevisionMatches = snapshot.providerLimitRevision === null
     || snapshot.providerLimitRevision === undefined
     || String(snapshot.providerLimitRevision) === String(sharedUsage.revision);
@@ -329,27 +328,24 @@ export function HomeDashboard() {
   }, []);
 
   return (
-    <LiveClockProvider running={catalogConnected}>
-      <main className="shell homeApp" id="top">
-          <header className="topbar">
-            <div className="topbarLead">
-              <NavigationMenuButton />
-              <PomegrBrand href="/" />
-            </div>
-            <div className="topActions"><span className={`connection ${catalogLoading ? "connecting" : catalogConnected ? "online" : "offline"}`}><i />{catalogLoading ? "Connecting to monitor" : catalogConnected ? "Monitor connected" : "Monitor offline"}</span><ThemeToggle /></div>
-          </header>
-          <section className="homeContent" aria-labelledby="home-heading" aria-busy={catalogLoading || aggregateLoading}>
-            <div className="homeIntro"><h1 id="home-heading">Open sessions</h1><p>Current agent work and open sessions across every project.</p></div>
-            {catalogLoading && !sessions.length && <p className="srOnly" role="status">Loading open sessions from the local monitor.</p>}
-            {catalogLoading && !sessions.length && <HomeCatalogSkeleton />}
-            {!catalogLoading && !catalogConnected && <p className="homeStatus" role="status">Open sessions are unavailable. Pomegr will reconnect automatically.</p>}
-            {!catalogLoading && catalogConnected && sessions.length === 0 && <p className="homeStatus" role="status">No open sessions yet.</p>}
-            {!aggregateLoading && !aggregateConnected && <p className="homeStatus" role="status">Usage and activity overview is unavailable. Pomegr will retry automatically.</p>}
-            <HomeUsageLimits providers={sharedUsage.providers} activities={usageRevisionMatches ? snapshot.limitActivities || [] : []} readiness={usageReadiness} />
-            {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} readiness={aggregateReadiness?.sessionSummaries} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} readiness={aggregateReadiness?.sessionSummaries} /></>}
-          </section>
-          <footer><span>Local observer · Read-only · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <Link href="/about#license">AGPL-3.0-only</Link></span><span>{catalogLoading ? "Connecting…" : catalogConnected ? "Live updates · 5s" : "Monitor unavailable"}</span></footer>
-      </main>
-    </LiveClockProvider>
+    <section className="commandView commandHome" aria-labelledby="home-heading" aria-busy={catalogLoading || aggregateLoading}>
+      <header className="commandPageHeader">
+        <div><h1 id="home-heading">Workspace overview</h1><p>Current agent work, usage evidence, and attention state across every observed project.</p></div>
+        <span className="commandTimeRange">Live · last known-good state</span>
+      </header>
+      {needsInput.length > 0 && <aside className="commandAttention" role="status"><span><i className="commandStatusDot attention" /><strong>{needsInput.length} {needsInput.length === 1 ? "session needs" : "sessions need"} input</strong><small>{needsInput[0].title}{needsInput.length > 1 ? ` and ${needsInput.length - 1} more` : ""}</small></span><Link href="/sessions">Review sessions</Link></aside>}
+      <div className="commandOverviewGrid" aria-label="Workspace summary">
+        <article className="commandMetricPanel"><header><strong>Live sessions</strong><span>Normalized catalog</span></header><b>{number(sessions.length)}</b><p>{catalogConnected ? "Local monitor connected" : "Last known-good catalog"}</p></article>
+        <article className="commandMetricPanel"><header><strong>Active agents</strong><span>Across live sessions</span></header><b>{number(activeAgents)}</b><p>Latest normalized state</p></article>
+        <article className="commandMetricPanel context"><header><strong>All-agent context</strong><span>Current snapshots</span></header><b>{number(allAgentContext)}</b><p>Sum of visible latest snapshots</p></article>
+      </div>
+      {catalogLoading && !sessions.length && <p className="srOnly" role="status">Loading open sessions from the local monitor.</p>}
+      {catalogLoading && !sessions.length && <HomeCatalogSkeleton />}
+      {!catalogLoading && !catalogConnected && <p className="homeStatus" role="status">Open sessions are unavailable. Pomegr will reconnect automatically.</p>}
+      {!catalogLoading && catalogConnected && sessions.length === 0 && <p className="homeStatus commandEmptyState" role="status">No open sessions yet. Start a coding-agent session and it will appear here automatically.</p>}
+      {!aggregateLoading && !aggregateConnected && <p className="homeStatus" role="status">Usage and activity overview is unavailable. Pomegr will retry automatically.</p>}
+      <HomeUsageLimits providers={sharedUsage.providers} activities={usageRevisionMatches ? snapshot.limitActivities || [] : []} readiness={usageReadiness} />
+      {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} readiness={aggregateReadiness?.sessionSummaries} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} readiness={aggregateReadiness?.sessionSummaries} /></>}
+    </section>
   );
 }

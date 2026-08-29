@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
+import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import {
   mergeCodexToolCalls,
   parseCodexCanonicalTurns,
@@ -39,6 +40,7 @@ import {
   appServerResponseData,
   appServerResponseThread,
   boundedInteger,
+  codexSessionReference,
   compareCodexMetadata,
   expandCodexSelectedMetadata,
   mergeCodexMetadata,
@@ -145,8 +147,6 @@ export function createCodexProvider(options = {}) {
       return response;
     },
   }).get;
-  let catalogCache = null;
-  let catalogPending = null;
   const liveState = createCodexLiveState({
     scanLimit,
     maximumLiveTailBytes,
@@ -236,47 +236,22 @@ export function createCodexProvider(options = {}) {
     });
   }
 
-  async function discoveredMetadata() {
-    const checkedAt = now();
-    if (catalogCache && checkedAt < catalogCache.expiresAt) return catalogCache.value;
-    if (catalogPending) return catalogPending;
-    catalogPending = (async () => {
+  const metadataCatalog = createCodexCatalogCache({ cacheMs, now, load: async () => {
       const appServerMetadata = await readAppServerCatalog();
       const fallbackMetadata = readFallbackMetadata();
-      const combined = appServerMetadata?.length
-        ? mergeCodexMetadata([...fallbackMetadata, ...appServerMetadata])
-        : fallbackMetadata;
-      const value = combined;
-      const knownRolloutFiles = new Set(value.map((item) => item.rolloutFile).filter(Boolean));
+      const combined = appServerMetadata?.length ? mergeCodexMetadata([...fallbackMetadata, ...appServerMetadata]) : fallbackMetadata;
+      const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
       pruneKnownFiles(knownRolloutFiles);
-      catalogCache = { expiresAt: now() + cacheMs, value };
-      return value;
-    })();
-    try {
-      return await catalogPending;
-    } finally {
-      catalogPending = null;
-    }
-  }
+      return combined;
+    } });
+  const discoveredMetadata = metadataCatalog.read;
 
-  async function listSessions() {
-    const discovered = await discoveredMetadata();
-    const { threads, sessions } = liveness.observe(discovered);
-    return threads.filter(isTopLevelCodexSession).map((thread) => {
-      const state = sessions.get(thread.localId) || { isLive: false, needsInput: false, activityStatus: "unknown", observedAt: null };
-      return {
-        localId: thread.localId,
-        title: thread.title,
-        project: thread.project,
-        updatedAt: [thread.updatedAt, thread.createdAt, state.observedAt].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
-        isLive: state.isLive,
-        needsInput: state.needsInput,
-        activityStatus: state.activityStatus,
-        resourceOwner: state.resourceOwner || null,
-      };
-    }).sort(compareCodexMetadata).slice(0, catalogLimit);
+  async function listSessions(listOptions = {}) {
+    const { threads, sessions } = liveness.observe(await discoveredMetadata(listOptions));
+    return threads.filter(isTopLevelCodexSession)
+      .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
+      .sort(compareCodexMetadata).slice(0, catalogLimit);
   }
-
   async function readAppServerSession(localSessionId) {
     if (!appServer) return null;
     try {
@@ -791,7 +766,17 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
-    createObserver: () => createCodexIncrementalObserver({ list: listSessions, readEvidence: readSession, discoveredMetadata, transcriptPathsBySessionId, intervalMs: options.observerIntervalMs ?? 10_000, concurrency: options.observerConcurrency ?? 2, watchTargets }),
+    createObserver: () => createCodexIncrementalObserver({
+      list: listSessions,
+      readEvidence: readSession,
+      discoveredMetadata,
+      transcriptPathsBySessionId,
+      intervalMs: options.observerIntervalMs ?? 10_000,
+      concurrency: options.observerConcurrency ?? 2,
+      watchTargets,
+      catalogWatchTargets: [indexFile, livenessRoot],
+      watchSource: options.observerWatchSource,
+    }),
     readTranscriptPath,
     readUsageLimits: usageLimits,
     unavailableMessage(localSessionId = "") {
@@ -801,7 +786,7 @@ export function createCodexProvider(options = {}) {
       const livenessStats = liveness.stats();
       return {
         ...liveState.stats(reset),
-        catalogPending: Boolean(catalogPending),
+        catalogPending: metadataCatalog.pending(),
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,
       };

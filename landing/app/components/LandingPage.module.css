@@ -653,7 +653,7 @@
 
 .contextBody p small {
   margin-top: 3px;
-  color: #77716c;
+  color: #8f8983;
 }
 
 .signalPanel > p {
@@ -698,7 +698,7 @@
 
 .taskList span {
   margin-left: auto;
-  color: #77726e;
+  color: #8f8983;
 }
 
 .taskList b {
@@ -744,7 +744,7 @@
 }
 
 .commitList small {
-  color: #77726e;
+  color: #8f8983;
 }
 
 .usageGrid {
@@ -963,6 +963,8 @@
 }
 
 .repoAction {
+  min-height: 24px;
+  padding-block: 4px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1800,6 +1802,10 @@
   .sourceCard { width: auto; margin-inline: 14px; }
   .pitchCard h1 { font-size: 50px; }
   .pitchCard .platformLine { letter-spacing: -.02em; }
+}
+
+@media (pointer: coarse) {
+  .repoAction { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

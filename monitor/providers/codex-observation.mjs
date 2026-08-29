@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 import {
   incrementalSourceDescriptor,
 } from "./incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "./normalized-polling-observer.mjs";
 import { expandCodexSelectedMetadata } from "./codex-session-discovery.mjs";
+import { readCodexRolloutHeader } from "./codex-session-metadata.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 4_096;
 const MAX_TOOL_CALLS = 4_096;
@@ -164,11 +166,41 @@ export function createCodexIncrementalObserver(options = {}) {
     intervalMs,
     concurrency,
     watchTargets,
+    catalogWatchTargets = [],
+    watchSource,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     now,
     shouldEagerHydrate,
   } = options;
   const sessions = new Map();
+  const sourceSessions = new Map();
+  const sourcesBySession = new Map();
+  const catalogTargets = new Set(catalogWatchTargets.map((target) => path.resolve(target)));
+
+  const sourceKey = (file) => {
+    try {
+      const resolved = path.resolve(file);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    } catch { return ""; }
+  };
+
+  function indexSessionSources(localSessionId, files) {
+    for (const file of sourcesBySession.get(localSessionId) || []) {
+      const key = sourceKey(file);
+      const owners = sourceSessions.get(key);
+      owners?.delete(localSessionId);
+      if (owners?.size === 0) sourceSessions.delete(key);
+    }
+    const nextFiles = [...new Set(files)];
+    sourcesBySession.set(localSessionId, nextFiles);
+    for (const file of nextFiles) {
+      const key = sourceKey(file);
+      if (!key) continue;
+      const owners = sourceSessions.get(key) || new Set();
+      owners.add(localSessionId);
+      sourceSessions.set(key, owners);
+    }
+  }
 
   async function prepareSources(entries = []) {
     const metadata = await discoveredMetadata();
@@ -185,6 +217,7 @@ export function createCodexIncrementalObserver(options = {}) {
         return rolloutFile ? [rolloutFile] : [];
       }));
       for (const transcriptPath of transcriptPathsBySessionId.get(localId)?.values() || []) files.add(transcriptPath);
+      indexSessionSources(localId, files);
       const parts = [...files]
         .map((file) => incrementalSourceDescriptor(file, entry?.isLive === false))
         .filter(Boolean);
@@ -195,6 +228,28 @@ export function createCodexIncrementalObserver(options = {}) {
       });
     }
     return sources;
+  }
+
+  /** @param {{target?: string, filename?: string | null, eventType?: string}} [change] */
+  function routeCodexSourceEvent({ target, filename, eventType } = {}) {
+    if (catalogTargets.has(path.resolve(target))) return { catalog: true, sessionIds: [] };
+    if (typeof filename !== "string" || !filename) return { catalog: true, sessionIds: [] };
+    const candidate = path.resolve(target, filename);
+    const known = sourceSessions.get(sourceKey(candidate));
+    if (known?.size) {
+      return {
+        catalog: eventType === "rename",
+        sessionIds: [...known],
+      };
+    }
+    const header = readCodexRolloutHeader(candidate);
+    const rootId = header?.sessionId && header.sessionId !== header.localId
+      ? header.sessionId
+      : !header?.parentThreadId && !header?.forkedFromId ? header?.localId : null;
+    return {
+      catalog: true,
+      sessionIds: typeof rootId === "string" && rootId ? [rootId] : [],
+    };
   }
 
   async function acquire(localSessionId, _publisher, preparedSources) {
@@ -303,6 +358,8 @@ export function createCodexIncrementalObserver(options = {}) {
     intervalMs,
     concurrency,
     watchTargets,
+    routeSourceEvent: routeCodexSourceEvent,
+    watchSource,
     yieldControl,
     now,
     shouldEagerHydrate,

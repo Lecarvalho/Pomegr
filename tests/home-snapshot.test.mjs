@@ -328,8 +328,10 @@ test("home latest context uses latest non-zero total per visible agent and safe 
 test("home live session exposes only bounded normalized progress", async () => {
   const entry = { id: "codex:progress", provider: "codex", source: "Codex", title: "Progress", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false };
   const progress = { phase: "implementing", percent: 42, remainingMinutesMin: 8, remainingMinutesMax: 14, confidence: "medium", reportedAt: "2026-08-23T11:45:00.000Z" };
-  const state = await runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [agent("primary")], progress, progressPrivate: "PRIVATE_PROGRESS_INPUT" })]])).homeSnapshot();
+  const currentActivity = { label: "Preparing header measurement", observedAt: "2026-08-23T11:58:00.000Z" };
+  const state = await runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [{ ...agent("primary"), currentActivity }], progress, progressPrivate: "PRIVATE_PROGRESS_INPUT" })]])).homeSnapshot();
   assert.deepEqual(state.projects[0].sessions[0].progress, progress);
+  assert.equal(Object.hasOwn(state.projects[0].sessions[0], "currentActivity"), false);
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_PROGRESS_INPUT|progressPrivate/i);
 });
 
@@ -366,25 +368,28 @@ test("session feed returns the catalog with bounded live summaries and refreshes
     activeAgentCount: null,
     latestContextTotal: null,
     progress: null,
+    currentActivity: null,
   }]);
 
   const progress = { phase: "verifying", percent: 70, remainingMinutesMin: 2, remainingMinutesMax: 5, confidence: "high", reportedAt: "2026-08-23T12:00:00.000Z" };
   entry = { ...entry, updatedAt: "2026-08-23T12:00:00.000Z" };
-  const changedEvidence = evidence({ updatedAt: entry.updatedAt, agents: [agent("primary"), agent("helper", "idle")], progress, progressPrivate: "PRIVATE_FEED_PROGRESS" });
+  const currentActivity = { label: "Preparing header measurement", observedAt: "2026-08-23T11:59:30.000Z" };
+  const changedEvidence = evidence({ updatedAt: entry.updatedAt, agents: [{ ...agent("primary"), currentActivity }, { ...agent("helper", "idle"), currentActivity: { label: "PRIVATE_FEED_ACTIVITY", observedAt: "2026-08-23T11:59:45.000Z" } }], progress, progressPrivate: "PRIVATE_FEED_PROGRESS" });
   changedEvidence.contextHistory = { private: "PRIVATE_FEED_CONTEXT" };
   changedEvidence.resources = { command: "PRIVATE_FEED_RESOURCE" };
   evidenceById.set(entry.id, changedEvidence);
 
   const changed = await runtime.sessionFeed();
   assert.deepEqual(changed.liveSessions[0].progress, progress);
+  assert.deepEqual(changed.liveSessions[0].currentActivity, currentActivity);
   assert.equal(changed.liveSessions[0].agentCount, 2);
   assert.equal(changed.liveSessions[0].activeAgentCount, 1);
   assert.equal(Object.hasOwn(changed.liveSessions[0], "contextHistory"), false);
   assert.equal(Object.hasOwn(changed.liveSessions[0], "resources"), false);
   assert.deepEqual(Object.keys(changed.liveSessions[0]).sort(), [
-    "activeAgentCount", "activityStatus", "agentCount", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "title", "updatedAt",
+    "activeAgentCount", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "title", "updatedAt",
   ]);
-  assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
+  assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:ACTIVITY|CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
 });
 
 test("session feed and home snapshot coalesce a cold live summary without sharing resource telemetry", async () => {

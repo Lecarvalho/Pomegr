@@ -8,6 +8,10 @@ function renderSettings() {
   return render(<DisplayPreferencesProvider><SettingsPage /></DisplayPreferencesProvider>);
 }
 
+async function openDataDisplay(user = userEvent.setup()) {
+  await user.click(screen.getByRole("tab", { name: "Data display" }));
+}
+
 afterEach(() => {
   window.localStorage.clear();
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
@@ -15,9 +19,24 @@ afterEach(() => {
 });
 
 describe("display preferences", () => {
+  it("links settings tabs to panels and supports arrow-key navigation", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    const appearance = screen.getByRole("tab", { name: "Appearance" });
+    appearance.focus();
+    expect(appearance).toHaveAttribute("aria-controls", "settings-panel-appearance");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "settings-tab-appearance");
+    await user.keyboard("{ArrowDown}");
+    const notifications = screen.getByRole("tab", { name: "Notifications" });
+    expect(notifications).toHaveFocus();
+    expect(notifications).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "settings-tab-notifications");
+  });
+
   it("defaults both session displays on, persists changes, and restores defaults", async () => {
     const user = userEvent.setup();
     const view = renderSettings();
+    await openDataDisplay(user);
     const contextHistory = screen.getByRole("switch", { name: /Context history/ });
     const estimatedCost = screen.getByRole("switch", { name: /API list-rate estimate/ });
     const restore = screen.getByRole("button", { name: "Restore defaults" });
@@ -33,6 +52,7 @@ describe("display preferences", () => {
 
     view.unmount();
     renderSettings();
+    await openDataDisplay(user);
     expect(screen.getByRole("switch", { name: /Context history/ })).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Restore defaults" }));
     expect(screen.getByRole("switch", { name: /Context history/ })).toBeChecked();
@@ -40,10 +60,11 @@ describe("display preferences", () => {
     expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ contextHistory: true, estimatedCost: true });
   });
 
-  it("fails malformed or incomplete browser preferences closed to visible defaults", () => {
+  it("fails malformed or incomplete browser preferences closed to visible defaults", async () => {
     for (const value of ["malformed", JSON.stringify({ contextHistory: false }), JSON.stringify([false, false])]) {
       window.localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, value);
       const view = renderSettings();
+      await openDataDisplay();
       expect(screen.getByRole("switch", { name: /Context history/ })).toBeChecked();
       expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).toBeChecked();
       view.unmount();
@@ -68,6 +89,7 @@ describe("display preferences", () => {
     };
 
     renderSettings();
+    await openDataDisplay(user);
     await waitFor(() => expect(screen.getByRole("switch", { name: /Context history/ })).not.toBeChecked());
     expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).toBeChecked();
     await user.click(screen.getByRole("switch", { name: /Context history/ }));

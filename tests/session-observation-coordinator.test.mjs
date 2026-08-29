@@ -57,19 +57,128 @@ test("Serving reads committed projections and never invokes compatibility readSe
   });
   assert.equal(coordinator.session("codex:one").snapshot.publicState.session.title, "One");
   assert.equal(reads, 0);
-  assert.deepEqual(coordinator.diagnostics(), {
-    sessionCandidates: 1,
-    sessionCommits: 1,
-    unchangedCandidates: 0,
-    rejectedCandidates: 0,
-    cacheHits: 1,
-    cacheMisses: 0,
-    hydrationsQueued: 0,
-    invalidations: 0,
-    store: null,
-    checkpoints: null,
-    observers: {},
+  const diagnostics = coordinator.diagnostics();
+  assert.equal(diagnostics.sessionCandidates, 1);
+  assert.equal(diagnostics.sessionCommits, 1);
+  assert.equal(diagnostics.cacheHits, 1);
+  assert.equal(diagnostics.catalogStructuralFastPaths, 1);
+  assert.equal(diagnostics.catalogCommitDelaySamples >= 1, true);
+  assert.equal(diagnostics.catalogCommitDelayAverageMs >= 0, true);
+  assert.equal(diagnostics.store, null);
+  assert.equal(diagnostics.checkpoints, null);
+  assert.deepEqual(diagnostics.observers, {});
+});
+
+test("structural catalog changes preempt a queued summary refresh", async () => {
+  let clock = 100;
+  const jobs = [];
+  const schedule = (task, delay) => {
+    const job = { task, delay, cancelled: false };
+    jobs.push(job);
+    return job;
+  };
+  const cancel = (job) => { job.cancelled = true; };
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store: memoryStore(),
+    schedule,
+    cancel,
+    now: () => clock,
+    commitDelayMs: 500,
+    async deriveSession() { return { readiness: {}, publicState: {} }; },
   });
+  await coordinator.start();
+  const first = { localId: "one", title: "One", project: "repo", updatedAt: "2026-08-28T12:00:00.000Z", isLive: true };
+  publisher.publishCatalog("codex", [first]);
+  assert.equal(jobs.at(-1).delay, 0);
+  jobs.at(-1).cancelled = true;
+  await jobs.at(-1).task();
+
+  clock = 200;
+  publisher.publishCatalog("codex", [{ ...first, updatedAt: "2026-08-28T12:01:00.000Z" }]);
+  const summaryJob = jobs.at(-1);
+  assert.equal(summaryJob.delay, 500);
+  clock = 250;
+  publisher.publishCatalog("codex", [first, { ...first, localId: "two", title: "Two" }]);
+  const structuralJob = jobs.at(-1);
+  assert.equal(summaryJob.cancelled, true);
+  assert.equal(structuralJob.delay, 0);
+  structuralJob.cancelled = true;
+  await structuralJob.task();
+
+  assert.deepEqual(coordinator.catalog().snapshot.value.sessions.map(({ id }) => id), ["codex:one", "codex:two"]);
+  assert.equal(coordinator.diagnostics().catalogStructuralFastPaths, 2);
+  await coordinator.stop();
+});
+
+test("live summaries expose only the normalized primary-agent current activity", async () => {
+  const scheduler = immediateScheduler();
+  let publisher;
+  const currentActivity = { label: "Preparing header measurement", observedAt: "2026-08-28T12:00:00.000Z" };
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store: memoryStore(),
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+    async deriveSession({ evidence }) {
+      return {
+        readiness: { core: "ready" },
+        publicState: {
+          session: evidence.session,
+          metrics: { agents: 2, activeAgents: 1, tokens: { allAgents: 12_000 } },
+          agents: [
+            { id: "helper", currentActivity: { label: "PRIVATE_HELPER_ACTIVITY", observedAt: "2026-08-28T12:00:01.000Z" } },
+            { id: "primary", currentActivity },
+          ],
+        },
+      };
+    },
+  });
+  await coordinator.start();
+  publisher.publishCatalog("codex", [{ localId: "one", title: "One", project: "repo", updatedAt: "2026-08-28T12:00:00.000Z", isLive: true }]);
+  publisher.publishSession("codex", "one", { historical: false, session: { title: "One", progress: null } });
+  await scheduler.flush();
+
+  const summary = coordinator.catalog().snapshot.value.liveSessions[0];
+  assert.deepEqual(summary.currentActivity, currentActivity);
+  assert.doesNotMatch(JSON.stringify(summary), /PRIVATE_HELPER_ACTIVITY/);
+  await coordinator.stop();
+});
+
+test("catalog rows are committed by creation time descending regardless of live activity", async () => {
+  const scheduler = immediateScheduler();
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store: memoryStore(),
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+    async deriveSession() { return { readiness: {}, publicState: {} }; },
+  });
+  await coordinator.start();
+  publisher.publishCatalog("codex", [
+    { localId: "older-active", title: "Older active", project: "repo", createdAt: "2026-08-28T10:00:00.000Z", updatedAt: "2026-08-29T15:00:00.000Z", isLive: true, needsInput: true },
+    { localId: "newest", title: "Newest", project: "repo", createdAt: "2026-08-29T10:00:00.000Z", updatedAt: "2026-08-29T10:00:00.000Z", isLive: false },
+    { localId: "middle", title: "Middle", project: "repo", createdAt: "2026-08-28T18:00:00.000Z", updatedAt: "2026-08-28T18:00:00.000Z", isLive: false },
+  ]);
+  await scheduler.flush();
+
+  assert.deepEqual(coordinator.catalog().snapshot.value.sessions.map(({ id }) => id), [
+    "codex:newest",
+    "codex:middle",
+    "codex:older-active",
+  ]);
+  await coordinator.stop();
 });
 
 test("invalid IDs never hydrate and confirmed unavailability preserves data with unavailable readiness", async () => {
