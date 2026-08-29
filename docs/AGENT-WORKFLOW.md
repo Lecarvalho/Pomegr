@@ -8,6 +8,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Provider discovery, parsing, normalization | `monitor/providers/` and `monitor/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
 | Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `monitor/observation-runtime.mjs`, and `monitor/session-observation-*.mjs` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Monitor indexing, projection, enrichment | `monitor/server.mjs`, `monitor/` utilities | Browser credentials, prompts, responses, and provider-native payloads |
+| Internal pipeline operations and timing | `docs/PIPELINE_OPERATIONS.md`, `monitor/pipeline-operations*.mjs`, and `scripts/pipeline-ops.mjs` | Browser API fields, transcript/source identity, persisted diagnostics, or diagnostic reads that trigger pipeline work |
 | Browser/API state | `app/`, `shared/`, `app/api/` | `monitor/providers/` imports from React |
 | Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw monitor files |
 | Landing site | `landing/` and its own `package.json` | Main application scripts and monitor state |
@@ -19,6 +20,7 @@ Run the smallest relevant command while iterating:
 
 ```powershell
 npm run test:contracts
+npm run test:ops
 node --test tests/<one-file>.test.mjs
 npx vitest run tests/ui/<one-file>.test.tsx
 npm --prefix landing run test -- tests/<one-file>.test.tsx
