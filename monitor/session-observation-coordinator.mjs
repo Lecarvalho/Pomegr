@@ -1,5 +1,6 @@
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
 import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
+import { createDurationSeries } from "./pipeline-operations.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
@@ -50,6 +51,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointDelayMs = Math.max(0, Number(options.checkpointDelayMs ?? 5_000));
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
   const now = options.now || Date.now;
+  const monotonicNow = options.monotonicNow || (() => performance.now());
   const catalogsByProvider = new Map();
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
@@ -66,6 +68,14 @@ export function createSessionObservationCoordinator(options = {}) {
   let stopped = true;
   let generation = 0;
   let selectedPinnedId = null;
+  const timings = Object.freeze({
+    catalogCommitWait: createDurationSeries(),
+    catalogProjectionCommit: createDurationSeries(),
+    sessionCommitWait: createDurationSeries(),
+    sessionDerivation: createDurationSeries(),
+    sessionStoreCommit: createDurationSeries(),
+    sessionCandidateToCommit: createDurationSeries(),
+  });
   const qa = {
     sessionCandidates: 0,
     sessionCommits: 0,
@@ -103,14 +113,16 @@ export function createSessionObservationCoordinator(options = {}) {
   }
 
   function commitCatalog() {
+    const projectionStartedAt = monotonicNow();
     catalogTimer = null;
     catalogTimerDueAt = null;
     if (catalogDirtyAt !== null) {
-      const delayMs = Math.max(0, now() - catalogDirtyAt);
+      const delayMs = Math.max(0, monotonicNow() - catalogDirtyAt);
       qa.catalogCommitDelaySamples += 1;
       qa.catalogCommitDelayTotalMs += delayMs;
       qa.catalogCommitDelayLastMs = delayMs;
       qa.catalogCommitDelayMaxMs = Math.max(qa.catalogCommitDelayMaxMs, delayMs);
+      timings.catalogCommitWait.record(delayMs);
       catalogDirtyAt = null;
     }
     const sessions = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
@@ -145,11 +157,12 @@ export function createSessionObservationCoordinator(options = {}) {
       liveSessions,
     });
     notify({ type: "catalog", revision: committed.revision });
+    timings.catalogProjectionCommit.record(monotonicNow() - projectionStartedAt);
   }
 
   function scheduleCatalogCommit(delayMs = commitDelayMs) {
     const delay = Math.max(0, Number(delayMs));
-    const scheduledAt = now();
+    const scheduledAt = monotonicNow();
     if (catalogDirtyAt === null) catalogDirtyAt = scheduledAt;
     const dueAt = scheduledAt + delay;
     if (catalogTimer !== null) {
@@ -166,22 +179,36 @@ export function createSessionObservationCoordinator(options = {}) {
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
     try {
-      const derived = await deriveSession(candidate);
+      timings.sessionCommitWait.record(monotonicNow() - candidate.queuedAt);
+      const derivationStartedAt = monotonicNow();
+      let derived;
+      try {
+        derived = await deriveSession(candidate);
+      } finally {
+        timings.sessionDerivation.record(monotonicNow() - derivationStartedAt);
+      }
       if (stopped || workGeneration !== generation) return;
       if (pendingSessions.get(qualifiedId) !== candidate) {
         scheduleSessionCommit(qualifiedId);
         return;
       }
-      const snapshot = store.publish({
-        providerId: candidate.providerId,
-        localSessionId: candidate.localSessionId,
-        evidence: candidate.evidence,
-        readiness: derived.readiness,
-        publicState: derived.publicState,
-        observedAt: candidate.observedAt,
-        source: candidate.checkpointSource,
-        pinned: candidate.pinned,
-      });
+      const storeStartedAt = monotonicNow();
+      let snapshot;
+      try {
+        snapshot = store.publish({
+          providerId: candidate.providerId,
+          localSessionId: candidate.localSessionId,
+          evidence: candidate.evidence,
+          readiness: derived.readiness,
+          publicState: derived.publicState,
+          observedAt: candidate.observedAt,
+          source: candidate.checkpointSource,
+          pinned: candidate.pinned,
+        });
+      } finally {
+        timings.sessionStoreCommit.record(monotonicNow() - storeStartedAt);
+      }
+      timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
       if (snapshot?.accepted && !snapshot.unchanged) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
@@ -263,6 +290,7 @@ export function createSessionObservationCoordinator(options = {}) {
         checkpointSource: evidence?.observationSource || null,
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
         pinned: Boolean(evidence?.historical === false),
+        queuedAt: monotonicNow(),
       }));
       sessionRetryAttempts.delete(qualifiedId);
       scheduleSessionCommit(qualifiedId);
@@ -324,6 +352,7 @@ export function createSessionObservationCoordinator(options = {}) {
             checkpointSource: record.source,
             observedAt: record.observedAt,
             pinned: Boolean(record.evidence?.historical === false),
+            queuedAt: monotonicNow(),
           }));
           scheduleSessionCommit(restored.snapshot.qualifiedId);
         }
@@ -357,6 +386,7 @@ export function createSessionObservationCoordinator(options = {}) {
       checkpointSource: snapshot.source,
       observedAt: snapshot.observedAt,
       pinned: Boolean(snapshot.evidence?.historical === false),
+      queuedAt: monotonicNow(),
     }));
     sessionRetryAttempts.delete(qualifiedId);
     scheduleSessionCommit(qualifiedId);
@@ -443,6 +473,7 @@ export function createSessionObservationCoordinator(options = {}) {
         store: store.stats?.() || null,
         checkpoints: checkpointStore?.stats?.() || null,
         observers: lifecycle?.diagnostics?.() || {},
+        timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
       });
     },
   });

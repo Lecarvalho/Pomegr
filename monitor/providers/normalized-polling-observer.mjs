@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { isObservationWorkingSetEntry } from "../observation-working-set.mjs";
+import { createDurationSeries } from "../pipeline-operations.mjs";
 
 /**
  * Transitional adapter-local observer.  It intentionally knows nothing about
@@ -37,6 +38,7 @@ export function createNormalizedPollingObserver(options) {
     watchSource = fs.watch,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     now = Date.now,
+    monotonicNow = () => performance.now(),
     shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
   } = options || {};
   const acquire = ingest || read;
@@ -58,7 +60,7 @@ export function createNormalizedPollingObserver(options) {
   if (typeof watchSource !== "function" || typeof yieldControl !== "function") {
     throw new TypeError("Normalized polling observer watcher and yield hooks must be functions");
   }
-  if (typeof now !== "function" || typeof shouldEagerHydrate !== "function") {
+  if (typeof now !== "function" || typeof monotonicNow !== "function" || typeof shouldEagerHydrate !== "function") {
     throw new TypeError("Normalized polling observer working-set hooks must be functions");
   }
 
@@ -76,6 +78,12 @@ export function createNormalizedPollingObserver(options) {
   const pendingHydrations = new Map();
   const runningHydrations = new Map();
   const latestEntries = new Map();
+  const timings = Object.freeze({
+    catalogDiscovery: createDurationSeries(),
+    queueWait: createDurationSeries(),
+    preparation: createDurationSeries(),
+    acquisitionNormalization: createDurationSeries(),
+  });
   const qa = {
     reconciliationRuns: 0,
     watcherWakeups: 0,
@@ -100,10 +108,22 @@ export function createNormalizedPollingObserver(options) {
       // Provider reducers still contain bounded synchronous work. Yield before
       // every acquisition unit so cache-only serving remains responsive.
       await yieldControl();
-      const context = prepared === undefined && prepare
-        ? await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }])
-        : prepared;
-      const candidate = await acquire(localSessionId, publisher, context);
+      let context = prepared;
+      if (prepared === undefined && prepare) {
+        const preparationStartedAt = monotonicNow();
+        try {
+          context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
+        } finally {
+          timings.preparation.record(monotonicNow() - preparationStartedAt);
+        }
+      }
+      const acquisitionStartedAt = monotonicNow();
+      let candidate;
+      try {
+        candidate = await acquire(localSessionId, publisher, context);
+      } finally {
+        timings.acquisitionNormalization.record(monotonicNow() - acquisitionStartedAt);
+      }
       if (!stopped && !signal?.aborted && candidate) {
         publisher.publishSession(localSessionId, candidate);
         qa.candidatesPublished += 1;
@@ -134,11 +154,12 @@ export function createNormalizedPollingObserver(options) {
       if (!item) return;
       pendingHydrations.delete(item.localSessionId);
       if (Number.isFinite(item.sourceEventAt)) {
-        const queueDelayMs = Math.max(0, now() - item.sourceEventAt);
+        const queueDelayMs = Math.max(0, monotonicNow() - item.sourceEventAt);
         qa.sourceEventQueueSamples += 1;
         qa.sourceEventQueueDelayTotalMs += queueDelayMs;
         qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
+        timings.queueWait.record(queueDelayMs);
       }
       const task = runHydration(item.localSessionId, item.prepared);
       runningHydrations.set(item.localSessionId, task);
@@ -205,7 +226,14 @@ export function createNormalizedPollingObserver(options) {
         pendingEagerEntries = null;
         let prepared;
         try {
-          prepared = prepare && batch.length ? await prepare(batch.map(({ entry }) => entry)) : undefined;
+          if (prepare && batch.length) {
+            const preparationStartedAt = monotonicNow();
+            try {
+              prepared = await prepare(batch.map(({ entry }) => entry));
+            } finally {
+              timings.preparation.record(monotonicNow() - preparationStartedAt);
+            }
+          }
         } catch {
           qa.acquisitionFailures += 1;
           continue;
@@ -240,7 +268,13 @@ export function createNormalizedPollingObserver(options) {
     refreshPending = true;
     qa.reconciliationRuns += 1;
     try {
-      const entries = await list({ fresh });
+      const discoveryStartedAt = monotonicNow();
+      let entries;
+      try {
+        entries = await list({ fresh });
+      } finally {
+        timings.catalogDiscovery.record(monotonicNow() - discoveryStartedAt);
+      }
       if (!Array.isArray(entries) || stopped || signal?.aborted) return;
       const previousIds = new Set(latestEntries.keys());
       latestEntries.clear();
@@ -283,7 +317,7 @@ export function createNormalizedPollingObserver(options) {
     // Unknown/new sources require a cache-bypassing catalog pass. Known
     // sources skip discovery and enter acquisition immediately.
     if (routed.catalog) void refresh({ fresh: true });
-    const sourceEventAt = now();
+    const sourceEventAt = monotonicNow();
     for (const localSessionId of routed.sessionIds) {
       enqueueHydration(localSessionId, {
         priority: 0,
@@ -360,6 +394,8 @@ export function createNormalizedPollingObserver(options) {
         : 0,
       activeHydrations: runningHydrations.size,
       pendingHydrations: pendingHydrations.size,
+      hydrationConcurrency: concurrency,
+      timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
     }),
   });
 }

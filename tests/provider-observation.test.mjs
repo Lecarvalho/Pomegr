@@ -128,6 +128,54 @@ test("queued hydration yields before provider work begins", async (context) => {
   assert.equal(acquisitions, 1);
 });
 
+test("provider observers report bounded phase timings without session identity", async (context) => {
+  let clock = 0;
+  const controller = new AbortController();
+  const observer = createNormalizedPollingObserver({
+    async list() { clock += 5; return []; },
+    async prepare() { clock += 7; return new Map(); },
+    async ingest() { clock += 11; return { session: { title: "PRIVATE_TITLE_MUST_NOT_LEAK" } }; },
+    intervalMs: 60_000,
+    monotonicNow: () => clock,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await waitFor(() => observer.diagnostics().timings.catalogDiscovery.sampleCount === 1);
+  assert.equal(await observer.hydrate("private-session-id"), true);
+
+  const diagnostics = observer.diagnostics();
+  assert.equal(diagnostics.hydrationConcurrency, 2);
+  assert.equal(diagnostics.timings.catalogDiscovery.lastMs, 5);
+  assert.equal(diagnostics.timings.preparation.lastMs, 7);
+  assert.equal(diagnostics.timings.acquisitionNormalization.lastMs, 11);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /PRIVATE_TITLE|private-session-id/);
+});
+
+test("source queue timing uses the monotonic clock across a wall-clock regression", async (context) => {
+  let wallClock = 50_000;
+  let monotonicClock = 100;
+  const controller = new AbortController();
+  const watcher = watchHarness();
+  const observer = createNormalizedPollingObserver({
+    list: async () => [],
+    ingest: async () => null,
+    routeSourceEvent: () => ({ catalog: false, sessionIds: ["one"] }),
+    watchTargets: ["synthetic-root"],
+    watchSource: watcher.watch,
+    intervalMs: 60_000,
+    now: () => { wallClock -= 10_000; return wallClock; },
+    monotonicNow: () => { const value = monotonicClock; monotonicClock += 5; return value; },
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  watcher.emit("change", "one.jsonl");
+  await waitFor(() => observer.diagnostics().sourceEventQueueSamples === 1);
+
+  assert.equal(observer.diagnostics().timings.queueWait.lastMs, 5);
+});
+
 test("source events publish a fresh catalog without waiting for slow hydration", async (context) => {
   const controller = new AbortController();
   const watcher = watchHarness();

@@ -10,6 +10,8 @@ import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { createObservationRuntime } from "./observation-runtime.mjs";
+import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
+import { startPipelineOperationsTransport } from "./pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./request-handler.mjs";
 import {
   closeServer,
@@ -645,6 +647,7 @@ export async function startMonitorServer(options = {}) {
   let server;
   let handle;
   let runtime;
+  let operationsTransport;
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
@@ -656,8 +659,22 @@ export async function startMonitorServer(options = {}) {
       host,
       normalExitCode: "MONITOR_CLOSED",
       unexpectedExitCode: "MONITOR_EXIT_UNEXPECTED",
-      onClose: () => { void runtime.stopObservation?.(); },
+      onClose: () => {
+        void runtime.stopObservation?.();
+        void operationsTransport?.close();
+      },
     });
+    if (port !== 0 && options.pipelineOperations !== false && typeof runtime.observationDiagnostics === "function") {
+      try {
+        operationsTransport = await startPipelineOperationsTransport({
+          ...(options.pipelineOperationsOptions || {}),
+          port: handle.port,
+          snapshot: () => createPipelineOperationsSnapshot(runtime.observationDiagnostics()),
+        });
+      } catch {
+        options.logger?.warn?.("[pomegr] Pipeline operations transport unavailable.");
+      }
+    }
     await runtime.startObservation?.();
     // Provider-owned watch targets remain private and are initialized only
     // after the listener and background observation lifecycle are ready.
@@ -668,13 +685,15 @@ export async function startMonitorServer(options = {}) {
       if (closePromise) return closePromise;
       closePromise = (async () => {
         await runtime.stopObservation?.();
+        await operationsTransport?.close();
         await handle.close();
       })();
       return closePromise;
     };
-    return Object.freeze({ ...handle, close });
+    return Object.freeze({ ...handle, operationsEndpoint: operationsTransport?.endpoint || null, close });
   } catch (error) {
     try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
+    try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();
     else await closeServer(server);
     throw safeServiceError(error, "MONITOR_START_FAILED");

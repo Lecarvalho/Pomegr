@@ -52,6 +52,8 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Send OAuth credentials only to the provider's authenticated usage endpoint.
 - Use `execFileSync`/`spawn` with argument arrays; do not interpolate session-derived paths into shell commands.
 - Keep monitoring read-only. Future control actions require an explicit confirmation boundary.
+- Internal pipeline-operations diagnostics must remain read-only, aggregate, bounded, in memory, and outside browser API state. An operations client must never trigger provider acquisition, normalization, derivation, persistence, or publication, and must never receive source/session identity or raw provider data.
+- Browser `performance.mark()` telemetry is a future opt-in F Presentation milestone, not normalized session evidence or a product metric. If implemented, use only fixed allowlisted marks and revision-correlated bounded durations under the privacy and activation contract in `docs/PIPELINE_OPERATIONS.md`.
 - Cache external usage requests and sanitize failures.
 - Historical views must never expose current plan limits or substitute the current Git working tree for recorded session state.
 - Observation checkpoints may persist only contract-valid normalized evidence, bounded source fingerprints and complete-record offsets, readiness, revision, and observation timestamps. Never persist raw provider records, incomplete fragments, transcript paths, or other browser-forbidden content.

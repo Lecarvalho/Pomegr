@@ -348,9 +348,19 @@ Monitor-private QA counters may measure observer wakeups, routed and unresolved 
 events, active and pending hydrations, coalesced and dirty-again work, aggregate
 notification-to-acquisition queue delay, bytes and records acquired, normalization
 failures, structural catalog fast paths, catalog commit delay, commits, rebuilds, cache
-hits/misses, memory, response revisions, checkpoint
-writes, and checkpoint bytes. Delay diagnostics are aggregate numbers only; they contain
-no native source identity. These counters and source metadata are not browser API fields.
+hits/misses, memory, response revisions, checkpoint writes, and checkpoint bytes. Bounded
+monotonic duration windows may additionally cover catalog discovery, source preparation,
+combined acquisition/normalization, catalog projection, session derivation, normalized
+store commit, and candidate-to-commit delay. Delay diagnostics are aggregate numbers only;
+they contain no native source or session identity.
+
+The manually launched `npm run ops:pipeline` client consumes a fixed versioned snapshot
+over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
+in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
+derivation, persistence, or revision publication. The complete operational contract and
+the separately deferred renderer `performance.mark()` bridge are documented in
+`docs/PIPELINE_OPERATIONS.md`. Browser presentation timing remains unavailable until that
+future opt-in milestone is implemented.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

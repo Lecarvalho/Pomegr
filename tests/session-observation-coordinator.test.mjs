@@ -69,6 +69,43 @@ test("Serving reads committed projections and never invokes compatibility readSe
   assert.deepEqual(diagnostics.observers, {});
 });
 
+test("coordinator diagnostics separate commit wait, derivation, and store timing", async () => {
+  const scheduler = immediateScheduler();
+  const backingStore = memoryStore();
+  let clock = 0;
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store: {
+      ...backingStore,
+      publish(candidate) { clock += 3; return backingStore.publish(candidate); },
+    },
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+    monotonicNow: () => clock,
+    async deriveSession() {
+      clock += 7;
+      return { readiness: {}, publicState: {} };
+    },
+  });
+  await coordinator.start();
+  publisher.publishCatalog("codex", [{ localId: "private-id", title: "PRIVATE_TITLE", project: "repo", isLive: true }]);
+  publisher.publishSession("codex", "private-id", { session: { title: "PRIVATE_TITLE" } });
+  await scheduler.flush();
+
+  const diagnostics = coordinator.diagnostics();
+  assert.equal(diagnostics.timings.sessionCommitWait.lastMs, 0);
+  assert.equal(diagnostics.timings.sessionDerivation.lastMs, 7);
+  assert.equal(diagnostics.timings.sessionStoreCommit.lastMs, 3);
+  assert.equal(diagnostics.timings.sessionCandidateToCommit.lastMs, 10);
+  assert.equal(diagnostics.timings.catalogCommitWait.sampleCount >= 1, true);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /PRIVATE_TITLE|private-id/);
+  await coordinator.stop();
+});
+
 test("structural catalog changes preempt a queued summary refresh", async () => {
   let clock = 100;
   const jobs = [];

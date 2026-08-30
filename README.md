@@ -12,6 +12,16 @@ npm run dev
 
 Then open [http://localhost:3003](http://localhost:3003).
 
+For internal pipeline timing diagnostics, attach the passive terminal monitor from a
+second shell:
+
+```powershell
+npm run ops:pipeline
+```
+
+See [Pipeline operations monitor](docs/PIPELINE_OPERATIONS.md) for its bounded diagnostic
+contract, available stages, and the separately planned browser-render timing milestone.
+
 <p align="center">
   <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
 </p>
