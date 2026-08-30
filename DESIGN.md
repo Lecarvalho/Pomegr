@@ -181,6 +181,8 @@ Rokkitt gives route headings and major propositions a compressed slab authority.
 
 **The Instrument-Type Rule.** Use Rokkitt for propositions, Inter for explanation, and Geist Mono for evidence; never swap their roles to create novelty.
 
+Home uses the same families with a slightly more personal scale: the route title is Rokkitt at `clamp(32px, 3vw, 38px)`, the Session coach subordinate proposition is Rokkitt at `clamp(28px, 3.2vw, 38px)`, headings are `14–18px`, and body/detail copy is `11–13px`. These are hierarchy adjustments within the Command Center system, not new typography tokens.
+
 ## Layout
 
 The Command Center is a three-row shell: a 58px global header, a flexible evidence workspace, and a 38px read-only footer. Desktop uses a 220px left rail and a main view capped at 1480px; individual session views cap at 1400px. The header holds the wordmark, a 38px search field, local-monitor status, notifications, and the local-profile control. Main route pages use a 14px working offset, compact 8/12/18/28/42px spacing, and one-pixel boundaries instead of floating card stacks.
@@ -188,6 +190,8 @@ The Command Center is a three-row shell: a 58px global header, a flexible eviden
 At widths up to 1080px the rail compacts to 54px, the header becomes 56px, and navigation labels, counts, and sidebar footnotes collapse to icons. At 760px the rail leaves the layout and becomes an off-canvas drawer opened from the header; the main workspace and footer use the full viewport width. The drawer restores labels and counts, sits above a dismissible backdrop, closes on Escape or route selection, and returns focus to its trigger. At the same breakpoint toolbars wrap, metric grids become one column, settings navigation becomes a horizontal tab strip, and repository/session rows hide low-priority columns. At 520px coming-soon content stacks and tables remove additional secondary columns. Notification trays become fixed to the viewport edge. Compact task/text actions may use a 24px minimum on precision-pointer surfaces; coarse-pointer and mobile controls expand to at least 44px.
 
 Landing composition remains responsive editorial recomposition: the paper field, operations wall, torn headline ticket, source card, output stack, and legend reorder rather than uniformly shrink. Landing-only navigation and paper artifacts must not be promoted into the operational shell.
+
+Home is the personal starting point within this shell. Its desktop composition starts with a bounded Welcome to Pomegr header, then a wide Sessions panel grouping last-viewed navigation and subordinate Pinned destinations beside a narrower Understand your sessions guide. Concrete context-history and report instructions replace generic discovery copy. Session coach, Saved views, and Session comparison share one Coming soon background; What’s new is a prominent dismissible panel directly below the welcome header. Dismissal is remembered in browser-local preferences for the current update only. Monitoring activity, counters, usage, and polling remain on their dedicated routes. At mobile widths these sections become one column in reading order; picker fields and other Home controls use 44px minimum touch targets.
 
 ## Elevation & Depth
 
@@ -230,6 +234,12 @@ Landing irregularity is deliberately scoped to paper: clipped/torn silhouettes, 
 ### Navigation
 
 The primary rail is 220px on desktop with 40px navigation rows, 7px corners, a quiet icon-label-count grid, and a selected panel tone. The active icon uses brand ink while status meaning remains semantic. At compact widths the rail is 54px and keeps only centered icons with accessible labels and current-page state. On mobile it becomes a labelled off-canvas drawer so no permanent rail consumes the evidence viewport. The footer persists connected/offline and read-only normalized-metadata language.
+
+Home navigation is personal and destination-focused: pinned sessions, projects, and views plus a last-viewed session are the primary content. The inline picker is searchable and bounded to six browser-local pins. Missing catalog destinations remain visibly unavailable, and monitor reconnection copy must not erase saved identity or turn Home into a live metrics dashboard.
+
+### Home Starting Point
+
+Home may introduce the existing report feature, What’s new copy, and honest Coming soon previews while preserving flat shell geometry and semantic color roles. Session coach is the prominent preview; Saved views and Session comparison stay quieter. Keep planned guidance clearly separate from recorded evidence, avoid fake counters or activity summaries, and require explicit future opt-in before any model transmission.
 
 ### Overlays
 

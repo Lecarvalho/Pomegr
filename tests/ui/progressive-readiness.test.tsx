@@ -26,12 +26,12 @@ const target: SessionSummary = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("progressive readiness", () => {
-  it("uses a bounded cold-start Home grid while catalog readiness is loading", () => {
+  it("keeps Home discovery usable while catalog readiness is loading", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
     const { container } = render(<SessionCatalogProvider sessions={[]} loading readiness={{ catalog: "loading" }}><HomeDashboard /></SessionCatalogProvider>);
-    expect(container.querySelectorAll(".homeCatalogSkeleton .homeSessionCard")).toHaveLength(5);
-    expect(container.querySelector(".commandHome")).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("status")).toHaveTextContent("Loading open sessions");
+    expect(container.querySelector(".homeCatalogSkeleton")).not.toBeInTheDocument();
+    expect(container.querySelector(".commandHome")).not.toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("heading", { name: "Session coach" })).toBeInTheDocument();
   });
 
   it("does not leave the previous session visible while a selected route hydrates", () => {

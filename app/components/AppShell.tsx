@@ -1,6 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { decodeSessionRoute } from "../../shared/session-route.mjs";
+import { useHomePreferences } from "../hooks/useHomePreferences";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { HomeReadiness, SessionCatalogSnapshot, SessionSummary } from "../../shared/monitor-contract";
 import { newestSessionsFirst } from "../dashboard-utils";
@@ -33,6 +35,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sessionCountRef = useRef(0);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
+  const { ready: homePreferencesReady, rememberSession } = useHomePreferences();
+
+  useEffect(() => {
+    if (!homePreferencesReady || !pathname.startsWith("/sessions/")) return;
+    const id = decodeSessionRoute(pathname.slice("/sessions/".length));
+    if (id && sessions.some((session) => session.id === id)) rememberSession(id);
+  }, [homePreferencesReady, pathname, rememberSession, sessions]);
 
   useEffect(() => {
     document.documentElement.dataset.pomegrHydrated = "true";

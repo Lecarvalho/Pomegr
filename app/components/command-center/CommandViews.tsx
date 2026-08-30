@@ -36,7 +36,7 @@ function SessionCurrentActivity({ activity, compact = false }: { activity: Agent
 }
 
 const builtInDashboards = [
-  { title: "Workspace overview", detail: "Cross-project operating picture", scope: "All sessions", href: "/" },
+  { title: "Session overview", detail: "Live and historical work across projects", scope: "All sessions", href: "/sessions" },
   { title: "Agent operations", detail: "Session-level agent counts and execution state", scope: "Live sessions", href: "/agents" },
   { title: "Usage & cache evidence", detail: "Provider windows and request observations", scope: "Account", href: "/usage-limits" },
   { title: "Repository activity", detail: "Projects associated with observed sessions", scope: "Projects", href: "/repositories" },
@@ -62,26 +62,28 @@ export function DashboardsView() {
         </Link>)}
         {!visible.length && <CommandEmpty title="No dashboards match" detail="Try a different dashboard name or filter." icon="dashboard" />}
       </section>
-      <aside className="commandDashboardPreview"><h2>Workspace overview</h2><p>The default landing view uses normalized session and account evidence from the monitor.</p><Link className="commandSecondaryAction" href="/">Open workspace <CommandIcon name="arrow" size="small" /></Link></aside>
+      <aside className="commandDashboardPreview"><h2>Session overview</h2><p>Find live and historical work across your projects, with filters for sessions that need input.</p><Link className="commandSecondaryAction" href="/sessions">Open sessions <CommandIcon name="arrow" size="small" /></Link></aside>
     </div>
     <p className="commandUnavailableNote">Custom dashboard composition is not available yet. The built-in views above remain read-only and provider-neutral.</p>
   </CommandPage>;
 }
 
-export function SessionsView() {
+export function SessionsView({ initialProject = "" }: { initialProject?: string } = {}) {
+  const [project, setProject] = useState(initialProject);
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "live" | "needs" | "history">("all");
   const [page, setPage] = useState(1);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const filteredSessions = useMemo(() => newestSessionsFirst(sessions.filter((session) => {
+    if (project && session.project !== project) return false;
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
     if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
     if (filter === "live" && !session.isLive) return false;
     if (filter === "history" && session.isLive) return false;
     if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
     return true;
-  })), [filter, query, sessions]);
+  })), [filter, project, query, sessions]);
   const pageCount = Math.max(1, Math.ceil(filteredSessions.length / SESSION_PAGE_SIZE));
   const activePage = Math.min(page, pageCount);
   const firstVisibleIndex = (activePage - 1) * SESSION_PAGE_SIZE;
@@ -94,6 +96,7 @@ export function SessionsView() {
     <div className="commandSessionsDirectory">
       <CommandToolbar>
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
+        {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
         <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
         <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
         <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>

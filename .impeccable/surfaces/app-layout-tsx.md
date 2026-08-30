@@ -25,7 +25,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Navigation | Semantic Next links and inline SVG icons | Home, Dashboards, Sessions, Agents, Usage limits, Repositories, Settings; current route and live-session count stay visible. |
 | Header | HTML/CSS | Global destination search, local-monitor state, notification bell, and a local-profile placeholder marked Coming soon. |
 | Notifications | Bounded normalized session catalog | Non-modal tray with needs-input and system state only; never conversation, command, credential, or transcript content. |
-| Home | Existing normalized catalog and usage clients | Current live-session, active-agent, context-snapshot, provider-window, and activity evidence. |
+| Home | Personal browser-local preferences plus bounded destination catalog | Pinned sessions, projects, and views; last-viewed session; What’s new, report discovery, and honest Coming soon previews. Monitoring activity, counters, usage, and polling remain on their dedicated routes. |
 | Sessions | Reusable command table | Searchable/filterable real catalog with canonical detail links. |
 | Dashboards | Built-in route directory | Real destinations only; custom composition is explicitly unavailable. |
 | Agents | Aggregate live-session evidence | Counts where known; global roster is explicitly coming soon and never inferred. |

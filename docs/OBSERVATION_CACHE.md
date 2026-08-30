@@ -233,19 +233,17 @@ remain the source of truth.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries and per-row summary readiness | Application shell, Sessions directory, sidebar, Home session cards |
+| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries and per-row summary readiness | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidation events containing only a fixed domain and revision | Application shell immediate refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
-| `/api/home` | Cross-session aggregates and per-limit local activity correlation | Home aggregation regions |
-| `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Home and session views |
+| `/api/home` | Cross-session aggregates and per-limit local activity correlation | Retained aggregate API; the Home page no longer requests this domain |
+| `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Usage limits and session views |
 
 Callers send their current revision. When the relevant committed revision is unchanged, S
 returns `204 No Content` with no state body. A known uncached session returns its safe
 catalog identity and loading readiness while asynchronous hydration proceeds.
 
-`/api/home` returns the provider-limit revision used for each correlation result. The
-frontend renders a correlation lane only when that revision matches the centralized usage
-snapshot; otherwise the usage bar stays visible and only the lane remains a skeleton.
+`/api/home` retains its committed response and provider-limit revision contract. Any correlation consumer must match that revision to the centralized usage snapshot before combining them. The personal Home page consumes neither domain; removing its polling does not change cache-only GET serving, backend derivation, last-known-good retention, or revision semantics.
 
 Historical session state never receives current Git state or current usage limits.
 
@@ -273,8 +271,7 @@ support is separate: an unsupported capability is not loading or unavailable.
 - Readiness granularity follows independently produced backend jobs, not every React
   component.
 
-Home tracks catalog, provider limits, per-limit activity correlation, and per-session
-summary enrichment independently. Session views track core provider evidence, agents,
+The retained Home aggregate API tracks catalog, provider limits, per-limit activity correlation, and per-session summary enrichment independently. The Home page itself uses the shell catalog only to resolve pinned destinations and the last-viewed session; product discovery is available independently of catalog readiness. Session views track core provider evidence, agents,
 context, activity, repository, resources, and usage as independently produced domains.
 
 ## Presentation rules
@@ -315,15 +312,35 @@ recovery; it is not the expected propagation path.
 | Ready historical session | Fetch once, then stop |
 | Loading catalog/sidebar | `/api/sessions` every 1 second |
 | Ready catalog/sidebar | Immediately on a safe catalog revision event; `/api/sessions` every 5 seconds as recovery |
-| Home with unresolved regions | `/api/home` every 1 second |
-| Ready Home with live sessions | `/api/home` every 5 seconds |
-| Ready Home without live sessions | `/api/home` every 30 seconds |
+| Personal Home | No page-owned polling; destination labels reuse the shell catalog |
 | Loading provider usage | `/api/usage-limits` every 1 second |
 | Ready provider usage | `/api/usage-limits` every 60 seconds |
 | Any active consumer in a hidden tab | Every 30 seconds |
 
 Failed frontend calls back off approximately 2, 5, 10, then 30 seconds while retaining
 the most recent committed value.
+
+## Home navigation preferences
+
+Home is a personal entry point, not an aggregate monitoring view. It does not request
+`/api/home`, `/api/state`, or `/api/usage-limits`; the shell's existing catalog cadence
+continues unchanged for navigation and notifications. Pins never display activity,
+progress, usage, or context counters. Loading or unavailable catalogs affect destination
+labels only, and never hide the static feature previews or clear saved pins.
+
+Browser storage key `pomegr-home-v1` may retain only a schema version, up to six validated
+session/project/view identifiers, one last-viewed normalized session identifier, and an optional fixed current-update identifier for dismissing the product update. Older or unknown update identifiers are discarded, so a new update can appear again.
+Titles and details resolve from the committed catalog; no copied session snapshots,
+transcript paths, raw content, or credentials enter this preference. A session is remembered
+only after actual navigation to its detail route and confirmation in the catalog.
+Project pins open an exact project filter in Sessions. These preferences are local to the
+browser origin (including the desktop renderer), not monitor evidence or checkpoints.
+Unavailable storage falls back to memory and the UI explains the limitation. Missing
+catalog destinations remain removable and reappear if their records return.
+
+Session coach, Saved views, and Session comparison are non-interactive Coming soon
+previews. No agent runs, model call, external transmission, or session control is enabled
+by these previews. The coach's proposed opt-in policy is product direction only.
 
 ## Checkpoint and browser privacy
 

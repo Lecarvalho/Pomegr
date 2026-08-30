@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: navigation.push }),
 }));
 
+import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
 import { shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
@@ -211,4 +212,18 @@ describe("Command Center app shell", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created second 100%, Created first 42%");
   });
+});
+
+it("records only visited, catalog-backed session IDs for the Home return shortcut", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+  navigation.pathname = "/sessions/claude-live-1";
+  const view = render(<AppShell><div>Session detail</div></AppShell>);
+  await waitFor(() => expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) || "null")?.lastViewedSessionId).toBe("claude:live-1"));
+  navigation.pathname = "/sessions/codex-history-1";
+  view.rerender(<AppShell><div>Historical detail</div></AppShell>);
+  await waitFor(() => expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) || "null")?.lastViewedSessionId).toBe("codex:history-1"));
+  navigation.pathname = "/sessions/codex-missing";
+  view.rerender(<AppShell><div>Missing detail</div></AppShell>);
+  expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!).lastViewedSessionId).toBe("codex:history-1");
+  expect(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)).not.toMatch(/Recorded work|Live work|Pomegr/);
 });

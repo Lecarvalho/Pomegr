@@ -3,7 +3,7 @@ import { HomeDashboard } from "./HomeDashboard";
 
 export const metadata: Metadata = {
   title: "Pomegr",
-  description: "A quiet, local observer for coding-agent sessions.",
+  description: "Your Pomegr workspace: pinned destinations, session shortcuts, and features to explore.",
 };
 
 export default function Home() {

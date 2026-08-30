@@ -23,13 +23,17 @@ async function sourceTree(directoryUrl) {
   return sources.join("\n");
 }
 
-test("server-renders the composed Pomegr dashboard", async () => {
+test("server-renders the personal Pomegr Home", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Pomegr<\/title>/i);
-  assert.match(html, /Workspace overview/);
+  assert.match(html, /Welcome to Pomegr/);
+  assert.match(html, /Understand your sessions/);
+  assert.match(html, /Session coach/);
+  assert.match(html, /Coming soon/);
+  assert.doesNotMatch(html, /Usage &amp; activity|Active now|All-agent context/);
   assert.match(html, /Connecting/);
   assert.doesNotMatch(html, /Local monitor offline/);
   assert.match(html, /Read-only · normalized metadata only/);

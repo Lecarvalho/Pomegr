@@ -15,6 +15,7 @@ export type CommandIconName =
   | "limits"
   | "menu"
   | "more"
+  | "pin"
   | "repositories"
   | "search"
   | "session"
@@ -38,6 +39,7 @@ const paths: Record<CommandIconName, ReactNode> = {
   limits: <><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+  pin: <><path d="m15 3 6 6-3 1-3 5-2-2-5 5-2-2 5-5-2-2 5-3zM6 18l-3 3" /></>,
   repositories: <><path d="M4 6.5 12 3l8 3.5v11L12 21l-8-3.5z" /><path d="M4 6.5 12 10l8-3.5M12 10v11" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   session: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h6M7 16h4" /></>,

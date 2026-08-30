@@ -1,355 +1,166 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits, Readiness, SessionSummary } from "../shared/monitor-contract";
+import { useMemo, useRef, useState } from "react";
+import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
-import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
-import { AnimatedProgressBar, useAnimatedProgressValue } from "./components/AnimatedProgress";
-import { ProviderBadge } from "./components/ProviderBadge";
-import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
+import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
-import { usageLimitFailureKind, usageLimitFailureMessage } from "./usage-limit-presentation";
-import { useUsageLimits } from "./usage-limits-client";
+import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
+import styles from "./HomeDashboard.module.css";
 
-const EMPTY: HomeAggregateSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [] };
-const HOME_AGGREGATE_POLL_MS = 30_000;
+/* Approved Home direction: personal navigation within the existing Command Center.
+   First viewport: grouped session navigation at left; concrete session guides at right.
+   A prominent dismissible update precedes session navigation; the roadmap follows.
+   Pins are local identities, never live metric cards; no Home or usage polling. */
 
-function number(value: number | null) { if (!Number.isFinite(value)) return "—"; return new Intl.NumberFormat(undefined, { notation: value! >= 10_000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(value!); }
-function agentSummary(session: SessionSummary) {
-  if (session.agentCount === null) return "agents unavailable";
-  if (session.activeAgentCount === null) return `${session.agentCount} ${session.agentCount === 1 ? "agent" : "agents"}`;
-  return `${session.activeAgentCount}/${session.agentCount} agents`;
+type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
+const VIEWS: Destination[] = [
+  { kind: "view", id: "sessions", title: "Sessions", detail: "Live and historical sessions", href: "/sessions", icon: "sessions" },
+  { kind: "view", id: "dashboards", title: "Dashboards", detail: "Built-in views", href: "/dashboards", icon: "dashboard" },
+  { kind: "view", id: "agents", title: "Agent operations", detail: "Session-level agent evidence", href: "/agents", icon: "agents" },
+  { kind: "view", id: "usage-limits", title: "Usage limits", detail: "Provider account windows", href: "/usage-limits", icon: "limits" },
+  { kind: "view", id: "repositories", title: "Repositories", detail: "Observed projects", href: "/repositories", icon: "repositories" },
+];
+const samePin = (left: HomePin, right: HomePin) => left.kind === right.kind && left.id === right.id;
+
+function sessionDestination(session: SessionSummary): Destination | null {
+  try {
+    return { kind: "session", id: session.id, title: session.title, detail: `${session.project} · ${session.source}`, href: `/sessions/${encodeSessionRoute(session.id)}`, icon: "session" };
+  } catch { return null; }
 }
 
-function InlineSkeleton({ className = "" }: { className?: string }) {
-  return <span className={`uiSkeleton ${className}`.trim()} aria-hidden="true" />;
+function destinationsFor(sessions: SessionSummary[]): Destination[] {
+  const projects = [...new Set(sessions.map((session) => session.project))]
+    .filter((project) => normalizeHomePin({ kind: "project", id: project }) !== null)
+    .sort((left, right) => left.localeCompare(right));
+  return [
+    ...VIEWS,
+    ...projects.map((project): Destination => ({ kind: "project", id: project, title: project, detail: "Project sessions", href: `/sessions?project=${encodeURIComponent(project)}`, icon: "repositories" })),
+    ...sessions.flatMap((session) => { const destination = sessionDestination(session); return destination ? [destination] : []; }),
+  ];
 }
 
-function limitTime(value: string | null) {
-  const timestamp = value ? Date.parse(value) : NaN;
-  if (!Number.isFinite(timestamp)) return "time unavailable";
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(timestamp);
-}
-
-function projectRequestGroups(sessions: HomeLimitActivity["sessions"]) {
-  const projects = new Map<string, {
-    project: string;
-    requestObservations: Array<HomeLimitActivity["sessions"][number]["requestObservations"][number] & { sessionId: string }>;
-    hasLiveWork: boolean;
-  }>();
-
-  for (const session of sessions) {
-    const existing = projects.get(session.project) || { project: session.project, requestObservations: [], hasLiveWork: false };
-    existing.hasLiveWork ||= session.isLive;
-    existing.requestObservations.push(...session.requestObservations.map((observation) => ({ ...observation, sessionId: session.id })));
-    projects.set(session.project, existing);
-  }
-
-  return [...projects.values()]
-    .filter((project) => project.requestObservations.length > 0)
-    .sort((left, right) => left.project.localeCompare(right.project));
-}
-
-function LimitRequestTicks({ activity, percent }: { activity: HomeLimitActivity; percent: number }) {
-  const projects = projectRequestGroups(activity.sessions || []);
-  const requests = projects.flatMap((project) => project.requestObservations.map((observation) => ({ ...observation, project: project.project })));
-  const observedSessionIds = new Set(requests.map((observation) => observation.sessionId));
-  const modelScoped = activity.scope === "model";
-  const coverageReasons = [
-    activity.partialCoverage ? "observations may begin after the window started" : null,
-    activity.eventsTruncated ? `${modelScoped ? "request" : "session"} activity evidence is bounded to a recent window` : null,
-  ].filter((reason): reason is string => Boolean(reason));
-  const showDetails = requests.length > 0 || coverageReasons.length > 0;
-  if (!showDetails) return null;
-
-  const startMs = Date.parse(activity.windowStartsAt);
-  const generatedMs = Date.parse(activity.generatedAt);
-  const rangeMs = Number.isFinite(startMs) && Number.isFinite(generatedMs) && generatedMs > startMs ? generatedMs - startMs : 0;
-  const position = (observedAt: string) => {
-    const observedMs = Date.parse(observedAt);
-    if (!rangeMs || !Number.isFinite(observedMs)) return 0.4;
-    return Math.min(99.6, Math.max(0.4, ((observedMs - startMs) / rangeMs) * 100));
-  };
-  const projectLabel = `${projects.length} ${projects.length === 1 ? "project" : "projects"}`;
-  const observationLabel = modelScoped
-    ? `${requests.length} request ${requests.length === 1 ? "observation" : "observations"}`
-    : `${requests.length} activity ${requests.length === 1 ? "observation" : "observations"}`;
-  const sessionLabel = `${observedSessionIds.size} ${observedSessionIds.size === 1 ? "session" : "sessions"}`;
-  const detailsLabel = requests.length ? projectLabel : "About activity";
-  const activityDescription = modelScoped
-    ? `Local request activity for ${activity.label}, ${activity.window}: ${observationLabel} across ${projectLabel}.`
-    : `Local session activity for ${activity.label}, ${activity.window}: ${observationLabel} across ${sessionLabel} and ${projectLabel}.`;
-
-  return (
-    <>
-      {requests.length > 0 && <span className="homeLimitRequestTicks" role="img" aria-label={activityDescription}>
-        <span className="homeLimitRequestTimeline" style={{ width: `${percent}%` }}>
-          {requests.map((observation) => <b aria-hidden="true" key={`${observation.sessionId}-${observation.id}`} style={{ left: `${position(observation.observedAt)}%` }} title={modelScoped ? `${observation.project} · ${activity.label} request observed at ${limitTime(observation.observedAt)}` : `${observation.project} · session activity observed at ${limitTime(observation.observedAt)}`} />)}
-        </span>
-      </span>}
-      <details className="homeLimitProjects">
-        <summary aria-label={requests.length ? `Show ${projectLabel} observed during the ${activity.window} window` : `Show observation details for the ${activity.window} window`}>{detailsLabel}</summary>
-        <div className="homeLimitProjectsPanel" role="group" aria-label={requests.length ? (modelScoped ? `Observed ${activity.label} activity by project, ${activity.window}` : `Observed project sessions for ${activity.label}, ${activity.window}`) : `${modelScoped ? activity.label : "Session"} activity details for ${activity.window}`}>
-          <strong className="homeLimitProjectsTitle">{requests.length ? (modelScoped ? `Observed ${activity.label} activity` : "Observed project sessions") : `About ${modelScoped ? activity.label : "session"} activity`}</strong>
-          {requests.length > 0 && <ul>
-            {projects.map((project) => {
-              const sessionCount = new Set(project.requestObservations.map((observation) => observation.sessionId)).size;
-              const observedCount = modelScoped ? project.requestObservations.length : sessionCount;
-              const observedUnit = modelScoped ? (observedCount === 1 ? "request" : "requests") : (observedCount === 1 ? "session" : "sessions");
-              return <li key={project.project}>
-                <strong>{project.project}</strong>
-                <span>{observedCount} {observedUnit}</span>
-              </li>;
-            })}
-          </ul>}
-          <p>
-            {modelScoped ? `${activity.label} usage is account-level; request activity is correlation evidence, not attribution or billing.` : "Usage is account-level; session activity is correlation evidence, not attribution or billing."}
-            {coverageReasons.length > 0 && <> Coverage is partial: {coverageReasons.join(", and ")}.</>}
-          </p>
-        </div>
-      </details>
-    </>
-  );
-}
-
-function HomeUsageLimits({ providers, activities, readiness }: { providers: HomeProviderUsageLimits[]; activities: HomeLimitActivity[]; readiness?: HomeAggregateSnapshot["readiness"] }) {
-  const loadingProviders = (Object.entries(readiness?.providerLimits || {}) as Array<[string, Readiness]>).filter(([, status]) => status === "loading").map(([provider]) => provider);
-  if (!providers.length && !loadingProviders.length) return null;
-  return (
-    <section className="homeLimits" aria-labelledby="home-limits-heading" aria-busy={loadingProviders.length > 0}>
-      <header className="homeLimitsHeader">
-        <h2 id="home-limits-heading">Usage &amp; activity</h2>
-        <span>Provider-reported usage · local session activity</span>
-      </header>
-      <div className="homeProviderLimits">
-        {loadingProviders.map((provider) => <article className="homeProviderLimit homeProviderLimit-loading" key={`loading-${provider}`} aria-hidden="true"><header><InlineSkeleton className="skeletonProvider" /><InlineSkeleton className="skeletonMeta" /></header><div className="homeLimitList"><div className="homeLimitRow"><span><InlineSkeleton className="skeletonLabel" /><InlineSkeleton className="skeletonSubLabel" /></span><span className="homeLimitTrackStack"><InlineSkeleton className="skeletonTrack" /><InlineSkeleton className="skeletonActivity" /></span><InlineSkeleton className="skeletonPercent" /></div></div></article>)}
-        {providers.map(({ provider, source, usageLimits }) => {
-          const failureKind = usageLimitFailureKind(usageLimits);
-          const needsSignIn = failureKind === "authentication_required";
-          return (
-            <article className="homeProviderLimit" key={provider}>
-              <header>
-                <ProviderBadge source={source} />
-                <small>{needsSignIn
-                  ? "Sign-in needed"
-                  : failureKind === "rate_limited"
-                    ? "Refresh rate-limited"
-                  : usageLimits.available && usageLimits.error
-                    ? "Refresh delayed"
-                    : usageLimits.fetchedAt
-                      ? <>Updated <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></>
-                      : "Unavailable"}</small>
-              </header>
-              {usageLimits.limits.length ? (
-                <div className="homeLimitList">
-                  {usageLimits.limits.map((limit) => {
-                    const percent = Math.min(100, Math.max(0, limit.percent));
-                    const activity = activities.find((item) => item.provider === provider && item.limitId === limit.id);
-                    const activityLoading = readiness?.limitActivity[`${provider}:${limit.id}`] === "loading";
-                    return (
-                      <div className="homeLimitEntry" key={limit.id}>
-                        <div className={`homeLimitRow ${usageLimitSeverity(percent)}`} aria-label={`${limit.label}, ${limit.window}, ${Math.round(limit.percent)}% used${limit.active ? ", active limit" : ""}`}>
-                          <span><strong>{limit.label}</strong><small>{limit.window}{limit.active ? " · active" : ""}</small></span>
-                          <div className="homeLimitTrackStack">
-                            <i className="homeLimitTrack" aria-hidden="true"><b style={{ transform: `scaleX(${percent / 100})` }} /></i>
-                            {activity ? <LimitRequestTicks activity={activity} percent={percent} /> : activityLoading ? <span className="homeLimitActivitySkeleton" aria-hidden="true"><InlineSkeleton className="skeletonActivity" /></span> : null}
-                          </div>
-                          <em>{Math.round(limit.percent)}%</em>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : <p>{failureKind ? usageLimitFailureMessage(source, usageLimits) : "Plan usage is not available."}</p>}
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function sessionHref(session: SessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
-
-function sessionActivity(session: SessionSummary) {
-  if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", className: "needsInput" };
-  if (session.activityStatus === "working") return { label: "Working now", className: "working" };
-  if (session.activityStatus === "idle") return { label: "Idle", className: "idle" };
-  return { label: "Open", className: "unknown" };
-}
-
-function isActiveSession(session: SessionSummary) {
-  return session.needsInput || session.activityStatus === "needs_input" || session.activityStatus === "working";
-}
-
-function HomeSessionProgress({ session, progress }: { session: SessionSummary; progress: NonNullable<SessionSummary["progress"]> }) {
-  const displayedPercent = useAnimatedProgressValue(progress.percent, "compact");
-  const showEta = !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
-  const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
-
-  return (
-    <div className={`homeSessionProgress homeSessionProgress-${progress.phase}`}>
-      <div>
-        <strong>{progress.phase}</strong>
-        <b aria-hidden="true">{Math.round(displayedPercent)}%</b>
-      </div>
-      <AnimatedProgressBar
-        value={progress.percent}
-        displayedValue={displayedPercent}
-        label="Agent-reported session progress"
-        valueText={`${progress.percent}% complete · ${progress.phase}`}
-        motion="compact"
-        blocked={progress.phase === "blocked"}
-      />
-      {eta && <small>{eta}</small>}
+function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
+  destinations: Destination[];
+  pins: HomePin[];
+  onToggle: (pin: HomePin) => void;
+  catalogLoading: boolean;
+}) {
+  const [kind, setKind] = useState<HomePin["kind"]>("session");
+  const [query, setQuery] = useState("");
+  const [announcement, setAnnouncement] = useState("");
+  const matches = destinations.filter((destination) => destination.kind === kind && `${destination.title} ${destination.detail}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return <div className={styles.picker}>
+    <div className={styles.pickerFilters}>
+      <label>Destination type<select value={kind} onChange={(event) => { setKind(event.target.value as HomePin["kind"]); setQuery(""); }}>
+        <option value="session">Sessions</option><option value="project">Projects</option><option value="view">Views</option>
+      </select></label>
+      <label>Find a destination<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names" /></label>
     </div>
-  );
-}
-
-function SessionCard({ session }: { session: SessionSummary }) {
-  const progress = session.progress;
-  const activity = sessionActivity(session);
-  const summaryLoading = session.summaryReadiness === "loading";
-  return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {summaryLoading && session.agentCount === null ? <InlineSkeleton className="skeletonTiny" /> : agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{summaryLoading && session.latestContextTotal === null ? <InlineSkeleton className="skeletonMetric" /> : number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <HomeSessionProgress session={session} progress={progress} />}</div>;
-}
-
-function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: SessionSummary[] }) {
-  if (!sessions.length) return null;
-  return <section className="homeLiveGrid" aria-labelledby={id}><div className="homeSectionHeader"><h2 id={id}>{title}</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>;
-}
-
-function HomeCatalogSkeleton() {
-  return <div className="homeSessionGrid homeCatalogSkeleton" aria-hidden="true">{[0, 1, 2, 3, 4].map((key) => <div className="homeSessionCard" key={key}><div className="homeSessionSkeletonTitle"><InlineSkeleton /></div><InlineSkeleton className="homeSessionSkeletonMeta" /><InlineSkeleton className="homeSessionSkeletonStatus" /><div className="homeSessionSkeletonMetric"><InlineSkeleton /></div></div>)}</div>;
+    <ul className={styles.pickerResults} aria-label="Destinations to pin">
+      {matches.slice(0, 20).map((destination) => {
+        const pinned = pins.some((pin) => samePin(pin, destination));
+        return <li key={`${destination.kind}:${destination.id}`}><button type="button" aria-pressed={pinned} aria-label={`Pin ${destination.title}`} disabled={!pinned && pins.length >= HOME_PIN_LIMIT} onClick={() => { onToggle(destination); setAnnouncement(pinned ? "Destination removed from Home." : "Destination pinned to Home."); }}>
+          <span><strong>{destination.title}</strong><small>{destination.detail}</small></span><span>{pinned ? "Pinned" : "Pin"}<CommandIcon name="pin" size="small" /></span>
+        </button></li>;
+      })}
+    </ul>
+    {!matches.length && <p className={styles.pickerHint}>{catalogLoading && kind !== "view" ? "Loading destinations from the local monitor…" : "No matching destinations."}</p>}
+    {matches.length > 20 && <p className={styles.pickerHint}>Showing the first 20 matches. Search to narrow the list.</p>}
+    <p className={styles.pickerHint}>{pins.length >= HOME_PIN_LIMIT ? "All six pins are in use. Remove one to add another." : "Choose up to six destinations. Your pins stay in this browser."}</p>
+    <span className="srOnly" role="status">{announcement}</span>
+  </div>;
 }
 
 export function HomeDashboard() {
-  const [snapshot, setSnapshot] = useState<HomeAggregateSnapshot>(EMPTY);
-  const [aggregateLoading, setAggregateLoading] = useState(true);
-  const [aggregateConnected, setAggregateConnected] = useState(true);
-  const [aggregateReadiness, setAggregateReadiness] = useState<HomeAggregateSnapshot["readiness"]>();
-  const sharedUsage = useUsageLimits();
-  const { sessions: catalogSessions, loading: catalogLoading, connected: catalogConnected } = useSessionCatalog();
-  const sessions = useMemo(() => catalogSessions.filter((session) => session.isLive), [catalogSessions]);
-  const sessionCountRef = useRef(sessions.length);
-  useEffect(() => { sessionCountRef.current = sessions.length; }, [sessions.length]);
-  const activeSessions = useMemo(() => sessions.filter(isActiveSession), [sessions]);
-  const idleSessions = useMemo(() => sessions.filter((session) => !isActiveSession(session)), [sessions]);
-  const activeAgents = sessions.reduce((total, session) => total + (session.activeAgentCount || 0), 0);
-  const allAgentContext = sessions.reduce((total, session) => total + (session.latestContextTotal || 0), 0);
-  const needsInput = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input");
-  const usageRevisionMatches = snapshot.providerLimitRevision === null
-    || snapshot.providerLimitRevision === undefined
-    || String(snapshot.providerLimitRevision) === String(sharedUsage.revision);
-  const usageReadiness = {
-    ...(aggregateReadiness || {
-      catalog: catalogLoading ? "loading" as const : "ready" as const,
-      providerLimits: {},
-      limitActivity: {},
-      sessionSummaries: {},
-    }),
-    providerLimits: sharedUsage.readiness,
-    limitActivity: usageRevisionMatches
-      ? aggregateReadiness?.limitActivity || {}
-      : Object.fromEntries(sharedUsage.providers.flatMap((entry) => entry.usageLimits.limits.map((limit) => [
-        `${entry.provider}:${limit.id}`,
-        "loading" as const,
-      ]))),
-  };
+  const { sessions, loading, connected, readiness } = useSessionCatalog();
+  const { pins, lastViewedSessionId, ready, persistent, togglePin, updateDismissed, dismissUpdate } = useHomePreferences();
+  const destinations = useMemo(() => destinationsFor(sessions), [sessions]);
+  const lastViewed = destinations.find((destination) => destination.kind === "session" && destination.id === lastViewedSessionId);
+  const browseRef = useRef<HTMLAnchorElement>(null);
+  const pickerRef = useRef<HTMLDetailsElement>(null);
+  const pickerSummaryRef = useRef<HTMLElement>(null);
+  const catalogLoading = loading || readiness.catalog === "loading";
+  const catalogUnavailable = !connected || readiness.catalog === "unavailable";
+  const [pinAnnouncement, setPinAnnouncement] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: number | null = null;
-    let inFlight = false;
-    let retryAttempt = 0;
-    let focusListener: (() => void) | null = null;
-    let visibilityListener: (() => void) | null = null;
-    const revisionRef = { current: null as number | string | null };
-    const readinessRef = { current: undefined as HomeAggregateSnapshot["readiness"] };
-    const explicitReadinessRef = { current: false };
-    const schedule = (delay: number) => { if (controller.signal.aborted) return; if (timer !== null) window.clearTimeout(timer); timer = window.setTimeout(() => { timer = null; void poll(); }, delay); };
+  return <section className={`commandView commandHome ${styles.home}`} aria-labelledby="home-heading">
+    <header className={styles.intro}>
+      <h1 id="home-heading">Welcome to Pomegr</h1>
+      <p>Understand your coding sessions. Build on what you learn.</p>
+    </header>
 
-    const poll = async () => {
-      if (controller.signal.aborted || inFlight) return;
-      inFlight = true;
-      let succeeded = false;
-      try {
-        const query = revisionRef.current === null ? "" : `?revision=${encodeURIComponent(String(revisionRef.current))}`;
-        const response = await fetch(`/api/home${query}`, { cache: "no-store", signal: controller.signal });
-        if (!response.ok) throw new Error("offline");
-        if (response.status === 204) { succeeded = true; return; }
-        const next = await response.json() as HomeAggregateSnapshot;
-        if (!controller.signal.aborted) {
-          setSnapshot(next);
-          const nextReadiness = next.readiness;
-          explicitReadinessRef.current = Boolean(nextReadiness);
-          readinessRef.current = nextReadiness;
-          if (nextReadiness) setAggregateReadiness(nextReadiness);
-          const headerRevision = response.headers?.get?.("x-pomegr-revision");
-          if (typeof next.revision === "number" || typeof next.revision === "string") revisionRef.current = next.revision;
-          else if (headerRevision) revisionRef.current = headerRevision;
-          setAggregateConnected(true);
-          setAggregateLoading(false);
-          succeeded = true;
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setAggregateConnected(false);
-          setAggregateLoading(false);
-        }
-      } finally {
-        inFlight = false;
-        if (!controller.signal.aborted) {
-          if (succeeded) retryAttempt = 0;
-          const readiness = readinessRef.current;
-          const unresolved = readiness
-            ? [
-                ...Object.values(readiness.providerLimits || {}),
-                ...Object.values(readiness.limitActivity || {}),
-                ...Object.values(readiness.sessionSummaries || {}),
-                readiness.catalog,
-              ].some((value) => value === "loading")
-            : false;
-          const delay = succeeded
-            ? (document.hidden ? 30_000 : explicitReadinessRef.current ? (unresolved ? 1_000 : sessionCountRef.current ? 5_000 : 30_000) : HOME_AGGREGATE_POLL_MS)
-            : [2_000, 5_000, 10_000, 30_000][Math.min(retryAttempt++, 3)];
-          schedule(delay);
-        }
-      }
-    };
+    {ready && !updateDismissed && <aside className={styles.news} aria-labelledby="home-news-heading">
+      <h2 id="home-news-heading">What’s new</h2>
+      <div><h3>Personal shortcuts on Home</h3><p>Pin sessions, projects, and views in this browser, and reopen your last viewed session.</p></div>
+      <details><summary>About this update<CommandIcon name="arrow" size="small" /></summary><p>Home keeps your shortcuts in this browser. Session activity lives in Sessions, and account windows live in Usage limits.</p></details>
+      <button type="button" className={styles.dismissNews} aria-label="Dismiss this update" onClick={() => { dismissUpdate(); browseRef.current?.focus(); }}><CommandIcon name="close" /></button>
+    </aside>}
 
-    focusListener = () => { if (!document.hidden) void poll(); };
-    visibilityListener = () => { if (!document.hidden) void poll(); };
-    window.addEventListener("focus", focusListener);
-    document.addEventListener("visibilitychange", visibilityListener);
-    void poll();
-    return () => {
-      controller.abort();
-      if (timer !== null) window.clearTimeout(timer);
-      if (focusListener) window.removeEventListener("focus", focusListener);
-      if (visibilityListener) document.removeEventListener("visibilitychange", visibilityListener);
-    };
-  }, []);
+    <div className={styles.workspace}>
+      <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
+        <header className={styles.sectionHeading}>
+          <div><h2 id="home-sessions-heading">Sessions</h2><p>Open recorded work or return to a saved destination.</p></div>
+          <Link ref={browseRef} className={`commandSecondaryAction ${styles.browse}`} href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
+        </header>
+        {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
+          <div className={styles.lastSession}>
+            {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
+              : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
+          </div>
 
-  return (
-    <section className="commandView commandHome" aria-labelledby="home-heading" aria-busy={catalogLoading || aggregateLoading}>
-      <header className="commandPageHeader">
-        <div><h1 id="home-heading">Workspace overview</h1><p>Current agent work, usage evidence, and attention state across every observed project.</p></div>
-        <span className="commandTimeRange">Live · last known-good state</span>
-      </header>
-      {needsInput.length > 0 && <aside className="commandAttention" role="status"><span><i className="commandStatusDot attention" /><strong>{needsInput.length} {needsInput.length === 1 ? "session needs" : "sessions need"} input</strong><small>{needsInput[0].title}{needsInput.length > 1 ? ` and ${needsInput.length - 1} more` : ""}</small></span><Link href="/sessions">Review sessions</Link></aside>}
-      <div className="commandOverviewGrid" aria-label="Workspace summary">
-        <article className="commandMetricPanel"><header><strong>Live sessions</strong><span>Normalized catalog</span></header><b>{number(sessions.length)}</b><p>{catalogConnected ? "Local monitor connected" : "Last known-good catalog"}</p></article>
-        <article className="commandMetricPanel"><header><strong>Active agents</strong><span>Across live sessions</span></header><b>{number(activeAgents)}</b><p>Latest normalized state</p></article>
-        <article className="commandMetricPanel context"><header><strong>All-agent context</strong><span>Current snapshots</span></header><b>{number(allAgentContext)}</b><p>Sum of visible latest snapshots</p></article>
-      </div>
-      {catalogLoading && !sessions.length && <p className="srOnly" role="status">Loading open sessions from the local monitor.</p>}
-      {catalogLoading && !sessions.length && <HomeCatalogSkeleton />}
-      {!catalogLoading && !catalogConnected && <p className="homeStatus" role="status">Open sessions are unavailable. Pomegr will reconnect automatically.</p>}
-      {!catalogLoading && catalogConnected && sessions.length === 0 && <p className="homeStatus commandEmptyState" role="status">No open sessions yet. Start a coding-agent session and it will appear here automatically.</p>}
-      {!aggregateLoading && !aggregateConnected && <p className="homeStatus" role="status">Usage and activity overview is unavailable. Pomegr will retry automatically.</p>}
-      <HomeUsageLimits providers={sharedUsage.providers} activities={usageRevisionMatches ? snapshot.limitActivities || [] : []} readiness={usageReadiness} />
-      {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} /></>}
-    </section>
-  );
+          <div className={styles.pins}>
+            <h3 id="home-pins-heading">Pinned destinations</h3>
+            {pins.length ? <ul className={styles.pinList} aria-labelledby="home-pins-heading">
+              {pins.map((pin, index) => {
+                const destination = destinations.find((item) => samePin(item, pin));
+                const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
+                return <li key={`${pin.kind}:${pin.id}`}>
+                  {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}><CommandIcon name={destination.icon} /><span><strong>{destination.title}</strong><small>{destination.detail}</small></span></Link> : <div className={styles.pinUnavailable}><CommandIcon name={pin.kind === "project" ? "repositories" : "session"} /><span><strong>{missingTitle}</strong><small>{catalogLoading ? "Loading destination…" : "Not in the current catalog"}</small></span></div>}
+                  <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
+                </li>;
+              })}
+            </ul> : <p className={styles.emptyPins}>Keep frequently used sessions, projects, and views one click away.</p>}
+            <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
+              <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
+              {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}
+              <button type="button" className="commandSecondaryAction" onClick={() => { if (pickerRef.current) pickerRef.current.open = false; pickerSummaryRef.current?.focus(); }}>Done</button>
+            </details>
+          </div>
+          {!persistent && <p className={styles.quiet} role="status">Browser storage is unavailable. Your Home preferences will last until this page is closed.</p>}
+          {catalogUnavailable && <p className={styles.quiet}>The local monitor is reconnecting. Saved pins are kept; some destinations may be unavailable.</p>}
+        </>}
+        <span className="srOnly" role="status">{pinAnnouncement}</span>
+      </section>
+
+      <section className={styles.guides} aria-labelledby="home-guides-heading">
+        <h2 id="home-guides-heading">Understand your sessions</h2>
+        <article>
+          <h3>Inspect context changes</h3>
+          <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
+          <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
+        </article>
+        <article>
+          <h3>Download a session report</h3>
+          <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
+          <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>
+        </article>
+      </section>
+    </div>
+
+    <div className={styles.roadmap}>
+      <section className={styles.coach} aria-labelledby="home-coach-heading">
+        <div className={styles.coachIntro}><div className={styles.coachHeading}><h2 id="home-coach-heading">Session coach</h2><span className={styles.soon}>Coming soon</span></div><h3>A fresh perspective<br />on how you work.</h3><p>An integrated agent to help you understand your coding sessions and find practical ways to improve your next one.</p></div>
+        <div className={styles.coachQuestions}><p>Questions you’ll be able to explore</p><ul><li>What contributed to this context increase?</li><li>Where did this session repeat work?</li><li>What could I try differently next time?</li></ul></div>
+        <p className={styles.coachBoundary}>Planned: read-only guidance grounded in a session you choose, with links to recorded evidence. Suggestions will distinguish facts from interpretations. Sending metadata to a model will require your opt-in.</p>
+      </section>
+
+      <section className={styles.next} aria-label="More coming soon">
+        <article><div><h2>Saved views</h2><span className={styles.soon}>Coming soon</span></div><p>Keep a preferred combination of projects, providers, and session filters ready to reopen.</p></article>
+        <article><div><h2>Session comparison</h2><span className={styles.soon}>Coming soon</span></div><p>Inspect two sessions side by side, from context snapshots and wall time to recorded events.</p></article>
+      </section>
+    </div>
+  </section>;
 }
