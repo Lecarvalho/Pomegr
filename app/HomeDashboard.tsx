@@ -9,6 +9,7 @@ import { AnimatedProgressBar, useAnimatedProgressValue } from "./components/Anim
 import { ProviderBadge } from "./components/ProviderBadge";
 import { MinuteRelativeTimeText, SessionRelativeTimeText } from "./components/LiveTime";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
+import { usageLimitFailureKind, usageLimitFailureMessage } from "./usage-limit-presentation";
 import { useUsageLimits } from "./usage-limits-client";
 
 const EMPTY: HomeAggregateSnapshot = { generatedAt: null, providerLimits: [], limitActivities: [] };
@@ -124,13 +125,16 @@ function HomeUsageLimits({ providers, activities, readiness }: { providers: Home
       <div className="homeProviderLimits">
         {loadingProviders.map((provider) => <article className="homeProviderLimit homeProviderLimit-loading" key={`loading-${provider}`} aria-hidden="true"><header><InlineSkeleton className="skeletonProvider" /><InlineSkeleton className="skeletonMeta" /></header><div className="homeLimitList"><div className="homeLimitRow"><span><InlineSkeleton className="skeletonLabel" /><InlineSkeleton className="skeletonSubLabel" /></span><span className="homeLimitTrackStack"><InlineSkeleton className="skeletonTrack" /><InlineSkeleton className="skeletonActivity" /></span><InlineSkeleton className="skeletonPercent" /></div></div></article>)}
         {providers.map(({ provider, source, usageLimits }) => {
-          const needsSignIn = /returned 401\b/i.test(usageLimits.error || "");
+          const failureKind = usageLimitFailureKind(usageLimits);
+          const needsSignIn = failureKind === "authentication_required";
           return (
             <article className="homeProviderLimit" key={provider}>
               <header>
                 <ProviderBadge source={source} />
                 <small>{needsSignIn
                   ? "Sign-in needed"
+                  : failureKind === "rate_limited"
+                    ? "Refresh rate-limited"
                   : usageLimits.available && usageLimits.error
                     ? "Refresh delayed"
                     : usageLimits.fetchedAt
@@ -157,7 +161,7 @@ function HomeUsageLimits({ providers, activities, readiness }: { providers: Home
                     );
                   })}
                 </div>
-              ) : <p>{needsSignIn ? `Sign in to ${source} again to refresh limits.` : usageLimits.error || "Plan usage is not available."}</p>}
+              ) : <p>{failureKind ? usageLimitFailureMessage(source, usageLimits) : "Plan usage is not available."}</p>}
             </article>
           );
         })}

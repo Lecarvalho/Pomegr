@@ -564,6 +564,10 @@ export type UsageLimits = {
   available: boolean;
   fetchedAt: string | null;
   attemptedAt: string | null;
+  /** Bounded monitor-side classification of the latest failed refresh. */
+  failureKind?: "authentication_required" | "rate_limited" | "unavailable" | null;
+  /** Earliest local retry eligibility after the latest failed refresh. */
+  retryAt?: string | null;
   error?: string;
   limits: Array<{
     id: string;

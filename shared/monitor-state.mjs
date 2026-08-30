@@ -8,7 +8,15 @@
  * @returns {UsageLimits}
  */
 export function createEmptyUsageLimits(options = {}) {
-  return { available: false, fetchedAt: null, attemptedAt: null, limits: [], error: options.error ?? "" };
+  return {
+    available: false,
+    fetchedAt: null,
+    attemptedAt: null,
+    failureKind: null,
+    retryAt: null,
+    limits: [],
+    error: options.error ?? "",
+  };
 }
 
 /** @returns {ProviderCapabilities} */

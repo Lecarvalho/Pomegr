@@ -327,7 +327,7 @@ describe("dashboard session navigation", () => {
 
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
-    expect(screen.getByText("Codex usage limits are temporarily unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("The last usage check failed. Pomegr will retry automatically.")).toBeInTheDocument();
   });
 
   it("omits Codex usage UI when the provider capability is disabled", async () => {

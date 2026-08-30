@@ -237,7 +237,7 @@ remain the source of truth.
 | `/api/events` | No committed data; server-sent invalidation events containing only a fixed domain and revision | Application shell immediate refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Home aggregation regions |
-| `/api/usage-limits` | Central provider/account-scoped usage values and per-provider readiness | Shared frontend usage store used by Home and session views |
+| `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Home and session views |
 
 Callers send their current revision. When the relevant committed revision is unchanged, S
 returns `204 No Content` with no state body. A known uncached session returns its safe
@@ -248,6 +248,14 @@ frontend renders a correlation lane only when that revision matches the centrali
 snapshot; otherwise the usage bar stays visible and only the lane remains a skeleton.
 
 Historical session state never receives current Git state or current usage limits.
+
+Usage refresh failures retain the last known-good provider values. The public refresh
+state may include only the normalized `authentication_required`, `rate_limited`, or
+`unavailable` kind, the safe attempt timestamp, and the earliest local retry-eligibility
+timestamp computed from the coordinator's cooldown. Raw provider response bodies,
+headers, request identifiers, credentials, and endpoint details remain monitor-private.
+`rate_limited` means only that the usage request received a recognized throttle response;
+it is not evidence that an account or session exhausted its plan allowance.
 
 ## Readiness contract
 

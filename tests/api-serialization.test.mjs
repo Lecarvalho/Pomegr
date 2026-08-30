@@ -377,7 +377,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(claudeState.session.pullRequests.status, "unavailable");
   assert.equal(codexState.usageLimits.available, true);
   assert.doesNotMatch(JSON.stringify(codexState.usageLimits), /ACCOUNT_MUST_NOT_LEAK|WORKSPACE_MUST_NOT_LEAK|PLAN_MUST_NOT_LEAK|CREDIT_MUST_NOT_LEAK|RAW_RPC_MUST_NOT_LEAK|STDERR_MUST_NOT_LEAK/);
-  assert.deepEqual(Object.keys(codexState.usageLimits).sort(), ["attemptedAt", "available", "error", "fetchedAt", "limits"]);
+  assert.deepEqual(Object.keys(codexState.usageLimits).sort(), ["attemptedAt", "available", "error", "failureKind", "fetchedAt", "limits", "retryAt"]);
   assert.equal(codexState.metrics.tokens.allAgents, 1_950);
   assert.equal(codexState.metrics.tokens.allAgents < 9_800, true, "cumulative total_token_usage is not exposed");
   assert.deepEqual(claudeState.metrics.tokens.contextHistory.boundaries.map(({ agentId, kind, preTokens }) => ({

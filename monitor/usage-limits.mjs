@@ -15,6 +15,13 @@ function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
 }
 
+const USAGE_FAILURE_KINDS = new Set(["authentication_required", "rate_limited", "unavailable"]);
+
+function safeTimestamp(value) {
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
+}
+
 function sanitizedUsageError(error) {
   const message = error instanceof Error ? error.message : "";
   if (/credentials|oauth|enoent/i.test(message)) return "Claude usage credentials are unavailable.";
@@ -51,6 +58,7 @@ function normalizedUsageLimits(body) {
  * @param {{
  *   read: () => Promise<any[]>,
  *   errorMessage?: (error: any) => string,
+ *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable",
  *   retryDelay?: (error: any, currentTime: number) => number,
  *   now?: () => number,
  * }} options
@@ -58,6 +66,7 @@ function normalizedUsageLimits(body) {
 export function createCoordinatedUsageLimitsReader({
   read,
   errorMessage = () => "Usage limits are temporarily unavailable.",
+  failureKind = () => "unavailable",
   retryDelay = () => USAGE_REFRESH_INTERVAL_MS,
   now = () => Date.now(),
 }) {
@@ -68,26 +77,42 @@ export function createCoordinatedUsageLimitsReader({
   }
 
   function startRefresh() {
-    let nextRetryDelay = USAGE_REFRESH_INTERVAL_MS;
+    let nextAttemptAt = 0;
     cache.pending = (async () => {
       try {
         const limits = await read();
         if (!Array.isArray(limits)) throw new TypeError("Usage limit reader returned an invalid value");
-        const checkedAt = new Date(now()).toISOString();
-        const value = { available: limits.length > 0, fetchedAt: checkedAt, attemptedAt: checkedAt, limits, error: "" };
+        const checkedAtMs = now();
+        const checkedAt = new Date(checkedAtMs).toISOString();
+        nextAttemptAt = checkedAtMs + USAGE_REFRESH_INTERVAL_MS;
+        const value = {
+          available: limits.length > 0,
+          fetchedAt: checkedAt,
+          attemptedAt: checkedAt,
+          failureKind: null,
+          retryAt: null,
+          limits,
+          error: "",
+        };
         cache.value = value;
         return value;
       } catch (error) {
-        nextRetryDelay = Math.max(USAGE_REFRESH_INTERVAL_MS, Number(retryDelay(error, now())) || 0);
-        const attemptedAt = new Date(now()).toISOString();
+        const attemptedAtMs = now();
+        const nextRetryDelay = Math.max(USAGE_REFRESH_INTERVAL_MS, Number(retryDelay(error, attemptedAtMs)) || 0);
+        nextAttemptAt = attemptedAtMs + nextRetryDelay;
+        const attemptedAt = new Date(attemptedAtMs).toISOString();
         const safeError = String(errorMessage(error) || "Usage limits are temporarily unavailable.").slice(0, 120);
+        let classifiedFailure;
+        try { classifiedFailure = failureKind(error); }
+        catch { classifiedFailure = "unavailable"; }
+        const safeFailureKind = USAGE_FAILURE_KINDS.has(classifiedFailure) ? classifiedFailure : "unavailable";
         const value = cache.value
-          ? { ...cache.value, attemptedAt, error: safeError }
-          : { ...emptyUsageLimits(safeError), attemptedAt };
+          ? { ...cache.value, attemptedAt, failureKind: safeFailureKind, retryAt: safeTimestamp(nextAttemptAt), error: safeError }
+          : { ...emptyUsageLimits(safeError), attemptedAt, failureKind: safeFailureKind, retryAt: safeTimestamp(nextAttemptAt) };
         cache.value = value;
         return value;
       } finally {
-        cache.nextAttemptAt = now() + nextRetryDelay;
+        cache.nextAttemptAt = nextAttemptAt || now() + USAGE_REFRESH_INTERVAL_MS;
         cache.pending = null;
       }
     })();
@@ -119,6 +144,11 @@ export function createUsageLimitsCoordinator({ request, now = () => Date.now() }
       return normalizedUsageLimits(await response.json());
     },
     errorMessage: sanitizedUsageError,
+    failureKind(error) {
+      if (error?.status === 401) return "authentication_required";
+      if (error?.status === 429) return "rate_limited";
+      return "unavailable";
+    },
     retryDelay(error, currentTime) {
       if (error?.status !== 429) return USAGE_REFRESH_INTERVAL_MS;
       return Math.max(

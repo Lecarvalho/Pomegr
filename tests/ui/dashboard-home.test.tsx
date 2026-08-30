@@ -494,6 +494,29 @@ describe("home dashboard", () => {
     expect(screen.getByText("31%")).toBeInTheDocument();
   });
 
+  it("describes a cached Claude 429 as the last failed refresh", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate({
+      limitActivities: [],
+      providerLimits: [{
+        ...snapshot.providerLimits[0],
+        usageLimits: {
+          available: false,
+          fetchedAt: null,
+          attemptedAt: "2026-08-23T12:00:00.000Z",
+          failureKind: "rate_limited",
+          retryAt: "2026-08-23T12:10:00.000Z",
+          limits: [],
+          error: "Anthropic usage endpoint returned 429",
+        },
+      }],
+    })));
+    renderHome();
+
+    expect(await screen.findByText("Refresh rate-limited")).toBeInTheDocument();
+    expect(screen.getByText("The last usage check was rate-limited. Pomegr will retry automatically.")).toBeInTheDocument();
+    expect(screen.queryByText(/returned 429/i)).not.toBeInTheDocument();
+  });
+
   it("keeps resource telemetry quiet on the home surface", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response(homeAggregate()));
     const { container } = renderHome();

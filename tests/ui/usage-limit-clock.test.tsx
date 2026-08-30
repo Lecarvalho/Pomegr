@@ -52,6 +52,29 @@ describe("usage-limit clock", () => {
     expect(screen.getByText("20%")).toBeInTheDocument();
   });
 
+  it("presents a cached 429 as the last failed refresh with its local retry boundary", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:00:00.000Z");
+    render(<LiveClockProvider running><UsageLimitsPanel
+      source="Claude Code"
+      usageLimits={{
+        available: false,
+        fetchedAt: null,
+        attemptedAt: "2026-08-08T12:00:00.000Z",
+        failureKind: "rate_limited",
+        retryAt: "2026-08-08T12:10:00.000Z",
+        error: "Anthropic usage endpoint returned 429",
+        limits: [],
+      }}
+    /></LiveClockProvider>);
+
+    expect(screen.getByText(/^Checked/)).toHaveTextContent("Checked just now");
+    expect(screen.getByRole("status")).toHaveTextContent("Refresh rate-limited");
+    expect(screen.getByRole("status")).toHaveTextContent("The last usage check was rate-limited. Pomegr will retry automatically. Next retry in 10m.");
+    expect(screen.queryByText(/returned 429/i)).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("renders arbitrary usage buckets and critical reached styling", () => {
     const limits = [
       { id: "one", label: "One", window: "1 hour", percent: 100, resetsAt: null, severity: "critical" as const, active: true },

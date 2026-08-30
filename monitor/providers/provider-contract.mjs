@@ -428,6 +428,8 @@ export const providerUsageLimitsSchema = z.object({
   available: z.boolean(),
   fetchedAt: evidenceNullableTimestamp,
   attemptedAt: evidenceNullableTimestamp,
+  failureKind: z.enum(["authentication_required", "rate_limited", "unavailable"]).nullable().optional(),
+  retryAt: evidenceNullableTimestamp.optional(),
   error: evidenceOneLine(512).optional(),
   limits: z.array(z.object({
     id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/),

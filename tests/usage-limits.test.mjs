@@ -51,6 +51,34 @@ test("deduplicates concurrent clients and caches a success for five minutes", as
   assert.equal(calls, 2);
 });
 
+test("retains last-known-good limits while recording a later refresh failure", async () => {
+  let currentTime = Date.parse("2026-08-10T14:00:00.000Z");
+  let calls = 0;
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    request: async () => {
+      calls += 1;
+      return calls === 1
+        ? usageResponse(23)
+        : new Response("", { status: 429, headers: { "retry-after": "600" } });
+    },
+  });
+
+  const successful = await coordinator.get();
+  currentTime += USAGE_REFRESH_INTERVAL_MS;
+  await coordinator.get();
+  await new Promise((resolve) => setImmediate(resolve));
+  const retained = await coordinator.get();
+
+  assert.equal(retained.available, true);
+  assert.deepEqual(retained.limits, successful.limits);
+  assert.equal(retained.fetchedAt, successful.fetchedAt);
+  assert.equal(retained.attemptedAt, "2026-08-10T14:05:00.000Z");
+  assert.equal(retained.failureKind, "rate_limited");
+  assert.equal(retained.retryAt, "2026-08-10T14:15:00.000Z");
+  assert.equal(retained.error, "Anthropic usage endpoint returned 429");
+});
+
 test("honors Retry-After before allowing another provider call", async () => {
   let currentTime = Date.parse("2026-08-10T14:00:00.000Z");
   let calls = 0;
@@ -67,6 +95,8 @@ test("honors Retry-After before allowing another provider call", async () => {
   const failed = await coordinator.get();
   assert.equal(failed.available, false);
   assert.equal(failed.error, "Anthropic usage endpoint returned 429");
+  assert.equal(failed.failureKind, "rate_limited");
+  assert.equal(failed.retryAt, "2026-08-10T14:10:00.000Z");
 
   currentTime += 10 * 60_000 - 1;
   await coordinator.get();
@@ -75,6 +105,22 @@ test("honors Retry-After before allowing another provider call", async () => {
   currentTime += 1;
   await coordinator.get();
   assert.equal(calls, 2);
+  await new Promise((resolve) => setImmediate(resolve));
+  const recovered = await coordinator.get();
+  assert.equal(recovered.failureKind, null);
+  assert.equal(recovered.retryAt, null);
+});
+
+test("classifies authentication failures without exposing provider response content", async () => {
+  const coordinator = createUsageLimitsCoordinator({
+    request: async () => new Response("PRIVATE_PROVIDER_BODY", { status: 401 }),
+    now: () => Date.parse("2026-08-10T14:00:00.000Z"),
+  });
+
+  const failed = await coordinator.get();
+  assert.equal(failed.failureKind, "authentication_required");
+  assert.equal(failed.retryAt, "2026-08-10T14:05:00.000Z");
+  assert.doesNotMatch(JSON.stringify(failed), /PRIVATE_PROVIDER_BODY/);
 });
 
 test("uses the five-minute cooldown when Retry-After is unavailable", async () => {
@@ -88,7 +134,9 @@ test("uses the five-minute cooldown when Retry-After is unavailable", async () =
     },
   });
 
-  await coordinator.get();
+  const failed = await coordinator.get();
+  assert.equal(failed.failureKind, "unavailable");
+  assert.equal(failed.retryAt, "2026-08-10T14:05:00.000Z");
   currentTime += USAGE_REFRESH_INTERVAL_MS - 1;
   await coordinator.get();
   assert.equal(calls, 1);

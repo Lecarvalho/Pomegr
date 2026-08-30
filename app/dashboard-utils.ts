@@ -141,6 +141,18 @@ export function resetCountdown(value: string | null, now = Date.now()) {
   return `Resets in ${minutes}m`;
 }
 
+export function retryCountdown(value: string | null, now = Date.now()) {
+  if (!value) return "Retry timing unavailable";
+  const milliseconds = new Date(value).getTime() - now;
+  if (!Number.isFinite(milliseconds)) return "Retry timing unavailable";
+  if (milliseconds <= 0) return "Retry queued";
+  const totalMinutes = Math.ceil(milliseconds / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours) return `Next retry in ${hours}h ${minutes}m`;
+  return `Next retry in ${totalMinutes}m`;
+}
+
 export function agentTreeRows(agents: Agent[]) {
   const compareCreation = (left: Agent, right: Agent) => {
     const leftStartedAt = Date.parse(left.startedAt || "");

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorEventStream, proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
+import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, retryCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -44,6 +44,8 @@ describe("wall-time formatting", () => {
     expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2026-10-07T12:00:00.000Z"))).toBe("2mo ago");
     expect(sessionRelativeTime("2026-08-08T12:00:00.000Z", Date.parse("2028-08-07T12:00:00.000Z"))).toBe("2y ago");
     expect(resetCountdown("2026-08-08T12:02:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Resets in 1m");
+    expect(retryCountdown("2026-08-08T12:11:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Next retry in 10m");
+    expect(retryCountdown("2026-08-08T12:00:00.000Z", Date.parse("2026-08-08T12:01:00.000Z"))).toBe("Retry queued");
   });
 
   it("never counts seconds in relative timestamps", () => {

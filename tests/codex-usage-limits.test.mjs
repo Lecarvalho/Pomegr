@@ -223,6 +223,8 @@ test("sanitizes separate Codex rate-limit failure independently from session dis
     available: false,
     fetchedAt: null,
     attemptedAt: limits.attemptedAt,
+    failureKind: "unavailable",
+    retryAt: limits.retryAt,
     limits: [],
     error: "Codex usage limits are temporarily unavailable.",
   });
@@ -266,6 +268,8 @@ test("disables only the usage-limit capability when the native Codex CLI is unav
     available: false,
     fetchedAt: null,
     attemptedAt: null,
+    failureKind: null,
+    retryAt: null,
     limits: [],
     error: "",
   });
@@ -334,6 +338,8 @@ test("provider registry never reads current Codex limits for historical state", 
     available: false,
     fetchedAt: null,
     attemptedAt: null,
+    failureKind: null,
+    retryAt: null,
     limits: [],
     error: "",
   });
