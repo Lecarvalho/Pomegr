@@ -75,6 +75,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/--popover:\s*#fffefa/);
     expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--popover:\s*#1c1a20/);
     expect(styles).toMatch(/\.agentPopover\s*\{[^}]*background:\s*var\(--popover\)[^}]*box-shadow:\s*var\(--popover-shadow\)/);
+    expect(styles).toMatch(/\.agentsPanel\.hasOpenPopover, \.agentsPanel:has\(\.cacheRefillPopover\)\s*\{\s*z-index:\s*10/);
     expect(styles).toMatch(/\.tooltipPopover\s*\{[^}]*padding:\s*9px 11px[^}]*border:\s*1px solid var\(--popover-line\)[^}]*background:\s*var\(--popover\)/);
   });
 
