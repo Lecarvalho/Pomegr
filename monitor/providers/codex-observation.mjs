@@ -8,12 +8,18 @@ import {
 import { createNormalizedPollingObserver } from "./normalized-polling-observer.mjs";
 import { expandCodexSelectedMetadata } from "./codex-session-discovery.mjs";
 import { readCodexRolloutHeader } from "./codex-session-metadata.mjs";
+import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 4_096;
 const MAX_TOOL_CALLS = 4_096;
 const MAX_ACTIVITY = 4_096;
 const MAX_COMPACTIONS = 1_024;
 const MAX_PULL_REQUESTS = 256;
+const MAX_LIFECYCLE_EVENT_SESSIONS = 64;
+const MAX_OBSERVATION_KEY_LENGTH = 16_384;
+// Codex tool-result records can contain large encoded images. Frame them once
+// so later lifecycle markers are not separated by a silently discarded record.
+const MAX_CODEX_RECORD_BYTES = 8 * 1024 * 1024;
 
 function chronological(left, right) {
   return Date.parse(left?.timestamp || left?.observedAt || "")
@@ -104,12 +110,40 @@ export function mergeCodexObservationEvidence(previous, current) {
   };
 }
 
-function sourceFingerprint(parts) {
+function sourceFingerprint(parts, observationKey = "") {
   const value = [...parts.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([file, entry]) => `${file}\0${entry.ingestor.snapshot()?.identity || entry.descriptor.identity}`)
+    .concat(`lifecycle\0${observationKey}`)
     .join("\n");
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function boundedLifecycleText(value, maximum = 128) {
+  return typeof value === "string" && value.length > 0 && value.length <= maximum ? value : null;
+}
+
+function stableLifecycleObservationKey(localSessionId, metadata, entry) {
+  const actors = metadata.map((item) => ({
+    id: boundedLifecycleText(item?.localId, 512),
+    archived: Boolean(item?.archived),
+    runtimeType: boundedLifecycleText(item?.runtimeStatus?.type),
+    runtimeFlags: [...new Set((Array.isArray(item?.runtimeStatus?.activeFlags) ? item.runtimeStatus.activeFlags : [])
+      .map((flag) => boundedLifecycleText(flag))
+      .filter(Boolean))].sort().slice(0, 32),
+    liveStatus: boundedLifecycleText(item?.liveStatus),
+    livenessSource: boundedLifecycleText(item?.liveness?.source),
+  })).sort((left, right) => (left.id || "").localeCompare(right.id || ""));
+  const value = JSON.stringify({
+    localId: boundedLifecycleText(localSessionId, 512),
+    actors,
+    catalog: {
+      isLive: Boolean(entry?.isLive),
+      needsInput: Boolean(entry?.needsInput),
+      activityStatus: boundedLifecycleText(entry?.activityStatus),
+    },
+  });
+  return value;
 }
 
 function completeOffset(parts) {
@@ -141,7 +175,8 @@ function createPart(descriptor, yieldControl) {
       } finally { fs.closeSync(handle); }
     },
     parseRecord(line) { return JSON.parse(line.toString("utf8")); },
-    initialState: () => ({ completeRecords: 0 }),
+    maximumFragmentBytes: MAX_CODEX_RECORD_BYTES,
+    initialState: () => ({ completeRecords: 0, lifecycle: initialCodexRecordedLifecycle() }),
     reduce(state, record) {
       if (part.capture) {
         if (!part.pendingRecords.length) part.pendingLookbehind = part.tail.slice();
@@ -149,7 +184,7 @@ function createPart(descriptor, yieldControl) {
       }
       part.tail.push(record);
       if (part.tail.length > 24) part.tail.splice(0, part.tail.length - 24);
-      return { completeRecords: state.completeRecords + 1 };
+      return { completeRecords: state.completeRecords + 1, lifecycle: reduceCodexRecordedLifecycle(state.lifecycle, record) };
     },
     yieldControl,
   });
@@ -171,11 +206,21 @@ export function createCodexIncrementalObserver(options = {}) {
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     now,
     shouldEagerHydrate,
+    observationKey,
+    observeLifecycleSources,
   } = options;
   const sessions = new Map();
   const sourceSessions = new Map();
   const sourcesBySession = new Map();
+  const pendingCatalogEntries = new Map();
   const catalogTargets = new Set(catalogWatchTargets.map((target) => path.resolve(target)));
+
+  if (observationKey !== undefined && typeof observationKey !== "function") {
+    throw new TypeError("Codex observation key hook must be a function");
+  }
+  if (observeLifecycleSources !== undefined && typeof observeLifecycleSources !== "function") {
+    throw new TypeError("Codex lifecycle source observer must be a function");
+  }
 
   const sourceKey = (file) => {
     try {
@@ -183,6 +228,19 @@ export function createCodexIncrementalObserver(options = {}) {
       return process.platform === "win32" ? resolved.toLowerCase() : resolved;
     } catch { return ""; }
   };
+
+  function privateObservationKey(localSessionId, selectedMetadata, entry) {
+    let value = null;
+    try {
+      value = observationKey
+        ? observationKey(localSessionId, selectedMetadata, entry)
+        : stableLifecycleObservationKey(localSessionId, selectedMetadata, entry);
+    } catch { /* a lifecycle hint must not block source observation */ }
+    if (typeof value !== "string" || value.length === 0 || value.length > MAX_OBSERVATION_KEY_LENGTH) {
+      value = stableLifecycleObservationKey(localSessionId, selectedMetadata, entry);
+    }
+    return crypto.createHash("sha256").update(value).digest("hex");
+  }
 
   function indexSessionSources(localSessionId, files) {
     for (const file of sourcesBySession.get(localSessionId) || []) {
@@ -209,9 +267,12 @@ export function createCodexIncrementalObserver(options = {}) {
     for (const entry of entries) {
       const localId = entry?.localId;
       const root = metadataById.get(localId);
-      if (!root?.rolloutFile) continue;
+      if (!root) continue;
       const selectedIds = new Set([localId]);
       expandCodexSelectedMetadata(metadataById, selectedIds);
+      const selectedMetadata = [...selectedIds]
+        .map((id) => metadataById.get(id))
+        .filter(Boolean);
       const files = new Set([...selectedIds].flatMap((id) => {
         const rolloutFile = metadataById.get(id)?.rolloutFile;
         return rolloutFile ? [rolloutFile] : [];
@@ -223,16 +284,40 @@ export function createCodexIncrementalObserver(options = {}) {
         .filter(Boolean);
       sources.set(localId, {
         parts,
-        unavailable: parts.length !== files.size,
+        selectedMetadata,
+        entry,
+        unavailable: files.size > 0 && parts.length !== files.size,
         historical: entry?.isLive === false,
+        observationKey: privateObservationKey(localId, selectedMetadata, entry),
       });
     }
     return sources;
   }
 
   /** @param {{target?: string, filename?: string | null, eventType?: string}} [change] */
-  function routeCodexSourceEvent({ target, filename, eventType } = {}) {
-    if (catalogTargets.has(path.resolve(target))) return { catalog: true, sessionIds: [] };
+  async function routeCodexSourceEvent({ target, filename, eventType } = {}) {
+    if (catalogTargets.has(path.resolve(target))) {
+      // A liveness/index notification has no rollout bytes to route. Wake a
+      // bounded observed set with a fresh catalog entry now; the normal
+      // catalog pass below still publishes the structural catalog and
+      // re-prepares its full eager working set.
+      let entries = [];
+      try {
+        const discovered = await list({ fresh: true });
+        if (Array.isArray(discovered)) entries = discovered;
+      } catch { /* reconciliation and the normal fresh catalog pass retry */ }
+      const observedIds = new Set([...sessions.keys()].slice(-MAX_LIFECYCLE_EVENT_SESSIONS));
+      const sessionIds = [];
+      for (const entry of entries) {
+        if (!observedIds.has(entry?.localId)) continue;
+        pendingCatalogEntries.set(entry.localId, entry);
+        sessionIds.push(entry.localId);
+      }
+      return {
+        catalog: true,
+        sessionIds,
+      };
+    }
     if (typeof filename !== "string" || !filename) return { catalog: true, sessionIds: [] };
     const candidate = path.resolve(target, filename);
     const known = sourceSessions.get(sourceKey(candidate));
@@ -252,14 +337,24 @@ export function createCodexIncrementalObserver(options = {}) {
     };
   }
 
-  async function acquire(localSessionId, _publisher, preparedSources) {
-    const sourceSet = preparedSources instanceof Map
+  async function acquire(localSessionId, publisher, preparedSources) {
+    const freshEntry = pendingCatalogEntries.get(localSessionId);
+    if (freshEntry) pendingCatalogEntries.delete(localSessionId);
+    const sourceSet = freshEntry
+      ? (await prepareSources([freshEntry])).get(localSessionId) || null
+      : preparedSources instanceof Map
       ? preparedSources.get(localSessionId) || null
       : (await prepareSources([{ localId: localSessionId, isLive: false }])).get(localSessionId) || null;
-    if (!sourceSet?.parts?.length || sourceSet.unavailable) return null;
+    if (!sourceSet || sourceSet.unavailable) return null;
     let session = sessions.get(localSessionId);
     if (!session) {
-      session = { parts: new Map(), evidence: null, dirty: false, requiresFull: true };
+      session = {
+        parts: new Map(),
+        evidence: null,
+        dirty: false,
+        requiresFull: true,
+        observationKey: null,
+      };
       sessions.set(localSessionId, session);
     }
 
@@ -308,8 +403,30 @@ export function createCodexIncrementalObserver(options = {}) {
       });
     }
 
+    if (observeLifecycleSources) {
+      const observations = [...session.parts.entries()].map(([file, part]) => {
+        const snapshot = part.ingestor.snapshot();
+        const confirmed = incrementalSourceDescriptor(file);
+        const stable = confirmed && confirmed.identity === part.descriptor.identity
+          && confirmed.size === part.descriptor.size && confirmed.mtimeMs === part.descriptor.mtimeMs
+          && confirmed.suffixDigest === part.descriptor.suffixDigest;
+        return { file, generation: part.descriptor, state: snapshot?.candidate?.lifecycle,
+          complete: Boolean(stable && part.ready && snapshot?.completeOffset === part.descriptor.size
+            && snapshot.malformedRecords === 0 && snapshot.oversizedFragments === 0) };
+      });
+      if (observeLifecycleSources(observations)) {
+        // Catalog and detail must consume the same rebuilt lifecycle state,
+        // including when startup initially classified a mid-turn source as history.
+        const entries = await list();
+        publisher.publishCatalog(entries);
+        const entry = entries.find((item) => item.localId === localSessionId) || sourceSet.entry;
+        sourceSet.historical = entry?.isLive === false;
+        sourceSet.observationKey = privateObservationKey(localSessionId, sourceSet.selectedMetadata, entry);
+      }
+    }
     if ([...session.parts.values()].some((part) => !part.ready)) return null;
-    if (!session.dirty && session.evidence) return null;
+    const lifecycleChanged = session.observationKey !== sourceSet.observationKey;
+    if (!session.dirty && session.evidence && !lifecycleChanged) return null;
     const completeStory = session.requiresFull || !session.evidence;
     const incrementalRecordsByFile = completeStory ? null : new Map(
       [...session.parts.entries()]
@@ -336,13 +453,14 @@ export function createCodexIncrementalObserver(options = {}) {
     const candidate = {
       ...evidence,
       observationSource: {
-        fingerprint: sourceFingerprint(session.parts),
+        fingerprint: sourceFingerprint(session.parts, sourceSet.observationKey),
         completeOffset: completeOffset(session.parts),
       },
     };
     session.evidence = candidate;
     session.dirty = false;
     session.requiresFull = false;
+    session.observationKey = sourceSet.observationKey;
     for (const part of session.parts.values()) {
       part.capture = true;
       part.pendingLookbehind = [];

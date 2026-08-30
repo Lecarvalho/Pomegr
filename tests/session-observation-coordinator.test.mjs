@@ -27,6 +27,126 @@ function memoryStore() {
   };
 }
 
+function deadlineScheduler() {
+  let clock = 0;
+  const jobs = [];
+  return {
+    now: () => clock,
+    schedule(task, delay) { const job = { task, at: clock + delay, cancelled: false, ran: false }; jobs.push(job); return job; },
+    cancel(job) { job.cancelled = true; },
+    async advance(milliseconds) {
+      const target = clock + milliseconds;
+      for (;;) {
+        const next = jobs.filter((job) => !job.cancelled && !job.ran && job.at <= target).sort((a, b) => a.at - b.at)[0];
+        if (!next) break;
+        clock = next.at;
+        next.ran = true;
+        await next.task();
+      }
+      clock = target;
+    },
+  };
+}
+
+test("continuous source candidates publish at the first deadline and update the catalog without a second delay", async () => {
+  const scheduler = deadlineScheduler();
+  const store = memoryStore();
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel, monotonicNow: scheduler.now,
+    deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: evidence }),
+  });
+  await coordinator.start();
+  publisher.publishCatalog("codex", [{ localId: "one", title: "One", isLive: true, activityStatus: "working" }]);
+  await scheduler.advance(0);
+  for (let version = 1; version <= 10; version += 1) {
+    publisher.publishSession("codex", "one", { version, session: {}, agents: [{ id: "primary", status: "active",
+      liveness: { evidence: "observed", freshness: "current" },
+      currentActivity: { label: `Step ${version}`, observedAt: "2026-08-30T12:00:00.000Z" },
+    }] });
+    await scheduler.advance(100);
+    if (version % 5 === 0) {
+      assert.equal(store.getByQualifiedId("codex:one").publicState.version, version);
+      assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity.label, `Step ${version}`);
+    }
+  }
+  publisher.publishSession("codex", "one", { version: 11, session: {}, agents: [{ id: "primary", status: "idle", currentActivity: null }] });
+  await scheduler.advance(500);
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity, null);
+  assert.equal(coordinator.diagnostics().sessionCommits, 3);
+  await coordinator.stop();
+});
+
+test("catalog lifecycle-only transitions bypass the summary delay", async () => {
+  const scheduler = deadlineScheduler();
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store: memoryStore(), schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: async () => ({ readiness: {}, publicState: {} }),
+  });
+  await coordinator.start();
+  const entry = { localId: "one", title: "One", isLive: true, activityStatus: "working" };
+  publisher.publishCatalog("codex", [entry]);
+  await scheduler.advance(0);
+  for (const activityStatus of ["idle", "working", "unknown", "needs_input"]) {
+    publisher.publishCatalog("codex", [{ ...entry, activityStatus }]);
+    await scheduler.advance(0);
+    assert.equal(coordinator.catalog().snapshot.value.sessions[0].activityStatus, activityStatus);
+  }
+  await coordinator.stop();
+});
+
+test("fresh source evidence preempts a delayed derivation retry", async () => {
+  const scheduler = deadlineScheduler();
+  const store = memoryStore();
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: async ({ evidence }) => {
+      if (evidence.version === 1) throw new Error("Synthetic derivation failure");
+      return { readiness: {}, publicState: evidence };
+    },
+  });
+  await coordinator.start();
+  publisher.publishSession("codex", "one", { version: 1, session: {} });
+  await scheduler.advance(600);
+  publisher.publishSession("codex", "one", { version: 2, session: {} });
+  await scheduler.advance(500);
+  assert.equal(store.getByQualifiedId("codex:one").publicState.version, 2);
+  await coordinator.stop();
+});
+
+test("an obsolete in-flight failure cannot restart a fresh candidate's deadline", async () => {
+  const scheduler = deadlineScheduler();
+  const store = memoryStore();
+  let publisher;
+  let rejectObsolete;
+  const obsoleteDerivation = new Promise((resolve, reject) => { rejectObsolete = reject; });
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: ({ evidence }) => evidence.version === 1
+      ? obsoleteDerivation
+      : Promise.resolve({ readiness: {}, publicState: evidence }),
+  });
+  await coordinator.start();
+  publisher.publishSession("codex", "one", { version: 1, session: {} });
+  await scheduler.advance(500);
+  publisher.publishSession("codex", "one", { version: 2, session: {} });
+  rejectObsolete(new Error("Synthetic obsolete derivation failure"));
+  await scheduler.advance(100);
+  publisher.publishSession("codex", "one", { version: 3, session: {} });
+  await scheduler.advance(399);
+  assert.equal(store.getByQualifiedId("codex:one"), null);
+  await scheduler.advance(1);
+  assert.equal(store.getByQualifiedId("codex:one")?.publicState.version, 3);
+  assert.equal(coordinator.diagnostics().sessionCommits, 1);
+  await coordinator.stop();
+});
+
 test("Serving reads committed projections and never invokes compatibility readSession", async () => {
   const scheduler = immediateScheduler();
   let reads = 0;
@@ -186,7 +306,7 @@ test("catalog rows retain bounded final metrics and progress when a session comp
   await scheduler.flush();
 
   const live = coordinator.catalog().snapshot.value.sessions[0];
-  assert.deepEqual(live.currentActivity, currentActivity);
+  assert.equal(live.currentActivity, null);
   assert.deepEqual(live.progress, progress);
   assert.doesNotMatch(JSON.stringify(live), /PRIVATE_HELPER_ACTIVITY/);
 
@@ -215,6 +335,90 @@ test("catalog rows retain bounded final metrics and progress when a session comp
   assert.equal(retained.latestContextTotal, 12_000);
   assert.deepEqual(retained.progress, progress);
   await coordinator.stop();
+});
+
+test("catalog idle clears an older heading before detail hydration without erasing retained evidence", async () => {
+  const scheduler = immediateScheduler();
+  const store = memoryStore();
+  let publisher;
+  let reads = 0;
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async readSession() { reads += 1; throw new Error("Serving must stay cache-only"); },
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: evidence }),
+  });
+  await coordinator.start();
+  const entry = { localId: "one", title: "One", isLive: true, activityStatus: "working", updatedAt: "2026-08-30T21:27:19.205Z" };
+  const currentActivity = { label: "Verifying clean git status after build", observedAt: entry.updatedAt };
+  publisher.publishCatalog("codex", [entry]);
+  publisher.publishSession("codex", "one", {
+    session: {}, metrics: { agents: 2, activeAgents: 1, tokens: { allAgents: 12_000 } },
+    agents: [{ id: "primary", status: "active", currentActivity, liveness: {
+      source: "structured_lifecycle", observedAt: entry.updatedAt, evidence: "observed", freshness: "current",
+    } }],
+  });
+  await scheduler.flush();
+  const first = coordinator.catalog().snapshot;
+  assert.deepEqual(first.value.sessions[0].currentActivity, { ...currentActivity, state: "current" });
+  const retained = store.getByQualifiedId("codex:one");
+
+  publisher.publishCatalog("codex", [{ ...entry, activityStatus: "idle", updatedAt: "2026-08-30T21:27:29.363Z" }]);
+  await scheduler.flush();
+  const second = coordinator.catalog().snapshot;
+  assert.equal(second.value.sessions[0].currentActivity, null);
+  assert.equal(second.value.sessions[0].summaryReadiness, "ready");
+  assert.equal(second.value.sessions[0].latestContextTotal, 12_000);
+  assert.ok(second.revision > first.revision);
+  assert.equal(store.getByQualifiedId("codex:one"), retained);
+  assert.deepEqual(retained.publicState.agents[0].currentActivity, currentActivity);
+  assert.equal(coordinator.catalog(second.revision).status, "unchanged");
+  assert.equal(reads, 0);
+  await coordinator.stop();
+});
+
+test("catalog qualifies primary activity without promoting uncertainty or child activity", async (t) => {
+  const currentActivity = { label: "Retained heading", observedAt: "2026-08-30T12:00:00.000Z", privateField: "PRIVATE_ACTIVITY_INPUT" };
+  const liveness = { source: "structured_lifecycle", observedAt: "2026-08-30T12:00:01.000Z", evidence: "observed", freshness: "current" };
+  for (const row of [
+    { name: "active", status: "active", expected: "current" },
+    { name: "unknown root with active child", status: "unknown", expected: null },
+    { name: "stale", status: "active", liveness: { ...liveness, freshness: "stale" }, expected: null },
+    { name: "unavailable", status: "active", liveness: { ...liveness, evidence: "unavailable" }, expected: null },
+    { name: "inferred", status: "active", liveness: { ...liveness, evidence: "inferred" }, expected: null },
+    { name: "legacy", status: "active", liveness: null, expected: null },
+    { name: "confirmed idle primary with active child", status: "idle", expected: null },
+    { name: "finished primary with active child", status: "finished", expected: null },
+    { name: "stopped primary with active child", status: "stopped", expected: null },
+    { name: "older idle observation", status: "idle", liveness: { ...liveness, observedAt: "2026-08-30T11:59:00.000Z" }, expected: null },
+    { name: "unknown catalog", status: "active", activityStatus: "unknown", expected: null },
+    { name: "awaiting input", status: "needs_input", activityStatus: "needs_input", expected: null },
+    { name: "active primary while a child needs input", status: "active", activityStatus: "needs_input", expected: "current" },
+    { name: "historical", status: "active", isLive: false, expected: null },
+  ]) await t.test(row.name, async () => {
+    const scheduler = immediateScheduler();
+    let publisher;
+    const coordinator = createSessionObservationCoordinator({
+      registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+      store: memoryStore(), schedule: scheduler.schedule, cancel: scheduler.cancel,
+      deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: evidence }),
+    });
+    await coordinator.start();
+    publisher.publishCatalog("codex", [{ localId: "one", title: "One", isLive: row.isLive ?? true, activityStatus: row.activityStatus || "working" }]);
+    publisher.publishSession("codex", "one", { session: {}, agents: [
+      { id: "primary", status: row.status, liveness: Object.hasOwn(row, "liveness") ? row.liveness : liveness, currentActivity },
+      { id: "child", status: "active", liveness, currentActivity: { label: "PRIVATE_CHILD_ACTIVITY", observedAt: currentActivity.observedAt } },
+    ] });
+    await scheduler.flush();
+    const catalog = coordinator.catalog().snapshot.value;
+    assert.deepEqual(catalog.sessions[0].currentActivity, row.expected
+      ? { label: currentActivity.label, observedAt: currentActivity.observedAt, state: row.expected } : null);
+    assert.doesNotMatch(JSON.stringify(catalog), /PRIVATE_|structured_lifecycle|liveness/);
+    await coordinator.stop();
+  });
 });
 
 test("catalog rows are committed by creation time descending regardless of live activity", async () => {
@@ -362,6 +566,70 @@ test("downstream dependency refreshes rederive a committed session without provi
   await scheduler.flush();
   assert.equal(store.getByQualifiedId("codex:one").publicState.resourceStatus, "unavailable");
   assert.equal(store.getByQualifiedId("codex:one").readiness.resources, "unavailable");
+});
+
+test("checkpoint restore downgrades lifecycle truth without removing retained activity", async () => {
+  const scheduler = immediateScheduler();
+  const restoredCandidates = [];
+  const snapshots = new Map();
+  const store = {
+    getByQualifiedId(id) { return snapshots.get(id) || null; },
+    setPinned() {},
+    restore(candidate) {
+      restoredCandidates.push(candidate);
+      const snapshot = { ...candidate, qualifiedId: `${candidate.providerId}:${candidate.localSessionId}`, revision: candidate.revision || 1, serializedState: JSON.stringify(candidate.publicState) };
+      snapshots.set(snapshot.qualifiedId, snapshot);
+      return { accepted: true, snapshot };
+    },
+    publish(candidate) { return this.restore(candidate); },
+  };
+  const lifecycleAgent = {
+    id: "primary",
+    status: "active",
+    currentActivity: { label: "Retained heading", observedAt: "2026-08-30T12:00:00.000Z" },
+    liveness: { source: "structured_lifecycle", observedAt: "2026-08-30T12:00:00.000Z", evidence: "observed", freshness: "current" },
+  };
+  const record = {
+    providerId: "codex", localSessionId: "restart-session", revision: 3,
+    evidence: { historical: false, agents: [lifecycleAgent], session: {} },
+    publicState: { agents: [lifecycleAgent] }, readiness: { core: "ready" }, observedAt: "2026-08-30T12:00:00.000Z", source: null,
+  };
+  const legacyRecord = { ...record, localSessionId: "legacy-session", evidence: { ...record.evidence, agents: [{ ...lifecycleAgent, status: "idle", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] }, publicState: { agents: [{ ...lifecycleAgent, status: "idle", liveness: { source: "owning_app_server", observedAt: lifecycleAgent.liveness.observedAt } }] } };
+  const historicalRecord = { ...record, localSessionId: "historical-session", evidence: { ...record.evidence, historical: true, agents: [{ ...lifecycleAgent, status: "finished", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] }, publicState: { agents: [{ ...lifecycleAgent, status: "finished", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] } };
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store,
+    checkpointStore: { async load() { return { records: [record, legacyRecord, historicalRecord] }; }, async write() {} },
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+    deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: { agents: evidence.agents } }),
+  });
+  await coordinator.start();
+  await scheduler.flush();
+  const restored = restoredCandidates[0].evidence.agents[0];
+  assert.equal(restored.status, "unknown");
+  assert.equal(restored.currentActivity.label, "Retained heading");
+  assert.deepEqual(restored.liveness, {
+    source: "structured_lifecycle", observedAt: "2026-08-30T12:00:00.000Z", evidence: "unavailable", freshness: "stale", reason: "legacy_snapshot",
+  });
+  const legacy = restoredCandidates.find((candidate) => candidate.localSessionId === "legacy-session").evidence.agents[0];
+  assert.equal(legacy.status, "unknown");
+  assert.equal(legacy.liveness.evidence, "unavailable");
+  assert.equal(legacy.liveness.freshness, "stale");
+  const historical = restoredCandidates.find((candidate) => candidate.localSessionId === "historical-session").evidence.agents[0];
+  assert.equal(historical.status, "finished");
+  assert.equal(historical.liveness, null);
+  publisher.publishCatalog("codex", [{ localId: "restart-session", title: "Restored", isLive: true, activityStatus: "working" }]);
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity, null);
+  assert.equal(snapshots.get("codex:restart-session").publicState.agents[0].status, "unknown");
+  publisher.publishSession("codex", "restart-session", record.evidence);
+  await scheduler.flush();
+  assert.deepEqual(coordinator.catalog().snapshot.value.sessions[0].currentActivity, {
+    ...lifecycleAgent.currentActivity, state: "current",
+  });
+  assert.equal(publisher !== undefined, true);
 });
 
 test("checkpoint writes debounce until quiet but never drift past the continuous-activity maximum", async () => {

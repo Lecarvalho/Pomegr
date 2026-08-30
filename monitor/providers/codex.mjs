@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
@@ -35,6 +36,7 @@ import {
 import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
+import { createCodexOwningRuntime } from "./codex-owning-runtime.mjs";
 import { createCodexLiveState } from "./codex-live-state.mjs";
 import {
   appServerResponseData,
@@ -110,6 +112,7 @@ export function createCodexProvider(options = {}) {
   // never supply session, catalog, liveness, or canonical-turn evidence.
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
+  const owningRuntime = createCodexOwningRuntime(appServer, { now });
   const includeArchived = options.includeArchived ?? true;
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
   const scanLimit = Math.max(catalogLimit, boundedInteger(options.scanLimit, DEFAULT_CODEX_SCAN_LIMIT, DEFAULT_CODEX_SCAN_LIMIT));
@@ -127,6 +130,7 @@ export function createCodexProvider(options = {}) {
     cacheMs,
     maximumBridgeFiles: options.maximumBridgeFiles,
     maximumTailBytes: options.maximumTailBytes,
+    deterministicAvailability: options.deterministicAvailability,
   });
   const usageLimits = createCodexUsageLimitsCoordinator({
     now,
@@ -184,12 +188,7 @@ export function createCodexProvider(options = {}) {
   }
 
   async function appServerCall(method, params) {
-    if (!appServer) return null;
-    if (typeof appServer.request === "function") return appServer.request(method, params);
-    if (method === "thread/list" && typeof appServer.listThreads === "function") return appServer.listThreads(params);
-    if (method === "thread/read" && typeof appServer.readThread === "function") return appServer.readThread(params);
-    if (method === "account/rateLimits/read" && typeof appServer.readRateLimits === "function") return appServer.readRateLimits();
-    return null;
+    return owningRuntime.request(method, params);
   }
 
   async function readAppServerCatalog() {
@@ -247,7 +246,7 @@ export function createCodexProvider(options = {}) {
   const discoveredMetadata = metadataCatalog.read;
 
   async function listSessions(listOptions = {}) {
-    const { threads, sessions } = liveness.observe(await discoveredMetadata(listOptions));
+    const { threads, sessions } = liveness.observe((await discoveredMetadata(listOptions)).map(owningRuntime.decorate));
     return threads.filter(isTopLevelCodexSession)
       .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
       .sort(compareCodexMetadata).slice(0, catalogLimit);
@@ -408,7 +407,7 @@ export function createCodexProvider(options = {}) {
       expandCodexSelectedMetadata(metadataById, selectedIds);
     }
     const selectedMetadata = mergedMetadata.filter((item) => selectedIds.has(item.localId));
-    const allMetadata = liveness.observe(selectedMetadata, { historical }).threads;
+    const allMetadata = liveness.observe(selectedMetadata.map(owningRuntime.decorate), { historical }).threads;
     const metadata = allMetadata.find((item) => item.localId === localSessionId) || rootMetadata;
     const agents = /** @type {any[]} */ (buildCodexAgentTree({
       rootThreadId: localSessionId,
@@ -491,7 +490,6 @@ export function createCodexProvider(options = {}) {
     ]));
     const rolloutTasksByActor = new Map();
     const rolloutActivityByActor = new Map();
-    const rolloutHeuristicIdleActors = new Set();
     const rolloutSignalsByActor = new Map();
     const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
@@ -518,9 +516,6 @@ export function createCodexProvider(options = {}) {
       const fallbackTimestamp = summaries.get(thread.localId)?.updatedAt || thread.updatedAt || updatedAt;
       const generation = generationsByThreadId.get(thread.localId) || null;
       const agentStatus = agents.find((agent) => agent.id === actor.id)?.status;
-      const rolloutHeuristicIdle = agentStatus === "idle"
-        && thread.liveness?.source === "rollout_activity_heuristic";
-      if (rolloutHeuristicIdle) rolloutHeuristicIdleActors.add(actor.id);
       const cachedCurrentActivity = historical
         ? null
         : reusableLiveCurrentActivity(thread.rolloutFile, thread.localId, generation);
@@ -554,7 +549,7 @@ export function createCodexProvider(options = {}) {
           currentActivityOptions: {
             existingState: cachedCurrentActivity?.state,
             agentStatus,
-            rolloutHeuristicIdle,
+            lifecycle: { ...thread.liveness, confirmedAt: thread.liveness?.source === "owning_app_server" ? thread.runtimeConfirmedAt : null },
           },
         });
         existingState = hydratedStateEvidence?.taskState || null;
@@ -579,7 +574,7 @@ export function createCodexProvider(options = {}) {
       const currentActivityState = parseCodexCurrentActivityStateRecords(records, {
         historical,
         agentStatus,
-        rolloutHeuristicIdle,
+        lifecycle: { ...thread.liveness, confirmedAt: thread.liveness?.source === "owning_app_server" ? thread.runtimeConfirmedAt : null },
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
@@ -651,7 +646,6 @@ export function createCodexProvider(options = {}) {
       const currentActivity = rolloutActivityByActor.get(agent.id);
       if (currentActivity) {
         agent.currentActivity = currentActivity;
-        if (agent.status === "idle" && rolloutHeuristicIdleActors.has(agent.id)) agent.status = "active";
       }
       const rolloutSkills = rolloutSkillsByActor.get(agent.id) || [];
       agent.skills = mergeSkillUsage([rolloutSkills.length ? rolloutSkills : canonicalByActor.get(agent.id)?.skills || []]);
@@ -776,6 +770,13 @@ export function createCodexProvider(options = {}) {
       watchTargets,
       catalogWatchTargets: [indexFile, livenessRoot],
       watchSource: options.observerWatchSource,
+      observeLifecycleSources: liveness.observeLifecycleSources,
+      observationKey(_localId, selectedMetadata, catalogEntry) {
+        const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
+          thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive,
+        ]);
+        return createHash("sha256").update(JSON.stringify([catalogEntry?.isLive, states])).digest("hex");
+      },
     }),
     readTranscriptPath,
     readUsageLimits: usageLimits,

@@ -381,7 +381,7 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
 
   const changed = await runtime.sessionFeed();
   assert.deepEqual(changed.sessions[0].progress, progress);
-  assert.deepEqual(changed.sessions[0].currentActivity, currentActivity);
+  assert.equal(changed.sessions[0].currentActivity, null);
   assert.equal(changed.sessions[0].agentCount, 2);
   assert.equal(changed.sessions[0].activeAgentCount, 1);
   assert.equal(Object.hasOwn(changed.sessions[0], "contextHistory"), false);
@@ -390,6 +390,20 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
     "activeAgentCount", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
   ]);
   assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:ACTIVITY|CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
+});
+
+test("compatibility session feed reconciles a cached heading with catalog idle", async () => {
+  const entry = { id: "codex:activity", provider: "codex", source: "Codex", title: "Activity", project: "pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working" };
+  const currentActivity = { label: "Retained heading", observedAt: entry.updatedAt };
+  const runtime = runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [{ ...agent("primary"), currentActivity,
+    liveness: { source: "structured_lifecycle", observedAt: entry.updatedAt, evidence: "observed", freshness: "current" },
+  }] })]]), { homeSummaryCacheMs: 60_000 });
+  assert.deepEqual((await runtime.sessionFeed()).sessions[0].currentActivity, { ...currentActivity, state: "current" });
+  // No evidence refresh or timestamp change: exercise reconciliation of the cached summary.
+  entry.activityStatus = "idle";
+  assert.equal((await runtime.sessionFeed()).sessions[0].currentActivity, null);
+  entry.activityStatus = "unknown";
+  assert.equal((await runtime.sessionFeed()).sessions[0].currentActivity, null);
 });
 
 test("session feed and home snapshot coalesce a cold live summary without sharing resource telemetry", async () => {

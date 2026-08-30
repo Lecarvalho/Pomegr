@@ -20,7 +20,7 @@ function RoleGlyph({ role }: { role: AgentRole }) {
   };
   return <svg aria-hidden="true" className="agentTreeRoleGlyph" viewBox="0 0 24 24">{shapes[role]}</svg>;
 }
-function statusLabel(status: Agent["status"]) { return status === "needs_input" ? "needs input" : status; }
+function statusLabel(status: Agent["status"]) { return status === "needs_input" ? "needs input" : status === "unknown" ? "status uncertain" : status; }
 function isWarm(node: VisualNode) { return !node.isCluster && ["active", "waiting", "needs_input", "warm"].includes(node.agent.status); }
 function visualPreorder(nodes: VisualNode[], collapsed: Set<string>) { const result: VisualNode[] = []; const visit = (node: VisualNode) => { result.push(node); if (!collapsed.has(node.id)) node.children.forEach(visit); }; nodes.forEach(visit); return result; }
 function ancestorsFor(node: VisualNode, byId: Map<string, VisualNode>) { const ids = new Set<string>(); let parent = node.visualParentId ? byId.get(node.visualParentId) : undefined; while (parent) { ids.add(parent.id); parent = parent.visualParentId ? byId.get(parent.visualParentId) : undefined; } return ids; }

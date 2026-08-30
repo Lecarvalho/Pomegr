@@ -11,6 +11,7 @@ vi.mock("next/navigation", () => ({
 
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
+import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
@@ -195,6 +196,25 @@ describe("Command Center app shell", () => {
 
     view.unmount();
     expect(CatalogEventSource.instances[0].closed).toBe(true);
+  });
+
+  it("clears current activity on the catalog revision event without waiting for recovery polling", async () => {
+    CatalogEventSource.instances = [];
+    vi.stubGlobal("EventSource", CatalogEventSource);
+    const current: SessionSummary = { ...sessions[0], currentActivity: {
+      label: "Verifying current work", observedAt: sessions[0].updatedAt, state: "current",
+    } };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => response({ revision: 1, sessions: [current] }))
+      .mockImplementationOnce(() => response({ revision: 2, sessions: [{ ...current, activityStatus: "idle", currentActivity: null }] }));
+    const view = render(<AppShell><SessionsView /></AppShell>);
+    expect(await screen.findAllByLabelText(/^Current activity:/)).toHaveLength(2);
+    act(() => CatalogEventSource.instances[0].emitCatalog({ domain: "sessions", revision: 2 }));
+    await waitFor(() => expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument());
+    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    view.unmount();
   });
 
   it("keeps live sessions ordered by creation time descending across refreshed activity", async () => {

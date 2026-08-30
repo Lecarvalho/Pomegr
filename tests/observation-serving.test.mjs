@@ -78,6 +78,7 @@ test("concurrent state GETs consume one committed response without provider tran
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.equal(runtime.serveSession(`codex:${evidence.localId}`).status, "ready");
+  assert.equal(await runtime.sessionFeed(), runtime.serveCatalog().snapshot.value);
   assert.equal(runtime.serveSession(`codex:${evidence.localId}`).snapshot.readiness.resources, "unavailable");
   assert.deepEqual(resourceSamples, [[{ sessionId: `codex:${evidence.localId}`, status: "unavailable" }]]);
 

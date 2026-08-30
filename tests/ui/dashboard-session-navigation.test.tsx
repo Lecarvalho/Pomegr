@@ -117,7 +117,7 @@ function catalogSession(state: MonitorState, overrides: Partial<SessionSummary> 
     activeAgentCount: state.metrics.activeAgents,
     latestContextTotal: state.metrics.tokens.allAgents,
     progress: state.session?.progress ?? null,
-    currentActivity: state.agents.find((agent) => agent.id === "primary")?.currentActivity ?? null,
+    currentActivity: null,
     ...overrides,
   };
 }

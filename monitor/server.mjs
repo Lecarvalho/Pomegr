@@ -13,6 +13,7 @@ import { createObservationRuntime } from "./observation-runtime.mjs";
 import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./request-handler.mjs";
+import { reconcileSessionCurrentActivity } from "./session-current-activity.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -235,11 +236,14 @@ export function createMonitorRuntime(options = {}) {
         : Number.isFinite(summary?.activeAgentCount) ? summary.activeAgentCount : null,
       latestContextTotal: Number.isFinite(summary?.latestContextTotal) ? summary.latestContextTotal : null,
       progress: summary?.progress ?? null,
-      currentActivity: entry.isLive ? summary?.currentActivity ?? null : null,
+      currentActivity: reconcileSessionCurrentActivity(entry, summary?.currentActivity),
     };
   }
 
   async function sessionFeed() {
+    if (observation.observationActive()) {
+      return observation.coordinator?.catalog()?.snapshot?.value || { sessions: [] };
+    }
     const sessions = await sessionCatalog();
     const endMs = now();
     const summaries = await Promise.all(sessions.map(async (entry) => {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   capabilitiesFromManifest,
@@ -11,6 +12,7 @@ import {
   defineProvider,
   PROVIDER_CAPABILITY_KEYS,
   parseProviderSessionId,
+  parseProviderSessionEvidence,
   providerSource,
   qualifyProviderSessionId,
 } from "../monitor/providers/provider-contract.mjs";
@@ -108,6 +110,30 @@ test("scopes and validates normalized observer publication before it crosses pro
   assert.throws(() => assertNormalizedObservationPublisher({}), /publishCatalog/);
   assert.throws(() => assertProviderObserver({}), /implement start/);
   assert.equal(assertProviderObserver({ start() {}, hydrate() {}, listSessions() {} }).hydrate instanceof Function, true);
+});
+
+test("accepts bounded lifecycle uncertainty metadata and rejects unknown enum values", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8"));
+  const agent = fixture.agents[0];
+  agent.status = "unknown";
+  agent.liveness = {
+    source: "structured_lifecycle",
+    observedAt: "2026-08-30T12:00:00.000Z",
+    evidence: "unavailable",
+    freshness: "stale",
+    reason: "legacy_snapshot",
+  };
+  const parsed = parseProviderSessionEvidence(fixture);
+  assert.equal(parsed.agents[0].status, "unknown");
+  assert.deepEqual(parsed.agents[0].liveness, agent.liveness);
+  assert.doesNotMatch(JSON.stringify(parsed), /PRIVATE_LIFECYCLE|RAW_TRANSCRIPT|OAUTH_TOKEN/i);
+
+  for (const [field, value] of [["status", "maybe"], ["source", "private_lifecycle"], ["evidence", "guess"], ["freshness", "recent"], ["reason", "private_reason"]]) {
+    const invalid = structuredClone(fixture);
+    invalid.agents[0].status = "unknown";
+    invalid.agents[0].liveness = { ...agent.liveness, [field]: value };
+    assert.throws(() => parseProviderSessionEvidence(invalid), /Invalid|Unrecognized|enum|received/i, field);
+  }
 });
 
 test("keeps static support distinct from runtime readiness and session evidence", async () => {

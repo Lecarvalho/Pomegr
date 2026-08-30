@@ -62,9 +62,9 @@ For higher-confidence Windows live state, register this inert hook command for t
 node "C:\path\to\pomegr\scripts\codex-lifecycle-bridge.mjs"
 ```
 
-Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. On Windows, the default snapshot root is `%APPDATA%\pomegr\codex-liveness`. Set `POMEGR_CODEX_LIVENESS_DIR` in both the hook environment and the Pomegr monitor only when a shared override is needed.
+Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. On Windows, the bridge resolves a recognized `Codex`/`ChatGPT` process ancestor and validates its process-start identity; for unusual wrappers, set `POMEGR_CODEX_OWNER_PID` so the bridge can validate the explicit owner. If neither a recognized ancestor nor a valid explicit owner identity is available, the event is not trusted and an old lease is not reused. On Windows, the default snapshot root is `%APPDATA%\pomegr\codex-liveness`. Set `POMEGR_CODEX_LIVENESS_DIR` in both the hook environment and the Pomegr monitor only when a shared override is needed.
 
-An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status. The standalone Windows monitor does not attempt to discover or attach to another process's private stdio transport. Its transient account-only usage reader is not an owning app-server and is never used as live-state evidence. Without an owning connection it uses the lifecycle bridge, then a bounded and explicitly heuristic rollout fallback.
+An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status. The Codex CLI documents a proxy to a running daemon and a shared local app-server, but the Desktop owner association and socket discovery contract are unresolved; Pomegr does not pair, configure, or assume that transport. The standalone Windows monitor does not attach to another process's private stdio transport. Its transient account-only usage reader is not an owning app-server and is never used as live-state evidence. Without an owning connection it uses the lifecycle bridge when configured, then only the adapter-supported structured rollout assessment; missing integration remains unknown/stale rather than idle.
 
 ## Capability availability
 
@@ -170,7 +170,9 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 - An owning app-server reports only threads loaded by that same process. A newly spawned app-server is not global live-state truth on Windows.
 - Confirm the lifecycle hook invokes `scripts/codex-lifecycle-bridge.mjs`, shares `POMEGR_CODEX_LIVENESS_DIR` with the monitor, and can write that directory.
-- If hooks are unavailable, rollout-only live state expires after 120 seconds. This is expected heuristic behavior, not an operating-system process claim.
+- The bridge requires a recognized Codex/ChatGPT ancestor or a valid `POMEGR_CODEX_OWNER_PID`; it validates the current process-start identity and never trusts an old lease when current ownership cannot be confirmed.
+- A compact `SessionStart` without matching non-null turn identity remains unknown; this is expected when the hook payload cannot prove same-turn continuity.
+- If hooks are unavailable, only adapter-supported structured rollout evidence can contribute bounded liveness. Expiry or missing evidence is unknown/stale, not an operating-system process claim or proof of idle.
 - `POMEGR_CODEX_OWNER_PID` is only for wrapper topologies where automatic ancestry selection cannot identify the owning Codex or ChatGPT process. A stale or unrelated PID will not produce a valid lease.
 
 ### Needs-input is stale or missing

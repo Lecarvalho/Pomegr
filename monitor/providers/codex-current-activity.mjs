@@ -1,20 +1,7 @@
 import { codexTimestamp } from "./codex-session-metadata.mjs";
+import { codexTurnBoundary } from "./codex-turn-lifecycle.mjs";
 
 export const CODEX_CURRENT_ACTIVITY_MAX_LENGTH = 160;
-
-const TERMINAL_EVENT_TYPES = new Set([
-  "task_complete",
-  "task_completed",
-  "task_failed",
-  "task_interrupted",
-  "turn_aborted",
-  "turn_complete",
-  "turn_completed",
-  "turn_failed",
-  "turn_interrupted",
-]);
-
-const TERMINAL_AGENT_STATUSES = new Set(["finished", "stopped"]);
 
 function boundedActivityLabel(value) {
   if (typeof value !== "string" || /[\r\n]/.test(value)) return null;
@@ -43,70 +30,44 @@ function activityLabels(record) {
   });
 }
 
-function terminalRecord(record) {
-  const payload = record?.payload;
-  if (record?.type === "turn_completed" || record?.type === "turn/completed") return true;
-  if (record?.type !== "event_msg") return false;
-  return TERMINAL_EVENT_TYPES.has(String(payload?.type || "").toLowerCase());
-}
 
-function turnStartRecord(record) {
-  return record?.type === "turn_context"
-    || record?.type === "turn/started"
-    || record?.type === "turn_started";
-}
-
-function initialActivityState(value) {
-  if (!value || typeof value !== "object") return { currentActivity: null, turnOpen: true };
-  const currentActivity = value.currentActivity;
-  const observedAt = codexTimestamp(currentActivity?.observedAt);
-  return {
-    currentActivity: currentActivity && typeof currentActivity.label === "string" && observedAt
-      ? { label: currentActivity.label, observedAt }
-      : null,
-    turnOpen: value.turnOpen !== false,
-  };
-}
-
-/**
- * Reduce the available rollout records into carry-forward live activity state.
- * Existing state contains only monitor-normalized metadata from an earlier
- * generation of the same append-only rollout.
- */
+/** Activity is observed metadata. A liveness guess must never poison its incremental reducer. */
 export function parseCodexCurrentActivityStateRecords(records, options = {}) {
-  if (options.historical
-    || TERMINAL_AGENT_STATUSES.has(options.agentStatus)
-    || (options.agentStatus === "idle" && !options.rolloutHeuristicIdle)) {
-    return { currentActivity: null, turnOpen: false };
-  }
-  let { currentActivity, turnOpen } = initialActivityState(options.existingState);
+  const previous = options.existingState || {};
+  let currentActivity = previous.currentActivity || null;
+  let turnOpen = previous.turnOpen !== false;
+  let turnId = previous.turnId || null;
+  let boundaryAt = previous.boundaryAt || null;
   for (const record of Array.isArray(records) ? records : []) {
-    if (terminalRecord(record)) {
+    const observedAt = codexTimestamp(record?.timestamp);
+    if (!observedAt || (boundaryAt && observedAt < boundaryAt)) continue;
+    const boundary = codexTurnBoundary(record);
+    if (boundary) {
+      if (boundary.kind === "end" && boundary.turnId && turnId && boundary.turnId !== turnId) continue;
+      if (boundary.kind === "start" && boundary.turnId === turnId && !turnOpen && turnId) continue;
+      if (boundary.kind === "start" && turnOpen && boundary.turnId && boundary.turnId === turnId) continue;
+      turnId = boundary.turnId || turnId;
+      boundaryAt = boundary.observedAt;
       currentActivity = null;
-      turnOpen = false;
-      continue;
-    }
-    if (turnStartRecord(record)) {
-      currentActivity = null;
-      turnOpen = true;
+      turnOpen = boundary.kind === "start";
       continue;
     }
     if (!turnOpen) continue;
-    const observedAt = codexTimestamp(record?.timestamp);
-    if (!observedAt) continue;
     for (const label of activityLabels(record)) {
-      if (currentActivity?.label === label && currentActivity.observedAt === observedAt) continue;
+      if (currentActivity && observedAt < currentActivity.observedAt) continue;
       currentActivity = { label, observedAt };
     }
   }
-  return { currentActivity, turnOpen };
+  const lifecycle = options.lifecycle;
+  const confirmedIdle = lifecycle?.evidence === "observed" && lifecycle.freshness === "current"
+    && ["idle", "finished", "stopped"].includes(options.agentStatus)
+    && (!currentActivity || (lifecycle.confirmedAt || lifecycle.observedAt) >= currentActivity.observedAt);
+  // Without qualified evidence, an idle/unknown status is not a terminal event.
+  // Rendering can label a retained heading as last observed when certainty is lost.
+  if (options.historical || confirmedIdle) currentActivity = null;
+  return { currentActivity, turnOpen, turnId, boundaryAt };
 }
 
-/**
- * Extract the latest provider-authored UI activity summary for one Codex agent.
- * This intentionally recognizes only the paired rollout shapes Codex uses for
- * its visible one-line reasoning heading. Arbitrary reasoning remains private.
- */
 export function parseCodexCurrentActivityRecords(records, options = {}) {
   return parseCodexCurrentActivityStateRecords(records, options).currentActivity;
 }

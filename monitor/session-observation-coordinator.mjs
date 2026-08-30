@@ -2,6 +2,7 @@ import { createCommittedResponseCache } from "./committed-response-cache.mjs";
 import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
+import { projectSessionCurrentActivity } from "./session-current-activity.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -31,9 +32,40 @@ function publicCatalogEntry(providerId, source, entry) {
 
 function catalogStructure(entries = []) {
   return entries
-    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}`)
+    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}\0${entry.activityStatus || "unknown"}`)
     .sort()
     .join("\n");
+}
+
+// Lifecycle observations in an L2 checkpoint describe the previous process;
+// they are useful context after restart but cannot be presented as current.
+function downgradeRestoredLifecycle(record) {
+  // Only Codex lifecycle observations are process-local. Do not alter older
+  // Claude checkpoints, and do not recursively clone unrelated evidence.
+  if (record.providerId !== "codex") return record;
+  const historical = record.evidence?.historical === true;
+  const downgradeAgent = (agent) => {
+    if (!agent || typeof agent !== "object" || !agent.liveness) return agent;
+    if (historical) return { ...agent, liveness: null };
+    return {
+      ...agent,
+      status: "unknown",
+      liveness: {
+        ...agent.liveness,
+        evidence: "unavailable",
+        freshness: "stale",
+        reason: "legacy_snapshot",
+      },
+    };
+  };
+  const downgradeAgents = (value) => value && Array.isArray(value.agents)
+    ? { ...value, agents: value.agents.map(downgradeAgent) }
+    : value;
+  return {
+    ...record,
+    evidence: downgradeAgents(record.evidence),
+    publicState: downgradeAgents(record.publicState),
+  };
 }
 
 /** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
@@ -151,7 +183,7 @@ export function createSessionObservationCoordinator(options = {}) {
           ? state.metrics.tokens.allAgents
           : retainPrevious ? previous.latestContextTotal : null,
         progress: state?.session?.progress || (retainPrevious ? previous.progress : null),
-        currentActivity: entry.isLive ? primaryAgent?.currentActivity ?? null : null,
+        currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
       };
     });
     const providerStates = [...catalogReadinessByProvider.values()];
@@ -221,7 +253,9 @@ export function createSessionObservationCoordinator(options = {}) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
         qa.sessionCommits += 1;
-        scheduleCatalogCommit();
+        // Evidence is already committed: don't add a second summary delay before
+        // publishing current activity and notifying the catalog's consumers.
+        scheduleCatalogCommit(catalogStructuralDelayMs);
         notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision });
         scheduleCheckpoint(snapshot.snapshot);
         options.onCommitted?.(snapshot.snapshot);
@@ -235,10 +269,11 @@ export function createSessionObservationCoordinator(options = {}) {
         sessionRetryAttempts.delete(qualifiedId);
       }
     } catch {
-      // D failures retain both the previous committed revision and this
-      // normalized candidate. Retry without requiring another source append.
+      // D failures retain the previous committed revision. Retry this candidate
+      // only while it is current; an obsolete failure must not mark newer work
+      // as a retry and reset its already-scheduled publication deadline.
       qa.rejectedCandidates += 1;
-      scheduleSessionRetry(qualifiedId);
+      if (pendingSessions.get(qualifiedId) === candidate) scheduleSessionRetry(qualifiedId);
     }
   }
 
@@ -286,7 +321,10 @@ export function createSessionObservationCoordinator(options = {}) {
       const qualifiedId = qualifiedSessionId(providerId, localSessionId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
       const scheduled = scheduledSessions.get(qualifiedId);
-      if (scheduled) {
+      // Coalesce at the first candidate's deadline. Restarting this timer for
+      // every append can starve publication indefinitely during continuous work.
+      // Fresh evidence may still preempt a delayed failure retry.
+      if (scheduled && sessionRetryAttempts.has(qualifiedId)) {
         cancel(scheduled);
         scheduledSessions.delete(qualifiedId);
       }
@@ -349,13 +387,15 @@ export function createSessionObservationCoordinator(options = {}) {
         });
         for (const record of loaded.records) {
           if (!registry.providers?.some((provider) => provider.id === record.providerId)) continue;
-          const restored = store.restore(record);
+          const restored = store.restore(downgradeRestoredLifecycle(record));
           if (!restored.accepted) continue;
           const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
           pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
             providerId: record.providerId,
             localSessionId: record.localSessionId,
-            evidence: record.evidence,
+            // Rederive the restored evidence, including its downgraded lifecycle;
+            // the original checkpoint must not resurrect a prior process's status.
+            evidence: restored.snapshot.evidence,
             source: provider?.source || "",
             checkpointSource: record.source,
             observedAt: record.observedAt,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { AgentCurrentActivity, HomeProviderUsageLimits, SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
@@ -27,12 +27,18 @@ function sessionTimestamp(value: string) {
   return <time dateTime={value} title={sessionListTime(value)}>{relativeTime(value)}</time>;
 }
 
-function SessionCurrentActivity({ activity, compact = false }: { activity: AgentCurrentActivity | null | undefined; compact?: boolean }) {
+function SessionCurrentActivity({ session, compact = false }: { session: SessionSummary; compact?: boolean }) {
+  // Guard older monitor responses during upgrades; lifecycle qualification is backend-owned.
+  const activity = session.isLive && ["working", "needs_input"].includes(session.activityStatus)
+    && session.currentActivity?.state === "current" ? session.currentActivity : null;
   if (!activity) {
     return compact ? null : <span className="commandTableActivityUnavailable" title="Current provider-reported activity is unavailable">—</span>;
   }
   const provenance = `Provider-reported · observed ${relativeTime(activity.observedAt)}`;
-  return <span className={`commandTableActivity${compact ? " commandTableActivityCompact" : ""}`} title={`${activity.label} · ${provenance}`} aria-label={`Current activity: ${activity.label}. ${provenance}.`}><span className="commandTableActivityMark" aria-hidden="true" /><span className="commandTableActivityLabel">{activity.label}</span></span>;
+  return <span className={`commandTableActivity${compact ? " commandTableActivityCompact" : ""}`} title={`${activity.label} · ${provenance}`} aria-label={`Current activity: ${activity.label}. ${provenance}.`}>
+    <span className="commandTableActivityMark" aria-hidden="true" />
+    <span className="commandTableActivityLabel">{activity.label}</span>
+  </span>;
 }
 
 const builtInDashboards = [
@@ -106,9 +112,9 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
       {catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : !filteredSessions.length ? <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" /> : <div className="commandSessionTableWrap">
         <table className="commandTable"><caption className="commandVisuallyHidden">Observed Pomegr sessions</caption><colgroup><col className="commandSessionColSession" /><col className="commandSessionColState" /><col className="commandSessionColActivity" /><col className="commandSessionColAgents" /><col className="commandSessionColContext" /><col className="commandSessionColProgress" /><col className="commandSessionColUpdated" /><col className="commandSessionColAction" /></colgroup><thead><tr><th>Session</th><th>State</th><th className="commandTableActivityColumn">Current activity</th><th className="commandTableAgents">Agents</th><th>Context</th><th>Progress</th><th className="commandTableUpdated">Updated</th><th aria-label="Open session" /></tr></thead>
           <tbody>{visibleSessions.map((session) => { const state = sessionState(session); return <tr key={session.id}>
-            <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity activity={session.currentActivity} compact /></Link></td>
+            <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity session={session} compact /></Link></td>
             <td data-label="State"><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
-            <td className="commandTableActivityColumn"><SessionCurrentActivity activity={session.currentActivity} /></td>
+            <td className="commandTableActivityColumn"><SessionCurrentActivity session={session} /></td>
             <td className="commandTableAgents" data-label="Agents">{session.agentCount === null ? <span title="Agent count is unavailable">—</span> : <span title={session.activeAgentCount === null ? "Active agent count is unavailable" : "Active / total agents"}>{session.activeAgentCount === null ? session.agentCount : `${session.activeAgentCount}/${session.agentCount}`}</span>}</td>
             <td data-label="Context">{session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : `${Math.round(session.latestContextTotal / 1000)}k`}</td>
             <td data-label="Progress"><span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? `${Math.round(session.progress.percent)}%` : "—"}</span></td>

@@ -139,6 +139,42 @@ invalidation hint, never a state payload. The browser responds by fetching `/api
 with its current revision. That GET still reads only the committed response cache. A
 dropped event is harmless because focus refresh and serialized recovery polling remain.
 
+Codex lifecycle observation has an explicit ownership boundary. A connected owning
+app-server supplies runtime status through read-only list/read observations with
+successful per-thread confirmation; its status expires after 120 seconds without a
+fresh observation as `observation_gap`. The separate account-only app-server used for
+usage limits is never a session observer. The CLI documents a proxy to a running local
+daemon, but Desktop owner association and socket discovery are not established by this
+contract, so production does not auto-attach, pair, or configure that transport. The
+hook bridge is opt-in and requires a recognized Codex/ChatGPT ancestor or a validated
+explicit owner PID; it does not reuse an old lease when current identity is unavailable.
+It persists only its versioned bounded snapshot: v2 allowlisted lifecycle event,
+optional SessionStart source, stop-hook continuation flag, bounded IDs, timestamps,
+sequence, and local lease state. Legacy v1 snapshots remain parseable but contribute
+unavailable evidence. Stop/SubagentStop/SessionEnd are boundary signals rather than
+completion proofs; compact SessionStart preserves state only with matching non-null
+turn identity and owner/lease identity, otherwise it is unknown. Lease expiry and
+missing ownership downgrade to unknown/stale and never to idle. Historical views omit
+runtime liveness and hook snapshots.
+
+U1 detects lifecycle-only changes using a bounded private fingerprint alongside
+transcript generations, including source status, evidence, freshness, and live/history
+classification. The fingerprint never exposes a provider path or raw lifecycle
+payload. A changed fingerprint schedules U2 normalization with an empty transcript
+delta even without source-byte growth; C then validates and atomically commits the
+candidate. Known API-only sessions do not require a rollout file to enter this path.
+Unchanged normalized observations do not create duplicate revisions. Restored Codex
+lifecycle state is downgraded to unknown/stale until fresh acquisition confirms it;
+startup rederivation consumes that downgraded evidence, never the original checkpoint lifecycle.
+All production GETs remain cache-only: a request may queue hydration but cannot acquire
+or normalize synchronously, and the last-known-good committed revision remains served
+until a complete replacement validates and commits atomically.
+
+For an open Codex turn, freshness is measured from the latest recognized provider
+progress record, not from turn start, file modification time, or poll time. More than
+120 seconds of silence is unknown, never idle; malformed, incomplete, or mismatched
+record generations also remain unknown until a complete replacement is acquired.
+
 ### Startup working set and lazy history
 
 - Catalog discovery remains lightweight and includes bounded historical rows so the
@@ -163,8 +199,10 @@ dropped event is harmless because focus refresh and serialized recovery polling 
   available byte has been consumed; 64 KiB is not a history window.
 - Only newline-complete records are parsed. The offset remains at the start of an
   unfinished record and that fragment stays in memory only.
-- An incomplete fragment is bounded to 256 KiB. Oversized or malformed records degrade
-  safely without exposing raw content or blocking later complete records.
+- An incomplete generic-provider fragment is bounded to 256 KiB. Codex permits up to
+  8 MiB for one encoded record (while still yielding 64 KiB reads) because image-tool
+  result records can exceed 256 KiB; larger or malformed Codex records degrade to
+  unknown without exposing raw content or blocking later complete records.
 - Compatible checkpoints resume at the last complete-record offset. After restart, any
   unfinished record is reread from that offset.
 - Multi-session reconciliation prepares provider-private source topology once per catalog
@@ -215,9 +253,9 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start when a provider worker is available; default concurrency is 2 sessions per provider, with same-session serialization and event coalescing |
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
-| Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce for 500 ms after a normalized candidate arrives; watcher wakeups are immediate and the 10-second reconciliation is the missed-event ceiling |
-| Structural catalog projection | Backend monitor / D | Commits additions, removals, live transitions, and needs-input transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh |
-| Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Rebuild after a relevant commit, using the 500 ms coalescing ceiling |
+| Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
+| Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh |
+| Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Catalog revision notification | Backend serving / S | Carries no state; announces only the committed `sessions` revision | Emit immediately after a catalog response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
 | Routine checkpoint | Backend writer / P | Reads L1 evidence and atomically replaces L2 JSON | Five seconds after quiet; at least once per 60 seconds during continuous activity |
@@ -370,7 +408,21 @@ adapter-private; missing or ambiguous classification degrades to the generic she
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
 context snapshot, bounded agent-reported progress, and the normalized primary agent's
-nullable current-activity label and observation timestamp. Completed rows retain their
+nullable current-activity label, observation timestamp, and fixed `current`
+qualification. D derives that qualification from the primary agent's
+committed lifecycle, not from child activity, wall-clock recency, or file timestamps.
+Only an observed/current active primary in a working or needs-input catalog row is current
+(a child awaiting input does not stop the primary). Unknown, stale, inferred, missing,
+restored, or inactive primary lifecycle produces null in the catalog, even if children
+work. The older heading remains in retained agent evidence, not in Current activity.
+An Idle or non-live catalog row suppresses any older cached heading immediately, before
+detail hydration, without erasing the retained primary evidence. Both the observation
+catalog and compatibility session feed use the same projection rules; with observation
+enabled, the feed returns the committed catalog directly rather than rebuilding from a
+separately cached summary. F renders only qualified current headings, with the original
+activity icon. All other cases show an em dash in the activity column and no compact
+heading; legacy unqualified or last-observed payloads never acquire a current icon.
+Completed rows retain their
 last committed agent count, context snapshot, and progress; their active-agent count is
 zero and current activity is null. Subagent activity, context history, resources, provider
 records, and every other agent field remain outside the catalog response. React consumes

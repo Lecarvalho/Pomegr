@@ -134,10 +134,13 @@ export type Agent = {
   role: AgentRole;
   model: string;
   effort: string;
-  status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle";
+  status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle" | "unknown";
   liveness?: {
-    source: "owning_app_server" | "lifecycle_bridge" | "rollout_activity_heuristic";
+    source: "owning_app_server" | "lifecycle_bridge" | "rollout_activity_heuristic" | "structured_lifecycle";
     observedAt: string;
+    evidence?: "observed" | "inferred" | "unavailable";
+    freshness?: "current" | "stale";
+    reason?: "source_not_integrated" | "source_unavailable" | "source_unsupported" | "observation_gap" | "ambiguous_event" | "legacy_snapshot";
   } | null;
   signal: AgentReportedSignal | null;
   currentActivity?: AgentCurrentActivity | null;
@@ -358,6 +361,10 @@ export type LoopPattern = { id: string; agent: string; tool: string; detail: str
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 /** Bounded current work state. Provider-native lifecycle values stay monitor-private. */
 export type SessionActivityStatus = "working" | "needs_input" | "idle" | "unknown";
+/** Catalog qualification derived monitor-side from the primary agent's lifecycle. */
+export type SessionCurrentActivity = AgentCurrentActivity & {
+  state: "current";
+};
 /** Bounded session-directory row derived from committed normalized evidence. */
 export type SessionSummary = {
   id: string;
@@ -375,8 +382,8 @@ export type SessionSummary = {
   activeAgentCount: number | null;
   latestContextTotal: number | null;
   progress: SessionProgress | null;
-  /** Latest bounded provider-authored heading from the normalized primary agent; live sessions only. */
-  currentActivity: AgentCurrentActivity | null;
+  /** Confirmed current primary heading; null for inactive, uncertain, or historical rows. */
+  currentActivity: SessionCurrentActivity | null;
 };
 
 export type SessionCatalogSnapshot = {

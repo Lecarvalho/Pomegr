@@ -105,4 +105,19 @@ describe("current agent activity", () => {
 
     expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(label);
   });
+
+  it("labels retained activity as last observed when lifecycle state is uncertain", async () => {
+    const user = userEvent.setup();
+    render(panel({ ...baseAgent, status: "unknown", currentActivity: activity, liveness: {
+      source: "structured_lifecycle",
+      observedAt: activity.observedAt,
+      evidence: "unavailable",
+      freshness: "stale",
+      reason: "legacy_snapshot",
+    } }));
+
+    await user.click(screen.getByRole("button", { name: "Last observed activity" }));
+    expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent("Last observed activity");
+    expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent(activity.label);
+  });
 });

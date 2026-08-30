@@ -186,11 +186,17 @@ When Claude's local session registry is available, its entries are the primary l
 
 When the provider registry is unavailable, Pomegr falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 
-Codex uses a separate evidence order: owning app-server status, a current allowlisted lifecycle-bridge lease, then a rollout-tail heuristic. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly. Bridge leases use a 15-second heartbeat and 45-second expiry; needs-input also has a 30-minute safety expiry. Rollout-only activity is active for 15 seconds, idle/recent through 120 seconds, and unavailable after 120 seconds unless a bounded needs-input fallback remains current. On Windows, Codex can append fresh records while the open rollout's reported modification time remains stale, so Pomegr also tracks bounded file-size/stat changes and cold-checks a bounded set of recent top-level Codex Desktop rollouts or CLI rollouts whose provider writer lock is actively held. These windows are liveness heuristics, not token metrics or operating-system certainty.
+Codex uses only evidence whose ownership and provenance are known: owning app-server status, an allowlisted lifecycle-bridge snapshot, or an explicit adapter assessment of structured rollout evidence. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly only when reported by the owning connection and confirmed for that thread. Bridge liveness is optional evidence with a bounded lease; lease expiry produces unknown/stale, never idle. CLI and VS Code rollout assessments use distinct cold-check budgets and pending-edit algorithms; unsupported Desktop attachment remains unknown. Open-turn freshness uses the latest recognized provider progress record; more than 120 seconds of silence is unknown, never idle. These windows are liveness evidence, not token metrics or operating-system certainty.
 
-A recognized provider-authored Codex activity heading is scoped to its open turn, not to the 15-second rollout activity window. When only the rollout fallback has gone idle, an open heading keeps that agent active; explicit app-server and lifecycle-bridge idle states remain authoritative. The heading clears when a newer heading replaces it, a recognized terminal turn record arrives, the agent finishes or stops, or the view becomes historical. Pomegr preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
+A recognized provider-authored Codex activity heading is scoped to its open turn and cannot by itself clear or prove liveness. It may be retained without a start marker while no true known boundary has closed that turn; repeated headings or context do not reset completion. A recognized terminal turn record or authoritative owning status may clear it, while unknown/stale state presents it as **Last observed activity**; historical views omit it. Pomegr preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
 
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
+
+Session activity aggregation is conservative: `needs_input` wins, then any known active
+actor yields `working`. `idle` is allowed only when the root lifecycle is known idle
+and every potentially-live related actor is explicitly inactive (`idle`, `stopped`, or
+`finished`). An unknown root or live child blocks idle; unknown non-live historical
+children do not. `isLive` remains the existing any-actor liveness flag.
 
 ## Session progress estimate
 

@@ -58,7 +58,7 @@ test("keeps activity scoped to an open live turn and clears every recognized ter
   for (const agentStatus of ["finished", "stopped", "idle"]) {
     assert.equal(parseCodexCurrentActivityRecords([
       eventSummary("2026-08-12T12:00:01.000Z", "**Working safely**"),
-    ], { agentStatus }), null);
+    ], { agentStatus, lifecycle: { evidence: "observed", freshness: "current", observedAt: "2026-08-12T12:00:02.000Z" } }), null);
   }
   assert.equal(parseCodexCurrentActivityRecords([
     eventSummary("2026-08-12T12:00:01.000Z", "**Working safely**"),
@@ -79,7 +79,6 @@ test("keeps an open-turn heading stable across heuristic idle gaps and unrelated
   assert.deepEqual(parseCodexCurrentActivityRecords(records, { agentStatus: "active" }), expected);
   assert.deepEqual(parseCodexCurrentActivityRecords(records, {
     agentStatus: "idle",
-    rolloutHeuristicIdle: true,
   }), expected);
 });
 
@@ -98,12 +97,12 @@ test("carries normalized activity across a bounded-tail gap and clears it on lif
     { timestamp: "2026-08-12T12:00:03.000Z", type: "turn_completed", payload: { status: "completed" } },
     responseSummary("2026-08-12T12:00:04.000Z", "**Late duplicate**"),
   ], { agentStatus: "active", existingState: carried });
-  assert.deepEqual(cleared, { currentActivity: null, turnOpen: false });
+  assert.deepEqual(cleared, { currentActivity: null, turnOpen: false, turnId: "turn-1", boundaryAt: "2026-08-12T12:00:03.000Z" });
 
   const nextTurn = parseCodexCurrentActivityStateRecords([
     { timestamp: "2026-08-12T12:00:05.000Z", type: "turn_context", payload: { turn_id: "turn-2" } },
   ], { agentStatus: "active", existingState: cleared });
-  assert.deepEqual(nextTurn, { currentActivity: null, turnOpen: true });
+  assert.deepEqual(nextTurn, { currentActivity: null, turnOpen: true, turnId: "turn-2", boundaryAt: "2026-08-12T12:00:05.000Z" });
 });
 
 test("keeps the live heading across interim agent commentary until genuine turn completion", () => {
@@ -230,9 +229,9 @@ test("provider normalization keeps live current activity on its owning agent and
 
   assert.deepEqual(liveAgents.get("primary").currentActivity, { label: "Root activity", observedAt: "2026-08-12T12:00:01.000Z" });
   assert.deepEqual(liveAgents.get("agent-activity-child").currentActivity, { label: "Child activity", observedAt: "2026-08-12T12:00:02.000Z" });
-  assert.equal(liveAgents.get("primary").status, "active");
-  assert.equal(liveAgents.get("agent-activity-child").status, "active");
-  assert.equal(liveState.metrics.activeAgents, 2);
+  assert.equal(liveAgents.get("primary").status, "unknown");
+  assert.equal(liveAgents.get("agent-activity-child").status, "unknown");
+  assert.equal(liveState.metrics.activeAgents, 0);
   assert.equal(liveState.executionTasks.length, 0);
   assert.equal(liveState.activity.length, 0);
   assert.doesNotMatch(JSON.stringify(liveState), /MUST_NOT_LEAK|encrypted_content|agent_reasoning|summary_text|instructions/iu);
@@ -240,6 +239,47 @@ test("provider normalization keeps live current activity on its owning agent and
   const historicalEvidence = await provider.readSession("activity-root", { historical: true });
   const historicalState = monitorStateFromProviderEvidence("codex", historicalEvidence);
   assert.equal(historicalState.agents.every((agent) => !agent.currentActivity), true);
+});
+
+test("unqualified idle never poisons later incremental headings", () => {
+  const first = parseCodexCurrentActivityStateRecords([
+    eventSummary("2026-08-12T12:00:01.000Z", "**First heading**"),
+  ], { agentStatus: "idle" });
+  assert.equal(first.turnOpen, true);
+  const second = parseCodexCurrentActivityStateRecords([
+    responseSummary("2026-08-12T12:00:02.000Z", "**Later heading**"),
+  ], { agentStatus: "unknown", existingState: first });
+  assert.equal(second.currentActivity.label, "Later heading");
+});
+
+test("same-turn compaction context preserves activity and stale other-turn completions cannot clear it", () => {
+  const start = { timestamp: "2026-08-12T12:00:00.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "new-turn" } };
+  const records = [start, eventSummary("2026-08-12T12:00:01.000Z", "**Still working**"),
+    { timestamp: "2026-08-12T12:00:02.000Z", type: "turn_context", payload: { turn_id: "new-turn" } },
+    { timestamp: "2026-08-12T12:00:03.000Z", type: "event_msg", payload: { type: "task_complete", turn_id: "old-turn" } },
+  ];
+  const replay = parseCodexCurrentActivityStateRecords(records, { agentStatus: "active" });
+  const incremental = records.reduce((existingState, record) => parseCodexCurrentActivityStateRecords([record], { existingState }), null);
+  assert.deepEqual(incremental, replay);
+  assert.equal(replay.currentActivity.label, "Still working");
+});
+
+test("a duplicate start cannot resurrect a completed identified turn", () => {
+  const records = [
+    { timestamp: "2026-08-12T12:00:00.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "turn-a" } },
+    { timestamp: "2026-08-12T12:00:01.000Z", type: "event_msg", payload: { type: "task_complete", turn_id: "turn-a" } },
+    { timestamp: "2026-08-12T12:00:02.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "turn-a" } },
+    eventSummary("2026-08-12T12:00:03.000Z", "**Late duplicate**"),
+    { timestamp: "2026-08-12T12:00:04.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "turn-b" } },
+    eventSummary("2026-08-12T12:00:05.000Z", "**New turn**"),
+  ];
+  assert.equal(parseCodexCurrentActivityRecords(records.slice(0, 4)), null);
+  const expected = parseCodexCurrentActivityStateRecords(records);
+  assert.equal(expected.currentActivity.label, "New turn");
+  for (let split = 1; split < records.length; split += 1) {
+    const prior = parseCodexCurrentActivityStateRecords(records.slice(0, split));
+    assert.deepEqual(parseCodexCurrentActivityStateRecords(records.slice(split), { existingState: prior }), expected);
+  }
 });
 
 test("provider carries current activity after large records evict its source from the live tail", async (context) => {

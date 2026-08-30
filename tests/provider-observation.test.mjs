@@ -596,6 +596,104 @@ test("Codex observation retains the complete story while a child source advances
   ]);
 });
 
+test("Codex lifecycle-only changes publish one empty-delta successor without a rollout append", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-lifecycle-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const rolloutFile = path.join(directory, "root.jsonl");
+  await writeFile(rolloutFile, '{"id":"initial"}\n', "utf8");
+  let entries = [{ localId: "root", isLive: true, needsInput: false, activityStatus: "working", updatedAt: "2026-08-28T10:00:00.000Z" }];
+  let metadata = [{ localId: "root", sessionId: "root", rolloutFile, runtimeStatus: { type: "active", activeFlags: [] } }];
+  const reads = [];
+  const published = [];
+  let watcher;
+  const observer = createCodexIncrementalObserver({
+    list: async () => entries,
+    discoveredMetadata: async () => metadata,
+    transcriptPathsBySessionId: new Map(),
+    watchTargets: [directory],
+    catalogWatchTargets: [directory],
+    watchSource(_target, options, callback) {
+      watcher = typeof options === "function" ? options : callback;
+      return { close() {} };
+    },
+    intervalMs: 60_000,
+    async yieldControl() {},
+    readEvidence: async (_localId, options) => {
+      reads.push(options);
+      return {
+        localId: "root",
+        historical: false,
+        session: { updatedAt: "2026-08-28T10:00:00.000Z" },
+        agents: [{ id: "primary", skills: [], toolCalls: 0 }],
+        workflows: [], usageSnapshots: [], toolCalls: [], activity: [], planTasks: [], compactions: [],
+        efficiencyRuleEvidence: { repetition: false }, pullRequestCreations: [],
+      };
+    },
+  });
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog() {},
+    publishSession(_id, candidate) { published.push(candidate); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => published.length === 1 && typeof watcher === "function");
+  const firstFingerprint = published[0].observationSource.fingerprint;
+
+  entries = [{ ...entries[0], isLive: false, activityStatus: "idle" }];
+  metadata = [{ ...metadata[0], runtimeStatus: { type: "idle", activeFlags: [] } }];
+  watcher("change", "liveness-state");
+  await waitFor(() => published.length === 2);
+  assert.equal(reads[1].completeStory, false);
+  assert.equal(reads[1].incrementalRecordsByFile.size, 0);
+  assert.notEqual(published[1].observationSource.fingerprint, firstFingerprint);
+
+  watcher("change", "liveness-state");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(published.length, 2, "an unchanged liveness poll must not churn the evidence revision");
+});
+
+test("Codex hydrates a known API-only session without requiring a rollout", async (context) => {
+  const published = [];
+  const reads = [];
+  const controller = new AbortController();
+  const observer = createCodexIncrementalObserver({
+    list: async () => [{ localId: "api-only", isLive: true, updatedAt: "2026-08-28T10:00:00.000Z" }],
+    discoveredMetadata: async () => [{
+      localId: "api-only",
+      sessionId: "api-only",
+      runtimeStatus: { type: "active", activeFlags: ["waitingOnApproval"] },
+    }],
+    transcriptPathsBySessionId: new Map(),
+    watchTargets: [],
+    intervalMs: 60_000,
+    async yieldControl() {},
+    readEvidence: async (_localId, options) => {
+      reads.push(options);
+      return {
+        localId: "api-only",
+        historical: false,
+        session: { updatedAt: "2026-08-28T10:00:00.000Z" },
+        agents: [{ id: "primary", skills: [], toolCalls: 0 }],
+        workflows: [], usageSnapshots: [], toolCalls: [], activity: [], planTasks: [], compactions: [],
+        efficiencyRuleEvidence: { repetition: false }, pullRequestCreations: [],
+      };
+    },
+  });
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog() {},
+    publishSession(_id, candidate) { published.push(candidate); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => published.length === 1);
+  assert.equal(reads[0].completeStory, true);
+  assert.equal(published[0].observationSource.completeOffset, 0);
+  assert.match(published[0].observationSource.fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(await observer.hydrate("api-only"), false);
+  assert.equal(published.length, 1);
+});
+
 test("a child transcript change updates its session source fingerprint without advancing the primary cursor", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-provider-source-set-"));
   context.after(() => rm(root, { recursive: true, force: true }));

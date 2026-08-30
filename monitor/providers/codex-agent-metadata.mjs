@@ -414,7 +414,7 @@ function runtimeStatus(value) {
 }
 
 function liveStatus(value) {
-  return ["active", "waiting", "needs_input", "finished", "stopped", "idle"].includes(value) ? value : null;
+  return ["active", "waiting", "needs_input", "finished", "stopped", "idle", "unknown"].includes(value) ? value : null;
 }
 
 function mergeCollaboration(previous, next) {
