@@ -55,7 +55,7 @@ describe("Sessions view", () => {
     expect(screen.getAllByRole("columnheader")).toHaveLength(8);
     const completedRow = screen.getByText("Session 1").closest("tr");
     expect(completedRow).not.toBeNull();
-    expect(within(completedRow!).getByText("1").closest("td")).toHaveAttribute("data-label", "Agents");
+    expect(within(completedRow!).getByText("0/1").closest("td")).toHaveAttribute("data-label", "Agents");
     expect(within(completedRow!).getByText("1k").closest("td")).toHaveAttribute("data-label", "Context");
     expect(within(completedRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("100%");
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();

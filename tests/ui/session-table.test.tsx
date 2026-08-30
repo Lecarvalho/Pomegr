@@ -23,7 +23,7 @@ describe("sessions table", () => {
     expect(progressRow).not.toBeNull();
     expect(unavailableRow).not.toBeNull();
     expect(within(progressRow!).getByText("Active").closest("td")).toHaveAttribute("data-label", "State");
-    expect(within(progressRow!).getByText("2").closest("td")).toHaveAttribute("data-label", "Agents");
+    expect(within(progressRow!).getByText("1/2").closest("td")).toHaveAttribute("data-label", "Agents");
     expect(within(progressRow!).getByText("12k").closest("td")).toHaveAttribute("data-label", "Context");
     expect(within(progressRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("42%");
     expect(within(progressRow!).getByTitle("Agent-reported session progress").closest("td")).toHaveAttribute("data-label", "Progress");

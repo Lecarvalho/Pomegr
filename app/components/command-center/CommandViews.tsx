@@ -106,7 +106,7 @@ export function SessionsView() {
             <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity activity={session.currentActivity} compact /></Link></td>
             <td data-label="State"><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
             <td className="commandTableActivityColumn"><SessionCurrentActivity activity={session.currentActivity} /></td>
-            <td className="commandTableAgents" data-label="Agents">{session.agentCount ?? <span title="Agent count is unavailable">—</span>}</td>
+            <td className="commandTableAgents" data-label="Agents">{session.agentCount === null ? <span title="Agent count is unavailable">—</span> : <span title={session.activeAgentCount === null ? "Active agent count is unavailable" : "Active / total agents"}>{session.activeAgentCount === null ? session.agentCount : `${session.activeAgentCount}/${session.agentCount}`}</span>}</td>
             <td data-label="Context">{session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : `${Math.round(session.latestContextTotal / 1000)}k`}</td>
             <td data-label="Progress"><span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? `${Math.round(session.progress.percent)}%` : "—"}</span></td>
             <td className="commandTableUpdated" data-label="Updated">{sessionTimestamp(session.updatedAt)}</td>
