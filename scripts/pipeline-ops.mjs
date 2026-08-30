@@ -116,6 +116,17 @@ export function formatPipelineOperationsSnapshot(snapshot, { provider = "" } = {
   return lines.join("\n");
 }
 
+function terminalFrame(rendered, stdout) {
+  const columns = Math.max(1, count(stdout.columns) || 80);
+  const rows = Math.max(1, count(stdout.rows) || 24);
+  const lines = rendered.split("\n");
+  const clipped = lines.length > rows || lines.some((line) => line.length > columns);
+  const visible = lines.slice(0, rows);
+  if (clipped) visible[visible.length - 1] = "Resize terminal or use --provider / --once for more. Ctrl+C stops.";
+  // Stay inside the viewport, including the last row: no trailing newline or wrap.
+  return visible.map((line) => line.slice(0, columns)).join("\r\n");
+}
+
 export function pipelineOperationsHelp() {
   return [
     "Usage: npm run ops:pipeline -- [options]",
@@ -135,6 +146,7 @@ export function runPipelineOperationsCli(options, {
   stderr = process.stderr,
   schedule = setTimeout,
   cancel = clearTimeout,
+  signals = process,
   setExitCode = (value) => { process.exitCode = value; },
 } = {}) {
   const endpoint = pipelineOperationsEndpoint(options.port);
@@ -142,6 +154,38 @@ export function runPipelineOperationsCli(options, {
   let warned = false;
   let socket = null;
   let retryTimer = null;
+  let screenActive = false;
+  const interactive = stdout.isTTY && !options.json && !options.once;
+
+  const close = () => {
+    stopped = true;
+    if (retryTimer !== null) cancel(retryTimer);
+    retryTimer = null;
+    socket?.destroy();
+    if (screenActive) {
+      screenActive = false;
+      signals.removeListener("exit", close);
+      signals.removeListener("SIGINT", interrupt);
+      signals.removeListener("SIGTERM", terminate);
+      stdout.write("\u001b[?25h\u001b[?1049l");
+    }
+  };
+  const interrupt = () => { setExitCode(130); close(); };
+  const terminate = () => { setExitCode(143); close(); };
+  const render = (rendered) => {
+    if (!interactive) {
+      stdout.write(`${rendered}\n`);
+      return;
+    }
+    if (!screenActive) {
+      screenActive = true;
+      signals.once("exit", close);
+      signals.once("SIGINT", interrupt);
+      signals.once("SIGTERM", terminate);
+      stdout.write("\u001b[?1049h\u001b[?25l");
+    }
+    stdout.write(`\u001b[H\u001b[2J${terminalFrame(rendered, stdout)}`);
+  };
 
   const connectOnce = () => {
     if (stopped) return;
@@ -151,6 +195,7 @@ export function runPipelineOperationsCli(options, {
     socket.setEncoding?.("utf8");
     socket.on("connect", () => { warned = false; });
     socket.on("data", (chunk) => {
+      if (stopped) return;
       buffer += chunk;
       if (Buffer.byteLength(buffer, "utf8") > MAX_LINE_BYTES) {
         buffer = "";
@@ -167,7 +212,7 @@ export function runPipelineOperationsCli(options, {
           const rendered = options.json
             ? JSON.stringify(snapshot)
             : formatPipelineOperationsSnapshot(snapshot, options);
-          stdout.write(options.json || !stdout.isTTY ? `${rendered}\n` : `\u001b[2J\u001b[H${rendered}\n`);
+          render(rendered);
           if (options.once) {
             stopped = true;
             socket.end();
@@ -196,14 +241,7 @@ export function runPipelineOperationsCli(options, {
   };
 
   connectOnce();
-  return Object.freeze({
-    close() {
-      stopped = true;
-      if (retryTimer !== null) cancel(retryTimer);
-      retryTimer = null;
-      socket?.destroy();
-    },
-  });
+  return Object.freeze({ close });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

@@ -573,3 +573,85 @@ test("the continuous CLI reconnects and once mode consumes only one buffered sna
   socket.emit("data", `${line}\n${line}\n`);
   assert.equal(writes.length, 1);
 });
+
+
+test("the live terminal reuses one bounded screen and restores it on shutdown", () => {
+  for (const shutdown of ["close", "SIGINT", "SIGTERM", "exit"]) {
+    const socket = new EventEmitter();
+    socket.destroy = () => socket.emit("close");
+    const signals = new EventEmitter();
+    const writes = [];
+    const exitCodes = [];
+    const stdout = { isTTY: true, columns: 120, rows: 40, write(value) { writes.push(value); } };
+    let retry;
+    let cancelled;
+    const cli = runPipelineOperationsCli({ port: 4317, json: false, once: false }, {
+      connect: () => socket,
+      stdout,
+      stderr: { write() {} },
+      signals,
+      schedule(callback) { retry = callback; return 123; },
+      cancel(timer) { cancelled = timer; },
+      setExitCode(code) { exitCodes.push(code); },
+    });
+    const snapshot = createPipelineOperationsSnapshot({
+      providers: { claude: {}, codex: {} },
+    }, "2026-08-29T12:00:00.000Z");
+    socket.emit("data", JSON.stringify(snapshot) + "\n");
+    assert.match(writes.join(""), /shared · candidate to commit/);
+
+    // A resize must not wrap or scroll, even when the panel is taller than the viewport.
+    stdout.columns = 60;
+    stdout.rows = 10;
+    const updated = { ...snapshot, revisions: { ...snapshot.revisions, catalog: 2 } };
+    socket.emit("data", JSON.stringify(updated) + "\n");
+    const frame = writes.at(-1);
+    assert.ok(frame.startsWith("\u001b[H\u001b[2J"));
+    assert.ok(!frame.endsWith("\n"));
+    const lines = frame.slice("\u001b[H\u001b[2J".length).split("\r\n");
+    assert.equal(lines.length, stdout.rows);
+    assert.ok(lines.every((line) => line.length <= stdout.columns));
+    assert.match(lines.at(-1), /Resize terminal/);
+    assert.match(frame, /catalog 2/);
+    assert.equal(writes.join("").split("\u001b[?1049h").length - 1, 1);
+
+    // A feed disconnect keeps the same screen; stopping also cancels its retry.
+    socket.emit("close");
+    assert.equal(typeof retry, "function");
+    assert.doesNotMatch(writes.join(""), /\u001b\[\?1049l/);
+    if (shutdown === "close") cli.close();
+    else signals.emit(shutdown);
+    assert.equal(cancelled, 123);
+    assert.ok(writes.at(-1).endsWith("\u001b[?25h\u001b[?1049l"));
+    assert.deepEqual(signals.eventNames(), []);
+    assert.deepEqual(exitCodes, shutdown === "SIGINT" ? [130] : shutdown === "SIGTERM" ? [143] : []);
+    const writeCount = writes.length;
+    socket.emit("data", JSON.stringify(snapshot) + "\n");
+    cli.close();
+    assert.equal(writes.length, writeCount);
+  }
+});
+
+test("once, JSON, and redirected CLI output stay printable without screen controls", () => {
+  for (const mode of [{ isTTY: true, once: true }, { isTTY: true, json: true }, { isTTY: false }]) {
+    const socket = new EventEmitter();
+    socket.end = socket.destroy = () => socket.emit("close");
+    const writes = [];
+    const signals = new EventEmitter();
+    const cli = runPipelineOperationsCli({ port: 4317, ...mode }, {
+      connect: () => socket,
+      stdout: { isTTY: mode.isTTY, write(value) { writes.push(value); } },
+      stderr: { write() {} },
+      signals,
+    });
+    const snapshot = createPipelineOperationsSnapshot({});
+    socket.emit("data", JSON.stringify(snapshot) + "\n");
+    cli.close();
+    assert.equal(writes.length, 1);
+    assert.doesNotMatch(writes[0], /\u001b/);
+    assert.ok(writes[0].endsWith("\n"));
+    assert.deepEqual(signals.eventNames(), []);
+    if (mode.json) assert.deepEqual(JSON.parse(writes[0]), snapshot);
+    else assert.match(writes[0], /shared · candidate to commit/);
+  }
+});

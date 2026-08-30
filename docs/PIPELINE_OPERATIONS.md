@@ -4,6 +4,12 @@ This document defines Pomegr's internal, manually launched observation-pipeline 
 It is an engineering diagnostic, not a product dashboard, session metric, or efficiency
 signal.
 
+For panel definitions, see [header and revisions](#header-and-revisions),
+[worker columns](#worker-columns), [timing columns](#timing-columns), and
+[timing stages](#timings-available-in-v1). For interpretation, see
+[lifetime and reset behavior](#lifetime-and-reset-behavior) and
+[reading common patterns](#reading-common-patterns).
+
 ## Run the V1 terminal monitor
 
 Start Pomegr from the repository, then attach the operations client in a separate terminal:
@@ -25,9 +31,28 @@ npm run ops:pipeline -- --json
 npm run ops:pipeline -- --once
 ```
 
-The client reconnects after a monitor restart. `--json` prints the same bounded snapshots
-as NDJSON for temporary engineering analysis; operators remain responsible for redirecting
-that output only to an approved local destination.
+In an interactive terminal, continuous mode refreshes one panel in an alternate screen
+without adding snapshots to console scrollback. The panel fits the current terminal size;
+resize the terminal, filter with `--provider`, or use `--once` to see clipped rows or columns.
+Ctrl+C restores the previous console screen. `--once` and redirected output remain plain
+text without terminal control sequences.
+
+The feed sends a snapshot on connection and then every 500 ms by default. This is the
+panel refresh interval, not the provider acquisition interval. The client retries a lost
+connection every second; reconnecting does not reset a still-running monitor's counters.
+
+The default monitor port is 4317, or the value of `SESSION_PULSE_PORT` when set;
+`--port` overrides it. `--provider` filters provider rows in the text panel only.
+Shared timings and revision counters always cover the whole monitor. `--json` prints
+the complete bounded snapshot as NDJSON, including all providers even when `--provider`
+is supplied. It also includes diagnostic fields not shown in the panel, such as individual
+failure categories and lifetime timing sample counts. Operators remain responsible for
+redirecting that output only to an approved local destination.
+
+`--once` prints the first valid snapshot and exits; it does not wait for every stage
+to have samples or for workers to become idle. Combine `--json --once` for one structured
+snapshot. If the connection closes before a valid snapshot, once mode exits unsuccessfully
+instead of reconnecting.
 
 V1 attaches to a source-development monitor running on a concrete port. The packaged
 desktop monitor selects an ephemeral authenticated port and does not currently advertise
@@ -138,29 +163,163 @@ does not instrument previously uncounted catches or provider usage-limit failure
 Implementation: [failure recording](../monitor/pipeline-operations-failures.mjs) and
 [normalized-schema summaries](../monitor/pipeline-operations-validation.mjs).
 
+## Header and revisions
+
+| Field | Meaning | How to read it |
+| --- | --- | --- |
+| Timestamp after `Pomegr pipeline operations` | UTC time when the monitor assembled this diagnostic snapshot, shown in ISO 8601 format. | It is not the time of the last provider event or the last timing sample. A changing timestamp confirms new diagnostic snapshots are arriving, even if every other value is unchanged. `time unavailable` means no valid timestamp was supplied. |
+| `catalog` | Current committed revision of the session catalog response used by `/api/sessions`. | Advances when a catalog response is committed, including catalog summaries. It is not the number of sessions. |
+| `home` | Current committed revision of the Home response used by `/api/home`. | Tracks Home publication independently of catalog and usage publication. |
+| `usage` | Current committed revision of the usage-limit response used by `/api/usage-limits`; named `usageLimits` in JSON. | It is not a count of provider API requests: a publication can contain cached values or readiness updates. |
+
+Revisions are independent publication sequence numbers. Compare a domain with its own
+previous value, not with another domain. They need not advance together, and a new revision
+does not guarantee visibly different values. Zero means no committed response revision is
+available. These are monitor-wide response revisions, not individual session evidence
+revisions or provider-native versions. See [the observation cache contract](OBSERVATION_CACHE.md#endpoint-ownership-and-revision-semantics)
+for serving behavior.
+
+## Worker columns
+
+Here, a **hydration** is one provider worker's attempt to acquire and normalize a session's
+source evidence. A worker slot is an asynchronous unit of monitor work, not a coding agent,
+OS thread, or CPU core. The same session is never hydrated concurrently by two slots.
+
+| Column | Meaning | Scope and interpretation |
+| --- | --- | --- |
+| `Provider` | Registered provider identifier, such as `claude` or `codex`. | All remaining values on that row belong to that provider. |
+| `Active` | Number of hydration jobs currently occupying worker slots. | A current gauge. Includes jobs waiting or preparing within hydration; it does not mean those jobs are consuming CPU at that instant. |
+| `Capacity` | Configured maximum concurrent hydration jobs. | Normally 2 per provider; supported values are 1 through 16. This is configuration, not measured utilization. |
+| `Queued` | Number of distinct pending session hydration jobs. | A current gauge, excluding running jobs but including a pending follow-up for a session already running. Repeated requests for one pending session share one queue entry. |
+| `Coalesced` | Number of additional hydration requests merged into an already pending job. | Accumulates over the observer's lifetime. It is not the queue length, a count of lost events, or a measured amount of work saved. |
+| `Dirty` | Number of times a new follow-up job was queued for a session while its hydration was already running. | Accumulates over the observer's lifetime; it is not the current number of dirty sessions. Further requests merged into that pending follow-up increase `Coalesced` instead. |
+| `Failures` | Sum of the observer's acquisition/preparation failure counter and the eight allowlisted registry failure/rejection counters for that provider. | Accumulated recorded events, not current failed jobs, unique incidents, or failed sessions. Recovery does not subtract earlier failures. |
+
+The registry portion of `Failures` covers catalog reads, rejected catalog entries,
+readiness probes, session reads, rejected session evidence, observer startup, explicit
+observer hydration, and rejected observer publications. It excludes usage-limit failures
+and shared coordinator derivation/store rejections. A single underlying problem can cause
+more than one recorded event, while an uninstrumented failure may not appear here. Use
+`--json` to inspect the bounded categories; zero is not proof that every pipeline step
+succeeded.
+
+Catalog discovery and shared eager preparation run outside the hydration slots. Therefore,
+`Active 0` and `Queued 0` do not prove the whole monitor is idle. Conversely, a pending
+follow-up can wait for its own running session even when another slot is free.
+
+Missing or non-finite numeric diagnostic fields normalize to zero; other values are bounded. For example, `Capacity 0`
+can mean that no worker diagnostics were supplied, rather than a configured zero-worker
+pool. A provider can appear because failure counters exist even if its observer did not
+start. `No matching provider diagnostics.` means there is no provider row in the snapshot
+matching the text filter; it does not establish that the provider is uninstalled.
+
+## Timing columns
+
+Each stage has its own rolling window of the most recent 256 recorded durations. These
+are sample windows, not time windows. Each provider also has separate windows; the rows
+prefixed `shared` aggregate coordinator work across providers.
+
+| Column | Meaning |
+| --- | --- |
+| `Stage` | The operation being measured, with its provider identifier or `shared` scope. Boundaries are listed below. |
+| `Last` | Most recently recorded duration for this stage. It is not elapsed time for a currently running operation. |
+| `Avg` | Arithmetic mean of the retained durations, rounded to the nearest millisecond. |
+| `p50` | 50th percentile of retained durations, using nearest rank: sorted sample at one-based position `ceil(0.50 × Window)`. For an even sample count this selects the lower middle sample, rather than averaging the two middle values. |
+| `p95` | 95th percentile, using the same rule at `ceil(0.95 × Window)`. With few samples it can equal `Max`; it is not a guarantee about future operations. |
+| `Max` | Largest duration still in the rolling window, not the all-time maximum. It can fall when an older slow sample leaves the window. |
+| `Window` | Number of retained samples for this stage, from 0 to 256 in the running V1 monitor. It is neither seconds nor the number of panel refreshes. JSON additionally exposes `sampleCount`, the lifetime number of recorded samples. |
+
+Durations are recorded as non-negative whole milliseconds, bounded to 24 hours per sample.
+The text panel shows `ms` below one second, `s` with two decimal places below one
+minute, and `m` with one decimal place thereafter. Formatting can round near a unit
+boundary. `0ms` can represent a measured duration below half a millisecond; it does not
+prove no work occurred.
+
+When `Window` is zero, all five duration columns show `—`: no sample is available for
+that stage. This can mean it has not run, is still running, or has no applicable
+instrumentation. For example, a provider without a preparation hook has no preparation
+samples. Refreshing the panel does not create timing samples.
+
+For example, four recorded durations in arrival order `4, 6, 10, 20 ms` produce
+`Last 20ms`, `Avg 10ms`, `p50 6ms`, `p95 20ms`, `Max 20ms`, and `Window 4`.
+
 ## Timings available in V1
 
-| Terminal stage | Boundary | Interpretation |
-| --- | --- | --- |
-| Provider catalog discovery | Before and after the provider's bounded catalog list operation | Time to obtain the latest normalized catalog references |
-| Source queue | Routed source notification to worker dequeue | Capacity pressure before provider work starts |
-| Source preparation | Provider-private source topology preparation | Work shared by or required before hydration |
-| Acquire + normalize | Provider worker acquisition call | Combined U1/U2 duration in V1; it is not yet a trustworthy split between the two phases |
-| Catalog commit wait | First catalog-dirty mark to commit start | Intentional coalescing or event-loop delay; structural changes normally use the next-turn fast path |
-| Catalog projection | Catalog projection start through committed revision notification | Shared D/C work for the bounded catalog response |
-| Session commit wait | Normalized candidate publication to session commit start | Primarily the configured 500 ms coalescing window plus scheduler delay |
-| Session derivation | Start and completion of public session derivation | D work over an already normalized candidate |
-| Normalized store commit | Start and completion of the immutable L1 store publication | C validation and commit work |
-| Candidate to commit | Normalized candidate publication through store publication | Combined downstream candidate latency |
+The first four labels are prefixed by the provider ID. The remaining six are prefixed
+`shared`. Phase names U1, U2, C, and D refer to the ownership model in
+[OBSERVATION_CACHE.md](OBSERVATION_CACHE.md#pipeline-terminology-and-ownership).
 
-These are monotonic process durations, not provider timestamps. They are diagnostic wall
-time and can include asynchronous waiting. They are not throughput, token usage, billing,
-or an authoritative performance score. An empty timing row means the running monitor has
-not observed that phase since startup.
+| Terminal stage | Measurement boundary | Interpretation |
+| --- | --- | --- |
+| `catalog discovery` | Start through settlement of the provider's catalog list call. | Time to discover catalog references. Excludes later source preparation and hydration. A failed list attempt can still produce a timing sample. |
+| `source queue` | After a source notification is routed, until its pending hydration is dequeued. | Wait for a worker slot or a previous hydration of the same session. Coalesced notifications retain the earliest routed timestamp for that pending job. Routine reconciliation and explicit hydration without a source-event timestamp do not add samples; this does not measure event-delivery or routing latency. |
+| `source preparation` | Start through settlement of an optional provider preparation call. | Provider-private preparation before acquisition, such as source topology work. One sample can cover a batch of sessions or a single hydration, including a failed attempt. |
+| `acquire + normalize` | Start through settlement of a worker's acquire/ingest call. | Combined U1/U2 duration, including failed calls. Excludes queue wait, the worker's preceding event-loop yield, separate preparation, and downstream shared derivation/commit. V1 does not split acquisition from normalization. |
+| `catalog commit wait` | First pending catalog-dirty mark through the start of catalog commit. | Intentional batching and scheduler delay. Structural changes normally use the next-event-loop-turn fast path and can preempt a queued summary refresh. |
+| `catalog projection` | Start of catalog commit through response construction, cache commit, and synchronous revision notification. | Shared D/C work to build and publish the catalog response. Excludes its earlier wait and asynchronous browser receipt or rendering. |
+| `session commit wait` | The candidate's monitor-side queue timestamp through the start of its commit attempt. | Normally includes the configured 500 ms coalescing delay plus scheduling. New candidates replace pending ones and restart that delay; retries can add longer waits. It does not start at the original provider event. |
+| `session derivation` | Start through settlement of public session derivation. | D work over an already normalized candidate. Failed or superseded attempts can add samples without reaching store publication. |
+| `normalized store commit` | Start through return or throw of the normalized store's publish call. | C validation and immutable in-memory L1 publication. Includes attempts that are unchanged, rejected, or throw. Excludes later checkpoint disk writes. |
+| `candidate to commit` | The candidate's queue timestamp through return from the store publish call. | Combined downstream wait, derivation, and store-attempt duration. Recorded even when the store returns unchanged or rejected; absent if derivation or publication throws, or the candidate is superseded before publication. Excludes upstream U1/U2 and downstream checkpoint, catalog/Home rebuild, API delivery, and browser work. |
+
+These are monotonic process durations, not provider timestamps. They measure wall time and
+can include asynchronous waiting. They are not throughput, token usage, billing, CPU time,
+or an authoritative performance score.
+
+A timing sample is not a success marker. Each stage records at its own boundary, so stages
+can have different sample counts and their latest samples can refer to different work.
+Preparation can be shared across several sessions; shared derivation can also run after a
+checkpoint restore or dependency refresh without new provider acquisition. Do not add the
+rows, averages, or percentiles to estimate end-to-end latency: `candidate to commit`
+already overlaps the downstream stages, and the windows are not correlated traces.
 
 V1 does not retain per-session traces, split acquisition from normalization for every
 adapter, measure API delivery, or measure browser rendering. Those omissions must be shown
 as unavailable rather than inferred from unrelated timestamps.
+
+## Lifetime and reset behavior
+
+| Values | Retention and reset behavior |
+| --- | --- |
+| `Active`, `Queued`, `Capacity` | Read from the current provider observer on every snapshot. Active and pending counts rise and fall as work changes; capacity is configuration. |
+| `Coalesced`, `Dirty`, `Failures` | Accumulated in memory, not limited to the timing window and not decremented by successful work. Observer counters start fresh when that observer is recreated; registry failure counters live with the registry. Restarting the monitor recreates both. |
+| Timing columns | Each observer/coordinator owns its stage windows. A new sample beyond 256 evicts the oldest. Samples do not expire with elapsed time: an idle stage keeps its last values. Recreating the owning observer/coordinator resets its windows; monitor restart resets all of them. |
+| Header revisions | Sequence numbers for the current response-cache instances. Recreating those caches on monitor restart begins new sequences; startup publications can advance them before the CLI connects. Restored individual session evidence revisions are separate and do not restore these response counters. |
+
+Closing, reopening, or filtering the CLI only changes the client view. It does not clear
+monitor diagnostics, reset windows, or trigger work. The diagnostic counters and durations
+are never persisted in observation checkpoints. After a disconnect the panel can retain
+its last frame while waiting to reconnect; use the header timestamp to distinguish that
+frame from a newly received snapshot.
+
+## Reading common patterns
+
+These are investigation cues, not automatic diagnoses or fixed performance thresholds.
+Compare the same stage and provider under similar workloads.
+
+| Pattern | What it can mean / what to check |
+| --- | --- |
+| `Active` stays at `Capacity`, `Queued` grows, and `source queue` rises | Hydration demand may be exceeding worker capacity. Compare preparation and acquisition timings; the panel alone does not prove CPU saturation or identify a source. |
+| `Dirty` and `Coalesced` increase during active sessions | New requests arrived while work was running or already queued. This is expected coalescing behavior; by itself it does not imply dropped evidence or a defect. |
+| `session commit wait` is near 500 ms while derivation and store commit are short | Often the configured coalescing delay. A larger value can also include scheduling or retry delay; it is not automatically slow parsing. |
+| `p95` is much higher than `p50` | The retained samples include a slower tail. Check `Window`: percentiles from a handful of samples are especially unstable. |
+| Timestamp advances but timings and counters do not | New diagnostic snapshots are arriving without new samples for those stages. Check current workers; they may be idle or still inside an operation that has not yet recorded its duration. |
+| `Failures` increases | One or more covered error/rejection counters increased. Inspect the bounded JSON categories before attributing a cause; the total does not identify a failed session or prove lost committed state. |
+| `—` remains on a timing row | No samples for that stage are available. It may be unused or uninstrumented, rather than fast or broken. |
+| Waiting-for-feed message or a frozen timestamp | The client may be disconnected or the feed may be delayed. Check that the development monitor and selected port are available. The last visible panel is not a new measurement. |
+
+## Implementation references
+
+When changing a field, keep this reference aligned with its measurement and display owners:
+
+- [CLI formatter and refresh behavior](../scripts/pipeline-ops.mjs).
+- [Bounded schema, counters, and duration statistics](../monitor/pipeline-operations.mjs).
+- [IPC feed and refresh cadence](../monitor/pipeline-operations-transport.mjs).
+- [Provider worker scheduling and measurements](../monitor/providers/normalized-polling-observer.mjs).
+- [Provider failure counters](../monitor/providers/registry.mjs).
+- [Shared derivation and commit measurements](../monitor/session-observation-coordinator.mjs).
+- [Response revision sources](../monitor/observation-runtime.mjs) and
+  [response-cache revision allocation](../monitor/committed-response-cache.mjs).
 
 ## Future milestone: renderer performance marks
 
