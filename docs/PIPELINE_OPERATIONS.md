@@ -96,7 +96,47 @@ It must never contain transcript paths, filenames, source fingerprints, session 
 titles, prompts, responses, reasoning, commands, patches, stdout, stderr, tool results,
 credentials, provider-native records, arbitrary error text, or checkpoint contents.
 
-## Failure details
+## Header and revisions
+
+| Field | Meaning | How to read it |
+| --- | --- | --- |
+| Timestamp after `Pomegr pipeline operations` | UTC time when the monitor assembled this diagnostic snapshot, shown in ISO 8601 format. | It is not the time of the last provider event or the last timing sample. A changing timestamp confirms new diagnostic snapshots are arriving, even if every other value is unchanged. `time unavailable` means no valid timestamp was supplied. |
+| `catalog` | Current committed revision of the session catalog response used by `/api/sessions`. | Advances when a catalog response is committed, including catalog summaries. It is not the number of sessions. |
+| `home` | Current committed revision of the Home response used by `/api/home`. | Tracks Home publication independently of catalog and usage publication. |
+| `usage` | Current committed revision of the usage-limit response used by `/api/usage-limits`; named `usageLimits` in JSON. | It is not a count of provider API requests: a publication can contain cached values or readiness updates. |
+
+Revisions are independent publication sequence numbers. Compare a domain with its own
+previous value, not with another domain. They need not advance together, and a new revision
+does not guarantee visibly different values. Zero means no committed response revision is
+available. These are monitor-wide response revisions, not individual session evidence
+revisions or provider-native versions. See [the observation cache contract](OBSERVATION_CACHE.md#endpoint-ownership-and-revision-semantics)
+for serving behavior.
+
+## Worker columns
+
+Here, a **hydration** is one provider worker's attempt to acquire and normalize a session's
+source evidence. A worker slot is an asynchronous unit of monitor work, not a coding agent,
+OS thread, or CPU core. The same session is never hydrated concurrently by two slots.
+
+| Column | Meaning | Scope and interpretation |
+| --- | --- | --- |
+| `Provider` | Registered provider identifier, such as `claude` or `codex`. | All remaining values on that row belong to that provider. |
+| `Active` | Number of hydration jobs currently occupying worker slots. | A current gauge. Includes jobs waiting or preparing within hydration; it does not mean those jobs are consuming CPU at that instant. |
+| `Capacity` | Configured maximum concurrent hydration jobs. | Normally 2 per provider; supported values are 1 through 16. This is configuration, not measured utilization. |
+| `Queued` | Number of distinct pending session hydration jobs. | A current gauge, excluding running jobs but including a pending follow-up for a session already running. Repeated requests for one pending session share one queue entry. |
+| `Coalesced` | Number of additional hydration requests merged into an already pending job. | Accumulates over the observer's lifetime. It is not the queue length, a count of lost events, or a measured amount of work saved. |
+| `Dirty` | Number of times a new follow-up job was queued for a session while its hydration was already running. | Accumulates over the observer's lifetime; it is not the current number of dirty sessions. Further requests merged into that pending follow-up increase `Coalesced` instead. |
+| `Failures` | Sum of the observer's acquisition/preparation failure counter and the eight allowlisted registry failure/rejection counters for that provider. | Accumulated recorded events, not current failed jobs, unique incidents, or failed sessions. Recovery does not subtract earlier failures. |
+
+The registry portion of `Failures` covers catalog reads, rejected catalog entries,
+readiness probes, session reads, rejected session evidence, observer startup, explicit
+observer hydration, and rejected observer publications. It excludes usage-limit failures
+and shared coordinator derivation/store rejections. A single underlying problem can cause
+more than one recorded event, while an uninstrumented failure may not appear here. Use
+`--json` to inspect the bounded categories; zero is not proof that every pipeline step
+succeeded.
+
+### Failure details
 
 When a displayed provider has non-zero failures, the terminal adds a `FAILURES` section
 before the timing table. It shows each non-zero category's cumulative count followed by
@@ -159,49 +199,6 @@ or imply that the previously failing session recovered. The timestamp is when th
 catch handler recorded the failure, not a provider event timestamp; unavailable timestamps
 remain null. This adds no new failure counters, changes no retry/cadence behavior, and
 does not instrument previously uncounted catches or provider usage-limit failures.
-
-Implementation: [failure recording](../monitor/pipeline-operations-failures.mjs) and
-[normalized-schema summaries](../monitor/pipeline-operations-validation.mjs).
-
-## Header and revisions
-
-| Field | Meaning | How to read it |
-| --- | --- | --- |
-| Timestamp after `Pomegr pipeline operations` | UTC time when the monitor assembled this diagnostic snapshot, shown in ISO 8601 format. | It is not the time of the last provider event or the last timing sample. A changing timestamp confirms new diagnostic snapshots are arriving, even if every other value is unchanged. `time unavailable` means no valid timestamp was supplied. |
-| `catalog` | Current committed revision of the session catalog response used by `/api/sessions`. | Advances when a catalog response is committed, including catalog summaries. It is not the number of sessions. |
-| `home` | Current committed revision of the Home response used by `/api/home`. | Tracks Home publication independently of catalog and usage publication. |
-| `usage` | Current committed revision of the usage-limit response used by `/api/usage-limits`; named `usageLimits` in JSON. | It is not a count of provider API requests: a publication can contain cached values or readiness updates. |
-
-Revisions are independent publication sequence numbers. Compare a domain with its own
-previous value, not with another domain. They need not advance together, and a new revision
-does not guarantee visibly different values. Zero means no committed response revision is
-available. These are monitor-wide response revisions, not individual session evidence
-revisions or provider-native versions. See [the observation cache contract](OBSERVATION_CACHE.md#endpoint-ownership-and-revision-semantics)
-for serving behavior.
-
-## Worker columns
-
-Here, a **hydration** is one provider worker's attempt to acquire and normalize a session's
-source evidence. A worker slot is an asynchronous unit of monitor work, not a coding agent,
-OS thread, or CPU core. The same session is never hydrated concurrently by two slots.
-
-| Column | Meaning | Scope and interpretation |
-| --- | --- | --- |
-| `Provider` | Registered provider identifier, such as `claude` or `codex`. | All remaining values on that row belong to that provider. |
-| `Active` | Number of hydration jobs currently occupying worker slots. | A current gauge. Includes jobs waiting or preparing within hydration; it does not mean those jobs are consuming CPU at that instant. |
-| `Capacity` | Configured maximum concurrent hydration jobs. | Normally 2 per provider; supported values are 1 through 16. This is configuration, not measured utilization. |
-| `Queued` | Number of distinct pending session hydration jobs. | A current gauge, excluding running jobs but including a pending follow-up for a session already running. Repeated requests for one pending session share one queue entry. |
-| `Coalesced` | Number of additional hydration requests merged into an already pending job. | Accumulates over the observer's lifetime. It is not the queue length, a count of lost events, or a measured amount of work saved. |
-| `Dirty` | Number of times a new follow-up job was queued for a session while its hydration was already running. | Accumulates over the observer's lifetime; it is not the current number of dirty sessions. Further requests merged into that pending follow-up increase `Coalesced` instead. |
-| `Failures` | Sum of the observer's acquisition/preparation failure counter and the eight allowlisted registry failure/rejection counters for that provider. | Accumulated recorded events, not current failed jobs, unique incidents, or failed sessions. Recovery does not subtract earlier failures. |
-
-The registry portion of `Failures` covers catalog reads, rejected catalog entries,
-readiness probes, session reads, rejected session evidence, observer startup, explicit
-observer hydration, and rejected observer publications. It excludes usage-limit failures
-and shared coordinator derivation/store rejections. A single underlying problem can cause
-more than one recorded event, while an uninstrumented failure may not appear here. Use
-`--json` to inspect the bounded categories; zero is not proof that every pipeline step
-succeeded.
 
 Catalog discovery and shared eager preparation run outside the hydration slots. Therefore,
 `Active 0` and `Queued 0` do not prove the whole monitor is idle. Conversely, a pending
@@ -283,6 +280,7 @@ as unavailable rather than inferred from unrelated timestamps.
 | --- | --- |
 | `Active`, `Queued`, `Capacity` | Read from the current provider observer on every snapshot. Active and pending counts rise and fall as work changes; capacity is configuration. |
 | `Coalesced`, `Dirty`, `Failures` | Accumulated in memory, not limited to the timing window and not decremented by successful work. Observer counters start fresh when that observer is recreated; registry failure counters live with the registry. Restarting the monitor recreates both. |
+| `failureDetails` | Latest stage, reason, and timestamp per fixed failure category. Lives with the corresponding observer or registry counter, survives successful work and CLI reconnects, and resets when its owner is recreated. Not a session trace or proof of an ongoing failure. |
 | Timing columns | Each observer/coordinator owns its stage windows. A new sample beyond 256 evicts the oldest. Samples do not expire with elapsed time: an idle stage keeps its last values. Recreating the owning observer/coordinator resets its windows; monitor restart resets all of them. |
 | Header revisions | Sequence numbers for the current response-cache instances. Recreating those caches on monitor restart begins new sequences; startup publications can advance them before the CLI connects. Restored individual session evidence revisions are separate and do not restore these response counters. |
 
@@ -314,6 +312,8 @@ When changing a field, keep this reference aligned with its measurement and disp
 
 - [CLI formatter and refresh behavior](../scripts/pipeline-ops.mjs).
 - [Bounded schema, counters, and duration statistics](../monitor/pipeline-operations.mjs).
+- [Failure-detail recording and allowlisting](../monitor/pipeline-operations-failures.mjs).
+- [Normalized-schema failure summaries](../monitor/pipeline-operations-validation.mjs).
 - [IPC feed and refresh cadence](../monitor/pipeline-operations-transport.mjs).
 - [Provider worker scheduling and measurements](../monitor/providers/normalized-polling-observer.mjs).
 - [Provider failure counters](../monitor/providers/registry.mjs).
