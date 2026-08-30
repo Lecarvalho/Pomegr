@@ -362,6 +362,7 @@ const evidenceUsageSnapshot = z.object({
   cacheMissReason: z.enum(["model_changed", "system_changed", "tools_changed", "messages_changed"]).nullable().optional(),
   cacheMissDiagnosticState: z.enum(["absent", "recognized_reason", "previous_cache_entry_unavailable", "inconclusive"]).optional(),
   cacheMissProviderStatus: z.literal("previous_cache_entry_unavailable").nullable().optional(), cacheToolChangeCause: z.literal("remote_control_connected").nullable().optional(),
+  cacheMessageChangeSequence: z.literal("post_tool_task_notification_resume").nullable().optional(),
 }).strict();
 const evidenceToolCall = z.object({
   id: evidenceId, timestamp: evidenceTimestamp, actor: z.object({ id: evidenceId, label: evidenceOneLine(512) }).strict(), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024),

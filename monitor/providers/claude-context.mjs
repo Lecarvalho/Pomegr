@@ -112,6 +112,108 @@ function assistantIdentity(record) {
     : "";
 }
 
+function assistantRequestIdentity(record) {
+  return assistantRecord(record)
+    ? boundedIdentity(record.requestId ?? record.message?.id ?? record.uuid)
+    : "";
+}
+
+function structuredContent(record) {
+  return Array.isArray(record?.message?.content) ? record.message.content : [];
+}
+
+function structuredToolUseIds(record) {
+  return structuredContent(record)
+    .filter((block) => plainObject(block) && block.type === "tool_use")
+    .map((block) => boundedIdentity(block.id))
+    .filter(Boolean);
+}
+
+function structuredToolResultIds(record) {
+  if (record?.type !== "user") return [];
+  const content = structuredContent(record);
+  if (content.length === 0 || content.some((block) => !plainObject(block) || block.type !== "tool_result")) return [];
+  return content.map((block) => boundedIdentity(block.tool_use_id)).filter(Boolean);
+}
+
+function providerTaskNotification(record) {
+  return record?.type === "user"
+    && record.isMeta === true
+    && plainObject(record.origin)
+    && record.origin.kind === "task-notification";
+}
+
+function directlyParentedTo(record, notificationId) {
+  const parentId = boundedIdentity(record?.parentUuid);
+  return !notificationId || !parentId || parentId === notificationId;
+}
+
+/**
+ * Recognize a bounded transcript sequence around a provider-owned task
+ * notification. This records observed structure, not the notification as the
+ * authoritative cause of the provider's cache divergence.
+ */
+function inferredMessageChangeSequences(records, completeHistory) {
+  const sequences = new Map();
+  if (!completeHistory || !Array.isArray(records)) return sequences;
+  const toolUseIds = new Set();
+  let matchedToolResult = false;
+  let lastAssistantRequestId = "";
+  let candidate = null;
+
+  for (const record of records) {
+    if (assistantRecord(record)) {
+      const requestId = assistantRequestIdentity(record);
+      const isDistinctRequest = Boolean(requestId) && requestId !== lastAssistantRequestId;
+      if (isDistinctRequest) lastAssistantRequestId = requestId;
+
+      if (candidate && isDistinctRequest) {
+        if (!candidate.targetRequestId) {
+          candidate.targetRequestId = requestId;
+          candidate.directParent = directlyParentedTo(record, candidate.notificationId);
+        } else if (candidate.targetRequestId !== requestId) {
+          candidate = null;
+        }
+      }
+
+      if (candidate
+        && candidate.targetRequestId === requestId
+        && candidate.directParent
+        && normalizedCacheMissReason(record) === "messages_changed") {
+        const providerIdentity = boundedIdentity(record.message?.id ?? record.requestId ?? record.uuid);
+        if (providerIdentity) sequences.set(providerIdentity, "post_tool_task_notification_resume");
+      }
+
+      for (const toolUseId of structuredToolUseIds(record)) toolUseIds.add(toolUseId);
+      continue;
+    }
+
+    if (record?.type !== "user") continue;
+    if (providerTaskNotification(record)) {
+      candidate = matchedToolResult ? {
+        notificationId: boundedIdentity(record.uuid),
+        targetRequestId: "",
+        directParent: false,
+      } : null;
+      toolUseIds.clear();
+      matchedToolResult = false;
+      continue;
+    }
+
+    const toolResultIds = structuredToolResultIds(record);
+    if (toolResultIds.length > 0 && toolResultIds.every((id) => toolUseIds.has(id))) {
+      matchedToolResult = true;
+      continue;
+    }
+
+    // Any other user message interrupts the structural chain.
+    candidate = null;
+    toolUseIds.clear();
+    matchedToolResult = false;
+  }
+  return sequences;
+}
+
 function normalizedBridgeSession(record, expectedSessionId) {
   const sessionId = boundedIdentity(record?.sessionId);
   const bridgeSessionId = boundedIdentity(record?.bridgeSessionId);
@@ -227,6 +329,7 @@ export function parseClaudeContextRecords(records, options = {}) {
   const fallbackTimestamp = validTimestamp(options.fallbackTimestamp);
   const snapshots = new Map();
   const toolChangeCauses = inferredToolChangeCauses(records, options.completeHistory === true, expectedSessionId);
+  const messageChangeSequences = inferredMessageChangeSequences(records, options.completeHistory === true);
   let comparisonGroup = 0;
 
   for (const record of Array.isArray(records) ? records : []) {
@@ -260,6 +363,7 @@ export function parseClaudeContextRecords(records, options = {}) {
       // Monitor-private evidence state. Cache-event serialization never exposes it.
       cacheMissDiagnosticState: normalizedCacheMissDiagnosticState(record),
       cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
+      cacheMessageChangeSequence: messageChangeSequences.get(providerIdentity) || null,
     };
     snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
     if (!snapshot.cacheComparable) comparisonGroup += 1;

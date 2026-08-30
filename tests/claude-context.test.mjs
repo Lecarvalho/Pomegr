@@ -127,6 +127,57 @@ test("does not attribute textual mentions, bridge presence from session start, o
   assert.equal(laterRequest.every((snapshot) => snapshot.cacheToolChangeCause === null), true);
 });
 
+test("recognizes only a complete tool-result, provider-notification, directly resumed messages-changed sequence", () => {
+  const usage = { input_tokens: 1_000, output_tokens: 10, cache_creation_input_tokens: 9_000, cache_read_input_tokens: 0 };
+  const toolRequest = assistant("tool-request", "2026-08-10T10:00:00.000Z", usage);
+  toolRequest.requestId = "request-tool";
+  toolRequest.uuid = "assistant-tool";
+  toolRequest.message.content = [{ type: "tool_use", id: "PRIVATE_TOOL_USE_ID", name: "PRIVATE_TOOL_NAME", input: { private: true } }];
+  const toolResult = {
+    type: "user",
+    uuid: "tool-result-record",
+    parentUuid: "assistant-tool",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "PRIVATE_TOOL_USE_ID", content: "PRIVATE_TOOL_RESULT" }] },
+  };
+  const notification = {
+    type: "user",
+    uuid: "notification-record",
+    parentUuid: "tool-result-record",
+    isMeta: true,
+    origin: { kind: "task-notification", private: "PRIVATE_NOTIFICATION" },
+    message: { role: "user", content: [{ type: "text", text: "PRIVATE_NOTIFICATION_TEXT" }] },
+  };
+  const changed = assistant("changed", "2026-08-10T10:01:00.000Z", usage, "claude-test", {
+    cache_miss_reason: { type: "messages_changed", cache_missed_input_tokens: 9_000 },
+  });
+  changed.requestId = "request-changed";
+  changed.parentUuid = "notification-record";
+
+  const snapshots = parseClaudeContextRecords([toolRequest, toolResult, notification, changed], {
+    actorId: "child",
+    sourceKey: "source",
+    completeHistory: true,
+  });
+  assert.equal(snapshots.find((snapshot) => snapshot.dedupeId.endsWith(":changed"))?.cacheMessageChangeSequence, "post_tool_task_notification_resume");
+  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|task-notification|tool_use|tool_result|notification-record|request-changed/);
+
+  const variants = [
+    { records: [toolRequest, toolResult, notification, changed], completeHistory: false },
+    { records: [{ ...toolRequest, message: { ...toolRequest.message, content: [{ type: "text", text: "tool-free" }] } }, toolResult, notification, changed], completeHistory: true },
+    { records: [toolRequest, toolResult, { ...notification, isMeta: false }, changed], completeHistory: true },
+    { records: [toolRequest, toolResult, notification, { type: "user", message: { role: "user", content: [{ type: "text", text: "intervening input" }] } }, changed], completeHistory: true },
+    { records: [toolRequest, toolResult, notification, { ...changed, parentUuid: "different-parent" }], completeHistory: true },
+  ];
+  for (const [index, variant] of variants.entries()) {
+    const result = parseClaudeContextRecords(variant.records, {
+      actorId: "child",
+      sourceKey: `negative-${index}`,
+      completeHistory: variant.completeHistory,
+    });
+    assert.equal(result.every((snapshot) => snapshot.cacheMessageChangeSequence === null), true);
+  }
+});
+
 test("unrecognized or inconclusive Claude cache diagnostics remain unavailable", () => {
   const records = ["previous_message_not_found", "unavailable", "future_private_reason"].map((type, index) => (
     assistant(`diagnostic-${index}`, `2026-08-10T10:0${index}:00.000Z`, {

@@ -1,8 +1,12 @@
 "use client";
 
+import { useCallback, useId, useRef, useState } from "react";
 import type { CacheLifetimeInference, CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
+import { cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
 import { formatDuration, timelineTime } from "../../dashboard-utils";
+import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
+import { PopoverFrame } from "../PopoverFrame";
 
 export type CompactionSummary = {
   automatic: number;
@@ -139,27 +143,32 @@ export function cacheRefillOccurrenceDescriptions(
 
 export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const observedAgents = new Set(agentIds);
-  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string }> = [];
+  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string; lifetimeInference: string; signal: ReturnType<typeof cacheRefillSignalDefinition> }> = [];
   for (const refill of cacheRefills) {
     if (!observedAgents.has(refill.agentId)) continue;
     if (Array.isArray(refill.occurrences) && refill.occurrences.length > 0) {
-      occurrences.push(...refill.occurrences.map((occurrence) => ({
-        agentId: refill.agentId,
-        observedAt: occurrence.observedAt,
-        reason: occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason)
-          ? CACHE_REFILL_REASON_LABELS[occurrence.reason]
-          : occurrence.providerStatus === "previous_cache_entry_unavailable"
-            ? "previous cache entry unavailable"
-            : "reason unavailable",
-        inference: [
-          cacheLifetimeInferenceLabel(occurrence.cacheLifetimeInference),
-          cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
-        ].filter(Boolean).join(" · "),
-      })));
+      occurrences.push(...refill.occurrences.map((occurrence) => {
+        const lifetimeInference = cacheLifetimeInferenceLabel(occurrence.cacheLifetimeInference);
+        return {
+          agentId: refill.agentId,
+          observedAt: occurrence.observedAt,
+          reason: occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason)
+            ? CACHE_REFILL_REASON_LABELS[occurrence.reason]
+            : occurrence.providerStatus === "previous_cache_entry_unavailable"
+              ? "previous cache entry unavailable"
+              : "reason unavailable",
+          inference: [
+            lifetimeInference,
+            cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
+          ].filter(Boolean).join(" · "),
+          lifetimeInference,
+          signal: cacheRefillSignalDefinition(occurrence),
+        };
+      }));
       continue;
     }
     occurrences.push(...cacheRefillOccurrenceDescriptions(refill.count, summarizeCacheRefillReasons([refill], [refill.agentId]))
-      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "" })));
+      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "", lifetimeInference: "", signal: null })));
   }
   return occurrences.sort((left, right) => {
     if (!left.observedAt) return 1;
@@ -207,42 +216,54 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   cacheRefills?: CacheRefillCount[];
   className?: string;
 }) {
+  const [cachePopoverOpen, setCachePopoverOpen] = useState(false);
+  const cachePopoverId = useId();
+  const cachePopoverAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const closeCachePopover = useCallback(() => setCachePopoverOpen(false), []);
+  useDismissibleLayer(cachePopoverOpen, cachePopoverAnchorRef, closeCachePopover);
   const summary = summarizeCompactions(boundaries, agentIds);
   const cacheRefillCount = summarizeCacheRefills(cacheRefills, agentIds);
   const cacheRefillReasons = summarizeCacheRefillReasons(cacheRefills, agentIds);
   const cacheToolChangeAttributions = summarizeCacheToolChangeAttributions(cacheRefills, agentIds);
   const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
   const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions, cacheRefillOccurrences);
-  const cacheRefillTooltip = <span className="cacheRefillTooltipContent">
-    <span className="cacheRefillTooltipSummary">{cacheRefillSummary(cacheRefillCount, agentIds.length)}</span>
-    <span className="cacheRefillTooltipSectionLabel">Provider diagnostic</span>
-    <span className="cacheRefillTooltipOccurrences" role="list" aria-label="Cache refill occurrences">
-      {cacheRefillOccurrences.map((occurrence, index) => <span className="cacheRefillTooltipOccurrence" role="listitem" key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
-        <span className="cacheRefillTooltipOccurrenceIndex">{index + 1}</span>
-        <span className="cacheRefillTooltipOccurrenceDetail">
-          {occurrence.observedAt
-            ? <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>
-            : <span className="cacheRefillTooltipOccurrenceTimeUnavailable">Time unavailable</span>}
-          <span className="cacheRefillTooltipOccurrenceReason">{occurrence.reason}</span>
-          {occurrence.inference && <span className="cacheRefillTooltipInference">
-            <strong>Inference:</strong>
-            <span>{occurrence.inference}.</span>
-          </span>}
-        </span>
-      </span>)}
-    </span>
-  </span>;
   if (summary.total === 0 && cacheRefillCount === 0) return null;
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>
       <svg aria-hidden="true" className="agentHistoryIcon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
       <span aria-hidden="true" className="agentHistoryCount">{summary.total > 99 ? "99+" : summary.total}</span>
     </AgentChip>}
-    {cacheRefillCount > 0 && <AgentChip className="agentHistoryIndicator agentCacheRefillIndicator" title={cacheRefillTooltip} ariaLabel={cacheRefillLabel}>
-      <svg aria-hidden="true" className="agentHistoryIcon agentCacheRefillIcon" viewBox="0 0 24 24">
-        <path d="M12 2.5v8M8.5 7l3.5 3.5L15.5 7M4 14h16M6.5 18h11M9 22h6" />
-      </svg>
-      <span aria-hidden="true" className="agentHistoryCount">{cacheRefillCount > 99 ? "99+" : cacheRefillCount}</span>
-    </AgentChip>}
+    {cacheRefillCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cachePopoverAnchorRef}>
+      <AgentChip as="button" className="agentHistoryIndicator agentCacheRefillIndicator" ariaLabel={cacheRefillLabel} expanded={cachePopoverOpen} controls={cachePopoverId} onClick={() => setCachePopoverOpen((open) => !open)}>
+        <svg aria-hidden="true" className="agentHistoryIcon agentCacheRefillIcon" viewBox="0 0 24 24">
+          <path d="M12 2.5v8M8.5 7l3.5 3.5L15.5 7M4 14h16M6.5 18h11M9 22h6" />
+        </svg>
+        <span aria-hidden="true" className="agentHistoryCount">{cacheRefillCount > 99 ? "99+" : cacheRefillCount}</span>
+      </AgentChip>
+      {cachePopoverOpen && <PopoverFrame id={cachePopoverId} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title="Possible full refill" closeLabel="Close cache refill evidence" onClose={closeCachePopover} summary={cacheRefillSummary(cacheRefillCount, agentIds.length)} className="cacheRefillPopover">
+        <ol className="cacheRefillPopoverOccurrences" aria-label="Cache refill occurrences">
+          {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
+            <div className="cacheRefillPopoverOccurrenceHeading">
+              <span>{index + 1}</span>
+              {occurrence.observedAt
+                ? <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>
+                : <span>Time unavailable</span>}
+            </div>
+            <dl className="cacheRefillEvidenceGrid">
+              <div><dt>Provider</dt><dd>{occurrence.reason}</dd></div>
+              <div><dt>Observed</dt><dd>{occurrence.signal?.observed || occurrence.inference || "No recognized lifecycle sequence."}</dd></div>
+              {occurrence.signal && occurrence.lifetimeInference && <div><dt>Inference</dt><dd>{occurrence.lifetimeInference}.</dd></div>}
+              <div><dt>Impact</dt><dd>{occurrence.signal?.impact || "Possible full-refill thresholds were met."}</dd></div>
+            </dl>
+            {occurrence.signal && <div className="cacheRefillDefinition">
+              <code>{occurrence.signal.code}</code>
+              <a href={occurrence.signal.href} target="_blank" rel="noreferrer">
+                Open signal definition <span aria-hidden="true">↗</span><span className="srOnly"> in a new tab</span>
+              </a>
+            </div>}
+          </li>)}
+        </ol>
+      </PopoverFrame>}
+    </span>}
   </span>;
 }

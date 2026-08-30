@@ -333,6 +333,12 @@ raw diagnostics, provider message/event IDs, or transcript paths. Cache filename
 safe hash of normalized identity and never contain a source path.
 
 Browser responses remain subject to every allowlist and privacy invariant in `AGENTS.md`.
+The optional cache message-change sequence is derived during complete-history provider
+normalization and committed only as the fixed `post_tool_task_notification_resume` enum
+or `null`. Serving and presentation never reconstruct it from browser-visible labels or
+timestamps. Incomplete acquisition, an interrupted structural chain, or unrecognized
+provider evidence degrades to `null`; complete replacement, atomic commit, and
+last-known-good retention apply exactly as they do to other normalized evidence.
 Caches and browser responses may carry only the bounded provider-neutral work-kind enum
 derived during U2 normalization. Raw commands and provider-native tool schemas remain
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.

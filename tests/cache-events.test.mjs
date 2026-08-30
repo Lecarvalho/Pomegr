@@ -16,6 +16,7 @@ function snapshot(id, timestamp, {
   cacheMissProviderStatus = null,
   cacheMissDiagnosticState = "absent",
   cacheToolChangeCause = null,
+  cacheMessageChangeSequence = null,
 } = {}) {
   return {
     dedupeId: id,
@@ -33,8 +34,45 @@ function snapshot(id, timestamp, {
     cacheMissProviderStatus,
     cacheMissDiagnosticState,
     cacheToolChangeCause,
+    cacheMessageChangeSequence,
   };
 }
+
+test("projects only the fixed message-change sequence onto its qualifying occurrence", () => {
+  const feed = buildCacheEvents({
+    sessionId: "session",
+    agents: [agent],
+    enabled: true,
+    usageSnapshots: [
+      snapshot("before", "2026-08-10T10:00:00.000Z", { input: 1_000, cacheRead: 9_000 }),
+      snapshot("after", "2026-08-10T10:05:00.000Z", {
+        input: 1_000,
+        cacheWrite: 9_000,
+        cacheMissReason: "messages_changed",
+        cacheMessageChangeSequence: "post_tool_task_notification_resume",
+      }),
+    ],
+  });
+
+  assert.equal(feed.possibleFullRefills[0].occurrences[0].messageChangeSequence, "post_tool_task_notification_resume");
+  assert.doesNotMatch(JSON.stringify(feed), /tool_use_id|task-notification|requestId|messageId/);
+
+  const competingReason = buildCacheEvents({
+    sessionId: "session",
+    agents: [agent],
+    enabled: true,
+    usageSnapshots: [
+      snapshot("before", "2026-08-10T10:00:00.000Z", { input: 1_000, cacheRead: 9_000 }),
+      snapshot("after", "2026-08-10T10:05:00.000Z", {
+        input: 1_000,
+        cacheWrite: 9_000,
+        cacheMissReason: "tools_changed",
+        cacheMessageChangeSequence: "post_tool_task_notification_resume",
+      }),
+    ],
+  });
+  assert.equal(competingReason.possibleFullRefills[0].occurrences[0].messageChangeSequence, null);
+});
 
 test("emits a bounded refill to first-reuse pair and an explicit miss-refill", () => {
   const feed = buildCacheEvents({
@@ -67,6 +105,7 @@ test("emits a bounded refill to first-reuse pair and an explicit miss-refill", (
       reason: "tools_changed",
       providerStatus: null,
       cacheLifetimeInference: null,
+      messageChangeSequence: null,
       toolChangeAttribution: {
         cause: "remote_control_connected",
         changes: [
@@ -161,7 +200,7 @@ test("retains a possible full-refill count after its detailed event falls outsid
   assert.deepEqual(feed.possibleFullRefills, [{
     agentId: "primary",
     count: 1,
-    occurrences: [{ observedAt: rewriteAt, reason: null, providerStatus: null, cacheLifetimeInference: null, toolChangeAttribution: null }],
+    occurrences: [{ observedAt: rewriteAt, reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }],
     reasons: [],
     toolChangeAttributions: [],
   }]);
@@ -196,6 +235,7 @@ test("allowlists refill reasons and keeps reason counts within the bounded refil
     reason: null,
     providerStatus: null,
     cacheLifetimeInference: null,
+    messageChangeSequence: null,
     toolChangeAttribution: null,
   });
   assert.deepEqual(summary.occurrences[1], {
@@ -203,6 +243,7 @@ test("allowlists refill reasons and keeps reason counts within the bounded refil
     reason: "tools_changed",
     providerStatus: null,
     cacheLifetimeInference: null,
+    messageChangeSequence: null,
     toolChangeAttribution: null,
   });
   assert.deepEqual(summary.reasons, [{ reason: "tools_changed", count: CACHE_EVENT_RULES.maximumAgentRefillCount - 1 }]);
@@ -256,6 +297,7 @@ test("infers cache expiry from the preceding resolved lifetime and bounded provi
       reason: null,
       providerStatus: cacheMissProviderStatus,
       cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime, elapsedMs: gapMs },
+      messageChangeSequence: null,
       toolChangeAttribution: null,
     });
   }

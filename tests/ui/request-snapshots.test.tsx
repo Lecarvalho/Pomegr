@@ -30,7 +30,7 @@ describe("request snapshots and cache evidence", () => {
   const cacheEvents = {
     status: "ready" as const,
     items: Array.from({ length: 7 }, (_, index) => cacheEvent(index)),
-    possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-09T12:03:00.000Z", reason: null, providerStatus: null, cacheLifetimeInference: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }],
+    possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-09T12:03:00.000Z", reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }],
   };
 
   it("canonicalizes equivalent timestamp offsets and rejects invalid join keys", () => {

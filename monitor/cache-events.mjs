@@ -12,6 +12,7 @@ export const CACHE_EVENT_RULES = Object.freeze({
 
 const CACHE_REFILL_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
 const CACHE_REFILL_PROVIDER_STATUSES = new Set(["previous_cache_entry_unavailable"]);
+const CACHE_MESSAGE_CHANGE_SEQUENCES = new Set(["post_tool_task_notification_resume"]);
 const CACHE_LIFETIME_MS = new Map([
   ["5m", 5 * 60 * 1_000],
   ["1h", 60 * 60 * 1_000],
@@ -163,6 +164,11 @@ export function buildCacheEvents({
         && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
         ? snapshot.cacheToolChangeCause
         : null;
+      const messageChangeSequence = recognizedReason === "messages_changed"
+        && typeof snapshot.cacheMessageChangeSequence === "string"
+        && CACHE_MESSAGE_CHANGE_SEQUENCES.has(snapshot.cacheMessageChangeSequence)
+        ? snapshot.cacheMessageChangeSequence
+        : null;
       if (previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
         const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
         occurrences.push({
@@ -170,6 +176,7 @@ export function buildCacheEvents({
           reason: recognizedReason,
           providerStatus,
           cacheLifetimeInference,
+          messageChangeSequence,
           toolChangeAttribution: recognizedToolChangeCause ? {
             cause: recognizedToolChangeCause,
             changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),

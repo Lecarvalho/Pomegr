@@ -404,10 +404,12 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.equal(Array.isArray(refill.occurrences), true);
       assert.equal(refill.occurrences.length, refill.count);
       for (const occurrence of refill.occurrences) {
-        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
+        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
         assert.equal(Number.isFinite(Date.parse(occurrence.observedAt)), true);
         assert.equal(occurrence.reason === null || /^(model_changed|system_changed|tools_changed|messages_changed)$/.test(occurrence.reason), true);
         assert.equal(occurrence.providerStatus === null || occurrence.providerStatus === "previous_cache_entry_unavailable", true);
+        assert.equal(occurrence.messageChangeSequence === null || occurrence.messageChangeSequence === "post_tool_task_notification_resume", true);
+        if (occurrence.messageChangeSequence !== null) assert.equal(occurrence.reason, "messages_changed");
         if (occurrence.cacheLifetimeInference !== null) {
           assert.deepEqual(Object.keys(occurrence.cacheLifetimeInference).sort(), ["cacheLifetime", "cause", "elapsedMs"]);
           assert.equal(occurrence.cacheLifetimeInference.cause, "cache_lifetime_elapsed");

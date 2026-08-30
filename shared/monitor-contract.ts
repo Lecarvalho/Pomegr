@@ -212,6 +212,7 @@ export type CacheEvent = {
 
 export type CacheRefillReason = "model_changed" | "system_changed" | "tools_changed" | "messages_changed";
 export type CacheRefillProviderStatus = "previous_cache_entry_unavailable";
+export type CacheMessageChangeSequence = "post_tool_task_notification_resume";
 
 export type CacheLifetimeInference = {
   cause: "cache_lifetime_elapsed";
@@ -245,6 +246,8 @@ export type CacheRefillOccurrence = {
   providerStatus: CacheRefillProviderStatus | null;
   /** Deterministic inference from the preceding request's resolved lifetime. */
   cacheLifetimeInference: CacheLifetimeInference | null;
+  /** Bounded transcript sequence observed around a messages-changed request. */
+  messageChangeSequence: CacheMessageChangeSequence | null;
   /** Inference tied to this occurrence's recognized lifecycle evidence. */
   toolChangeAttribution: Omit<CacheToolChangeAttributionCount, "count"> | null;
 };
