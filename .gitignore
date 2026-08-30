@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.impeccable/review/
 
 # next.js
 /.next/
