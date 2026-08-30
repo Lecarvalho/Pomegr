@@ -63,8 +63,8 @@ describe("wall-time formatting", () => {
 
 describe("session attention", () => {
   const sessions: SessionSummary[] = [
-    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true, activityStatus: "needs_input" },
-    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working" },
+    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true, activityStatus: "needs_input", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: 1_000, progress: null, currentActivity: null },
+    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: 1_000, progress: null, currentActivity: null },
   ];
 
   it("shows attention only while viewing the live session that needs input", () => {
@@ -86,6 +86,12 @@ describe("session catalog order", () => {
     isLive: true,
     needsInput: false,
     activityStatus: "working",
+    summaryReadiness: "ready",
+    agentCount: 1,
+    activeAgentCount: 1,
+    latestContextTotal: 1_000,
+    progress: null,
+    currentActivity: null,
   });
 
   it("orders rows by creation time descending without letting later activity move them", () => {
@@ -174,12 +180,11 @@ describe("monitor proxy", () => {
 
   it("returns the sanitized fallback when the monitor fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("secret detail")));
-    const response = await proxyMonitorJson({ path: "/api/sessions", timeoutMs: 1500, unavailableBody: { sessions: [], liveSessions: [], error: "Monitor unavailable" } });
+    const response = await proxyMonitorJson({ path: "/api/sessions", timeoutMs: 1500, unavailableBody: { sessions: [], error: "Monitor unavailable" } });
     expect(response.status).toBe(503);
     const body = await response.json();
-    expect(body).toEqual({ sessions: [], liveSessions: [], error: "Monitor unavailable" });
+    expect(body).toEqual({ sessions: [], error: "Monitor unavailable" });
     expect(body.sessions).toEqual([]);
-    expect(body.liveSessions).toEqual([]);
     expect(JSON.stringify(body)).not.toContain("secret detail");
   });
 

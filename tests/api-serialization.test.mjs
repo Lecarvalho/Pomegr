@@ -304,9 +304,12 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     { id: "claude:claude-fixture-parent", source: "Claude Code" },
     { id: "codex:codex-fixture-parent", source: "Codex" },
   ]);
-  assert.equal(Array.isArray(catalog.liveSessions), true);
-  assert.equal(catalog.liveSessions.every((session) => session.isLive === true), true);
-  for (const session of catalog.liveSessions) {
+  assert.equal(Object.hasOwn(catalog, "liveSessions"), false);
+  for (const session of catalog.sessions) {
+    assert.equal(["loading", "ready", "unavailable"].includes(session.summaryReadiness), true);
+    assert.equal(Object.hasOwn(session, "agentCount"), true);
+    assert.equal(Object.hasOwn(session, "latestContextTotal"), true);
+    assert.equal(Object.hasOwn(session, "progress"), true);
     assert.equal(Object.hasOwn(session, "contextHistory"), false);
     assert.equal(Object.hasOwn(session, "resources"), false);
   }

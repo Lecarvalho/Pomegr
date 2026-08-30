@@ -3,21 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
-import type { LiveSessionSummary, SessionSummary } from "../../shared/monitor-contract";
+import type { SessionSummary } from "../../shared/monitor-contract";
 
 const sessions = [
-  { id: "codex:progress", provider: "codex", source: "Codex", title: "Progress available", project: "Pomegr", updatedAt: "2026-08-29T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working" },
-  { id: "claude:no-progress", provider: "claude", source: "Claude Code", title: "Progress unavailable", project: "Pomegr", updatedAt: "2026-08-29T11:59:00.000Z", isLive: true, needsInput: false, activityStatus: "idle" },
+  { id: "codex:progress", provider: "codex", source: "Codex", title: "Progress available", project: "Pomegr", updatedAt: "2026-08-29T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 2, activeAgentCount: 1, latestContextTotal: 12_000, progress: { phase: "implementing", percent: 42, remainingMinutesMin: 3, remainingMinutesMax: 6, confidence: "medium", reportedAt: "2026-08-29T12:00:00.000Z" }, currentActivity: { label: "Preparing tab4 for header measurement", observedAt: "2026-08-29T12:00:00.000Z" } },
+  { id: "claude:no-progress", provider: "claude", source: "Claude Code", title: "Progress unavailable", project: "Pomegr", updatedAt: "2026-08-29T11:59:00.000Z", isLive: true, needsInput: false, activityStatus: "idle", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 0, latestContextTotal: 8_000, progress: null, currentActivity: null },
 ] satisfies SessionSummary[];
-
-const liveSessions = [
-  { ...sessions[0], agentCount: 2, activeAgentCount: 1, latestContextTotal: 12_000, progress: { phase: "implementing", percent: 42, remainingMinutesMin: 3, remainingMinutesMax: 6, confidence: "medium", reportedAt: "2026-08-29T12:00:00.000Z" }, currentActivity: { label: "Preparing tab4 for header measurement", observedAt: "2026-08-29T12:00:00.000Z" } },
-  { ...sessions[1], agentCount: 1, activeAgentCount: 0, latestContextTotal: 8_000, progress: null, currentActivity: null },
-] satisfies LiveSessionSummary[];
 
 describe("sessions table", () => {
   it("shows agent-reported progress percentages when any visible session has them", () => {
-    render(<SessionCatalogProvider sessions={sessions} liveSessions={liveSessions}><SessionsView /></SessionCatalogProvider>);
+    render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
 
     const table = screen.getByRole("table", { name: "Observed Pomegr sessions" });
     expect(within(table).getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
@@ -39,7 +34,7 @@ describe("sessions table", () => {
   });
 
   it("keeps the progress column stable when no visible session reports progress", () => {
-    render(<SessionCatalogProvider sessions={sessions} liveSessions={liveSessions.map((session) => ({ ...session, progress: null }))}><SessionsView /></SessionCatalogProvider>);
+    render(<SessionCatalogProvider sessions={sessions.map((session) => ({ ...session, progress: null }))}><SessionsView /></SessionCatalogProvider>);
 
     expect(screen.getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
     expect(screen.getAllByTitle("Agent-reported session progress is unavailable")).toHaveLength(2);

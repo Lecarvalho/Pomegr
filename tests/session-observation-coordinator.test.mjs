@@ -16,6 +16,7 @@ function memoryStore() {
   const values = new Map();
   return {
     getByQualifiedId(id) { return values.get(id) || null; },
+    evict(id) { values.delete(id); },
     setPinned() {},
     publish(candidate) {
       const previous = values.get(`${candidate.providerId}:${candidate.localSessionId}`);
@@ -53,7 +54,6 @@ test("Serving reads committed projections and never invokes compatibility readSe
   assert.equal(coordinator.catalog().snapshot.value.sessions[0].id, "codex:one");
   assert.deepEqual(coordinator.catalog().snapshot.value.readiness, {
     catalog: "ready",
-    sessionSummaries: { "codex:one": "ready" },
   });
   assert.equal(coordinator.session("codex:one").snapshot.publicState.session.title, "One");
   assert.equal(reads, 0);
@@ -152,16 +152,18 @@ test("structural catalog changes preempt a queued summary refresh", async () => 
   await coordinator.stop();
 });
 
-test("live summaries expose only the normalized primary-agent current activity", async () => {
+test("catalog rows retain bounded final metrics and progress when a session completes", async () => {
   const scheduler = immediateScheduler();
   let publisher;
+  const store = memoryStore();
   const currentActivity = { label: "Preparing header measurement", observedAt: "2026-08-28T12:00:00.000Z" };
+  const progress = { phase: "complete", percent: 100, confidence: "high", reportedAt: "2026-08-28T12:00:02.000Z" };
   const coordinator = createSessionObservationCoordinator({
     registry: {
       providers: [{ id: "codex", source: "Codex" }],
       async startObservers(value) { publisher = value; return { async stop() {} }; },
     },
-    store: memoryStore(),
+    store,
     schedule: scheduler.schedule,
     cancel: scheduler.cancel,
     async deriveSession({ evidence }) {
@@ -180,12 +182,38 @@ test("live summaries expose only the normalized primary-agent current activity",
   });
   await coordinator.start();
   publisher.publishCatalog("codex", [{ localId: "one", title: "One", project: "repo", updatedAt: "2026-08-28T12:00:00.000Z", isLive: true }]);
-  publisher.publishSession("codex", "one", { historical: false, session: { title: "One", progress: null } });
+  publisher.publishSession("codex", "one", { historical: false, session: { title: "One", progress } });
   await scheduler.flush();
 
-  const summary = coordinator.catalog().snapshot.value.liveSessions[0];
-  assert.deepEqual(summary.currentActivity, currentActivity);
-  assert.doesNotMatch(JSON.stringify(summary), /PRIVATE_HELPER_ACTIVITY/);
+  const live = coordinator.catalog().snapshot.value.sessions[0];
+  assert.deepEqual(live.currentActivity, currentActivity);
+  assert.deepEqual(live.progress, progress);
+  assert.doesNotMatch(JSON.stringify(live), /PRIVATE_HELPER_ACTIVITY/);
+
+  publisher.publishCatalog("codex", [{ localId: "one", title: "One", project: "repo", updatedAt: "2026-08-28T12:00:02.000Z", isLive: false }]);
+  await scheduler.flush();
+
+  const completed = coordinator.catalog().snapshot.value.sessions[0];
+  assert.equal(completed.summaryReadiness, "ready");
+  assert.equal(completed.agentCount, 2);
+  assert.equal(completed.activeAgentCount, 0);
+  assert.equal(completed.latestContextTotal, 12_000);
+  assert.deepEqual(completed.progress, progress);
+  assert.equal(completed.currentActivity, null);
+  assert.equal(Object.hasOwn(coordinator.catalog().snapshot.value, "liveSessions"), false);
+
+  store.evict("codex:one");
+  publisher.publishCatalog("codex", [
+    { localId: "one", title: "One", project: "repo", updatedAt: "2026-08-28T12:00:02.000Z", isLive: false },
+    { localId: "two", title: "Two", project: "repo", updatedAt: "2026-08-28T12:00:03.000Z", isLive: false },
+  ]);
+  await scheduler.flush();
+
+  const retained = coordinator.catalog().snapshot.value.sessions.find((entry) => entry.id === "codex:one");
+  assert.equal(retained.summaryReadiness, "ready");
+  assert.equal(retained.agentCount, 2);
+  assert.equal(retained.latestContextTotal, 12_000);
+  assert.deepEqual(retained.progress, progress);
   await coordinator.stop();
 });
 

@@ -102,9 +102,8 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
         if (runtime.observationActive?.()) {
           writeCommitted(runtime.serveCatalog(requestedRevision), {
             revision: 0,
-            readiness: { catalog: "loading", sessionSummaries: {} },
+            readiness: { catalog: "loading" },
             sessions: [],
-            liveSessions: [],
           });
           return;
         }
@@ -113,7 +112,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
         response.end(body);
       } catch {
         response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({ sessions: [], liveSessions: [], error: "Session catalog error" }));
+        response.end(JSON.stringify({ sessions: [], error: "Session catalog error" }));
       }
       return;
     }

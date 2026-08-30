@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
-import type { HomeAggregateSnapshot, HomeSnapshot, LiveSessionSummary } from "../../shared/monitor-contract";
+import type { HomeAggregateSnapshot, HomeSnapshot, SessionSummary } from "../../shared/monitor-contract";
 
 function response(body: object, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
@@ -167,11 +167,11 @@ const snapshot = {
 } satisfies HomeSnapshot;
 
 const liveSessions = snapshot.projects.flatMap((project) => project.sessions.map((session) => {
-  const liveSession = { ...session, isLive: true, currentActivity: null };
+  const liveSession = { ...session, isLive: true, summaryReadiness: "ready" as const, currentActivity: null };
   Reflect.deleteProperty(liveSession, "contextHistory");
   Reflect.deleteProperty(liveSession, "resources");
   return liveSession;
-})) satisfies LiveSessionSummary[];
+})) satisfies SessionSummary[];
 
 function homeAggregate(overrides: Partial<HomeAggregateSnapshot> = {}): HomeAggregateSnapshot {
   return {
@@ -183,7 +183,7 @@ function homeAggregate(overrides: Partial<HomeAggregateSnapshot> = {}): HomeAggr
 }
 
 function renderHome(live = liveSessions, lifecycle: { loading?: boolean; connected?: boolean } = {}) {
-  return render(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={live} {...lifecycle}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
+  return render(<LiveClockProvider running><SessionCatalogProvider sessions={live} {...lifecycle}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
 }
 
 afterEach(() => {
@@ -226,7 +226,7 @@ describe("home dashboard", () => {
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
       : session);
-    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
+    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
 
     expect(await screen.findByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
     expect(screen.getByText("complete")).toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("home dashboard", () => {
     const updatedLiveSessions = liveSessions.map((session) => session.id === "codex:live.one_2"
       ? { ...session, activityStatus: "idle" as const, progress: { ...session.progress!, phase: "complete" as const, percent: 100 } }
       : session);
-    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={[]} liveSessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
+    view.rerender(<LiveClockProvider running><SessionCatalogProvider sessions={updatedLiveSessions}><HomeDashboard /></SessionCatalogProvider></LiveClockProvider>);
     expect(screen.getByRole("link", { name: "Open Build home · pomegr · Codex · Idle" })).toBeInTheDocument();
     expect(homeRequestCount(fetchMock)).toBe(1);
 

@@ -19,6 +19,12 @@ function session(index: number): SessionSummary {
     isLive: false,
     needsInput: false,
     activityStatus: "unknown",
+    summaryReadiness: "ready",
+    agentCount: index,
+    activeAgentCount: 0,
+    latestContextTotal: index * 1_000,
+    progress: { phase: "complete", percent: 100, confidence: "high", reportedAt: createdAt },
+    currentActivity: null,
   };
 }
 
@@ -31,7 +37,7 @@ describe("Sessions view", () => {
   it("orders by creation time descending and paginates ten rows at a time", async () => {
     const user = userEvent.setup();
     const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
-    render(<SessionCatalogProvider sessions={sessions} liveSessions={[]}><SessionsView /></SessionCatalogProvider>);
+    render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
 
     expect(visibleSessionTitles()).toEqual(Array.from({ length: 10 }, (_, index) => `Session ${12 - index}`));
     expect(screen.getByText("Showing 1–10 of 12")).toBeInTheDocument();
@@ -47,7 +53,11 @@ describe("Sessions view", () => {
     expect(screen.getByText("Showing 11–12 of 12")).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader")).toHaveLength(8);
-    expect(screen.getAllByTitle("Agent-reported session progress is unavailable")).toHaveLength(2);
+    const completedRow = screen.getByText("Session 1").closest("tr");
+    expect(completedRow).not.toBeNull();
+    expect(within(completedRow!).getByText("1").closest("td")).toHaveAttribute("data-label", "Agents");
+    expect(within(completedRow!).getByText("1k").closest("td")).toHaveAttribute("data-label", "Context");
+    expect(within(completedRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("100%");
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 12");

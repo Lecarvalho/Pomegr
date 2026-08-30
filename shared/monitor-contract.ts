@@ -355,6 +355,7 @@ export type LoopPattern = { id: string; agent: string; tool: string; detail: str
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 /** Bounded current work state. Provider-native lifecycle values stay monitor-private. */
 export type SessionActivityStatus = "working" | "needs_input" | "idle" | "unknown";
+/** Bounded session-directory row derived from committed normalized evidence. */
 export type SessionSummary = {
   id: string;
   provider: ProviderId;
@@ -366,24 +367,20 @@ export type SessionSummary = {
   isLive: boolean;
   needsInput: boolean;
   activityStatus: SessionActivityStatus;
-};
-
-/** Bounded live-session detail derived from cached, normalized monitor evidence. */
-export type LiveSessionSummary = SessionSummary & {
+  summaryReadiness: Readiness;
   agentCount: number | null;
   activeAgentCount: number | null;
   latestContextTotal: number | null;
   progress: SessionProgress | null;
-  /** Latest bounded provider-authored heading from the normalized primary agent. */
+  /** Latest bounded provider-authored heading from the normalized primary agent; live sessions only. */
   currentActivity: AgentCurrentActivity | null;
 };
 
 export type SessionCatalogSnapshot = {
   sessions: SessionSummary[];
-  liveSessions: LiveSessionSummary[];
   /** Optional during migration; absent means legacy catalog semantics. */
   revision?: number | string | null;
-  readiness?: Pick<HomeReadiness, "catalog" | "sessionSummaries">;
+  readiness?: Pick<HomeReadiness, "catalog">;
 };
 
 export type HomeContextHistory = {

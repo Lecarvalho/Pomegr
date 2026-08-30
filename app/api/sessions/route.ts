@@ -10,6 +10,6 @@ export async function GET(request: Request) {
   return proxyMonitorJson({
     path: `/api/sessions${monitorParams.size ? `?${monitorParams}` : ""}`,
     timeoutMs: 7500,
-    unavailableBody: { sessions: [], liveSessions: [], error: "Historical sessions are unavailable." },
+    unavailableBody: { sessions: [], error: "Historical sessions are unavailable." },
   });
 }

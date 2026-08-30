@@ -24,10 +24,9 @@ function desktopBridge() {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [liveSessions, setLiveSessions] = useState<SessionCatalogSnapshot["liveSessions"]>([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(true);
-  const [catalogReadiness, setCatalogReadiness] = useState<Pick<HomeReadiness, "catalog" | "sessionSummaries">>({ catalog: "loading", sessionSummaries: {} });
+  const [catalogReadiness, setCatalogReadiness] = useState<Pick<HomeReadiness, "catalog">>({ catalog: "loading" });
   const catalogRevisionRef = useRef<number | string | null>(null);
   const catalogNotificationStartedAtRef = useRef<number | null>(null);
   const catalogReadinessRef = useRef(catalogReadiness);
@@ -80,11 +79,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
         const catalog = await response.json() as Partial<SessionCatalogSnapshot>;
         const nextSessions = Array.isArray(catalog.sessions) ? catalog.sessions : null;
-        const nextLiveSessions = Array.isArray(catalog.liveSessions) ? catalog.liveSessions : null;
-        if (!controller.signal.aborted && nextSessions && nextLiveSessions) {
-          const nextReadiness = catalog.readiness || { catalog: "ready" as const, sessionSummaries: {} };
+        if (!controller.signal.aborted && nextSessions) {
+          const nextReadiness = catalog.readiness || { catalog: "ready" as const };
           setSessions(newestSessionsFirst(nextSessions));
-          setLiveSessions(newestSessionsFirst(nextLiveSessions));
           const headerRevision = response.headers.get("x-pomegr-revision");
           const revision = typeof catalog.revision === "number" || typeof catalog.revision === "string" ? catalog.revision : headerRevision || catalogRevisionRef.current;
           catalogRevisionRef.current = revision;
@@ -194,11 +191,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <DisplayPreferencesProvider>
       <LiveClockProvider running={!desktopState?.paused}>
-        <SessionCatalogProvider sessions={sessions} liveSessions={liveSessions} loading={loading} connected={connected}>
+        <SessionCatalogProvider sessions={sessions} loading={loading} connected={connected} readiness={catalogReadiness}>
           <CommandCenterShell
             pathname={pathname}
             sessions={sessions}
-            liveSessions={liveSessions}
             connected={connected}
             loading={loading}
             update={desktopState?.update || null}

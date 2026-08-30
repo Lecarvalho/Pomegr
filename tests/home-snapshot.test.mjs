@@ -335,7 +335,7 @@ test("home live session exposes only bounded normalized progress", async () => {
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_PROGRESS_INPUT|progressPrivate/i);
 });
 
-test("session feed returns the catalog with bounded live summaries and refreshes progress", async () => {
+test("session feed returns presentation-ready bounded catalog rows and refreshes progress", async () => {
   let entry = { id: "codex:feed", provider: "codex", source: "Codex", title: "Feed", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false, activityStatus: "working" };
   const evidenceById = new Map();
   const runtime = runtimeFixture([], evidenceById, {
@@ -353,8 +353,7 @@ test("session feed returns the catalog with bounded live summaries and refreshes
   });
 
   const cold = await runtime.sessionFeed();
-  assert.deepEqual(cold.sessions, [entry]);
-  assert.deepEqual(cold.liveSessions, [{
+  assert.deepEqual(cold.sessions, [{
     id: entry.id,
     provider: "codex",
     source: "Codex",
@@ -364,6 +363,7 @@ test("session feed returns the catalog with bounded live summaries and refreshes
     isLive: true,
     needsInput: false,
     activityStatus: "working",
+    summaryReadiness: "ready",
     agentCount: null,
     activeAgentCount: null,
     latestContextTotal: null,
@@ -380,14 +380,14 @@ test("session feed returns the catalog with bounded live summaries and refreshes
   evidenceById.set(entry.id, changedEvidence);
 
   const changed = await runtime.sessionFeed();
-  assert.deepEqual(changed.liveSessions[0].progress, progress);
-  assert.deepEqual(changed.liveSessions[0].currentActivity, currentActivity);
-  assert.equal(changed.liveSessions[0].agentCount, 2);
-  assert.equal(changed.liveSessions[0].activeAgentCount, 1);
-  assert.equal(Object.hasOwn(changed.liveSessions[0], "contextHistory"), false);
-  assert.equal(Object.hasOwn(changed.liveSessions[0], "resources"), false);
-  assert.deepEqual(Object.keys(changed.liveSessions[0]).sort(), [
-    "activeAgentCount", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "title", "updatedAt",
+  assert.deepEqual(changed.sessions[0].progress, progress);
+  assert.deepEqual(changed.sessions[0].currentActivity, currentActivity);
+  assert.equal(changed.sessions[0].agentCount, 2);
+  assert.equal(changed.sessions[0].activeAgentCount, 1);
+  assert.equal(Object.hasOwn(changed.sessions[0], "contextHistory"), false);
+  assert.equal(Object.hasOwn(changed.sessions[0], "resources"), false);
+  assert.deepEqual(Object.keys(changed.sessions[0]).sort(), [
+    "activeAgentCount", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
   ]);
   assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:ACTIVITY|CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
 });
@@ -429,8 +429,8 @@ test("session feed and home snapshot coalesce a cold live summary without sharin
   releaseRead();
   const [feedSnapshot, homeSnapshot] = await Promise.all([feed, home]);
 
-  assert.equal(feedSnapshot.liveSessions[0].agentCount, 1);
-  assert.equal(Object.hasOwn(feedSnapshot.liveSessions[0], "resources"), false);
+  assert.equal(feedSnapshot.sessions[0].agentCount, 1);
+  assert.equal(Object.hasOwn(feedSnapshot.sessions[0], "resources"), false);
   assert.equal(homeSnapshot.projects[0].sessions[0].resources.current.memoryBytes, 3);
   assert.doesNotMatch(JSON.stringify({ feedSnapshot, homeSnapshot }), /PRIVATE_COALESCED_RESOURCE|processStartIdentity|"pid"/i);
 });

@@ -125,20 +125,33 @@ export function createSessionObservationCoordinator(options = {}) {
       timings.catalogCommitWait.record(delayMs);
       catalogDirtyAt = null;
     }
-    const sessions = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
-    const liveSessions = sessions.filter((entry) => entry.isLive).map((entry) => {
+    const entries = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
+    const previousRows = new Map((catalogCache.current()?.value?.sessions || []).map((entry) => [entry.id, entry]));
+    const sessions = entries.map((entry) => {
       const snapshot = store.getByQualifiedId(entry.id);
       const state = snapshot?.publicState;
+      const previous = previousRows.get(entry.id);
+      const retainPrevious = !entry.isLive
+        && !snapshot
+        && previous?.summaryReadiness === "ready"
+        && previous.updatedAt === entry.updatedAt;
       const primaryAgent = Array.isArray(state?.agents)
         ? state.agents.find((agent) => agent.id === "primary")
         : null;
       return {
         ...entry,
-        agentCount: Number.isFinite(state?.metrics?.agents) ? state.metrics.agents : null,
-        activeAgentCount: Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
-        latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents) ? state.metrics.tokens.allAgents : null,
-        progress: state?.session?.progress || null,
-        currentActivity: primaryAgent?.currentActivity ?? null,
+        summaryReadiness: snapshot || retainPrevious ? "ready" : "loading",
+        agentCount: Number.isFinite(state?.metrics?.agents)
+          ? state.metrics.agents
+          : retainPrevious ? previous.agentCount : null,
+        activeAgentCount: (snapshot || retainPrevious) && !entry.isLive
+          ? 0
+          : Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
+        latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents)
+          ? state.metrics.tokens.allAgents
+          : retainPrevious ? previous.latestContextTotal : null,
+        progress: state?.session?.progress || (retainPrevious ? previous.progress : null),
+        currentActivity: entry.isLive ? primaryAgent?.currentActivity ?? null : null,
       };
     });
     const providerStates = [...catalogReadinessByProvider.values()];
@@ -148,13 +161,8 @@ export function createSessionObservationCoordinator(options = {}) {
     const committed = catalogCache.commit({
       readiness: {
         catalog: catalogReadiness,
-        sessionSummaries: Object.fromEntries(sessions.map((entry) => [
-          entry.id,
-          store.getByQualifiedId(entry.id) ? "ready" : "loading",
-        ])),
       },
       sessions,
-      liveSessions,
     });
     notify({ type: "catalog", revision: committed.revision });
     timings.catalogProjectionCommit.record(monotonicNow() - projectionStartedAt);

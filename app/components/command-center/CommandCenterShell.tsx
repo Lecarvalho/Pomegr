@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
-import type { LiveSessionSummary, SessionSummary } from "../../../shared/monitor-contract";
+import type { SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
@@ -26,7 +26,6 @@ type CommandCenterShellProps = {
   children: ReactNode;
   pathname: string;
   sessions: SessionSummary[];
-  liveSessions: LiveSessionSummary[];
   connected: boolean;
   loading: boolean;
   update?: DesktopState["update"] | null;
@@ -116,7 +115,7 @@ function NotificationCenter({ sessions, connected, loading, onClose }: {
   );
 }
 
-export function CommandCenterShell({ children, pathname, sessions, liveSessions, connected, loading, update = null, onInstallUpdate = () => {} }: CommandCenterShellProps) {
+export function CommandCenterShell({ children, pathname, sessions, connected, loading, update = null, onInstallUpdate = () => {} }: CommandCenterShellProps) {
   const router = useRouter();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -131,7 +130,8 @@ export function CommandCenterShell({ children, pathname, sessions, liveSessions,
   const mobileNavigationButtonRef = useRef<HTMLButtonElement | null>(null);
   const mobileSearchButtonRef = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const navigation = useMemo(() => primaryNavigation.map((item) => item.href === "/sessions" ? { ...item, count: liveSessions.length } : item), [liveSessions.length]);
+  const liveSessionCount = sessions.filter((session) => session.isLive).length;
+  const navigation = useMemo(() => primaryNavigation.map((item) => item.href === "/sessions" ? { ...item, count: liveSessionCount } : item), [liveSessionCount]);
   const hasNeedsInput = sessions.some((session) => session.isLive && (session.needsInput || session.activityStatus === "needs_input"));
 
   const closeNotifications = useCallback((returnFocus = true) => {

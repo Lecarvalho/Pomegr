@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits, LiveSessionSummary, Readiness } from "../shared/monitor-contract";
+import type { HomeAggregateSnapshot, HomeLimitActivity, HomeProviderUsageLimits, Readiness, SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { usageLimitSeverity } from "../shared/usage-limit-severity.mjs";
 import { AnimatedProgressBar, useAnimatedProgressValue } from "./components/AnimatedProgress";
@@ -15,7 +15,7 @@ const EMPTY: HomeAggregateSnapshot = { generatedAt: null, providerLimits: [], li
 const HOME_AGGREGATE_POLL_MS = 30_000;
 
 function number(value: number | null) { if (!Number.isFinite(value)) return "—"; return new Intl.NumberFormat(undefined, { notation: value! >= 10_000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(value!); }
-function agentSummary(session: LiveSessionSummary) {
+function agentSummary(session: SessionSummary) {
   if (session.agentCount === null) return "agents unavailable";
   if (session.activeAgentCount === null) return `${session.agentCount} ${session.agentCount === 1 ? "agent" : "agents"}`;
   return `${session.activeAgentCount}/${session.agentCount} agents`;
@@ -166,20 +166,20 @@ function HomeUsageLimits({ providers, activities, readiness }: { providers: Home
   );
 }
 
-function sessionHref(session: LiveSessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
+function sessionHref(session: SessionSummary) { try { return `/sessions/${encodeSessionRoute(session.id.includes(":") ? session.id : `${session.provider}:${session.id}`)}`; } catch { return "/"; } }
 
-function sessionActivity(session: LiveSessionSummary) {
+function sessionActivity(session: SessionSummary) {
   if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", className: "needsInput" };
   if (session.activityStatus === "working") return { label: "Working now", className: "working" };
   if (session.activityStatus === "idle") return { label: "Idle", className: "idle" };
   return { label: "Open", className: "unknown" };
 }
 
-function isActiveSession(session: LiveSessionSummary) {
+function isActiveSession(session: SessionSummary) {
   return session.needsInput || session.activityStatus === "needs_input" || session.activityStatus === "working";
 }
 
-function HomeSessionProgress({ session, progress }: { session: LiveSessionSummary; progress: NonNullable<LiveSessionSummary["progress"]> }) {
+function HomeSessionProgress({ session, progress }: { session: SessionSummary; progress: NonNullable<SessionSummary["progress"]> }) {
   const displayedPercent = useAnimatedProgressValue(progress.percent, "compact");
   const showEta = !session.needsInput && progress.phase !== "blocked" && progress.phase !== "complete" && progress.remainingMinutesMin !== undefined;
   const eta = showEta ? `ETA ${progress.remainingMinutesMin}${progress.remainingMinutesMax !== undefined && progress.remainingMinutesMax !== progress.remainingMinutesMin ? `–${progress.remainingMinutesMax}` : ""} min` : null;
@@ -203,16 +203,16 @@ function HomeSessionProgress({ session, progress }: { session: LiveSessionSummar
   );
 }
 
-function SessionCard({ session, readiness }: { session: LiveSessionSummary; readiness?: Readiness }) {
+function SessionCard({ session }: { session: SessionSummary }) {
   const progress = session.progress;
   const activity = sessionActivity(session);
-  const summaryLoading = readiness === "loading";
+  const summaryLoading = session.summaryReadiness === "loading";
   return <div className={`homeSessionCard ${activity.className}`}><Link className="homeSessionRow" href={sessionHref(session)} aria-label={`Open ${session.title} · ${session.project} · ${session.source} · ${activity.label}`}><span className={`homeLiveDot ${activity.className}`} /><span className="homeSessionCopy"><strong>{session.title}</strong><small><span className="homeSessionProject">{session.project}</span> · <ProviderBadge source={session.source} compact /> · {summaryLoading && session.agentCount === null ? <InlineSkeleton className="skeletonTiny" /> : agentSummary(session)} · <SessionRelativeTimeText value={session.updatedAt} /></small></span><span className={`homeSessionStatus ${activity.className}`}>{activity.label}</span><span className="homeSessionMetrics"><b>{summaryLoading && session.latestContextTotal === null ? <InlineSkeleton className="skeletonMetric" /> : number(session.latestContextTotal)}</b><small>context</small></span></Link>{progress && <HomeSessionProgress session={session} progress={progress} />}</div>;
 }
 
-function SessionSection({ id, title, sessions, readiness }: { id: string; title: string; sessions: LiveSessionSummary[]; readiness?: Record<string, Readiness> }) {
+function SessionSection({ id, title, sessions }: { id: string; title: string; sessions: SessionSummary[] }) {
   if (!sessions.length) return null;
-  return <section className="homeLiveGrid" aria-labelledby={id}><div className="homeSectionHeader"><h2 id={id}>{title}</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} readiness={readiness?.[session.id]} />)}</div></section>;
+  return <section className="homeLiveGrid" aria-labelledby={id}><div className="homeSectionHeader"><h2 id={id}>{title}</h2><span>{sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></div><div className="homeSessionGrid">{sessions.map((session) => <SessionCard key={session.id} session={session} />)}</div></section>;
 }
 
 function HomeCatalogSkeleton() {
@@ -225,8 +225,8 @@ export function HomeDashboard() {
   const [aggregateConnected, setAggregateConnected] = useState(true);
   const [aggregateReadiness, setAggregateReadiness] = useState<HomeAggregateSnapshot["readiness"]>();
   const sharedUsage = useUsageLimits();
-  const { liveSessions, loading: catalogLoading, connected: catalogConnected } = useSessionCatalog();
-  const sessions = liveSessions;
+  const { sessions: catalogSessions, loading: catalogLoading, connected: catalogConnected } = useSessionCatalog();
+  const sessions = useMemo(() => catalogSessions.filter((session) => session.isLive), [catalogSessions]);
   const sessionCountRef = useRef(sessions.length);
   useEffect(() => { sessionCountRef.current = sessions.length; }, [sessions.length]);
   const activeSessions = useMemo(() => sessions.filter(isActiveSession), [sessions]);
@@ -345,7 +345,7 @@ export function HomeDashboard() {
       {!catalogLoading && catalogConnected && sessions.length === 0 && <p className="homeStatus commandEmptyState" role="status">No open sessions yet. Start a coding-agent session and it will appear here automatically.</p>}
       {!aggregateLoading && !aggregateConnected && <p className="homeStatus" role="status">Usage and activity overview is unavailable. Pomegr will retry automatically.</p>}
       <HomeUsageLimits providers={sharedUsage.providers} activities={usageRevisionMatches ? snapshot.limitActivities || [] : []} readiness={usageReadiness} />
-      {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} readiness={aggregateReadiness?.sessionSummaries} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} readiness={aggregateReadiness?.sessionSummaries} /></>}
+      {!catalogLoading && sessions.length > 0 && <><SessionSection id="home-active-heading" title="Active now" sessions={activeSessions} /><SessionSection id="home-idle-heading" title="Open · Idle" sessions={idleSessions} /></>}
     </section>
   );
 }

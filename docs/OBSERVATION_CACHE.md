@@ -233,7 +233,7 @@ remain the source of truth.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | Provider-neutral catalog, bounded live summaries, catalog readiness | Application shell, sidebar, Home session cards |
+| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries and per-row summary readiness | Application shell, Sessions directory, sidebar, Home session cards |
 | `/api/events` | No committed data; server-sent invalidation events containing only a fixed domain and revision | Application shell immediate refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Home aggregation regions |
@@ -336,9 +336,14 @@ Browser responses remain subject to every allowlist and privacy invariant in `AG
 Caches and browser responses may carry only the bounded provider-neutral work-kind enum
 derived during U2 normalization. Raw commands and provider-native tool schemas remain
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.
-Caches and `/api/sessions` live summaries may carry only the normalized primary agent's
-nullable current-activity label and observation timestamp. Subagent activity, provider
-records, and every other agent field remain outside the catalog response.
+Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
+fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
+context snapshot, bounded agent-reported progress, and the normalized primary agent's
+nullable current-activity label and observation timestamp. Completed rows retain their
+last committed agent count, context snapshot, and progress; their active-agent count is
+zero and current activity is null. Subagent activity, context history, resources, provider
+records, and every other agent field remain outside the catalog response. React consumes
+each row directly and never joins catalog identity to a parallel summary collection.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather
 than arbitrary exception text.
 

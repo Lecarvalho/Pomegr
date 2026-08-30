@@ -67,11 +67,11 @@ export function DashboardsView() {
 }
 
 export function SessionsView() {
-  const { sessions, liveSessions, loading, connected, readiness } = useSessionCatalog();
+  const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "live" | "needs" | "history">("all");
   const [page, setPage] = useState(1);
-  const liveById = useMemo(() => new Map(liveSessions.map((session) => [session.id, session])), [liveSessions]);
+  const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const filteredSessions = useMemo(() => newestSessionsFirst(sessions.filter((session) => {
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
     if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
@@ -93,20 +93,20 @@ export function SessionsView() {
       <CommandToolbar>
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
-        <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessions.length}>Live</CommandFilter>
+        <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
         <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
-        <CommandFilter active={filter === "history"} onClick={() => updateFilter("history")} count={sessions.length - liveSessions.length}>History</CommandFilter>
+        <CommandFilter active={filter === "history"} onClick={() => updateFilter("history")} count={sessions.length - liveSessionCount}>History</CommandFilter>
         <span className="commandToolbarCount">{filteredSessions.length} matches</span>
       </CommandToolbar>
       {catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : !filteredSessions.length ? <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" /> : <div className="commandSessionTableWrap">
         <table className="commandTable"><caption className="commandVisuallyHidden">Observed Pomegr sessions</caption><colgroup><col className="commandSessionColSession" /><col className="commandSessionColState" /><col className="commandSessionColActivity" /><col className="commandSessionColAgents" /><col className="commandSessionColContext" /><col className="commandSessionColProgress" /><col className="commandSessionColUpdated" /><col className="commandSessionColAction" /></colgroup><thead><tr><th>Session</th><th>State</th><th className="commandTableActivityColumn">Current activity</th><th className="commandTableAgents">Agents</th><th>Context</th><th>Progress</th><th className="commandTableUpdated">Updated</th><th aria-label="Open session" /></tr></thead>
-          <tbody>{visibleSessions.map((session) => { const detail = liveById.get(session.id); const state = sessionState(session); return <tr key={session.id}>
-            <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity activity={detail?.currentActivity} compact /></Link></td>
+          <tbody>{visibleSessions.map((session) => { const state = sessionState(session); return <tr key={session.id}>
+            <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity activity={session.currentActivity} compact /></Link></td>
             <td data-label="State"><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
-            <td className="commandTableActivityColumn"><SessionCurrentActivity activity={detail?.currentActivity} /></td>
-            <td className="commandTableAgents" data-label="Agents">{detail?.agentCount ?? <span title="Agent count is only available in live session evidence">—</span>}</td>
-            <td data-label="Context">{detail?.latestContextTotal === null || detail?.latestContextTotal === undefined ? <span title="Context is only available in live session evidence">—</span> : `${Math.round(detail.latestContextTotal / 1000)}k`}</td>
-            <td data-label="Progress"><span className="commandTableProgress" title={detail?.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{detail?.progress ? `${Math.round(detail.progress.percent)}%` : "—"}</span></td>
+            <td className="commandTableActivityColumn"><SessionCurrentActivity activity={session.currentActivity} /></td>
+            <td className="commandTableAgents" data-label="Agents">{session.agentCount ?? <span title="Agent count is unavailable">—</span>}</td>
+            <td data-label="Context">{session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : `${Math.round(session.latestContextTotal / 1000)}k`}</td>
+            <td data-label="Progress"><span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? `${Math.round(session.progress.percent)}%` : "—"}</span></td>
             <td className="commandTableUpdated" data-label="Updated">{sessionTimestamp(session.updatedAt)}</td>
             <td><Link className="commandIconLink" href={sessionHref(session)} aria-label={`Open ${session.title}`}><CommandIcon name="arrow" size="small" /></Link></td>
           </tr>; })}</tbody>
@@ -127,7 +127,8 @@ export function SessionsView() {
 }
 
 export function AgentsView() {
-  const { sessions, liveSessions, loading, connected } = useSessionCatalog();
+  const { sessions, loading, connected } = useSessionCatalog();
+  const liveSessions = sessions.filter((session) => session.isLive);
   const knownAgentCount = liveSessions.reduce((total, session) => total + (session.agentCount || 0), 0);
   const knownActiveAgentCount = liveSessions.reduce((total, session) => total + (session.activeAgentCount || 0), 0);
   const sessionsWithCounts = liveSessions.filter((session) => session.agentCount !== null).length;

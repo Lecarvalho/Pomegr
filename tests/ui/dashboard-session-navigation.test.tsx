@@ -112,6 +112,12 @@ function catalogSession(state: MonitorState, overrides: Partial<SessionSummary> 
     isLive: state.view !== "history",
     needsInput: false,
     activityStatus: "working",
+    summaryReadiness: "ready",
+    agentCount: state.metrics.agents,
+    activeAgentCount: state.metrics.activeAgents,
+    latestContextTotal: state.metrics.tokens.allAgents,
+    progress: state.session?.progress ?? null,
+    currentActivity: state.agents.find((agent) => agent.id === "primary")?.currentActivity ?? null,
     ...overrides,
   };
 }
@@ -119,7 +125,7 @@ function catalogSession(state: MonitorState, overrides: Partial<SessionSummary> 
 function renderDashboard(sessions: SessionSummary[] = []) {
   return render(
     <DisplayPreferencesProvider>
-      <SessionCatalogProvider sessions={sessions} liveSessions={[]}>
+      <SessionCatalogProvider sessions={sessions}>
         <Dashboard />
       </SessionCatalogProvider>
     </DisplayPreferencesProvider>,

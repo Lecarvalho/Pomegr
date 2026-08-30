@@ -5,7 +5,7 @@ import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 
 function renderDashboard() {
   return render(
-    <SessionCatalogProvider sessions={[]} liveSessions={[]}>
+    <SessionCatalogProvider sessions={[]}>
       <Dashboard />
     </SessionCatalogProvider>,
   );

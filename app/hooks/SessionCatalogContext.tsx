@@ -1,28 +1,26 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { HomeReadiness, LiveSessionSummary, SessionSummary } from "../../shared/monitor-contract";
+import type { HomeReadiness, SessionSummary } from "../../shared/monitor-contract";
 
 type SessionCatalogContextValue = {
   sessions: SessionSummary[];
-  liveSessions: LiveSessionSummary[];
   loading: boolean;
   connected: boolean;
-  readiness: Pick<HomeReadiness, "catalog" | "sessionSummaries">;
+  readiness: Pick<HomeReadiness, "catalog">;
 };
 
-const emptySessionCatalog: SessionCatalogContextValue = { sessions: [], liveSessions: [], loading: true, connected: true, readiness: { catalog: "loading", sessionSummaries: {} } };
+const emptySessionCatalog: SessionCatalogContextValue = { sessions: [], loading: true, connected: true, readiness: { catalog: "loading" } };
 const SessionCatalogContext = createContext<SessionCatalogContextValue>(emptySessionCatalog);
 
-export function SessionCatalogProvider({ sessions, liveSessions, loading = false, connected = true, readiness, children }: {
+export function SessionCatalogProvider({ sessions, loading = false, connected = true, readiness, children }: {
   sessions: SessionSummary[];
-  liveSessions: LiveSessionSummary[];
   loading?: boolean;
   connected?: boolean;
-  readiness?: Pick<HomeReadiness, "catalog" | "sessionSummaries">;
+  readiness?: Pick<HomeReadiness, "catalog">;
   children: ReactNode;
 }) {
-  return <SessionCatalogContext.Provider value={{ sessions, liveSessions, loading, connected, readiness: readiness || { catalog: loading ? "loading" : "ready", sessionSummaries: {} } }}>{children}</SessionCatalogContext.Provider>;
+  return <SessionCatalogContext.Provider value={{ sessions, loading, connected, readiness: readiness || { catalog: loading ? "loading" : "ready" } }}>{children}</SessionCatalogContext.Provider>;
 }
 
 export function useSessionCatalog() {

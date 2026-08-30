@@ -216,7 +216,7 @@ export function createMonitorRuntime(options = {}) {
     return Array.isArray(inspected.sessions) ? inspected.sessions : [];
   }
 
-  function liveSessionSummary(entry, summary) {
+  function sessionSummary(entry, summary, summaryReadiness = summary ? "ready" : "loading") {
     return {
       id: entry.id,
       provider: entry.provider,
@@ -228,25 +228,29 @@ export function createMonitorRuntime(options = {}) {
       isLive: Boolean(entry.isLive),
       needsInput: Boolean(entry.needsInput),
       activityStatus: entry.activityStatus || "unknown",
+      summaryReadiness,
       agentCount: Number.isFinite(summary?.agentCount) ? summary.agentCount : null,
-      activeAgentCount: Number.isFinite(summary?.activeAgentCount) ? summary.activeAgentCount : null,
+      activeAgentCount: summary && !entry.isLive
+        ? 0
+        : Number.isFinite(summary?.activeAgentCount) ? summary.activeAgentCount : null,
       latestContextTotal: Number.isFinite(summary?.latestContextTotal) ? summary.latestContextTotal : null,
       progress: summary?.progress ?? null,
-      currentActivity: summary?.currentActivity ?? null,
+      currentActivity: entry.isLive ? summary?.currentActivity ?? null : null,
     };
   }
 
   async function sessionFeed() {
     const sessions = await sessionCatalog();
     const endMs = now();
-    const liveSessions = await Promise.all(sessions.filter((entry) => entry?.isLive).map(async (entry) => {
+    const summaries = await Promise.all(sessions.map(async (entry) => {
       const cached = cachedHomeSummary(entry, endMs, () => null);
-      const summary = cached.found ? cached.summary : await loadHomeSummary(entry, endMs, null);
-      return liveSessionSummary(entry, summary);
+      const summary = cached.found
+        ? cached.summary
+        : entry?.isLive ? await loadHomeSummary(entry, endMs, null) : null;
+      return sessionSummary(entry, summary, summary ? "ready" : entry?.isLive ? "loading" : "unavailable");
     }));
     return {
-      sessions,
-      liveSessions,
+      sessions: summaries,
     };
   }
 
