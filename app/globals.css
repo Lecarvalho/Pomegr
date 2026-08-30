@@ -1193,10 +1193,15 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .commandViewActions { flex: 0 0 auto; }
 .commandPrimaryAction, .commandSecondaryAction { display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; }
 .commandToolbar { min-height: 48px; margin-top: 14px; padding: 7px 10px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--command-line); border-radius: 8px; background: var(--command-panel); }
-.commandToolbar .commandSearch { width: min(360px, 42vw); height: 32px; background: var(--command-ground); }
-.commandFilterChip { min-height: 30px; padding: 0 9px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--command-line); border-radius: 6px; background: transparent; color: var(--command-muted); cursor: pointer; font-size: 8px; }
-.commandFilterChip:hover, .commandFilterChip.active { border-color: var(--command-line-strong); background: var(--command-panel-2); color: var(--command-ink); }
-.commandFilterCount { color: var(--command-faint); font: 7px/1 var(--font-geist-mono), Consolas, monospace; }
+.commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; background: var(--command-ground); }
+/* Keep filter controls above the legacy button shape and shell font resets. */
+.commandToolbar .commandFilterChip { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--command-line); border-radius: 6px; background: transparent; color: var(--command-muted); cursor: pointer; font: 600 10px/1.3 var(--font-geist-mono), Consolas, monospace; white-space: nowrap; }
+.commandToolbar .commandFilterChip:hover { border-color: var(--command-line-strong); background: var(--command-panel-2); color: var(--command-ink); }
+.commandToolbar .commandFilterChip[aria-pressed="true"] { border-color: var(--command-line-strong); background: var(--command-panel-3); color: var(--command-ink); }
+.commandFilterCount { color: var(--command-muted); font: 500 9px/1.3 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px), (pointer: coarse) {
+  .commandToolbar .commandFilterChip, .commandToolbar .commandSearch { min-height: 44px; }
+}
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: 8px/1 var(--font-geist-mono), Consolas, monospace; white-space: nowrap; }
 .commandDashboardDirectory { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandDashboardRows { min-width: 0; }
