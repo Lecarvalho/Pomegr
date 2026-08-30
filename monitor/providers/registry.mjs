@@ -1,4 +1,5 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
+import { createPipelineFailureRecorder } from "../pipeline-operations-failures.mjs";
 import {
   assertProviderConformance,
   capabilitiesFromManifest,
@@ -119,11 +120,15 @@ export function createProviderRegistry(adapters) {
     "observerPublicationRejected",
   ]);
   const diagnosticsByProvider = new Map();
-  function recordDiagnostic(providerId, category) {
+  const failureDetailsByProvider = new Map();
+  function recordDiagnostic(providerId, category, error, stage) {
     if (!diagnosticCategories.includes(category)) return;
     const current = diagnosticsByProvider.get(providerId) || Object.fromEntries(diagnosticCategories.map((key) => [key, 0]));
     current[category] = Math.min(Number.MAX_SAFE_INTEGER, current[category] + 1);
     diagnosticsByProvider.set(providerId, current);
+    const failures = failureDetailsByProvider.get(providerId) || createPipelineFailureRecorder();
+    failures.record(category, error, stage);
+    failureDetailsByProvider.set(providerId, failures);
   }
   providers.forEach((provider, providerIndex) => {
     assertProviderConformance(provider);
@@ -160,28 +165,28 @@ export function createProviderRegistry(adapters) {
         const scopedPublisher = createScopedNormalizedObservationPublisher(provider.id, {
           publishCatalog(providerId, entries) {
             try { target.publishCatalog(providerId, entries); }
-            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "catalog_publication"); }
           },
           publishSession(providerId, localSessionId, evidence) {
             try { target.publishSession(providerId, localSessionId, evidence); }
-            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "session_publication"); }
           },
           invalidateSession(providerId, localSessionId, reason) {
             try { target.invalidateSession(providerId, localSessionId, reason); }
-            catch { recordDiagnostic(providerId, "observerPublicationRejected"); }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "invalidation"); }
           },
           checkpointFor(providerId, localSessionId) {
             try { return typeof target.checkpointFor === "function" ? target.checkpointFor(providerId, localSessionId) : null; }
-            catch { recordDiagnostic(providerId, "observerPublicationRejected"); return null; }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "checkpoint_read"); return null; }
           },
         });
         await observer.start(scopedPublisher, controller.signal);
         observersByProvider.set(provider.id, observer);
-      } catch {
+      } catch (error) {
         try { await observer?.stop?.(); } catch { /* provider failure remains isolated */ }
-        recordDiagnostic(provider.id, "observerStartFailures");
-        try { target.publishCatalog(provider.id, [], "unavailable"); } catch {
-          recordDiagnostic(provider.id, "observerPublicationRejected");
+        recordDiagnostic(provider.id, "observerStartFailures", error);
+        try { target.publishCatalog(provider.id, [], "unavailable"); } catch (publicationError) {
+          recordDiagnostic(provider.id, "observerPublicationRejected", publicationError, "catalog_publication");
         }
       }
     }
@@ -201,8 +206,8 @@ export function createProviderRegistry(adapters) {
         if (!parsed || !observer || controller.signal.aborted) return false;
         try {
           return Boolean(await observer.hydrate(parsed.localSessionId));
-        } catch {
-          recordDiagnostic(parsed.providerId, "observerHydrationFailures");
+        } catch (error) {
+          recordDiagnostic(parsed.providerId, "observerHydrationFailures", error);
           return false;
         }
       },
@@ -233,13 +238,13 @@ export function createProviderRegistry(adapters) {
               provider,
               providerIndex,
             }];
-          } catch {
-            recordDiagnostic(provider.id, "catalogEntriesRejected");
+          } catch (error) {
+            recordDiagnostic(provider.id, "catalogEntriesRejected", error);
             return [];
           }
         });
-      } catch {
-        recordDiagnostic(provider.id, "catalogReadFailures");
+      } catch (error) {
+        recordDiagnostic(provider.id, "catalogReadFailures", error);
         return [];
       }
     }));
@@ -281,8 +286,8 @@ export function createProviderRegistry(adapters) {
         throw new TypeError("Provider readiness must report every declared readiness capability exactly once");
       }
       return createProviderRuntimeReadiness(manifest, resolved || {});
-    } catch {
-      recordDiagnostic(provider.id, "readinessProbeFailures");
+    } catch (error) {
+      recordDiagnostic(provider.id, "readinessProbeFailures", error);
       return createProviderRuntimeReadiness(manifest, Object.fromEntries(
         (provider.readinessCapabilities || []).map((key) => [key, { status: "unavailable", reason: "probe_failed" }]),
       ));
@@ -299,8 +304,8 @@ export function createProviderRegistry(adapters) {
     let evidence;
     try {
       evidence = await entry.provider.readSession(entry.localId, { historical });
-    } catch {
-      recordDiagnostic(entry.provider.id, "sessionReadFailures");
+    } catch (error) {
+      recordDiagnostic(entry.provider.id, "sessionReadFailures", error);
       return null;
     }
     if (!evidence) return null;
@@ -315,8 +320,8 @@ export function createProviderRegistry(adapters) {
         ),
         sessionId: entry.id,
       };
-    } catch {
-      recordDiagnostic(entry.provider.id, "sessionEvidenceRejected");
+    } catch (error) {
+      recordDiagnostic(entry.provider.id, "sessionEvidenceRejected", error);
       return null;
     }
   }
@@ -347,8 +352,11 @@ export function createProviderRegistry(adapters) {
     diagnostics() {
       return Object.freeze(Object.fromEntries(providers.map((provider) => [
         provider.id,
-        Object.freeze({ ...(diagnosticsByProvider.get(provider.id)
-          || Object.fromEntries(diagnosticCategories.map((key) => [key, 0]))) }),
+        Object.freeze({
+          ...(diagnosticsByProvider.get(provider.id)
+            || Object.fromEntries(diagnosticCategories.map((key) => [key, 0]))),
+          failureDetails: failureDetailsByProvider.get(provider.id)?.snapshot() || Object.freeze({}),
+        }),
       ])));
     },
 

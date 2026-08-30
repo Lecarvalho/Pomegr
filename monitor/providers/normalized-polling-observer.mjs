@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { isObservationWorkingSetEntry } from "../observation-working-set.mjs";
 import { createDurationSeries } from "../pipeline-operations.mjs";
+import { createPipelineFailureRecorder } from "../pipeline-operations-failures.mjs";
 
 /**
  * Transitional adapter-local observer.  It intentionally knows nothing about
@@ -78,6 +79,7 @@ export function createNormalizedPollingObserver(options) {
   const pendingHydrations = new Map();
   const runningHydrations = new Map();
   const latestEntries = new Map();
+  const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
     queueWait: createDurationSeries(),
@@ -104,12 +106,14 @@ export function createNormalizedPollingObserver(options) {
   async function runHydration(localSessionId, prepared) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
+    let failureStage = "worker_yield";
     try {
       // Provider reducers still contain bounded synchronous work. Yield before
       // every acquisition unit so cache-only serving remains responsive.
       await yieldControl();
       let context = prepared;
       if (prepared === undefined && prepare) {
+        failureStage = "source_preparation";
         const preparationStartedAt = monotonicNow();
         try {
           context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
@@ -118,6 +122,7 @@ export function createNormalizedPollingObserver(options) {
         }
       }
       const acquisitionStartedAt = monotonicNow();
+      failureStage = "acquire_normalize";
       let candidate;
       try {
         candidate = await acquire(localSessionId, publisher, context);
@@ -125,14 +130,16 @@ export function createNormalizedPollingObserver(options) {
         timings.acquisitionNormalization.record(monotonicNow() - acquisitionStartedAt);
       }
       if (!stopped && !signal?.aborted && candidate) {
+        failureStage = "session_publication";
         publisher.publishSession(localSessionId, candidate);
         qa.candidatesPublished += 1;
       }
       return Boolean(candidate);
-    } catch {
+    } catch (error) {
       // Acquisition failures are isolated and sanitized. The previous
       // committed revision remains visible and reconciliation can retry.
       qa.acquisitionFailures += 1;
+      failures.record("acquisitionFailures", error, failureStage);
       return false;
     }
   }
@@ -234,8 +241,9 @@ export function createNormalizedPollingObserver(options) {
               timings.preparation.record(monotonicNow() - preparationStartedAt);
             }
           }
-        } catch {
+        } catch (error) {
           qa.acquisitionFailures += 1;
+          failures.record("acquisitionFailures", error, "source_preparation");
           continue;
         }
         for (const { entry, priority } of batch) {
@@ -395,6 +403,7 @@ export function createNormalizedPollingObserver(options) {
       activeHydrations: runningHydrations.size,
       pendingHydrations: pendingHydrations.size,
       hydrationConcurrency: concurrency,
+      failureDetails: failures.snapshot(),
       timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
     }),
   });

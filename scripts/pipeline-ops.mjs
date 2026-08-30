@@ -51,6 +51,27 @@ function timingRow(label, timing) {
   return `${label.padEnd(35)} ${duration(timing.lastMs)} ${duration(timing.averageMs)} ${duration(timing.p50Ms)} ${duration(timing.p95Ms)} ${duration(timing.maxMs)} ${String(count(timing.windowCount)).padStart(7)}`;
 }
 
+function failureRows(providers) {
+  const rows = [];
+  for (const entry of providers) {
+    const counts = { ...entry.failures, acquisitionFailures: entry.counters.acquisitionFailures };
+    for (const [category, total] of Object.entries(counts)) {
+      if (!count(total)) continue;
+      const detail = entry.failureDetails[category];
+      rows.push(`${entry.id} · ${category}: ${total}`);
+      rows.push(detail
+        ? `  ${detail.stage} · ${detail.reason} · ${detail.observedAt || "time unavailable"}`
+        : "  Detail unavailable (not recorded by this monitor).");
+      if (detail?.validation) {
+        for (const issue of detail.validation.issues) rows.push(`    ${issue.field} · ${issue.rule}`);
+        if (!detail.validation.issues.length) rows.push("    Validation fields unavailable.");
+        if (detail.validation.truncated) rows.push("    Additional validation issues omitted.");
+      }
+    }
+  }
+  return rows.length ? ["", "FAILURES · cumulative counts; latest detail per category", ...rows] : [];
+}
+
 export function formatPipelineOperationsSnapshot(snapshot, { provider = "" } = {}) {
   snapshot = normalizePipelineOperationsSnapshot(snapshot);
   const providers = snapshot.providers.filter((entry) => !provider || entry?.id === provider);
@@ -68,6 +89,7 @@ export function formatPipelineOperationsSnapshot(snapshot, { provider = "" } = {
     lines.push(`${String(entry.id).padEnd(12)} ${String(count(entry.workers?.active)).padStart(7)} ${String(count(entry.workers?.capacity)).padStart(9)} ${String(count(entry.workers?.pending)).padStart(7)} ${String(count(entry.counters?.hydrationsCoalesced)).padStart(10)} ${String(count(entry.counters?.hydrationDirtyAgain)).padStart(7)} ${String(failures).padStart(9)}`);
   }
   lines.push(
+    ...failureRows(providers),
     "",
     "PIPELINE TIMINGS",
     `${"Stage".padEnd(35)} ${"Last".padStart(7)} ${"Avg".padStart(7)} ${"p50".padStart(7)} ${"p95".padStart(7)} ${"Max".padStart(7)} ${"Window".padStart(7)}`,

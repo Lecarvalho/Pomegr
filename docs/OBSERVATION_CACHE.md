@@ -385,6 +385,14 @@ events, active and pending hydrations, coalesced and dirty-again work, aggregate
 notification-to-acquisition queue delay, bytes and records acquired, normalization
 failures, structural catalog fast paths, catalog commit delay, commits, rebuilds, cache
 hits/misses, memory, response revisions, checkpoint writes, and checkpoint bytes. Bounded
+failure details may retain the latest fixed stage, allowlisted reason code/type, and local
+observation timestamp per existing provider failure-counter category (at most nine per
+provider). Schema-validation failures may additionally retain at most eight deduplicated
+normalized-contract field/rule pairs and a truncation flag. Array indexes, rejected values,
+unrecognized key names, and raw issue metadata are excluded; unknown fields/rules remain
+unavailable/unknown. They remain in-memory operations diagnostics only, never evidence, checkpoints,
+browser API fields, or per-session traces. Raw errors, messages, stacks, paths, and identities
+are excluded, and successful work does not erase historical failure details. Bounded
 monotonic duration windows may additionally cover catalog discovery, source preparation,
 combined acquisition/normalization, catalog projection, session derivation, normalized
 store commit, and candidate-to-commit delay. Delay diagnostics are aggregate numbers only;

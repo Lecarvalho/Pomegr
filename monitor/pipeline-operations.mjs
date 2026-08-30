@@ -1,3 +1,5 @@
+import { normalizePipelineFailureDetails, PROVIDER_FAILURE_COUNTERS } from "./pipeline-operations-failures.mjs";
+
 const MAX_DURATION_MS = 24 * 60 * 60_000;
 const DEFAULT_WINDOW_SIZE = 256;
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
@@ -76,17 +78,6 @@ const OBSERVER_COUNTERS = Object.freeze([
   "acquisitionFailures",
 ]);
 
-const PROVIDER_FAILURE_COUNTERS = Object.freeze([
-  "catalogReadFailures",
-  "catalogEntriesRejected",
-  "readinessProbeFailures",
-  "sessionReadFailures",
-  "sessionEvidenceRejected",
-  "observerStartFailures",
-  "observerHydrationFailures",
-  "observerPublicationRejected",
-]);
-
 /** Build the fixed monitor-private payload consumed by the terminal operations client. */
 export function createPipelineOperationsSnapshot(diagnostics, observedAt = new Date().toISOString()) {
   const coordinator = diagnostics?.coordinator || {};
@@ -141,6 +132,10 @@ export function createPipelineOperationsSnapshot(diagnostics, observedAt = new D
         }),
         counters: counters(observer, OBSERVER_COUNTERS),
         failures: counters(providerFailures[providerId], PROVIDER_FAILURE_COUNTERS),
+        failureDetails: normalizePipelineFailureDetails({
+          ...providerFailures[providerId]?.failureDetails,
+          acquisitionFailures: observer.failureDetails?.acquisitionFailures,
+        }),
         timings: Object.freeze({
           catalogDiscovery: durationSnapshot(observer.timings?.catalogDiscovery),
           queueWait: durationSnapshot(observer.timings?.queueWait),
@@ -198,6 +193,7 @@ export function normalizePipelineOperationsSnapshot(value) {
         }),
         counters: counters(entry.counters, OBSERVER_COUNTERS),
         failures: counters(entry.failures, PROVIDER_FAILURE_COUNTERS),
+        failureDetails: normalizePipelineFailureDetails(entry.failureDetails),
         timings: Object.freeze({
           catalogDiscovery: durationSnapshot(entry.timings?.catalogDiscovery),
           queueWait: durationSnapshot(entry.timings?.queueWait),

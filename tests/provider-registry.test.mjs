@@ -370,6 +370,25 @@ test("starts isolated provider observers and validates their normalized publicat
   assert.equal(candidates[0].value.localId, "observed");
   assert.equal(await lifecycle.hydrate("claude:missing"), false);
   assert.equal(registry.diagnostics().claude.observerStartFailures, 1);
+  assert.equal(registry.diagnostics().claude.failureDetails.observerStartFailures.stage, "observer_start");
+  assert.equal(registry.diagnostics().claude.failureDetails.observerStartFailures.reason, "unknown");
+  assert.ok(Number.isFinite(Date.parse(registry.diagnostics().claude.failureDetails.observerStartFailures.observedAt)));
+  assert.doesNotMatch(JSON.stringify(registry.diagnostics()), /private source failure|message|stack/);
   await lifecycle.stop();
   assert.equal(stopped, true);
+});
+
+test("registry read failures retain safe details separately for each provider", async () => {
+  const failure = Object.assign(new Error("PRIVATE_PROMPT C:\\PRIVATE_PATH"), { code: "EACCES" });
+  const registry = createProviderRegistry([
+    provider("claude", [session("one", "2026-08-30T12:00:00.000Z")], new Map([["one", failure]])),
+    provider("codex", []),
+  ]);
+  assert.equal(await registry.readSession("claude:one"), null);
+  const diagnostics = registry.diagnostics();
+  assert.equal(diagnostics.claude.sessionReadFailures, 1);
+  assert.equal(diagnostics.claude.failureDetails.sessionReadFailures.stage, "session_read");
+  assert.equal(diagnostics.claude.failureDetails.sessionReadFailures.reason, "EACCES");
+  assert.deepEqual(diagnostics.codex.failureDetails, {});
+  assert.doesNotMatch(JSON.stringify(diagnostics), /PRIVATE|message|stack|path/);
 });

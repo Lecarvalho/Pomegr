@@ -62,12 +62,81 @@ the most recent value plus rolling average, p50, p95, and maximum. It may expose
 - a fixed schema version and local observation timestamp;
 - registered provider ID;
 - worker capacity, active count, and pending count;
-- bounded observer, coalescing, failure, cache, and revision counters; and
+- bounded observer, coalescing, failure, cache, and revision counters;
+- the latest fixed stage, allowlisted reason, local observation timestamp, and bounded
+  normalized-schema field/rule summary per provider failure-counter category; and
 - bounded aggregate duration summaries.
 
 It must never contain transcript paths, filenames, source fingerprints, session IDs or
 titles, prompts, responses, reasoning, commands, patches, stdout, stderr, tool results,
 credentials, provider-native records, arbitrary error text, or checkpoint contents.
+
+## Failure details
+
+When a displayed provider has non-zero failures, the terminal adds a `FAILURES` section
+before the timing table. It shows each non-zero category's cumulative count followed by
+its latest recorded stage, reason, and UTC timestamp. For example:
+
+```text
+claude · acquisitionFailures: 1
+  acquire_normalize · EACCES · 2026-08-30T12:00:00.000Z
+```
+
+JSON exposes the same data under each provider's `failureDetails`, keyed by the existing
+failure-counter category. This is an additive V1 field: a new CLI can read an older monitor,
+but shows `Detail unavailable (not recorded by this monitor).` for counts without detail.
+Restart the monitor with the updated code to begin recording details; old exceptions
+cannot be reconstructed, and restarting also resets the in-memory counters.
+
+The observer distinguishes `worker_yield`, `source_preparation`, `acquire_normalize`, and
+`session_publication`. Registry categories identify catalog discovery/validation, readiness
+probes, session reads/evidence validation, observer startup, explicit hydration, and
+publication. Registry publication details additionally distinguish catalog publication,
+session publication, invalidation, and checkpoint reads. Stages identify the boundary that
+caught the exception, not necessarily its root cause. Acquisition and normalization are
+still combined; a preparation sample may cover a batch rather than one session.
+
+Reasons retain only exact `ENOENT`, `EACCES`, `EPERM`, `EBUSY`, `EMFILE`, `ENFILE`, `ENOMEM`,
+`ENOSPC`, `EIO`, `ENOTDIR`, `EISDIR`, `ETIMEDOUT`, `ECONNRESET`, or `ABORT_ERR` codes. Without
+an allowlisted code, native `SyntaxError`, `TypeError`, and `RangeError` are recognized;
+recognized Zod validation exceptions are classified first as `schema_validation`.
+Everything else becomes `unknown`. A type classification is not proof of a particular
+schema or parser defect. Messages, stacks, causes, arbitrary names/codes, paths, and
+source/session identity are never retained. Both the monitor and CLI re-allowlist details.
+
+Schema-validation details include an optional `validation` object with `issues` and
+`truncated`. Each issue contains only `field` and `rule`. The field vocabulary is derived
+from the canonical normalized evidence, catalog-reference, and usage schemas in
+`provider-contract.mjs`, not from rejected values or provider-native schemas. Numeric
+array indexes become `[]`; `$` means the root object; unknown paths become `unavailable`.
+The CLI renders these pairs beneath the failure, for example:
+
+```text
+claude · acquisitionFailures: 1
+  session_publication · schema_validation · 2026-08-30T12:00:00.000Z
+    agents[].executionTasks[].label · too_big
+```
+
+Allowlisted rules are `invalid_type`, `too_big`, `too_small`, `invalid_format`,
+`not_multiple_of`, `unrecognized_keys`, `invalid_union`, `invalid_key`, `invalid_element`,
+`invalid_value`, and `custom`; other rules become `unknown`. `custom` identifies a schema
+refinement, not its private message. No expected/received values, bounds, enum options,
+unrecognized key names, nested issue payloads, raw paths, or array indexes are retained.
+At most 64 top-level issues are inspected, deduplicated into at most eight field/rule
+pairs, with `truncated: true` when the scan or output cap omits issues. Field paths have
+at most 16 segments and 128 characters. Both IPC boundaries re-allowlist the summary;
+older monitors without summaries remain readable. These pairs locate a failed normalized
+contract check but do not identify a session or establish why the adapter produced it.
+
+Retention is at most one detail for each of nine fixed categories per provider, in memory
+only. A later failure in the same category replaces its detail; success does not clear it
+or imply that the previously failing session recovered. The timestamp is when the local
+catch handler recorded the failure, not a provider event timestamp; unavailable timestamps
+remain null. This adds no new failure counters, changes no retry/cadence behavior, and
+does not instrument previously uncounted catches or provider usage-limit failures.
+
+Implementation: [failure recording](../monitor/pipeline-operations-failures.mjs) and
+[normalized-schema summaries](../monitor/pipeline-operations-validation.mjs).
 
 ## Timings available in V1
 
