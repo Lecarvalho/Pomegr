@@ -101,6 +101,8 @@ test("concurrent state GETs consume one committed response without provider tran
   const bodies = await Promise.all(responses.map((response) => response.text()));
   assert.equal(new Set(bodies).size, 1);
   assert.equal(compatibilityReads, 0);
+  assert.equal(JSON.parse(bodies[0]).metrics.tokens.reportEvidence.version, 1);
+  assert.equal(JSON.parse(bodies[0]).metrics.tokens.reportEvidence.cache.status, "unavailable");
   assert.deepEqual(JSON.parse(bodies[0]).metrics.resources, {
     status: "unavailable",
     reason: "missing_owner",

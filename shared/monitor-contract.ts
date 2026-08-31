@@ -290,6 +290,44 @@ export type RequestSnapshotFeed = {
   items: RequestSnapshot[];
 };
 
+/** Bounded selection from retained normalized evidence, before UI caps. */
+export type SessionReportRefill = {
+  id: string;
+  agentId: string;
+  observedAt: string;
+  promptInputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadPercent: number;
+  previousCacheReadPercent: number;
+  gapMs: number;
+  previousCacheLifetime: CacheLifetime | null;
+  reason: CacheRefillReason | null;
+  providerStatus: CacheRefillProviderStatus | null;
+  messageChangeSequence: CacheMessageChangeSequence | null;
+  requests: { previous: RequestSnapshot | null; current: RequestSnapshot | null; next: RequestSnapshot | null };
+};
+
+export type SessionReportEvidence = {
+  version: 1;
+  requestCount: number;
+  cache: {
+    status: "ready" | "unavailable";
+    refills: number | null;
+    reuses: number | null;
+    possibleFullRefills: number | null;
+    missRefills: number | null;
+    transitions: SessionReportRefill[];
+  };
+  context: {
+    status: "ready" | "unavailable";
+    automaticCompactions: number | null;
+    manualCompactions: number | null;
+    snapshotDrops: number | null;
+    boundaries: Array<ContextHistoryBoundary & { current: RequestSnapshot | null }>;
+  };
+  limits: { refillTransitions: number; contextBoundaries: number };
+};
+
 export type ContextMachinery = {
   observedAt: string | null;
   model: string;
@@ -671,6 +709,7 @@ export type MonitorState = {
       };
       cacheEvents: CacheEventFeed;
       requestSnapshots: RequestSnapshotFeed;
+      reportEvidence?: SessionReportEvidence | null;
     };
   };
   agents: Agent[];

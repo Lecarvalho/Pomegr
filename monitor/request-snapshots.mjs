@@ -30,7 +30,8 @@ function opaqueId(sessionId, snapshot, timestamp) {
     .digest("hex").slice(0, 16)}`;
 }
 
-function normalizedRequestEvidence(agents, usageSnapshots) {
+// Private evidence; callers must serialize an explicit allowlist.
+export function normalizedRequestEvidence(agents, usageSnapshots, maximumPerAgent = MAX_REQUEST_SNAPSHOTS_PER_AGENT) {
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const dedupedByAgent = new Map();
 
@@ -52,7 +53,7 @@ function normalizedRequestEvidence(agents, usageSnapshots) {
     [...agentSnapshots.values()]
       .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
         || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId))
-      .slice(-MAX_REQUEST_SNAPSHOTS_PER_AGENT)
+      .slice(-maximumPerAgent)
   )).sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
     || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId));
 }
@@ -62,17 +63,26 @@ function normalizedRequestEvidence(agents, usageSnapshots) {
  * carries values forward, computes deltas, or consumes cumulative totals.
  */
 export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
-  const items = normalizedRequestEvidence(agents, usageSnapshots).map(({ snapshot, timestamp, parts }) => ({
+  const items = normalizedRequestEvidence(agents, usageSnapshots).map((item) => requestSnapshotFromEvidence(sessionId, item));
+
+  return { status: items.length > 0 ? "ready" : "unavailable", items };
+}
+
+/** Serialize public request-local fields from validated evidence. */
+export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, parts }) {
+  return {
     id: opaqueId(sessionId, snapshot, timestamp),
     agentId: snapshot.actorId,
     observedAt: timestamp,
     cacheLifetime: typeof snapshot.cacheLifetime === "string" && CACHE_LIFETIMES.has(snapshot.cacheLifetime)
       ? snapshot.cacheLifetime
       : null,
-    ...parts,
-  }));
-
-  return { status: items.length > 0 ? "ready" : "unavailable", items };
+    uncachedInputTokens: parts.uncachedInputTokens,
+    cacheWriteTokens: parts.cacheWriteTokens,
+    cacheReadTokens: parts.cacheReadTokens,
+    outputTokens: parts.outputTokens,
+    totalTokens: parts.totalTokens,
+  };
 }
 
 /** Monitor-private model evidence corresponding exactly to valid request snapshots. */

@@ -46,7 +46,7 @@ The value is cumulative for the Claude Code session and is the only cumulative s
 
 The initial Codex adapter has no cost source. Cost is capability-gated and omitted rather than inferred from token snapshots or displayed as zero.
 
-All-agent context is the only aggregated context total Pomegr presents. The dashboard, normalized browser API, agent details, context composition, and generated Markdown reports use only the latest snapshots or sums derived from them. Cumulative transcript-throughput and token-spend session totals remain excluded.
+All-agent context is the only aggregated context total Pomegr presents. The dashboard context totals and context composition use only the latest snapshots or sums derived from them. Focused Markdown reports may additionally include independent request-local observations around selected events. Cumulative transcript-throughput and token-spend session totals remain excluded.
 
 ## Request snapshots
 
@@ -56,7 +56,7 @@ For live Claude Code and Codex sessions, the provider adapters retain no more th
 
 The monitor deduplicates observations privately, keeps at most the latest 100 valid requests per visible agent, and returns the merged items chronologically. Invalid timestamps or counts, all-zero observations, unknown agents, missing internal dedupe evidence, and cumulative-only provider records are rejected. Status is `ready` when at least one valid item remains and `unavailable` otherwise.
 
-Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Generated reports intentionally omit this feed.
+Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Focused reports omit the routine feed and include only selected independent supporting requests, normalized through the same allowlist, from retained evidence before the dashboard's 100-request cap.
 
 ## Context history
 
@@ -66,7 +66,43 @@ Bucket sizes are selected from fixed, human-readable intervals to target roughly
 
 `contextHistory.boundaries` labels at most the newest 100 normalized context boundaries, returned in chronological order. A recognized provider compaction becomes `automatic_compaction` or `manual_compaction` with its normalized agent ID, transcript timestamp, and non-negative pre-compaction token count when supplied. When adjacent snapshots for one agent decrease without a recognized compaction between them, Pomegr emits `snapshot_drop` at the newer snapshot with the preceding context total. A recognized boundary suppresses the duplicate inferred drop. Boundary IDs are monitor-generated opaque hashes; provider event IDs, summaries, compacted content, and all other compaction metadata remain private.
 
-This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`; generated reports intentionally omit it.
+This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`. Focused reports omit bucket series but include bounded automatic/manual compaction and snapshot-drop boundaries with explicit coverage.
+
+## Focused observation reports
+
+The default Markdown export is a **Pomegr Session Observation Report**. It contains
+coverage/counts, agents referenced by detailed evidence, qualifying cache-refill
+transitions, automatic/manual compactions and context drops, failures from retained
+per-agent task feeds, selected supporting request measurements, and definitions.
+Scores, recommendations, retrospective questions, repository/current account data,
+agent-authored free text, routine request ledgers, and causal inferences are omitted.
+
+`metrics.tokens.reportEvidence` is derived monitor-side from committed normalized
+evidence before the dashboard detail caps. It preserves aggregate event counts and
+selects at most the newest 100 refill transitions and 100 context boundaries, returned
+chronologically. Counts describe retained evidence (at most 4,096 usage observations per session), never complete original transcript
+history; omitted detail counts are explicit. The report's aggregate qualifying-transition
+count is computed before the UI's 999-per-agent occurrence cap, so it can differ from
+the sum of saturated UI counters. Large-write counts include initial cache
+creation and miss-refill events. Reuse counts include every emitted tracked first reuse,
+even when the corresponding dashboard event pair is later trimmed. Classification
+thresholds and comparability are unchanged.
+
+Each refill carries exact identity-linked preceding and affected request observations,
+plus the next valid normalized same-agent request when ordering is unambiguous.
+These are independent request-local measurements, not token deltas or throughput.
+Missing or invalid snapshots remain null. Reports preserve only recognized provider
+diagnostic/status enums and the bounded structural message-change sequence; expiry
+and tool-definition causal attributions remain outside the export.
+Snapshot-drop rows can reference an unambiguous request at their timestamp;
+compactions never invent an exact post-compaction size.
+
+The report includes at most the newest 100 failed tasks across the retained per-agent
+feeds and discloses omissions. Those feeds are bounded to 30 tasks per agent, so the
+full-session failure count is unknown. Unsupported or unresolved evidence is
+unavailable, not a zero count. Provider-unsupported cache-write columns are omitted.
+The live UI's latest-100 requests, latest-20 cache events, and latest-100 boundaries
+retain their existing semantics.
 
 ## Personal Home and retained project history
 

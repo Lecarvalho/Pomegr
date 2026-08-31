@@ -69,7 +69,7 @@ function recognizedCompactionBoundary(compaction, sessionId, visibleAgentIds) {
   };
 }
 
-export function buildContextBoundaries(usages, {
+export function buildContextBoundaryEvidence(usages, {
   sessionId = "session",
   agentIds = [],
   compactions = [],
@@ -115,8 +115,13 @@ export function buildContextBoundaries(usages, {
 
   const unique = new Map([...recognized, ...drops].map((boundary) => [boundary.id, boundary]));
   return [...unique.values()]
-    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp) || left.id.localeCompare(right.id))
-    .slice(0, MAX_CONTEXT_BOUNDARIES)
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || right.id.localeCompare(left.id));
+}
+
+/** Preserve the existing bounded UI feed; report counts use retained evidence. */
+export function buildContextBoundaries(usages, options = {}) {
+  return buildContextBoundaryEvidence(usages, options)
+    .slice(-MAX_CONTEXT_BOUNDARIES)
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id));
 }
 

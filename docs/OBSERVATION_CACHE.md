@@ -45,6 +45,32 @@ U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream cons
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
 
+## Focused report evidence
+
+`metrics.tokens.reportEvidence` belongs to D Derivation and is serialized in the same
+committed public session response as the rest of `/api/state`. It does not introduce
+an export acquisition path, endpoint, polling lane, or checkpoint schema. Export may
+refresh the existing cache-only state endpoint; rendering consumes one returned
+revision or the last visible snapshot. A loading/unavailable region cannot be
+reported as an observed zero. Failed refreshes retain the last-known-good response.
+
+Report selection uses retained normalized evidence before display caps, with at most
+100 qualifying refill transitions (up to three independent request snapshots each)
+and 100 context boundaries (at most one independently normalized snapshot each).
+Aggregate counts describe that retained evidence; they never claim original-file
+completeness or expose source offsets, fingerprints, or acquisition diagnostics.
+This adds bounded data to the selected-session response, not a full request ledger.
+The existing source/evidence lifetime, 4,096-observation session contract, and
+checkpoint retention rules remain unchanged.
+
+The request serializer is shared with the existing independent request feed. Only
+opaque report/request IDs, normalized agent IDs/timestamps, request-local token counts,
+resolved lifetime enums, fixed cache classification/diagnostic/status/sequence fields,
+and normalized context boundaries enter this surface. Private classifier request
+references, model/comparison identities, diagnostics, paths, prompts, summaries,
+commands, and output never enter response or checkpoint data. Report-local task
+selection consumes already normalized per-agent task feeds.
+
 ## Cache tiers and bounds
 
 | Tier | Authority and contents | Current default bound |

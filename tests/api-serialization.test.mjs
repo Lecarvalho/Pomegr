@@ -451,6 +451,19 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       }
     }
     assert.doesNotMatch(JSON.stringify(state), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
+    const report = state.metrics.tokens.reportEvidence;
+    assert.equal(report.version, 1);
+    assert.equal(Number.isSafeInteger(report.requestCount), true);
+    assert.equal(report.cache.transitions.length <= 100, true);
+    assert.equal(report.context.boundaries.length <= 100, true);
+    assert.doesNotMatch(JSON.stringify(report), /PRIVATE|dedupeId|comparisonGroup|cacheMissDiagnosticState|model|toolChangeAttribution|cacheLifetimeInference/);
+    for (const transition of report.cache.transitions) {
+      assert.equal(state.agents.some((agent) => agent.id === transition.agentId), true);
+      for (const request of Object.values(transition.requests).filter(Boolean)) {
+        assert.deepEqual(Object.keys(request).sort(), ["agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens"]);
+        assert.equal(request.totalTokens, request.uncachedInputTokens + request.cacheWriteTokens + request.cacheReadTokens + request.outputTokens);
+      }
+    }
     assert.equal(state.metrics.tokens.requestSnapshots.status, "ready");
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {

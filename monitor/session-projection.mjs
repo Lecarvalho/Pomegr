@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { resolveAgentRole } from "./agent-roles.mjs";
-import { buildCacheEvents } from "./cache-events.mjs";
+import { buildCacheEvidence } from "./cache-events.mjs";
+import { buildSessionReportEvidence } from "./session-report-evidence.mjs";
 import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
 import { buildRequestSnapshots } from "./request-snapshots.mjs";
@@ -170,12 +171,17 @@ export function projectProviderSessionEvidence({
   );
   const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
   const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
-  tokenUsage.cacheEvents = buildCacheEvents({
+  const cacheEvidence = buildCacheEvidence({
     sessionId,
     agents,
     usageSnapshots: evidence.usageSnapshots,
     compactions,
     enabled: evidence.efficiencyRuleEvidence.cacheUsageClassification,
+  });
+  tokenUsage.cacheEvents = cacheEvidence.feed;
+  tokenUsage.reportEvidence = buildSessionReportEvidence({
+    sessionId, agents, usageSnapshots: evidence.usageSnapshots,
+    compactions, cacheEvidence, capabilities,
   });
   const { insights, loops } = evaluateEfficiencySignals({
     agents,

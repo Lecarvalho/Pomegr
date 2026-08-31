@@ -214,6 +214,10 @@ test("desktop report save is explicit, bounded, and rejects untrusted IPC", asyn
   const content = "# Pomegr Session Report\n\nSafe normalized report.\n";
   const request = { filename: "pomegr-safe-session-2026-08-11.md", content };
   assert.deepEqual(normalizeReportSaveRequest(request), request);
+  const focused = { ...request, content: "# Pomegr Session Observation Report\n\nSafe normalized evidence.\n" };
+  assert.deepEqual(normalizeReportSaveRequest(focused), focused);
+  assert.equal(normalizeReportSaveRequest({ ...request, content: "# Pomegr Session Observation Report extra\n" }), null);
+  assert.equal(normalizeReportSaveRequest({ ...focused, content: focused.content + "x".repeat(2 * 1024 * 1024) }), null);
   assert.equal(normalizeReportSaveRequest({ ...request, filename: "..\\private.md" }), null);
   assert.equal(normalizeReportSaveRequest({ ...request, credential: "SECRET" }), null);
   const writes = [];

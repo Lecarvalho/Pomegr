@@ -98,7 +98,7 @@ The monitor derives project history only when the catalog contains live sessions
 
 Each provider shares one single-flight authenticated usage request and one backend cache across every browser connected to the service process. The monitor checks for due usage work in the background, permits at most one provider request per five minutes, extends the cooldown for `Retry-After`, and keeps a committed stale value visible during refresh. The server routes proxy to the private monitor so remote browsers never receive credentials, account data, or raw transcripts.
 
-Markdown retrospective reports are assembled from the same normalized state. Report generation performs one fresh local-state read, does not call a model, and does not request the provider usage endpoint. Browser development uses a normal download; desktop uses a narrow IPC method that accepts only a bounded Pomegr Markdown report and opens the operating-system save dialog after the user clicks **Generate report**.
+Focused Markdown observation reports are assembled from the same committed normalized state. The monitor precomputes bounded report evidence before dashboard detail caps; the renderer exports selected refill transitions, compaction/context boundaries, retained task failures, supporting request snapshots, and explicit coverage instead of scores or recommendations. Report generation refreshes the cache-only local state endpoint, does not call a model, and does not request the provider usage endpoint. Browser development uses a normal download; desktop uses a narrow IPC method that accepts only a bounded Pomegr Markdown report and opens the operating-system save dialog after the user clicks **Generate report**.
 
 ### Development orchestrator
 

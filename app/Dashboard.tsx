@@ -223,14 +223,14 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
       try {
         const revisionKey = selectedSessionId ?? "__current__";
         const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store" });
-        if (response.ok) {
+        if (response.ok && response.status !== 204) {
           const latestState = await response.json() as MonitorState;
-          if (latestState.session) {
+          if (latestState.session?.id === data.session.id) {
             const headerRevision = response.headers.get("x-pomegr-revision");
             if (typeof latestState.revision === "number" || typeof latestState.revision === "string") revisionsBySessionRef.current.set(revisionKey, latestState.revision);
             else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
-            reportState = latestState;
-            setData(latestState);
+            reportState = { ...latestState, revision: latestState.revision ?? headerRevision ?? null };
+            setData(reportState);
             setLastRefresh(new Date());
           }
         }

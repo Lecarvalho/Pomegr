@@ -8,7 +8,7 @@ export function normalizeReportSaveRequest(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (Object.keys(value).some((key) => !["filename", "content"].includes(key))) return null;
   if (typeof value.filename !== "string" || !REPORT_FILENAME.test(value.filename)) return null;
-  if (typeof value.content !== "string" || !value.content.startsWith("# Pomegr Session Report\n")) return null;
+  if (typeof value.content !== "string" || !["# Pomegr Session Report\n", "# Pomegr Session Observation Report\n"].some((header) => value.content.startsWith(header))) return null;
   if (Buffer.byteLength(value.content, "utf8") > MAX_REPORT_BYTES) return null;
   return { filename: value.filename, content: value.content };
 }

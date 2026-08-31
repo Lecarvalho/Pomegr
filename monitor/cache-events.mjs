@@ -84,14 +84,15 @@ function eventFrom(snapshot, kind, parts, extra = {}) {
  * Derive a bounded factual cache-event feed. Low cache reuse alone never
  * becomes a miss: miss_refill requires a simultaneously recorded large write.
  */
-export function buildCacheEvents({
+export function buildCacheEvidence({
   sessionId = "session",
   agents = [],
   usageSnapshots = [],
   compactions = [],
   enabled = false,
 } = {}) {
-  if (!enabled) return { status: "unavailable", items: [], possibleFullRefills: [] };
+  const empty = { feed: { status: "unavailable", items: [], possibleFullRefills: [] }, events: [], refillRequests: [] };
+  if (!enabled) return empty;
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
   const unique = new Map();
   for (const snapshot of usageSnapshots) {
@@ -104,7 +105,7 @@ export function buildCacheEvents({
   const observations = [...unique.values()].sort((left, right) => (
     timestampMs(left.timestamp) - timestampMs(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
   ));
-  if (!observations.length) return { status: "unavailable", items: [], possibleFullRefills: [] };
+  if (!observations.length) return empty;
 
   const previousByActor = new Map();
   const trackedRefillByActor = new Map();
@@ -113,6 +114,7 @@ export function buildCacheEvents({
   const possibleFullRefillReasonsByActor = new Map();
   const possibleToolChangeAttributionsByActor = new Map();
   const events = [];
+  const refillRequests = [];
   for (const snapshot of observations) {
     const observedAt = timestampMs(snapshot.timestamp);
     const parts = cacheParts(snapshot);
@@ -169,6 +171,24 @@ export function buildCacheEvents({
         && CACHE_MESSAGE_CHANGE_SEQUENCES.has(snapshot.cacheMessageChangeSequence)
         ? snapshot.cacheMessageChangeSequence
         : null;
+      // Private links select exact request identities before UI trimming.
+      refillRequests.push({
+        snapshot, previous: previous.snapshot,
+        observation: {
+          id: opaqueId(sessionId, snapshot, gapMs >= CACHE_EVENT_RULES.minimumMissGapMs ? "miss_refill" : "refill"),
+          agentId: snapshot.actorId,
+          observedAt: new Date(observedAt).toISOString(),
+          promptInputTokens: parts.promptInputTokens,
+          cacheWriteTokens: parts.cacheWrite,
+          cacheReadPercent: parts.cacheReadShare * 100,
+          previousCacheReadPercent: previous.parts.cacheReadShare * 100,
+          gapMs,
+          previousCacheLifetime: previous.cacheLifetime,
+          reason: recognizedReason,
+          providerStatus,
+          messageChangeSequence,
+        },
+      });
       if (previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
         const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
         occurrences.push({
@@ -249,6 +269,7 @@ export function buildCacheEvents({
     }
 
     previousByActor.set(snapshot.actorId, {
+      snapshot,
       observedAt,
       group,
       model,
@@ -261,7 +282,7 @@ export function buildCacheEvents({
     .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt) || left.id.localeCompare(right.id))
     .slice(0, CACHE_EVENT_RULES.maximumSessionEvents);
   const retainedIds = new Set(capped.map((event) => event.id));
-  return {
+  const feed = {
     status: "ready",
     items: capped.filter((event) => (
       event.kind !== "reuse"
@@ -294,4 +315,10 @@ export function buildCacheEvents({
           })),
       })),
   };
+  return { feed, events, refillRequests };
+}
+
+/** Public cache feed; private request links never cross this boundary. */
+export function buildCacheEvents(options = {}) {
+  return buildCacheEvidence(options).feed;
 }

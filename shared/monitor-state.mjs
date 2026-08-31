@@ -72,6 +72,7 @@ export function createEmptyMonitorState(options = {}) {
         contextHistory: { bucketMs: 0, buckets: [], boundaries: [] },
         cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
         requestSnapshots: { status: "unavailable", items: [] },
+        reportEvidence: null,
       },
     },
     agents: [],
