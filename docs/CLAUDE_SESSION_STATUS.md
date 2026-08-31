@@ -87,9 +87,15 @@ successful `Workflow` (`async_launched`, `local_workflow`), `Bash`
 bounded `agentId`) results, matched to their preceding structured tool calls.
 The exact task remains open until a provider queue notification or trusted
 system-delivered task notification reports a recognized terminal status for that
-task ID. A bounded workflow manifest with the exact run ID and `status: completed`
-also closes that workflow, even before its delayed notification arrives. Partial
-or mismatched manifests do not close work. A launch request alone, user-authored notification text, file age, agent
+task ID. A bounded workflow manifest with the exact run ID, `status: completed`,
+and a valid provider completion timestamp at or after that task's launch also closes
+that attempt, even before its delayed notification arrives. Claude can resume a
+workflow with the same run ID and a new task ID while leaving its previous completed
+manifest in place. Matching the run ID alone therefore does not establish completion
+of the latest attempt. Missing, invalid, or older completion timestamps do not close
+recorded work. Completion memory is scoped to the launch, and workflow detail uses
+the same ordering check against its latest recorded launch, including on cache hits.
+Partial or mismatched manifests do not close work. A launch request alone, user-authored notification text, file age, agent
 counts, and workflow progress percentages are not execution evidence.
 
 This local lifecycle is scoped to the validated owner PID/process-start identity

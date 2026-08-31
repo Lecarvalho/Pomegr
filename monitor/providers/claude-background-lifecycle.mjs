@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
+import { claudeWorkflowCompletionMatchesLaunch } from "./claude-workflows.mjs";
 
 const MAX_SESSIONS = 50;
 const MAX_OPEN_TASKS = 256;
@@ -52,7 +53,7 @@ function reduceLifecycle(state, record, ownerStartedAt) {
     if (!id) continue;
     if (state.running.size >= MAX_OPEN_TASKS) { state.complete = false; continue; }
     const runId = call === "Workflow" && /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(result?.runId || "") ? result.runId : null;
-    state.running.set(id, runId);
+    state.running.set(id, { runId, launchedAt: timestamp });
   }
   return state;
 }
@@ -85,7 +86,7 @@ export function createClaudeBackgroundLifecycleReader() {
         sessions.delete(victim[0]);
       }
       const sourceFile = { file };
-      item = { sourceFile, owner, generation: 0, source: null, known: null, knownTasks: null, completed: new Set(), pending: null, ingestor: null };
+      item = { sourceFile, owner, generation: 0, source: null, known: null, knownTasks: null, completed: new Map(), pending: null, ingestor: null };
       item.ingestor = createIncrementalJsonlIngestor({
         readChunk(offset, bytes) {
           const descriptor = fs.openSync(sourceFile.file, "r");
@@ -114,20 +115,22 @@ export function createClaudeBackgroundLifecycleReader() {
         current.source = source;
         await current.ingestor.observe({ identity: owner + ":" + current.generation, size: source.size }, (state, metadata) => {
           if (!state.complete || metadata.malformedRecords || metadata.oversizedFragments) return;
-          for (const id of current.completed) if (!state.running.has(id)) current.completed.delete(id);
+          for (const [id, launchedAt] of current.completed) {
+            if (state.running.get(id)?.launchedAt !== launchedAt) current.completed.delete(id);
+          }
           current.knownTasks = new Map([...state.running].filter(([id]) => !current.completed.has(id)));
           current.known = state.running.size > 0;
         });
         if (current.knownTasks) {
-          for (const [id, runId] of current.knownTasks) {
+          for (const [id, { runId, launchedAt }] of current.knownTasks) {
             if (!runId) continue;
             const manifestFile = path.join(path.dirname(file), entry.sessionId, "workflows", runId + ".json");
             try {
               const stat = fs.statSync(manifestFile);
               if (!stat.isFile() || stat.size > 512 * 1024) continue;
               const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
-              if (manifest?.runId === runId && manifest.status === "completed") {
-                current.completed.add(id);
+              if (claudeWorkflowCompletionMatchesLaunch(manifest, runId, launchedAt)) {
+                current.completed.set(id, launchedAt);
                 current.knownTasks.delete(id);
               }
             } catch { /* incomplete or absent completion metadata does not close work */ }

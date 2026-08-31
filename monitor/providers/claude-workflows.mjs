@@ -36,6 +36,16 @@ function workflowTimestamp(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+// Resume reuses the run ID and leaves the previous completion manifest in place.
+// Only a completion at or after this launch can close its execution attempt.
+export function claudeWorkflowCompletionMatchesLaunch(manifest, runId, launchedAt = undefined) {
+  if (!plainObject(manifest) || manifest.status !== "completed" || manifest.runId !== runId) return false;
+  if (launchedAt === undefined) return true; // Discovery without a recorded launch.
+  const completed = workflowTimestamp(manifest.timestamp);
+  const launched = workflowTimestamp(launchedAt);
+  return completed !== null && launched !== null && Date.parse(completed) >= Date.parse(launched);
+}
+
 function workflowDuration(value) {
   if (typeof value !== "number") return null;
   return Number.isFinite(value) && value >= 0
@@ -175,16 +185,16 @@ function discoverWorkflowManifestIds(workflowRoot) {
   }
 }
 
-function readCompletedWorkflowManifest(file, expectedRunId, cache) {
+function readCompletedWorkflowManifest(file, expectedRunId, cache, launchedAt) {
   const stat = statSafe(file);
   if (!stat || stat.size <= 0 || stat.size > MAX_WORKFLOW_MANIFEST_BYTES) return null;
-  const key = `${stat.size}:${stat.mtimeMs}`;
+  const key = `${stat.size}:${stat.mtimeMs}:${launchedAt}`;
   const cached = cache.get(file);
   if (cached?.key === key) return cached.value;
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); } catch { manifest = null; }
   let value = null;
-  if (plainObject(manifest) && manifest.status === "completed" && manifest.runId === expectedRunId) {
+  if (claudeWorkflowCompletionMatchesLaunch(manifest, expectedRunId, launchedAt)) {
     const phaseByIndex = new Map();
     if (Array.isArray(manifest.phases)) {
       for (const [offset, phase] of manifest.phases.slice(0, MAX_WORKFLOW_PHASES).entries()) {
@@ -268,7 +278,7 @@ export function buildClaudeWorkflows({
   return runIds.map((runId) => {
     const launch = launches.get(runId) || null;
     const discovered = workflowDiscovery.runs.get(runId)?.agents || [];
-    const manifest = readCompletedWorkflowManifest(path.join(workflowRoot, `${runId}.json`), runId, manifestCache);
+    const manifest = readCompletedWorkflowManifest(path.join(workflowRoot, `${runId}.json`), runId, manifestCache, launch?.observedAt);
     const journal = readWorkflowJournal(path.join(path.dirname(workflowRoot), "subagents", "workflows", runId, "journal.jsonl"), discovered);
     const rawAgentIds = new Map(discovered.map((item) => [item.rawAgentId, item.id]));
     const phaseAgents = new Map();

@@ -159,11 +159,84 @@ test("an exact completed workflow manifest closes work before its delayed notifi
   assert.equal(await f.reader.observe(f.file, owner()), true, "a mismatched run cannot close work");
   await writeFile(manifest, '{"runId":"wf_one",');
   assert.equal(await f.reader.observe(f.file, owner()), true);
-  await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", result: PRIVATE }));
+  await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", timestamp: timestamp(2000), result: PRIVATE }));
   assert.equal(await f.reader.observe(f.file, owner()), false, "no primary transcript append required");
   await rm(manifest);
   await appendFile(f.file, jsonl([{ type: "user", timestamp: timestamp(3000), message: { content: PRIVATE } }]));
   assert.equal(await f.reader.observe(f.file, owner()), false, "later appends cannot reopen a completed run");
+});
+
+test("a resumed workflow stays open despite the previous attempt's completed manifest", async (t) => {
+  const f = await fixture(t, launch());
+  const root = path.join(path.dirname(f.file), "local", "workflows");
+  await mkdir(root, { recursive: true });
+  const manifest = path.join(root, "wf_one.json");
+  await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", timestamp: timestamp(2000) }));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+  await appendFile(f.file, jsonl([...launch("resumed", "Workflow", 3000), terminal("task1", "completed", 4000)]));
+  assert.equal(await f.reader.observe(f.file, owner()), true, "cached completion and delayed old notification cannot close a resume");
+  assert.equal(await createClaudeBackgroundLifecycleReader().observe(f.file, owner()), true, "cold replay must reach the same result");
+  await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", timestamp: timestamp(5000) }));
+  assert.equal(await f.reader.observe(f.file, owner()), false, "the resumed attempt's completion closes work without a transcript append");
+});
+
+test("workflow manifest completion requires an ordered timestamp and completion memory is launch-scoped", async (t) => {
+  const f = await fixture(t, launch());
+  const root = path.join(path.dirname(f.file), "local", "workflows");
+  await mkdir(root, { recursive: true });
+  const manifest = path.join(root, "wf_one.json");
+  for (const time of [undefined, null, "invalid", timestamp(500)]) {
+    await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", timestamp: time }));
+    assert.equal(await f.reader.observe(f.file, owner()), true);
+  }
+  await writeFile(manifest, JSON.stringify({ runId: "wf_one", status: "completed", timestamp: START + 2000 }));
+  assert.equal(await f.reader.observe(f.file, owner()), false, "epoch-millisecond timestamps are supported");
+  await appendFile(f.file, jsonl(launch("task1", "Workflow", 3000)));
+  assert.equal(await f.reader.observe(f.file, owner()), true, "even reuse of the task ID cannot inherit earlier completion memory");
+  await appendFile(f.file, jsonl([terminal("task1", "completed", 5000)]));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+});
+
+test("catalog and workflow detail reject cached completion when the same run resumes", async (t) => {
+  const f = await fixture(t, launch());
+  const registryRoot = path.join(f.homeDir, ".claude", "sessions");
+  await mkdir(registryRoot);
+  const registryFile = path.join(registryRoot, "123.json");
+  await writeFile(registryFile, JSON.stringify({ sessionId: "local", status: "idle", pid: 123, procStart: "one", startedAt: START }));
+  const sessionRoot = path.join(path.dirname(f.file), "local");
+  const workerFile = path.join(sessionRoot, "subagents", "workflows", "wf_one", "agent-worker.jsonl");
+  const manifestFile = path.join(sessionRoot, "workflows", "wf_one.json");
+  await mkdir(path.dirname(workerFile), { recursive: true });
+  await mkdir(path.dirname(manifestFile), { recursive: true });
+  const workerRecord = (offset) => ({ type: "assistant", timestamp: timestamp(offset), message: {
+    id: "worker-message", model: "claude-test", content: [], usage: { input_tokens: 10, output_tokens: 5 } } });
+  await writeFile(workerFile, jsonl([workerRecord(1000)]));
+  const manifest = { runId: "wf_one", status: "completed", startTime: START, timestamp: timestamp(2000),
+    phases: [{ title: "Implement" }], workflowProgress: [{ type: "workflow_agent", agentId: "worker", state: "done", phaseIndex: 1 }] };
+  await writeFile(manifestFile, JSON.stringify(manifest));
+  const provider = createClaudeProvider({ homeDir: f.homeDir, env: {}, now: () => START + 7000,
+    registryProcessIdentities: () => new Map([[123, "one"]]), usageRequest: async () => { throw new Error("not requested"); } });
+  assert.equal((await provider.listSessions())[0].activityStatus, "idle");
+  assert.equal((await provider.readSession("local")).workflows[0].status, "completed");
+  await appendFile(f.file, jsonl(launch("resumed", "Workflow", 3000)));
+  await writeFile(workerFile, jsonl([workerRecord(4000)]));
+  const rows = await provider.listSessions();
+  const resumed = await provider.readSession("local");
+  assert.equal(rows[0].activityStatus, "working");
+  assert.equal(resumed.workflows[0].status, "running");
+  assert.equal(resumed.workflows[0].metadataStatus, "pending");
+  assert.equal(resumed.workflows[0].startedAt, timestamp(3001));
+  assert.deepEqual(resumed.workflows[0].phases, [], "earlier completion metadata is not applied to the resumed attempt");
+  assert.notEqual(resumed.agents.find((agent) => agent.workflowId === "wf_one").status, "finished");
+  assert.doesNotMatch(JSON.stringify(rows), /BACKGROUND_PRIVATE|launchedAt|ownerStartedAt|remoteSessionId|toolUseResult/);
+  await rm(registryFile);
+  for (const file of [f.file, workerFile]) await utimes(file, new Date(0), new Date(0));
+  const historical = await provider.readSession("local");
+  assert.equal(historical.historical, true);
+  assert.equal(historical.workflows[0].status, "unknown", "history cannot inherit the earlier attempt's completed status");
+  await writeFile(manifestFile, JSON.stringify({ ...manifest, timestamp: timestamp(5000) }));
+  assert.equal((await provider.readSession("local")).workflows[0].status, "completed");
+  assert.equal(await f.reader.observe(f.file, owner()), false);
 });
 
 test("native Agent background work requires an exact successful structured async result", async (t) => {

@@ -350,7 +350,13 @@ A normalized lifecycle change contributes to the adapter source fingerprint, so 
 
 Claude catalog acquisition also incrementally reduces the complete primary transcript
 for successful, structured background workflow/shell/native-agent launches and exact terminal
-notifications, or exact run-matched completed workflow manifests. This evidence is scoped to the validated process identity and its
+notifications, or exact run-matched completed workflow manifests whose valid provider
+completion timestamp is at or after the recorded task launch. A resume can reuse the
+run ID while leaving an older completed manifest intact; the launch timestamp scopes
+private completion memory and participates in workflow-manifest cache validation.
+Both catalog and workflow detail reject that stale completion without changing the
+source lifetime, commit, serving, or checkpoint contracts.
+This evidence is scoped to the validated process identity and its
 registry start time, independent of native primary idle and modification-time agent
 heuristics. The private cache holds at most fifty sessions with 256 pending calls
 and 256 open task IDs each; raw records never leave acquisition/normalization.
