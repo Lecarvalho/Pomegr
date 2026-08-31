@@ -2,116 +2,84 @@
 name: Pomegr
 description: A local-first Command Center for observing coding-agent sessions.
 colors:
-  pomegranate-red: "#a63c32"
-  drafting-paper: "#f0ece2"
-  monitor-black: "#111112"
-  monitor-panel: "#18181a"
-  ink: "#171715"
-  acid-green: "#b6d95f"
-  context-lavender: "#bbb3d3"
-  git-amber: "#d1a343"
-  monitor-line: "#3a3838"
-  landing-faint: "#8f8983"
-  command-ground-dark: "#0b0b0e"
-  command-sidebar-dark: "#0f0f12"
-  command-header-dark: "#0d0d10"
-  command-panel-dark: "#121216"
-  command-panel-2-dark: "#17171c"
-  command-panel-3-dark: "#1d1c22"
-  command-line-dark: "#2d292f"
-  command-line-strong-dark: "#464047"
-  command-ink-dark: "#f2edef"
-  command-muted-dark: "#a49ca1"
-  command-faint-dark: "#8b8389"
-  command-brand-dark: "#a63c32"
-  command-brand-text-dark: "#e58b80"
-  command-green-dark: "#b6d95f"
-  command-amber-dark: "#d1a343"
-  command-lavender-dark: "#bbb3d3"
-  command-ground-light: "#f2f0eb"
-  command-sidebar-light: "#e9e6df"
-  command-header-light: "#f7f5f0"
-  command-panel-light: "#fbfaf7"
-  command-panel-2-light: "#f1eee8"
-  command-panel-3-light: "#e7e3dc"
-  command-line-light: "#d4cfc6"
-  command-line-strong-light: "#aaa39a"
-  command-ink-light: "#24211f"
-  command-muted-light: "#68615d"
-  command-faint-light: "#6f6863"
-  command-brand-light: "#994238"
-  command-brand-text-light: "#994238"
-  command-green-light: "#547a64"
-  command-amber-light: "#9b662d"
-  command-lavender-light: "#6d6591"
+  charcoal-canvas-dark: "#111315"
+  charcoal-panel-dark: "#191c20"
+  charcoal-raised-dark: "#23272d"
+  light-canvas: "#f3f4f5"
+  light-panel: "#ffffff"
+  light-raised: "#e9edf1"
+  text: "#20252b"
+  muted: "#525b66"
+  line: "#d4d9df"
+  control-line: "#7b8592"
+  brand-fill: "#a63c32"
+  brand-text: "#994238"
+  green: "#376e4b"
+  amber: "#815710"
+  context: "#6d6099"
+  semantic-error: "#a43440"
+  focus: "#255fa1"
 typography:
-  display:
-    fontFamily: "Rokkitt, Rockwell, Georgia, serif"
-    fontSize: "clamp(27px, 3vw, 34px)"
+  title:
+    fontFamily: "Inter, sans-serif"
+    fontSize: "26px"
     fontWeight: 650
-    lineHeight: 0.98
-    letterSpacing: "-0.02em"
-  headline:
-    fontFamily: "Rokkitt, Rockwell, Georgia, serif"
-    fontSize: "clamp(36px, 5vw, 64px)"
+    lineHeight: 1.1
+    letterSpacing: "-0.025em"
+  section:
+    fontFamily: "Inter, sans-serif"
+    fontSize: "16px"
     fontWeight: 650
-    lineHeight: 0.98
-    letterSpacing: "-0.02em"
+    lineHeight: 1.35
   body:
-    fontFamily: "Inter, Arial, sans-serif"
+    fontFamily: "Inter, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.5
+  control:
+    fontFamily: "Inter, sans-serif"
     fontSize: "13px"
     fontWeight: 500
-    lineHeight: 1.55
-  label:
+    lineHeight: 1.4
+  metadata:
+    fontFamily: "Inter, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.4
+  data:
     fontFamily: "Geist Mono, Consolas, monospace"
-    fontSize: "9px"
-    fontWeight: 650
-    lineHeight: 1.3
-    letterSpacing: "0.06em"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.4
 rounded:
-  square: "0px"
-  signal: "1px"
-  control: "6px"
-  rail: "7px"
-  search: "8px"
+  control: "4px"
+  panel: "6px"
 spacing:
-  xs: "8px"
-  sm: "12px"
-  md: "18px"
-  lg: "28px"
-  xl: "42px"
+  xs: "4px"
+  sm: "8px"
+  md: "16px"
+  lg: "24px"
+  xl: "32px"
 components:
-  command-primary-action:
-    backgroundColor: "{colors.command-brand-dark}"
+  primary-action:
+    backgroundColor: "{colors.brand-fill}"
     textColor: "#ffffff"
-    typography: "{typography.label}"
+    typography: "{typography.control}"
     rounded: "{rounded.control}"
     padding: "0 12px"
     height: "36px"
-  command-secondary-action:
+  compact-action:
     backgroundColor: "transparent"
-    textColor: "{colors.command-ink-dark}"
-    typography: "{typography.label}"
+    textColor: "{colors.text}"
+    typography: "{typography.control}"
     rounded: "{rounded.control}"
-    padding: "0 12px"
-    height: "36px"
-  command-search:
-    backgroundColor: "{colors.command-ground-dark}"
-    textColor: "{colors.command-muted-dark}"
-    rounded: "{rounded.search}"
     padding: "0 10px"
-    height: "38px"
-  command-nav-active:
-    backgroundColor: "{colors.command-panel-3-dark}"
-    textColor: "{colors.command-ink-dark}"
-    rounded: "{rounded.rail}"
-    padding: "0 10px"
-    height: "40px"
-  command-signal-panel:
-    backgroundColor: "{colors.command-panel-dark}"
-    textColor: "{colors.command-ink-dark}"
-    rounded: "{rounded.signal}"
-    padding: "14px"
+    height: "32px"
+  evidence-panel:
+    backgroundColor: "{colors.light-panel}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.panel}"
+    padding: "16px"
 ---
 
 # Design System: Pomegr
@@ -120,161 +88,127 @@ components:
 
 **Creative North Star: "The Measured Command Center"**
 
-Pomegr is a local-first operations instrument for making coding-agent activity legible without exposing the work itself. The application shell is a dark, precise evidence wall: warm near-black surfaces, one-pixel rules, compact labels, and semantic color marks give the operator a stable scan order. Light mode keeps the same measured geometry on paper-like neutrals rather than becoming a separate visual language.
+Pomegr is a local-first, read-only observer that makes coding-agent activity legible without exposing the underlying conversation. The application is a calm evidence workspace: a compact wordmark header, persistent route rail, flat panels, one-pixel rules, and restrained semantic color give the operator a reliable scan order. The approved HTML preview in `docs/design/pomegr-ui-preview.html` is the code-led authority for this application refresh; no generated component or seed is required.
 
-The landing/marketing surface remains the expressive companion to this instrument: drafting paper, clipped edges, tape, handwriting, and the full Pomegr mark are valid there when used sparingly. The application shell is intentionally quieter and more operational. Its identity is the POMEGR wordmark only; it does not place a pomegranate icon beside the wordmark. The full logo asset is a landing/marketing exception and may remain where that surface uses it.
+The application shell keeps its identity provider-neutral and preserves the existing normalized content, privacy boundary, and metric semantics. Landing/marketing remains independently scoped and may retain its own typography and brand treatments; do not promote landing decisions into the app shell.
 
 **Key Characteristics:**
 
-- Near-black or warm-paper operational surfaces with flat one-pixel evidence boundaries.
-- Rokkitt propositions, Inter explanation, and Geist Mono execution metadata.
-- Pomegranate brand ink plus semantic green, amber, and lavender signals.
-- A 220px desktop rail that becomes a 54px icon rail at compact widths and an off-canvas drawer on mobile.
-- Honest unavailable and coming-soon states that never imply unsupported evidence.
-- Read-only, provider-neutral language with local monitor status always visible.
+- Charcoal dark mode with light neutral mode using the same layout and semantic roles.
+- Inter for all UI hierarchy; Geist Mono for data and execution metadata.
+- Flat evidence surfaces with 4px controls, 6px panels, and restrained borders.
+- A 60px header and 220px desktop rail, with compact and mobile adaptations.
+- Neutral idle states; semantic error red is reserved for actual error states.
+- Provider-neutral, read-only language and honest unavailable/coming-soon states.
 
 ## Colors
 
-The Command Center uses two tonal themes with one shared semantic vocabulary. The frontmatter is normative; the values below describe where each real implementation token belongs.
+The app palette is a quiet neutral field with pomegranate identity ink and semantic signals taken directly from `app/styles/tokens.css`.
 
 ### Primary
 
-- **Pomegranate brand ink** (`command-brand-dark` `#a63c32`; `command-brand-light` `#994238`): primary actions, the active navigation glyph, and selected emphasis. The accessible command text accent is `command-brand-text-dark` (`#e58b80`) in dark mode and `command-brand-text-light` (`#994238`) in light mode; use it for compact text actions and cache-evidence links where brand color needs to remain legible against the shell.
+- **Pomegranate fill** (`#a63c32`): primary action surfaces.
+- **Pomegranate text** (`#994238` light, `#e58b80` dark): links, selected emphasis, and compact text actions.
 
 ### Secondary
 
-- **Signal green** (`command-green-dark` `#b6d95f`; `command-green-light` `#547a64`): monitor connectivity, active/ready state, and read-only assurance.
-- **Signal amber** (`command-amber-dark` `#d1a343`; `command-amber-light` `#9b662d`): needs-input attention, warnings, and provider-unavailable cautions.
-- **Context lavender** (`command-lavender-dark` `#bbb3d3`; `command-lavender-light` `#6d6591`): context snapshots and context metrics only.
+- **Green** (`#376e4b` light, `#91c5a4` dark): monitor readiness and affirmative evidence.
+- **Amber** (`#815710` light, `#e3b575` dark): attention and warnings.
+- **Context lavender** (`#6d6099` light, `#bbb3d3` dark): context metrics only.
 
 ### Neutral
 
-- **Dark ground / sidebar / header:** `#0b0b0e`, `#0f0f12`, and `#0d0d10` establish the dark operating field.
-- **Dark panels:** `#121216`, `#17171c`, and `#1d1c22` create nested tonal steps for evidence, hover, and selected states.
-- **Dark rules and text:** `#2d292f` and `#464047` are quiet and strong dividers; `#f2edef`, `#a49ca1`, and `#8b8389` are ink, muted copy, and faint metadata.
-- **Light ground / sidebar / header:** `#f2f0eb`, `#e9e6df`, and `#f7f5f0` preserve the same shell hierarchy on a warm neutral field.
-- **Light panels:** `#fbfaf7`, `#f1eee8`, and `#e7e3dc` are the panel, hover, and selected tonal steps.
-- **Light rules and text:** `#d4cfc6` and `#aaa39a` are dividers; `#24211f`, `#68615d`, and `#6f6863` are ink, muted copy, and faint metadata.
+- **Charcoal canvas / panel / raised** (`#111315`, `#191c20`, `#23272d`): dark application surfaces.
+- **Light canvas / panel / raised** (`#f3f4f5`, `#ffffff`, `#e9edf1`): light application surfaces.
+- **Text and quiet copy** (`#20252b` / `#edf0f3`, `#525b66` / `#a8afb9`): primary and supporting content by theme.
+- **Rules and controls** (`#d4d9df` / `#333941`, `#7b8592` / `#697482`): boundaries and affordances.
+- **Semantic error** (`#a43440` light, `#f09a9f` dark): actual failures only.
 
-The landing surface adds a quieter `landing-faint` (`#8f8983`) for low-emphasis paper/monitor annotations. Landing paper, monitor, red, green, lavender, and amber remain scoped to that expressive surface rather than becoming application-shell primitives.
-
-**The Semantic Color Rule.** Green, amber, and lavender carry operational meaning; never spend them as decoration.
-
-**The Theme-Pair Rule.** Dark and light tokens preserve the same role and contrast hierarchy; switching theme must not change the meaning of a signal.
-
-**The Red Rarity Rule.** Pomegranate ink is identity and action emphasis, not a general surface fill.
+**The Semantic Signal Rule.** Green, amber, lavender, and error communicate recorded state. Neutral styling represents idle, unavailable, and ordinary resting states; semantic error is never used as decoration.
 
 ## Typography
 
-**Display Font:** Rokkitt (with Rockwell and Georgia fallbacks)<br>
-**Body Font:** Inter (with Arial and sans-serif fallbacks)<br>
-**Label/Mono Font:** Geist Mono (with Consolas and monospace fallbacks)
+**UI Font:** Inter (with sans-serif fallback)<br>
+**Data Font:** Geist Mono (with Consolas and monospace fallbacks)
 
-Rokkitt gives route headings and major propositions a compressed slab authority. Inter carries descriptions and readable controls. Geist Mono is reserved for execution metadata, timestamps, counts, status labels, and the persistent footer so evidence reads as measured rather than promotional.
+Inter keeps the dense monitoring workspace readable and direct. Geist Mono is reserved for values, timestamps, counts, identifiers, and other execution metadata so evidence remains distinguishable from explanatory UI copy.
 
 ### Hierarchy
 
-- **Display** (650, `clamp(27px, 3vw, 34px)`, line-height .98): Command Center route titles and compact operating propositions.
-- **Headline** (650, `clamp(36px, 5vw, 64px)`, line-height .98): large About or landing statements; use sparingly inside the application.
-- **Body** (500, 13px, line-height 1.55): explanations and supporting copy, usually below 66ch.
-- **Label** (650, 8–10px, tracked): navigation, filters, status, controls, and metadata; Geist Mono is the default when values or state need instrument-like precision.
+- **Title** (650, 26px, line-height 1.1): route and page titles.
+- **Section** (650, 16px, line-height 1.35): panel headings and major section labels.
+- **Body** (400, 14px, line-height 1.5): explanations and ordinary UI text.
+- **Control** (500, 13px, line-height 1.4): buttons, filters, navigation, and compact labels.
+- **Metadata** (400, 12px, line-height 1.4, Inter): quiet labels and supporting status details.
+- **Data** (400, 12px, line-height 1.4, Geist Mono): timestamps, counts, IDs, and execution values.
 
-**The Instrument-Type Rule.** Use Rokkitt for propositions, Inter for explanation, and Geist Mono for evidence; never swap their roles to create novelty.
-
-Home uses the same families with a slightly more personal scale: the route title is Rokkitt at `clamp(32px, 3vw, 38px)`, the Session coach subordinate proposition is Rokkitt at `clamp(28px, 3.2vw, 38px)`, headings are `14–18px`, and body/detail copy is `11–13px`. These are hierarchy adjustments within the Command Center system, not new typography tokens.
+**The Two Voice Rule.** Use Inter for interface language and Geist Mono for data. Landing typography is a separate surface decision.
 
 ## Layout
 
-The Command Center is a three-row shell: a 58px global header, a flexible evidence workspace, and a 38px read-only footer. Desktop uses a 220px left rail and a main view capped at 1480px; individual session views cap at 1400px. The header holds the wordmark, a 38px search field, local-monitor status, notifications, and the local-profile control. Main route pages use a 14px working offset, compact 8/12/18/28/42px spacing, and one-pixel boundaries instead of floating card stacks.
+The app shell uses a 60px global header, a 220px desktop route rail, a flexible evidence workspace, and a quiet read-only footer. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the wordmark, destination search, monitor state, notifications, and local profile control.
 
-At widths up to 1080px the rail compacts to 54px, the header becomes 56px, and navigation labels, counts, and sidebar footnotes collapse to icons. At 760px the rail leaves the layout and becomes an off-canvas drawer opened from the header; the main workspace and footer use the full viewport width. The drawer restores labels and counts, sits above a dismissible backdrop, closes on Escape or route selection, and returns focus to its trigger. At the same breakpoint toolbars wrap, metric grids become one column, settings navigation becomes a horizontal tab strip, and repository/session rows hide low-priority columns. At 520px coming-soon content stacks and tables remove additional secondary columns. Notification trays become fixed to the viewport edge. Compact task/text actions may use a 24px minimum on precision-pointer surfaces; coarse-pointer and mobile controls expand to at least 44px.
+At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Context history appears before request snapshots in session evidence; their existing meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
 
-Landing composition remains responsive editorial recomposition: the paper field, operations wall, torn headline ticket, source card, output stack, and legend reorder rather than uniformly shrink. Landing-only navigation and paper artifacts must not be promoted into the operational shell.
-
-Home is the personal starting point within this shell. Its desktop composition starts with a bounded Welcome to Pomegr header, then a wide Sessions panel grouping last-viewed navigation and subordinate Pinned destinations beside a narrower Understand your sessions guide. Concrete context-history and report instructions replace generic discovery copy. Session coach, Saved views, and Session comparison share one Coming soon background; What’s new is a prominent dismissible panel directly below the welcome header. Dismissal is remembered in browser-local preferences for the current update only. Monitoring activity, counters, usage, and polling remain on their dedicated routes. At mobile widths these sections become one column in reading order; picker fields and other Home controls use 44px minimum touch targets.
+Home remains a personal starting point for last-viewed and pinned destinations. Its sections collapse to one column while preserving reading order, bounded identity-only local preferences, and honest unavailable/coming-soon content.
 
 ## Elevation & Depth
 
-Operational surfaces are flat at rest. Depth comes from tonal steps, one-pixel rules, and clear ownership boundaries; evidence panels do not use decorative shadows. The profile menu and notification tray are the intentional overlay exceptions: they sit above the shell with a border and a restrained theme-specific shadow. The landing surface may retain its structural monitor and paper-ticket shadows because those are part of its separate marketing expression.
+Operational surfaces are flat at rest. Depth comes from charcoal/light tonal steps, one-pixel rules, and ownership boundaries. The only routine shadow is the tokenized overlay shadow for menus and trays; landing shadows remain landing-only.
 
 ### Shadow Vocabulary
 
-- **Command overlay dark:** `0 22px 58px rgba(0, 0, 0, .52)` for profile and notification overlays.
-- **Command overlay light:** `0 18px 46px rgba(38, 31, 28, .16)` for the same overlays in light mode.
-- **Landing monitor ambient:** `0 24px 70px rgba(28, 23, 20, .18)` remains a landing-only structural separation.
-- **Landing paper lift:** `0 28px 70px rgba(0, 0, 0, .28)` remains reserved for the overlapping hero ticket.
+- **Overlay:** `0 12px 32px #20252b20` in light mode and the theme override in dark mode, for profile and notification overlays.
 
-**The Flat-Evidence Rule.** Panels, tables, metrics, and settings panes use tone and a one-pixel rule; shadows belong to overlays or the landing composition.
+**The Flat Evidence Rule.** Panels, tables, metrics, and settings panes use tone and rules instead of decorative floating shadows.
 
 ## Shapes
 
-The Command Center is square and technical: evidence boundaries are one pixel with a 0–1px radius, while actionable controls use restrained 6–8px corners for recognition and hit-area grouping. Status counters and semantic dots may be compactly rounded because their silhouette communicates state; a rounded switch is an interaction affordance, not a general-purpose pill treatment. Search, profile, and navigation controls stay rectangular and quiet.
-
-Landing irregularity is deliberately scoped to paper: clipped/torn silhouettes, tape, stamps, and handwritten labels can appear on the marketing surface, but never on application evidence panels or data tables.
+Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders are one-pixel and rectangular; avoid pills, ornamental clipping, or irregular silhouettes in the application. Touch sizing is separate from shape: default controls are 36px high, compact controls 32px, and coarse-pointer/mobile controls at least 44px.
 
 ## Components
 
 ### Buttons
 
-- **Primary:** 36px minimum height, 6px corner, pomegranate brand background, white text, and Geist Mono scale. Disabled actions are visibly muted and honest about unavailable capabilities.
-- **Secondary:** transparent or tonal panel background with a one-pixel strong rule and application ink; hover moves to the next panel tone without a lift.
-- **Hover / Focus:** state changes are restrained; every interactive shell control receives a 2px green `:focus-visible` outline with a 2px offset. Compact task triggers and text actions are at least 24px high for precision pointers and 44px for coarse/mobile pointers. Do not rely on color alone.
+- **Primary:** 36px default height, 4px radius, pomegranate fill, white text, and Inter control typography.
+- **Secondary / compact:** transparent or raised neutral surface, one-pixel rule, 32px compact height, and application text color.
+- **Hover / focus:** move between neutral tones without lift; every interactive control receives the visible focus ring. Preserve reduced-motion behavior.
 
 ### Inputs / Fields
 
-- **Global and route search:** 38px high, dark/light ground fill, one-pixel rule, 8px corner, search glyph, and an optional platform-appropriate Geist Mono `Ctrl K` or `⌘ K` hint. Focus strengthens the rule and keeps the caret green.
-- **Filters:** compact rectangular controls with `aria-pressed` state; counts use mono numerals and remain readable when filters wrap on mobile.
+Search and filters use neutral backgrounds, one-pixel control rules, 4px corners, Inter control text, and an accessible focus ring. Inputs expand to 44px on coarse/mobile surfaces.
 
 ### Cards / Containers
 
-- **Evidence panel:** flat `command-panel` tone, one-pixel `command-line` boundary, 0–1px corner, compact internal padding, and no decorative shadow.
-- **Metric panel:** three equal columns on desktop, 142px minimum height, with lavender reserved for context values and muted labels for provenance.
-- **Table/list:** rows are separated by one-pixel rules; hover changes tonal background only. Missing evidence is shown as an em dash or explicit unavailable copy, never fabricated.
+Evidence panels use the theme panel token, a one-pixel line, 6px radius, and 16px base padding. Rows and tables use rules and neutral hover tones. Missing data remains unavailable or an em dash; it is never replaced with a plausible value.
 
 ### Navigation
 
-The primary rail is 220px on desktop with 40px navigation rows, 7px corners, a quiet icon-label-count grid, and a selected panel tone. The active icon uses brand ink while status meaning remains semantic. At compact widths the rail is 54px and keeps only centered icons with accessible labels and current-page state. On mobile it becomes a labelled off-canvas drawer so no permanent rail consumes the evidence viewport. The footer persists connected/offline and read-only normalized-metadata language.
+The wordmark-only header is 60px high. The desktop rail is 220px with labelled route links and live status context; compact and mobile modes preserve accessible names and current-route state. Provider names stay in adapter-specific content, never in product identity.
 
-Home navigation is personal and destination-focused: pinned sessions, projects, and views plus a last-viewed session are the primary content. The inline picker is searchable and bounded to six browser-local pins. Missing catalog destinations remain visibly unavailable, and monitor reconnection copy must not erase saved identity or turn Home into a live metrics dashboard.
+### Agent Activity
 
-### Home Starting Point
+Agent activity shows normalized roles and evidence with the existing privacy bounds. Controls sit beside the heading when space permits and wrap below it at 640px or less. The activity icon animation remains intact and respects reduced motion.
 
-Home may introduce the existing report feature, What’s new copy, and honest Coming soon previews while preserving flat shell geometry and semantic color roles. Session coach is the prominent preview; Saved views and Session comparison stay quieter. Keep planned guidance clearly separate from recorded evidence, avoid fake counters or activity summaries, and require explicit future opt-in before any model transmission.
+### Session Evidence
 
-### Overlays
-
-- **Notification tray:** a border-bounded, square-edged panel up to 390px wide, with grouped local events, unread counts, explicit empty state, close control, and an honest connection explanation. It receives the overlay shadow and returns focus to its trigger.
-- **Local profile menu:** a 250px panel with an explanatory “Coming soon” state, settings/about links, and the theme control. It is a preview of local identity, not an account claim.
-
-### Settings Controls
-
-The settings view uses a flat bordered layout with a 210px sub-navigation rail on wide screens and horizontal tabs on mobile. Rows pair a concise label and effect description with a native switch or bounded state label. Enabled state uses semantic green; disabled, desktop-managed, and coming-soon states are named plainly. Keyboard tabs support arrow/Home/End movement, and each panel is labelled by its tab.
-
-### Empty / Unavailable States
-
-`CommandEmpty` explains what is missing and what Pomegr will do next. `CommandComingSoon` names planned functionality without simulating it. Monitor disconnects preserve the last known-good state and say that the monitor is reconnecting; account-level usage remains provider-reported and is never attributed to a session, agent, or repository.
-
-### Brand Identity
-
-The application shell uses the inline POMEGR wordmark from `PomegrBrand` only—no pomegranate icon is paired with it. The full `pomegr-logo.png` mark is a landing/marketing exception and remains valid in the landing header/footer and its favicon treatment when that surface uses it. Do not substitute the full mark into the Command Center header.
+Context history precedes request snapshots in the evidence flow. Context history displays bounded actual levels with its existing carry-forward semantics. Request snapshots display independent request-local observations without cross-request arithmetic. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** keep the Command Center shell wordmark-only; reserve the full pomegranate logo asset for landing/marketing expression.
-- **Do** preserve the 220px desktop rail, 54px compact rail, mobile off-canvas drawer, 58px desktop header, 56px compact header, and 38px footer rhythm.
-- **Do** use semantic green, amber, and lavender only where their operational roles are truthful.
-- **Do** keep evidence surfaces flat with one-pixel boundaries and put depth only on profile/notification overlays or landing artifacts.
-- **Do** label provider-reported estimates, agent-reported signals, deterministic heuristics, unavailable data, and coming-soon work honestly.
-- **Do** maintain visible focus, keyboard tab behavior, reduced motion, accessible names, 24px precision-pointer minimums, and 44px coarse/mobile targets.
-- **Do** preserve the landing surface’s drafting-paper, torn, taped, and stamped details when working on landing/marketing components.
+- **Do** use the committed tokens in `app/styles/tokens.css` as the source of truth.
+- **Do** use Inter at 26px titles, 16px sections, 14px UI/body, 13px controls, and 12px metadata; use Geist Mono for numeric and execution data.
+- **Do** preserve the 60px header, 220px desktop rail, 36px default controls, 32px compact controls, and 44px touch targets.
+- **Do** preserve wordmark-only provider-neutral identity, normalized privacy boundaries, and existing metric semantics.
+- **Do** keep context history before request snapshots and explain their separate meanings accurately.
+- **Do** keep landing typography, paper artifacts, and brand decisions scoped to landing/marketing.
 
 ### Don't:
 
-- **Don't** add the pomegranate icon to the Command Center header or treat the full logo as required application-shell identity.
-- **Don't** turn operational panels into glossy gradients, glass cards, soft pill controls, or floating shadow stacks.
-- **Don't** use torn edges, tape, handwriting, or stamps on application evidence panels; those are landing-only irregularities.
-- **Don't** use signal colors as decoration or imply that a heuristic, estimate, or illustrative value is authoritative.
-- **Don't** expose prompts, responses, commands, credentials, raw transcript content, or unsupported repository/agent detail.
-- **Don't** replace a missing or unavailable value with a plausible-looking number or a generic success state.
+- **Don't** reintroduce Rokkitt, square application geometry, nearly-black legacy token names, or landing typography as app-shell guidance.
+- **Don't** use semantic colors for decoration; reserve semantic error for actual errors and keep idle states neutral.
+- **Don't** expose prompts, responses, commands, credentials, raw transcript content, or unsupported provider detail.
+- **Don't** turn context history into throughput, spend, or cumulative usage; don't aggregate request snapshots.
+- **Don't** replace unavailable evidence with fake activity, counts, controls, or success states.

@@ -150,17 +150,32 @@ export function HomeDashboard() {
       </section>
     </div>
 
-    <div className={styles.roadmap}>
-      <section className={styles.coach} aria-labelledby="home-coach-heading">
-        <div className={styles.coachIntro}><div className={styles.coachHeading}><h2 id="home-coach-heading">Session coach</h2><span className={styles.soon}>Coming soon</span></div><h3>A fresh perspective<br />on how you work.</h3><p>An integrated agent to help you understand your coding sessions and find practical ways to improve your next one.</p></div>
-        <div className={styles.coachQuestions}><p>Questions you’ll be able to explore</p><ul><li>What contributed to this context increase?</li><li>Where did this session repeat work?</li><li>What could I try differently next time?</li></ul></div>
-        <p className={styles.coachBoundary}>Planned: read-only guidance grounded in a session you choose, with links to recorded evidence. Suggestions will distinguish facts from interpretations. Sending metadata to a model will require your opt-in.</p>
-      </section>
-
-      <section className={styles.next} aria-label="More coming soon">
-        <article><div><h2>Saved views</h2><span className={styles.soon}>Coming soon</span></div><p>Keep a preferred combination of projects, providers, and session filters ready to reopen.</p></article>
-        <article><div><h2>Session comparison</h2><span className={styles.soon}>Coming soon</span></div><p>Inspect two sessions side by side, from context snapshots and wall time to recorded events.</p></article>
-      </section>
-    </div>
+    <section className={styles.roadmap} aria-label="Session coach">
+      <header className={styles.roadmapHeading}>
+        <h2 id="home-roadmap-heading">On the horizon</h2>
+        <span className={styles.soon}>Coming soon</span>
+      </header>
+      <div className={styles.roadmapGrid}>
+        <article className={styles.coachCard} aria-labelledby="home-coach-heading">
+          <h3 id="home-coach-heading">Session coach</h3>
+          <p>Planned read-only guidance grounded in a session you choose, with links to recorded evidence.</p>
+          <p className={styles.coachQuestionsLabel}>Questions you’ll be able to explore</p>
+          <ul className={styles.coachQuestions}>
+            <li>What contributed to this context increase?</li>
+            <li>Where did this session repeat work?</li>
+            <li>What could I try differently next time?</li>
+          </ul>
+        </article>
+        <article>
+          <h3>Saved views</h3>
+          <p>Keep a preferred combination of projects, providers, and session filters ready to reopen.</p>
+        </article>
+        <article>
+          <h3>Session comparison</h3>
+          <p>Inspect two sessions side by side, from context snapshots and wall time to recorded events.</p>
+        </article>
+      </div>
+      <p className={styles.roadmapBoundary}>Suggestions will distinguish facts from interpretations. These previews are unavailable: they do not run agents, call models, transmit data, or control sessions. Sending metadata to a model will require your explicit opt-in.</p>
+    </section>
   </section>;
 }

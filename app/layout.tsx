@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
-import localFont from "next/font/local";
 import { AppShell } from "./components/AppShell";
 import "./globals.css";
 
@@ -12,12 +11,6 @@ const inter = Inter({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-
-const rokkitt = localFont({
-  src: "../landing/public/fonts/rokkitt-variable.ttf",
-  variable: "--font-rokkitt",
-  weight: "400 900",
 });
 
 export const metadata: Metadata = {
@@ -47,17 +40,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }} /></head>
       <body
-        className={`${inter.variable} ${geistMono.variable} ${rokkitt.variable} antialiased`}
+        className="antialiased"
       >
         <div hidden dangerouslySetInnerHTML={{ __html: `<!--
-THESIS: Pomegr is one focused Command Center, not a collection of page-local dashboards and utility drawers.
-OWN-WORLD: Near-black operational surfaces, pomegranate wordmark, semantic green/amber/lavender evidence, one-pixel rules, and precise slab-plus-sans-plus-mono typography.
-STORY: Developers move from workspace state to sessions, agents, usage, repositories, settings, and safe local notifications without losing monitoring context.
-FIRST VIEWPORT: A compact global header sits above a 220px route rail, live evidence workspace, non-modal right notification drawer, and persistent read-only footer.
-FORM: The approved Command Center, selected from three professional shell structures; seed f4dae4f2.
+THESIS: Pomegr makes recorded agent work legible through a calm, consistent evidence workspace.
+OWN-WORLD: Charcoal and neutral light surfaces, pomegranate action accents, Inter UI, data-only Geist Mono, 4px controls and 6px panels.
+STORY: Return to a session, inspect agent activity, follow actual context levels, then open supporting evidence without exposing the conversation.
+FIRST VIEWPORT: A 60px global header, 220px route rail, compact sans page title, aligned actions, and primary evidence at a readable scale.
+FORM: User-approved standalone HTML preview in docs/design/pomegr-ui-preview.html; production retains every real route and capability.
+MOTION: Preserve the current activityPulse icon animation and its reduced-motion behavior.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->` }} />
         <AppShell>{children}</AppShell>

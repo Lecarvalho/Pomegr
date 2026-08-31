@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
@@ -149,7 +149,7 @@ afterEach(() => {
 });
 
 describe("dashboard session navigation", () => {
-  it("places request snapshots immediately before context history and live resources", async () => {
+  it("places context history immediately before request snapshots and live resources", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -164,8 +164,13 @@ describe("dashboard session navigation", () => {
     const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
-    expect(requestPanel?.nextElementSibling).toBe(contextPanel);
-    expect(contextPanel?.nextElementSibling).toBe(resourcePanel);
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(breadcrumb.parentElement?.firstElementChild).toBe(breadcrumb);
+    expect(breadcrumb.nextElementSibling).toHaveAttribute("aria-label", "Session controls");
+    expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
+    expect(within(breadcrumb).getByText(state.session!.project)).toHaveAttribute("aria-current", "page");
+    expect(contextPanel?.nextElementSibling).toBe(requestPanel);
+    expect(requestPanel?.nextElementSibling).toBe(resourcePanel);
     expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
     expect(resourcePanel).toHaveClass("dashboardDisclosurePanel", "panel");
     expect(sessionDetails).toHaveClass("dashboardDisclosurePanel", "panel");
@@ -191,8 +196,8 @@ describe("dashboard session navigation", () => {
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
-    expect(requestPanel?.nextElementSibling).toBe(contextPanel);
-    expect(contextPanel?.nextElementSibling).toBe(sessionDetails);
+    expect(contextPanel?.nextElementSibling).toBe(requestPanel);
+    expect(requestPanel?.nextElementSibling).toBe(sessionDetails);
   });
 
   it("hides optional evidence without changing neighboring session regions", async () => {

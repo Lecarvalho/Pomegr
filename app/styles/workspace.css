@@ -1,0 +1,235 @@
+/* Reusable Command Center route views. */
+.commandVisuallyHidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.commandIconSmall { width: 14px; height: 14px; }
+.commandViewIntro { min-height: 60px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.commandPageHeading h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
+.commandPageHeading p { max-width: 66ch; margin: 7px 0 0; color: var(--command-muted); font-size: var(--text-base); line-height: 1.55; }
+.commandViewActions { flex: 0 0 auto; }
+.commandPrimaryAction, .commandSecondaryAction { display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; }
+.commandToolbar { min-height: 48px; margin-top: 24px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); flex-wrap: wrap; }
+.commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; background: var(--command-ground); }
+/* Keep filter controls above the legacy button shape and shell font resets. */
+.commandToolbar .commandFilterChip { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; font: 500 var(--text-sm)/1.3 var(--font-ui); white-space: nowrap; }
+.commandToolbar .commandFilterChip:hover { border-color: var(--command-line-strong); background: var(--command-panel-2); color: var(--command-ink); }
+.commandToolbar .commandFilterChip[aria-pressed="true"] { border-color: var(--command-line-strong); background: var(--command-panel-3); color: var(--command-ink); }
+.commandFilterCount { color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-ui); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px), (pointer: coarse) {
+  .commandToolbar .commandFilterChip, .commandToolbar .commandSearch { min-height: 44px; }
+}
+.commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
+.commandDashboardDirectory { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandDashboardRows { min-width: 0; }
+.commandDirectoryHead, .commandDashboardRow { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 130px 90px 18px; align-items: center; gap: 12px; }
+.commandDirectoryHead { min-height: 36px; padding: 0 13px; border-bottom: 1px solid var(--command-line); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); text-transform: none; letter-spacing: 0; }
+.commandDashboardRow { min-height: 68px; padding: 0 13px; border-bottom: 1px solid var(--command-line); color: var(--command-muted); text-decoration: none; }
+.commandDashboardRow:hover { background: var(--command-panel-2); color: var(--command-ink); }
+.commandDashboardRow > span:first-child, .commandDashboardRow strong, .commandDashboardRow small { min-width: 0; display: block; }
+.commandDashboardRow strong { overflow: hidden; color: var(--command-ink); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.commandDashboardRow small { margin-top: 5px; overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.commandDashboardRow > span:nth-child(2), .commandDashboardRow time { font: var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; }
+.commandDashboardPreview { padding: 20px; border-left: 1px solid var(--command-line); }
+.commandDashboardPreview h2 { margin: 0; font: 600 var(--text-heading)/1.5 var(--font-ui); }
+.commandDashboardPreview p { margin: 10px 0 18px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
+.commandUnavailableNote, .commandUsageCaution { margin: 12px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
+.commandSessionTableWrap { margin-top: 16px; overflow: auto; border: 1px solid var(--command-line); background: var(--command-panel); border-radius: var(--panel-radius); }
+.commandTable { width: 100%; min-width: 1180px; table-layout: fixed; border-collapse: collapse; color: var(--command-muted); font-size: var(--text-sm); }
+.commandSessionColSession { width: auto; }
+.commandSessionColState { width: 126px; }
+.commandSessionColActivity { width: 280px; }
+.commandSessionColAgents { width: 90px; }
+.commandSessionColContext { width: 110px; }
+.commandSessionColProgress { width: 118px; }
+.commandSessionColUpdated { width: 126px; }
+.commandSessionColAction { width: 62px; }
+.commandTable th { height: 40px; padding: 0 13px; color: var(--command-faint); font: 500 var(--text-xs)/1.4 var(--font-ui); text-align: left; text-transform: none; letter-spacing: 0; white-space: nowrap; background: var(--command-ground); }
+.commandTable td { min-height: 64px; padding: 12px 13px; border-top: 1px solid var(--command-line); }
+.commandTable tbody tr:hover { background: var(--command-panel-2); }
+.commandTablePrimary { min-width: 210px; display: block; color: var(--command-ink); text-decoration: none; }
+.commandTablePrimary strong, .commandTablePrimary small { display: block; }
+.commandTablePrimary strong { font-size: var(--text-base); font-weight: 500; }
+.commandTablePrimary small { margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
+.commandTableActivity { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--command-ink); }
+.commandTableActivityCompact { display: none; }
+.commandTableActivityMark { position: relative; width: 12px; height: 12px; flex: 0 0 12px; border: 1px dashed var(--command-faint); border-radius: 50%; }
+.commandTableActivityMark::before { position: absolute; inset: 3px; border-radius: 50%; background: var(--command-muted); content: ""; animation: activityPulse 1.8s ease-in-out infinite; }
+.commandTableActivityLabel { min-width: 0; overflow: hidden; font-size: var(--text-xs); font-weight: 400; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.commandTableActivityUnavailable { color: var(--command-faint); }
+.commandTableProgress { color: var(--command-ink); font: 600 var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.commandPagination { min-height: 48px; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.commandPaginationSummary { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); }
+.commandPaginationControls { display: flex; align-items: center; gap: 5px; }
+.commandPaginationPageStatus { display: none; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
+.commandPaginationControls button { min-width: 32px; min-height: 32px; padding: 0 9px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); font: var(--text-xs)/1 var(--font-ui); cursor: pointer; }
+.commandPaginationControls button:hover:not(:disabled), .commandPaginationControls button[aria-current="page"] { border-color: var(--command-line-strong); background: var(--command-panel-2); color: var(--command-ink); }
+.commandPaginationControls button:disabled { color: var(--command-faint); cursor: not-allowed; opacity: .56; }
+.commandIconLink { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); }
+.commandIconLink:hover { border-color: var(--command-line-strong); color: var(--command-ink); }
+.commandStatusText { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.commandStatusText.active { color: var(--command-green); }
+.commandStatusText.attention { color: var(--command-amber); }
+.commandStatusText.idle, .commandStatusText.unknown { color: var(--command-muted); }
+.commandStatusText.active .commandStatusDot { background: var(--command-green); }
+.commandStatusText.attention .commandStatusDot { background: var(--command-amber); }
+.commandStatusText.idle .commandStatusDot, .commandStatusText.unknown .commandStatusDot { border: 1px solid var(--command-faint); background: transparent; }
+.commandMetricsRow { margin-top: 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--command-line); background: var(--command-line); gap: 1px; }
+.commandMetric { min-height: 110px; padding: 15px; background: var(--command-panel); }
+.commandMetric > span, .commandMetric > strong, .commandMetric > small { display: block; }
+.commandMetric > span { color: var(--command-muted); font-size: var(--text-xs); }
+.commandMetric > strong { margin-top: 19px; color: var(--command-ink); font: 500 26px/1 var(--font-ui); }
+.commandMetric > small { margin-top: 8px; color: var(--command-faint); font-size: var(--text-xs); }
+.commandEmpty { min-height: 230px; padding: 34px; display: grid; place-items: center; align-content: center; border: 1px solid var(--command-line); background: var(--command-panel); color: var(--command-muted); text-align: center; }
+.commandToolbar + .commandEmpty, .commandViewIntro + .commandEmpty { margin-top: 12px; }
+.commandEmpty .commandIcon { width: 24px; height: 24px; }
+.commandEmpty h2 { margin: 14px 0 0; color: var(--command-ink); font-size: var(--text-sm); }
+.commandEmpty p { max-width: 54ch; margin: 8px 0 0; font-size: var(--text-xs); line-height: 1.55; }
+.commandComingSoon { min-height: 134px; margin-top: 12px; padding: 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: start; gap: 16px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandComingSoonIcon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--command-line-strong); color: var(--command-muted); }
+.commandBadge { display: inline-block; padding: 5px 7px; border: 1px solid var(--command-line); border-radius: 5px; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); text-transform: none; letter-spacing: 0; }
+.commandComingSoon h2 { margin: 12px 0 0; font-size: var(--text-sm); }
+.commandComingSoon p { max-width: 72ch; margin: 8px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
+.commandUsageProvider { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandUsageProviderHead { min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--command-line); }
+.commandUsageProviderHead h2 { margin: 0; font-size: var(--text-xs); }
+.commandUsageProviderHead > span { color: var(--command-green); font: var(--text-xs)/1 var(--font-ui); }
+.commandUsageRows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.commandUsageWindow { min-height: 124px; padding: 18px; }
+.commandUsageWindow + .commandUsageWindow { border-left: 1px solid var(--command-line); }
+.commandUsageWindow > header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.commandUsageWindow > header strong { font-size: var(--text-xs); }
+.commandUsageWindow > header b { font: 600 18px/1 var(--font-ui); }
+.commandUsageTrack { height: 6px; margin-top: 17px; display: block; overflow: hidden; background: var(--command-line); }
+.commandUsageTrack i { height: 100%; display: block; background: var(--command-green); }
+.commandUsageWindow.warning .commandUsageTrack i, .commandUsageWindow.critical .commandUsageTrack i { background: var(--command-amber); }
+.commandUsageWindow > footer { margin-top: 13px; display: flex; justify-content: space-between; gap: 10px; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); }
+.commandUsageUnavailable { min-height: 110px; padding: 18px; display: flex; align-items: center; gap: 12px; color: var(--command-muted); }
+.commandUsageUnavailable p { margin: 0; font-size: var(--text-xs); }
+.commandUsageRefreshNote { margin: 0; padding: 9px 12px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); background: color-mix(in srgb, var(--command-amber) 8%, transparent); font-size: var(--text-xs); line-height: 1.5; }
+.commandUsageCaution { padding: 12px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandRepositoryList { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandRepositoryRow { min-height: 76px; padding: 13px 15px; display: grid; grid-template-columns: minmax(220px, 1fr) 70px 70px 100px 140px; align-items: center; gap: 14px; }
+.commandRepositoryRow + .commandRepositoryRow { border-top: 1px solid var(--command-line); }
+.commandRepositoryIdentity { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.commandRepositoryIdentity span, .commandRepositoryIdentity strong, .commandRepositoryIdentity small { min-width: 0; display: block; }
+.commandRepositoryIdentity strong { overflow: hidden; font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.commandRepositoryIdentity small { margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
+.commandRepositoryStat, .commandRepositoryUpdated, .commandRepositoryUnavailable { color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
+.commandRepositoryStat strong { display: block; margin-bottom: 4px; color: var(--command-ink); font-size: var(--text-xs); }
+.commandRepositoryUnavailable { color: var(--command-faint); text-align: right; }
+
+@media (max-width: 900px) {
+  .commandDashboardDirectory { grid-template-columns: 1fr; }
+  .commandDashboardPreview { border-top: 1px solid var(--command-line); border-left: 0; }
+  .commandUsageRows { grid-template-columns: 1fr; }
+  .commandUsageWindow + .commandUsageWindow { border-top: 1px solid var(--command-line); border-left: 0; }
+  .commandRepositoryRow { grid-template-columns: minmax(0, 1fr) 64px 100px; }
+  .commandRepositoryStat:nth-of-type(2), .commandRepositoryUnavailable { display: none; }
+}
+@media (max-width: 760px) {
+  .commandSessionTableWrap { overflow: hidden; }
+  .commandTable { min-width: 0; display: block; table-layout: auto; }
+  .commandTable colgroup { display: none; }
+  .commandTable thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  .commandTable tbody { display: block; }
+  .commandTable tbody tr { min-width: 0; padding: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; gap: 14px 12px; }
+  .commandTable tbody tr + tr { border-top: 1px solid var(--command-line); }
+  .commandTable td { min-width: 0; min-height: 0; padding: 0; border-top: 0; }
+  .commandTable td:first-child { grid-column: 1 / 3; grid-row: 1; }
+  .commandTable td:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .commandTable td:nth-child(4) { grid-column: 2; grid-row: 2; }
+  .commandTable td:nth-child(5) { grid-column: 1; grid-row: 3; }
+  .commandTable td:nth-child(6) { grid-column: 2; grid-row: 3; }
+  .commandTable td:nth-child(7) { grid-column: 1 / 3; grid-row: 4; display: flex; align-items: baseline; gap: 8px; }
+  .commandTable td:last-child { grid-column: 3; grid-row: 1; }
+  .commandTable td[data-label]:not(.commandTableUpdated) { display: grid; align-content: start; gap: 6px; }
+  .commandTable td[data-label]::before { color: var(--command-faint); content: attr(data-label); font: var(--text-xs)/1 var(--font-ui); letter-spacing: 0; text-transform: none; }
+  .commandTablePrimary { min-width: 0; }
+  .commandTablePrimary strong { overflow-wrap: anywhere; }
+  .commandIconLink { width: 44px; height: 44px; }
+  .commandTableActivityColumn { display: none; }
+  .commandTableActivityCompact { margin-top: 7px; display: flex; }
+  .commandTableActivityCompact .commandTableActivityMark { width: 10px; height: 10px; flex-basis: 10px; }
+  .commandTableActivityCompact .commandTableActivityMark::before { inset: 3px; }
+  .commandTableActivityCompact .commandTableActivityLabel { color: var(--command-muted); font-size: var(--text-xs); }
+  .commandViewIntro { display: block; }
+  .commandViewActions { margin-top: 12px; }
+  .commandToolbar { align-items: stretch; flex-wrap: wrap; }
+  .commandToolbar .commandSearch { width: 100%; }
+  .commandToolbarCount { width: 100%; margin: 3px 0 0; }
+  .commandDirectoryHead, .commandDashboardRow { grid-template-columns: minmax(0, 1fr) 90px 18px; }
+  .commandDirectoryHead span:nth-child(3), .commandDashboardRow time { display: none; }
+  .commandMetricsRow { grid-template-columns: 1fr; }
+  .commandMetric { min-height: 92px; }
+  .commandRepositoryRow { grid-template-columns: minmax(0, 1fr) 58px; }
+  .commandRepositoryUpdated { display: none; }
+}
+@media (max-width: 520px) {
+  .commandTable tbody tr { padding: 13px 12px; gap: 13px 10px; }
+  .commandPagination { align-items: flex-start; flex-direction: column; }
+  .commandPaginationControls { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .commandPaginationPage { display: none; }
+  .commandPaginationPageStatus { display: block; padding-inline: 8px; }
+  .commandPaginationControls button { min-height: 44px; }
+  .commandComingSoon { grid-template-columns: 1fr; }
+}
+
+/* The world surface alone carries the column camera transform. */
+.agentTreeRoots { transform: none; }
+.agentTreeView-rail .agentTreeEvidence > .agentTreeRecency { display: inline; }
+.agentTreeCard.needs_inputAgent .agentTreeRole, .agentTreeCard.activeAgent .agentTreeStatus, .agentTreeCard.needs_inputAgent .agentTreeStatus { animation: agentTreePulse 1.8s ease-in-out infinite; }
+.agentTreeProvenanceNote { margin: -8px 14px 18px; color: var(--muted); font-size: var(--text-xs); line-height: 1.4; }
+
+/* Fixed tiles keep identity, context, and evidence in a stable scan order. */
+.agentTreeView-columns .agentTreeCard { grid-template-columns: 24px minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); align-content: start; gap: 6px 8px; padding: 10px 11px; }
+.agentTreeView-columns .agentTreeRole { grid-column: 1; grid-row: 1; width: 24px; height: 24px; }
+.agentTreeView-columns .agentTreeIdentity { grid-column: 2; grid-row: 1; gap: 2px; }
+.agentTreeView-columns .agentTreeIdentity strong, .agentTreeView-columns .agentTreeCodename, .agentTreeView-columns .agentTreeRoleLabel, .agentTreeView-columns .agentTreeProvenance { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agentTreeView-columns .agentTreeContext { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: baseline; gap: 5px; text-align: start; }
+.agentTreeView-columns .agentTreeContext strong { font-size: 18px; }
+.agentTreeView-columns .agentTreeContext span { margin: 0; }
+.agentTreeView-columns .agentTreeEvidence { grid-column: 1 / -1; grid-row: 3; align-self: end; grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; gap: 4px 7px; font-size: var(--text-xs); }
+.agentTreeView-columns .agentTreeEvidence > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.agentTreeView-columns .agentTreeRollup { grid-column: 1 / -1; white-space: normal; line-height: 1.2; }
+
+/* The rail keeps status and recency visible on its second line. */
+.agentTreeView-rail .agentTreeCard { grid-template-columns: 23px minmax(0, 1fr) auto; grid-template-rows: 24px 14px; align-items: center; gap: 0 7px; }
+.agentTreeView-rail .agentTreeRole { grid-column: 1; grid-row: 1 / -1; }
+.agentTreeView-rail .agentTreeIdentity { grid-column: 2; grid-row: 1; }
+.agentTreeView-rail .agentTreeIdentity { display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
+.agentTreeView-rail .agentTreeIdentity strong, .agentTreeView-rail .agentTreeCodename { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agentTreeView-rail .agentTreeIdentity strong { flex: 1 1 auto; }
+.agentTreeView-rail .agentTreeCodename { flex: 0 1 auto; }
+.agentTreeView-rail .agentTreeCodename::before { content: "· "; }
+.agentTreeView-rail .agentTreeContext { grid-column: 3; grid-row: 1; }
+.agentTreeView-rail .agentTreeContext span { display: none; }
+.agentTreeView-rail .agentTreeEvidence { grid-column: 2 / 4; grid-row: 2; display: flex; gap: 8px; overflow: hidden; }
+.agentTreeView-rail .agentTreeEvidence > span.agentTreeStatus, .agentTreeView-rail .agentTreeEvidence > span.agentTreeRecency { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Agent-history marks stay quiet and inherit each agent line's foreground shade. */
+.agentHistoryIndicators { min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.agentHistoryIndicator.agentChip { position: relative; width: 18px; min-width: 18px; max-width: none; height: 18px; min-height: 18px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; box-shadow: none; overflow: visible; letter-spacing: 0; text-transform: none; }
+.agentHistoryIndicator.agentChip:hover, .agentHistoryIndicator.agentChip[aria-expanded="true"] { border-color: transparent; background: transparent; color: var(--ink); box-shadow: none; }
+.agentHistoryIndicator.agentCacheRefillIndicator { color: var(--amber); }
+.agentHistoryIndicator.agentCacheRefillIndicator:hover, .agentHistoryIndicator.agentCacheRefillIndicator[aria-expanded="true"] { color: var(--amber); }
+.agentHistoryIndicator.agentChip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.agentHistoryIndicator .agentChipLabel { position: relative; width: 100%; height: 100%; display: grid; place-items: center; overflow: visible; }
+.agentHistoryIcon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+.agentHistoryCount { position: absolute; inset-block-start: -2px; inset-inline-end: -2px; min-width: 8px; color: currentColor; font: 650 var(--text-xs)/1 var(--font-ui); font-variant-numeric: tabular-nums; text-align: center; }
+.agentTreeHistoryIndicators { margin: 0; justify-self: start; }
+.agentTreeView-columns .agentTreeHistoryIndicators { align-self: end; }
+.agentTreeView-rail .agentTreeEvidence > span.agentTreeHistoryIndicators { display: inline-flex; flex: 0 0 auto; overflow: visible; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryIndicator { width: 12px; min-width: 12px; height: 12px; min-height: 12px; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryIcon { width: 10px; height: 10px; }
+.agentTreeView-rail .agentTreeHistoryIndicators .agentHistoryCount { inset-block-start: -3px; inset-inline-end: -3px; font-size: 6px; }
+.cacheRefillPopover { position: absolute; z-index: 30; top: calc(50% + 10px); right: 0; width: min(390px, calc(100vw - 48px)); text-align: left; white-space: normal; }
+.cacheRefillPopoverOccurrences { max-height: min(430px, 62vh); margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; }
+.cacheRefillPopoverOccurrences > li { padding: 11px 15px 13px; border-bottom: 1px solid var(--line); }
+.cacheRefillPopoverOccurrences > li:last-child { border-bottom: 0; }
+.cacheRefillPopoverOccurrenceHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--muted); font: 650 var(--text-xs)/1.3 var(--font-ui); font-variant-numeric: tabular-nums; text-transform: uppercase; }
+.cacheRefillEvidenceGrid { display: grid; gap: 7px; margin: 9px 0 0; }
+.cacheRefillEvidenceGrid > div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 9px; }
+.cacheRefillEvidenceGrid dt { color: var(--muted); font-size: var(--text-xs); font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.cacheRefillEvidenceGrid dd { min-width: 0; margin: 0; font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.cacheRefillDefinition { display: grid; gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--popover-line); }
+.cacheRefillDefinition code { color: var(--muted); font: 600 var(--text-xs)/1.45 var(--font-geist-mono), Consolas, monospace; overflow-wrap: anywhere; }
+.cacheRefillDefinition a { width: fit-content; color: var(--blue); font-size: var(--text-xs); font-weight: 600; text-underline-offset: 2px; }
+.cacheRefillDefinition a:hover { color: var(--ink); }

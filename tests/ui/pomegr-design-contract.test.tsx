@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import AboutPage from "../../app/about/page";
 
-const styles = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
+  .map((match) => readFileSync(join(process.cwd(), "app", match[1]), "utf8")).join("\n");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
 const shellSource = readFileSync(join(process.cwd(), "app", "components", "command-center", "CommandCenterShell.tsx"), "utf8");
 const brandSource = readFileSync(join(process.cwd(), "app", "components", "PomegrBrand.tsx"), "utf8");
@@ -27,12 +29,15 @@ describe("Pomegr visual contract", () => {
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/pomegr-logo\.png/);
   });
 
-  it("uses restrained typography, a single inspectable context line, and square framed controls", () => {
+  it("uses restrained typography, a single inspectable context line, and shared readable typography and restrained control geometry", () => {
     expect(styles).not.toMatch(/Arial|Helvetica/);
-    expect(styles).toMatch(/:is\(button,[\s\S]*?\)\s*\{\s*border-radius:\s*0;/);
+    expect(layoutSource).toMatch(/<html[^>]*className=\{`\$\{inter.variable\} \$\{geistMono.variable\}`\}/);
+    expect(styles).toMatch(/--control-radius:\s*4px/);
+    expect(styles).toMatch(/--panel-radius:\s*6px/);
+    expect(styles).toMatch(/html\[data-theme="dark"\] \.agentRow\.idleAgent \.agentIdentity span,[^{]+\{ color: var\(--muted\); \}/);
     expect(styles).toMatch(/\.contextHistoryLine\s*\{[^}]*stroke:\s*var\(--blue\);[^}]*stroke-width:\s*2\.25/);
     expect(styles).toMatch(/\.contextBoundary line\s*\{[^}]*stroke-dasharray:\s*3 4/);
-    expect(styles).toMatch(/\.contextHistoryChart:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--brand\)/);
+    expect(styles).toMatch(/\.contextHistoryChart:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--focus-ring\)/);
     expect(contextHistorySource).toMatch(/role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?Use Left and Right arrow keys/);
     expect(contextHistorySource).not.toMatch(/role="listitem"[\s\S]*?tabIndex=\{0\}/);
     expect(contextHistorySource).not.toMatch(/ContextGrowthTimeline|cacheReadArea|context added|Cache evidence|cacheEvents/);
@@ -51,8 +56,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.requestSnapshotBar|\.requestSnapshotStack/);
     expect(styles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.requestSnapshotReadout dl\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
     expect(styles).toMatch(/@media \(max-width: 420px\)[\s\S]*?\.requestSnapshotReadout\s*\{\s*margin-left:\s*0/);
-    expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*13px/);
-    expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*11px/);
+    expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*var\(--text-sm\)/);
+    expect(styles).toMatch(/\.ghostButton, \.desktopControls > summary\s*\{[^}]*font-size:\s*var\(--text-sm\)/);
     expect(styles).toMatch(/\.commandNavItem\s*\{[^}]*display:\s*grid;[^}]*align-items:\s*center/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSidebar\.isOpen\s*\{[^}]*transform:\s*translateX\(0\)/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)/);
@@ -60,7 +65,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*display:\s*flex;[^}]*transform:\s*translateX\(44px\)/);
     expect(styles).toMatch(/\.commandHeader\.isSearchOpen > \.commandSearch\s*\{[^}]*transform:\s*none;[^}]*transform \.22s cubic-bezier\(\.16, 1, \.3, 1\)/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*transform:\s*none/);
-    expect(styles).toMatch(/\.commandSearch:focus-within\s*\{\s*border-color:\s*var\(--command-faint\);\s*outline:\s*2px solid var\(--command-green\);\s*outline-offset:\s*2px/);
+    expect(styles).toMatch(/\.commandSearch:focus-within\s*\{\s*border-color:\s*var\(--command-faint\);\s*outline:\s*2px solid var\(--focus-ring\);\s*outline-offset:\s*2px/);
     expect(styles).toMatch(/\.commandSearch input:focus-visible\s*\{\s*outline:\s*none/);
     expect(styles).toMatch(/\.commandSessionColActivity\s*\{\s*width:\s*280px/);
     expect(styles).toMatch(/\.commandTableActivityLabel\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
@@ -69,14 +74,22 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTable\s*\{[^}]*min-width:\s*0;[^}]*display:\s*block;[^}]*table-layout:\s*auto/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
-    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-rokkitt\)/);
-    expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*10px/);
+    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-ui\)/);
+    expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip\), input, select\)\s*\{\s*font:\s*inherit/);
-    expect(styles).toMatch(/--popover:\s*#fffefa/);
-    expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--popover:\s*#1c1a20/);
+    expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
+    expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--color-raised:\s*#23272d/);
     expect(styles).toMatch(/\.agentPopover\s*\{[^}]*background:\s*var\(--popover\)[^}]*box-shadow:\s*var\(--popover-shadow\)/);
     expect(styles).toMatch(/\.agentsPanel\.hasOpenPopover, \.agentsPanel:has\(\.cacheRefillPopover\)\s*\{\s*z-index:\s*10/);
     expect(styles).toMatch(/\.tooltipPopover\s*\{[^}]*padding:\s*9px 11px[^}]*border:\s*1px solid var\(--popover-line\)[^}]*background:\s*var\(--popover\)/);
+  });
+
+  it("preserves the current activity icon animation and reduced-motion opt-out", () => {
+    expect(styles).toMatch(/\.currentActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
+    expect(styles).toMatch(/\.commandTableActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
+    expect(styles).toMatch(/@keyframes activityPulse\s*\{\s*50%\s*\{\s*transform:\s*scale\(\.55\);\s*opacity:\s*\.45/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.currentActivityMark::before,[\s\S]*?\.commandTableActivityMark::before,[\s\S]*?animation: none/);
+    expect(layoutSource).not.toMatch(/font-rokkitt|localFont/);
   });
 
   it("keeps session progress semantic, flat, and motion-safe", () => {

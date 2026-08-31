@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorState, SessionReadiness, SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
@@ -259,9 +261,20 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     }
   };
 
+  const breadcrumbProject = selectedSession?.project || ((!selectedSessionId || selectedSessionId === data.session?.id) ? data.session?.project : null);
+
   return (
     <LiveClockProvider running={clockRunning}>
       <section className="commandSessionView" id="top">
+        <nav className="sessionBreadcrumb" aria-label="Breadcrumb">
+          <ol>
+            <li><Link href="/sessions">Sessions</Link></li>
+            {breadcrumbProject && <li>
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg>
+              <span aria-current="page">{breadcrumbProject}</span>
+            </li>}
+          </ol>
+        </nav>
         <SessionCommandBar connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
@@ -277,8 +290,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           </section>}
 
           <SummaryMetrics state={data} historical={viewingHistory} />
-          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <><RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} />
-          {displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}</>}
+          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <>{displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}
+          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} /></>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
           <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />
