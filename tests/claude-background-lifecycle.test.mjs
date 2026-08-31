@@ -16,7 +16,9 @@ function launch(id = "task1", tool = "Workflow", offset = 1000) {
   return [
     { type: "assistant", timestamp: timestamp(offset), message: { content: [{ type: "tool_use", name: tool, id: "call-" + id, input: { description: PRIVATE, command: PRIVATE } }] } },
     { type: "user", timestamp: timestamp(offset + 1), message: { content: [{ type: "tool_result", tool_use_id: "call-" + id, content: PRIVATE }] },
-      toolUseResult: tool === "Workflow" ? { status: "async_launched", taskType: "local_workflow", taskId: id, runId: "wf_one", workflowName: PRIVATE } : { backgroundTaskId: id } },
+      toolUseResult: tool === "Workflow" ? { status: "async_launched", taskType: "local_workflow", taskId: id, runId: "wf_one", workflowName: PRIVATE }
+        : tool === "Agent" ? { status: "async_launched", isAsync: true, agentId: id, prompt: PRIVATE, outputFile: PRIVATE }
+          : { backgroundTaskId: id } },
   ];
 }
 function terminal(id = "task1", status = "completed", offset = 2000) {
@@ -34,7 +36,7 @@ async function fixture(t, records = []) {
   return { homeDir, file, reader: createClaudeBackgroundLifecycleReader() };
 }
 
-for (const tool of ["Workflow", "Bash"]) {
+for (const tool of ["Workflow", "Bash", "Agent"]) {
   test("keeps successfully launched " + tool + " running through silence until an exact terminal record", async (t) => {
     const f = await fixture(t, launch("task1", tool));
     assert.equal(await f.reader.observe(f.file, owner()), true);
@@ -162,4 +164,111 @@ test("an exact completed workflow manifest closes work before its delayed notifi
   await rm(manifest);
   await appendFile(f.file, jsonl([{ type: "user", timestamp: timestamp(3000), message: { content: PRIVATE } }]));
   assert.equal(await f.reader.observe(f.file, owner()), false, "later appends cannot reopen a completed run");
+});
+
+test("native Agent background work requires an exact successful structured async result", async (t) => {
+  const records = launch("agent-one", "Agent");
+  records[0].message.content[0].input.run_in_background = true;
+  const f = await fixture(t, [records[0]]);
+  assert.equal(await f.reader.observe(f.file, owner()), false, "requested background work is not a launch");
+  const wrongResult = structuredClone(records[1]);
+  wrongResult.message.content[0].tool_use_id = "wrong";
+  await appendFile(f.file, jsonl([wrongResult]));
+  assert.equal(await f.reader.observe(f.file, owner()), false, "result must match the Agent call");
+  await appendFile(f.file, jsonl([records[1]]));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+
+  for (const result of [null, {}, { agentId: "agent-one" },
+    { status: "completed", isAsync: true, agentId: "agent-one" },
+    { status: "async_launched", agentId: "agent-one" },
+    { status: "async_launched", isAsync: false, agentId: "agent-one" },
+    { status: "async_launched", isAsync: "true", agentId: "agent-one" },
+    { status: "async_launched", isAsync: true, taskId: "agent-one" },
+    { status: "async_launched", isAsync: true, agentId: "../private" },
+    { status: "async_launched", isAsync: true, agentId: "a".repeat(129) },
+  ]) {
+    const invalid = await fixture(t, [records[0], { ...records[1], toolUseResult: result }]);
+    assert.equal(await invalid.reader.observe(invalid.file, owner()), false);
+  }
+  const failed = structuredClone(records);
+  failed[1].message.content[0].is_error = true;
+  const invalid = await fixture(t, failed);
+  assert.equal(await invalid.reader.observe(invalid.file, owner()), false);
+  const wrongTool = structuredClone(records);
+  wrongTool[0].message.content[0].name = "Bash";
+  const unrelated = await fixture(t, wrongTool);
+  assert.equal(await unrelated.reader.observe(unrelated.file, owner()), false, "Agent schema cannot establish shell work");
+});
+
+test("native background Agent completion must be trusted and match each open agent", async (t) => {
+  const f = await fixture(t, [...launch("agent-one", "Agent"), ...launch("agent-two", "Agent")]);
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  const stop = terminal("agent-one");
+  await appendFile(f.file, jsonl([
+    { type: "user", timestamp: stop.timestamp, message: { content: stop.content } },
+    terminal("agent-one", "unknown"), terminal("another-agent"),
+  ]));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await appendFile(f.file, jsonl([terminal("agent-one", "stopped")]));
+  assert.equal(await f.reader.observe(f.file, owner()), true, "one stopped agent cannot close its sibling");
+  const delivered = terminal("agent-two", "failed");
+  await appendFile(f.file, jsonl([{ type: "user", timestamp: delivered.timestamp,
+    origin: { kind: "task-notification" }, promptSource: "system", message: { content: delivered.content } }]));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+});
+
+test("native background Agent evidence survives partial replacement but not owner replacement", async (t) => {
+  const records = launch("agent-one", "Agent");
+  const f = await fixture(t, records);
+  assert.equal(await f.reader.observe(f.file, { sessionId: "local" }), null);
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  const complete = jsonl([...records, terminal("agent-one")]);
+  await writeFile(f.file, complete.slice(0, -3));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await appendFile(f.file, complete.slice(-3));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+  await writeFile(f.file, jsonl(records));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await writeFile(f.file, "malformed\n");
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await writeFile(f.file, jsonl(records));
+  const replacement = owner({ ownerStartedAt: START + 5000, resourceOwner: { pid: 123, processStartIdentity: "two" } });
+  assert.equal(await f.reader.observe(f.file, replacement), false, "a new process cannot inherit the old agent");
+});
+
+test("native idle catalog stays working for a background Agent and its nested child until the exact notification", async (t) => {
+  const f = await fixture(t, launch("agent-parent", "Agent"));
+  const registryRoot = path.join(f.homeDir, ".claude", "sessions");
+  await mkdir(registryRoot);
+  const registryFile = path.join(registryRoot, "123.json");
+  await writeFile(registryFile, JSON.stringify({ sessionId: "local", entrypoint: "sdk-cli", bridgeSessionId: "session_PRIVATEBRIDGE",
+    pid: 123, procStart: "one", startedAt: START }));
+  await writeFile(path.join(f.homeDir, ".claude", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: PRIVATE } }));
+  const provider = createClaudeProvider({ homeDir: f.homeDir, env: {}, registryProcessIdentities: () => new Map([[123, "one"]]),
+    fetch: async () => Response.json({ response_shape: { id: "session_PRIVATEBRIDGE", worker_status: "idle" } }) });
+  assert.equal((await provider.listSessions())[0].activityStatus, "working", "confirmed launch works before the child file exists");
+  const agentRoot = path.join(path.dirname(f.file), "local", "subagents");
+  await mkdir(agentRoot, { recursive: true });
+  const parentFile = path.join(agentRoot, "agent-agent-parent.jsonl");
+  const childFile = path.join(agentRoot, "agent-agent-child.jsonl");
+  await writeFile(parentFile, jsonl(launch("agent-child", "Agent", 1500)));
+  await writeFile(childFile, jsonl([{ type: "assistant", timestamp: timestamp(1600),
+    message: { content: [{ type: "text", text: PRIVATE }] } }]));
+  for (const file of [f.file, parentFile, childFile]) await utimes(file, new Date(0), new Date(0));
+  const rows = await provider.listSessions();
+  assert.equal(rows[0].activityStatus, "working", "silent nested work cannot expire by file age");
+  assert.doesNotMatch(JSON.stringify(rows), /BACKGROUND_PRIVATE|PRIVATEBRIDGE|ownerStartedAt|remoteSessionId|agent-parent|agent-child|outputFile|toolUseResult/);
+  const evidence = await provider.readSession("local");
+  assert.equal(evidence.agents.find((agent) => agent.id === "primary").status, "idle");
+  await appendFile(f.file, jsonl([terminal("agent-child")]));
+  assert.equal((await provider.listSessions())[0].activityStatus, "working", "grandchild completion cannot close the parent launch");
+  await appendFile(f.file, jsonl([terminal("agent-parent")]));
+  assert.equal((await provider.listSessions())[0].activityStatus, "idle");
+  await appendFile(f.file, jsonl(launch("agent-new", "Agent", 3000)));
+  assert.equal((await provider.listSessions())[0].activityStatus, "working");
+  await rm(registryFile);
+  for (const file of [f.file, parentFile, childFile]) await utimes(file, new Date(0), new Date(0));
+  const history = await provider.listSessions();
+  assert.equal(history[0].isLive, false);
+  assert.equal(history[0].activityStatus, "unknown", "history cannot inherit current background work");
 });

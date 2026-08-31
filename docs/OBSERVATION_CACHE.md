@@ -349,7 +349,7 @@ The private reader retains at most 50 associations, coalesces concurrent request
 A normalized lifecycle change contributes to the adapter source fingerprint, so hydration updates even when transcript bytes do not change. The existing staged replacement and contract validation still govern C Commit: incomplete replacement input cannot erase a prior complete revision. Repeated identical status does not advance the lifecycle observation timestamp or force transcript reacquisition. D Derivation and revision-aware cache-only GETs remain unchanged. P Persistence may retain only existing normalized evidence and the opaque source fingerprint; the remote response, bridge ID, token/hash, and private association cache are never checkpointed. Historical session hydration never requests remote status for that session.
 
 Claude catalog acquisition also incrementally reduces the complete primary transcript
-for successful, structured background workflow/shell launches and exact terminal
+for successful, structured background workflow/shell/native-agent launches and exact terminal
 notifications, or exact run-matched completed workflow manifests. This evidence is scoped to the validated process identity and its
 registry start time, independent of native primary idle and modification-time agent
 heuristics. The private cache holds at most fifty sessions with 256 pending calls
@@ -358,7 +358,16 @@ Cooperative 64 KiB reads and a 256 KiB fragment limit bound acquisition, not the
 lifetime of observed work. A malformed or incomplete replacement preserves the
 last valid observation; process replacement discards the old association. Only the
 composed catalog activity enum crosses C Commit, with no new browser or checkpoint
-fields. Background work can make a session Working while its primary agent is Idle.
+fields. Native `Agent` launch results require matching tool identity, explicit
+`status: async_launched`, `isAsync: true`, and a bounded `agentId`; only its exact
+trusted terminal notification closes that agent. Child completion, file recency,
+agent counts, and foreground or incomplete launch results cannot substitute for
+this evidence. A confirmed background parent remains open while executing nested
+children, without acquiring child transcripts on the catalog path. Background work
+can make a session Working while its primary agent is Idle. This extends only
+U1/U2 recognition: last-known-good retention, revision publication, bounded private
+cursors, and cache-only GETs are unchanged; no raw agent IDs or result fields are
+added to browser or checkpoint state.
 
 The request and schema compatibility contract is in [Claude session status](CLAUDE_SESSION_STATUS.md).
 

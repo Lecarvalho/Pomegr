@@ -21,6 +21,15 @@ function terminalNotification(record) {
   return safeId(content.match(/<task-id>([^<]+)<\/task-id>/)?.[1]?.trim());
 }
 
+function launchedTaskId(tool, result) {
+  if (tool === "Workflow" && result?.status === "async_launched" && result.taskType === "local_workflow") return safeId(result.taskId);
+  if (tool === "Bash") return safeId(result?.backgroundTaskId);
+  // Native background agents report their task identity as agentId, not taskId.
+  // Launch intent or a foreground Agent result does not establish open background work.
+  if (tool === "Agent" && result?.status === "async_launched" && result.isAsync === true) return safeId(result.agentId);
+  return null;
+}
+
 function reduceLifecycle(state, record, ownerStartedAt) {
   const timestamp = Date.parse(record?.timestamp || "");
   if (!Number.isFinite(timestamp) || timestamp < ownerStartedAt) return state;
@@ -28,7 +37,7 @@ function reduceLifecycle(state, record, ownerStartedAt) {
   if (terminal) state.running.delete(terminal);
   const parts = Array.isArray(record?.message?.content) ? record.message.content : [];
   for (const part of parts) {
-    if (record.type === "assistant" && part.type === "tool_use" && ["Workflow", "Bash"].includes(part.name)) {
+    if (record.type === "assistant" && part.type === "tool_use" && ["Workflow", "Bash", "Agent"].includes(part.name)) {
       const id = safeId(part.id);
       if (!id) continue;
       if (state.calls.size >= MAX_PENDING_CALLS) { state.complete = false; continue; }
@@ -39,9 +48,7 @@ function reduceLifecycle(state, record, ownerStartedAt) {
     state.calls.delete(part.tool_use_id);
     if (!call || part.is_error === true) continue;
     const result = record.toolUseResult;
-    const id = call === "Workflow" && result?.status === "async_launched" && result.taskType === "local_workflow"
-      ? safeId(result.taskId)
-      : call === "Bash" ? safeId(result?.backgroundTaskId) : null;
+    const id = launchedTaskId(call, result);
     if (!id) continue;
     if (state.running.size >= MAX_OPEN_TASKS) { state.complete = false; continue; }
     const runId = call === "Workflow" && /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(result?.runId || "") ? result.runId : null;

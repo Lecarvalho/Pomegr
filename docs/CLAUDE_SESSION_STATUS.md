@@ -82,8 +82,9 @@ does not include it. A read-only probe of the current worker metadata route retu
 attach, or read the remote event stream.
 
 For locally recorded background work, Pomegr instead reduces provider-authored
-successful `Workflow` (`async_launched`, `local_workflow`) and `Bash`
-(`backgroundTaskId`) results, matched to their preceding structured tool calls.
+successful `Workflow` (`async_launched`, `local_workflow`), `Bash`
+(`backgroundTaskId`), and native `Agent` (`status: async_launched`, `isAsync: true`,
+bounded `agentId`) results, matched to their preceding structured tool calls.
 The exact task remains open until a provider queue notification or trusted
 system-delivered task notification reports a recognized terminal status for that
 task ID. A bounded workflow manifest with the exact run ID and `status: completed`
@@ -94,8 +95,14 @@ counts, and workflow progress percentages are not execution evidence.
 This local lifecycle is scoped to the validated owner PID/process-start identity
 and registry `startedAt`; launches before that process started are excluded. A
 process replacement or missing ownership cannot inherit open work from the previous
-process. Scope is recorded workflow and background-shell launches; unrecorded SDK
-background tasks remain outside this local observation surface.
+process. Scope is recorded workflow, background-shell, and native background-agent
+launches in the primary transcript; unrecorded SDK background tasks remain outside
+this local observation surface. A confirmed background-agent launch covers its
+execution while it works on nested children. The exact agent ID must receive a
+trusted terminal notification; another child's completion cannot close its parent.
+A missing child file, foreground result, text-only agent reference, or requested
+`run_in_background` flag is not a substitute for the structured launch result.
+Child file age and missing stop reasons do not end recorded background work.
 
 U1 reads the complete primary transcript in cooperative 64 KiB chunks, then only
 appended records. It retains at most fifty sessions, 256 pending tool identities,
@@ -110,9 +117,11 @@ commit. Historical rows never inherit current background activity.
 U1 catalog discovery and source acquisition perform network refreshes. The U2
 evidence reducer only applies the cached normalized snapshot and never calls the
 remote API. The primary agent consumes the native worker lifecycle; the catalog additionally
-accounts for the independent recorded background lifecycle. A native state
-can clear an older unresolved transcript question. Existing subagent lifecycle and
-parent waiting derivation remain separate; they never determine catalog status.
+accounts for the independent recorded background lifecycle, including confirmed
+native background-agent launches. A native state can clear an older unresolved
+transcript question. Existing per-agent recency status and parent waiting derivation
+remain separate; agent counts and these presentation heuristics never determine
+catalog status.
 A lifecycle transition changes the private source fingerprint so it can commit
 without requiring a new transcript record. Incomplete transcript replacements still
 retain the prior complete evidence revision.
