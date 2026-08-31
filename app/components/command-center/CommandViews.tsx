@@ -8,8 +8,10 @@ import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListT
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { usageLimitFailureKind, usageLimitFailureMessage } from "../../usage-limit-presentation";
 import { useUsageLimits } from "../../usage-limits-client";
+import { useProviderStatus } from "../../provider-status-client";
 import { RetryCountdownText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
+import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor } from "../ProviderStatus";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandMetric, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 
 function sessionHref(session: SessionSummary) {
@@ -165,7 +167,7 @@ function usageResetLabel(value: string | null) {
   return `Resets ${sessionListTime(value)}`;
 }
 
-function UsageProvider({ entry }: { entry: HomeProviderUsageLimits }) {
+function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimits; providerStatus: ReturnType<typeof providerStatusFor> }) {
   const limits = entry.usageLimits;
   const status = entry.readiness || (limits.available ? "ready" : "unavailable");
   const failureKind = usageLimitFailureKind(limits);
@@ -179,7 +181,7 @@ function UsageProvider({ entry }: { entry: HomeProviderUsageLimits }) {
           ? `Updated ${relativeTime(limits.fetchedAt)}`
           : status === "loading" ? "Connecting…" : "Unavailable";
   return <section className="commandUsageProvider" aria-labelledby={`usage-${entry.provider}`}>
-    <header className="commandUsageProviderHead"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><span>{statusLabel}</span></header>
+    <header className="commandUsageProviderHead"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><span className="commandUsageProviderStatuses"><ProviderStatusDetails status={providerStatus} compact mobileIconOnly /><span>{statusLabel}</span></span></header>
     {status === "loading" ? <CommandEmpty title="Waiting for provider usage" detail="The monitor is preparing the latest account-level window." icon="timer" /> : status !== "ready" || !limits.available ? <div className="commandUsageUnavailable"><CommandIcon name="limits" size="small" /><p>{failureKind ? usageLimitFailureMessage(entry.source, limits) : `Usage limits for ${entry.source} are unavailable.`}{limits.retryAt && <><br /><RetryCountdownText value={limits.retryAt} />.</>}</p></div> : limits.limits.length ? <><div className="commandUsageRows">{limits.limits.map((limit) => <article className={`commandUsageWindow ${limit.severity}`} key={limit.id}>
       <header><strong>{limit.label}</strong><b>{Math.round(limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%` }} /></div><footer><span>{usageResetLabel(limit.resetsAt)}</span><span>Provider-reported window</span></footer>
     </article>)}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}
@@ -188,9 +190,10 @@ function UsageProvider({ entry }: { entry: HomeProviderUsageLimits }) {
 
 export function UsageLimitsView() {
   const snapshot = useUsageLimits();
+  const statusSnapshot = useProviderStatus();
   const providersUnavailable = snapshot.providers.length === 0 && Object.values(snapshot.readiness).every((status) => status === "unavailable");
   return <CommandPage title="Usage limits" description="Provider-reported account windows with local request evidence shown only for correlation—not attribution or billing.">
-    {snapshot.providers.length ? snapshot.providers.map((entry) => <UsageProvider entry={entry} key={entry.provider} />) : <CommandEmpty title={providersUnavailable ? "Usage limits unavailable" : "Usage limits are loading"} detail={providersUnavailable ? "The local monitor could not provide account-level provider evidence." : "Pomegr is waiting for account-level provider evidence."} icon="limits" />}
+    {snapshot.providers.length ? snapshot.providers.map((entry) => <UsageProvider entry={entry} providerStatus={providerStatusFor(statusSnapshot.providers, entry.provider)} key={entry.provider} />) : <><ProviderStatusArea providers={statusSnapshot.providers} /><CommandEmpty title={providersUnavailable ? "Usage limits unavailable" : "Usage limits are loading"} detail={providersUnavailable ? "The local monitor could not provide account-level provider evidence." : "Pomegr is waiting for account-level provider evidence."} icon="limits" /></>}
     <p className="commandUsageCaution">Usage is account-level. Pomegr does not assign provider usage or cost to individual sessions, agents, or repositories. Local request observations, when available, describe correlation only.</p>
   </CommandPage>;
 }

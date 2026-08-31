@@ -43,13 +43,18 @@
   align-items: start;
 }
 
-.sessions {
+.sessionColumn { display: grid; gap: 20px; min-width: 0; }
+
+.sessions,
+.home .providerStatus {
   min-width: 0;
   padding: 22px 24px 24px;
   border: 1px solid var(--command-line);
   border-radius: var(--panel-radius, 6px);
   background: var(--command-panel);
 }
+
+.home .providerStatus { margin: 0; padding-block: 12px; }
 
 .sectionHeading {
   display: flex;
@@ -237,8 +242,11 @@
   .workspace,
   .roadmapGrid { grid-template-columns: 1fr; gap: 18px; }
   .sessions,
+  .home .providerStatus,
   .guides,
   .roadmap { padding: 18px 20px 20px; }
+  .home .providerStatus { padding-block: 12px; }
+  .sessionColumn { gap: 18px; }
   .roadmap { margin-top: 18px; }
   .news { grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 12px; padding: 10px 12px; margin-bottom: 16px; }
   .news h2 { grid-column: 1; }

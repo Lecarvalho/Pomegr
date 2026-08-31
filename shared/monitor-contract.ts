@@ -570,6 +570,35 @@ export type PullRequest = {
 export type ProviderId = "claude" | "codex";
 export type ProviderSource = "Claude Code" | "Codex";
 
+/** Public service reporting, independent of local session evidence and account quotas. */
+export type ProviderServiceIncident = {
+  id: string;
+  label: string;
+  status: "investigating" | "identified" | "monitoring" | "maintenance";
+  impact: "none" | "minor" | "major" | "critical";
+  updatedAt: string | null;
+  url: string;
+};
+
+export type ProviderServiceStatus = {
+  provider: ProviderId;
+  source: ProviderSource;
+  status: "operational" | "degraded" | "outage" | "maintenance" | "unknown";
+  readiness: Readiness;
+  freshness: "fresh" | "stale" | "unknown";
+  checkedAt: string | null;
+  updatedAt: string | null;
+  statusPageUrl: string;
+  incidentKey: string | null;
+  incidents: ProviderServiceIncident[];
+};
+
+export type ProviderStatusSnapshot = {
+  revision: number | null;
+  generatedAt: string | null;
+  providers: ProviderServiceStatus[];
+};
+
 /** Optional provider features; false means unsupported rather than a zero value. */
 export type ProviderCapabilities = {
   approvalMode: boolean;

@@ -100,8 +100,9 @@ function inspectCatalogEntries(entries) {
  * are never interpreted as filesystem paths or handed to another provider.
  *
  * @param {any[]} adapters
+ * @param {{serviceStatusReader?: Function}} options
  */
-export function createProviderRegistry(adapters) {
+export function createProviderRegistry(adapters, options = {}) {
   if (!Array.isArray(adapters) || adapters.length === 0) {
     throw new TypeError("Provider registry requires at least one adapter");
   }
@@ -329,6 +330,14 @@ export function createProviderRegistry(adapters) {
   return Object.freeze({
     providers,
     defaultProvider: providers[0],
+
+    // Public service observation is independent of account authentication and discovery.
+    async readServiceStatus(providerId, requestOptions = {}) {
+      if (!providersById.has(providerId) || typeof options.serviceStatusReader !== "function") {
+        throw new Error("Provider service status unavailable");
+      }
+      return options.serviceStatusReader(providerId, requestOptions);
+    },
 
     providerForSessionId(sessionId) {
       const parsed = parseProviderSessionId(sessionId);

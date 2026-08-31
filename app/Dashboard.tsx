@@ -24,6 +24,8 @@ import { buildSessionReport, sessionReportFilename } from "./session-report.mjs"
 import type { DesktopState } from "./components/DesktopControls";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-client";
+import { useProviderStatus, useProviderStatusPollingPause } from "./provider-status-client";
+import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor } from "./components/ProviderStatus";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
 
 type DesktopBridge = {
@@ -62,10 +64,12 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const { sessions } = useSessionCatalog();
   const sharedUsage = useUsageLimits();
+  const providerStatus = useProviderStatus();
   const { preferences: displayPreferences } = useDisplayPreferences();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
   const [paused, setPaused] = useState(false);
   useUsageLimitsPollingPause(paused);
+  useProviderStatusPollingPause(paused);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
@@ -79,6 +83,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     : data;
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
+  const [, setProviderNoticeVersion] = useState(0);
 
   useEffect(() => {
     const legacySessionId = notificationNavigationSessionId();
@@ -212,8 +217,13 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   }, [activeSessionId]);
 
   const viewingHistory = data.view === "history";
-  const connecting = loading && !data.error && !data.session;
+  const sessionMatchesSelection = Boolean(data.session && (!selectedSessionId || selectedSessionId === data.session.id));
   const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
+  const visibleProviderStatus = providerStatusFor(providerStatus.providers, data.source === "Codex" ? "codex" : "claude");
+  const providerIssueKey = visibleProviderStatus?.incidentKey || visibleProviderStatus?.status || null;
+  const providerIssueRank = visibleProviderStatus ? providerIncidentRank(visibleProviderStatus) : 0;
+  const showProviderNotice = providerServiceNoticeVisible(visibleProviderStatus, viewingHistory, dismissedProviderIncidentFor(data.session?.id || null), sessionMatchesSelection && !switchingSession);
+  const connecting = loading && !data.error && !data.session;
   const clockRunning = data.connected && !viewingHistory && !paused && !switchingSession;
   const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
 
@@ -278,6 +288,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
         <SessionCommandBar connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
+          {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionProgressPanel progress={data.session.progress} agents={data.agents} activity={data.activity} connected={data.connected} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />}

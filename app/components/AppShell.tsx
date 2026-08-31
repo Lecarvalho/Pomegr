@@ -10,6 +10,7 @@ import { LiveClockProvider } from "../hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../hooks/SessionCatalogContext";
 import type { DesktopState } from "./DesktopControls";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
+import { useProviderStatusPollingPause } from "../provider-status-client";
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
 import { CommandCenterShell } from "./command-center/CommandCenterShell";
 
@@ -35,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sessionCountRef = useRef(0);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
+  useProviderStatusPollingPause(Boolean(desktopState?.paused));
   const { ready: homePreferencesReady, rememberSession } = useHomePreferences();
 
   useEffect(() => {

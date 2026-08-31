@@ -637,6 +637,7 @@ export function createMonitorRuntime(options = {}) {
     serveSession: observation.serveSession,
     serveHome: observation.serveHome,
     serveUsageLimits: observation.serveUsageLimits,
+    serveProviderStatus: observation.serveProviderStatus,
     subscribeRevisionEvents: observation.subscribeRevisionEvents,
     observationDiagnostics: observation.diagnostics,
   });

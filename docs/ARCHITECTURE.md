@@ -10,7 +10,7 @@ Safe lifecycle data ────┤            │
 Safe cost snapshots ────┘            │
                                      │ normalized JSON
                                      v
-          /api/sessions + /api/home + /api/state + /api/usage-limits proxies
+          /api/sessions + /api/home + /api/state + /api/usage-limits + /api/provider-status proxies
                                      │
                                      v
                            Pomegr web UI (:3003)
@@ -89,6 +89,15 @@ The Claude adapter discovers workflow workers only at `subagents/workflows/<safe
 Workflow scripts, filesystem paths, task IDs, arguments, prompts, phase details, previews, results, logs, raw journals, provider cumulative token totals, and provider cumulative tool totals remain monitor-private. `metadataStatus` distinguishes a running workflow whose structured phases are pending, accepted completed metadata, and terminal or historical workflows where structured metadata is unavailable. A live workflow is marked `running` only while a linked worker supplies strong non-terminal evidence. Missing, malformed, oversized, or incomplete evidence degrades independently; a historical workflow without a recognized completion manifest is never presented as running. Unsupported providers return an empty workflow collection and deny the capability by default.
 
 ### Web application
+
+Public provider service status has its own monitor-owned observation job and immutable
+response cache. `/api/provider-status` serves both providers through a same-origin proxy
+without acquiring upstream data. A shared frontend store refreshes this local cache every
+thirty visible seconds and supplies fixed Home/Usage limits status plus a conditional live
+session notice. Its five-minute/one-minute external cadence, bounded public incident
+metadata, independent readiness, last-known-good retention and fifteen-minute stale
+transition are defined in `OBSERVATION_CACHE.md` and `PROVIDER_STATUS.md`. It has no
+transcript-worker, session-revision, checkpoint, historical-report, or global-header role.
 
 The React dashboard opens `/` on the personal workspace Home and uses canonical provider-hyphen routes such as `/sessions/[sessionId]` with `claude-…` or `codex-…` segments for a selected session. `AppShell` owns the revisioned `{ sessions }` catalog response. Every presentation-ready row contains bounded committed summary fields and summary readiness, so the Sessions directory renders these objects without a browser-side identity/summary join. Home resolves local pinned identifiers and one last-viewed session against the same catalog, without showing live metrics. Completed rows retain their final agent count, latest context snapshot, and recorded progress. A safe catalog revision event triggers an immediate `/api/sessions` GET and urgent identity/count update. Loading catalog state polls once per second, ready visible state every five seconds as stream recovery, and hidden state every 30 seconds; focus also fetches immediately. The selected session consumes its own revisioned `/api/state` snapshot once per second while loading and every two seconds while live; a ready historical session is fetched once. Existing committed responses remain rendered throughout refresh and retry backoff. Browser presentation timing is not part of the V1 operations feed. A future opt-in milestone may use a fixed allowlist of `performance.mark()`/`PerformanceObserver` measurements for revision receipt, fetch completion, React commit, and next paint, then bridge only revision-correlated durations to the terminal. Those marks remain F Presentation telemetry, never normalized evidence or product metrics; the privacy and activation contract is specified in `docs/PIPELINE_OPERATIONS.md`.
 

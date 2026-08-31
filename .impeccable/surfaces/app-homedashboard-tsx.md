@@ -16,3 +16,13 @@ Composition: a bounded Welcome to Pomegr header; a primary Sessions panel groupi
 Coming soon means unavailable: no fake metrics, pretend chat input, disabled primary actions, model calls, or session control. Coach copy distinguishes planned evidence-based suggestions from facts and requires future explicit opt-in before transmission. What’s new describes this implemented Home update without inventing a release date.
 
 Verification: persistent pin/unpin, bounded identity-only storage, last-viewed navigation, exact project filtering, unavailable/missing catalog handling, independent static content, no Home data polling, and desktop/mobile inspection.
+
+Approved provider-status extension: show a compact fixed service-status panel using the
+shared `/api/provider-status` client. This is the sole external-service status region;
+Home still owns no fetch loop and does not consume Home aggregates or account usage.
+The ordinary state says No reported issues. Unknown/stale observations stay neutral.
+No service-status content is added to the global header.
+The Home status panel sits directly below Sessions in the left column, before the guides
+on mobile. It shares the other panels' h2 title style, border, radius, surface, and inline
+padding, with compact 12px block padding and aligned provider/status rows without extra
+row gaps. Keep 44px touch controls; it must not appear as an unboxed divider strip.

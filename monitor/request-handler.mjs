@@ -1,4 +1,5 @@
 import { createHomeReadiness } from "./observation-readiness.mjs";
+import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
@@ -145,6 +146,20 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
         response.end(JSON.stringify(requestUrl.searchParams.get("scope") === "aggregates"
           ? { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home snapshot error" }
           : { generatedAt: null, providerLimits: [], limitActivities: [], projects: [], error: "Home snapshot error" }));
+      }
+      return;
+    }
+    if (requestUrl.pathname === "/api/provider-status") {
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      try {
+        writeCommitted(runtime.serveProviderStatus?.(requestedRevision), createEmptyProviderStatusSnapshot());
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(createEmptyProviderStatusSnapshot("unavailable")));
       }
       return;
     }

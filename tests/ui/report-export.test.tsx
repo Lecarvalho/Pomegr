@@ -41,10 +41,11 @@ async function download(refresh: Response | Error) {
     onDesktopStateChanged: () => () => {},
   };
   let exporting = false;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).startsWith("/api/provider-status")) return new Response(null, { status: 503 });
     if (!exporting) return new Response(JSON.stringify(state()), { status: 200, headers: { "Content-Type": "application/json" } });
     if (refresh instanceof Error) throw refresh;
-    return refresh;
+    return refresh.clone();
   });
   render(<SessionCatalogProvider sessions={[]}><Dashboard initialSessionId="claude:report-fixture" /></SessionCatalogProvider>);
   const button = await screen.findByRole("button", { name: "Download report" });

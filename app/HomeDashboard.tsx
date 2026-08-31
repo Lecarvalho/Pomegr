@@ -6,6 +6,8 @@ import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
+import { useProviderStatus } from "./provider-status-client";
+import { ProviderStatusArea } from "./components/ProviderStatus";
 import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
 import styles from "./HomeDashboard.module.css";
 
@@ -75,6 +77,7 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
 
 export function HomeDashboard() {
   const { sessions, loading, connected, readiness } = useSessionCatalog();
+  const providerStatus = useProviderStatus();
   const { pins, lastViewedSessionId, ready, persistent, togglePin, updateDismissed, dismissUpdate } = useHomePreferences();
   const destinations = useMemo(() => destinationsFor(sessions), [sessions]);
   const lastViewed = destinations.find((destination) => destination.kind === "session" && destination.id === lastViewedSessionId);
@@ -100,40 +103,44 @@ export function HomeDashboard() {
     </aside>}
 
     <div className={styles.workspace}>
-      <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
-        <header className={styles.sectionHeading}>
-          <div><h2 id="home-sessions-heading">Sessions</h2><p>Open recorded work or return to a saved destination.</p></div>
-          <Link ref={browseRef} className={`commandSecondaryAction ${styles.browse}`} href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
-        </header>
-        {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
-          <div className={styles.lastSession}>
-            {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
-              : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
-          </div>
+      <div className={styles.sessionColumn}>
+        <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
+          <header className={styles.sectionHeading}>
+            <div><h2 id="home-sessions-heading">Sessions</h2><p>Open recorded work or return to a saved destination.</p></div>
+            <Link ref={browseRef} className={`commandSecondaryAction ${styles.browse}`} href="/sessions">Browse sessions<CommandIcon name="arrow" size="small" /></Link>
+          </header>
+          {!ready ? <p className={styles.quiet} role="status">Loading your shortcuts…</p> : <>
+            <div className={styles.lastSession}>
+              {lastViewed ? <Link className={styles.returnLink} href={lastViewed.href} aria-label={`Open last viewed session: ${lastViewed.title}`}><CommandIcon name="session" /><span><small>Last viewed session</small><strong>{lastViewed.title}</strong><span>{lastViewed.detail}</span></span><CommandIcon name="arrow" size="small" /></Link>
+                : <p>{lastViewedSessionId ? (catalogLoading ? "Finding your last viewed session…" : "Your last viewed session is not in the current catalog. Browse sessions to find another.") : "Open a session to inspect its agents and recorded evidence. A shortcut back to it will appear here."}</p>}
+            </div>
 
-          <div className={styles.pins}>
-            <h3 id="home-pins-heading">Pinned destinations</h3>
-            {pins.length ? <ul className={styles.pinList} aria-labelledby="home-pins-heading">
-              {pins.map((pin, index) => {
-                const destination = destinations.find((item) => samePin(item, pin));
-                const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
-                return <li key={`${pin.kind}:${pin.id}`}>
-                  {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}><CommandIcon name={destination.icon} /><span><strong>{destination.title}</strong><small>{destination.detail}</small></span></Link> : <div className={styles.pinUnavailable}><CommandIcon name={pin.kind === "project" ? "repositories" : "session"} /><span><strong>{missingTitle}</strong><small>{catalogLoading ? "Loading destination…" : "Not in the current catalog"}</small></span></div>}
-                  <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
-                </li>;
-              })}
-            </ul> : <p className={styles.emptyPins}>Keep frequently used sessions, projects, and views one click away.</p>}
-            <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
-              <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
-              {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}
-              <button type="button" className="commandSecondaryAction" onClick={() => { if (pickerRef.current) pickerRef.current.open = false; pickerSummaryRef.current?.focus(); }}>Done</button>
-            </details>
-          </div>
-          {!persistent && <p className={styles.quiet} role="status">Browser storage is unavailable. Your Home preferences will last until this page is closed.</p>}
-          {catalogUnavailable && <p className={styles.quiet}>The local monitor is reconnecting. Saved pins are kept; some destinations may be unavailable.</p>}
-        </>}
-        <span className="srOnly" role="status">{pinAnnouncement}</span>
-      </section>
+            <div className={styles.pins}>
+              <h3 id="home-pins-heading">Pinned destinations</h3>
+              {pins.length ? <ul className={styles.pinList} aria-labelledby="home-pins-heading">
+                {pins.map((pin, index) => {
+                  const destination = destinations.find((item) => samePin(item, pin));
+                  const missingTitle = pin.kind === "project" ? pin.id : "Pinned session";
+                  return <li key={`${pin.kind}:${pin.id}`}>
+                    {destination ? <Link href={destination.href} aria-label={`${destination.title} · ${destination.detail}`} className={styles.pinLink}><CommandIcon name={destination.icon} /><span><strong>{destination.title}</strong><small>{destination.detail}</small></span></Link> : <div className={styles.pinUnavailable}><CommandIcon name={pin.kind === "project" ? "repositories" : "session"} /><span><strong>{missingTitle}</strong><small>{catalogLoading ? "Loading destination…" : "Not in the current catalog"}</small></span></div>}
+                    <button className={styles.removePin} type="button" aria-label={`Unpin ${destination?.title || `${missingTitle} ${index + 1}`}`} onClick={() => { togglePin(pin); setPinAnnouncement("Destination removed from Home."); pickerSummaryRef.current?.focus(); }}><CommandIcon name="close" size="small" /></button>
+                  </li>;
+                })}
+              </ul> : <p className={styles.emptyPins}>Keep frequently used sessions, projects, and views one click away.</p>}
+              <details ref={pickerRef} className={styles.pinDisclosure} onToggle={(event) => setPickerOpen(event.currentTarget.open)}>
+                <summary ref={pickerSummaryRef}>Add pins<CommandIcon name="pin" size="small" /></summary>
+                {pickerOpen && <PinPicker destinations={destinations} pins={pins} onToggle={togglePin} catalogLoading={catalogLoading} />}
+                <button type="button" className="commandSecondaryAction" onClick={() => { if (pickerRef.current) pickerRef.current.open = false; pickerSummaryRef.current?.focus(); }}>Done</button>
+              </details>
+            </div>
+            {!persistent && <p className={styles.quiet} role="status">Browser storage is unavailable. Your Home preferences will last until this page is closed.</p>}
+            {catalogUnavailable && <p className={styles.quiet}>The local monitor is reconnecting. Saved pins are kept; some destinations may be unavailable.</p>}
+          </>}
+          <span className="srOnly" role="status">{pinAnnouncement}</span>
+        </section>
+
+        <ProviderStatusArea providers={providerStatus.providers} className={styles.providerStatus} headingId="home-provider-status-heading" />
+      </div>
 
       <section className={styles.guides} aria-labelledby="home-guides-heading">
         <h2 id="home-guides-heading">Understand your sessions</h2>

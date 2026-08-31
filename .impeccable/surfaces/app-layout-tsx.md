@@ -35,3 +35,10 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Responsive layout | CSS grid reflow | Preserve task order and legibility rather than shrinking the desktop composition uniformly. |
 
 The dark prototype is the compositional authority. The warm light theme is an intentional accessibility/user-preference adaptation using the same topology and semantic roles. Missing global agent and repository contracts force honest unavailable states rather than illustrative production data.
+
+Approved provider-status extension: compact fixed status on Home and beside each provider
+in Usage limits (mobile headers use a 44px status-icon control with the full wording
+in accessible details, leaving room for the account update time); a reusable dismissible yellow notice below the live session header only
+for fresh relevant service issues. No global-header indicator, historical-session notice,
+or quota/authentication conflation. One shared status store consumes the independently
+revisioned cache-only endpoint; official public reports are never guarantees of availability.

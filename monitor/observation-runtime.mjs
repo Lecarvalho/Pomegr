@@ -8,6 +8,7 @@ import { createHomeReadiness, createSessionReadiness } from "./observation-readi
 import { SessionObservationCheckpointStore } from "./session-observation-checkpoints.mjs";
 import { createSessionObservationCoordinator } from "./session-observation-coordinator.mjs";
 import { SessionObservationStore } from "./session-observation-store.mjs";
+import { createProviderStatusObservation } from "./provider-status-observation.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -48,6 +49,11 @@ export function createObservationRuntime(options = {}) {
   }
 
   const usageResponseCache = createCommittedResponseCache({ includeRevision: true, now });
+  const providerStatus = createProviderStatusObservation({
+    readStatus: (providerId, requestOptions) => registry.readServiceStatus(providerId, requestOptions),
+    now,
+    ...options.providerStatusObservationOptions,
+  });
   const usageByProvider = new Map();
   const homeResponseCache = createCommittedResponseCache({ includeRevision: true, now });
   let usageRefreshInFlight = null;
@@ -318,6 +324,7 @@ export function createObservationRuntime(options = {}) {
   async function startObservation() {
     if (observationStartPromise) return observationStartPromise;
     observationServingActive = true;
+    providerStatus.start();
     usageResponseCache.commit({
       generatedAt: null,
       readiness: Object.fromEntries((registry.providers || []).map((provider) => [provider.id, "loading"])),
@@ -349,6 +356,7 @@ export function createObservationRuntime(options = {}) {
     try { await observationStartPromise; }
     catch (error) {
       observationServingActive = false;
+      await providerStatus.stop();
       observationStartPromise = null;
       unsubscribeObservation?.();
       unsubscribeObservation = null;
@@ -358,6 +366,7 @@ export function createObservationRuntime(options = {}) {
 
   async function stopObservation() {
     observationServingActive = false;
+    await providerStatus.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
     if (resourceRefreshTimer) clearInterval(resourceRefreshTimer);
     usageRefreshTimer = null;
@@ -400,6 +409,7 @@ export function createObservationRuntime(options = {}) {
     },
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    serveProviderStatus: (revision) => providerStatus.read(revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

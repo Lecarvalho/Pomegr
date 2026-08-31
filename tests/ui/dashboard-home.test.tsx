@@ -50,8 +50,8 @@ describe("personal Home", () => {
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
   });
 
-  it("offers navigation and honest discovery without monitoring regions or requests", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+  it("offers navigation with a compact local provider-status exception", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Local test monitor unavailable"));
     const { container } = home();
     expect(screen.getByRole("heading", { name: "Welcome to Pomegr" })).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Sessions" })).getByRole("heading", { name: "Pinned destinations", level: 3 })).toBeInTheDocument();
@@ -64,8 +64,10 @@ describe("personal Home", () => {
     expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("Coming soon");
     expect(screen.getByRole("region", { name: "Session coach" })).toHaveTextContent("opt-in");
     expect(within(screen.getByRole("region", { name: "Session coach" })).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "Provider status" })).getByRole("heading", { name: "Provider status", level: 2 })).toBeInTheDocument();
     await act(async () => { window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange")); });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+    for (const [input] of fetchMock.mock.calls) expect(String(input)).toMatch(/^\/api\/provider-status(?:\?revision=\d+)?$/);
   });
 
   it("pins a selected session, persists only its identity, and can unpin it", async () => {

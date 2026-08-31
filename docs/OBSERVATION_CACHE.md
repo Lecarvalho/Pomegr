@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/home`, and `/api/usage-limits` handlers
+- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, and `/api/provider-status` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -44,6 +44,55 @@ Use these names in code, tests, diagnostics, and architecture discussions:
 U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream consumers of
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
+
+## Public provider service status
+
+Public service status is an independent observation domain, not session evidence,
+account authentication, usage limits, or a measurement of an individual request.
+It starts and stops with `createObservationRuntime` but never enters the transcript
+worker queue, session store, Home derivation, or checkpoint writer.
+
+- U1 reads fixed official public status endpoints through the provider registry.
+  Provider adapters own component mappings, response byte/item bounds, API formats,
+  timeout/cancellation and redirect rejection. Requests carry no OAuth credentials,
+  session identifiers, prompts, or inference traffic.
+- U2 emits only bounded provider-neutral health, update times, and up to eight
+  relevant public incidents. C validates the complete candidate, then D produces an
+  immutable response with its own revision. Updates never revise session evidence.
+- Each provider checks immediately in the background on startup, every five minutes
+  normally, and every minute while a relevant incident, degradation, outage, or
+  active maintenance is reported. Timers add at most ten percent jitter. Failures
+  back off through one, two, five, and ten minutes; work for one provider is serialized
+  and never blocks the other. Each acquisition is bounded by a ten-second deadline.
+- A failed or rejected replacement retains the last successful status, incidents,
+  and `checkedAt`, while marking observation readiness unavailable. A separate timer
+  commits stale freshness after fifteen minutes without a successful check, even
+  during backoff. A failed request is never evidence that the provider is down.
+- S serves only the committed `/api/provider-status` response, including before
+  initial acquisition finishes. GETs cannot start or refresh upstream work. The
+  same-origin proxy returns both providers, supports a numeric `revision` query and
+  `204` for unchanged data, and uses `no-store`. This domain has no P persistence,
+  session-history attachment, report export, or operations-IPC payload in v1.
+- F uses one shared provider-status store per browser tab, with serialized local GETs
+  every thirty seconds while visible consumers exist, focus refresh, and pause handling.
+  Provider network cadence does not depend on browser tabs or selected sessions.
+  Frontend failures retain visible data, but elapsed freshness never remains green
+  indefinitely when the monitor is unreachable. No browser storage caches status.
+- Home and Usage limits show compact fixed status. A live session shows a dismissible
+  yellow notice only for a fresh relevant service issue; healthy, unknown, stale, and
+  historical views show no session notice. Dismissal is bounded tab-memory view state,
+  keyed by a monitor-issued incident identity and severity. Recovery removes a notice;
+  a new incident or material worsening can show it again.
+
+Public serialization is limited to provider/source enums, health/readiness/freshness,
+last successful local check and provider update timestamps, a fixed official status-page
+URL, opaque notice/incident identities, and bounded plain-text incident labels, lifecycle,
+impact, timestamps and validated official incident URLs. No raw bodies, component schemas,
+provider-native IDs outside public incident URLs, arbitrary URLs, fetch errors, credentials,
+or transcript metadata cross this boundary. Public status reports can lag actual failures;
+the normal UI label is **No reported issues**, never a guarantee of availability.
+
+The official source and component-filter details are documented in `docs/PROVIDER_STATUS.md`.
 
 ## Focused report evidence
 
