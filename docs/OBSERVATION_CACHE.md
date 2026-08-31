@@ -12,7 +12,7 @@ document and `AGENTS.md` govern repository changes.
   hydration units so the monitor's cache-serving event loop remains responsive.
 - Production `/api/sessions`, `/api/state`, `/api/home`, and `/api/usage-limits` handlers
   read only committed response caches. They never open, seek, or parse provider
-  transcripts and never synchronously call a provider usage service.
+  transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
   it returns the current committed response or explicit loading readiness immediately.
 - A raw-source chunk or tail limit bounds one acquisition operation only. It never defines
@@ -339,6 +339,28 @@ timestamp computed from the coordinator's cooldown. Raw provider response bodies
 headers, request identifiers, credentials, and endpoint details remain monitor-private.
 `rate_limited` means only that the usage request received a recognized throttle response;
 it is not evidence that an account or session exhausted its plan allowance.
+
+### Claude Remote Control lifecycle acquisition
+
+The Claude adapter supplements local registry discovery with read-only native metadata for locally discovered, live `sdk-cli` sessions with validated PID/start ownership and an exact bridge association. U1 requests only the fixed Anthropic session metadata endpoint; U2 accepts only matching identity and explicit `running`, `requires_action`, or `idle` lifecycle. Registry/remote transport fields remain provider-private. Only U1 background catalog discovery and source acquisition perform network refreshes. The U2 evidence reducer applies the cached normalized snapshot without network access; S Serving and F Presentation never call the native API.
+
+The private reader retains at most 50 associations, coalesces concurrent requests, permits four network reads at a time, and bounds each read to six seconds and 256 KiB. Successful reads are cached for ten seconds; unsuccessful reads retry no sooner than sixty seconds. The normal ten-second observer reconciliation supplies refresh opportunities. Failures retain the last valid state and original transition-observation timestamp for the same owner, while ownership, bridge, or credential changes invalidate reuse. No status is invented before a valid observation.
+
+A normalized lifecycle change contributes to the adapter source fingerprint, so hydration updates even when transcript bytes do not change. The existing staged replacement and contract validation still govern C Commit: incomplete replacement input cannot erase a prior complete revision. Repeated identical status does not advance the lifecycle observation timestamp or force transcript reacquisition. D Derivation and revision-aware cache-only GETs remain unchanged. P Persistence may retain only existing normalized evidence and the opaque source fingerprint; the remote response, bridge ID, token/hash, and private association cache are never checkpointed. Historical session hydration never requests remote status for that session.
+
+Claude catalog acquisition also incrementally reduces the complete primary transcript
+for successful, structured background workflow/shell launches and exact terminal
+notifications, or exact run-matched completed workflow manifests. This evidence is scoped to the validated process identity and its
+registry start time, independent of native primary idle and modification-time agent
+heuristics. The private cache holds at most fifty sessions with 256 pending calls
+and 256 open task IDs each; raw records never leave acquisition/normalization.
+Cooperative 64 KiB reads and a 256 KiB fragment limit bound acquisition, not the
+lifetime of observed work. A malformed or incomplete replacement preserves the
+last valid observation; process replacement discards the old association. Only the
+composed catalog activity enum crosses C Commit, with no new browser or checkpoint
+fields. Background work can make a session Working while its primary agent is Idle.
+
+The request and schema compatibility contract is in [Claude session status](CLAUDE_SESSION_STATUS.md).
 
 ## Readiness contract
 

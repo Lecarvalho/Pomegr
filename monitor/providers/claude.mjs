@@ -34,7 +34,12 @@ import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
+import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifecycle.mjs";
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
+import {
+  claudeLifecycleSource, createClaudeSessionStatusReader, normalizeClaudeSessionRegistryEntry,
+  registryStatus, registryTimestamp, sessionActivityStatus,
+} from "./claude-session-status.mjs";
 
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
@@ -186,26 +191,6 @@ function statusFor(mtimeMs, now = Date.now()) {
   return "idle";
 }
 
-function registryStatus(entry, fallback) {
-  if (!entry) return fallback;
-  if (entry.status === "active") return "active";
-  if (entry.status === "waiting") return "waiting";
-  if (entry.status === "idle") return "idle";
-  return fallback;
-}
-
-function registryTimestamp(entry) {
-  return entry?.updatedAt ? new Date(entry.updatedAt).toISOString() : null;
-}
-
-function sessionActivityStatus(isLive, registryEntry) {
-  if (!isLive) return "unknown";
-  if (registryEntry?.needsInput) return "needs_input";
-  if (registryEntry?.status === "active" || registryEntry?.status === "waiting") return "working";
-  if (registryEntry?.status === "idle") return "idle";
-  return "unknown";
-}
-
 function projectCwd(records) {
   return records.find((record) => typeof record.cwd === "string")?.cwd || "";
 }
@@ -334,6 +319,9 @@ export function createClaudeProvider(options = {}) {
     request: options.usageRequest || usageRequest(homeDir, options.fetch || globalThis.fetch),
   }).get;
 
+  const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
+  const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });
+
   async function cachedSessionTitle(file, stat) {
     const identity = fileIdentity(stat);
     const cached = sessionTitleCache.get(file);
@@ -405,7 +393,7 @@ export function createClaudeProvider(options = {}) {
 
   function discoveredSessions() {
     const files = listSessionFiles(projectsRoot);
-    const registry = readSessionRegistry(registryRoot, { validateOwners: validateRegistryOwners });
+    const registry = readSessionRegistry(registryRoot, { validateOwners: validateRegistryOwners, normalizeEntry: normalizeClaudeSessionRegistryEntry });
     const explicitFile = explicitSession && fs.existsSync(explicitSession) ? explicitSession : null;
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
@@ -422,6 +410,8 @@ export function createClaudeProvider(options = {}) {
 
   async function listSessions() {
     const { files, liveFiles, registry } = discoveredSessions();
+    backgroundLifecycle.prune(registry);
+    await nativeStatus.refresh(registry, files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl")));
     const visibleFiles = new Set(files.slice(0, 50).map(({ file }) => file));
     for (const file of sessionTitleCache.keys()) {
       if (!visibleFiles.has(file) && !statSafe(file)) sessionTitleCache.delete(file);
@@ -434,10 +424,11 @@ export function createClaudeProvider(options = {}) {
       const cached = sessionSummaryCache.get(file);
       const registryEntry = registry.get(path.basename(file, ".jsonl"));
       const isLive = liveFiles.has(file);
+      const backgroundRunning = isLive ? await backgroundLifecycle.observe(file, registryEntry) : null;
       const liveState = {
         isLive,
         needsInput: Boolean(registryEntry?.needsInput),
-        activityStatus: sessionActivityStatus(isLive, registryEntry),
+        activityStatus: sessionActivityStatus(isLive, registryEntry, backgroundRunning),
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
       if (cached?.key === cacheKey) {
@@ -478,6 +469,7 @@ export function createClaudeProvider(options = {}) {
     if (!mainFile) return null;
     const historical = !liveFiles.has(mainFile);
     const sessionId = path.basename(mainFile, ".jsonl");
+    if (!historical) nativeStatus.apply(registry, [sessionId]);
     const sessionRegistryEntry = registry.get(sessionId);
     const agentDir = path.join(path.dirname(mainFile), sessionId, "subagents");
     const workflowRoot = path.join(path.dirname(mainFile), sessionId, "workflows");
@@ -617,7 +609,8 @@ export function createClaudeProvider(options = {}) {
       const externallyStopped = externallyStoppedAt && isExternalStopCurrent(records, externallyStoppedAt);
       const transcriptNeedsInputAt = pendingUserInputAt(records);
       const registryNeedsInputAt = file === mainFile && sessionRegistryEntry?.needsInput ? registryTimestamp(sessionRegistryEntry) : null;
-      const needsInputAt = registryNeedsInputAt || transcriptNeedsInputAt;
+      const needsInputAt = file === mainFile && sessionRegistryEntry?.remoteSessionId
+        ? registryNeedsInputAt : registryNeedsInputAt || transcriptNeedsInputAt;
       const observedStatus = file === mainFile
         ? registryStatus(sessionRegistryEntry, statusFor(stat.mtimeMs, now()))
         : statusFor(stat.mtimeMs, now());
@@ -726,13 +719,15 @@ export function createClaudeProvider(options = {}) {
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
 
-  function observerSource(localSessionId) {
+  async function observerSource(localSessionId) {
     const discovered = discoveredSessions();
     const file = discovered.files.find(({ file: candidate }) => path.basename(candidate, ".jsonl") === localSessionId)?.file || null;
     if (!file) return null;
     const agentDir = path.join(path.dirname(file), localSessionId, "subagents");
     const workflowFiles = discoverClaudeWorkflowAgents(agentDir).files.map((item) => item.file);
-    return incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, !discovered.liveFiles.has(file));
+    const historical = !discovered.liveFiles.has(file);
+    if (!historical) await nativeStatus.refresh(discovered.registry, [localSessionId]);
+    return claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot);

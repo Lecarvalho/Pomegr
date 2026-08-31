@@ -139,7 +139,7 @@ export function readSessionRegistry(root, options = {}) {
     try {
       const stat = fs.statSync(file);
       if (!stat.isFile()) continue;
-      const entry = normalizeSessionRegistryEntry(JSON.parse(fs.readFileSync(file, "utf8")), stat.mtimeMs);
+      const entry = (options.normalizeEntry || normalizeSessionRegistryEntry)(JSON.parse(fs.readFileSync(file, "utf8")), stat.mtimeMs);
       if (!entry) continue;
       const current = registry.get(entry.sessionId);
       if (!current || entry.updatedAt >= current.updatedAt) registry.set(entry.sessionId, entry);
