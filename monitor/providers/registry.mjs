@@ -36,10 +36,10 @@ function automaticCandidates(entries) {
   return [...needsInput, ...otherLive, ...historical];
 }
 
-const SESSION_ACTIVITY_STATUSES = new Set(["working", "needs_input", "idle", "unknown"]);
+const SESSION_ACTIVITY_STATUSES = new Set(["working", "needs_input", "idle", "open", "stopped", "unknown"]);
 
 function normalizedSessionActivityStatus(entry) {
-  if (!entry?.isLive) return "unknown";
+  if (!entry?.isLive) return ["idle", "stopped"].includes(entry?.activityStatus) ? entry.activityStatus : "unknown";
   if (entry.needsInput) return "needs_input";
   return SESSION_ACTIVITY_STATUSES.has(entry.activityStatus) ? entry.activityStatus : "unknown";
 }

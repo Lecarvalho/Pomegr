@@ -69,6 +69,7 @@ test("real Codex observer publishes lifecycle state without transcript growth an
   assert.doesNotMatch(JSON.stringify(active), /PRIVATE_OUTPUT_MUST_NOT_LEAK|PROMPT|RESPONSE_MUST_NOT_LEAK|TOOL_OUTPUT_MUST_NOT_LEAK/);
 
   observer.stop();
+  now = NOW + 3 * 60 * 60_000;
   const restartedCandidates = [];
   const restartedCatalogs = [];
   const restartedProvider = createCodexProvider({
@@ -95,15 +96,19 @@ test("real Codex observer publishes lifecycle state without transcript growth an
   assert.equal(await restarted.hydrate("lifecycle-root"), false);
   assert.equal(restartedCandidates.length, beforeCompletion);
 
-  now = NOW + 130_000;
+  now += 130_000;
   await appendFile(rollout, `${record(now, "response_item", { type: "function_call", name: "exec", call_id: "progress-tool", arguments: "{}" })}\n`, "utf8");
   await restarted.hydrate("lifecycle-root");
   await waitFor(() => restartedCandidates.length > beforeCompletion);
   assert.equal((await restartedProvider.listSessions()).find((entry) => entry.localId === "lifecycle-root").activityStatus, "working");
 
-  now = NOW + 250_001;
+  now += 120_001;
   const quiet = await restartedProvider.listSessions();
-  assert.equal(quiet.find((entry) => entry.localId === "lifecycle-root").activityStatus, "unknown");
+  assert.equal(quiet.find((entry) => entry.localId === "lifecycle-root").activityStatus, "working");
+  assert.equal(quiet.find((entry) => entry.localId === "lifecycle-root").isLive, true);
+  const beforeSilence = restartedCandidates.length;
+  assert.equal(await restarted.hydrate("lifecycle-root"), false);
+  assert.equal(restartedCandidates.length, beforeSilence, "silence does not manufacture revisions");
   await appendFile(rollout, `${record(now, "turn_completed", { turn_id: "turn-1", status: "completed" })}\n`, "utf8");
   await restarted.hydrate("lifecycle-root");
   await waitFor(() => restartedCandidates.length > beforeCompletion && restartedCatalogs.at(-1)?.find((entry) => entry.localId === "lifecycle-root")?.activityStatus === "idle");
@@ -116,4 +121,31 @@ test("real Codex observer publishes lifecycle state without transcript growth an
 
   const historical = await createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0, now: () => NOW }).readSession("lifecycle-root", { historical: true });
   assert.equal(historical.agents.every((agent) => agent.liveness === null || agent.liveness === undefined), true);
+});
+
+test("incremental observation rebuilds lifecycle after a larger in-place rollout replacement", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-replaced-pipeline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessions = path.join(root, "sessions", "2026", "08", "30");
+  await mkdir(sessions, { recursive: true });
+  const rollout = path.join(sessions, "rollout-replaced-root.jsonl");
+  const header = record(NOW, "session_meta", { id: "replaced-root", source: "vscode", cwd: "C:\\synthetic\\pomegr" });
+  await writeFile(rollout, header + "\n" + record(NOW, "event_msg", { type: "task_started", turn_id: "old-turn" }) + "\n");
+  const candidates = [];
+  const catalogs = [];
+  const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0, now: () => NOW + 1_000,
+    observerIntervalMs: 60_000, observerWatchSource: () => ({ close() {} }) });
+  const observer = provider.createObserver();
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog(entries) { catalogs.push(entries); },
+    publishSession(_id, candidate) { candidates.push(candidate); }, invalidateSession() {} }, controller.signal);
+  await waitFor(() => candidates.length > 0);
+  assert.equal(catalogs.at(-1).find((entry) => entry.localId === "replaced-root").activityStatus, "working");
+  await writeFile(rollout, header + "\n" + record(NOW, "event_msg", { type: "agent_reasoning", text: "PRIVATE_REPLACEMENT".repeat(100) }) + "\n");
+  await observer.hydrate("replaced-root");
+  assert.equal(catalogs.at(-1).find((entry) => entry.localId === "replaced-root").activityStatus, "unknown");
+  assert.notEqual(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "active");
+  assert.doesNotMatch(JSON.stringify(candidates.at(-1)), /PRIVATE_REPLACEMENT/);
+  observer.stop();
 });

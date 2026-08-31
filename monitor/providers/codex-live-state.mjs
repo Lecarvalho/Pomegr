@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import { createHash } from "node:crypto";
 import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
@@ -43,20 +44,6 @@ export function createCodexLiveState({
   };
   const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
-  function priorSuffixStillMatches(file, generation) {
-    if (!generation?.suffixDigest || !Number.isInteger(generation.suffixBytes) || generation.suffixBytes < 1) return false;
-    let descriptor;
-    try {
-      descriptor = fs.openSync(file, "r");
-      const buffer = Buffer.alloc(generation.suffixBytes);
-      const read = fs.readSync(descriptor, buffer, 0, generation.suffixBytes, generation.size - generation.suffixBytes);
-      return read === generation.suffixBytes && digest(buffer) === generation.suffixDigest;
-    } catch {
-      return false;
-    } finally {
-      if (descriptor !== undefined) fs.closeSync(descriptor);
-    }
-  }
 
   function invalidateRolloutFile(file, { clearContext = false } = {}) {
     rolloutCache.delete(file);
@@ -124,7 +111,7 @@ export function createCodexLiveState({
     const previous = cached.generation;
     const monotonic = previous && previous.identity === generation.identity && generation.size >= previous.size && generation.mtimeMs >= previous.mtimeMs
       && (generation.size > previous.size || (strictSuffix ? generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest : generation.mtimeMs === previous.mtimeMs));
-    if (!monotonic || !priorSuffixStillMatches(file, previous)) {
+    if (!monotonic || !priorSourceSuffixMatches(file, previous)) {
       cache.delete(file);
       return null;
     }
@@ -227,7 +214,7 @@ export function createCodexLiveState({
       && generation.size >= previous.size
       && generation.mtimeMs >= previous.mtimeMs
       && (generation.size > previous.size || (generation.mtimeMs === previous.mtimeMs && generation.suffixDigest === previous.suffixDigest))
-      && priorSuffixStillMatches(file, previous));
+      && priorSourceSuffixMatches(file, previous));
   }
 
   function mergeLiveContextEvidence(file, generation, context) {
@@ -283,7 +270,7 @@ export function createCodexLiveState({
     const key = `${historical ? "history" : "live"}:${identity}:${stat.size}:${stat.mtimeMs}:${bytes}`;
     const cached = rolloutCache.get(file);
     if (cached?.key === key) {
-      if (priorSuffixStillMatches(file, cached.generation)) {
+      if (priorSourceSuffixMatches(file, cached.generation)) {
         rolloutStats.cacheHits += 1;
         return { records: cached.records, generation: cached.generation };
       }

@@ -59,7 +59,8 @@ test("wrong-turn outputs and unrelated records cannot refresh or clear retained 
     record(119_000, "response_item", { type: "not_a_provider_activity", turn_id: "turn-idle" }),
   ]);
   const stale = codexRecordedLiveness(completed, { now: START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1_001 });
-  assert.equal(stale.status, "unknown");
+  assert.equal(stale.status, "idle");
+  assert.equal(stale.live, false);
   assert.equal(stale.observedAt, new Date(START + 1_000).toISOString());
 });
 
@@ -82,17 +83,54 @@ test("malformed records and incomplete acquisition never claim a known lifecycle
   assert.equal(incomplete.evidence, "unavailable");
 });
 
-test("quiet recorded lifecycle degrades to unknown without manufacturing a heartbeat", () => {
+test("quiet recorded lifecycle retains an open turn without manufacturing a heartbeat", () => {
   const state = reduce([record(0, "turn_started", { turn_id: "turn-silent" })]);
   const stale = codexRecordedLiveness(state, { now: START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1 });
   assert.deepEqual(stale, {
-    live: false,
-    status: "unknown",
+    live: true,
+    status: "active",
     needsInput: false,
     source: "structured_lifecycle",
     observedAt: new Date(START).toISOString(),
-    evidence: "unavailable",
-    freshness: "stale",
-    reason: "observation_gap",
+    evidence: "observed",
+    freshness: "current",
   });
+});
+
+test("silent work and typed input remain unresolved for hours, then matching evidence ends them", () => {
+  let state = reduce([record(0, "event_msg", { type: "task_started", turn_id: "long-turn" })]);
+  const hoursLater = 4 * 60 * 60_000;
+  const active = codexRecordedLiveness(state, { now: START + hoursLater });
+  assert.equal(active.status, "active");
+  assert.equal(active.live, true);
+  assert.equal(active.observedAt, new Date(START).toISOString());
+  state = reduceCodexRecordedLifecycle(state, record(1_000, "response_item", {
+    type: "function_call", name: "request_user_input", call_id: "input", turn_id: "long-turn",
+  }));
+  assert.equal(codexRecordedLiveness(state, { now: START + hoursLater }).status, "needs_input");
+  state = reduceCodexRecordedLifecycle(state, record(hoursLater, "response_item", {
+    type: "function_call_output", call_id: "input", turn_id: "long-turn",
+  }));
+  assert.equal(codexRecordedLiveness(state, { now: START + hoursLater + 1 }).status, "active");
+  state = reduceCodexRecordedLifecycle(state, record(hoursLater + 2, "event_msg", {
+    type: "task_complete", turn_id: "long-turn",
+  }));
+  const completed = codexRecordedLiveness(state, { now: START + 2 * hoursLater });
+  assert.equal(completed.status, "idle");
+  assert.equal(completed.live, false);
+  state = reduceCodexRecordedLifecycle(state, record(hoursLater + 3, "turn_context", { turn_id: "long-turn" }));
+  assert.equal(codexRecordedLiveness(state, { now: START + 2 * hoursLater }).status, "idle");
+});
+
+test("interrupted and failed turns stay stopped while incomplete observation stays unknown", () => {
+  for (const type of ["task_interrupted", "task_failed"]) {
+    const state = reduce([
+      record(0, "event_msg", { type: "task_started", turn_id: "stopped-turn" }),
+      record(1_000, "event_msg", { type, turn_id: "stopped-turn" }),
+    ]);
+    const now = START + 60 * 60_000;
+    assert.equal(codexRecordedLiveness(state, { now }).status, "stopped");
+    assert.equal(codexRecordedLiveness(state, { now }).live, false);
+    assert.equal(codexRecordedLiveness(state, { now, complete: false }).status, "unknown");
+  }
 });

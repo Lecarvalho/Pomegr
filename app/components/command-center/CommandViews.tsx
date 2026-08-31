@@ -17,10 +17,15 @@ function sessionHref(session: SessionSummary) {
 }
 
 function sessionState(session: SessionSummary) {
-  if (session.needsInput || session.activityStatus === "needs_input") return { label: "Needs input", state: "attention" as const };
-  if (session.activityStatus === "working") return { label: "Active", state: "active" as const };
-  if (session.activityStatus === "idle") return { label: "Idle", state: "idle" as const };
-  return { label: session.isLive ? "Open" : "Complete", state: "unknown" as const };
+  switch (session.activityStatus) {
+    case "working": return { label: "In progress", state: "active" as const };
+    case "needs_input": return { label: "Needs input", state: "attention" as const };
+    case "idle": return { label: "Idle", state: "idle" as const };
+    case "open": return { label: "Open", state: "unknown" as const };
+    case "stopped": return { label: "Stopped", state: "unknown" as const };
+    case "unknown": return { label: "Unknown", state: "unknown" as const };
+  }
+  return { label: "Unknown", state: "unknown" as const };
 }
 
 function sessionTimestamp(value: string) {

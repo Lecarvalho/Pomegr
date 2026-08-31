@@ -423,7 +423,7 @@ export const providerSessionReferenceSchema = z.object({
   updatedAt: evidenceTimestamp,
   isLive: z.boolean(),
   needsInput: z.boolean(),
-  activityStatus: z.enum(["working", "needs_input", "idle", "unknown"]),
+  activityStatus: z.enum(["working", "needs_input", "idle", "open", "stopped", "unknown"]),
   resourceOwner: z.object({
     pid: z.number().int().positive(),
     processStartIdentity: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.:+-]{0,79}$/),

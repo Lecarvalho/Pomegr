@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
@@ -378,10 +379,12 @@ export function createCodexIncrementalObserver(options = {}) {
         && (part.descriptor.mtimeMs !== descriptor.mtimeMs
           || (part.descriptor.suffixDigest && descriptor.suffixDigest
             && part.descriptor.suffixDigest !== descriptor.suffixDigest));
+      const rewrittenGrowth = descriptor.size > part.descriptor.size
+        && part.descriptor.size > 0 && !priorSourceSuffixMatches(descriptor.file, part.descriptor);
       const snapshot = part.ingestor.snapshot();
       const identity = part.descriptor.identity !== descriptor.identity
         ? descriptor.identity
-        : sameSizeGenerationChange
+        : sameSizeGenerationChange || rewrittenGrowth
           ? crypto.createHash("sha256").update(`${descriptor.identity}\0${descriptor.mtimeMs}\0${descriptor.suffixDigest}`).digest("hex")
           : snapshot?.identity || descriptor.identity;
       const replacementPending = snapshot

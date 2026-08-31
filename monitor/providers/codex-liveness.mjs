@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import path from "node:path";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { isSafeCodexSessionId } from "./codex-session-metadata.mjs";
@@ -63,11 +64,10 @@ export function createCodexLivenessCoordinator(options = {}) {
 
   function rolloutEvidence(file, nowMs, implementation, unavailableReason) {
     if (!file) return null;
-    let stat;
-    try { stat = fs.statSync(file); } catch { return null; }
+    const current = incrementalSourceDescriptor(file);
+    if (!current) return null;
     const recorded = recordedSources.get(file);
     if (recorded) {
-      const current = incrementalSourceDescriptor(file);
       const matching = current && current.identity === recorded.generation.identity
         && current.size === recorded.generation.size && current.mtimeMs === recorded.generation.mtimeMs
         && current.suffixDigest === recorded.generation.suffixDigest;
@@ -76,22 +76,29 @@ export function createCodexLivenessCoordinator(options = {}) {
         if (retained) return retained;
       }
     }
-    const key = `${stat.size}:${stat.mtimeMs}`;
+    const key = `${current.identity}:${current.size}:${current.mtimeMs}:${current.suffixDigest}`;
     let cached = tailCache.get(file);
     if (!cached || cached.key !== key) {
       const read = readCodexLivenessTail(file, maximumTailBytes);
-      const previousBoundary = cached && stat.size > cached.size ? cached.boundary : null;
+      const appended = cached && current.identity === cached.generation.identity
+        && current.size > cached.generation.size && current.mtimeMs >= cached.generation.mtimeMs
+        && priorSourceSuffixMatches(file, cached.generation);
+      const previousBoundary = appended ? cached.boundary : null;
       const tailBoundary = observedCodexRolloutLifecycle(read.records, { now: nowMs }).boundary;
-      const continuous = !cached || stat.size <= cached.size
-        || (cached.size >= read.startOffset && cached.continuous !== false);
-      cached = { key: read.key, records: read.records, size: stat.size,
-        complete: read.complete,
+      const continuous = !cached || !appended
+        || (cached.generation.size >= read.startOffset && cached.continuous !== false);
+      const confirmed = incrementalSourceDescriptor(file);
+      const stable = confirmed && confirmed.identity === current.identity
+        && confirmed.size === current.size && confirmed.mtimeMs === current.mtimeMs
+        && confirmed.suffixDigest === current.suffixDigest;
+      cached = { key, records: read.records, generation: current,
+        complete: read.complete && Boolean(stable),
         continuous: Boolean(tailBoundary) || continuous,
         boundary: observedCodexRolloutLifecycle(read.records, { now: nowMs, previous: previousBoundary }).boundary };
       tailCache.set(file, cached);
       while (tailCache.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) tailCache.delete(tailCache.keys().next().value);
       stats.rolloutFiles += 1;
-      stats.rolloutBytes += Math.min(stat.size, maximumTailBytes);
+      stats.rolloutBytes += Math.min(current.size, maximumTailBytes);
     }
     const explicit = observedCodexRolloutLifecycle(cached.records, { now: nowMs, previous: cached.boundary }).liveness;
     const inferred = implementation.infer(cached.records, { now: nowMs });
@@ -178,7 +185,8 @@ export function createCodexLivenessCoordinator(options = {}) {
       const metadataCanBeLive = !authoritative && rolloutMetadataCanBeLive(thread, checkedAt);
       const implementation = sourceFor(topLevelSourceBySessionId.get(thread.sessionId || thread.localId) || thread.sourceKind);
       const coldCandidate = !authoritative && !metadataCanBeLive && implementation.coldCandidate(thread, hasCurrentWriterLock);
-      const rollout = !authoritative && (metadataCanBeLive || coldCandidate || recordedSources.has(thread.rolloutFile))
+      const rollout = !authoritative && (metadataCanBeLive || coldCandidate
+        || recordedSources.has(thread.rolloutFile) || tailCache.has(thread.rolloutFile))
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null)
         : null;
       // A newer recorded boundary can repair an older ambiguous hook snapshot.
@@ -188,6 +196,9 @@ export function createCodexLivenessCoordinator(options = {}) {
       return {
         ...thread,
         liveStatus: liveness?.status || "unknown",
+        // Keep owner-backed presence separate from an unresolved recorded turn.
+        presenceConfirmed: Boolean(app || (bridgeRecord?.snapshot.version === 2
+          && resourceOwnersByThreadId.has(thread.localId))),
         liveness: liveness ? {
           source: liveness.source, observedAt: liveness.observedAt,
           evidence: liveness.evidence, freshness: liveness.freshness,
@@ -201,7 +212,7 @@ export function createCodexLivenessCoordinator(options = {}) {
       const ids = descendantsFor(rootThread.localId, observedThreads);
       const related = observedThreads.filter((thread) => ids.has(thread.localId));
       const live = related.filter((thread) => thread.livenessLive);
-      const newest = live.map((thread) => thread.liveness).filter(Boolean).sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
+      const newest = related.map((thread) => thread.liveness).filter(Boolean).sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
       const resourceOwner = live.length > 0
         ? uniqueResourceOwner(related.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean))
         : null;

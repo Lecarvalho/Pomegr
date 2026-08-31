@@ -23,7 +23,7 @@ describe("sessions table", () => {
     const unavailableRow = within(table).getByText("Progress unavailable").closest("tr");
     expect(progressRow).not.toBeNull();
     expect(unavailableRow).not.toBeNull();
-    expect(within(progressRow!).getByText("Active").closest("td")).toHaveAttribute("data-label", "State");
+    expect(within(progressRow!).getByText("In progress").closest("td")).toHaveAttribute("data-label", "State");
     expect(within(progressRow!).getByText("1/2").closest("td")).toHaveAttribute("data-label", "Agents");
     expect(within(progressRow!).getByText("12k").closest("td")).toHaveAttribute("data-label", "Context");
     expect(within(progressRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("42%");
@@ -53,7 +53,7 @@ describe("sessions table", () => {
     expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
   });
 
-  it.each(["working", "unknown", "needs_input"] as const)("shows an em dash for a legacy retained heading in %s rows", (activityStatus) => {
+  it.each(["working", "needs_input", "idle", "open", "stopped", "unknown"] as const)("shows an em dash for a legacy retained heading in %s rows", (activityStatus) => {
     const session: SessionSummary = JSON.parse(JSON.stringify({ ...sessions[0], activityStatus, currentActivity: { ...activity, state: "last_observed" } }));
     const view = render(<SessionCatalogProvider sessions={[session]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.queryByText(/Last observed/)).not.toBeInTheDocument();
@@ -61,6 +61,35 @@ describe("sessions table", () => {
     expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
     expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument();
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
+  });
+
+  it.each([
+    ["working", "In progress", true],
+    ["needs_input", "Needs input", true],
+    ["idle", "Idle", true],
+    ["open", "Open", false],
+    ["stopped", "Stopped", true],
+    ["unknown", "Unknown", true],
+    ["unknown", "Unknown", false],
+  ] as const)("renders %s as %s without deriving it from the Live filter flag", (activityStatus, label, isLive) => {
+    const view = render(<SessionCatalogProvider sessions={[{ ...sessions[0], activityStatus, isLive }]}><SessionsView /></SessionCatalogProvider>);
+    const row = screen.getByText("Progress available").closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText(label)).toBeInTheDocument();
+    expect(view.container.querySelectorAll(".commandTableActivityMark")).toHaveLength(activityStatus === "working" || activityStatus === "needs_input" ? 2 : 0);
+  });
+
+  it.each([
+    ["missing", (session: SessionSummary) => Reflect.deleteProperty(session, "activityStatus")],
+    ["unrecognized", (session: SessionSummary) => { (session as { activityStatus: string }).activityStatus = "waiting"; }],
+  ])("renders an Unknown lifecycle state for a %s catalog value", (_kind, mutate) => {
+    const legacy: SessionSummary = JSON.parse(JSON.stringify(sessions[0]));
+    mutate(legacy);
+    render(<SessionCatalogProvider sessions={[legacy]}><SessionsView /></SessionCatalogProvider>);
+
+    const row = screen.getByText("Progress available").closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText("Unknown")).toBeInTheDocument();
   });
 
   it("shows an em dash when the catalog is uncertain", () => {

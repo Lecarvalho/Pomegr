@@ -141,7 +141,7 @@ test("one owner lease supports concurrent sessions while ambiguous hook stops re
     thread("child-b", { sessionId: "session-b", parentThreadId: "session-b" }),
   ]);
   assert.equal(observed.sessions.get("session-a").isLive, true);
-  assert.equal(observed.sessions.get("session-a").activityStatus, "unknown");
+  assert.equal(observed.sessions.get("session-a").activityStatus, "open");
   assert.equal(observed.sessions.get("session-b").isLive, true);
   assert.equal(observed.threads.find((item) => item.localId === "child-b").liveStatus, "unknown");
   assert.equal((await readdir(path.join(root, "leases"))).length, 1);
@@ -244,7 +244,7 @@ test("a persisted terminal hook snapshot remains unknown while its owner lease r
   const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
   const observed = coordinator.observe([thread()]);
   assert.equal(observed.sessions.get("live-root").isLive, true);
-  assert.equal(observed.sessions.get("live-root").activityStatus, "unknown");
+  assert.equal(observed.sessions.get("live-root").activityStatus, "open");
   assert.deepEqual(observed.sessions.get("live-root").resourceOwner, {
     pid: OWNER.ownerPid,
     processStartIdentity: OWNER.ownerStartedAt,
@@ -953,4 +953,26 @@ test("automatic selection stops preferring an expired needs-input bridge and rol
   }
   const catalog = await registry.listSessions();
   assert.equal(catalog.find((item) => item.id === "codex:session-0").needsInput, false);
+});
+
+test("cached complete rollout boundaries survive hours of silence and resolve on completion", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-silent-turn-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  const start = { timestamp: new Date(START).toISOString(), type: "event_msg", payload: { type: "task_started", turn_id: "silent" } };
+  await writeFile(rolloutFile, JSON.stringify(start) + "\n", "utf8");
+  let now = START + 1_000;
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+  const threads = [thread("silent-root", { rolloutFile })];
+  assert.equal(coordinator.observe(threads).sessions.get("silent-root").activityStatus, "working");
+  now = START + 4 * 60 * 60_000;
+  const quiet = coordinator.observe(threads).sessions.get("silent-root");
+  assert.equal(quiet.isLive, true);
+  assert.equal(quiet.activityStatus, "working");
+  assert.equal(quiet.observedAt, start.timestamp);
+  assert.equal(coordinator.stats().rolloutFiles, 0, "silence does not cause a transcript reread");
+  await appendFile(rolloutFile, JSON.stringify({ timestamp: new Date(now).toISOString(), type: "event_msg", payload: { type: "task_complete", turn_id: "silent" } }) + "\n");
+  const completed = coordinator.observe(threads).sessions.get("silent-root");
+  assert.equal(completed.isLive, false);
+  assert.equal(completed.activityStatus, "idle");
 });

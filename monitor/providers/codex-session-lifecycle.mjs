@@ -10,8 +10,8 @@ function isWaiting(thread) {
 
 /**
  * Aggregate related Codex actors without treating missing evidence as idle.
- * Runtime liveness remains the existing any-actor liveness flag; activity is
- * conservative because a live child can keep an otherwise idle root working.
+ * Live includes unresolved recorded work as well as owner-backed presence.
+ * Silence never closes a validated turn, and a child can keep its root working.
  */
 export function aggregateCodexSessionLifecycle(rootThread, relatedThreads = []) {
   const related = Array.isArray(relatedThreads) ? relatedThreads : [];
@@ -29,6 +29,10 @@ export function aggregateCodexSessionLifecycle(rootThread, relatedThreads = []) 
   const rootStatus = statusOf(root);
   const potentiallyLive = actors.filter((thread) => thread === root || thread.livenessLive === true);
   const allPotentiallyLiveInactive = potentiallyLive.every((thread) => INACTIVE_STATUSES.has(statusOf(thread)));
-  const canBeIdle = isLive && rootStatus === "idle" && allPotentiallyLiveInactive;
-  return { isLive, needsInput: false, activityStatus: canBeIdle ? "idle" : "unknown" };
+  if (allPotentiallyLiveInactive && INACTIVE_STATUSES.has(rootStatus)) {
+    return { isLive, needsInput: false, activityStatus: rootStatus === "stopped" ? "stopped" : "idle" };
+  }
+  // Open is a presence fact, not a fallback for uncertain transcript activity.
+  const open = liveActors.some((thread) => thread.presenceConfirmed === true);
+  return { isLive, needsInput: false, activityStatus: open ? "open" : "unknown" };
 }

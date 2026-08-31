@@ -359,8 +359,8 @@ export type ResourceUsage = {
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
 export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
-/** Bounded current work state. Provider-native lifecycle values stay monitor-private. */
-export type SessionActivityStatus = "working" | "needs_input" | "idle" | "unknown";
+/** Bounded observed work/presence state. Provider-native lifecycle values stay monitor-private. */
+export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "unknown";
 /** Catalog qualification derived monitor-side from the primary agent's lifecycle. */
 export type SessionCurrentActivity = AgentCurrentActivity & {
   state: "current";

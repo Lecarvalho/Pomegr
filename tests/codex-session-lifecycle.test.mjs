@@ -40,10 +40,10 @@ test("needs input wins over active and idle", () => {
   });
 });
 
-test("no live actors remain unknown", () => {
+test("recorded idle survives the end of live presence", () => {
   const root = actor({ liveStatus: "idle" });
   assert.deepEqual(aggregateCodexSessionLifecycle(root, [root]), {
-    isLive: false, needsInput: false, activityStatus: "unknown",
+    isLive: false, needsInput: false, activityStatus: "idle",
   });
 });
 
@@ -52,5 +52,25 @@ test("all potentially live actors inactive yields idle", () => {
   const child = actor({ liveStatus: "stopped", livenessLive: true });
   assert.deepEqual(aggregateCodexSessionLifecycle(root, [root, child]), {
     isLive: true, needsInput: false, activityStatus: "idle",
+  });
+});
+
+test("open requires confirmed presence, not just unresolved or uncertain liveness", () => {
+  const root = actor({ livenessLive: true });
+  assert.equal(aggregateCodexSessionLifecycle(root).activityStatus, "unknown");
+  const open = { ...root, presenceConfirmed: true };
+  assert.equal(aggregateCodexSessionLifecycle(open).activityStatus, "open");
+  assert.equal(aggregateCodexSessionLifecycle({ ...open, liveStatus: "active" }).activityStatus, "working");
+  assert.equal(aggregateCodexSessionLifecycle({ ...open, liveStatus: "idle" }).activityStatus, "idle");
+});
+
+test("stopped stays distinct from idle and an unfinished child keeps a completed parent live", () => {
+  const root = actor({ liveStatus: "stopped" });
+  assert.deepEqual(aggregateCodexSessionLifecycle(root), {
+    isLive: false, needsInput: false, activityStatus: "stopped",
+  });
+  const child = actor({ liveStatus: "active", livenessLive: true });
+  assert.deepEqual(aggregateCodexSessionLifecycle(root, [root, child]), {
+    isLive: true, needsInput: false, activityStatus: "working",
   });
 });

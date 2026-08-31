@@ -378,7 +378,17 @@ export function createNormalizedPollingObserver(options) {
       if (!nextSignal || typeof nextSignal.addEventListener !== "function") {
         throw new TypeError("Provider observer requires an AbortSignal");
       }
-      publisher = nextPublisher;
+      publisher = {
+        ...nextPublisher,
+        publishCatalog(entries) {
+          // Hydration may repair the initial catalog classification. Keep future
+          // preparation on that same published revision, not a stale startup row.
+          const result = nextPublisher.publishCatalog(entries);
+          latestEntries.clear();
+          for (const entry of entries) latestEntries.set(entry.localId, entry);
+          return result;
+        },
+      };
       signal = nextSignal;
       if (signal.aborted) {
         stop();

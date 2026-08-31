@@ -181,21 +181,19 @@ export function parseCodexRolloutLiveness(records, options = {}) {
 }
 
 
-/** Structured boundaries prove an observed state, never that a silent process is still running. */
+/** Retain recorded execution state; an open turn is not proof of a running process. */
 export function observedCodexRolloutLifecycle(records, { now = Date.now(), previous = null } = {}) {
   const boundary = reduceCodexTurnLifecycle(records, previous);
   if (!boundary) return { boundary: null, liveness: null };
   const age = now - Date.parse(boundary.observedAt);
   if (age < 0) return { boundary, liveness: null };
-  const stale = age > CODEX_ROLLOUT_LIVE_WINDOW_MS;
   return { boundary, liveness: {
-    live: !stale,
-    status: stale ? "unknown" : boundary.status,
+    live: boundary.kind === "start",
+    status: boundary.status,
     needsInput: false,
     source: "structured_lifecycle",
     observedAt: boundary.observedAt,
-    evidence: stale ? "unavailable" : "observed",
-    freshness: stale ? "stale" : "current",
-    ...(stale ? { reason: "observation_gap" } : {}),
+    evidence: "observed",
+    freshness: "current",
   } };
 }

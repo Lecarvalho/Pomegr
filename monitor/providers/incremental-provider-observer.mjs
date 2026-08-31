@@ -25,7 +25,7 @@ export function incrementalSourceDescriptor(file, historical = false) {
       fs.readSync(descriptor, suffix, 0, bytes, stat.size - bytes);
       suffixDigest = crypto.createHash("sha256").update(suffix).digest("hex");
     } finally { fs.closeSync(descriptor); }
-    return { file, identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixDigest, historical, sourceFiles: [file] };
+    return { file, identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixDigest, suffixBytes: bytes, historical, sourceFiles: [file] };
   } catch { return null; }
 }
 

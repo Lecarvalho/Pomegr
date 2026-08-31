@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -175,7 +175,7 @@ test("Codex owning-runtime liveness carries observed evidence and freshness", ()
   });
 });
 
-test("explicit Codex turn boundaries are observed and become unknown after a quiet stale gap", () => {
+test("explicit Codex turn boundaries survive silence without implying open presence after completion", () => {
   const start = {
     timestamp: new Date(START).toISOString(),
     type: "event_msg",
@@ -199,13 +199,12 @@ test("explicit Codex turn boundaries are observed and become unknown after a qui
   });
   assert.deepEqual(stale.liveness, {
     live: false,
-    status: "unknown",
+    status: "idle",
     needsInput: false,
     source: "structured_lifecycle",
     observedAt: new Date(START + 2_000).toISOString(),
-    evidence: "unavailable",
-    freshness: "stale",
-    reason: "observation_gap",
+    evidence: "observed",
+    freshness: "current",
   });
 });
 
@@ -314,7 +313,7 @@ test("hook lifecycle stays unknown without a native completion boundary", async 
   now += 1_000;
   capture("SessionEnd");
   const ended = coordinator.observe(lifecycleThread());
-  assert.equal(ended.sessions.get("live-root").activityStatus, "unknown");
+  assert.equal(ended.sessions.get("live-root").activityStatus, "open");
   const files = await readdir(path.join(root, "snapshots"));
   const payload = await readFile(path.join(root, "snapshots", files[0]), "utf8");
   assert.doesNotMatch(payload, /PROMPT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK|tool_input|prompt/);
@@ -371,4 +370,49 @@ test("compact continuation preserves input only for the same owner, lease, and t
   assert.equal(compact(expiredLeaseRoot, START + CODEX_BRIDGE_LEASE_MS + 1, {
     input: { turn_id: "turn-compact" },
   }).lifecycle, "unknown");
+});
+
+for (const replacement of ["overwrite", "rename"]) {
+  test(`cached starts do not cross a larger rollout ${replacement}`, async (context) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-replaced-turn-"));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    const rolloutFile = path.join(root, "rollout.jsonl");
+    const start = { timestamp: new Date(START).toISOString(), type: "event_msg", payload: { type: "task_started", turn_id: "old-turn" } };
+    await writeFile(rolloutFile, JSON.stringify(start) + "\n", "utf8");
+    let now = START + 1_000;
+    const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+    const threads = [{ ...lifecycleThread()[0], localId: "replacement-root", sessionId: "replacement-root", rolloutFile }];
+    assert.equal(coordinator.observe(threads).sessions.get("replacement-root").activityStatus, "working");
+    now += 4 * 60 * 60_000;
+    const content = JSON.stringify({ timestamp: new Date(now).toISOString(), type: "event_msg", payload: { type: "agent_reasoning", text: "PRIVATE_REPLACEMENT".repeat(40) } }) + "\n";
+    if (replacement === "rename") {
+      const next = path.join(root, "replacement.jsonl");
+      await writeFile(next, content, "utf8");
+      await rename(next, rolloutFile);
+    } else await writeFile(rolloutFile, content, "utf8");
+    const replaced = coordinator.observe(threads).sessions.get("replacement-root");
+    assert.equal(replaced.activityStatus, "unknown");
+    assert.equal(coordinator.observe(threads).sessions.get("replacement-root").activityStatus, "unknown");
+    await appendFile(rolloutFile, JSON.stringify({ ...start, timestamp: new Date(now).toISOString(), payload: { type: "task_started", turn_id: "new-turn" } }) + "\n");
+    assert.equal(coordinator.observe(threads).sessions.get("replacement-root").activityStatus, "working");
+  });
+}
+
+test("a validated start survives continuous bounded tails after its source record leaves the window", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-tail-append-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  await writeFile(rolloutFile, JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "retained-turn" })) + "\n");
+  let now = START + 1_000;
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 512 });
+  const threads = [{ ...lifecycleThread()[0], rolloutFile }];
+  assert.equal(coordinator.observe(threads).sessions.get("live-root").activityStatus, "working");
+  for (let index = 0; index < 12; index += 1) {
+    now += 1_000;
+    await appendFile(rolloutFile, JSON.stringify({ timestamp: new Date(now).toISOString(), type: "event_msg", payload: { type: "agent_reasoning", text: "synthetic work" } }) + "\n");
+    assert.equal(coordinator.observe(threads).sessions.get("live-root").activityStatus, "working");
+  }
+  now += 4 * 60 * 60_000;
+  assert.equal(coordinator.observe(threads).sessions.get("live-root").activityStatus, "working");
+  assert.equal(coordinator.stats().rolloutFiles, 0);
 });

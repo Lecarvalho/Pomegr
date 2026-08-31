@@ -163,17 +163,38 @@ classification. The fingerprint never exposes a provider path or raw lifecycle
 payload. A changed fingerprint schedules U2 normalization with an empty transcript
 delta even without source-byte growth; C then validates and atomically commits the
 candidate. Known API-only sessions do not require a rollout file to enter this path.
-Unchanged normalized observations do not create duplicate revisions. Restored Codex
+Unchanged normalized observations do not create duplicate revisions. Rollout boundary carry-forward requires matching file identity and a bounded prior-suffix continuity check; a larger rewrite rebuilds lifecycle instead of inheriting the previous turn. Restored Codex
 lifecycle state is downgraded to unknown/stale until fresh acquisition confirms it;
 startup rederivation consumes that downgraded evidence, never the original checkpoint lifecycle.
 All production GETs remain cache-only: a request may queue hydration but cannot acquire
 or normalize synchronously, and the last-known-good committed revision remains served
 until a complete replacement validates and commits atomically.
 
-For an open Codex turn, freshness is measured from the latest recognized provider
-progress record, not from turn start, file modification time, or poll time. More than
-120 seconds of silence is unknown, never idle; malformed, incomplete, or mismatched
-record generations also remain unknown until a complete replacement is acquired.
+Codex recorded execution state is independent of runtime confirmation. A validated
+start remains in progress, and a structured unmatched input remains needs-input,
+until matching provider evidence resolves it; transcript silence is not a heartbeat
+failure or a completion event. Recognized terminal records retain idle/stopped even
+when old. Their timestamps never advance just because the monitor polls. Structured
+lifecycle freshness means the retained evidence matches a complete acquired source
+generation, not that the provider process is currently computing. Malformed,
+incomplete, or discontinuous generations remain unknown until valid evidence is acquired.
+
+The Live catalog includes unresolved recorded work and confirmed owner-backed
+presence. A terminal record alone does not establish presence: it ends the unresolved
+work, while a current owning runtime or valid owner lease can still keep the session
+open. Catalog activity distinguishes working, needs_input, idle, stopped, open, and
+unknown; open requires owner-backed presence and never follows from a recent file
+alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
+Unknown non-live entries must never be labeled Complete. A crash without a terminal
+record may leave unresolved work; no elapsed transcript-silence window guesses an end.
+Existing catalog, cold-discovery, working-set, and evidence-cache bounds remain in force.
+
+Owning-runtime confirmation expiry and bridge lease expiry remain independent health
+checks. Checkpoint restore still downgrades runtime claims until fresh acquisition;
+complete transcript replay can then re-establish an unresolved turn even after hours
+of silence. When hydration repairs a startup catalog classification, the observer
+updates the catalog reference used by subsequent preparation so stale startup rows
+cannot reverse it. Unchanged silence creates no new candidate or response revision.
 
 ### Startup working set and lazy history
 

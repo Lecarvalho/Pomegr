@@ -152,9 +152,10 @@ export function codexRecordedLiveness(previous, { now = Date.now(), complete = t
   if (!complete) return unknownLiveness(state, nowMs);
   if (state.turn?.kind === "end") {
     const terminalAge = nowMs - timestampValue(state.turn.observedAt);
-    if (terminalAge < 0 || terminalAge > CODEX_ROLLOUT_LIVE_WINDOW_MS) return unknownLiveness({ ...state, latestActivityAt: state.turn.observedAt }, nowMs);
+    if (terminalAge < 0) return unknownLiveness({ ...state, latestActivityAt: state.turn.observedAt }, nowMs);
     return {
-      live: true,
+      // A recorded end closes work; only an owner observation can prove presence.
+      live: false,
       status: state.turn.status,
       needsInput: false,
       source: "structured_lifecycle",
@@ -165,7 +166,10 @@ export function codexRecordedLiveness(previous, { now = Date.now(), complete = t
   }
   const activityAt = state.latestActivityAt;
   const activityAge = nowMs - timestampValue(activityAt);
-  if (!activityAt || activityAge < 0 || activityAge > CODEX_ROLLOUT_LIVE_WINDOW_MS) return unknownLiveness(state, nowMs);
+  if (!activityAt || activityAge < 0) return unknownLiveness(state, nowMs);
+  // Silence is not a lifecycle event. Retain a validated turn or structured wait
+  // until matching provider evidence resolves it; never manufacture a heartbeat.
+  if (!state.turn && !state.pendingInputs.length) return unknownLiveness(state, nowMs);
   const pending = state.pendingInputs.at(-1);
   if (pending) return {
     live: true,

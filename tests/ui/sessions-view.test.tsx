@@ -34,6 +34,21 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it("uses isLive only for the Live filter while preserving an unknown lifecycle label", async () => {
+    const user = userEvent.setup();
+    const liveUnknown = { ...session(1), title: "Live unknown", isLive: true, activityStatus: "unknown" as const };
+    const quietOpen = { ...session(2), title: "Quiet open", isLive: false, activityStatus: "open" as const };
+    render(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
+
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+
+    expect(visibleSessionTitles()).toEqual(["Live unknown"]);
+    const liveRow = screen.getByText("Live unknown").closest("tr");
+    expect(liveRow).not.toBeNull();
+    expect(within(liveRow!).getByText("Unknown")).toBeInTheDocument();
+    expect(screen.queryByText("Quiet open")).not.toBeInTheDocument();
+  });
+
   it("orders by creation time descending and paginates ten rows at a time", async () => {
     const user = userEvent.setup();
     const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
