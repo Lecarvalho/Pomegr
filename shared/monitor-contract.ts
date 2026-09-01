@@ -638,6 +638,10 @@ export type UsageLimits = {
   available: boolean;
   fetchedAt: string | null;
   attemptedAt: string | null;
+  /** Where the complete normalized account observation came from. */
+  origin?: "local_observation" | "provider_api";
+  /** Freshness of the complete observation at monitor read time. */
+  freshness?: "fresh" | "stale";
   /** Bounded monitor-side classification of the latest failed refresh. */
   failureKind?: "authentication_required" | "rate_limited" | "unavailable" | null;
   /** Earliest local retry eligibility after the latest failed refresh. */
@@ -652,6 +656,11 @@ export type UsageLimits = {
     severity: "normal" | "warning" | "critical";
     active: boolean;
   }>;
+  /** Earlier API windows absent from the current observation; display only, with their own age. */
+  retainedLimits?: {
+    fetchedAt: string;
+    limits: UsageLimits["limits"];
+  };
 };
 
 /** Provider/account-scoped usage cache shared by Home and session surfaces. */

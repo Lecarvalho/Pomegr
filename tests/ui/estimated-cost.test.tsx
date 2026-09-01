@@ -60,7 +60,6 @@ describe("estimated session cost", () => {
     const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
-    expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
     rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();

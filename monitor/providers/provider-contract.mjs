@@ -430,22 +430,30 @@ export const providerSessionReferenceSchema = z.object({
   }).strict().nullable().optional(),
 }).strict();
 
+const providerUsageLimitSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/),
+  label: evidenceOneLine(128),
+  window: evidenceOneLine(64),
+  percent: z.number().finite().min(0).max(100),
+  resetsAt: evidenceNullableTimestamp,
+  severity: z.enum(["normal", "warning", "critical"]),
+  active: z.boolean(),
+}).strict();
+
 export const providerUsageLimitsSchema = z.object({
   available: z.boolean(),
   fetchedAt: evidenceNullableTimestamp,
   attemptedAt: evidenceNullableTimestamp,
+  origin: z.enum(["local_observation", "provider_api"]).optional(),
+  freshness: z.enum(["fresh", "stale"]).optional(),
   failureKind: z.enum(["authentication_required", "rate_limited", "unavailable"]).nullable().optional(),
   retryAt: evidenceNullableTimestamp.optional(),
   error: evidenceOneLine(512).optional(),
-  limits: z.array(z.object({
-    id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/),
-    label: evidenceOneLine(128),
-    window: evidenceOneLine(64),
-    percent: z.number().finite().min(0).max(100),
-    resetsAt: evidenceNullableTimestamp,
-    severity: z.enum(["normal", "warning", "critical"]),
-    active: z.boolean(),
-  }).strict()).max(16),
+  limits: z.array(providerUsageLimitSchema).max(16),
+  retainedLimits: z.object({
+    fetchedAt: evidenceTimestamp,
+    limits: z.array(providerUsageLimitSchema).min(1).max(16),
+  }).strict().optional(),
 }).strict();
 
 /** @typedef {z.infer<typeof providerSessionEvidenceSchema>} ProviderSessionEvidence */

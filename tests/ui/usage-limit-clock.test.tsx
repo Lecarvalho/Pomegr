@@ -35,7 +35,7 @@ describe("usage-limit clock", () => {
     vi.useRealTimers();
   });
 
-  it("asks for provider re-authentication when a retained snapshot refresh receives 401", () => {
+  it("describes rejected access without asserting that a new login is required", () => {
     render(<LiveClockProvider running><UsageLimitsPanel
       source="Claude Code"
       usageLimits={{
@@ -47,9 +47,96 @@ describe("usage-limit clock", () => {
       }}
     /></LiveClockProvider>);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Re-authentication needed");
-    expect(screen.getByRole("status")).toHaveTextContent("Sign in to Claude Code again. Pomegr will retry automatically.");
+    expect(screen.getByRole("status")).toHaveTextContent("Usage access interrupted");
+    expect(screen.getByRole("status")).toHaveTextContent("Claude Code’s saved access was rejected. Pomegr will retry automatically; reconnect if this continues.");
     expect(screen.getByText("20%")).toBeInTheDocument();
+  });
+
+  it("labels retained local usage with its observation time and stale status", () => {
+    render(<LiveClockProvider running><UsageLimitsPanel
+      source="Claude Code"
+      usageLimits={{
+        available: true,
+        origin: "local_observation",
+        freshness: "stale",
+        fetchedAt: "2026-08-08T05:00:00.000Z",
+        attemptedAt: "2026-08-08T12:00:00.000Z",
+        limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
+      }}
+    /></LiveClockProvider>);
+    expect(screen.getByText(/^Last observed/)).toBeInTheDocument();
+    expect(screen.getByText("Showing the last observation. Current usage may have changed.")).toBeInTheDocument();
+    expect(screen.getByText("20%")).toBeInTheDocument();
+    expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument();
+  });
+
+  it("shows a retained Fable API value once, with its own timestamp", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:00:00.000Z");
+    const { container } = render(<LiveClockProvider running><UsageLimitsPanel
+      source="Claude Code"
+      usageLimits={{
+        available: true,
+        origin: "local_observation",
+        freshness: "fresh",
+        fetchedAt: "2026-08-08T12:00:00.000Z",
+        attemptedAt: "2026-08-08T12:00:00.000Z",
+        limits: [
+          { id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false },
+          { id: "all-models", label: "All models", window: "7 days", percent: 40, resetsAt: null, severity: "normal", active: false },
+          { id: "model-fable", label: "Fable", window: "7 days", percent: 0, resetsAt: null, severity: "normal", active: false },
+        ],
+        retainedLimits: {
+          fetchedAt: "2026-08-08T11:58:00.000Z",
+          limits: [{ id: "model-fable", label: "Fable", window: "7 days", percent: 60, resetsAt: "2026-08-09T12:00:00.000Z", severity: "normal", active: true }],
+        },
+      }}
+    /></LiveClockProvider>);
+
+    expect(container.querySelectorAll(".limitCard")).toHaveLength(3);
+    expect(screen.getAllByText("Fable")).toHaveLength(1);
+    expect(screen.getByText("60%")).toBeInTheDocument();
+    expect(screen.getByText("Last API value 2 minutes ago")).toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active limit")).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("marks Fable unavailable when a local feed has no retained API value", () => {
+    render(<LiveClockProvider running><UsageLimitsPanel
+      source="Claude Code"
+      usageLimits={{
+        available: true,
+        origin: "local_observation",
+        freshness: "fresh",
+        fetchedAt: "2026-08-08T12:00:00.000Z",
+        attemptedAt: "2026-08-08T12:00:00.000Z",
+        limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
+      }}
+    /></LiveClockProvider>);
+
+    expect(screen.getByText("Fable")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Not reported by Claude")).toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [null, "Checking…", "Waiting for account check"],
+    ["authentication_required", "Unavailable", "Claude Code sign-in needs attention"],
+    ["rate_limited", "Unavailable", "Account check rate-limited; retrying automatically"],
+    ["unavailable", "Unavailable", "Account check failed; retrying automatically"],
+  ] as const)("distinguishes Fable's pending check from %s failures", (failureKind, label, detail) => {
+    render(<LiveClockProvider running={false}><UsageLimitsPanel source="Claude Code" usageLimits={{
+      available: true, origin: "local_observation", freshness: "fresh",
+      fetchedAt: "2026-08-08T12:00:00.000Z", attemptedAt: null, failureKind,
+      limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
+    }} /></LiveClockProvider>);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText(detail)).toBeInTheDocument();
+    expect(screen.getByText("20%")).toBeInTheDocument();
+    expect(screen.queryByText("Not reported by local feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
   it("presents a cached 429 as the last failed refresh with its local retry boundary", () => {

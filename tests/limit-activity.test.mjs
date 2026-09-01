@@ -76,6 +76,18 @@ test("collects a first current five-hour sample", () => {
   assert.deepEqual(activities[0].observations, [{ observedAt: "2026-08-25T12:00:00.000Z", percent: 12 }]);
 });
 
+test("retained API windows are display-only and cannot become fresh local activity samples", () => {
+  const tracker = createHomeLimitActivityTracker();
+  const previous = claudeLimits("2026-08-25T12:00:00.000Z");
+  build(tracker, [previous]);
+  const local = claudeLimits("2026-08-25T12:05:00.000Z");
+  local.usageLimits.limits = local.usageLimits.limits.slice(0, 2);
+  local.usageLimits.retainedLimits = { fetchedAt: previous.usageLimits.fetchedAt, limits: [previous.usageLimits.limits[2]] };
+  const activities = build(tracker, [local]);
+  const modelActivity = activities.find((entry) => entry.limitId === "model-fable");
+  assert.ok(!modelActivity || modelActivity.observations.every((entry) => entry.observedAt === previous.usageLimits.fetchedAt));
+});
+
 test("tracks Claude account windows and filters Fable activity to matching requests", () => {
   const tracker = createHomeLimitActivityTracker();
   const activities = build(tracker, [claudeLimits()], [

@@ -24,6 +24,8 @@ const desktopFiles = [
   "asar-policy.mjs",
   "artifact-privacy.mjs",
   "bounded-lifecycle.mjs",
+  "claude-auth.mjs",
+  "claude-usage-setup.mjs",
   "desktop-behavior.mjs",
   "environment-policy.mjs",
   "main.mjs",

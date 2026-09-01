@@ -30,6 +30,8 @@ export const PUBLIC_LEGAL_FILES = Object.freeze([
 export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/bounded-lifecycle.mjs",
   "desktop/artifact-privacy.mjs",
+  "desktop/claude-auth.mjs",
+  "desktop/claude-usage-setup.mjs",
   "desktop/desktop-behavior.mjs",
   "desktop/environment-policy.mjs",
   "desktop/main.mjs",
@@ -48,6 +50,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/updater.mjs",
   "desktop/utility-lifecycle.mjs",
   "desktop/workers/monitor-host.cjs",
+  "desktop/workers/claude-statusline-bridge.cjs",
   "shared/local-auth.mjs",
   "shared/local-service.mjs",
   "shared/pomegr-paths.mjs",

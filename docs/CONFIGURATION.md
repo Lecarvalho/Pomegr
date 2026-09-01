@@ -27,7 +27,7 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost and local usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
 
@@ -50,7 +50,68 @@ Estimated API cost is optional. Wrap the Claude Code status line with `scripts/c
 }
 ```
 
-The bridge forwards stdin to the delegated command unchanged, so the visible status line keeps working. It persists only the normalized session ID, non-negative USD amount, estimate type, and observation time. Replacing `statusLine.command` with a direct script call silently stops cost capture, so keep the bridge as the outermost command.
+The bridge forwards bounded stdin to the delegated command unchanged, so the visible status line keeps working. Cost storage contains only the normalized session ID, non-negative USD amount, estimate type, and observation time. A separate usage snapshot contains only the two normalized usage windows described below. Replacing `statusLine.command` with a direct script call stops these captures, so keep the bridge as the outermost command.
+
+#### Claude local usage feed
+
+In the installed Windows desktop app, open **Usage limits → Claude Code → Enable local usage**.
+The native confirmation explains that Pomegr will update the current Claude Code profile's
+status-line setting. Setup preserves the existing command and other status-line settings;
+malformed or concurrently edited settings are refused. No sign-in or model request runs
+during setup. The bundled bridge uses Pomegr's own runtime, so a separate Node installation
+is not needed. Automatic setup is unavailable in the portable app because its extracted
+runtime path is temporary.
+
+Claude Code reports five-hour and seven-day percentages and reset times through its
+status line. The documented subscription support is Pro and Max, after the first API
+response in a supported session. See the [Claude status-line documentation](https://code.claude.com/docs/en/statusline#rate-limit-usage).
+Project or managed settings can override the user status line; enabling the user setting
+does not override those policies. If no usage arrives, check Claude Code's status-line
+and workspace-trust configuration.
+
+Browser-only installations can use the script configuration above with an installed Node
+runtime. Pass the existing executable and its arguments after `--`; shell expressions
+need an explicit shell executable and its arguments. With no existing status line, omit
+`--` and the delegate. Use forward slashes in Windows paths. Both the monitor and bridge
+must use the same `POMEGR_USAGE_SNAPSHOTS_DIR` (or the same `POMEGR_DATA_DIR`). This feed
+represents the Claude profile connected to that bridge; use separate roots for separate
+accounts/profiles rather than combining their observations.
+
+Pomegr reads the local snapshot in its background usage job. A recent valid local pair
+is immediately available while the existing account check updates model-specific limits.
+Account checks retain their five-minute cooldown and provider retry delays. Failed
+checks preserve the last good values. **Last observed** identifies locally reported
+figures; stale data is explicitly labelled and must not be treated as current usage.
+Repeated identical status-line values retain their original observation timestamp.
+
+The local feed does not include Fable's model-specific weekly limit. Pomegr keeps its
+last API reading separately, labelled **Last API value** with its own timestamp. If none
+was observed in this monitor process, Fable shows **Checking…** while the first account
+check runs, then its value or the check's failure status. The initial result normally
+appears within a minute. Keeping
+this column visible uses the existing shared account-check cadence.
+
+The usage file is `usage-snapshots/claude.json` beneath Pomegr's data root. It contains
+only the schema version, observation time, and two percentage/reset pairs. It has no
+account, session, transcript, prompt, response, token, or credential data. To stop capture,
+restore your previous Claude Code status-line command in that profile's settings.
+
+#### Reconnect Claude Code
+
+When a usage check rejects saved access, select **Reconnect Claude Code** and confirm in
+the native dialog. Pomegr launches the installed native CLI's
+`claude auth login --claudeai` flow; Claude Code owns the browser approval and credentials.
+The action can change the signed-in Claude Code account. It is never launched by polling,
+and it makes no model request. The UI receives only a fixed outcome such as completed,
+cancelled, unavailable, failed, or timed out. Pomegr retries usage on its normal background
+cadence after sign-in; it does not bypass provider cooldowns.
+
+Native executable discovery checks the standard `.local/bin/claude.exe` installation and
+absolute PATH entries. Set `POMEGR_CLAUDE_EXECUTABLE` before launching Pomegr for a custom
+native installation. `CLAUDE_CONFIG_DIR` selects the profile used for sign-in, local-feed
+setup, and usage credential reads. Neither action is available through HTTP or from the
+LAN dashboard. If a browser callback cannot finish, use Claude Code's own command-line
+prompts on the monitor computer. No credentials or auth URLs are copied into Pomegr.
 
 ### Codex
 
@@ -98,12 +159,15 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 | --- | --- | --- | --- |
 | `CLAUDE_PROJECTS_DIR` | Monitor | Claude project/session root | `%USERPROFILE%\.claude\projects` |
 | `CLAUDE_SESSION_FILE` | Monitor | Pin one Claude primary JSONL session | Automatic selection |
+| `CLAUDE_CONFIG_DIR` | Claude usage reader and desktop integration | Claude profile for usage authentication and status-line setup | `%USERPROFILE%\.claude` |
+| `POMEGR_CLAUDE_EXECUTABLE` | Desktop sign-in action | Absolute path to the native `claude.exe` | Standard native installation, then PATH |
 | `CODEX_HOME` | Monitor | Codex sessions, archive, and index root | `%USERPROFILE%\.codex` |
 | `POMEGR_CODEX_EXECUTABLE` | Monitor | Absolute path to a supported native Codex CLI for account-only limit reads | Native CLI discovered on `PATH` or the official npm installation |
 | `POMEGR_DATA_DIR` | Desktop, monitor, and local bridges | Override Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
 | `POMEGR_CODEX_LIVENESS_DIR` | Monitor and Codex hook bridge | Shared allowlisted lifecycle snapshot root | `%APPDATA%\pomegr\codex-liveness` on Windows |
 | `POMEGR_CODEX_OWNER_PID` | Codex hook bridge | Explicit owner PID for unusual process-wrapper topologies | Automatic owner discovery |
 | `POMEGR_COST_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized Claude estimate snapshots | `%APPDATA%\pomegr\cost-snapshots` on Windows |
+| `POMEGR_USAGE_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized local usage pair | `usage-snapshots` beneath Pomegr's data root |
 | `SESSION_PULSE_PORT` | Monitor and development launcher | Loopback monitor port | `4317` |
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Pomegr configuration.

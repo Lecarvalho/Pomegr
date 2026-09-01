@@ -10,10 +10,22 @@ import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import {
   assertNoSystemNodeInPath,
+  environmentValue,
   keepOnlyRuntimeEnvironment,
   minimalRuntimeEnvironment,
   monitorPrivateEnvironment,
+  nativeClaudeEnvironment,
 } from "./environment-policy.mjs";
+import {
+  CLAUDE_SIGN_IN_CHANNEL,
+  createClaudeSignInAction,
+  installConfirmedTrustedActionIpcHandler,
+} from "./claude-auth.mjs";
+import {
+  createClaudeUsageIntegration,
+  installClaudeUsageIntegrationIpc,
+  resolveClaudeUsageShells,
+} from "./claude-usage-setup.mjs";
 import {
   DESKTOP_CSP,
   installSessionSecurity,
@@ -79,6 +91,10 @@ let removeWindowBoundsGuard;
 let removeWindowLifecycle;
 let notificationPoller;
 let updaterController;
+let claudeSignIn;
+let removeClaudeSignInIpc;
+let claudeUsageIntegration;
+let removeClaudeUsageIpc;
 const nativeNotifications = new Set();
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
@@ -290,6 +306,46 @@ function installDesktopBehaviorIpc() {
   });
 }
 
+function installClaudeSignInIpc() {
+  removeClaudeSignInIpc?.();
+  removeClaudeSignInIpc = installConfirmedTrustedActionIpcHandler({
+    ipcMain,
+    channel: CLAUDE_SIGN_IN_CHANNEL,
+    isTrustedEvent: trustedDesktopEvent,
+    action: claudeSignIn,
+  });
+}
+
+async function confirmClaudeSignIn() {
+  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: "Sign in to Claude",
+    message: "Open Claude sign-in in your browser?",
+    detail: "Pomegr will launch installed Claude Code. Completing sign-in in the browser may change the Claude Code account on this computer.",
+    buttons: ["Open sign-in", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return result.response === 0 && runtimeState === "running";
+}
+
+async function confirmClaudeUsageSetup() {
+  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: "Enable local Claude usage",
+    message: "Receive usage directly from Claude Code?",
+    detail: "Pomegr will update this Claude Code profile’s status-line setting and preserve its existing command. The local bridge captures only usage windows and the existing cost estimate. Claude Code still handles your account sign-in.",
+    buttons: ["Cancel", "Enable local usage"],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+  });
+  return result.response === 1 && runtimeState === "running";
+}
+
 async function showStartupError() {
   recordStage("SHELL_ERROR_LOADING");
   // Electron's native theme is process-global. Keep the fixed dark error page and
@@ -327,6 +383,12 @@ async function stopRuntime() {
   runtimeState = "stopping";
   recordStage("SHELL_CLEANUP_STARTED");
   stopPromise = (async () => {
+    removeClaudeSignInIpc?.();
+    removeClaudeSignInIpc = undefined;
+    removeClaudeUsageIpc?.();
+    removeClaudeUsageIpc = undefined;
+    claudeUsageIntegration?.dispose();
+    try { await claudeSignIn?.dispose(); } catch { /* Native sign-in cleanup is bounded. */ }
     notificationPoller?.stop();
     notificationPoller = undefined;
     updaterController?.dispose();
@@ -363,12 +425,28 @@ async function handleRuntimeFailure() {
 }
 
 async function startDesktop() {
+  claudeSignIn = createClaudeSignInAction({
+    environment: process.env,
+    nativeEnvironment: nativeClaudeEnvironment(process.env),
+    confirm: confirmClaudeSignIn,
+  });
   desktopPaths = resolveDesktopPaths({
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
     userDataPath: app.getPath("userData"),
     environment: process.env,
   });
+  const bridgePath = path.join(desktopPaths.unpackedRoot, "desktop", "workers", "claude-statusline-bridge.cjs");
+  const usageShells = process.platform === "win32" ? resolveClaudeUsageShells(process.env) : null;
+  claudeUsageIntegration = createClaudeUsageIntegration(desktopPaths.mode === "installed" && usageShells && existsSync(bridgePath) ? {
+    configRoot: environmentValue(process.env, "CLAUDE_CONFIG_DIR") || path.join(app.getPath("home"), ".claude"),
+    appExecutable: process.execPath,
+    bridgePath,
+    dataRoot: desktopPaths.dataRoot,
+    feedRoot: environmentValue(process.env, "POMEGR_USAGE_SNAPSHOTS_DIR") || path.join(desktopPaths.dataRoot, "usage-snapshots"),
+    ...usageShells,
+    confirm: confirmClaudeUsageSetup,
+  } : {});
   recordStage("SHELL_PATHS_READY");
   settingsStore = createDesktopSettingsStore(desktopPaths.settingsFile);
   settingsLoad = await settingsStore.load();
@@ -491,6 +569,8 @@ async function startDesktop() {
         });
         startOptionalTray();
         installDesktopBehaviorIpc();
+        installClaudeSignInIpc();
+        removeClaudeUsageIpc = installClaudeUsageIntegrationIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, integration: claudeUsageIntegration });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {
           getController: () => behaviorController,

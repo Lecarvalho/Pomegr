@@ -322,15 +322,18 @@ test("monitor worker uses one physical bundle with fixed lifecycle stages", asyn
   assert.match(main, /EXIT_NONZERO/);
 });
 
-test("desktop service bundling emits only the self-contained monitor worker", async () => {
+test("desktop service bundling emits self-contained monitor and status-line workers", async () => {
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-worker-bundle-"));
   try {
     await buildDesktopServiceBundles(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), fixtureRoot);
     const outputRoot = path.join(fixtureRoot, "desktop", "workers");
-    assert.deepEqual(await readdir(outputRoot), ["monitor-host.cjs"]);
+    assert.deepEqual(await readdir(outputRoot), ["claude-statusline-bridge.cjs", "monitor-host.cjs"]);
     const bundle = await readFile(path.join(outputRoot, "monitor-host.cjs"), "utf8");
     assert.match(bundle, /DESKTOP_MONITOR_START_FAILED/);
     assert.doesNotMatch(bundle, /from\s+["'](?:\.\/|\.\.\/)/);
+    const bridge = await readFile(path.join(outputRoot, "claude-statusline-bridge.cjs"), "utf8");
+    assert.match(bridge, /captureClaudeStatuslineCost/);
+    assert.doesNotMatch(bridge, /from\s+["'](?:\.\/|\.\.\/)/);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }

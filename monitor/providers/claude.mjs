@@ -25,7 +25,6 @@ import { readSessionCost } from "../session-cost.mjs";
 import { latestSessionApprovalMode } from "../session-approval-mode.mjs";
 import { buildSkillUsage, normalizedSkillName } from "../skill-usage.mjs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
-import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
@@ -35,6 +34,7 @@ import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
 import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifecycle.mjs";
+import { createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
 import {
   claudeLifecycleSource, createClaudeSessionStatusReader, normalizeClaudeSessionRegistryEntry,
@@ -275,24 +275,6 @@ function runtimeMetadata(records) {
   return { model, effort };
 }
 
-function usageRequest(homeDir, fetchImpl) {
-  return async () => {
-    const credentialPath = path.join(homeDir, ".claude", ".credentials.json");
-    const credentials = JSON.parse(fs.readFileSync(credentialPath, "utf8"));
-    const token = credentials.claudeAiOauth?.accessToken;
-    if (!token) throw new Error("Claude OAuth session not found");
-    return fetchImpl("https://api.anthropic.com/api/oauth/usage", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "anthropic-beta": "oauth-2025-04-20",
-        "anthropic-version": "2023-06-01",
-        "user-agent": "pomegr/0.1",
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-  };
-}
-
 export function createClaudeProvider(options = {}) {
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
@@ -315,9 +297,17 @@ export function createClaudeProvider(options = {}) {
     platform: options.platform,
     processIdentities: options.registryProcessIdentities,
   });
-  const usageLimits = createUsageLimitsCoordinator({
-    request: options.usageRequest || usageRequest(homeDir, options.fetch || globalThis.fetch),
-  }).get;
+  const usageLimits = createClaudeUsageLimitsReader({
+    env: environment,
+    homeDir,
+    platform: options.platform,
+    now,
+    fetch: options.fetch,
+    usageRequest: options.usageRequest,
+    claudeConfigDir: options.claudeConfigDir,
+    usageSnapshotsRoot: options.usageSnapshotsRoot,
+    usageFeedFreshMs: options.usageFeedFreshMs,
+  });
 
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });

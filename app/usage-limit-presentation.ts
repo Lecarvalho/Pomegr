@@ -19,7 +19,9 @@ export function usageLimitFailureKind(usageLimits: UsageLimits): UsageLimitFailu
 export function usageLimitFailureMessage(source: ProviderSource, usageLimits: UsageLimits) {
   const failureKind = usageLimitFailureKind(usageLimits);
   if (failureKind === "authentication_required") {
-    return `Sign in to ${source} again. Pomegr will retry automatically.`;
+    return source === "Claude Code"
+      ? "Claude Code’s saved access was rejected. Pomegr will retry automatically; reconnect if this continues."
+      : `Sign in to ${source} again. Pomegr will retry automatically.`;
   }
   if (failureKind === "rate_limited") {
     return "The last usage check was rate-limited. Pomegr will retry automatically.";
@@ -28,4 +30,31 @@ export function usageLimitFailureMessage(source: ProviderSource, usageLimits: Us
     return "The last usage check failed. Pomegr will retry automatically.";
   }
   return "Connecting to plan usage…";
+}
+
+type UsageLimit = UsageLimits["limits"][number];
+
+export type UsageLimitDisplay = {
+  current: UsageLimit[];
+  localFable: { kind: "retained"; limit: UsageLimit; fetchedAt: string } | { kind: "unavailable"; label: string; detail: string } | null;
+};
+
+/** Keeps a retained Fable API value supplemental to, rather than part of, a local observation. */
+export function usageLimitDisplay(usageLimits: UsageLimits): UsageLimitDisplay {
+  if (usageLimits.origin !== "local_observation") {
+    return { current: usageLimits.limits, localFable: null };
+  }
+  const retained = usageLimits.retainedLimits?.limits.find((limit) => limit.id === "model-fable");
+  const failure = usageLimitFailureKind(usageLimits);
+  const pending = !usageLimits.attemptedAt && !failure;
+  const detail = failure === "authentication_required" ? "Claude Code sign-in needs attention"
+    : failure === "rate_limited" ? "Account check rate-limited; retrying automatically"
+      : failure === "unavailable" ? "Account check failed; retrying automatically"
+        : pending ? "Waiting for account check" : "Not reported by Claude";
+  return {
+    current: usageLimits.limits.filter((limit) => limit.id !== "model-fable"),
+    localFable: retained && usageLimits.retainedLimits
+      ? { kind: "retained", limit: retained, fetchedAt: usageLimits.retainedLimits.fetchedAt }
+      : { kind: "unavailable", label: pending ? "Checking…" : "Unavailable", detail },
+  };
 }

@@ -42,6 +42,15 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   installUpdate() {
     return ipcRenderer.invoke("pomegr:install-update");
   },
+  startClaudeSignIn() {
+    return ipcRenderer.invoke("pomegr:start-claude-sign-in");
+  },
+  getClaudeUsageIntegration() {
+    return ipcRenderer.invoke("pomegr:claude-usage-integration");
+  },
+  enableClaudeUsageIntegration() {
+    return ipcRenderer.invoke("pomegr:enable-claude-usage-integration");
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("pomegr:quit");

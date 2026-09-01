@@ -168,7 +168,17 @@ Reported signals use the transcript as their only durable source. The local MCP 
 
 When the provider records a recognized session summary, `session.summary` carries only the latest bounded, whitespace-normalized plain-text summary, its transcript timestamp, and provider provenance. Pomegr does not derive a summary from prompts, responses, or tool results. The dashboard labels that text as provider-generated and distinguishes the explicit MCP fallback as agent-reported.
 
-Claude Code sends `cost.total_cost_usd` only to its configured status-line command. The optional bridge stores a separate per-session snapshot containing only session ID, estimated USD amount, estimate type, and local observation timestamp, then forwards the original input unchanged to the user's existing status-line command. The monitor reads the sanitized snapshot by session ID. Raw status-line JSON never enters browser state.
+Claude Code sends `cost.total_cost_usd` only to its configured status-line command. The optional bridge stores a separate per-session snapshot containing only session ID, estimated USD amount, estimate type, and local observation timestamp, then forwards bounded input unchanged to the user's existing status-line command. The monitor reads the sanitized snapshot by session ID. Raw status-line JSON never enters browser state.
+
+The same bridge can capture a separate complete five-hour/seven-day usage pair under
+`usage-snapshots/claude.json`. The provider adapter serves recent local observations
+without waiting for its coordinated usage request, which continues updating model-specific
+limits on the existing cooldown. It preserves the original observation time and last good
+values; supplemental Fable readings retain their own API timestamp. This runs in the existing background usage job;
+GETs still serve committed caches. The desktop offers trusted native IPC actions to
+enable the bridge or launch Claude Code's own sign-in after explicit confirmation.
+Only fixed outcomes reach the renderer; there is no HTTP control route or Pomegr-owned
+credential exchange. See [local usage and recovery](OBSERVATION_CACHE.md#local-claude-usage-observations-and-desktop-recovery).
 
 Session progress is opt-in and transcript-backed. The provider adapter exposes only the normalized phase, integer completion percentage, optional paired remaining-minute bounds, confidence, and report timestamp from the primary session transcript; a clear call or absent report produces `null`. The dashboard renders the value only when present as an **Agent estimate**. It keeps the reported range and confidence intact, uses a semantic progress element, and never turns the range into a countdown or derives a new estimate. Historical views label it **Recorded agent estimate** with an absolute timestamp. A live value can be marked “may be stale” only after ten minutes without a report when the connected, unpaused primary agent has later activity; offline, paused, waiting, needs-input, blocked, and historical views retain the snapshot without that warning.
 

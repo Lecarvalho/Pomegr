@@ -126,7 +126,8 @@ export function createCoordinatedUsageLimitsReader({
     return cache.value || pending;
   }
 
-  return { get };
+  // Observation adapters can inspect an already completed check without acquiring data.
+  return { get, peek: () => cache.value };
 }
 
 export function createUsageLimitsCoordinator({ request, now = () => Date.now() }) {

@@ -25,6 +25,7 @@ export const RUNTIME_ENVIRONMENT_NAMES = Object.freeze([
 
 export const MONITOR_PRIVATE_ENVIRONMENT_NAMES = Object.freeze([
   "APPDATA",
+  "CLAUDE_CONFIG_DIR",
   "CLAUDE_PROJECTS_DIR",
   "CLAUDE_SESSION_FILE",
   "CODEX_HOME",
@@ -37,6 +38,17 @@ export const MONITOR_PRIVATE_ENVIRONMENT_NAMES = Object.freeze([
   "POMEGR_CODEX_OWNER_PID",
   "POMEGR_COST_SNAPSHOTS_DIR",
   "POMEGR_DATA_DIR",
+  "POMEGR_USAGE_SNAPSHOTS_DIR",
+  "USERPROFILE",
+]);
+
+export const NATIVE_CLAUDE_ENVIRONMENT_NAMES = Object.freeze([
+  "APPDATA",
+  "CLAUDE_CONFIG_DIR",
+  "HOME",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "LOCALAPPDATA",
   "USERPROFILE",
 ]);
 
@@ -96,4 +108,15 @@ export function monitorPrivateEnvironment(source, options = {}) {
     environment.POMEGR_DATA_DIR = options.pomegrDataRoot;
   }
   return environment;
+}
+
+// Native provider tools need their normal profile and provider configuration, but
+// the renderer and in-main web host never receive this environment.
+export function nativeClaudeEnvironment(source, overrides = {}, fileExists = existsSync) {
+  const environment = minimalRuntimeEnvironment(source, {}, fileExists);
+  for (const name of NATIVE_CLAUDE_ENVIRONMENT_NAMES) {
+    const value = environmentValue(source, name);
+    if (typeof value === "string" && value) environment[name] = value;
+  }
+  return Object.assign(environment, overrides);
 }

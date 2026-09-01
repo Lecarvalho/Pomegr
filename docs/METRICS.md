@@ -40,7 +40,20 @@ Codex rollout parsing accepts the recognized snake_case and camelCase token-coun
 
 ## Estimated API cost
 
-Pomegr does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. The bridge persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `%APPDATA%\pomegr\cost-snapshots` on Windows (`~/.pomegr/cost-snapshots` elsewhere); all other status-line fields are discarded.
+Account usage may also come from Claude Code's local status-line usage windows. These
+are provider-reported account percentages, not inferred token spend or session usage.
+The adapter accepts the complete five-hour/seven-day pair, retains its observation time,
+and marks it stale after five minutes or when a window reset has passed. Identical repeated
+status-line emissions do not renew freshness. See [local usage setup](CONFIGURATION.md#claude-local-usage-feed)
+and the [observation contract](OBSERVATION_CACHE.md#local-claude-usage-observations-and-desktop-recovery).
+
+Fable is not included in the local usage pair. A separately retained API value keeps its
+own observation time and is labelled **Last API value**; it is never sampled as fresh
+limit activity or combined into the local pair. Missing model usage is unavailable,
+never zero. Model windows continue updating through the existing coordinated API check;
+fresh local account usage does not wait for that request or fail when it does.
+
+Pomegr does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. Cost capture persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `%APPDATA%\pomegr\cost-snapshots` on Windows (`~/.pomegr/cost-snapshots` elsewhere). The separate usage feed captures only the allowlisted usage pair described above; all remaining status-line fields are discarded.
 
 The value is cumulative for the Claude Code session and is the only cumulative spend-like value Pomegr presents. It is labeled **Estimated API cost** because Claude Code calculates it at standard API list rates and it may differ from an actual bill. A historical session shows its last captured estimate; if no snapshot was captured, cost remains unavailable rather than being reconstructed from transcript throughput.
 

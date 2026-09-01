@@ -389,6 +389,63 @@ headers, request identifiers, credentials, and endpoint details remain monitor-p
 `rate_limited` means only that the usage request received a recognized throttle response;
 it is not evidence that an account or session exhausted its plan allowance.
 
+### Local Claude usage observations and desktop recovery
+
+The optional status-line bridge is an explicit local integration. Its provider-owned U2
+normalizer accepts only a complete five-hour/seven-day usage pair and persists one
+bounded, atomically replaced normalized file: version, local observation timestamp,
+percentages, and reset timestamps. Raw status-line input is never persisted. Repeated
+identical pairs retain the original observation time. An invalid or partial replacement
+does not erase an already accepted observation.
+
+The existing U1 background usage job reads this file on its normal sixty-second cadence.
+A valid local observation within five minutes, whose windows have not expired, can
+satisfy the usage read immediately while the existing coordinated API check runs in the
+background. API checks continue to update model-specific windows absent from the local
+feed; their five-minute minimum and longer `Retry-After` cooldowns remain authoritative.
+Fresh local usage remains available through an API failure. The adapter selects a complete successful
+observation, never a synthetic mixture of local and remote windows. Failures retain the
+last good data and original observation time. Future-dated or malformed observations
+cannot establish fresh evidence. This feed is scoped operationally to the configured
+local Claude profile and data root, not merged across accounts.
+
+The local pair does not contain model-specific weekly limits. When the adapter switches
+from an API observation to a newer local pair, it retains the last normalized Fable
+window in a separate optional `retainedLimits` group with its original API `fetchedAt`.
+This group is bounded by the usage-window schema (at most 16 windows; Claude emits only
+the recognized Fable window), lives only in memory, and is display-only. It never enters
+the current `limits` array or limit-activity sampling, and never inherits the newer
+local timestamp. A newer successful API observation replaces or clears it. No extra
+API request outside the existing shared cooldown is made to populate it. F presents **Last API value** with its own age;
+without a prior API observation, the local-feed Fable column says **Unavailable**.
+Neither missing data nor an expired reset becomes a fabricated zero-percent reading.
+
+During the initial API request, locally sourced usage has `attemptedAt: null`; Fable
+shows **Checking…** until the next background usage publication includes the completed
+check (normally within sixty seconds). The adapter reads the coordinator's already
+completed cache without acquiring more data, so a settled result is not delayed by an
+additional observation cycle. Local success never clears a completed API failure:
+the existing sanitized `failureKind`, `retryAt`, and API `attemptedAt` remain visible
+alongside the valid local windows. Fable distinguishes authentication, throttling, and
+other check failures from a successful response that simply omitted the model window.
+
+D publishes optional bounded `origin` (`local_observation` or `provider_api`) and
+`freshness` (`fresh` or `stale`) fields alongside the existing normalized usage shape.
+For local evidence, `fetchedAt` is the original observation time, not the latest file read.
+F labels it **Last observed** and explicitly identifies stale figures. Provider rejection
+means saved access was rejected; it does not prove a full login is required. Readiness,
+revision/204 handling, last-good retention, and historical exclusion are unchanged.
+Local usage files are separate from session observation checkpoints and never contribute
+to context, throughput, cost attribution, or session-history usage limits.
+
+**Enable local usage** and **Reconnect Claude Code** are user-initiated native desktop
+operations behind trusted-renderer IPC and native confirmation. The first preserves
+existing user configuration while installing the bridge. The second launches only
+Claude Code's own sign-in flow. They accept no renderer-supplied paths, commands, or URLs;
+return only allowlisted outcomes; and neither read nor expose credentials. No HTTP
+control route exists. Serving GETs remain cache-only and never launch setup, sign-in,
+provider acquisition, or normalization. Recovery uses normal background retry cadence.
+
 ### Claude Remote Control lifecycle acquisition
 
 The Claude adapter supplements local registry discovery with read-only native metadata for locally discovered, live `sdk-cli` sessions with validated PID/start ownership and an exact bridge association. U1 requests only the fixed Anthropic session metadata endpoint; U2 accepts only matching identity and explicit `running`, `requires_action`, or `idle` lifecycle. Registry/remote transport fields remain provider-private. Only U1 background catalog discovery and source acquisition perform network refreshes. The U2 evidence reducer applies the cached normalized snapshot without network access; S Serving and F Presentation never call the native API.

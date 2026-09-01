@@ -237,7 +237,7 @@ test("packaged legal copies match canonical project documents and About links ev
   assert.match(notices, /vinext \| 0\.0\.50 \| MIT/);
   assert.doesNotMatch(notices, /electron-builder/);
   assert.equal(SHARP_UNPACKED_FILES.length, 3);
-  assert.deepEqual(WORKER_BUNDLE_FILES, ["desktop/workers/monitor-host.cjs"]);
+  assert.deepEqual(WORKER_BUNDLE_FILES, ["desktop/workers/monitor-host.cjs", "desktop/workers/claude-statusline-bridge.cjs"]);
 });
 
 test("clean-VM upgrade fixture is isolated, test-only, and preserves candidate metadata", async () => {
