@@ -40,10 +40,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
 }
 
-.sessionColumn { display: grid; gap: 20px; min-width: 0; }
+.sessionColumn { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.guideColumn { display: grid; gap: 20px; min-width: 0; }
 
 .sessions,
 .home .providerStatus {
@@ -53,6 +54,8 @@
   border-radius: var(--panel-radius, 6px);
   background: var(--command-panel);
 }
+
+.sessions { flex: 1; }
 
 .home .providerStatus { margin: 0; padding-block: 12px; }
 
@@ -219,7 +222,8 @@
   .guides,
   .roadmap { padding: 18px 20px 20px; }
   .home .providerStatus { padding-block: 12px; }
-  .sessionColumn { gap: 18px; }
+  .sessionColumn,
+  .guideColumn { gap: 18px; }
   .roadmap { margin-top: 18px; }
   .roadmapGrid article,
   .roadmapGrid article:first-child { padding: 14px 0 0; border-inline-start: 0; border-top: 1px solid var(--command-line); }

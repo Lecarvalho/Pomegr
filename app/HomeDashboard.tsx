@@ -97,17 +97,14 @@ export function HomeDashboard() {
       <p>Understand your coding sessions. Build on what you learn.</p>
     </header>
 
-    {ready && !updateDismissed && <HomeUpdateCard
-      title="Meet the new Agents page"
-      description="See which models you use most, the roles they take, and how you delegate work across your sessions."
-      details="Filter by project and period, explore recorded work, and inspect the agents behind each count. Switch to Live agents to follow active assignments and open their sessions."
-      href="/agents"
-      linkLabel="Explore Agents"
-      onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
-    />}
-
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
+        {ready && !updateDismissed && <HomeUpdateCard
+          title="Meet the new Agents page"
+          description="See which models you use most, the roles they take, and how you delegate work across your sessions."
+          details="Filter by project and period, explore recorded work, and inspect the agents behind each count. Switch to Live agents to follow active assignments and open their sessions."
+          onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
+        />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
           <header className={styles.sectionHeading}>
             <div><h2 id="home-sessions-heading">Sessions</h2><p>Open recorded work or return to a saved destination.</p></div>
@@ -143,22 +140,24 @@ export function HomeDashboard() {
           <span className="srOnly" role="status">{pinAnnouncement}</span>
         </section>
 
-        <ProviderStatusArea providers={providerStatus.providers} className={styles.providerStatus} headingId="home-provider-status-heading" />
       </div>
 
-      <section className={styles.guides} aria-labelledby="home-guides-heading">
-        <h2 id="home-guides-heading">Understand your sessions</h2>
-        <article>
-          <h3>Inspect context changes</h3>
-          <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
-          <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
-        </article>
-        <article>
-          <h3>Download a session report</h3>
-          <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
-          <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>
-        </article>
-      </section>
+      <div className={styles.guideColumn}>
+        <section className={styles.guides} aria-labelledby="home-guides-heading">
+          <h2 id="home-guides-heading">Understand your sessions</h2>
+          <article>
+            <h3>Inspect context changes</h3>
+            <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
+            <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
+          </article>
+          <article>
+            <h3>Download a session report</h3>
+            <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
+            <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>
+          </article>
+        </section>
+        <ProviderStatusArea providers={providerStatus.providers} className={styles.providerStatus} headingId="home-provider-status-heading" />
+      </div>
     </div>
 
     <section className={styles.roadmap} aria-label="Session coach">
