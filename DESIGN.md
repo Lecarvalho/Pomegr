@@ -88,7 +88,7 @@ components:
 
 **Creative North Star: "The Measured Command Center"**
 
-Pomegr is a local-first, read-only observer that makes coding-agent activity legible without exposing the underlying conversation. The application is a calm evidence workspace: a compact wordmark header, persistent route rail, flat panels, one-pixel rules, and restrained semantic color give the operator a reliable scan order. The approved HTML preview in `docs/design/pomegr-ui-preview.html` is the code-led authority for this application refresh; no generated component or seed is required.
+Pomegr is a local-first, read-only observer that makes coding-agent activity legible without exposing the underlying conversation. The application is a calm evidence workspace: a compact branded header, persistent route rail, flat panels, one-pixel rules, and restrained semantic color give the operator a reliable scan order. The approved HTML preview in `docs/design/pomegr-ui-preview.html` is the code-led authority for this application refresh; no generated component or seed is required.
 
 The application shell keeps its identity provider-neutral and preserves the existing normalized content, privacy boundary, and metric semantics. Landing/marketing remains independently scoped and may retain its own typography and brand treatments; do not promote landing decisions into the app shell.
 
@@ -146,7 +146,7 @@ Inter keeps the dense monitoring workspace readable and direct. Geist Mono is re
 
 ## Layout
 
-The app shell uses a 60px global header, a 220px desktop route rail, and a flexible evidence workspace. It does not reserve a persistent footer row, and session pages end with their final evidence panel rather than repeating observer, update, source, license, or version metadata. That supporting information belongs in Settings or About. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the wordmark, destination search, monitor state, notifications, and local profile control.
+The app shell uses a 60px global header, a 220px desktop route rail, and a flexible evidence workspace. It does not reserve a persistent footer row, and session pages end with their final evidence panel rather than repeating observer, update, source, license, or version metadata. That supporting information belongs in Settings or About. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the desktop wordmark or compact mobile product mark with the Pomegr name, destination search, monitor state, notifications, and local profile control. The Settings About pane presents the painted mark beside the product name and purpose before operational metadata.
 
 At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Context history appears before request snapshots in session evidence; their existing meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
 
@@ -188,7 +188,7 @@ Evidence panels use the theme panel token, a one-pixel line, 6px radius, and 16p
 
 ### Navigation
 
-The wordmark-only header is 60px high. The desktop rail is 220px with labelled route links and live status context; compact and mobile modes preserve accessible names and current-route state. Provider names stay in adapter-specific content, never in product identity.
+The branded header is 60px high. Desktop uses the wordmark; mobile places a compact raster-derived pomegranate brush mark and the Pomegr name immediately after the menu control. The mark uses the generated artwork as a mask so its visible color remains the theme-aware application brand token. The desktop rail is 220px with labelled route links and live status context; compact and mobile modes preserve accessible names and current-route state. Provider names stay in adapter-specific content, never in product identity.
 
 ### Agent Activity
 
@@ -205,7 +205,7 @@ Context history precedes request snapshots in the evidence flow. Context history
 - **Do** use the committed tokens in `app/styles/tokens.css` as the source of truth.
 - **Do** use Inter at 26px titles, 16px sections, 14px UI/body, 13px controls, and 12px metadata; use Geist Mono for numeric and execution data.
 - **Do** preserve the 60px header, 220px desktop rail, 36px default controls, 32px compact controls, and 44px touch targets.
-- **Do** preserve wordmark-only provider-neutral identity, normalized privacy boundaries, and existing metric semantics.
+- **Do** preserve provider-neutral identity, normalized privacy boundaries, and existing metric semantics.
 - **Do** keep context history before request snapshots and explain their separate meanings accurately.
 - **Do** keep landing typography, paper artifacts, and brand decisions scoped to landing/marketing.
 

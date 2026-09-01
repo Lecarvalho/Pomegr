@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-export function PomegrBrand({ href = "/", label = "Pomegr home" }: { href?: string; label?: string }) {
+export type PomegrMarkVariant = "divided" | "outline";
+
+export function PomegrMark({ variant = "divided", className = "" }: { variant?: PomegrMarkVariant; className?: string }) {
+  return <span className={`pomegrMark pomegrMark-${variant}${className ? ` ${className}` : ""}`} aria-hidden="true" />;
+}
+
+export function PomegrBrand({ href = "/", label = "Pomegr home", markVariant = "divided" }: { href?: string; label?: string; markVariant?: PomegrMarkVariant }) {
   return (
     <Link className="brand" href={href} aria-label={label}>
       <svg className="brandWordmark" viewBox="80 660 1310 180" aria-hidden="true">
@@ -13,6 +19,8 @@ export function PomegrBrand({ href = "/", label = "Pomegr home" }: { href?: stri
           <path d="M1242 820V680H1304C1343 680 1366 699 1366 732C1366 764 1343 783 1304 783H1242M1303 783L1369 820" />
         </g>
       </svg>
+      <PomegrMark variant={markVariant} className="brandMark" />
+      <span className="brandMobileWordmark">Pomegr</span>
       <span className="brandText">POMEGR</span>
     </Link>
   );

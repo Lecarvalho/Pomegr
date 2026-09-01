@@ -9,7 +9,7 @@ import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.j
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
 import type { DesktopState } from "../DesktopControls";
-import { PomegrBrand } from "../PomegrBrand";
+import { PomegrBrand, type PomegrMarkVariant } from "../PomegrBrand";
 import { ThemeToggle } from "../ThemeToggle";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
 
@@ -67,6 +67,10 @@ function isCurrent(item: NavigationItem, pathname: string) {
   return item.match ? item.match(pathname) : pathname === item.href;
 }
 
+export function pomegrMarkVariantForSearch(search = ""): PomegrMarkVariant {
+  return new URLSearchParams(search).get("logo") === "outline" ? "outline" : "divided";
+}
+
 function NavigationLink({ item, pathname, onNavigate }: { item: NavigationItem; pathname: string; onNavigate?: () => void }) {
   const current = isCurrent(item, pathname);
   return (
@@ -121,6 +125,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [markVariant, setMarkVariant] = useState<PomegrMarkVariant>("divided");
   const [query, setQuery] = useState("");
   const shortcutHint = useSyncExternalStore(subscribeToPlatformHint, getClientShortcutHint, getServerShortcutHint);
   const notificationWrapRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +159,13 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   useEffect(() => {
     if (mobileSearchOpen) searchRef.current?.focus();
   }, [mobileSearchOpen]);
+
+  useEffect(() => {
+    const readVariant = () => setMarkVariant(pomegrMarkVariantForSearch(window.location.search));
+    readVariant();
+    window.addEventListener("popstate", readVariant);
+    return () => window.removeEventListener("popstate", readVariant);
+  }, []);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -192,7 +204,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
           setMobileSearchOpen(false);
           setMobileNavigationOpen((open) => !open);
         }}><CommandIcon name={mobileNavigationOpen ? "close" : "menu"} /></button>
-        <PomegrBrand href="/" label="Pomegr home" />
+        <PomegrBrand href="/" label="Pomegr home" markVariant={markVariant} />
         <button className="commandIconButton commandMobileSearchClose" type="button" aria-label="Close search" onClick={() => closeMobileSearch()}><CommandIcon name="close" /></button>
         <form className="commandSearch" id="command-global-search" role="search" onSubmit={search}>
           <CommandIcon name="search" />

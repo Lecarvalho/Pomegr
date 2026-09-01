@@ -7,7 +7,7 @@ related_targets: ["app/components/command-center/CommandCenterShell.tsx","app/co
 
 # Pomegr Command Center
 
-The approved direction is the Command Center concept in `.impeccable/mocks/decision/pomegr-shell-concepts.html`, selected by the user from the original three shell proposals. The application is one calm monitoring instrument: a compact wordmark-only header, persistent route rail, evidence workspace, and non-modal notifications. The production shell has no persistent footer row, and session pages end with their final evidence panel; observer, source, license, version, and similar supporting details belong in Settings or About. The user-approved HTML in `docs/design/pomegr-ui-preview.html` is the code-led authority for this refresh; the production app retains every real route and capability.
+The approved direction is the Command Center concept in `.impeccable/mocks/decision/pomegr-shell-concepts.html`, selected by the user from the original three shell proposals. The application is one calm monitoring instrument: a compact branded header, persistent route rail, evidence workspace, and non-modal notifications. The production shell has no persistent footer row, and session pages end with their final evidence panel; observer, source, license, version, and similar supporting details belong in Settings or About. The user-approved HTML in `docs/design/pomegr-ui-preview.html` is the code-led authority for this refresh; the production app retains every real route and capability.
 
 ## Direction contract
 
@@ -21,7 +21,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 
 | Element | Production medium | Commitment |
 | --- | --- | --- |
-| Identity | Existing SVG wordmark component | Wordmark only in the application shell; no product-mark icon. |
+| Identity | Existing SVG wordmark plus compact raster-derived pomegranate mark | Keep the wordmark on desktop. On mobile, place one small pomegranate brush mark and the Pomegr name directly after the menu control. Use the generated PNG artwork as a mask so the divided and outline forms retain their organic edges while inheriting the application brand color token. |
 | Navigation | Semantic Next links and inline SVG icons | Home, Dashboards, Sessions, Agents, Usage limits, Repositories, Settings; current route and live-session count stay visible. |
 | Header | HTML/CSS | 60px global destination search, local-monitor state, notification bell, and a local-profile placeholder marked Coming soon. |
 | Notifications | Bounded normalized session catalog | Non-modal tray with needs-input and system state only; never conversation, command, credential, or transcript content. |
@@ -31,7 +31,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Agents | Aggregate live-session evidence | Counts where known; global roster is explicitly coming soon and never inferred. |
 | Usage limits | Existing shared usage store | Provider-reported account windows with correlation-not-attribution caveat. |
 | Repositories | Session-to-project associations | Association counts only; branch/Git aggregation is explicitly coming soon. |
-| Settings | Accessible tab system | Appearance, desktop-notification boundary, existing display preferences, and About; full keyboard tab behavior. |
+| Settings | Accessible tab system | Appearance, desktop-notification boundary, existing display preferences, and About; full keyboard tab behavior. The About pane opens with the painted Pomegr mark beside its name and concise product purpose. |
 | Responsive layout | CSS grid reflow | Preserve task order and legibility rather than shrinking the desktop composition uniformly. |
 
 The dark prototype is the compositional authority. The warm light theme is an intentional accessibility/user-preference adaptation using the same topology and semantic roles. Missing global agent and repository contracts force honest unavailable states rather than illustrative production data.

@@ -34,6 +34,17 @@ html[data-theme="dark"] body { background: var(--paper); }
 }
 .commandHeader .brand { width: max-content; color: var(--command-ink); }
 .commandHeader .brandWordmark { width: 107px; }
+.pomegrMark-divided { --pomegr-mark-image: url("/pomegr-mark-painted.png"); }
+.pomegrMark-outline { --pomegr-mark-image: url("/pomegr-mark-brush-outline.png"); }
+.pomegrMark {
+  flex: 0 0 auto;
+  background: var(--command-brand-text);
+  mask-image: var(--pomegr-mark-image);
+  mask-mode: luminance;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
 .commandMenuButton, .commandNavScrim { display: none; }
 .commandSearch {
   min-width: 0;
@@ -170,6 +181,11 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSettingsPane .displayPreferenceRow label strong { color: var(--command-ink); font-size: var(--text-xs); }
 .commandSettingsPane .displayPreferenceRow label span { color: var(--command-muted); font-size: var(--text-xs); }
 .commandSettingsPane .displayPreferenceRow input { border-color: var(--command-line-strong); background: var(--command-panel-2); }
+.commandAboutIdentity { min-width: 0; padding-bottom: var(--space-4); display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: var(--space-4); }
+.commandAboutIdentityMark { display: block; width: 56px; height: 56px; }
+.commandAboutIdentityText { min-width: 0; }
+.commandSettingsPane .commandAboutIdentity h2 { font-size: var(--text-heading); }
+.commandAboutIdentity p { max-width: 52ch; margin: var(--space-2) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
 .commandAbout { padding: 0; }
 .commandAbout > .commandPageHeader { display: block; }
 .commandAbout > .commandPageHeader h1 { max-width: 860px; font-size: clamp(36px, 5vw, 64px); }
@@ -191,14 +207,23 @@ html[data-theme="dark"] body { background: var(--paper); }
 
 @media (max-width: 760px) {
   .commandShell { grid-template-columns: minmax(0, 1fr); }
-  .commandHeader { grid-template-columns: 44px minmax(0, 1fr); gap: 6px; padding-inline: 8px; }
-  .commandHeader .brand, .commandProfileWrap { display: none; }
+  .commandHeader { grid-template-columns: 44px max-content minmax(0, 1fr); gap: 0; padding-inline: 8px; }
+  .commandHeader .brand { grid-column: 2; grid-row: 1; height: 44px; display: flex; justify-content: flex-start; gap: var(--space-3); color: var(--command-ink); }
+  .commandHeader .brandWordmark { display: none; }
+  .commandHeader .brandMark {
+    display: block;
+    width: var(--command-brand-mark-size);
+    height: var(--command-brand-mark-size);
+  }
+  .commandHeader .brandMobileWordmark { display: block; color: var(--command-muted); font: 400 var(--text-base)/1 var(--font-ui); letter-spacing: -.01em; }
+  .commandProfileWrap { display: none; }
   .commandHeader .commandMenuButton,
   .commandHeader .commandMobileSearchClose { grid-column: 1; grid-row: 1; display: grid; }
   .commandHeaderTools,
-  .commandHeader > .commandSearch { grid-column: 2; grid-row: 1; }
+  .commandHeader > .commandSearch { grid-column: 3; grid-row: 1; }
   .commandHeader .commandMobileSearchButton { display: grid; }
   .commandHeader .commandMenuButton,
+  .commandHeader .brand,
   .commandHeaderTools {
     visibility: visible;
     opacity: 1;
@@ -215,10 +240,12 @@ html[data-theme="dark"] body { background: var(--paper); }
   }
   .commandHeader > .commandSearch {
     display: flex;
+    grid-column: 2 / -1;
     transform: translateX(44px);
     transition: opacity .12s ease-in, transform .16s ease-in, visibility 0s linear .16s;
   }
   .commandHeader.isSearchOpen .commandMenuButton,
+  .commandHeader.isSearchOpen .brand,
   .commandHeader.isSearchOpen .commandHeaderTools {
     visibility: hidden;
     opacity: 0;
@@ -283,6 +310,8 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandPageHeader h1 { font-size: 24px; }
   .commandNotificationTray { width: calc(100% - 16px); }
   .commandAbout .aboutNote { grid-template-columns: 1fr; }
+  .commandAboutIdentity { grid-template-columns: 48px minmax(0, 1fr); gap: var(--space-3); }
+  .commandAboutIdentityMark { width: 48px; height: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

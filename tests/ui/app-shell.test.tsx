@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
-import { shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
+import { pomegrMarkVariantForSearch, shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
 import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
@@ -215,6 +215,12 @@ describe("Command Center app shell", () => {
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     view.unmount();
+  });
+
+  it("supports both compact product-mark variants for live comparison", () => {
+    expect(pomegrMarkVariantForSearch("?logo=divided")).toBe("divided");
+    expect(pomegrMarkVariantForSearch("?logo=outline")).toBe("outline");
+    expect(pomegrMarkVariantForSearch("?view=home")).toBe("divided");
   });
 
   it("keeps live sessions ordered by creation time descending across refreshed activity", async () => {

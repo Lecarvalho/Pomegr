@@ -33,6 +33,16 @@ describe("display preferences", () => {
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "settings-tab-notifications");
   });
 
+  it("presents the About identity with the painted Pomegr mark beside its copy", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await user.click(screen.getByRole("tab", { name: "About" }));
+
+    expect(screen.getByRole("heading", { name: "About Pomegr" })).toBeInTheDocument();
+    expect(screen.getByText("A local-first, read-only observer for coding-agent sessions.")).toBeInTheDocument();
+    expect(document.querySelector(".commandAboutIdentity .commandAboutIdentityMark.pomegrMark-divided")).toBeInTheDocument();
+  });
+
   it("defaults both session displays on, persists changes, and restores defaults", async () => {
     const user = userEvent.setup();
     const view = renderSettings();
