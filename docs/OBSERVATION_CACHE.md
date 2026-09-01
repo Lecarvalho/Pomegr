@@ -521,6 +521,13 @@ U1/U2 recognition: last-known-good retention, revision publication, bounded priv
 cursors, and cache-only GETs are unchanged; no raw agent IDs or result fields are
 added to browser or checkpoint state.
 
+Non-live Claude catalog rows use `idle` as a no-live-session fallback, not
+provider-confirmed completion; live rows with unavailable lifecycle evidence remain
+`unknown`. This changes only the normalized catalog enum. Structural catalog
+projection publishes it through the existing committed revision and notification
+path; GETs remain cache-only, last-known-good evidence and checkpoints are retained,
+and no new public or persisted fields are introduced.
+
 The request and schema compatibility contract is in [Claude session status](CLAUDE_SESSION_STATUS.md).
 
 ## Readiness contract

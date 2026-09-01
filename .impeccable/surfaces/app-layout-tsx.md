@@ -21,7 +21,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 
 | Element | Production medium | Commitment |
 | --- | --- | --- |
-| Identity | Existing SVG wordmark plus compact raster-derived pomegranate mark | Keep the wordmark on desktop. On mobile, place one small pomegranate brush mark and the Pomegr name directly after the menu control. Use the generated PNG artwork as a mask so the divided and outline forms retain their organic edges while inheriting the application brand color token. |
+| Identity | Compact raster-derived pomegranate mark plus Pomegr name | Use one small pomegranate brush mark beside the Pomegr name on desktop and mobile. On mobile, place this identity directly after the menu control. Use the generated PNG artwork as a mask so the divided and outline forms retain their organic edges while inheriting the application brand color token. |
 | Navigation | Semantic Next links and inline SVG icons | Home, Dashboards, Sessions, Agents, Usage limits, Repositories, Settings; current route and live-session count stay visible. |
 | Header | HTML/CSS | 60px global destination search, local-monitor state, notification bell, and a local-profile placeholder marked Coming soon. |
 | Notifications | Bounded normalized session catalog | Non-modal tray with needs-input and system state only; never conversation, command, credential, or transcript content. |

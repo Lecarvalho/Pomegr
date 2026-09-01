@@ -246,13 +246,15 @@ This is provider-record ordering, not a recency or timeout heuristic.
 
 When the provider registry is unavailable, Pomegr falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
 
+A Claude session classified as non-live displays **Idle** in the catalog. This fallback means Pomegr detects no live session; it does not establish provider-confirmed idle, completion, or success. With a registry present, a missing or invalidated registration plus activity outside the fifteen-second registration grace period produces this fallback. Live Claude sessions with missing or unavailable lifecycle evidence remain **Unknown**.
+
 Codex uses only evidence whose ownership and provenance are known: owning app-server status, an allowlisted lifecycle-bridge snapshot, or an explicit adapter assessment of structured rollout evidence. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly only when reported by the owning connection and confirmed for that thread. Bridge liveness is optional evidence with a bounded lease; lease expiry produces unknown/stale, never idle. CLI and VS Code rollout assessments use distinct cold-check budgets and pending-edit algorithms; unsupported Desktop attachment remains unknown. Validated structured starts and unmatched structured input requests retain their execution state through silence until matching evidence resolves them. Recognized turn completion and interruption retain idle/stopped; silence never implies completion. The observation timestamp is preserved. Structured freshness means complete, generation-matched evidence, not operating-system certainty. Runtime confirmation and bridge lease expiry remain independent of transcript silence.
 
 A recognized provider-authored Codex activity heading is scoped to its open turn and cannot by itself clear or prove liveness. It may be retained without a start marker while no true known boundary has closed that turn; repeated headings or context do not reset completion. A recognized terminal turn record or authoritative owning status may clear it, while unknown/stale state presents it as **Last observed activity**; historical views omit it. Pomegr preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
 
 Selecting any live session keeps its state polling. When a selected session loses its live classification, it moves into history and polling stops until it becomes active again.
 
-Session activity aggregation is conservative: `needs_input` wins, then any known active
+Codex session activity aggregation is conservative: `needs_input` wins, then any known active
 actor yields `working`. `idle` is allowed only when the root lifecycle is known idle
 and every potentially-live related actor is explicitly inactive (`idle`, `stopped`, or
 `finished`). An unknown root or live child blocks idle; unknown non-live historical

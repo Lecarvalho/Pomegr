@@ -32,8 +32,9 @@ html[data-theme="dark"] body { background: var(--paper); }
   border-bottom: 1px solid var(--command-line);
   background: var(--command-header);
 }
-.commandHeader .brand { width: max-content; color: var(--command-ink); }
-.commandHeader .brandWordmark { width: 107px; }
+.commandHeader .brand { width: max-content; height: 44px; gap: var(--space-3); color: var(--command-ink); }
+.commandHeader .brandMark { display: block; width: var(--command-brand-mark-size); height: var(--command-brand-mark-size); }
+.commandHeader .brandWordmark { color: var(--command-muted); font: 400 15px var(--font-ui); letter-spacing: -.01em; }
 .pomegrMark-divided { --pomegr-mark-image: url("/pomegr-mark-painted.png"); }
 .pomegrMark-outline { --pomegr-mark-image: url("/pomegr-mark-brush-outline.png"); }
 .pomegrMark {
@@ -196,8 +197,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 
 @media (max-width: 1080px) {
   .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
-  .commandHeader { grid-template-columns: 62px minmax(180px, 1fr) auto; padding-inline: 9px; gap: 9px; }
-  .commandHeader .brandWordmark { width: 58px; }
+  .commandHeader { grid-template-columns: max-content minmax(180px, 1fr) auto; padding-inline: 9px; gap: 9px; }
   .commandEnvironment { display: none; }
   .commandSidebar { top: 56px; height: calc(100vh - 56px); padding-inline: 6px; }
   .commandNavItem { padding: 0; grid-template-columns: 1fr; place-items: center; }
@@ -209,14 +209,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 @media (max-width: 760px) {
   .commandShell { grid-template-columns: minmax(0, 1fr); }
   .commandHeader { grid-template-columns: 44px max-content minmax(0, 1fr); gap: 0; padding-inline: 8px; }
-  .commandHeader .brand { grid-column: 2; grid-row: 1; height: 44px; display: flex; justify-content: flex-start; gap: var(--space-3); color: var(--command-ink); }
-  .commandHeader .brandWordmark { display: none; }
-  .commandHeader .brandMark {
-    display: block;
-    width: var(--command-brand-mark-size);
-    height: var(--command-brand-mark-size);
-  }
-  .commandHeader .brandMobileWordmark { display: block; color: var(--command-muted); font: 400 var(--text-base)/1 var(--font-ui); letter-spacing: -.01em; }
+  .commandHeader .brand { grid-column: 2; grid-row: 1; justify-content: flex-start; }
   .commandProfileWrap { display: none; }
   .commandHeader .commandMenuButton,
   .commandHeader .commandMobileSearchClose { grid-column: 1; grid-row: 1; display: grid; }

@@ -34,7 +34,8 @@ export function registryTimestamp(entry) {
 }
 
 export function sessionActivityStatus(isLive, entry, backgroundRunning = null) {
-  if (!isLive) return "unknown";
+  // Non-live catalog fallback; this does not assert provider-confirmed completion.
+  if (!isLive) return "idle";
   if (entry?.needsInput) return "needs_input";
   if (entry?.status === "active" || entry?.status === "waiting" || backgroundRunning === true) return "working";
   return entry?.status === "idle" ? "idle" : "unknown";

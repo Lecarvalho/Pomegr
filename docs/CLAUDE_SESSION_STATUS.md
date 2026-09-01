@@ -64,13 +64,21 @@ supply an execution observation.
 | `idle` | Working if recorded background work remains open; otherwise Idle | `idle` |
 | Missing, unrecognized, mismatched, or unavailable | No new observation | No new observation |
 
-Without a prior valid observation, the status is unknown. A temporary failure
+For a live session without a prior valid observation, the status is unknown. A temporary failure
 retains the last valid observation for that same local session, owner, bridge, and
 credential identity without advancing its timestamp. This is last-observed state,
 not proof of the current state during a network outage. Removal or reassignment of
 the local owner/bridge, or credential replacement/removal, prevents cache reuse.
 A successful unchanged poll also preserves the original transition-observation time.
 Historical hydration makes no remote status request for the historical session.
+
+A non-live Claude catalog row uses **Idle** as a fallback meaning no live session
+is detected. With the registry available, this applies after the session has no
+validated registration and its primary/subagent activity is outside the existing
+fifteen-second registration grace period. Without a registry, the existing
+five-minute activity window still determines liveness. This is a Pomegr
+classification, not provider-confirmed idle, completion, or successful work.
+Live sessions with unavailable lifecycle evidence remain **Unknown**.
 
 ### Background execution is independent of primary idle
 

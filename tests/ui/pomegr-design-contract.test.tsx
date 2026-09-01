@@ -16,17 +16,17 @@ const sessionProgressSource = readFileSync(join(process.cwd(), "app", "component
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
-  it("keeps the application identity provider-neutral and adds the compact mobile product mark", () => {
+  it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {
     render(<AboutPage />);
 
     expect(screen.getByRole("heading", { name: "A quiet view into active work." })).toBeInTheDocument();
     expect(shellSource).toMatch(/<PomegrBrand href="\/" label="Pomegr home"/);
-    expect(brandSource).toMatch(/className="brandWordmark"/);
+    expect(brandSource).not.toMatch(/<svg|brandMobileWordmark|brandText/);
     expect(brandSource).toMatch(/className=\{`pomegrMark pomegrMark-\$\{variant\}/);
     expect(brandSource).not.toMatch(/fruitPath|brandMarkDividers/);
     expect(existsSync(join(process.cwd(), "public", "pomegr-mark-painted.png"))).toBe(true);
     expect(existsSync(join(process.cwd(), "public", "pomegr-mark-brush-outline.png"))).toBe(true);
-    expect(brandSource).toMatch(/className="brandMobileWordmark">Pomegr/);
+    expect(brandSource).toMatch(/className="brandWordmark">Pomegr/);
     expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.png/);
@@ -64,12 +64,12 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandNavItem\s*\{[^}]*display:\s*grid;[^}]*align-items:\s*center/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSidebar\.isOpen\s*\{[^}]*transform:\s*translateX\(0\)/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader\s*\{[^}]*grid-template-columns:\s*44px max-content minmax\(0, 1fr\)[^}]*gap:\s*0/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader \.brand\s*\{[^}]*grid-column:\s*2[^}]*gap:\s*var\(--space-3\)[^}]*color:\s*var\(--command-ink\)/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader \.brand\s*\{[^}]*grid-column:\s*2/);
     expect(styles).toMatch(/\.pomegrMark-divided\s*\{\s*--pomegr-mark-image:\s*url\("\/pomegr-mark-painted\.png"\)/);
     expect(styles).toMatch(/\.pomegrMark-outline\s*\{\s*--pomegr-mark-image:\s*url\("\/pomegr-mark-brush-outline\.png"\)/);
     expect(styles).toMatch(/\.pomegrMark\s*\{[^}]*background:\s*var\(--command-brand-text\)[^}]*mask-image:\s*var\(--pomegr-mark-image\)[^}]*mask-mode:\s*luminance/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader \.brandMark\s*\{[^}]*width:\s*var\(--command-brand-mark-size\)/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader \.brandMobileWordmark\s*\{[^}]*display:\s*block[^}]*color:\s*var\(--command-muted\)[^}]*font:\s*400 var\(--text-base\)\/1 var\(--font-ui\)/);
+    expect(styles).toMatch(/\.commandHeader \.brandMark\s*\{[^}]*width:\s*var\(--command-brand-mark-size\)/);
+    expect(styles).toMatch(/\.commandHeader \.brandWordmark\s*\{[^}]*color:\s*var\(--command-muted\)[^}]*font:\s*400 15px var\(--font-ui\)/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*display:\s*flex;[^}]*transform:\s*translateX\(44px\)/);
     expect(styles).toMatch(/\.commandHeader\.isSearchOpen > \.commandSearch\s*\{[^}]*transform:\s*none;[^}]*transform \.22s cubic-bezier\(\.16, 1, \.3, 1\)/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*transform:\s*none/);

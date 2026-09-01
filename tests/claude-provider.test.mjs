@@ -747,7 +747,7 @@ test("Claude adapter retires a stale registry file whose owner process exited", 
 
   const catalog = await provider.listSessions();
   assert.equal(catalog[0].isLive, false);
-  assert.equal(catalog[0].activityStatus, "unknown");
+  assert.equal(catalog[0].activityStatus, "idle");
   assert.equal(Object.hasOwn(catalog[0], "resourceOwner"), false);
   const evidence = await provider.readSession(localId, { historical: true });
   assert.equal(evidence.historical, true);
