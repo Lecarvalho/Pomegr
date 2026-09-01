@@ -5,7 +5,7 @@ html[data-theme="dark"] body { background: var(--paper); }
   min-height: 100vh;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  grid-template-rows: 60px minmax(0, 1fr) 32px;
+  grid-template-rows: 60px minmax(0, 1fr);
   overflow: clip;
   background: var(--command-ground);
   color: var(--command-ink);
@@ -122,7 +122,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSidebarFoot .desktopUpdateOffer p { color: var(--command-ink); font-size: var(--text-xs); }
 .commandSidebarFoot .desktopUpdateOffer button { min-height: 32px; font-size: var(--text-xs); }
 .commandMain { min-width: 0; grid-column: 2; grid-row: 2; padding: 32px 32px 40px; overflow: auto; background: var(--command-ground); }
-.commandFooter { grid-column: 2; grid-row: 3; min-width: 0; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--command-line); background: var(--command-header); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); }
 .commandView { width: min(1480px, 100%); margin: 0 auto; }
 .commandPageHeader { min-height: 60px; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .commandPageHeader h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
@@ -154,7 +153,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSessionActionIcon { display: none; width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .commandSessionBar .desktopControls > summary { min-height: 36px; border-color: var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); font-size: var(--text-xs); }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
-.commandSessionView > footer { margin-top: 34px; padding: 14px 0 0; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--command-line); color: var(--command-faint); font-size: var(--text-xs); }
 .commandSessionView .hero { padding-top: 32px; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 0 20px; margin-bottom: 4px; }
 .commandSettingsLayout { margin-top: 14px; display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSettingsNav { padding: 10px; border-right: 1px solid var(--command-line); }
@@ -163,12 +161,12 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSettingsPane { padding: 20px; }
 .commandSettingsPane h2 { margin: 0; font-size: var(--text-base); }
 .commandSettingsPane > p { margin: 8px 0 18px; color: var(--command-muted); font-size: var(--text-xs); }
-.commandSettingRow, .commandSettingsPane .displayPreferenceRow { min-height: 76px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 22px; border-top: 1px solid var(--command-line); }
+.commandSettingRow { min-height: 0; padding-block: var(--divider-content-gap); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 22px; border-top: 1px solid var(--command-line); }
 .commandSettingRow strong, .commandSettingRow span { display: block; }
 .commandSettingRow strong { font-size: var(--text-xs); }
 .commandSettingRow div > span { max-width: 64ch; margin-top: 6px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
 .commandSettingsPane .displayPreferenceList { padding: 0; }
-.commandSettingsPane .displayPreferenceRow { min-height: 82px; }
+.commandSettingsPane .displayPreferenceRow { min-height: 0; }
 .commandSettingsPane .displayPreferenceRow label strong { color: var(--command-ink); font-size: var(--text-xs); }
 .commandSettingsPane .displayPreferenceRow label span { color: var(--command-muted); font-size: var(--text-xs); }
 .commandSettingsPane .displayPreferenceRow input { border-color: var(--command-line-strong); background: var(--command-panel-2); }
@@ -180,14 +178,14 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandAbout .aboutGrid > div, .commandAbout .aboutNote { border-color: var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 
 @media (max-width: 1080px) {
-  .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr) 38px; }
+  .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
   .commandHeader { grid-template-columns: 62px minmax(180px, 1fr) auto; padding-inline: 9px; gap: 9px; }
   .commandHeader .brandWordmark { width: 58px; }
   .commandEnvironment { display: none; }
   .commandSidebar { top: 56px; height: calc(100vh - 56px); padding-inline: 6px; }
   .commandNavItem { padding: 0; grid-template-columns: 1fr; place-items: center; }
   .commandNavItem span, .commandNavItem em, .commandSidebarFoot, .commandNavDivider { display: none; }
-  .commandMain, .commandFooter { grid-column: 2; }
+  .commandMain { grid-column: 2; }
   .commandNotificationTray { position: fixed; top: 56px; right: 0; width: min(390px, calc(100% - 54px)); max-height: calc(100vh - 94px); }
 }
 
@@ -251,14 +249,12 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandNavItem { align-items: center; }
   .commandNavItem em { justify-self: end; }
   .commandSidebarFoot { margin-top: 28px; }
-  .commandMain, .commandFooter { grid-column: 1; }
+  .commandMain { grid-column: 1; }
   .commandProfileButton { min-width: 0; padding: 0; }
   .commandProfileButton > span:last-child { display: none; }
   .commandAvatar { width: 34px; height: 34px; }
   .commandSearch kbd { display: none; }
   .commandMain { padding: 20px 14px 28px; }
-  .commandFooter span:first-child { display: none; }
-  .commandFooter { justify-content: flex-end; }
   .commandPageHeader { display: block; }
   .commandPageHeader > :last-child:not(div) { margin-top: 12px; }
   .commandOverviewGrid { grid-template-columns: 1fr; }

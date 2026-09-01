@@ -537,7 +537,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .workflowWorkerMeasure strong { font: 500 var(--text-xs)/1 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .workflowWorkerMeasure span { margin-top: 4px; color: var(--muted); font-size: var(--text-xs); line-height: 1.2; white-space: nowrap; }
 .workflowPhaseEmpty { margin: 0; padding: 12px 0 13px 30px; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
-.workflowPhaseUnavailable { max-width: 72ch; margin: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.workflowPhaseUnavailable { max-width: 72ch; margin: var(--divider-content-gap) 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
 .workflowMetadataFallback .workflowWorkerGroup { margin-top: 10px; }
 .workflowMetadataFallback .workflowWorkerRow { padding-inline-start: 0; }
 .workflowDisclosureSummary b { overflow-wrap: anywhere; unicode-bidi: plaintext; }

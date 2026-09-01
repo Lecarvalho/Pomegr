@@ -173,6 +173,7 @@ describe("dashboard session navigation", () => {
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);
     expect(requestPanel?.nextElementSibling).toBe(resourcePanel);
     expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
+    expect(sessionDetails?.nextElementSibling).toBeNull();
     expect(resourcePanel).toHaveClass("dashboardDisclosurePanel", "panel");
     expect(sessionDetails).toHaveClass("dashboardDisclosurePanel", "panel");
     expect(resourcePanel?.querySelector(":scope > .dashboardDisclosurePanelBody")).toHaveClass("resourceUsageBody");

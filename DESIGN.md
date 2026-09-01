@@ -146,7 +146,7 @@ Inter keeps the dense monitoring workspace readable and direct. Geist Mono is re
 
 ## Layout
 
-The app shell uses a 60px global header, a 220px desktop route rail, a flexible evidence workspace, and a quiet read-only footer. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the wordmark, destination search, monitor state, notifications, and local profile control.
+The app shell uses a 60px global header, a 220px desktop route rail, and a flexible evidence workspace. It does not reserve a persistent footer row, and session pages end with their final evidence panel rather than repeating observer, update, source, license, or version metadata. That supporting information belongs in Settings or About. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the wordmark, destination search, monitor state, notifications, and local profile control.
 
 At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Context history appears before request snapshots in session evidence; their existing meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
 
@@ -160,7 +160,7 @@ Operational surfaces are flat at rest. Depth comes from charcoal/light tonal ste
 
 - **Overlay:** `0 12px 32px #20252b20` in light mode and the theme override in dark mode, for profile and notification overlays.
 
-**The Flat Evidence Rule.** Panels, tables, metrics, and settings panes use tone and rules instead of decorative floating shadows.
+**The Flat Evidence Rule.** Panels, tables, metrics, and settings panes use tone and rules instead of decorative floating shadows. Give each meaningful transition one boundary: use proximity and spacing within a group, avoid adjacent full-width dividers, and soften supporting rules so section boundaries retain hierarchy. Content beside a divided evidence or settings row keeps at least 12px of block inset through the shared divider-gap token.
 
 ## Shapes
 

@@ -18,6 +18,7 @@
   --space-4: 16px;
   --space-6: 24px;
   --space-8: 32px;
+  --divider-content-gap: var(--space-3);
   --color-canvas: #f3f4f5;
   --color-panel: #ffffff;
   --color-raised: #e9edf1;

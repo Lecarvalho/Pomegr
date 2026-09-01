@@ -19,7 +19,6 @@ import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
 import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
-import { RelativeTimeText } from "./components/LiveTime";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import type { DesktopState } from "./components/DesktopControls";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
@@ -73,7 +72,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const revisionsBySessionRef = useRef(new Map<string, number | string>());
   const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
   const capabilities = data.capabilities || createEmptyProviderCapabilities();
@@ -123,7 +121,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
         else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
         setSelectedSessionId((current) => current ?? nextData.session?.id ?? null);
         setData(nextData);
-        setLastRefresh(new Date());
       });
       return Object.values(nextData.readiness || {}).includes("loading") || !nextData.session
         ? "loading" as const
@@ -243,7 +240,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
             else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
             reportState = { ...latestState, revision: latestState.revision ?? headerRevision ?? null };
             setData(reportState);
-            setLastRefresh(new Date());
           }
         }
       } catch {
@@ -310,7 +306,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} session={selectedSession} readiness={data.readiness} />
         </>}
-          <DashboardFooter connected={data.connected} connecting={connecting} viewingHistory={viewingHistory} paused={paused} lastRefresh={lastRefresh} />
       </section>
     </LiveClockProvider>
   );
@@ -355,13 +350,4 @@ function SessionLoadingShell({ session, readiness }: { session: SessionSummary; 
 
 function ReadinessSkeleton({ label, className = "" }: { label: string; className?: string }) {
   return <section className={`panel readinessSkeleton ${className}`.trim()} aria-busy="true"><p className="srOnly" role="status">Loading {label}.</p><span className="uiSkeleton readinessSkeletonTitle" aria-hidden="true" /><span className="uiSkeleton readinessSkeletonBody" aria-hidden="true" /><span className="uiSkeleton readinessSkeletonBody short" aria-hidden="true" /></section>;
-}
-
-function DashboardFooter({ connected, connecting, viewingHistory, paused, lastRefresh }: { connected: boolean; connecting: boolean; viewingHistory: boolean; paused: boolean; lastRefresh: Date | null }) {
-  return (
-    <footer>
-      <span>{viewingHistory ? "Recorded session · Read-only" : "Local observer · Read-only"} · <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">Source</a> · <a href="/about#license">AGPL-3.0-only</a></span>
-      <span>{connecting ? "Connecting…" : viewingHistory ? "Historical snapshot" : !connected ? "Monitor unavailable" : paused ? "Live updates paused" : lastRefresh ? <>Updated <RelativeTimeText value={lastRefresh.toISOString()} /></> : "Connecting…"}</span>
-    </footer>
-  );
 }

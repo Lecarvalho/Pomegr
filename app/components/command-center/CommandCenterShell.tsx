@@ -243,7 +243,6 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
       </aside>
 
       <main className="commandMain" id="main-content">{children}</main>
-      <footer className="commandFooter"><span>{loading ? "Connecting to monitor" : connected ? "Monitor connected" : "Monitor unavailable"}</span><span>Read-only · normalized metadata only</span></footer>
     </div>
   );
 }

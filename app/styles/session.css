@@ -14,10 +14,10 @@
   margin-bottom: 4px;
   padding: 12px 0 20px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 16px;
-  border-bottom: 1px solid var(--command-line);
+  border-bottom: 1px solid color-mix(in srgb, var(--command-line) 72%, transparent);
 }
 .sessionBreadcrumb { margin-bottom: 8px; color: var(--command-muted); font-size: var(--text-sm); }
 .sessionBreadcrumb ol { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
@@ -38,7 +38,7 @@
 .commandSessionView .sessionIdentity code { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-geist-mono), Consolas, monospace; }
 .commandSessionView .hero p { max-width: 70ch; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.55; }
 .commandSessionView .heroSummarySource { color: var(--command-faint); font: 700 var(--text-xs)/1 var(--font-ui); }
-.commandSessionView .sessionMeta { align-self: start; gap: 24px; border-left: 0; flex-wrap: wrap; }
+.commandSessionView .sessionMeta { align-self: start; justify-self: end; gap: 24px; border-left: 0; flex-wrap: wrap; }
 .commandSessionView .sessionMetaGroup { min-width: 0; padding: 0; }
 .commandSessionView .sessionMetaGroup + .sessionMetaGroup { border-left: 0; }
 .commandSessionView .sessionMetaLabel { color: var(--command-faint); font: 400 var(--text-xs)/1.5 var(--font-ui); }
@@ -93,8 +93,8 @@
 
 @media (max-width: 900px) {
   .commandSessionView .hero { grid-template-columns: 1fr; align-items: start; gap: 18px; }
-  .commandSessionView .sessionMeta { width: 100%; border-top: 1px solid var(--command-line); border-left: 0; }
-  .commandSessionView .sessionMetaGroup { flex: 1 1 0; padding: 13px 0; }
+  .commandSessionView .sessionMeta { width: 100%; justify-self: stretch; border-left: 0; }
+  .commandSessionView .sessionMetaGroup { flex: 1 1 0; padding: 0; }
   .commandSessionView .sessionMetaGroup + .sessionMetaGroup { padding-left: 16px; }
   .commandSessionView .contentGrid { grid-template-columns: 1fr; }
 }

@@ -7,14 +7,14 @@ related_targets: ["app/components/command-center/CommandCenterShell.tsx","app/co
 
 # Pomegr Command Center
 
-The approved direction is the Command Center concept in `.impeccable/mocks/decision/pomegr-shell-concepts.html`, selected by the user from the original three shell proposals. The application is one calm monitoring instrument: a compact wordmark-only header, persistent route rail, evidence workspace, non-modal notifications, and a quiet read-only footer. The user-approved HTML in `docs/design/pomegr-ui-preview.html` is the code-led authority for this refresh; the production app retains every real route and capability.
+The approved direction is the Command Center concept in `.impeccable/mocks/decision/pomegr-shell-concepts.html`, selected by the user from the original three shell proposals. The application is one calm monitoring instrument: a compact wordmark-only header, persistent route rail, evidence workspace, and non-modal notifications. The production shell has no persistent footer row, and session pages end with their final evidence panel; observer, source, license, version, and similar supporting details belong in Settings or About. The user-approved HTML in `docs/design/pomegr-ui-preview.html` is the code-led authority for this refresh; the production app retains every real route and capability.
 
 ## Direction contract
 
 - **Thesis:** one focused Command Center, not a collection of page-local dashboards and drawers.
 - **Own world:** charcoal operational surfaces (`#111315`, `#191c20`, `#23272d`) with light neutrals (`#f3f4f5`, `#ffffff`, `#e9edf1`); pomegranate wordmark; green, amber, lavender, and semantic error reserved for truthful evidence; one-pixel rules; Inter for UI and Geist Mono for data.
 - **Story:** move from workspace status to sessions, agents, usage, repositories, and settings without losing monitor context.
-- **First viewport:** 60px global header, 220px route rail, live workspace, anchored notification tray, and read-only footer. At compact widths the rail becomes an icon rail; at mobile widths it becomes an off-canvas labelled drawer so the workspace keeps the full viewport.
+- **First viewport:** 60px global header, 220px route rail, live workspace, and anchored notification tray without a reserved footer strip. At compact widths the rail becomes an icon rail; at mobile widths it becomes an off-canvas labelled drawer so the workspace keeps the full viewport.
 - **Form:** approved Command Center HTML preview; no generated component or seed is required because the user pinned the code-led direction.
 
 ## Production commitments
