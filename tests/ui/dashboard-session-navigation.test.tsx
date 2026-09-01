@@ -167,6 +167,7 @@ describe("dashboard session navigation", () => {
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(breadcrumb.parentElement?.firstElementChild).toBe(breadcrumb);
     expect(breadcrumb.nextElementSibling).toHaveAttribute("aria-label", "Session controls");
+    expect(screen.getByLabelText("Session state: In progress")).toBeInTheDocument();
     expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
     expect(within(breadcrumb).getByText(state.session!.project)).toHaveAttribute("aria-current", "page");
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);

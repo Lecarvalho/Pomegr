@@ -42,7 +42,7 @@ describe("desktop controls", () => {
       : response(createEmptyMonitorState({ connected: true })));
 
     render(<Dashboard />);
-    await screen.findByText("Monitor connected");
+    await screen.findByLabelText("Session state: Unknown");
     await user.click(screen.getByText("Desktop"));
     const controls = screen.getByRole("group", { name: "Desktop controls" });
     expect(controls).toBeInTheDocument();

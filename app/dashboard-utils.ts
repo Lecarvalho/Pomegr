@@ -78,6 +78,18 @@ export function newestSessionsFirst<T extends SessionSummary>(sessions: T[]) {
   return [...sessions].sort((left, right) => timestamp(right) - timestamp(left) || left.id.localeCompare(right.id));
 }
 
+export function sessionState(session: Pick<SessionSummary, "activityStatus">) {
+  switch (session.activityStatus) {
+    case "working": return { label: "In progress", state: "active" as const };
+    case "needs_input": return { label: "Needs input", state: "attention" as const };
+    case "idle": return { label: "Idle", state: "idle" as const };
+    case "open": return { label: "Open", state: "unknown" as const };
+    case "stopped": return { label: "Stopped", state: "unknown" as const };
+    case "unknown": return { label: "Unknown", state: "unknown" as const };
+  }
+  return { label: "Unknown", state: "unknown" as const };
+}
+
 export function sessionNeedingAttention(sessions: SessionSummary[], currentSessionId: string | null, viewingHistory: boolean) {
   if (!currentSessionId || viewingHistory) return null;
   return sessions.find((session) => session.id === currentSessionId && session.isLive && session.needsInput) || null;

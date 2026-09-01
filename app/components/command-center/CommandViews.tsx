@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { HomeProviderUsageLimits, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
-import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime } from "../../dashboard-utils";
+import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { usageLimitFailureKind, usageLimitFailureMessage } from "../../usage-limit-presentation";
 import { useUsageLimits } from "../../usage-limits-client";
@@ -16,18 +16,6 @@ import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandMet
 
 function sessionHref(session: SessionSummary) {
   try { return `/sessions/${encodeSessionRoute(session.id)}`; } catch { return "/"; }
-}
-
-function sessionState(session: SessionSummary) {
-  switch (session.activityStatus) {
-    case "working": return { label: "In progress", state: "active" as const };
-    case "needs_input": return { label: "Needs input", state: "attention" as const };
-    case "idle": return { label: "Idle", state: "idle" as const };
-    case "open": return { label: "Open", state: "unknown" as const };
-    case "stopped": return { label: "Stopped", state: "unknown" as const };
-    case "unknown": return { label: "Unknown", state: "unknown" as const };
-  }
-  return { label: "Unknown", state: "unknown" as const };
 }
 
 function sessionTimestamp(value: string) {

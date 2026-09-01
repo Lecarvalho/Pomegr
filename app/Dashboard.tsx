@@ -285,7 +285,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
             </li>}
           </ol>
         </nav>
-        <SessionCommandBar connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
+        <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}

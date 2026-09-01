@@ -57,9 +57,10 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandIcon { width: 17px; height: 17px; flex: 0 0 auto; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .commandEnvironment { justify-self: start; min-height: 28px; padding: 0 9px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); white-space: nowrap; }
 .commandEnvironment i, .commandStatusDot, .commandSessionConnection i { width: 7px; height: 7px; flex: 0 0 auto; display: inline-block; border-radius: 50%; background: var(--command-faint); }
-.commandEnvironment.online i, .commandStatusDot.online, .commandSessionConnection.online i { background: var(--command-green); box-shadow: none; }
+.commandEnvironment.online i, .commandStatusDot.online, .commandSessionConnection.online i, .commandSessionConnection.active i { background: var(--command-green); box-shadow: none; }
 .commandEnvironment.offline i, .commandStatusDot.offline, .commandSessionConnection.offline i { background: var(--command-brand); }
 .commandStatusDot.attention { background: var(--command-amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--command-amber) 12%, transparent); }
+.commandSessionConnection.attention i { background: var(--command-amber); }
 .commandHeaderTools { justify-self: end; display: flex; align-items: center; gap: 6px; }
 .commandIconButton { width: var(--control-height); height: var(--control-height); padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; }
 .commandHeader .commandMobileSearchButton, .commandHeader .commandMobileSearchClose { display: none; }
