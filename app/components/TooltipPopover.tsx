@@ -8,6 +8,10 @@ type TooltipPopoverProps = {
   style?: CSSProperties;
 };
 
+/**
+ * @deprecated Use DottedInfoPopover for new inline explanatory popovers. This
+ * renderer remains temporarily for existing non-interactive tooltip callers.
+ */
 export const TooltipPopover = forwardRef<HTMLSpanElement, TooltipPopoverProps>(function TooltipPopover({
   children,
   className = "",

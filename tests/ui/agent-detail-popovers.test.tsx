@@ -156,15 +156,69 @@ describe("agent detail popovers", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("labels the live snapshot as latest context and keeps its provenance and last-updated time", () => {
+  it("shows the last model turn separately from the cache touch in the timing popover", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-08T12:03:05.000Z");
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
+    const requestSnapshots = {
+      status: "ready" as const,
+      items: [
+        { id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T11:59:05.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 },
+        { id: "request-turn", agentId: agent.id, observedAt: "2026-08-08T12:02:05.000Z", cacheLifetime: null, uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 10, totalTokens: 110 },
+      ],
+    };
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={false} requestSnapshots={requestSnapshots} /></LiveClockProvider>);
 
     expect(screen.getByText("latest context")).toBeInTheDocument();
     expect(container.querySelector(".agentTokens")).toHaveAttribute("title", "Latest non-zero provider usage snapshot for this agent; not cumulative token use.");
-    expect(container.querySelector(".agentRow time")).toHaveTextContent("updated 3m ago");
-    expect(container.querySelector(".agentRow time")).toHaveAttribute("dateTime", agent.lastSeen);
+    const timingTrigger = screen.getByRole("button", { name: "Last model turn 1m ago; show turn and cache timing" });
+    expect(timingTrigger).toHaveTextContent("last turn 1m ago");
+    expect(timingTrigger.querySelector("time")).toHaveAttribute("dateTime", "2026-08-08T12:02:05.000Z");
+    expect(timingTrigger).toHaveClass("dottedInfoPopoverTrigger");
+    expect(timingTrigger.closest(".agentTurnCacheTiming")).toHaveClass("cacheTimingNear");
+
+    fireEvent.pointerEnter(timingTrigger, { pointerType: "mouse" });
+    const popover = screen.getByRole("dialog", { name: /show turn and cache timing/i });
+    expect(popover).toHaveTextContent("Last model turn1m ago");
+    expect(popover).toHaveTextContent("Last cache touch4m ago");
+    expect(popover).toHaveTextContent("Observed lifetime5m");
+    expect(popover).toHaveTextContent("Cache lifetime nearing threshold");
+    expect(popover).not.toHaveTextContent("Cache timing is based on");
+    expect(screen.getByRole("link", { name: "How cache timing works; opens documentation in a new tab" })).toHaveAttribute(
+      "href",
+      "https://github.com/Lecarvalho/pomegr/blob/main/docs/CACHE_TIMING.md",
+    );
+    vi.useRealTimers();
+  });
+
+  it("keeps ordinary timing as plain text and aligns neutral status and compaction evidence", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:01:00.000Z");
+    const idleAgent = { ...agent, status: "idle" as const };
+    const requestSnapshots = {
+      status: "ready" as const,
+      items: [{ id: "request-neutral", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 }],
+    };
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel
+      agents={[idleAgent]}
+      contextBoundaries={[{ id: "compact-1", agentId: agent.id, timestamp: "2026-08-08T11:59:00.000Z", kind: "automatic_compaction", preTokens: 100_000 }]}
+      executionTasks={[]}
+      historical={false}
+      planTasks={[]}
+      requestSnapshots={requestSnapshots}
+    /></LiveClockProvider>);
+
+    const plainTiming = screen.getByText("last turn 1m ago");
+    expect(plainTiming.tagName).toBe("TIME");
+    expect(plainTiming).toHaveClass("agentTurnCacheTimingPlain");
+    expect(plainTiming.closest("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /show turn and cache timing/i })).not.toBeInTheDocument();
+
+    const status = screen.getByText("idle");
+    expect(status).toHaveClass("statusPill");
+    expect(status.querySelector("i")).toBeNull();
+    const titleLine = container.querySelector(".agentTitleLine");
+    expect(titleLine?.children[0].tagName).toBe("STRONG");
+    expect(titleLine?.children[1]).toHaveClass("agentHistoryIndicators");
     vi.useRealTimers();
   });
 

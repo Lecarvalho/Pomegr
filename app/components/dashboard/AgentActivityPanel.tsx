@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Agent, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, PlanTask, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, PlanTask, RequestSnapshotFeed, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
 import { agentAssignment, agentDisplayLabel, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, cacheLifetimeLabel, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
 import { CopyTranscriptButton } from "../CopyTranscriptButton";
 import { EmptyState } from "../EmptyState";
 import { ExecutionTaskRow } from "../ExecutionTaskRow";
-import { AgentWallTimeText, CoarseRelativeTimeText, RelativeTimeText } from "../LiveTime";
+import { AgentWallTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
 import { AgentHistoryIndicators, summarizeCacheRefills, summarizeCompactions } from "./AgentHistoryIndicators";
+import { AgentTurnCacheTiming } from "./AgentTurnCacheTiming";
 import { AgentTreeView } from "./agent-tree/AgentTreeView";
 
 export type AgentActivityViewMode = "list" | "tree";
@@ -32,6 +33,8 @@ const REVIEW_ACTION_LABELS: Record<ReviewDecision["action"], string> = {
   privileged_action: "Privileged action",
 };
 
+const EMPTY_REQUEST_SNAPSHOTS: RequestSnapshotFeed = { status: "unavailable", items: [] };
+
 function storedFinishedAgentVisibility(sessionId: string) {
   if (typeof window === "undefined") return true;
   try {
@@ -47,12 +50,13 @@ function activityIsCurrent(agent: Agent) {
     && agent.liveness?.evidence !== "unavailable";
 }
 
-export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundaries = [], executionTasks, planTasks, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
+export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundaries = [], executionTasks, planTasks, requestSnapshots = EMPTY_REQUEST_SNAPSHOTS, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
   agents: Agent[];
   cacheRefills?: CacheRefillCount[];
   contextBoundaries?: ContextHistoryBoundary[];
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
+  requestSnapshots?: RequestSnapshotFeed;
   workflows?: Workflow[];
   historical: boolean;
   sessionId?: string;
@@ -128,6 +132,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
         <div className="agentIdentity">
           <div className="agentTitleLine">
             <strong dir="auto">{displayName}</strong>
+            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} cacheRefills={cacheRefills} />
             {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Pomegr MCP tool"}>{agent.signal.label}</AgentChip>}
             {agent.skills.length > 0 && (
               <div className="agentPopoverAnchor skillPopoverAnchor" ref={isOpen("skills", agent.id) ? popoverAnchorRef : undefined}>
@@ -170,7 +175,6 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
                 )}
               </div>
             )}
-            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} cacheRefills={cacheRefills} />
           </div>
           <div className="agentMeta">
             {assignment && <span className="agentMetaIdentity" dir="auto">{agent.label}</span>}
@@ -181,8 +185,8 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
         <div className="agentTokens" title="Latest non-zero provider usage snapshot for this agent; not cumulative token use."><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "final context" : "latest context"}</span></div>
         <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
         <div className="agentState">
-          <span className={`statusPill ${agent.status}`}><i />{agent.status === "needs_input" ? "needs input" : agent.status}</span>
-          <time dateTime={agent.lastSeen || undefined}>updated <CoarseRelativeTimeText value={agent.lastSeen} /></time>
+          <span className={`statusPill ${agent.status}`}>{agent.status !== "idle" && agent.status !== "finished" && <i />}{agent.status === "needs_input" ? "needs input" : agent.status}</span>
+          <AgentTurnCacheTiming agentId={agent.id} historical={historical} requestSnapshots={requestSnapshots} />
         </div>
       </div>
     );
@@ -197,7 +201,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
       {viewMode === "list" ? <div className="agentList">
         {agents.length === 0 && <EmptyState text="No agents have appeared in this session yet." />}
         {agentRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{agentRows.map(renderAgentRow)}</div>}
-      </div> : <AgentTreeView agents={visibleAgents} cacheRefills={cacheRefills} contextBoundaries={contextBoundaries} historical={historical} sessionId={sessionId} workflows={workflows} />}
+      </div> : <AgentTreeView agents={visibleAgents} cacheRefills={cacheRefills} contextBoundaries={contextBoundaries} historical={historical} requestSnapshots={requestSnapshots} sessionId={sessionId} workflows={workflows} />}
     </article>
   );
 }

@@ -178,6 +178,10 @@ Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders 
 
 Search and filters use neutral backgrounds, one-pixel control rules, 4px corners, Inter control text, and an accessible focus ring. Inputs expand to 44px on coarse/mobile surfaces.
 
+### Inline Explanations
+
+Explanatory inline text may use a quiet dotted underline to disclose a tooltip or popover. The underline follows the text color and is reserved for text only; icons, buttons, and chips retain their own established interaction affordances.
+
 ### Cards / Containers
 
 Evidence panels use the theme panel token, a one-pixel line, 6px radius, and 16px base padding. Rows and tables use rules and neutral hover tones. Missing data remains unavailable or an em dash; it is never replaced with a plausible value.
