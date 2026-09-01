@@ -1,6 +1,8 @@
 "use client";
 
 import type { ProviderId, ProviderServiceStatus } from "../../shared/monitor-contract";
+import { DottedInfoPopover } from "./DottedInfoPopover";
+import { ExternalLink } from "./ExternalLink";
 import styles from "./ProviderStatus.module.css";
 
 const STATUS_LABELS: Record<ProviderServiceStatus["status"], string> = {
@@ -16,6 +18,9 @@ function statusTone(status: ProviderServiceStatus["status"], freshness: Provider
   if (status === "degraded" || status === "maintenance") return "warning";
   return status === "operational" ? "okay" : "unknown";
 }
+export function providerStatusTone(status: ProviderServiceStatus | undefined) {
+  return status?.readiness === "ready" ? statusTone(status.status, status.freshness) : "unknown";
+}
 function statusLabel(status: ProviderServiceStatus | undefined) {
   if (!status || status.readiness === "loading") return "Provider status loading";
   if (status.readiness === "unavailable" && !status.checkedAt) return "Provider status unavailable";
@@ -28,14 +33,14 @@ function statusLink(status: ProviderServiceStatus) { return status.incidents[0]?
 
 export function ProviderStatusIndicator({ status, compact = false }: { status: ProviderServiceStatus | undefined; compact?: boolean }) {
   const label = statusLabel(status);
-  const tone = status && status.readiness === "ready" ? statusTone(status.status, status.freshness) : "unknown";
+  const tone = providerStatusTone(status);
   return <span className={`${styles.indicator} ${styles[tone]}${compact ? ` ${styles.compact}` : ""}`} title={label} aria-label={`Provider service status: ${label}`}>
     <span className={styles.dot} aria-hidden="true" /><span>{label}</span>
   </span>;
 }
 
 function ProviderStatusSymbol({ status }: { status: ProviderServiceStatus | undefined }) {
-  const tone = status && status.readiness === "ready" ? statusTone(status.status, status.freshness) : "unknown";
+  const tone = providerStatusTone(status);
   return <svg className={`${styles.mobileSymbol} ${styles[tone]}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {tone === "okay" ? <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></> : tone === "warning" || tone === "critical" ? <><path d="m12 3 10 18H2L12 3Z M12 9v5M12 17h.01" /></> : <><circle cx="12" cy="12" r="9" /><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 17h.01" /></>}
   </svg>;
@@ -45,14 +50,19 @@ export function ProviderStatusDetails({ status, compact = false, mobileIconOnly 
   const source = status?.source || "Provider";
   if (!status) return <ProviderStatusIndicator status={status} compact={compact} />;
   const label = statusLabel(status);
-  return <details className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}`}>
-    <summary title={label} aria-label={`${source} provider service status details${mobileIconOnly ? `: ${label}` : ""}`}><ProviderStatusIndicator status={status} compact={compact} />{mobileIconOnly && <ProviderStatusSymbol status={status} />}</summary>
-    <div className={styles.detailBody}>
+  const linkLabel = `View ${status.incidents.length ? "incident" : "status page"}`;
+  return <DottedInfoPopover
+    ariaLabel={`${source} provider service status details${mobileIconOnly ? `: ${label}` : ""}`}
+    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}`}
+    content={<>
       {mobileIconOnly && <p className={styles.mobileStatusLabel}>{label}</p>}
-      <dl><div><dt>Last checked</dt><dd>{timestamp(status.checkedAt)}</dd></div><div><dt>Provider update</dt><dd>{timestamp(status.updatedAt)}</dd></div></dl>
-      <a href={statusLink(status)} target="_blank" rel="noreferrer">View {status.incidents.length ? "incident" : "status page"}</a>
-    </div>
-  </details>;
+      <dl className={styles.detailList}><div><dt>Last checked</dt><dd>{timestamp(status.checkedAt)}</dd></div><div><dt>Provider update</dt><dd>{timestamp(status.updatedAt)}</dd></div></dl>
+    </>}
+    link={{ href: statusLink(status), label: linkLabel, ariaLabel: linkLabel }}
+  >
+    <ProviderStatusIndicator status={status} compact={compact} />
+    {mobileIconOnly && <ProviderStatusSymbol status={status} />}
+  </DottedInfoPopover>;
 }
 
 export function ProviderStatusArea({ providers, className = "", headingId }: { providers: ProviderServiceStatus[]; className?: string; headingId?: string }) {
@@ -90,7 +100,7 @@ export function ProviderServiceNotice({ status, onDismiss }: { status: ProviderS
   return <aside className={styles.notice} role="status" aria-label={`${status.source} provider service notice`}>
     <span className={styles.noticeMark} aria-hidden="true">!</span>
     <div><strong>{status.source} reports service issues</strong><p>{incident ? `${incident.label.replace(/[.!?]+$/u, "")}. ` : ""}Requests may be delayed or fail.{refreshDelayed ? " Pomegr could not refresh this status; this is the last confirmed report." : ""}</p>
-      <div className={styles.noticeMeta}><span>Last checked {timestamp(status.checkedAt)}</span><span>Provider update {timestamp(status.updatedAt)}</span><a href={statusLink(status)} target="_blank" rel="noreferrer">View {incident ? "incident" : "status page"}</a></div>
+      <div className={styles.noticeMeta}><span>Last checked {timestamp(status.checkedAt)}</span><span>Provider update {timestamp(status.updatedAt)}</span><ExternalLink href={statusLink(status)} aria-label={`View ${incident ? "incident" : "status page"}`}>View {incident ? "incident" : "status page"}</ExternalLink></div>
     </div>
     <button type="button" className={styles.dismiss} onClick={onDismiss} aria-label="Dismiss provider service notice">Dismiss</button>
   </aside>;

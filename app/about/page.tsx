@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ExternalLink } from "../components/ExternalLink";
 
 export const metadata: Metadata = {
   title: "About · Pomegr",
@@ -29,7 +30,7 @@ export default function About() {
           <ul className="aboutIssueList">
             <li>
               <h3>Codex cache-write usage is not available</h3>
-              <p>Subscription-backed Codex session records currently report cache-write token counts as zero, so Pomegr omits the Cache write metric and cache-write classifications for Codex. Cache-read counts remain available. Follow <a href="https://github.com/openai/codex/issues/35300" target="_blank" rel="noreferrer">openai/codex#35300</a> for the upstream limitation.</p>
+              <p>Subscription-backed Codex session records currently report cache-write token counts as zero, so Pomegr omits the Cache write metric and cache-write classifications for Codex. Cache-read counts remain available. Follow <ExternalLink href="https://github.com/openai/codex/issues/35300">openai/codex#35300</ExternalLink> for the upstream limitation.</p>
             </li>
           </ul>
         </section>
@@ -45,7 +46,7 @@ export default function About() {
               <a href="/legal/THIRD_PARTY_NOTICES.txt">Third-party notices</a>
               <a href="/legal/TRADEMARKS.txt">Trademark policy</a>
             </nav>
-            <p>The <a href="https://github.com/Lecarvalho/pomegr" target="_blank" rel="noreferrer">corresponding source code</a> is also available from the official repository.</p>
+            <p>The <ExternalLink href="https://github.com/Lecarvalho/pomegr">corresponding source code</ExternalLink> is also available from the official repository.</p>
           </div>
         </section>
       </article>

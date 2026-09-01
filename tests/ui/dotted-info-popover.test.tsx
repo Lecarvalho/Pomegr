@@ -33,10 +33,10 @@ describe("DottedInfoPopover", () => {
 
     const trigger = screen.getByRole("button", { name: "Cache details" });
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-    const link = screen.getByRole("link", { name: "Open cache documentation" });
+    const link = screen.getByRole("link", { name: "Open cache documentation; opens in a new tab" });
     expect(link).toHaveAttribute("href", "https://example.test/cache");
     expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noreferrer");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("keeps the cache-timing link aligned with its canonical documentation page", () => {

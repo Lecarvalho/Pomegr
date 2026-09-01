@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
+import { ExternalLink } from "./ExternalLink";
 
 export type DottedInfoPopoverLink = {
   href: string;
@@ -176,13 +177,11 @@ export function DottedInfoPopover({ ariaLabel, children, className = "", content
         onPointerLeave={handlePointerLeave}
       >
         <span className="dottedInfoPopoverContent">{content}</span>
-        {link && <a
+        {link && <ExternalLink
           className="dottedInfoPopoverLink"
           href={link.href}
           aria-label={link.ariaLabel}
-          target="_blank"
-          rel="noreferrer"
-        >{link.label}<span aria-hidden="true"> ↗</span></a>}
+        >{link.label}</ExternalLink>}
       </span>,
       document.body,
     )}

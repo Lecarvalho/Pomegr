@@ -11,7 +11,7 @@ import { useUsageLimits } from "../../usage-limits-client";
 import { useProviderStatus } from "../../provider-status-client";
 import { RetryCountdownText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
-import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor } from "../ProviderStatus";
+import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor, providerStatusTone } from "../ProviderStatus";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandMetric, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 
 function sessionHref(session: SessionSummary) {
@@ -169,10 +169,11 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
           ? `Updated ${relativeTime(limits.fetchedAt)}`
           : status === "loading" ? "Connecting…" : "Unavailable";
   return <section className="commandUsageProvider" aria-labelledby={`usage-${entry.provider}`}>
-    <header className="commandUsageProviderHead"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><span className="commandUsageProviderStatuses"><ProviderStatusDetails status={providerStatus} compact mobileIconOnly /><span>{statusLabel}</span></span></header>
+    <header className="commandUsageProviderHead"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><span>{statusLabel}</span></header>
     {status === "loading" ? <CommandEmpty title="Waiting for provider usage" detail="The monitor is preparing the latest account-level window." icon="timer" /> : status !== "ready" || !limits.available ? <div className="commandUsageUnavailable"><CommandIcon name="limits" size="small" /><p>{failureKind ? usageLimitFailureMessage(entry.source, limits) : `Usage limits for ${entry.source} are unavailable.`}{limits.retryAt && <><br /><RetryCountdownText value={limits.retryAt} />.</>}</p></div> : limits.limits.length ? <><div className="commandUsageRows">{limits.limits.map((limit) => <article className={`commandUsageWindow ${limit.severity}`} key={limit.id}>
       <header><strong>{limit.label}</strong><b>{Math.round(limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%` }} /></div><footer><span>{usageResetLabel(limit.resetsAt)}</span><span>Provider-reported window</span></footer>
     </article>)}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}
+    <footer className="commandUsageProviderHealth" data-health={providerStatusTone(providerStatus)}><span>Provider health</span><ProviderStatusDetails status={providerStatus} compact /></footer>
   </section>;
 }
 

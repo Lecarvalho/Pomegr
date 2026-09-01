@@ -6,6 +6,7 @@ import { cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
 import { formatDuration, timelineTime } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
+import { ExternalLink } from "../ExternalLink";
 import { PopoverFrame } from "../PopoverFrame";
 
 export type CompactionSummary = {
@@ -257,9 +258,7 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
             </dl>
             {occurrence.signal && <div className="cacheRefillDefinition">
               <code>{occurrence.signal.code}</code>
-              <a href={occurrence.signal.href} target="_blank" rel="noreferrer">
-                Open signal definition <span aria-hidden="true">↗</span><span className="srOnly"> in a new tab</span>
-              </a>
+              <ExternalLink href={occurrence.signal.href}>Open signal definition</ExternalLink>
             </div>}
           </li>)}
         </ol>

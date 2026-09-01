@@ -178,12 +178,12 @@ describe("workflow activity and agent tree view", () => {
     expect(occurrences[0].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:01:00.000Z");
     expect(occurrences[0]).toHaveTextContent("Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.");
     expect(occurrences[0]).toHaveTextContent("cache.tools_changed.remote_control_connected");
-    expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition in a new tab" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-tools-changed-remote-control-connected");
+    expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-tools-changed-remote-control-connected");
     expect(occurrences[1]).toHaveTextContent("message history changed");
     expect(occurrences[1].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:02:00.000Z");
     expect(occurrences[1]).toHaveTextContent("Tool use and its result were followed by a provider task notification and the directly resumed request.");
     expect(occurrences[1]).toHaveTextContent("cache.messages_changed.post_tool_notification_resume");
-    expect(within(occurrences[1]).getByRole("link", { name: "Open signal definition in a new tab" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-messages-changed-post-tool-notification-resume");
+    expect(within(occurrences[1]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-messages-changed-post-tool-notification-resume");
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Cache refill evidence" })).not.toBeInTheDocument();
@@ -234,7 +234,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("cache.previous_cache_entry_unavailable");
     expect(popover).toHaveTextContent("Pomegr normalized Claude's diagnostic as the previous cache entry being unavailable.");
     expect(popover).toHaveTextContent("InferenceOne-hour cache likely expired; 1h 1m elapsed since the preceding request.");
-    expect(within(popover).getByRole("link", { name: "Open signal definition in a new tab" })).toHaveAttribute(
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute(
       "href",
       "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-previous-cache-entry-unavailable",
     );

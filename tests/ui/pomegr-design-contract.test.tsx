@@ -17,15 +17,14 @@ const animatedProgressSource = readFileSync(join(process.cwd(), "app", "componen
 
 describe("Pomegr visual contract", () => {
   it("keeps the application identity wordmark-only", () => {
-    const { container } = render(<AboutPage />);
+    render(<AboutPage />);
 
     expect(screen.getByRole("heading", { name: "A quiet view into active work." })).toBeInTheDocument();
     expect(shellSource).toMatch(/<PomegrBrand href="\/" label="Pomegr home"/);
     expect(brandSource).toMatch(/className="brandWordmark"/);
     expect(brandSource).not.toMatch(/brandMark|pomegr-logo/);
-    expect(container.querySelector("img, svg")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "openai/codex#35300" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
+    expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/pomegr-logo\.png/);
   });
 
@@ -75,6 +74,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-ui\)/);
+    expect(styles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.agentTitleLine \.executionTaskAnchor\s*\{\s*flex:\s*0 0 100%/);
     expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);

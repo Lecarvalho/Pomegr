@@ -103,7 +103,7 @@ export function AgentTurnCacheTiming({ agentId, className = "", historical, requ
     link={{
       href: CACHE_TIMING_DOCUMENTATION_URL,
       label: "How cache timing works",
-      ariaLabel: "How cache timing works; opens documentation in a new tab",
+      ariaLabel: "How cache timing works",
     }}
   >
     <time dateTime={lastRequestAt || undefined}>last turn {triggerTime}</time>

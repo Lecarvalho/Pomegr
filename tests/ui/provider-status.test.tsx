@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderServiceStatus, ProviderStatusSnapshot } from "../../shared/monitor-contract";
-import { ProviderServiceNotice, ProviderStatusDetails, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible } from "../../app/components/ProviderStatus";
+import { ProviderServiceNotice, ProviderStatusDetails, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusTone } from "../../app/components/ProviderStatus";
 import { ProviderStatusStore, normalizeProviderStatusSnapshot } from "../../app/provider-status-client";
 
 function provider(overrides: Partial<ProviderServiceStatus> = {}): ProviderServiceStatus {
@@ -25,6 +25,16 @@ function snapshot(status = provider()): ProviderStatusSnapshot {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("provider service status", () => {
+  it("maps only current confirmed health to semantic tones", () => {
+    expect(providerStatusTone(provider({ status: "operational", incidents: [], incidentKey: null }))).toBe("okay");
+    expect(providerStatusTone(provider({ status: "degraded" }))).toBe("warning");
+    expect(providerStatusTone(provider({ status: "maintenance" }))).toBe("warning");
+    expect(providerStatusTone(provider({ status: "outage" }))).toBe("critical");
+    expect(providerStatusTone(provider({ readiness: "unavailable" }))).toBe("unknown");
+    expect(providerStatusTone(provider({ freshness: "stale" }))).toBe("unknown");
+    expect(providerStatusTone(undefined)).toBe("unknown");
+  });
+
   it("rejects malformed snapshots and retains a confirmed status across 204 and errors", async () => {
     expect(normalizeProviderStatusSnapshot({ providers: [] })).toBeNull();
     expect(normalizeProviderStatusSnapshot({ ...snapshot(), providers: [provider()] })).toBeNull();
@@ -138,7 +148,7 @@ describe("provider service status", () => {
     const dismiss = vi.fn();
     render(<ProviderServiceNotice status={provider()} onDismiss={dismiss} />);
     expect(screen.getByRole("status", { name: "Codex provider service notice" })).toHaveTextContent("Requests may be delayed or fail");
-    expect(screen.getByRole("link", { name: "View incident" })).toHaveAttribute("href", "https://status.openai.com/incidents/native-issue-42");
+    expect(screen.getByRole("link", { name: "View incident; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/incidents/native-issue-42");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss provider service notice" }));
     expect(dismiss).toHaveBeenCalledOnce();
   });
@@ -146,8 +156,10 @@ describe("provider service status", () => {
   it("provides compact keyboard-accessible details for checked time and the official status link", () => {
     render(<ProviderStatusDetails status={provider({ status: "operational", incidents: [], incidentKey: null })} compact />);
     expect(screen.getByText("No reported issues")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Codex provider service status details"));
+    const trigger = screen.getByRole("button", { name: "Codex provider service status details" });
+    expect(trigger).toHaveClass("dottedInfoPopoverTrigger");
+    fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
     expect(screen.getByText("Last checked")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View status page" })).toHaveAttribute("href", "https://status.openai.com/");
+    expect(screen.getByRole("link", { name: "View status page; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/");
   });
 });

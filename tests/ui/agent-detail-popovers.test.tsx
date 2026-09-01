@@ -183,7 +183,7 @@ describe("agent detail popovers", () => {
     expect(popover).toHaveTextContent("Observed lifetime5m");
     expect(popover).toHaveTextContent("Cache lifetime nearing threshold");
     expect(popover).not.toHaveTextContent("Cache timing is based on");
-    expect(screen.getByRole("link", { name: "How cache timing works; opens documentation in a new tab" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "How cache timing works; opens in a new tab" })).toHaveAttribute(
       "href",
       "https://github.com/Lecarvalho/pomegr/blob/main/docs/CACHE_TIMING.md",
     );
