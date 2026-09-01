@@ -247,9 +247,10 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
         <div className="commandNavDivider" />
         <nav>{systemNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} onNavigate={() => closeMobileNavigation(false)} />)}</nav>
         <div className="commandSidebarFoot">
+          <div className="commandNavDivider" aria-hidden="true" />
           {update?.version && (update.status === "ready" || update.status === "installing") ? <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} /> : null}
+          <span>{loading ? "Connecting to the local observer." : connected ? "Session data remains on this machine." : "Local observer unavailable. Showing last known-good state."}</span>
           <strong>Pomegr v0.2.0</strong>
-          <span>{loading ? "Connecting to the local observer." : connected ? "Local observer connected. Session data remains on this machine." : "Local observer unavailable. Showing last known-good state."}</span>
           <small>MCP v{pomegrPluginManifest.version}</small>
         </div>
       </aside>
