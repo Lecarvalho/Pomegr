@@ -12,6 +12,7 @@ import { useProviderStatus } from "../../provider-status-client";
 import { RetryCountdownText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor, providerStatusTone } from "../ProviderStatus";
+import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandMetric, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 
 function sessionHref(session: SessionSummary) {
@@ -43,7 +44,64 @@ const builtInDashboards = [
   { title: "Repository activity", detail: "Projects associated with observed sessions", scope: "Projects", href: "/repositories" },
 ];
 
+const DASHBOARD_COLUMNS: CommandTableColumn<(typeof builtInDashboards)[number]>[] = [
+  {
+    id: "dashboard", label: "Dashboard",
+    renderCell: (dashboard) => <Link className="commandTablePrimary" href={dashboard.href}><strong>{dashboard.title}</strong><small>{dashboard.detail}</small></Link>,
+  },
+  {
+    id: "scope", label: "Scope", colClassName: "commandDashboardColScope",
+    renderCell: (dashboard) => dashboard.scope,
+  },
+  {
+    id: "updated", label: "Updated", className: "commandDashboardUpdated", colClassName: "commandDashboardColUpdated",
+    renderCell: () => "Live data",
+  },
+  {
+    id: "open", label: "Open dashboard", hideLabel: true, colClassName: "commandDashboardColAction",
+    renderCell: (dashboard) => <Link className="commandIconLink" href={dashboard.href} aria-label={"Open " + dashboard.title}><CommandIcon name="arrow" size="small" /></Link>,
+  },
+];
+
 const SESSION_PAGE_SIZE = 10;
+const SESSION_COLUMNS: CommandTableColumn<SessionSummary>[] = [
+  {
+    id: "session", label: "Session", colClassName: "commandSessionColSession",
+    renderCell: (session) => <Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity session={session} compact /></Link>,
+  },
+  {
+    id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
+    renderCell: (session) => { const state = sessionState(session); return <CommandStatus state={state.state}>{state.label}</CommandStatus>; },
+  },
+  {
+    id: "activity", label: "Current activity", className: "commandTableActivityColumn", colClassName: "commandSessionColActivity",
+    renderCell: (session) => <SessionCurrentActivity session={session} />,
+  },
+  {
+    id: "agents", label: "Agents", cellLabel: "Agents", className: "commandTableAgents", colClassName: "commandSessionColAgents",
+    sortValue: (session) => session.agentCount, sortLabel: "total agents",
+    renderCell: (session) => session.agentCount === null ? <span title="Agent count is unavailable">—</span> : <span title={session.activeAgentCount === null ? "Active agent count is unavailable" : "Active / total agents"}>{session.activeAgentCount === null ? session.agentCount : session.activeAgentCount + "/" + session.agentCount}</span>,
+  },
+  {
+    id: "context", label: "Context", cellLabel: "Context", colClassName: "commandSessionColContext",
+    sortValue: (session) => session.latestContextTotal,
+    renderCell: (session) => session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : Math.round(session.latestContextTotal / 1000) + "k",
+  },
+  {
+    id: "progress", label: "Progress", cellLabel: "Progress", colClassName: "commandSessionColProgress",
+    sortValue: (session) => session.progress?.percent,
+    renderCell: (session) => <span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? Math.round(session.progress.percent) + "%" : "—"}</span>,
+  },
+  {
+    id: "updated", label: "Updated", cellLabel: "Updated", className: "commandTableUpdated", colClassName: "commandSessionColUpdated",
+    sortValue: (session) => Date.parse(session.updatedAt),
+    renderCell: (session) => sessionTimestamp(session.updatedAt),
+  },
+  {
+    id: "open", label: "Open session", hideLabel: true, colClassName: "commandSessionColAction",
+    renderCell: (session) => <Link className="commandIconLink" href={sessionHref(session)} aria-label={"Open " + session.title}><CommandIcon name="arrow" size="small" /></Link>,
+  },
+];
 
 export function DashboardsView() {
   const [query, setQuery] = useState("");
@@ -57,11 +115,14 @@ export function DashboardsView() {
     </CommandToolbar>
     <div className="commandDashboardDirectory">
       <section className="commandDashboardRows" aria-label="Built-in dashboards">
-        <div className="commandDirectoryHead"><span>Dashboard</span><span>Scope</span><span>Updated</span></div>
-        {visible.map((dashboard) => <Link className="commandDashboardRow" href={dashboard.href} key={dashboard.title}>
-          <span><strong>{dashboard.title}</strong><small>{dashboard.detail}</small></span><span>{dashboard.scope}</span><time>Live data</time><CommandIcon name="arrow" size="small" />
-        </Link>)}
-        {!visible.length && <CommandEmpty title="No dashboards match" detail="Try a different dashboard name or filter." icon="dashboard" />}
+        <CommandTable
+          caption="Built-in dashboards"
+          rows={visible}
+          columns={DASHBOARD_COLUMNS}
+          getRowKey={(dashboard) => dashboard.href}
+          className="commandDashboardTable"
+          emptyState={<CommandEmpty title="No dashboards match" detail="Try a different dashboard name or filter." icon="dashboard" />}
+        />
       </section>
       <aside className="commandDashboardPreview"><h2>Session overview</h2><p>Find live and historical work across your projects, with filters for sessions that need input.</p><Link className="commandSecondaryAction" href="/sessions">Open sessions <CommandIcon name="arrow" size="small" /></Link></aside>
     </div>
@@ -85,10 +146,6 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
     if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
     return true;
   })), [filter, project, query, sessions]);
-  const pageCount = Math.max(1, Math.ceil(filteredSessions.length / SESSION_PAGE_SIZE));
-  const activePage = Math.min(page, pageCount);
-  const firstVisibleIndex = (activePage - 1) * SESSION_PAGE_SIZE;
-  const visibleSessions = filteredSessions.slice(firstVisibleIndex, firstVisibleIndex + SESSION_PAGE_SIZE);
   const updateQuery = (value: string) => { setQuery(value); setPage(1); };
   const updateFilter = (value: typeof filter) => { setFilter(value); setPage(1); };
   const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;
@@ -104,29 +161,15 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
         <CommandFilter active={filter === "history"} onClick={() => updateFilter("history")} count={sessions.length - liveSessionCount}>History</CommandFilter>
         <span className="commandToolbarCount">{filteredSessions.length} matches</span>
       </CommandToolbar>
-      {catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : !filteredSessions.length ? <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" /> : <div className="commandSessionTableWrap">
-        <table className="commandTable"><caption className="commandVisuallyHidden">Observed Pomegr sessions</caption><colgroup><col className="commandSessionColSession" /><col className="commandSessionColState" /><col className="commandSessionColActivity" /><col className="commandSessionColAgents" /><col className="commandSessionColContext" /><col className="commandSessionColProgress" /><col className="commandSessionColUpdated" /><col className="commandSessionColAction" /></colgroup><thead><tr><th>Session</th><th>State</th><th className="commandTableActivityColumn">Current activity</th><th className="commandTableAgents">Agents</th><th>Context</th><th>Progress</th><th className="commandTableUpdated">Updated</th><th aria-label="Open session" /></tr></thead>
-          <tbody>{visibleSessions.map((session) => { const state = sessionState(session); return <tr key={session.id}>
-            <td><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity session={session} compact /></Link></td>
-            <td data-label="State"><CommandStatus state={state.state}>{state.label}</CommandStatus></td>
-            <td className="commandTableActivityColumn"><SessionCurrentActivity session={session} /></td>
-            <td className="commandTableAgents" data-label="Agents">{session.agentCount === null ? <span title="Agent count is unavailable">—</span> : <span title={session.activeAgentCount === null ? "Active agent count is unavailable" : "Active / total agents"}>{session.activeAgentCount === null ? session.agentCount : `${session.activeAgentCount}/${session.agentCount}`}</span>}</td>
-            <td data-label="Context">{session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : `${Math.round(session.latestContextTotal / 1000)}k`}</td>
-            <td data-label="Progress"><span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? `${Math.round(session.progress.percent)}%` : "—"}</span></td>
-            <td className="commandTableUpdated" data-label="Updated">{sessionTimestamp(session.updatedAt)}</td>
-            <td><Link className="commandIconLink" href={sessionHref(session)} aria-label={`Open ${session.title}`}><CommandIcon name="arrow" size="small" /></Link></td>
-          </tr>; })}</tbody>
-        </table>
-      </div>}
-      {filteredSessions.length > SESSION_PAGE_SIZE && <nav className="commandPagination" aria-label="Session pages">
-        <span className="commandPaginationSummary">Showing {firstVisibleIndex + 1}–{Math.min(firstVisibleIndex + SESSION_PAGE_SIZE, filteredSessions.length)} of {filteredSessions.length}</span>
-        <div className="commandPaginationControls">
-          <button type="button" onClick={() => setPage(activePage - 1)} disabled={activePage === 1}>Previous</button>
-          <span className="commandPaginationPageStatus" aria-live="polite">Page {activePage} of {pageCount}</span>
-          {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => <button type="button" className="commandPaginationPage" aria-label={`Go to page ${pageNumber}`} aria-current={pageNumber === activePage ? "page" : undefined} onClick={() => setPage(pageNumber)} key={pageNumber}>{pageNumber}</button>)}
-          <button type="button" onClick={() => setPage(activePage + 1)} disabled={activePage === pageCount}>Next</button>
-        </div>
-      </nav>}
+      <CommandTable
+        caption="Observed Pomegr sessions"
+        rows={filteredSessions}
+        columns={SESSION_COLUMNS}
+        getRowKey={(session) => session.id}
+        className="commandSessionTable"
+        pagination={{ page, pageSize: SESSION_PAGE_SIZE, onPageChange: setPage, label: "Session pages" }}
+        emptyState={catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+      />
       {catalogUnavailable && sessions.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;

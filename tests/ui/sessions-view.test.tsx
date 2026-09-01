@@ -34,6 +34,57 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it.each(["Agents", "Context", "Progress", "Updated"])("toggles %s numerically and keeps unavailable values last", async (column) => {
+    const user = userEvent.setup();
+    const values = column === "Updated" ? [10, 2, 0] : [10, 2, 0, null];
+    const missing = column === "Updated" ? [] : ["Session 4"];
+    const sessions = values.map((value, index): SessionSummary => ({
+      ...session(index + 1),
+      agentCount: value,
+      activeAgentCount: value === null ? null : 0,
+      latestContextTotal: value === null ? null : 100_000 + value,
+      progress: value === null ? null : { phase: "implementing", percent: value, confidence: "high", reportedAt: session(index + 1).updatedAt },
+      updatedAt: value === null ? session(index + 1).updatedAt : new Date(Date.UTC(2026, 7, 1, 12, value)).toISOString(),
+    }));
+    const before = structuredClone(sessions);
+    render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
+    const button = screen.getByRole("button", { name: column });
+    const header = screen.getByRole("columnheader", { name: column });
+    await user.click(button);
+    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 2", "Session 3", ...missing]);
+    expect(header).toHaveAttribute("aria-sort", "descending");
+    expect(button).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(visibleSessionTitles()).toEqual(["Session 3", "Session 2", "Session 1", ...missing]);
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+    await user.keyboard(" ");
+    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 2", "Session 3", ...missing]);
+    expect(header).toHaveAttribute("aria-sort", "descending");
+    expect(sessions).toEqual(before);
+  });
+
+  it("sorts all matches before paging, resets the page, and keeps the sort on catalog updates", async () => {
+    const user = userEvent.setup();
+    const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
+    const view = render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(visibleSessionTitles()).toEqual(Array.from({ length: 10 }, (_, index) => "Session " + (index + 1)));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(visibleSessionTitles()).toEqual(["Session 11", "Session 12"]);
+    await user.click(screen.getByRole("button", { name: "Updated" }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(visibleSessionTitles()[0]).toBe("Session 1");
+    expect(screen.getByRole("columnheader", { name: "Agents" })).not.toHaveAttribute("aria-sort");
+    expect(screen.getByRole("columnheader", { name: "Updated" })).toHaveAttribute("aria-sort", "descending");
+    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 1");
+    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 12", "Session 11", "Session 10"]);
+    view.rerender(<SessionCatalogProvider sessions={sessions.map((item) => item.id === "codex:session-10" ? { ...item, updatedAt: "2026-09-01T12:00:00.000Z" } : item)}><SessionsView /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 10", "Session 1", "Session 12", "Session 11"]);
+  });
+
   it("uses isLive only for the Live filter while preserving an unknown lifecycle label", async () => {
     const user = userEvent.setup();
     const liveUnknown = { ...session(1), title: "Live unknown", isLive: true, activityStatus: "unknown" as const };
