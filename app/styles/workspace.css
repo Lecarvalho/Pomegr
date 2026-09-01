@@ -107,6 +107,7 @@
 .commandUsageWindow > header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
 .commandUsageWindow > header strong { font-size: var(--text-xs); }
 .commandUsageWindow > header b { font: 600 18px/1 var(--font-ui); }
+.commandUsageStatus { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .commandUsageTrack { height: 6px; margin-top: 17px; display: block; overflow: hidden; background: var(--command-line); }
 .commandUsageTrack i { height: 100%; display: block; background: var(--command-green); }
 .commandUsageWindow.warning .commandUsageTrack i, .commandUsageWindow.critical .commandUsageTrack i { background: var(--command-amber); }

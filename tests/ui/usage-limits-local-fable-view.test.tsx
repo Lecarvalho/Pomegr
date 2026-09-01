@@ -1,9 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { UsageLimitsView } from "../../app/components/command-center/CommandViews";
+import { useUsageLimits } from "../../app/usage-limits-client";
 
 vi.mock("../../app/usage-limits-client", () => ({
-  useUsageLimits: () => ({
+  useUsageLimits: vi.fn(() => ({
     revision: 1,
     generatedAt: "2026-08-08T12:00:00.000Z",
     readiness: { claude: "ready", codex: "ready" },
@@ -27,7 +28,7 @@ vi.mock("../../app/usage-limits-client", () => ({
         },
       },
     }],
-  }),
+  })),
 }));
 
 vi.mock("../../app/provider-status-client", () => ({
@@ -35,6 +36,27 @@ vi.mock("../../app/provider-status-client", () => ({
 }));
 
 describe("local Fable usage in the command center", () => {
+  it.each([
+    [null, "Checking…", "Waiting for account check"],
+    ["unavailable", "Unavailable", "Account check failed; retrying automatically"],
+  ] as const)("uses quiet status typography for %s without de-emphasizing percentages", (failureKind, label, detail) => {
+    const snapshot = useUsageLimits();
+    vi.mocked(useUsageLimits).mockReturnValueOnce({
+      ...snapshot,
+      providers: snapshot.providers.map((entry) => ({
+        ...entry,
+        usageLimits: { ...entry.usageLimits, retainedLimits: undefined, attemptedAt: null, failureKind },
+      })),
+    });
+    render(<UsageLimitsView />);
+
+    expect(screen.getByText(label)).toHaveClass("commandUsageStatus");
+    expect(screen.getByText(label).tagName).toBe("SPAN");
+    expect(screen.getByText(detail)).toBeInTheDocument();
+    expect(screen.getByText("20%").tagName).toBe("B");
+    expect(screen.getByText("40%").tagName).toBe("B");
+  });
+
   it("keeps the retained API value supplemental and distinct from the local observation", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-08T12:00:00.000Z");
