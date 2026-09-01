@@ -408,7 +408,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(preload, /source !== "light" && source !== "dark" && source !== "system"/);
   assert.doesNotMatch(preload, /node:(?:fs|child_process)|process\.|ipcRenderer\.(?:send|sendSync|once)|shell|webFrame/);
   assert.match(main, /new Tray\(icon\)/);
-  assert.match(main, /new Notification\(payload\)/);
+  assert.match(main, /new Notification\(\{ \.\.\.payload, icon: shellIconPath\(\) \}\)/);
   assert.match(main, /createNeedsInputNotificationController\(\{/);
   assert.match(main, /createDesktopUpdaterController\(\{/);
   assert.match(main, /void startDesktopUpdates\(\)/);

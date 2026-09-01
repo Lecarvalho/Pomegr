@@ -1,6 +1,6 @@
 # Landing operations
 
-These steps publish only the public landing Worker. Run all commands from `landing/`; never deploy from the repository root.
+These steps publish only the public landing Worker. Provisioning commands in sections 1-4 run from `landing/`. The release commands in section 5 run from the repository root and explicitly select the landing package with `--prefix landing`.
 
 ## 1. Provision D1 and Turnstile
 
@@ -53,13 +53,17 @@ The WAF rule is a coarse outer shield. Same-origin browser headers, the honeypot
 
 ## 5. Release the exact audited artifact
 
+Run this block from the repository root (`C:\Workspace\repos\Pomegr` for the local checkout):
+
 ```powershell
-npm ci
-npm test
-npm run typecheck
-npm run build:audit
-npm run deploy
+npm --prefix landing ci
+npm --prefix landing test
+npm --prefix landing run typecheck
+npm --prefix landing run build:audit
+npm --prefix landing run deploy
 ```
+
+`build:audit` and `deploy` belong to `landing/package.json`. Running `npm run build:audit` from the repository root produces `Missing script: "build:audit"`. If your terminal is already inside `landing/`, omit `--prefix landing` from the commands above.
 
 Do not edit `dist` between the audit and deployment. `npm run deploy` re-runs the audit immediately before invoking `wrangler deploy --config dist/server/wrangler.json`; that generated configuration uses `dist/server/index.js` with `no_bundle: true` and serves assets only from `dist/client`.
 

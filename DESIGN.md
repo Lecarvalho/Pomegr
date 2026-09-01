@@ -188,6 +188,8 @@ Evidence panels use the theme panel token, a one-pixel line, 6px radius, and 16p
 
 ### Navigation
 
+The painted divided pomegranate is also the favicon, landing header/footer mark, Windows application icon, tray icon, and notification icon. `npm run build:brand` exports transparent Pomegr-red assets from the application luminance mask in `public/pomegr-mark-painted.png`; the app build runs this export automatically.
+
 The branded header is 60px high. Desktop uses the wordmark; mobile places a compact raster-derived pomegranate brush mark and the Pomegr name immediately after the menu control. The mark uses the generated artwork as a mask so its visible color remains the theme-aware application brand token. The desktop rail is 220px with labelled route links and live status context; compact and mobile modes preserve accessible names and current-route state. Provider names stay in adapter-specific content, never in product identity.
 
 ### Agent Activity

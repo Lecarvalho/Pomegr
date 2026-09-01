@@ -29,7 +29,7 @@ describe("Pomegr visual contract", () => {
     expect(brandSource).toMatch(/className="brandMobileWordmark">Pomegr/);
     expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
-    expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/pomegr-logo\.png/);
+    expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.png/);
   });
 
   it("uses restrained typography, a single inspectable context line, and shared readable typography and restrained control geometry", () => {

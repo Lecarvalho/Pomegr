@@ -1,53 +1,63 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const brandDir = path.join(projectRoot, "assets", "brand");
+const sourcePath = path.join(projectRoot, "public", "pomegr-mark-painted.png");
+const brandColor = "#a63c32";
+const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
 
-const exports = [
-  ["pomegr-lockup-color.svg", "pomegr-lockup-color.png", 4096, 2410],
-  ["pomegr-lockup-dark.svg", "pomegr-lockup-dark.png", 4096, 2410],
-  ["pomegr-lockup-white.svg", "pomegr-lockup-white.png", 4096, 2410],
-  ["pomegr-mark-color.svg", "pomegr-mark-color.png", 2048, 2048],
-  ["pomegr-mark-dark.svg", "pomegr-mark-dark.png", 2048, 2048],
-  ["pomegr-mark-white.svg", "pomegr-mark-white.png", 2048, 2048],
-  ["pomegr-mark-outline-dark.svg", "pomegr-mark-outline-dark.png", 2048, 2048],
-  ["pomegr-mark-outline-light.svg", "pomegr-mark-outline-light.png", 2048, 2048],
-];
+// Match the application's luminance mask, retaining the painted edges as alpha.
+const { data: alpha, info } = await sharp(await readFile(sourcePath))
+  .greyscale().raw().toBuffer({ resolveWithObject: true });
+const logo = await sharp({ create: {
+  width: info.width, height: info.height, channels: 3, background: brandColor,
+} }).joinChannel(alpha, { raw: { width: info.width, height: info.height, channels: 1 } })
+  .png().toBuffer();
 
-await mkdir(brandDir, { recursive: true });
-
-for (const [sourceName, outputName, width, height] of exports) {
-  const source = await readFile(path.join(brandDir, sourceName));
-  await sharp(source, { density: 384 })
-    .resize(width, height, { fit: "fill" })
-    .png({ compressionLevel: 9, adaptiveFiltering: false, palette: false })
-    .toFile(path.join(brandDir, outputName));
+function renderLogo(size, padding = Math.round(size / 16)) {
+  return sharp(logo).trim({ background: transparent })
+    .resize(size - padding * 2, size - padding * 2, { fit: "contain", background: transparent })
+    .extend({ top: padding, right: padding, bottom: padding, left: padding, background: transparent })
+    .png({ compressionLevel: 9, palette: true });
 }
 
-const iconSource = await readFile(path.join(brandDir, "pomegr-logo.png"));
-const renderLogo = (size, padding) => sharp(iconSource)
-  .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
-  .resize(size - (padding * 2), size - (padding * 2), {
-    fit: "contain",
-    background: { r: 0, g: 0, b: 0, alpha: 0 },
-  })
-  .extend({
-    top: padding,
-    right: padding,
-    bottom: padding,
-    left: padding,
-    background: { r: 0, g: 0, b: 0, alpha: 0 },
-  })
-  .png({ compressionLevel: 9, adaptiveFiltering: false, palette: false });
-
-await mkdir(path.join(projectRoot, "public"), { recursive: true });
-await mkdir(path.join(projectRoot, "landing", "public"), { recursive: true });
+// PNG-backed ICO frames cover browser tabs and Windows shortcut icon sizes.
+const sizes = [16, 32, 48, 256];
+const frames = await Promise.all(sizes.map((size) => renderLogo(size).toBuffer()));
+const directory = Buffer.alloc(6 + sizes.length * 16);
+directory.writeUInt16LE(1, 2);
+directory.writeUInt16LE(sizes.length, 4);
+let offset = directory.length;
+for (const [index, size] of sizes.entries()) {
+  const entry = 6 + index * 16;
+  directory[entry] = directory[entry + 1] = size === 256 ? 0 : size;
+  directory.writeUInt16LE(1, entry + 4);
+  directory.writeUInt16LE(32, entry + 6);
+  directory.writeUInt32LE(frames[index].length, entry + 8);
+  directory.writeUInt32LE(offset, entry + 12);
+  offset += frames[index].length;
+}
+const faviconIco = Buffer.concat([directory, ...frames]);
+const faviconPng = await renderLogo(64).toBuffer();
+const publicLogo = await renderLogo(512).toBuffer();
+// Preserve the former SVG URL for saved links, with the current artwork embedded.
+const faviconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><image width="64" height="64" href="data:image/png;base64,' + faviconPng.toString("base64") + '"/></svg>\n';
+for (const directoryName of ["public", "landing/public"]) {
+  const target = path.join(projectRoot, directoryName);
+  await mkdir(target, { recursive: true });
+  await Promise.all([
+    writeFile(path.join(target, "pomegr-logo.png"), publicLogo),
+    writeFile(path.join(target, "favicon.png"), faviconPng),
+    writeFile(path.join(target, "favicon.ico"), faviconIco),
+    writeFile(path.join(target, "favicon.svg"), faviconSvg),
+  ]);
+}
 await mkdir(path.join(projectRoot, "build"), { recursive: true });
 await Promise.all([
-  renderLogo(512, 44).toFile(path.join(projectRoot, "public", "pomegr-logo.png")),
-  renderLogo(512, 44).toFile(path.join(projectRoot, "landing", "public", "pomegr-logo.png")),
-  renderLogo(1024, 88).toFile(path.join(projectRoot, "build", "icon.png")),
+  renderLogo(1024).toFile(path.join(projectRoot, "build", "icon.png")),
+  renderLogo(1024).toFile(path.join(projectRoot, "landing", "public", "landing", "brand", "pomegr-stackshare-logo-v4-highlight.png")),
+  renderLogo(1024).toFile(path.join(projectRoot, "assets", "brand", "pomegr-logo.png")),
 ]);
+console.log("Exported painted Pomegr branding for the app, landing site, and desktop.");

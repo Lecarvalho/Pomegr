@@ -112,11 +112,14 @@ function createMonitorWorker(privateEnvironment) {
 }
 
 function createSecureWindow(browserSession, windowState) {
-  const window = new BrowserWindow(secureBrowserWindowOptions({
-    preloadPath: path.join(desktopPaths.applicationRoot, "desktop", "preload.cjs"),
-    browserSession,
-    windowState,
-  }));
+  const window = new BrowserWindow({
+    icon: shellIconPath(),
+    ...secureBrowserWindowOptions({
+      preloadPath: path.join(desktopPaths.applicationRoot, "desktop", "preload.cjs"),
+      browserSession,
+      windowState,
+    }),
+  });
   window.removeMenu();
   return window;
 }
@@ -169,7 +172,7 @@ function openNotificationSession(sessionId) {
 
 function showNeedsInputNotification(payload, onClick) {
   if (!Notification.isSupported()) return false;
-  const notification = new Notification(payload);
+  const notification = new Notification({ ...payload, icon: shellIconPath() });
   const release = () => { nativeNotifications.delete(notification); };
   notification.once("click", () => {
     release();
@@ -247,11 +250,14 @@ function updateTrayMenu(state) {
   ]));
 }
 
-function createShellTray() {
+function shellIconPath() {
   const packagedIcon = path.join(process.resourcesPath, "tray-icon.png");
   const developmentIcon = path.join(desktopPaths.applicationRoot, "build", "icon.png");
-  const iconPath = existsSync(packagedIcon) ? packagedIcon : developmentIcon;
-  const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  return existsSync(packagedIcon) ? packagedIcon : developmentIcon;
+}
+
+function createShellTray() {
+  const icon = nativeImage.createFromPath(shellIconPath()).resize({ width: 16, height: 16 });
   if (icon.isEmpty()) throw new Error("DESKTOP_TRAY_ICON_MISSING");
   tray = new Tray(icon);
   tray.setToolTip("Pomegr — local read-only observer");

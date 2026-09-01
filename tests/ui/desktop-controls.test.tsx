@@ -50,7 +50,8 @@ describe("desktop controls", () => {
 
     await user.click(screen.getByRole("button", { name: "Pause live refresh" }));
     expect(setPaused).toHaveBeenCalledWith(true);
-    expect(await screen.findByText("Live updates paused")).toBeInTheDocument();
+    expect(await within(controls).findByRole("button", { name: "Resume live refresh" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Session state: Unknown")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Launch at login" }));
     expect(setLaunchAtLogin).toHaveBeenCalledWith(true);

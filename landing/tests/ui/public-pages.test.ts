@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
 describe("public landing surfaces", () => {
-  it("uses the lightweight established mark in landing chrome", () => {
+  it("uses the painted mark in landing chrome", () => {
     const source = read("app/components/PomegrBrand.tsx");
-    expect(source).toContain('src="/favicon.svg"');
+    expect(source).toContain('src="/pomegr-logo.png?v=painted-1"');
     expect(source).toContain('alt="" width="35" height="35"');
     expect(statSync(new URL("../../public/favicon.svg", import.meta.url)).size).toBeLessThan(statSync(new URL("../../public/pomegr-logo.png", import.meta.url)).size);
   });
