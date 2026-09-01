@@ -134,10 +134,8 @@
 .home .removePin:hover { background: var(--command-panel-2); color: var(--command-ink); }
 
 .pinDisclosure { margin-top: 8px; }
-.pinDisclosure > summary,
-.news summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: fit-content; min-height: 44px; color: var(--command-brand-text); cursor: pointer; list-style: none; font-size: var(--text-xs, 12px); font-weight: 650; }
-.pinDisclosure > summary::-webkit-details-marker,
-.news summary::-webkit-details-marker { display: none; }
+.pinDisclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: fit-content; min-height: 44px; color: var(--command-brand-text); cursor: pointer; list-style: none; font-size: var(--text-xs, 12px); font-weight: 650; }
+.pinDisclosure > summary::-webkit-details-marker { display: none; }
 .pinDisclosure[open] > summary { color: var(--command-ink); }
 .pinDisclosure > button { margin-top: 12px; }
 
@@ -173,28 +171,6 @@
 .textLink { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 6px; color: var(--command-brand-text); font-size: var(--text-xs, 12px); font-weight: 650; text-decoration: none; }
 .textLink:hover { text-decoration: underline; }
 
-.news {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto 44px;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding: 12px 16px;
-  border-inline-start: 3px solid var(--command-brand);
-  border-block: 1px solid var(--command-line);
-  background: var(--command-panel);
-}
-
-.home .news h2 { font-size: var(--text-sm, 13px); white-space: nowrap; }
-.news h3 { font-size: var(--text-sm, 13px); font-weight: 650; }
-.news p { margin-top: 2px; font-size: var(--text-xs, 12px); }
-.news details { min-width: 0; }
-.news details summary { min-height: 36px; }
-.news details p { margin-top: 6px; }
-.news details[open] svg { transform: rotate(90deg); }
-.home .dismissNews { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--command-muted); cursor: pointer; }
-.home .dismissNews:hover { color: var(--command-ink); background: var(--command-panel-2); }
-
 .roadmap {
   margin-top: 20px;
   padding: 20px 24px 18px;
@@ -229,9 +205,6 @@
 @media (max-width: 1080px) {
   .home { padding-inline: 0; }
   .workspace { grid-template-columns: minmax(0, 1fr) minmax(240px, .7fr); }
-  .news { grid-template-columns: auto minmax(0, 1fr) 44px; }
-  .news details { grid-column: 2; }
-  .dismissNews { grid-column: 3; grid-row: 1; }
   .pinList { grid-template-columns: 1fr; }
 }
 
@@ -248,11 +221,6 @@
   .home .providerStatus { padding-block: 12px; }
   .sessionColumn { gap: 18px; }
   .roadmap { margin-top: 18px; }
-  .news { grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 12px; padding: 10px 12px; margin-bottom: 16px; }
-  .news h2 { grid-column: 1; }
-  .news > div,
-  .news details { grid-column: 1 / -1; }
-  .dismissNews { grid-column: 2; grid-row: 1; }
   .roadmapGrid article,
   .roadmapGrid article:first-child { padding: 14px 0 0; border-inline-start: 0; border-top: 1px solid var(--command-line); }
   .roadmapGrid article:first-child { padding-top: 0; border-top: 0; }
@@ -269,7 +237,6 @@
   .home .browse,
   .home .textLink,
   .pinDisclosure > summary,
-  .news summary,
   .pinDisclosure > button,
   .home .pickerFilters input,
   .home .pickerFilters select { min-height: 44px; }

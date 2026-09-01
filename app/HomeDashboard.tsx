@@ -9,6 +9,7 @@ import { CommandSelect } from "./components/command-center/CommandPage";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
+import { HomeUpdateCard } from "./components/home/HomeUpdateCard";
 import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
 import styles from "./HomeDashboard.module.css";
 
@@ -96,12 +97,14 @@ export function HomeDashboard() {
       <p>Understand your coding sessions. Build on what you learn.</p>
     </header>
 
-    {ready && !updateDismissed && <aside className={styles.news} aria-labelledby="home-news-heading">
-      <h2 id="home-news-heading">What’s new</h2>
-      <div><h3>Personal shortcuts on Home</h3><p>Pin sessions, projects, and views in this browser, and reopen your last viewed session.</p></div>
-      <details><summary>About this update<CommandIcon name="arrow" size="small" /></summary><p>Home keeps your shortcuts in this browser. Session activity lives in Sessions, and account windows live in Usage limits.</p></details>
-      <button type="button" className={styles.dismissNews} aria-label="Dismiss this update" onClick={() => { dismissUpdate(); browseRef.current?.focus(); }}><CommandIcon name="close" /></button>
-    </aside>}
+    {ready && !updateDismissed && <HomeUpdateCard
+      title="Meet the new Agents page"
+      description="See which models you use most, the roles they take, and how you delegate work across your sessions."
+      details="Filter by project and period, explore recorded work, and inspect the agents behind each count. Switch to Live agents to follow active assignments and open their sessions."
+      href="/agents"
+      linkLabel="Explore Agents"
+      onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
+    />}
 
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>

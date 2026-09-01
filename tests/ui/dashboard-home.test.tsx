@@ -28,6 +28,8 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
+    expect(within(update).getByRole("heading", { name: "Meet the new Agents page" })).toBeInTheDocument();
+    expect(within(update).getByRole("link", { name: "Explore Agents" })).toHaveAttribute("href", "/agents");
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
