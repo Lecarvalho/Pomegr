@@ -9,6 +9,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `monitor/observation-runtime.mjs`, and `monitor/session-observation-*.mjs` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Monitor indexing, projection, enrichment | `monitor/server.mjs`, `monitor/` utilities | Browser credentials, prompts, responses, and provider-native payloads |
 | Internal pipeline operations and timing | `docs/PIPELINE_OPERATIONS.md`, `monitor/pipeline-operations*.mjs`, and `scripts/pipeline-ops.mjs` | Browser API fields, transcript/source identity, persisted diagnostics, or diagnostic reads that trigger pipeline work |
+| Agents model and work analytics | `monitor/agents-analytics.mjs`, `monitor/agents-observation.mjs`, `shared/agents-contract.ts`, and `app/agents/` | Provider acquisition or aggregation in GETs; browser-owned analytics caches |
 | Browser/API state | `app/`, `shared/`, `app/api/` | `monitor/providers/` imports from React |
 | Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw monitor files |
 | Landing site | `landing/` and its own `package.json` | Main application scripts and monitor state |

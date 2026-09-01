@@ -368,3 +368,29 @@ Live branch metadata comes from read-only Git commands against the primary sessi
 Pomegr associates a pull request with a session only when a successful, recognized pull-request creation tool result contains a canonical GitHub pull-request URL, or when GitHub reports a pull request for the live session's current branch. Historical sessions never infer associations from the current working tree or branch. A transcript-recorded association may refresh its current GitHub status, which is labeled with the local observation time rather than presented as recorded historical state.
 
 The monitor parses tool results privately and returns only an allowlist: host, repository slug, pull-request number, bounded title, canonical URL, open/draft/merged/closed state, head and base branch names, non-negative additions and deletions, association source, and timestamps. Commands, raw tool output, PR bodies, authors, comments, reviews, checks, and credentials never enter the browser API. GitHub CLI and network failures degrade independently; a safely parsed transcript link can remain visible without current metadata.
+
+## Agents model and work analytics
+
+The Agents page describes model choice and delegation across retained normalized
+agent records. A run is one normalized agent within its parent session. Main agents
+and delegated agents remain distinct; provider-native agent kinds remain private.
+The 7/30/90-day selection uses the recorded agent start timestamp. Missing dates
+cannot be placed into a historical window.
+
+Model groups use each run's latest retained agent-level model report. They do not
+represent a whole-run model history, infer model switches, or attribute earlier work
+to an observed final model. Missing model evidence is shown as unreported. The role
+matrix uses the same monitor-normalized Agent.role categories as session views.
+Displayed patterns describe model/role associations; they make no quality, productivity,
+cost, or model-recommendation claims.
+
+The work distribution counts retained normalized execution tasks by their attributable
+workKind. It is labeled recorded execution tasks and does not claim to capture every
+tool call or every kind of work. A missing execution-task feed is unavailable; a known
+empty feed has zero recorded tasks. The separate agent tool-call count retains its
+existing normalized meaning. No request-token totals or rates are computed.
+
+Supporting run counts, ranking totals, and matrix cells share a bounded evidence set
+so users can inspect the records behind a count. Coverage discloses missing sessions
+and truncation. The live roster preserves parent-child order without sortable columns,
+shows session provenance, and uses only each agent's latest non-zero context snapshot.

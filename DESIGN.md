@@ -178,6 +178,8 @@ Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders 
 
 Search and filters use neutral backgrounds, one-pixel control rules, 4px corners, Inter control text, and an accessible focus ring. Inputs expand to 44px on coarse/mobile surfaces.
 
+Native single-select dropdowns use `CommandSelect` from `app/components/command-center/CommandPage.tsx`. It preserves native selection and keyboard behavior, with a muted chevron inset 14px from the edge, reserved end padding, shared hover/focus/disabled states, and a native-arrow fallback in forced-colors mode.
+
 ### Inline Explanations
 
 Explanatory inline text may use a quiet dotted underline to disclose a tooltip or popover. The underline follows the text color and is reserved for text only; icons, buttons, and chips retain their own established interaction affordances.

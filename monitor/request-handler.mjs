@@ -181,6 +181,42 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       }
       return;
     }
+    if (requestUrl.pathname === "/api/agents") {
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      const project = requestUrl.searchParams.get("project") || "all";
+      const days = requestUrl.searchParams.get("days") || "30";
+      const scope = requestUrl.searchParams.get("scope") || "all";
+      if (project.length > 512 || /[\u0000-\u001f\u007f]/.test(project) || !["7", "30", "90"].includes(days) || !["all", "main", "delegated"].includes(scope)) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid agents filters" }));
+        return;
+      }
+      try {
+        const result = runtime.serveAgents?.({ project, days: Number(days), scope }, requestedRevision);
+        if (result?.status === "invalid") {
+          response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ error: "Agents filters unavailable" }));
+          return;
+        }
+        writeCommitted(result, {
+          revision: 0,
+          readiness: "loading",
+          generatedAt: null,
+          coverage: { retainedSessions: 0, eligibleSessions: 0, missingSessions: 0, retainedRuns: 0, truncated: false, earliestStartedAt: null },
+          filters: { project, days: Number(days), scope, projects: [] },
+          summary: { runCount: 0, sessionCount: 0, modelCount: 0, mainRunCount: 0, delegatedRunCount: 0 },
+          models: [], work: [], runs: [], roster: [],
+        });
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Agents analytics unavailable" }));
+      }
+      return;
+    }
     if (requestUrl.pathname === "/api/transcript-path") {
       if (request.method !== "GET" || request.headers.origin !== undefined) {
         response.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });

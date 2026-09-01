@@ -28,7 +28,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Home | Personal browser-local preferences plus bounded destination catalog | Pinned sessions, projects, and views; last-viewed session; What’s new, report discovery, and honest Coming soon previews. Monitoring activity, counters, usage, and polling remain on their dedicated routes. |
 | Sessions | Reusable command table | Searchable/filterable real catalog with canonical detail links. |
 | Dashboards | Built-in route directory | Real destinations only; custom composition is explicitly unavailable. |
-| Agents | Aggregate live-session evidence | Counts where known; global roster is explicitly coming soon and never inferred. |
+| Agents | Understand model use, roles, recorded work, and delegation | Cached Models & work summaries with evidence drill-downs; hierarchical Live agents roster preserves session provenance. |
 | Usage limits | Existing shared usage store | Provider-reported account windows with correlation-not-attribution caveat. |
 | Repositories | Session-to-project associations | Association counts only; branch/Git aggregation is explicitly coming soon. |
 | Settings | Accessible tab system | Appearance, desktop-notification boundary, existing display preferences, and About; full keyboard tab behavior. The About pane opens with the painted Pomegr mark beside its name and concise product purpose. |

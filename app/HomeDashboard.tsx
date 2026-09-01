@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
+import { CommandSelect } from "./components/command-center/CommandPage";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
@@ -55,9 +56,9 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
   const matches = destinations.filter((destination) => destination.kind === kind && `${destination.title} ${destination.detail}`.toLowerCase().includes(query.trim().toLowerCase()));
   return <div className={styles.picker}>
     <div className={styles.pickerFilters}>
-      <label>Destination type<select value={kind} onChange={(event) => { setKind(event.target.value as HomePin["kind"]); setQuery(""); }}>
+      <label>Destination type<CommandSelect value={kind} onChange={(event) => { setKind(event.target.value as HomePin["kind"]); setQuery(""); }}>
         <option value="session">Sessions</option><option value="project">Projects</option><option value="view">Views</option>
-      </select></label>
+      </CommandSelect></label>
       <label>Find a destination<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names" /></label>
     </div>
     <ul className={styles.pickerResults} aria-label="Destinations to pin">

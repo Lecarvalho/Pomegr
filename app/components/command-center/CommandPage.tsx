@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
 export { CommandIcon } from "./CommandIcon";
 
@@ -34,6 +34,9 @@ export function CommandSearch({ value, onChange, placeholder, label }: { value: 
   </label>;
 }
 
+export function CommandSelect({ className, ...props }: ComponentProps<"select">) {
+  return <span className="commandSelect"><select {...props} className={className} /></span>;
+}
 export function CommandFilter({ active, children, onClick, count }: { active: boolean; children: ReactNode; onClick: () => void; count?: number }) {
   return <button className={`commandFilterChip${active ? " active" : ""}`} type="button" aria-pressed={active} onClick={onClick}>{children}{count === undefined ? null : <span className="commandFilterCount">{count}</span>}</button>;
 }

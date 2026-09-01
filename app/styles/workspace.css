@@ -83,6 +83,14 @@
 .commandMetric > span { color: var(--command-muted); font-size: var(--text-xs); }
 .commandMetric > strong { margin-top: 19px; color: var(--command-ink); font: 500 26px/1 var(--font-ui); }
 .commandMetric > small { margin-top: 8px; color: var(--command-faint); font-size: var(--text-xs); }
+.commandSelect { position: relative; display: inline-grid; min-width: 0; max-width: 100%; color: var(--command-muted); }
+.commandSelect::after { position: absolute; inset-inline-end: 14px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-70%) rotate(45deg); pointer-events: none; content: ""; }
+.commandSelect select { appearance: none; width: 100%; min-width: 0; min-height: var(--control-height); padding-block: 0; padding-inline: var(--space-3) 36px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); cursor: pointer; }
+.commandSelect select:hover:not(:disabled) { border-color: var(--command-line-strong); }
+.commandSelect select:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.commandSelect select:disabled { cursor: not-allowed; opacity: .55; }
+.commandSelect:has(select:disabled)::after { opacity: .55; }
+@media (forced-colors: active) { .commandSelect select { appearance: auto; padding-inline-end: var(--space-3); } .commandSelect::after { display: none; } }
 .commandEmpty { min-height: 230px; padding: 34px; display: grid; place-items: center; align-content: center; border: 1px solid var(--command-line); background: var(--command-panel); color: var(--command-muted); text-align: center; }
 .commandToolbar + .commandEmpty, .commandViewIntro + .commandEmpty { margin-top: 12px; }
 .commandEmpty .commandIcon { width: 24px; height: 24px; }

@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, and `/api/provider-status` handlers
+- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, `/api/agents`, and `/api/provider-status` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -44,6 +44,46 @@ Use these names in code, tests, diagnostics, and architecture discussions:
 U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream consumers of
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
+
+## Agents analytics
+
+Agents is an independent D Derivation and S Serving domain. Its background job reads
+only committed normalized session snapshots and the committed session catalog. It
+cannot hydrate sessions, open transcripts, consult provider APIs, or initiate upstream
+work. Historical evidence that has not been retained remains unavailable.
+
+The job prepares bounded responses for each supported project, 7/30/90-day window,
+and main/delegated/all scope. A derivation uses one captured evidence set and clock,
+yields between bounded batches, and publishes a validated replacement atomically.
+Relevant evidence changes coalesce to at most one attempt per minute; time-window
+boundaries also invalidate affected selections. Failed attempts retain the last
+successful summary and retry with the same bounded cadence. Removed selections
+are pruned so response-cache growth stays bounded. A domain-wide monotonic revision
+sequence prevents a removed and re-added selection from reusing an old revision;
+in-process observation restarts preserve the committed variants.
+
+GET /api/agents only selects and serves a committed response. It accepts project,
+days, scope, and an optional numeric revision. It never computes aggregates, creates
+cache entries, or schedules provider hydration. The same-origin proxy forwards only
+these parameters and preserves no-store and unchanged 204 responses. Each response
+contains selection provenance, independent revision, generation time, readiness,
+coverage, precomputed model/role/work summaries, bounded supporting runs, and a
+stable parent-before-child live roster. The historical start-date filter does not
+exclude agents from the live roster.
+
+The browser polls the selected response every minute while visible, serializes requests,
+refreshes on focus, and aborts abandoned selections. A response for a previous selection
+cannot appear beneath new filters. Refresh and network failures retain visible data;
+a skeleton is used only before the first committed summary. An old generatedAt alone
+does not imply failure: unchanged evidence does not require a new derivation. Backend
+refreshReadiness distinguishes a failed refresh from an unchanged successful summary.
+
+Coverage describes retained evidence, not complete source history. Missing sessions,
+unknown model/role metadata, and bounded evidence are disclosed. The endpoint exposes
+only the normalized Agents contract; it includes no raw provider kind, source path,
+prompt, response, command, tool output, credentials, cumulative tokens, or billing.
+It adds no checkpoint schema or durable analytics ledger.
+
 
 ## Public provider service status
 

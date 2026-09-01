@@ -9,6 +9,7 @@ import { SessionObservationCheckpointStore } from "./session-observation-checkpo
 import { createSessionObservationCoordinator } from "./session-observation-coordinator.mjs";
 import { SessionObservationStore } from "./session-observation-store.mjs";
 import { createProviderStatusObservation } from "./provider-status-observation.mjs";
+import { createAgentsObservation } from "./agents-observation.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -306,6 +307,17 @@ export function createObservationRuntime(options = {}) {
       return { publicState: { ...publicState, readiness }, readiness };
     },
   });
+  const agentsObservation = createAgentsObservation({
+    store: observationStore,
+    catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [],
+    subscribe: observationCoordinator.subscribe,
+    isReady: () => observationCoordinator.catalog()?.snapshot?.value?.readiness?.catalog === "ready",
+    readiness: () => observationCoordinator.catalog()?.snapshot?.value?.readiness?.catalog || "loading",
+    now,
+    schedule: scheduleObservation,
+    cancel: cancelObservation,
+    intervalMs: options.agentsDerivationIntervalMs,
+  });
 
   function loadingState(selectedId, catalogEntry) {
     const provider = registry.providerForSessionId(selectedId) || registry.defaultProvider;
@@ -324,6 +336,9 @@ export function createObservationRuntime(options = {}) {
   async function startObservation() {
     if (observationStartPromise) return observationStartPromise;
     observationServingActive = true;
+    // This D-only cache begins from the committed store and catalog. It never
+    // invokes observers, hydration, parsing, or any provider read.
+    agentsObservation.start();
     providerStatus.start();
     usageResponseCache.commit({
       generatedAt: null,
@@ -356,6 +371,7 @@ export function createObservationRuntime(options = {}) {
     try { await observationStartPromise; }
     catch (error) {
       observationServingActive = false;
+      agentsObservation.stop();
       await providerStatus.stop();
       observationStartPromise = null;
       unsubscribeObservation?.();
@@ -366,6 +382,7 @@ export function createObservationRuntime(options = {}) {
 
   async function stopObservation() {
     observationServingActive = false;
+    agentsObservation.stop();
     await providerStatus.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
     if (resourceRefreshTimer) clearInterval(resourceRefreshTimer);
@@ -409,6 +426,7 @@ export function createObservationRuntime(options = {}) {
     },
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
@@ -418,7 +436,9 @@ export function createObservationRuntime(options = {}) {
         catalog: observationCoordinator.catalog()?.snapshot?.revision || 0,
         home: homeResponseCache.current()?.revision || 0,
         usageLimits: usageResponseCache.current()?.revision || 0,
+        agents: agentsObservation.read({ project: "all", days: 30, scope: "all" })?.revision || 0,
       }),
+      agents: agentsObservation.diagnostics(),
     }),
   });
 }

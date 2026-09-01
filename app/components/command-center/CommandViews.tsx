@@ -14,7 +14,8 @@ import { ClaudeUsageControls } from "../ClaudeUsageControls";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor, providerStatusTone } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
-import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandMetric, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
+import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
+export { AgentsView } from "../agents/AgentsView";
 
 function sessionHref(session: SessionSummary) {
   try { return `/sessions/${encodeSessionRoute(session.id)}`; } catch { return "/"; }
@@ -173,19 +174,6 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
       />
       {catalogUnavailable && sessions.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
-  </CommandPage>;
-}
-
-export function AgentsView() {
-  const { sessions, loading, connected } = useSessionCatalog();
-  const liveSessions = sessions.filter((session) => session.isLive);
-  const knownAgentCount = liveSessions.reduce((total, session) => total + (session.agentCount || 0), 0);
-  const knownActiveAgentCount = liveSessions.reduce((total, session) => total + (session.activeAgentCount || 0), 0);
-  const sessionsWithCounts = liveSessions.filter((session) => session.agentCount !== null).length;
-  return <CommandPage title="Agents" description="A normalized agent roster is planned; the current monitor exposes agent evidence only inside individual session views." busy={loading && !sessions.length} action={<button className="commandSecondaryAction" type="button" disabled aria-disabled="true">View topology</button>}>
-    <div className="commandMetricsRow"><CommandMetric label="Visible sessions" value={String(liveSessions.length)} detail="Live catalog" /><CommandMetric label="Known agents" value={sessionsWithCounts ? String(knownAgentCount) : "—"} detail={sessionsWithCounts ? "Across live sessions" : "Evidence unavailable"} /><CommandMetric label="Active agents" value={sessionsWithCounts ? String(knownActiveAgentCount) : "—"} detail="Session-level evidence" /></div>
-    <CommandComingSoon title="Global agent detail is not available yet" detail="Pomegr will add a global roster with normalized role, status, context, and parent-session provenance when that evidence can be served safely. No individual agents are inferred here." icon="agents" />
-    {!connected && <p className="commandUnavailableNote">The local monitor is reconnecting; aggregate counts may be stale.</p>}
   </CommandPage>;
 }
 

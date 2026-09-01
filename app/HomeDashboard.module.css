@@ -144,8 +144,8 @@
 .picker { padding: 16px; border: 1px solid var(--command-line); border-radius: var(--panel-radius, 6px); background: var(--command-panel-2); }
 .pickerFilters { display: grid; grid-template-columns: minmax(120px, .6fr) minmax(0, 1fr); gap: 12px; }
 .pickerFilters label { display: grid; gap: 6px; min-width: 0; color: var(--command-muted); font-size: var(--text-xs, 12px); }
-.home .pickerFilters input,
-.home .pickerFilters select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius, 4px); background: var(--command-ground); color: var(--command-ink); font: inherit; font-size: var(--text-sm, 13px); }
+.home .pickerFilters select { min-height: 44px; }
+.home .pickerFilters input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius, 4px); background: var(--command-ground); color: var(--command-ink); font: inherit; font-size: var(--text-sm, 13px); }
 .pickerResults { max-height: 288px; overflow: auto; overscroll-behavior: contain; margin: 14px 0 0; padding: 0; list-style: none; }
 .home .pickerResults button { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; min-height: 60px; padding: 10px 0; border: 0; border-top: 1px solid var(--command-line); background: transparent; color: var(--command-ink); text-align: left; cursor: pointer; font: inherit; }
 .pickerResults button > span:first-child { min-width: 0; }

@@ -10,7 +10,7 @@ Safe lifecycle data ────┤            │
 Safe cost snapshots ────┘            │
                                      │ normalized JSON
                                      v
-          /api/sessions + /api/home + /api/state + /api/usage-limits + /api/provider-status proxies
+          /api/sessions + /api/home + /api/agents + /api/state + /api/usage-limits + /api/provider-status proxies
                                      │
                                      v
                            Pomegr web UI (:3003)
@@ -53,6 +53,7 @@ Needs-input notifications are produced from the normalized session catalog on a 
 6. Inspects the live session repository with read-only Git commands and resolves bounded pull-request metadata through the authenticated GitHub CLI when available.
 7. Retrieves provider/account usage through one background single-flight cache shared by Usage limits and session views.
 8. Builds independently committed Home correlation, live-session summary, Git, resource, and usage revisions.
+9. Derives bounded Agents model/role/work summaries and hierarchical rosters from committed normalized session evidence. A dedicated `/api/agents` cache serves prebuilt project, period, and scope selections without acquiring or hydrating source data; see the Agents analytics contract in `docs/OBSERVATION_CACHE.md`.
 
 The observation pipeline uses fixed phase names: provider adapters perform **U1 Acquisition** and **U2 Normalization**; the shared observation store performs atomic **C Commit**; monitor jobs perform **D Derivation**; the checkpoint writer performs **P Persistence**; API handlers perform cache-only **S Serving**; and React performs **F Presentation**. Provider-native notifications are routed through adapter-private source indexes to provider-local session IDs. Each provider has an independent worker pool (default concurrency two): different sessions can acquire concurrently, work for one session is serialized, queued duplicates coalesce, and a change during acquisition retains one dirty-again follow-up. A separate catalog lane publishes fresh bounded discovery without waiting for detailed hydration. Additions, removals, live transitions, and needs-input transitions preempt the 500 ms summary coalescer and commit in the next event-loop turn. Each committed catalog revision emits a same-origin server-sent invalidation containing only the fixed `sessions` domain and revision; the browser immediately performs its normal cache-only GET, while five-second visible polling remains recovery. Filesystem notifications wake observers immediately and a ten-second, lower-priority reconciliation poll repairs missed notifications. A normalized session candidate is coalesced for 500 ms before commit. Observers yield to the Node event loop before each session hydration and between bounded acquisition chunks, and provider-private source topology is prepared once per catalog pass. This keeps cached HTTP serving responsive while background work continues. A source chunk bounds acquisition work only—it never bounds how long already-normalized evidence remains available. The complete event-driven schema and timing contract are normative in `docs/OBSERVATION_CACHE.md`.
 
