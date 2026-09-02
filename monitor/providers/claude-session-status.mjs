@@ -38,6 +38,10 @@ export function sessionActivityStatus(isLive, entry, backgroundRunning = null) {
   if (!isLive) return "idle";
   if (entry?.needsInput) return "needs_input";
   if (entry?.status === "active" || entry?.status === "waiting" || backgroundRunning === true) return "working";
+  // A validated owner proves the interactive runtime is still open even when
+  // the primary worker has become idle between turns. Keep that distinction
+  // at the session level; individual agents retain their native idle status.
+  if (entry?.status === "idle" && entry?.resourceOwner) return "open";
   return entry?.status === "idle" ? "idle" : "unknown";
 }
 

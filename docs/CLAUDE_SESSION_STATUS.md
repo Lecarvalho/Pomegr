@@ -61,7 +61,7 @@ supply an execution observation.
 | --- | --- | --- |
 | `running` | Working | `active` |
 | `requires_action` | Needs input | `needs_input` |
-| `idle` | Working if recorded background work remains open; otherwise Idle | `idle` |
+| `idle` | Working if recorded background work remains open; otherwise Open while the local runtime owner is validated | `idle` |
 | Missing, unrecognized, mismatched, or unavailable | No new observation | No new observation |
 
 For a live session without a prior valid observation, the status is unknown. A temporary failure
@@ -71,6 +71,11 @@ not proof of the current state during a network outage. Removal or reassignment 
 the local owner/bridge, or credential replacement/removal, prevents cache reuse.
 A successful unchanged poll also preserves the original transition-observation time.
 Historical hydration makes no remote status request for the historical session.
+
+A validated registered runtime keeps the session in **Live** between turns, with
+**Open** as its session label after primary and background work become idle. The
+primary agent still shows **idle**. Registration without validated process ownership
+does not establish Open; neither do transcript recency or a fresh browser poll.
 
 A non-live Claude catalog row uses **Idle** as a fallback meaning no live session
 is detected. With the registry available, this applies after the session has no

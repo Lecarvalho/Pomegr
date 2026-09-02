@@ -25,7 +25,7 @@ codex plugin marketplace add Lecarvalho/pomegr --ref main
 codex plugin add pomegr@pomegr
 ```
 
-Restart Codex and start a new task so the installed skills, hooks, and tools are discovered. Open `/hooks`, review the three Pomegr hook definitions, and trust them. Plugin hooks are not trusted automatically, and changed definitions require review again.
+Restart Codex and start a new task so the installed skills, hooks, and tools are discovered. Open `/hooks`, review the Pomegr hook definitions, including the SessionStart presence hook, and trust them. Plugin hooks are not trusted automatically, and changed definitions require review again.
 
 The plugin is installed in the local Codex configuration and cache; it does not copy scripts or plugin files into client repositories. Replace `main` with a published Pomegr release tag to pin a stable release.
 
@@ -99,6 +99,8 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`.
 
 Every `SessionStart` also emits one bounded `[Pomegr plugin metadata]` line containing only the installed plugin version, policy status (`valid`, `invalid`, or `missing`), and recognized policy version. Pomegr accepts that line only from provider-owned hook context, records the provider transcript timestamp as the observation time, and never treats an absent observation as proof that the plugin is uninstalled. Historical views retain the version and policy state observed in that session rather than substituting the current machine configuration.
+
+The Codex package also runs an inert presence bridge on `SessionStart`. It returns `{}` and adds no model context. Its bundled watcher renews a local lease only while the same validated runtime PID/process-start identity exists; the monitor can therefore keep idle sessions **Open** in **Live** between turns. This is independent of reporting policy, agent-reported signals, and recorded execution state. The bridge persists only the existing bounded lifecycle/lease allowlist and never stores the hook payload. Updating and trusting this hook is required; it does not retroactively establish presence for sessions whose hook has not run. It observes runtime ownership, not which app tab is visible or future user intent.
 
 Both packages also register an all-tool `PostToolUse` reminder hook. Reminder state is stored only as bounded version, timestamp, and counter records under provider plugin data, with SHA-256 session filenames, owner-only permissions, atomic writes, 30-day expiry, and a 256-file cap. Missing, disabled, malformed, or unwritable policy/data suppresses reminders and never blocks a session.
 

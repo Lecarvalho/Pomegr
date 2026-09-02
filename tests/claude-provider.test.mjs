@@ -710,7 +710,7 @@ test("Claude adapter exposes a resource owner only for a verified live registry 
     ...providerOptions,
     registryProcessIdentities: () => new Map([[owner.pid, owner.procStart]]),
   });
-  assert.equal((await idleProvider.listSessions())[0].activityStatus, "idle");
+  assert.equal((await idleProvider.listSessions())[0].activityStatus, "open");
 });
 
 test("Claude adapter retires a stale registry file whose owner process exited", async (context) => {

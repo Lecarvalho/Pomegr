@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, appendFile, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -63,7 +63,7 @@ async function waitFor(predicate) {
 for (const [native, activity, agent, needsInput] of [
   ["running", "working", "active", false],
   ["requires_action", "needs_input", "waiting", true],
-  ["idle", "idle", "idle", false],
+  ["idle", "open", "idle", false],
 ]) {
   test("maps explicit native " + native + " without transcript heuristics", async (t) => {
     const f = await fixture(t);
@@ -91,6 +91,14 @@ for (const [native, activity, agent, needsInput] of [
     assert.equal(normalizedOnly.get("local-session").status, agent);
   });
 }
+
+test("only a validated owner upgrades a live idle runtime to open", () => {
+  assert.equal(sessionActivityStatus(true, registry({ status: "idle" }).get("local-session")), "open");
+  const unowned = registry({ status: "idle" });
+  delete unowned.get("local-session").resourceOwner;
+  assert.equal(sessionActivityStatus(true, unowned.get("local-session")), "idle");
+  assert.equal(sessionActivityStatus(false, registry({ status: "idle" }).get("local-session")), "idle");
+});
 
 test("accepts the older session envelope with the exact native identity", async (t) => {
   const f = await fixture(t);
@@ -208,7 +216,7 @@ test("an old in-flight response cannot overwrite a replacement owner", async (t)
   await reader.refresh(current, ["local-session"]);
   release(); await pending;
   assert.equal(sessionActivityStatus(true, old.get("local-session")), "unknown");
-  assert.equal(sessionActivityStatus(true, current.get("local-session")), "idle");
+  assert.equal(sessionActivityStatus(true, current.get("local-session")), "open");
 });
 
 test("bounds native concurrency and allows new visible sessions into a full cache", async (t) => {
@@ -259,7 +267,7 @@ async function providerFixture(t) {
 
 test("provider catalog and primary agent share native lifecycle; U2 and historical reads never fetch", async (t) => {
   const f = await providerFixture(t);
-  for (const [native, activity, agent] of [["running", "working", "active"], ["requires_action", "needs_input", "needs_input"], ["idle", "idle", "idle"]]) {
+  for (const [native, activity, agent] of [["running", "working", "active"], ["requires_action", "needs_input", "needs_input"], ["idle", "open", "idle"]]) {
     f.status(native); f.advance(10_000);
     const catalog = await f.provider.listSessions();
     const acquired = f.calls();
@@ -276,6 +284,27 @@ test("provider catalog and primary agent share native lifecycle; U2 and historic
   assert.equal(f.calls(), before);
   // Whether the startup/exit grace still considers the file live cannot trigger a remote read.
   assertPrivate(evidence);
+});
+
+test("retains an old idle registered session as open until its owner terminates", async (t) => {
+  const f = await providerFixture(t);
+  // Make transcript activity older than both the normal five-minute window and
+  // the registry grace period. Registration plus validated ownership is the
+  // only reason this session remains in the live catalog.
+  const old = new Date(START - 10 * 60_000);
+  await utimes(f.file, old, old);
+  await writeFile(f.ownerFile, JSON.stringify({
+    sessionId: "local-session", entrypoint: "cli", status: "idle",
+    pid: 123, procStart: "owner-start",
+  }));
+  const registered = (await f.provider.listSessions())[0];
+  assert.equal(registered.isLive, true);
+  assert.equal(registered.activityStatus, "open");
+
+  await rm(f.ownerFile);
+  const historical = (await f.provider.listSessions())[0];
+  assert.equal(historical.isLive, false);
+  assert.equal(historical.activityStatus, "idle");
 });
 
 test("observer commits native transitions without transcript growth and retains incomplete replacements", async (t) => {

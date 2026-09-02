@@ -13,6 +13,8 @@ const bundleDefinitions = [
   ["plugins/claude-code/scripts/rename-session.bundle.mjs", "plugins/claude-code/scripts/rename-session.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/pomegr/mcp/server.bundle.mjs", "mcp/server.mjs", "scripts/build-codex-plugin.mjs"],
   ["plugins/pomegr/scripts/progress-reminder.bundle.mjs", "scripts/progress-reminder.mjs", "scripts/build-codex-plugin.mjs"],
+  ["plugins/pomegr/scripts/codex-lifecycle-bridge.bundle.mjs", "scripts/codex-plugin-lifecycle-bridge.mjs", "scripts/build-codex-plugin.mjs"],
+  ["plugins/pomegr/scripts/codex-lifecycle-owner.bundle.mjs", "scripts/codex-lifecycle-owner.mjs", "scripts/build-codex-plugin.mjs"],
 ];
 const buildOptions = {
   bundle: true,
@@ -41,6 +43,13 @@ for (const provider of ["claude", "codex"]) {
     const error = await compareFile(relativePath, artifact.content);
     if (error) errors.push(error);
   }
+}
+
+for (const [outputFile, sourceFile] of [
+  ["plugins/pomegr/hooks/hooks.json", "plugin-src/codex-hooks.json"],
+]) {
+  const error = await compareFile(outputFile, await readFile(path.join(repositoryRoot, sourceFile), "utf8"));
+  if (error) errors.push(error);
 }
 
 // The managed Windows sandbox may deny the system temp directory. Keep this

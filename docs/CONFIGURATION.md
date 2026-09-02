@@ -136,7 +136,9 @@ On the computer running Pomegr:
 
 If the CLI is already installed but undetected, use the absolute native executable override above. If it is already signed in with ChatGPT, check connectivity and allow the normal retry interval. A missing CLI is an unavailable setup state, not a pending account request; the dashboard settles to its normal polling cadence. Reading Codex desktop session history does not require this CLI and cannot establish account-usage access. Pomegr only displays these instructions; it does not install Codex, launch sign-in, or expose credentials through the browser.
 
-For higher-confidence Windows live state, register this inert hook command for the supported Codex lifecycle events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`, and supported subagent transitions):
+The Pomegr Codex plugin includes an inert `SessionStart` presence hook and a self-contained owner watcher. Update the installed plugin, review and trust the changed hook in `/hooks`, then start or resume a task. A validated current owner lease keeps completed idle sessions in **Live** with the **Open** label. The watcher validates the same PID/process-start identity; it does not advance session activity timestamps. Existing tasks need a new hook execution before they gain this evidence. Presence describes the owning runtime, not whether a task is visible in the app or whether the user intends to return.
+
+For a standalone setup without the plugin, register this inert hook command for the supported Codex lifecycle events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`, and supported subagent transitions):
 
 ```powershell
 node "C:\path\to\pomegr\scripts\codex-lifecycle-bridge.mjs"
@@ -252,7 +254,7 @@ On startup, compatible normalized checkpoints may make prior session state visib
 ### Codex appears historical while it is open
 
 - An owning app-server reports only threads loaded by that same process. A newly spawned app-server is not global live-state truth on Windows.
-- Confirm the lifecycle hook invokes `scripts/codex-lifecycle-bridge.mjs`, shares `POMEGR_CODEX_LIVENESS_DIR` with the monitor, and can write that directory.
+- Update and trust the Pomegr plugin SessionStart presence hook, then start or resume a task. For standalone configuration, confirm the lifecycle hook invokes `scripts/codex-lifecycle-bridge.mjs`, shares `POMEGR_CODEX_LIVENESS_DIR` with the monitor, and can write that directory.
 - The bridge requires a recognized Codex/ChatGPT ancestor or a valid `POMEGR_CODEX_OWNER_PID`; it validates the current process-start identity and never trusts an old lease when current ownership cannot be confirmed.
 - A compact `SessionStart` without matching non-null turn identity remains unknown; this is expected when the hook payload cannot prove same-turn continuity.
 - If hooks are unavailable, only adapter-supported structured rollout evidence can contribute bounded liveness. Expiry or missing evidence is unknown/stale, not an operating-system process claim or proof of idle.

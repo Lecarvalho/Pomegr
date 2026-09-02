@@ -115,7 +115,7 @@ test("composes session work independently of primary idle and preserves needs-in
   assert.equal(sessionActivityStatus(false, { status: "idle" }, true), "idle");
 });
 
-test("provider catalog is working while native primary is idle, then returns idle on workflow completion", async (t) => {
+test("provider catalog is working while native primary is idle, then returns open on workflow completion", async (t) => {
   const f = await fixture(t, launch());
   const registryRoot = path.join(f.homeDir, ".claude", "sessions"); await mkdir(registryRoot);
   const registryFile = path.join(registryRoot, "123.json");
@@ -130,7 +130,7 @@ test("provider catalog is working while native primary is idle, then returns idl
   const evidence = await provider.readSession("local");
   assert.equal(evidence.agents.find((agent) => agent.id === "primary").status, "idle");
   await appendFile(f.file, jsonl([terminal()]));
-  assert.equal((await provider.listSessions())[0].activityStatus, "idle");
+  assert.equal((await provider.listSessions())[0].activityStatus, "open");
   await appendFile(f.file, jsonl(launch("new", "Workflow", 3000)));
   assert.equal((await provider.listSessions())[0].activityStatus, "working");
   await rm(registryFile);
@@ -216,7 +216,7 @@ test("catalog and workflow detail reject cached completion when the same run res
   await writeFile(manifestFile, JSON.stringify(manifest));
   const provider = createClaudeProvider({ homeDir: f.homeDir, env: {}, now: () => START + 7000,
     registryProcessIdentities: () => new Map([[123, "one"]]), usageRequest: async () => { throw new Error("not requested"); } });
-  assert.equal((await provider.listSessions())[0].activityStatus, "idle");
+  assert.equal((await provider.listSessions())[0].activityStatus, "open");
   assert.equal((await provider.readSession("local")).workflows[0].status, "completed");
   await appendFile(f.file, jsonl(launch("resumed", "Workflow", 3000)));
   await writeFile(workerFile, jsonl([workerRecord(4000)]));
@@ -336,7 +336,7 @@ test("native idle catalog stays working for a background Agent and its nested ch
   await appendFile(f.file, jsonl([terminal("agent-child")]));
   assert.equal((await provider.listSessions())[0].activityStatus, "working", "grandchild completion cannot close the parent launch");
   await appendFile(f.file, jsonl([terminal("agent-parent")]));
-  assert.equal((await provider.listSessions())[0].activityStatus, "idle");
+  assert.equal((await provider.listSessions())[0].activityStatus, "open");
   await appendFile(f.file, jsonl(launch("agent-new", "Agent", 3000)));
   assert.equal((await provider.listSessions())[0].activityStatus, "working");
   await rm(registryFile);

@@ -276,8 +276,10 @@ function currentLease(root, ownerPid, ownerStartedAt, nowMs) {
   };
 }
 
-function launchOwnerWatcher({ root, ownerPid, ownerStartedAt, bridgeInstance }) {
-  const watcher = fileURLToPath(new URL("../../scripts/codex-lifecycle-owner.mjs", import.meta.url));
+function launchOwnerWatcher({ root, ownerPid, ownerStartedAt, bridgeInstance, ownerWatcherPath = null }) {
+  const watcher = typeof ownerWatcherPath === "string" && path.isAbsolute(ownerWatcherPath)
+    ? ownerWatcherPath
+    : fileURLToPath(new URL("../../scripts/codex-lifecycle-owner.mjs", import.meta.url));
   const child = spawn(process.execPath, [
     watcher,
     "--root", root,
@@ -332,7 +334,17 @@ export function captureCodexLifecycleHook(input, options = {}) {
   };
   atomicWriteJson(file, snapshot);
   if (!lease.reused && event !== "SessionEnd" && options.startWatcher !== false) {
-    try { (options.launchWatcher || launchOwnerWatcher)({ root, ownerPid, ownerStartedAt, bridgeInstance: lease.value.bridgeInstance }); } catch {
+    try {
+      (options.launchWatcher || launchOwnerWatcher)({
+        root,
+        ownerPid,
+        ownerStartedAt,
+        bridgeInstance: lease.value.bridgeInstance,
+        ...(typeof options.ownerWatcherPath === "string" && path.isAbsolute(options.ownerWatcherPath)
+          ? { ownerWatcherPath: options.ownerWatcherPath }
+          : {}),
+      });
+    } catch {
       // A missing watcher simply bounds the bridge evidence to the initial lease.
     }
   }

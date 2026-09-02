@@ -26,13 +26,13 @@ export function aggregateCodexSessionLifecycle(rootThread, relatedThreads = []) 
     return { isLive, needsInput: false, activityStatus: "working" };
   }
 
+  const open = liveActors.some((thread) => thread.presenceConfirmed === true);
   const rootStatus = statusOf(root);
   const potentiallyLive = actors.filter((thread) => thread === root || thread.livenessLive === true);
   const allPotentiallyLiveInactive = potentiallyLive.every((thread) => INACTIVE_STATUSES.has(statusOf(thread)));
   if (allPotentiallyLiveInactive && INACTIVE_STATUSES.has(rootStatus)) {
-    return { isLive, needsInput: false, activityStatus: rootStatus === "stopped" ? "stopped" : "idle" };
+    return { isLive, needsInput: false, activityStatus: rootStatus === "stopped" ? "stopped" : open ? "open" : "idle" };
   }
-  // Open is a presence fact, not a fallback for uncertain transcript activity.
-  const open = liveActors.some((thread) => thread.presenceConfirmed === true);
+  // Open describes confirmed presence independently of recorded execution.
   return { isLive, needsInput: false, activityStatus: open ? "open" : "unknown" };
 }

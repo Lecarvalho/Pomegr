@@ -267,8 +267,14 @@ fresh observation as `observation_gap`. The separate account-only app-server use
 usage limits is never a session observer. The CLI documents a proxy to a running local
 daemon, but Desktop owner association and socket discovery are not established by this
 contract, so production does not auto-attach, pair, or configure that transport. The
-hook bridge is opt-in and requires a recognized Codex/ChatGPT ancestor or a validated
-explicit owner PID; it does not reuse an old lease when current identity is unavailable.
+hook bridge requires a recognized Codex/ChatGPT ancestor or a validated
+explicit owner PID. The Codex plugin packages an inert SessionStart bridge and its
+colocated owner watcher; installing the update and trusting the changed provider hook
+is the activation boundary. Existing sessions without a newly executed trusted hook
+remain without that presence evidence. The watcher renews only the same PID/start
+identity, does not alter the session activity timestamp, and exits when ownership
+can no longer be validated. No per-tool presence hook or new time-based session
+retention is introduced; it does not reuse an old lease when current identity is unavailable.
 It persists only its versioned bounded snapshot: v2 allowlisted lifecycle event,
 optional SessionStart source, stop-hook continuation flag, bounded IDs, timestamps,
 sequence, and local lease state. Legacy v1 snapshots remain parseable but contribute
@@ -304,8 +310,9 @@ The Live catalog includes unresolved recorded work and confirmed owner-backed
 presence. A terminal record alone does not establish presence: it ends the unresolved
 work, while a current owning runtime or valid owner lease can still keep the session
 open. Catalog activity distinguishes working, needs_input, idle, stopped, open, and
-unknown; open requires owner-backed presence and never follows from a recent file
-alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
+unknown. A completed idle turn with confirmed current owner-backed presence is
+`open`, remains in Live, and keeps its individual agents idle. Working, needs-input,
+and stopped evidence retain precedence. Open never follows from a recent file alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
 Unknown non-live entries must never be labeled Complete. A crash without a terminal
 record may leave unresolved work; no elapsed transcript-silence window guesses an end.
 Existing catalog, cold-discovery, working-set, and evidence-cache bounds remain in force.
@@ -549,6 +556,14 @@ can make a session Working while its primary agent is Idle. This extends only
 U1/U2 recognition: last-known-good retention, revision publication, bounded private
 cursors, and cache-only GETs are unchanged; no raw agent IDs or result fields are
 added to browser or checkpoint state.
+
+Claude sessions with a validated current registry owner remain Live between turns,
+even when the recorded activity is old. Native idle with that validated owner maps
+to catalog `open`; individual agents remain `idle`. Active, needs-input, and recorded
+background work retain precedence. Unvalidated registry compatibility entries and
+recency-only fallback rows cannot acquire Open merely from being Live. Owner loss
+removes confirmed presence through the existing catalog reconciliation; no new
+recent-idle grace period is added.
 
 Non-live Claude catalog rows use `idle` as a no-live-session fallback, not
 provider-confirmed completion; live rows with unavailable lifecycle evidence remain

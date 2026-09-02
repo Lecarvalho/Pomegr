@@ -34,6 +34,34 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it.each(["claude", "codex"] as const)("keeps a confirmed open %s session in Live between turns", async (provider) => {
+    const user = userEvent.setup();
+    const running: SessionSummary = { ...session(1), id: provider + ":session-1", provider, isLive: true, activityStatus: "working" };
+    const view = render(<SessionCatalogProvider sessions={[running]}><SessionsView /></SessionCatalogProvider>);
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+
+    const open: SessionSummary = { ...running, activityStatus: "open", activeAgentCount: 0 };
+    view.rerender(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("button", { name: /^Live/ })).toHaveAttribute("aria-pressed", "true");
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^History/ }));
+    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    view.rerender(<SessionCatalogProvider sessions={[running]}><SessionsView /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+
+    view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "idle" }]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^History/ }));
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+  });
+
   it.each(["Agents", "Context", "Progress", "Updated"])("toggles %s numerically and keeps unavailable values last", async (column) => {
     const user = userEvent.setup();
     const values = column === "Updated" ? [10, 2, 0] : [10, 2, 0, null];
