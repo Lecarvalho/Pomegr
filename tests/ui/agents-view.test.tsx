@@ -113,6 +113,43 @@ describe("Agents view", () => {
     expect(screen.getByText("How are these numbers counted?")).toBeInTheDocument();
   });
 
+  it("explains initial loading and keeps committed evidence visible during refresh", () => {
+    useAgents.mockReturnValue({ data: null, loading: true, refreshing: false, connected: true, checkedAt: null });
+    const view = render(<AgentsView />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading agent information. You can leave this page and check back later; it refreshes automatically when you return.");
+    expect(screen.getByLabelText("Loading agent summary")).toBeInTheDocument();
+    expect(screen.queryByText("No agents in this selection")).not.toBeInTheDocument();
+
+    useAgents.mockReturnValue({ data: snapshot(), loading: false, refreshing: true, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
+    view.rerender(<AgentsView />);
+    expect(screen.queryByLabelText("Loading agent summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loading agent information/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText("Summary observed")).toBeInTheDocument();
+    expect(screen.getByText("Latest reported model per agent run")).toBeInTheDocument();
+  });
+
+  it("distinguishes missing agent information from a complete empty selection", () => {
+    const empty = snapshot();
+    empty.summary = { runCount: 0, sessionCount: 0, modelCount: 0, mainRunCount: 0, delegatedRunCount: 0 };
+    empty.models = []; empty.work = []; empty.runs = []; empty.roster = [];
+    empty.coverage = { retainedSessions: 0, eligibleSessions: 50, missingSessions: 50, retainedRuns: 0, truncated: false, earliestStartedAt: null };
+    useAgents.mockReturnValue({ data: empty, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
+    const view = render(<AgentsView />);
+    expect(screen.getByRole("heading", { name: "Waiting for agent information" })).toBeInTheDocument();
+    expect(screen.getByText("Check back later. This page updates automatically.")).toBeInTheDocument();
+    expect(screen.getByText("Some past sessions may remain unavailable.").closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByText("Try another project, time range, or agent scope.")).not.toBeInTheDocument();
+    expect(screen.queryByText("agent runs", { exact: false, selector: "span" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Loading agent summary")).not.toBeInTheDocument();
+
+    useAgents.mockReturnValue({ data: { ...empty, coverage: { ...empty.coverage, eligibleSessions: 0, missingSessions: 0 } }, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
+    view.rerender(<AgentsView />);
+    expect(screen.getByRole("heading", { name: "No agents in this selection" })).toBeInTheDocument();
+    expect(screen.getByText("Try another project, time range, or agent scope.")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for agent information")).not.toBeInTheDocument();
+  });
+
   it("uses role-based patterns and drills into the exact model and role", async () => {
     const user = userEvent.setup();
     render(<AgentsView />);

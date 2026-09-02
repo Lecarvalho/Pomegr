@@ -25,6 +25,10 @@
 .summary strong { color: var(--command-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .notice { margin: 18px 0 0; padding: 12px 16px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
 .noticeWarning { color: var(--command-amber); background: color-mix(in srgb, var(--command-amber) 8%, var(--command-panel)); }
+.waitLoader { width: 24px; height: 24px; border: 2px solid var(--command-line); border-top-color: var(--command-muted); border-radius: 50%; animation: waitForAgents 1s linear infinite; }
+.waitLoader[data-paused] { animation-play-state: paused; }
+@keyframes waitForAgents { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .waitLoader { animation: none; } }
 .skeleton { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.7fr); gap: var(--space-6); margin-top: 22px; }
 .skeleton > div { min-height: 330px; padding: 24px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .skeleton i { display: block; width: 80%; height: 16px; margin-bottom: 25px; border-radius: var(--control-radius); background: var(--command-panel-2); }
@@ -110,7 +114,9 @@
 .stateNeedsInput { color: var(--command-amber); }
 .context { color: var(--command-lavender); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .dataValue { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
-.inspector { position: fixed; z-index: 20; top: 60px; right: 0; bottom: 0; width: min(470px, 100%); overflow-y: auto; border-left: 1px solid var(--command-line-strong); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); animation: arrive .2s cubic-bezier(.16, 1, .3, 1); }
+.inspector { position: fixed; z-index: 20; top: 60px; right: 0; bottom: 0; width: min(470px, 100%); overflow-y: auto; border-left: 1px solid var(--command-line-strong); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); transform: translateX(0); transition: transform 280ms ease-in; }
+.inspector[data-closing] { transform: translateX(100%); transition-duration: 200ms; transition-timing-function: ease-out; pointer-events: none; }
+@starting-style { .inspector { transform: translateX(100%); } }
 .inspectorHead { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; gap: 18px; padding: 24px 24px 18px; border-bottom: 1px solid var(--command-line); background: var(--command-panel); }
 .inspectorHead h2 { margin: 0; color: var(--command-ink); font-size: var(--text-heading); }
 .inspectorHead p { margin: 6px 0 0; color: var(--command-muted); font-size: var(--text-xs); }
@@ -125,8 +131,7 @@
 .evidenceMeta dt { color: var(--command-muted); font-size: var(--text-xs); }
 .evidenceMeta dd { margin: 3px 0 0; color: var(--command-ink); font-size: var(--text-xs); }
 .evidenceLink { display: inline-flex; align-items: center; gap: 6px; color: var(--command-brand-text); font-size: var(--text-xs); text-underline-offset: 3px; }
-@keyframes arrive { from { transform: translateX(22px); } to { transform: translateX(0); } }
 @media (max-width: 1200px) { .primaryGrid { grid-template-columns: 1fr; } .rankList { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; } }
 @media (max-width: 1080px) { .inspector { top: 56px; } }
 @media (max-width: 760px) { .pageHead { display: block; } .snapshot { display: none; } .tabs { gap: 24px; } .tab { min-height: 44px; } .filters { gap: 12px; } .filter { min-width: 0; flex: 1 1 calc((100% - 12px) / 2); } .filterLabel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } .filter > :global(.commandSelect) { width: 100%; } .agentsView:has(#agents-live-panel) .filter { flex: 1 0 100%; } .agentsView:has(#agents-live-panel) .segmented { order: 3; } .segmented { order: 3; } .coverage { order: 4; margin-left: 0; } .summary { gap: 12px; font-size: var(--text-xs); } .skeleton, .primaryGrid, .secondaryGrid { grid-template-columns: 1fr; gap: 18px; } .skeleton > div:last-child { display: none; } .rankList { display: block; } .panelHead, .rankList, .workList, .observations { padding-right: 16px; padding-left: 16px; } .panelNote { padding-right: 16px; padding-left: 16px; } .matrixInstruction { padding-right: 16px; padding-left: 16px; flex-wrap: wrap; } .heatLegend { margin-left: 0; } .rosterToolbar { padding: 16px; } .rosterToolbar input { width: 100%; } .rosterCount { width: 100%; margin-left: 0; } .inspector { top: 56px; width: 100%; } .inspectorHead, .inspectorContent { padding-right: 20px; padding-left: 20px; } .matrixCell, .matrixZero { height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .inspector { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .inspector { transition: none; } }

@@ -72,11 +72,26 @@ stable parent-before-child live roster. The historical start-date filter does no
 exclude agents from the live roster.
 
 The browser polls the selected response every minute while visible, serializes requests,
-refreshes on focus, and aborts abandoned selections. A response for a previous selection
-cannot appear beneath new filters. Refresh and network failures retain visible data;
+refreshes on focus, and aborts abandoned selections. During a filter change, presentation
+retains one displayed response and its applied project, period, and scope controls until
+the requested response is ready; the controls and evidence then change together. A response
+for a previous selection cannot appear beneath new applied filters. This is transient
+display state, not a browser cache of analytics variants. Requests still target the latest
+requested selection, and abandoned responses cannot replace the display. Slow selection
+changes show feedback after 300ms; failures show explicit retry feedback while retaining
+the applied selection. Routine refreshes do not insert banners or toggle header labels.
+Refresh and network failures retain visible data;
 a skeleton is used only before the first committed summary. An old generatedAt alone
 does not imply failure: unchanged evidence does not require a new derivation. Backend
 refreshReadiness distinguishes a failed refresh from an unchanged successful summary.
+
+Initial Agents loading includes visible guidance to check back later and explains the
+automatic refresh on return. A committed Models & work summary with no runs and missing
+session evidence shows a compact waiting state with an indeterminate loader and check-back
+guidance instead of suggesting different filters or displaying zero totals. The loader
+stops for reduced motion or a disconnected monitor. This is missing coverage, not proof
+of active hydration; the past-session caveat remains in About this data. A complete empty selection
+keeps the filter guidance, and retained results stay visible during refreshes.
 
 Coverage describes retained evidence, not complete source history. Missing sessions,
 unknown model/role metadata, and bounded evidence are disclosed. The endpoint exposes
