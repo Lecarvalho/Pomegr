@@ -19,6 +19,17 @@ export { parseCodexCliRolloutLiveness as parseCodexRolloutLiveness } from "./cod
 export { appServerLiveness } from "./codex-owning-runtime.mjs";
 function timestampValue(value) { const ms = Date.parse(value || ""); return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY; }
 
+function sameGeneration(left, right) {
+  return left && right && left.identity === right.identity && left.size === right.size
+    && left.mtimeMs === right.mtimeMs && left.suffixDigest === right.suffixDigest;
+}
+
+function compatibleAppend(file, previous, current) {
+  return previous && current && current.identity === previous.identity
+    && current.size > previous.size && current.mtimeMs >= previous.mtimeMs
+    && priorSourceSuffixMatches(file, previous);
+}
+
 function descendantsFor(rootId, threads) {
   const included = new Set([rootId]);
   let changed = true;
@@ -68,10 +79,10 @@ export function createCodexLivenessCoordinator(options = {}) {
     if (!current) return null;
     const recorded = recordedSources.get(file);
     if (recorded) {
-      const matching = current && current.identity === recorded.generation.identity
-        && current.size === recorded.generation.size && current.mtimeMs === recorded.generation.mtimeMs
-        && current.suffixDigest === recorded.generation.suffixDigest;
-      if (matching) {
+      // Acquisition lag is not a lifecycle change. Once the full observer owns
+      // this source, let it validate appended records before replacing its state.
+      if (sameGeneration(current, recorded.generation)
+        || compatibleAppend(file, recorded.generation, current)) {
         const retained = codexRecordedLiveness(recorded.state, { now: nowMs, complete: recorded.complete });
         if (retained) return retained;
       }
@@ -80,22 +91,26 @@ export function createCodexLivenessCoordinator(options = {}) {
     let cached = tailCache.get(file);
     if (!cached || cached.key !== key) {
       const read = readCodexLivenessTail(file, maximumTailBytes);
-      const appended = cached && current.identity === cached.generation.identity
-        && current.size > cached.generation.size && current.mtimeMs >= cached.generation.mtimeMs
-        && priorSourceSuffixMatches(file, cached.generation);
+      const appended = cached && compatibleAppend(file, cached.generation, current);
       const previousBoundary = appended ? cached.boundary : null;
       const tailBoundary = observedCodexRolloutLifecycle(read.records, { now: nowMs }).boundary;
       const continuous = !cached || !appended
         || (cached.generation.size >= read.startOffset && cached.continuous !== false);
       const confirmed = incrementalSourceDescriptor(file);
-      const stable = confirmed && confirmed.identity === current.identity
-        && confirmed.size === current.size && confirmed.mtimeMs === current.mtimeMs
-        && confirmed.suffixDigest === current.suffixDigest;
-      cached = { key, records: read.records, generation: current,
-        complete: read.complete && Boolean(stable),
-        continuous: Boolean(tailBoundary) || continuous,
-        boundary: observedCodexRolloutLifecycle(read.records, { now: nowMs, previous: previousBoundary }).boundary };
-      tailCache.set(file, cached);
+      const stable = sameGeneration(confirmed, current);
+      // A framed, continuous prior read remains usable while an ordinary append
+      // is unfinished. Malformed records and gaps cannot borrow that evidence.
+      const pendingAppend = appended && cached.complete && cached.continuous
+        && cached.generation.size >= read.startOffset && read.malformedRecords === 0
+        && (!read.complete || !stable)
+        && (stable || compatibleAppend(file, current, confirmed));
+      if (!pendingAppend) {
+        cached = { key, records: read.records, generation: current,
+          complete: read.complete && Boolean(stable),
+          continuous: Boolean(tailBoundary) || continuous,
+          boundary: observedCodexRolloutLifecycle(read.records, { now: nowMs, previous: previousBoundary }).boundary };
+        tailCache.set(file, cached);
+      }
       while (tailCache.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) tailCache.delete(tailCache.keys().next().value);
       stats.rolloutFiles += 1;
       stats.rolloutBytes += Math.min(current.size, maximumTailBytes);
@@ -231,11 +246,17 @@ export function createCodexLivenessCoordinator(options = {}) {
     observe,
     observeLifecycleSources(observations) {
       let changed = false;
-      for (const { file, generation, state, complete } of observations) {
+      for (const { file, generation, state, complete, pending } of observations) {
         if (!state || !generation) continue;
-        const value = { generation: { identity: generation.identity, size: generation.size,
-          mtimeMs: generation.mtimeMs, suffixDigest: generation.suffixDigest }, state, complete };
         const previous = recordedSources.get(file);
+        // The first full acquisition may still be pending after a complete tail
+        // was accepted. Leave that tail in charge until the full candidate is ready.
+        if (pending && !previous) continue;
+        if (pending && previous?.complete && (sameGeneration(generation, previous.generation)
+          || compatibleAppend(file, previous.generation, generation))) continue;
+        const value = { generation: { identity: generation.identity, size: generation.size,
+          mtimeMs: generation.mtimeMs, suffixDigest: generation.suffixDigest,
+          suffixBytes: generation.suffixBytes }, state, complete };
         if (JSON.stringify(previous) === JSON.stringify(value)) continue;
         recordedSources.delete(file);
         recordedSources.set(file, value);

@@ -352,8 +352,20 @@ until matching provider evidence resolves it; transcript silence is not a heartb
 failure or a completion event. Recognized terminal records retain idle/stopped even
 when old. Their timestamps never advance just because the monitor polls. Structured
 lifecycle freshness means the retained evidence matches a complete acquired source
-generation, not that the provider process is currently computing. Malformed,
-incomplete, or discontinuous generations remain unknown until valid evidence is acquired.
+generation, not that the provider process is currently computing. An ordinary append
+pending U1 acquisition or ending in an unfinished record does not replace that accepted
+lifecycle. U2 retains its original observation timestamp while matching file identity,
+monotonic growth, and the prior bounded suffix confirm append continuity. The full
+observer owns the successor once it has acquired the source; a bounded tail cannot
+discard an accepted turn or unmatched input just because its source record is outside
+that tail. Before full observation, a complete tail may survive an unfinished append
+only when every intervening record remains within the continuous read window and no
+malformed record was acquired. Acquisition pending and invalid acquired evidence are
+distinct adapter-private states; neither adds browser or checkpoint fields. Cold
+incomplete sources without accepted evidence, malformed acquired records, and confirmed
+source discontinuities remain unknown until valid evidence is acquired. Catalog and
+detail use the same accepted lifecycle; C/D publish a successor only when its evidence
+is ready, with no timeout extension or presentation debounce.
 
 The Live catalog includes unresolved recorded work and confirmed owner-backed
 presence. A terminal record alone does not establish presence: it ends the unresolved

@@ -7,6 +7,8 @@ import { CODEX_BRIDGE_LEASE_MS, CODEX_ROLLOUT_APPROVAL_GRACE_MS, CODEX_ROLLOUT_L
 import { captureCodexLifecycleHook } from "../monitor/providers/codex-hook-lifecycle.mjs";
 import { createCodexLivenessCoordinator } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexOwningRuntime, appServerLiveness } from "../monitor/providers/codex-owning-runtime.mjs";
+import { incrementalSourceDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
+import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "../monitor/providers/codex-recorded-lifecycle.mjs";
 import { observedCodexRolloutLifecycle, parseCodexRolloutLiveness } from "../monitor/providers/codex-rollout-lifecycle.mjs";
 import { createCodexSourceRouter, codexInferenceEligible } from "../monitor/providers/codex-source-routing.mjs";
 
@@ -19,6 +21,10 @@ function lifecycleThread() {
 
 function lifecycleRecord(offset, type, payload) {
   return { timestamp: new Date(START + offset).toISOString(), type, payload };
+}
+
+function recordedLifecycle(records) {
+  return records.reduce((state, entry) => reduceCodexRecordedLifecycle(state, entry), initialCodexRecordedLifecycle());
 }
 
 test("Codex source routing keeps CLI and recorded vscode cold policies independent", () => {
@@ -236,7 +242,26 @@ test("same-turn context does not clear a still-pending structured user-input req
   assert.equal(liveness.needsInputKind, "user_input");
 });
 
-test("an incomplete final rollout record remains unknown until its newline completes the boundary", async (context) => {
+test("a cold incomplete rollout remains unknown without a prior validated lifecycle", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-partial-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  const start = JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-cold" }));
+  await writeFile(rolloutFile, start.slice(0, -1), "utf8");
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => START + 1_000, cacheMs: 0 });
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: initialCodexRecordedLifecycle(),
+    complete: false,
+    pending: true,
+  }]);
+  const observed = coordinator.observe([{ ...lifecycleThread()[0], localId: "cold-root", sessionId: "cold-root", rolloutFile }]).threads[0];
+  assert.equal(observed.liveStatus, "unknown");
+  assert.equal(observed.liveness, null);
+});
+
+test("a compatible incomplete append retains its validated lifecycle until its newline completes the boundary", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-tail-partial-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout.jsonl");
@@ -251,14 +276,142 @@ test("an incomplete final rollout record remains unknown until its newline compl
   const encodedEnd = JSON.stringify(end);
   await appendFile(rolloutFile, encodedEnd.slice(0, -1), "utf8");
   now = START + 3_000;
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: recordedLifecycle([start]),
+    complete: false,
+    pending: true,
+  }]);
   const partial = observe().threads[0];
-  assert.equal(partial.liveStatus, "unknown");
-  assert.equal(partial.liveness.evidence, "unavailable");
+  assert.equal(partial.liveStatus, "active");
+  assert.equal(partial.liveness.evidence, "observed");
+  assert.equal(partial.liveness.observedAt, new Date(START).toISOString());
 
   await appendFile(rolloutFile, `${encodedEnd.at(-1)}\n`, "utf8");
   const recovered = observe().threads[0];
   assert.equal(recovered.liveStatus, "idle");
   assert.equal(recovered.liveness.evidence, "observed");
+});
+
+test("a recorded pending input survives a large compatible incomplete append before observer acquisition catches up", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-pending-append-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  const start = lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-pending" });
+  const pendingInput = lifecycleRecord(1_000, "response_item", {
+    type: "function_call", name: "request_user_input", call_id: "input-pending", turn_id: "turn-pending",
+  });
+  const initialRecords = [start, pendingInput];
+  await writeFile(rolloutFile, `${initialRecords.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+  let now = START + 2_000;
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 256 });
+  const threads = [{ ...lifecycleThread()[0], localId: "pending-root", sessionId: "pending-root", rolloutFile }];
+  const initialGeneration = incrementalSourceDescriptor(rolloutFile);
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: initialGeneration,
+    state: recordedLifecycle(initialRecords),
+    complete: true,
+  }]);
+  const initial = coordinator.observe(threads).sessions.get("pending-root");
+  assert.equal(initial.activityStatus, "needs_input");
+  assert.equal(initial.observedAt, pendingInput.timestamp);
+
+  const incomplete = JSON.stringify(lifecycleRecord(3_000, "response_item", {
+    type: "function_call_output", call_id: "other-call", output: "x".repeat(2_048),
+  }));
+  await appendFile(rolloutFile, incomplete.slice(0, -1), "utf8");
+  now = START + 4_000;
+  const pendingDuringAcquisition = coordinator.observe(threads).sessions.get("pending-root");
+  assert.equal(pendingDuringAcquisition.activityStatus, "needs_input");
+  assert.equal(pendingDuringAcquisition.observedAt, pendingInput.timestamp);
+
+  await appendFile(rolloutFile, `${incomplete.at(-1)}\n`, "utf8");
+  const completeBeforeAcquisition = coordinator.observe(threads).sessions.get("pending-root");
+  assert.equal(completeBeforeAcquisition.activityStatus, "needs_input");
+  assert.equal(completeBeforeAcquisition.observedAt, pendingInput.timestamp);
+
+  const resolved = lifecycleRecord(5_000, "response_item", {
+    type: "function_call_output", call_id: "input-pending", turn_id: "turn-pending",
+  });
+  await appendFile(rolloutFile, `${JSON.stringify(resolved)}\n`, "utf8");
+  const completeGeneration = incrementalSourceDescriptor(rolloutFile);
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: completeGeneration,
+    state: recordedLifecycle([...initialRecords, JSON.parse(incomplete), resolved]),
+    complete: true,
+  }]);
+  now = START + 6_000;
+  const afterResolution = coordinator.observe(threads).sessions.get("pending-root");
+  assert.equal(afterResolution.activityStatus, "working");
+  assert.equal(afterResolution.observedAt, resolved.timestamp);
+});
+
+test("a recorded active turn survives a complete large append until acquired lifecycle succeeds", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-active-append-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  const start = lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-active" });
+  await writeFile(rolloutFile, `${JSON.stringify(start)}\n`, "utf8");
+  let now = START + 1_000;
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 256 });
+  const threads = [{ ...lifecycleThread()[0], localId: "active-root", sessionId: "active-root", rolloutFile }];
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: recordedLifecycle([start]),
+    complete: true,
+  }]);
+  assert.equal(coordinator.observe(threads).sessions.get("active-root").activityStatus, "working");
+
+  const activity = lifecycleRecord(2_000, "event_msg", { type: "agent_reasoning", text: "x".repeat(2_048) });
+  await appendFile(rolloutFile, `${JSON.stringify(activity)}\n`, "utf8");
+  now = START + 3_000;
+  const duringAcquisition = coordinator.observe(threads).sessions.get("active-root");
+  assert.equal(duringAcquisition.activityStatus, "working");
+  assert.equal(duringAcquisition.observedAt, start.timestamp);
+
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: recordedLifecycle([start, activity]),
+    complete: true,
+  }]);
+  const acquired = coordinator.observe(threads).sessions.get("active-root");
+  assert.equal(acquired.activityStatus, "working");
+  assert.equal(acquired.observedAt, activity.timestamp);
+});
+
+test("a malformed acquired append downgrades previously retained lifecycle evidence to unknown", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-retained-malformed-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout.jsonl");
+  const start = lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-malformed-retained" });
+  await writeFile(rolloutFile, `${JSON.stringify(start)}\n`, "utf8");
+  let now = START + 1_000;
+  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+  const threads = [{ ...lifecycleThread()[0], localId: "malformed-retained-root", sessionId: "malformed-retained-root", rolloutFile }];
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: recordedLifecycle([start]),
+    complete: true,
+  }]);
+  assert.equal(coordinator.observe(threads).sessions.get("malformed-retained-root").activityStatus, "working");
+
+  await appendFile(rolloutFile, '{"broken":}\n', "utf8");
+  now = START + 2_000;
+  coordinator.observeLifecycleSources([{
+    file: rolloutFile,
+    generation: incrementalSourceDescriptor(rolloutFile),
+    state: recordedLifecycle([start]),
+    complete: false,
+  }]);
+  const invalid = coordinator.observe(threads).threads[0];
+  assert.equal(invalid.liveStatus, "unknown");
+  assert.equal(invalid.liveness.evidence, "unavailable");
 });
 
 test("a malformed framed rollout record downgrades lifecycle evidence to unknown", async (context) => {

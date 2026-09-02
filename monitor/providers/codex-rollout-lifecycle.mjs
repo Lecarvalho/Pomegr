@@ -31,6 +31,7 @@ export function readCodexLivenessTail(file, maximumBytes) {
   }
   // Never accept a provider record until its framing newline has arrived.
   let complete = text.endsWith("\n");
+  let malformedRecords = 0;
   const completeEnd = text.lastIndexOf("\n");
   text = completeEnd >= 0 ? text.slice(0, completeEnd + 1) : "";
   const records = [];
@@ -43,14 +44,15 @@ export function readCodexLivenessTail(file, maximumBytes) {
     try {
       const record = JSON.parse(line);
       if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      else complete = false;
+      else { complete = false; malformedRecords += 1; }
     } catch {
       // A malformed record could hide a lifecycle transition; retain evidence
       // without claiming that the current lifecycle is known.
       complete = false;
+      malformedRecords += 1;
     }
   }
-  return { key: `${stat.size}:${stat.mtimeMs}`, records, complete, startOffset };
+  return { key: `${stat.size}:${stat.mtimeMs}`, records, complete, startOffset, malformedRecords };
 }
 
 function recordTimestamp(record) {

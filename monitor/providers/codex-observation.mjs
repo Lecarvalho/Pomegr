@@ -414,9 +414,12 @@ export function createCodexIncrementalObserver(options = {}) {
         const stable = confirmed && confirmed.identity === part.descriptor.identity
           && confirmed.size === part.descriptor.size && confirmed.mtimeMs === part.descriptor.mtimeMs
           && confirmed.suffixDigest === part.descriptor.suffixDigest;
-        return { file, generation: part.descriptor, state: snapshot?.candidate?.lifecycle,
-          complete: Boolean(stable && part.ready && snapshot?.completeOffset === part.descriptor.size
-            && snapshot.malformedRecords === 0 && snapshot.oversizedFragments === 0) };
+        const validRecords = snapshot?.malformedRecords === 0 && snapshot?.oversizedFragments === 0;
+        const complete = Boolean(stable && part.ready && snapshot?.completeOffset === part.descriptor.size && validRecords);
+        return { file, generation: part.descriptor, state: snapshot?.candidate?.lifecycle, complete,
+          // Keep incomplete acquisition separate from invalid acquired evidence.
+          // The lifecycle owner additionally verifies continuity with its accepted source.
+          pending: !complete && validRecords };
       });
       if (observeLifecycleSources(observations)) {
         // Catalog and detail must consume the same rebuilt lifecycle state,

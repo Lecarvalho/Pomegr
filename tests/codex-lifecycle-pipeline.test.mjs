@@ -149,3 +149,87 @@ test("incremental observation rebuilds lifecycle after a larger in-place rollout
   assert.doesNotMatch(JSON.stringify(candidates.at(-1)), /PRIVATE_REPLACEMENT/);
   observer.stop();
 });
+
+test("pending Codex input keeps catalog and detail aligned during a large incomplete append", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-pending-lifecycle-pipeline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  let now = NOW + 2_000;
+  const sessions = path.join(root, "sessions", "2026", "08", "30");
+  const rollout = path.join(sessions, "rollout-pending-root.jsonl");
+  await mkdir(sessions, { recursive: true });
+  const pendingAt = NOW + 1_000;
+  const initial = [
+    record(NOW, "session_meta", { id: "pending-root", session_id: "pending-root", source: "vscode", cwd: "C:\\synthetic\\pomegr" }),
+    record(NOW + 1, "event_msg", { type: "task_started", turn_id: "turn-pending" }),
+    record(pendingAt, "response_item", {
+      type: "function_call", name: "request_user_input", call_id: "input-pending", turn_id: "turn-pending",
+    }),
+  ];
+  await writeFile(rollout, `${initial.join("\n")}\n`, "utf8");
+  await utimes(rollout, new Date(NOW), new Date(NOW));
+
+  const candidates = [];
+  const catalogs = [];
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    cacheMs: 0,
+    now: () => now,
+    observerIntervalMs: 60_000,
+    maximumTailBytes: 256,
+    observerWatchSource: () => ({ close() {} }),
+  });
+  const observer = provider.createObserver();
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  await observer.start({
+    publishCatalog(entries) { catalogs.push(entries); },
+    publishSession(_id, candidate) { candidates.push(candidate); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => candidates.length > 0 && catalogs.at(-1)?.some((entry) => entry.localId === "pending-root"));
+  assert.equal(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
+  assert.equal(catalogs.at(-1).find((entry) => entry.localId === "pending-root").activityStatus, "needs_input");
+  const firstPendingCatalog = catalogs.length - 1;
+
+  const incomplete = record(NOW + 2_000, "response_item", {
+    type: "function_call_output", call_id: "unrelated-call", output: "x".repeat(4_096),
+  });
+  await appendFile(rollout, incomplete.slice(0, -1), "utf8");
+  now = NOW + 3_000;
+  const beforePartial = candidates.length;
+  assert.equal(await observer.hydrate("pending-root"), false);
+  await waitFor(() => catalogs.length > 1 && catalogs.at(-1)?.find((entry) => entry.localId === "pending-root")?.activityStatus === "needs_input");
+  assert.equal(candidates.length, beforePartial, "the incomplete source does not publish a partial detail revision");
+  assert.equal(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
+  assert.equal(catalogs.at(-1).find((entry) => entry.localId === "pending-root").activityStatus, "needs_input");
+
+  await appendFile(rollout, `${incomplete.at(-1)}\n`, "utf8");
+  await observer.hydrate("pending-root");
+  await waitFor(() => candidates.length > beforePartial);
+  assert.equal(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
+  assert.equal(catalogs.slice(firstPendingCatalog).every((entries) => (
+    entries.find((entry) => entry.localId === "pending-root")?.activityStatus === "needs_input"
+  )), true, "no catalog publication may regress pending input before its resolving record arrives");
+
+  const resolvedAt = NOW + 4_000;
+  await appendFile(rollout, `${record(resolvedAt, "response_item", {
+    type: "function_call_output", call_id: "input-pending", turn_id: "turn-pending",
+  })}\n`, "utf8");
+  now = resolvedAt + 1_000;
+  const beforeResolution = candidates.length;
+  await observer.hydrate("pending-root");
+  await waitFor(() => candidates.length > beforeResolution
+    && catalogs.at(-1)?.find((entry) => entry.localId === "pending-root")?.activityStatus === "working");
+  assert.equal(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "active");
+
+  const completedAt = NOW + 6_000;
+  await appendFile(rollout, `${record(completedAt, "turn_completed", { turn_id: "turn-pending", status: "completed" })}\n`, "utf8");
+  now = completedAt + 1_000;
+  const beforeCompletion = candidates.length;
+  await observer.hydrate("pending-root");
+  await waitFor(() => candidates.length > beforeCompletion
+    && catalogs.at(-1)?.find((entry) => entry.localId === "pending-root")?.activityStatus === "idle");
+  assert.equal(candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "idle");
+  observer.stop();
+});
