@@ -38,12 +38,15 @@ function publicCatalogEntry(providerId, source, entry) {
     isLive: Boolean(entry.isLive),
     needsInput: Boolean(entry.needsInput),
     activityStatus: entry.activityStatus || "unknown",
+    // This is monitor-private catalog metadata. It is deliberately stripped
+    // before the browser-facing row is committed below.
+    detailReadiness: entry?.detailReadiness === "unavailable" ? "unavailable" : null,
   });
 }
 
 function catalogStructure(entries = []) {
   return entries
-    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}\0${entry.activityStatus || "unknown"}`)
+    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}\0${entry.activityStatus || "unknown"}\0${entry.detailReadiness || "loading"}`)
     .sort()
     .join("\n");
 }
@@ -192,9 +195,12 @@ export function createSessionObservationCoordinator(options = {}) {
       const primaryAgent = Array.isArray(state?.agents)
         ? state.agents.find((agent) => agent.id === "primary")
         : null;
+      const publicEntry = { ...entry };
+      delete publicEntry.detailReadiness;
       return {
-        ...entry,
-        summaryReadiness: snapshot || retainPrevious ? "ready" : "loading",
+        ...publicEntry,
+        summaryReadiness: snapshot || retainPrevious ? "ready"
+          : entry.detailReadiness === "unavailable" ? "unavailable" : "loading",
         agentCount: Number.isFinite(state?.metrics?.agents)
           ? state.metrics.agents
           : retainPrevious ? previous.agentCount : null,
@@ -542,6 +548,14 @@ export function createSessionObservationCoordinator(options = {}) {
       }
       if (!snapshot) {
         qa.cacheMisses += 1;
+        if (catalogEntry?.summaryReadiness === "unavailable") {
+          return Object.freeze({
+            status: "unavailable",
+            selectedId,
+            catalogEntry,
+            snapshot: null,
+          });
+        }
         hydrate(selectedId);
         return Object.freeze({
           status: "loading",

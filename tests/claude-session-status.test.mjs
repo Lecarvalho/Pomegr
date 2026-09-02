@@ -265,6 +265,56 @@ async function providerFixture(t) {
   return { ...f, file, ownerFile, provider, calls: () => calls, status: (value) => { native = value; } };
 }
 
+test("registry-only presence does not await remote status and unsubscribe prevents a late catalog wake", async (t) => {
+  const f = await fixture(t);
+  const project = path.join(f.claudeRoot, "projects", "preprompt-project");
+  const registryRoot = path.join(f.claudeRoot, "sessions");
+  await mkdir(project, { recursive: true }); await mkdir(registryRoot);
+  await writeFile(path.join(registryRoot, "owner.json"), JSON.stringify({
+    sessionId: "preprompt-session", entrypoint: "sdk-cli", bridgeSessionId: REMOTE,
+    pid: 123, procStart: "owner-start", status: "idle", startedAt: new Date(START).toISOString(),
+  }));
+  let native = "running";
+  let release = null;
+  let requests = 0;
+  const provider = createClaudeProvider({
+    homeDir: f.homeDir, env: {}, now: f.now,
+    registryProcessIdentities: () => new Map([[123, "owner-start"]]),
+    fetch: async () => {
+      requests += 1;
+      return new Promise((resolve) => { release = () => resolve(reply(native)); });
+    },
+    observerIntervalMs: 60_000, observerWatchSource: () => ({ close() {} }),
+  });
+  const observer = provider.createObserver();
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const catalogs = [];
+  await observer.start({
+    publishCatalog(entries) { catalogs.push(entries); },
+    publishSession() { assert.fail("registry-only status must not invent detail evidence"); },
+    invalidateSession() {},
+  }, controller.signal);
+
+  await waitFor(() => catalogs.length > 0 && typeof release === "function");
+  assert.equal(catalogs.at(-1)[0].activityStatus, "open", "local presence publishes before stalled remote status");
+  assert.equal(catalogs.at(-1)[0].detailReadiness, "unavailable");
+  assert.equal(requests, 1);
+  const firstRelease = release; release = null; firstRelease();
+  await waitFor(() => catalogs.at(-1)[0]?.activityStatus === "working");
+  assert.equal(catalogs.at(-1)[0].detailReadiness, "unavailable");
+
+  f.advance(10_000);
+  await provider.listSessions();
+  await waitFor(() => typeof release === "function");
+  const catalogCount = catalogs.length;
+  observer.stop();
+  native = "idle";
+  const secondRelease = release; release = null; secondRelease();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(catalogs.length, catalogCount, "stop unsubscribes native status completion before it can wake the observer");
+});
+
 test("provider catalog and primary agent share native lifecycle; U2 and historical reads never fetch", async (t) => {
   const f = await providerFixture(t);
   for (const [native, activity, agent] of [["running", "working", "active"], ["requires_action", "needs_input", "needs_input"], ["idle", "open", "idle"]]) {

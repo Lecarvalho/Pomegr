@@ -702,6 +702,8 @@ export type UsageLimitsSnapshot = {
 };
 
 export type MonitorState = {
+  /** Committed catalog identity when detailed provider evidence is not available. */
+  catalogIdentity?: SessionSummary | null;
   revision?: number | string | null;
   readiness?: SessionReadiness;
   connected: boolean;

@@ -34,6 +34,16 @@ test("keeps the activity fallback when the provider registry is unavailable", ()
   assert.deepEqual([...liveSessionFiles([recent, old], [], { nowMs: now })], [recent.file]);
 });
 
+test("definite owner exit takes precedence over both activity fallback windows", () => {
+  const now = Date.now();
+  const file = path.join("sessions", "closed.jsonl");
+  for (const registryAvailable of [true, false]) {
+    const options = { registryAvailable, nowMs: now, closedSessionIds: new Set(["closed"]) };
+    assert.deepEqual([...liveSessionFiles([{ file, activityMs: now }], [], options)], []);
+    assert.deepEqual([...liveSessionFiles([{ file, activityMs: now }], [], { ...options, explicitFile: file })], [file]);
+  }
+});
+
 test("uses the repository root instead of a working subdirectory as the project", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-project-"));
   context.after(() => rm(root, { recursive: true, force: true }));

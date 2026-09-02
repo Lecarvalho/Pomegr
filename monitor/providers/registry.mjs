@@ -56,6 +56,7 @@ function publicCatalogEntry(entry) {
     isLive: Boolean(entry.isLive),
     needsInput: Boolean(entry.needsInput),
     activityStatus: normalizedSessionActivityStatus(entry),
+    ...(entry.detailReadiness === "unavailable" ? { summaryReadiness: "unavailable" } : {}),
   };
 }
 

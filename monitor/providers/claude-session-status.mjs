@@ -102,9 +102,16 @@ function statusFromResponse(body, remoteId) {
  */
 export function createClaudeSessionStatusReader({ homeDir, fetch: fetchImpl = globalThis.fetch, now = Date.now }) {
   const cache = new Map();
+  const listeners = new Set();
   let credentialIdentity = null;
   let activeRequests = 0;
   const waiters = [];
+
+  function notify(localSessionId) {
+    for (const listener of listeners) {
+      try { listener([localSessionId]); } catch { /* Observer notifications are advisory. */ }
+    }
+  }
 
   async function request(remoteId, token) {
     if (activeRequests >= 4) await new Promise((resolve) => waiters.push(resolve));
@@ -174,10 +181,17 @@ export function createClaudeSessionStatusReader({ homeDir, fetch: fetchImpl = gl
       if (!cached.pending && now() >= cached.nextReadAt) {
         const item = cached;
         item.pending = request(entry.remoteSessionId, token).then((value) => {
+          let changed = false;
           if (value && (item.value?.status !== value.status || item.value?.needsInput !== value.needsInput)) {
             item.value = { ...value, updatedAt: now() };
+            changed = true;
           }
           item.nextReadAt = now() + (value ? STATUS_INTERVAL_MS : FAILURE_RETRY_MS);
+          // A refresh can have observed a replacement owner or credential while
+          // this request was in flight. Only wake the observer for the still
+          // current private cache association; its next catalog pass rechecks
+          // owner identity before projecting the normalized status.
+          if (changed && cache.get(id) === item && credentialIdentity === identity) notify(id);
         }).finally(() => { item.pending = null; });
       }
       await cached.pending;
@@ -186,5 +200,13 @@ export function createClaudeSessionStatusReader({ homeDir, fetch: fetchImpl = gl
     }));
   }
 
-  return { refresh, apply };
+  return {
+    refresh,
+    apply,
+    subscribe(listener) {
+      if (typeof listener !== "function") throw new TypeError("Native Claude status listener must be a function");
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
 }

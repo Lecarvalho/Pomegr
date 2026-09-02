@@ -39,11 +39,16 @@ function processIdentities(pids, options = {}) {
 $ids = @(${pids.join(",")})
 $items = @()
 foreach ($id in $ids) {
-  $item = Get-Process -Id $id -ErrorAction SilentlyContinue
-  if ($null -eq $item) { continue }
+  try { $item = Get-Process -Id $id -ErrorAction Stop }
+  catch {
+    if ($_.CategoryInfo.Category -ne [System.Management.Automation.ErrorCategory]::ObjectNotFound) {
+      $items += [pscustomobject]@{ pid = [int]$id; procStart = $null }
+    }
+    continue
+  }
   try {
     $items += [pscustomobject]@{ pid = [int]$item.Id; procStart = $item.StartTime.ToUniversalTime().ToFileTimeUtc().ToString() }
-  } catch {}
+  } catch { $items += [pscustomobject]@{ pid = [int]$id; procStart = $null } }
 }
 $items | ConvertTo-Json -Compress
 `;
@@ -56,7 +61,7 @@ $items | ConvertTo-Json -Compress
       return new Map((Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => {
         const pid = normalizedPid(item?.pid);
         const processStart = normalizedProcessStart(item?.procStart);
-        return pid && processStart ? [[pid, processStart]] : [];
+        return pid ? [[pid, processStart]] : [];
       }));
     }
 
@@ -69,9 +74,10 @@ $items | ConvertTo-Json -Compress
         const close = stat.lastIndexOf(")");
         const fields = close >= 0 ? stat.slice(close + 2).split(" ") : [];
         const processStart = normalizedProcessStart(fields[19]);
-        if (processStart) identities.set(pid, processStart);
-      } catch {
-        // A missing process is represented by the absence of its PID.
+        identities.set(pid, processStart);
+      } catch (error) {
+        // Only absence proves exit. Permission and malformed-read failures are unknown.
+        if (error?.code !== "ENOENT" && error?.code !== "ESRCH") identities.set(pid, null);
       }
     }
     return identities;
@@ -100,7 +106,7 @@ export function createSessionRegistryOwnerValidator(options = {}) {
     }
     if (identities === null) return new Map();
 
-    return new Map(owned.map((entry) => [
+    return new Map(owned.filter((entry) => identities.get(entry.pid) !== null).map((entry) => [
       entry.sessionId,
       identities.get(entry.pid) === entry.procStart,
     ]));

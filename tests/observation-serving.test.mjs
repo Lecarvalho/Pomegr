@@ -117,3 +117,84 @@ test("concurrent state GETs consume one committed response without provider tran
   await runtime.stopObservation();
   assert.equal(stopped, true);
 });
+
+test("a committed registry-only catalog row serves cached unavailable detail without hydration", async (context) => {
+  let transcriptReads = 0;
+  let hydrations = 0;
+  let stopped = false;
+  const localId = "registry-only";
+  const provider = {
+    id: "claude",
+    source: "Claude Code",
+    capabilities: createEmptyProviderCapabilities(),
+    homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } },
+  };
+  const registry = {
+    providers: [provider],
+    defaultProvider: provider,
+    providerForSessionId: () => provider,
+    async resolveCapabilities() { return provider.capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async readSession() { transcriptReads += 1; return null; },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      publisher.publishCatalog("claude", [{
+        localId,
+        title: "Claude session",
+        project: "Unknown project",
+        updatedAt: "2026-09-02T12:00:00.000Z",
+        isLive: true,
+        needsInput: false,
+        activityStatus: "open",
+        detailReadiness: "unavailable",
+      }]);
+      return { async hydrate() { hydrations += 1; return false; }, async stop() { stopped = true; } };
+    },
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    checkpointStore: false,
+    observationCommitDelayMs: 0,
+    scheduleObservation: (task) => setTimeout(task, 0),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  await runtime.startObservation();
+  context.after(async () => runtime.stopObservation());
+  for (let attempt = 0; attempt < 50 && runtime.serveSession(`claude:${localId}`).status !== "unavailable"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  const catalog = runtime.serveCatalog().snapshot.value.sessions;
+  assert.deepEqual(catalog.map(({ id, summaryReadiness, agentCount, activeAgentCount, latestContextTotal }) => ({
+    id, summaryReadiness, agentCount, activeAgentCount, latestContextTotal,
+  })), [{
+    id: `claude:${localId}`, summaryReadiness: "unavailable", agentCount: null, activeAgentCount: null, latestContextTotal: null,
+  }]);
+  assert.equal(Object.hasOwn(catalog[0], "detailReadiness"), false);
+  // The catalog is now committed; subsequent cache-only detail reads must not
+  // enqueue a source acquisition for this confirmed absence.
+  hydrations = 0;
+  assert.equal(runtime.serveSession(`claude:${localId}`).status, "unavailable");
+  assert.equal(hydrations, 0);
+
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(`${origin}/api/state?sessionId=claude%3A${localId}&revision=1`);
+  assert.equal(response.status, 200, "catalog-only availability never shares a session-evidence revision");
+  assert.equal(response.headers.get("x-pomegr-revision"), null);
+  const body = await response.json();
+  assert.equal(body.session, null);
+  assert.equal(body.view, "live", "an expired Open catalog row is not a historical snapshot");
+  assert.deepEqual(body.readiness, {
+    core: "unavailable", agentEvidence: "unavailable", contextEvidence: "unavailable",
+    activityEvidence: "unavailable", repository: "unavailable", resources: "unavailable", usageLimits: "unavailable",
+  });
+  assert.deepEqual(body.catalogIdentity, catalog[0]);
+  assert.equal(Object.hasOwn(body.catalogIdentity, "detailReadiness"), false);
+  assert.equal(hydrations, 0);
+  assert.equal(transcriptReads, 0);
+  await runtime.stopObservation();
+  assert.equal(stopped, true);
+});

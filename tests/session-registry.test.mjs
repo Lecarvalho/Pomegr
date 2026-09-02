@@ -99,6 +99,16 @@ test("reads valid registry entries and ignores malformed files independently", a
   assert.equal(registry.get("live-session").needsInput, true);
 });
 
+test("owner inspection distinguishes absent processes from individual permission failures", () => {
+  const validate = createSessionRegistryOwnerValidator({
+    processIdentities: () => new Map([[41, null], [43, "new-start"]]),
+  });
+  const result = validate([41, 42, 43].map((pid) => ({ sessionId: `session-${pid}`, pid, procStart: "old-start" })));
+  assert.equal(result.has("session-41"), false, "unknown start identity is not proof of exit");
+  assert.equal(result.get("session-42"), false, "absent process is definite exit");
+  assert.equal(result.get("session-43"), false, "reused PID is not the registered owner");
+});
+
 test("exposes only validated owners, retires PID reuse, and tolerates unavailable inspection", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-registry-owner-"));
   context.after(() => rm(root, { recursive: true, force: true }));

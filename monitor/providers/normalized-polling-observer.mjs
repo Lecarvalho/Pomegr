@@ -268,7 +268,7 @@ export function createNormalizedPollingObserver(options) {
 
   function scheduleEagerHydration(entries, previousIds) {
     preparationGeneration += 1;
-    pendingEagerEntries = entries.filter((entry) => shouldEagerHydrate(entry)).map((entry) => ({
+    pendingEagerEntries = entries.filter((entry) => entry.detailReadiness !== "unavailable" && shouldEagerHydrate(entry)).map((entry) => ({
       entry,
       // Newly discovered sessions enter acquisition ahead of routine
       // working-set reconciliation without changing public catalog order.
@@ -312,7 +312,7 @@ export function createNormalizedPollingObserver(options) {
       // including sessions that left the eager working set on this revision.
       for (const [localSessionId, eventAt] of rehydrate) {
         preparationGeneration += 1;
-        if (latestEntries.has(localSessionId)) enqueueHydration(localSessionId, {
+        if (latestEntries.has(localSessionId) && latestEntries.get(localSessionId).detailReadiness !== "unavailable") enqueueHydration(localSessionId, {
           priority: 0, rerunIfActive: true, sourceEventAt: eventAt,
         });
       }

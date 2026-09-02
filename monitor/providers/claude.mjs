@@ -17,7 +17,7 @@ import { latestContextMachinery, readLatestContextMachinery } from "../context-m
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "../session-discovery.mjs";
-import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, readSessionRegistry } from "../session-registry.mjs";
+import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
 import { latestSessionSummary } from "../session-summary.mjs";
@@ -29,6 +29,8 @@ import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
 import { createClaudeSourceEventRouter } from "./claude-source-routing.mjs";
+import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from "./claude-registry-observation.mjs";
+import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
@@ -37,7 +39,7 @@ import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifec
 import { createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
 import {
-  claudeLifecycleSource, createClaudeSessionStatusReader, normalizeClaudeSessionRegistryEntry,
+  claudeLifecycleSource, createClaudeSessionStatusReader,
   registryStatus, registryTimestamp, sessionActivityStatus,
 } from "./claude-session-status.mjs";
 
@@ -291,10 +293,7 @@ export function createClaudeProvider(options = {}) {
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const transcriptPathsBySessionId = new Map();
-  // Registry changes are lifecycle-only source changes. Keep the bounded last
-  // live set so a departure can refresh its already-visible detail after the
-  // catalog reconciliation classifies it as historical.
-  const lastLiveSessionIds = new Set();
+  const catalogPresence = createClaudeCatalogPresence();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
     env: environment,
     now,
@@ -311,6 +310,9 @@ export function createClaudeProvider(options = {}) {
     claudeConfigDir: options.claudeConfigDir,
     usageSnapshotsRoot: options.usageSnapshotsRoot,
     usageFeedFreshMs: options.usageFeedFreshMs,
+  });
+  const registryObservation = createClaudeRegistryObservation({
+    root: registryRoot, validateOwners: validateRegistryOwners, now, ownerExists: options.registryProcessExists,
   });
 
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
@@ -387,7 +389,7 @@ export function createClaudeProvider(options = {}) {
 
   function discoveredSessions() {
     const files = listSessionFiles(projectsRoot);
-    const registry = readSessionRegistry(registryRoot, { validateOwners: validateRegistryOwners, normalizeEntry: normalizeClaudeSessionRegistryEntry });
+    const { registry, closedSessionIds } = registryObservation.read();
     const explicitFile = explicitSession && fs.existsSync(explicitSession) ? explicitSession : null;
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
@@ -398,6 +400,7 @@ export function createClaudeProvider(options = {}) {
     const liveFiles = liveSessionFiles(files, registry.keys(), {
       explicitFile,
       registryAvailable: fs.existsSync(registryRoot),
+      closedSessionIds, nowMs: now(),
     });
     return { files, liveFile, liveFiles, registry };
   }
@@ -405,7 +408,9 @@ export function createClaudeProvider(options = {}) {
   async function listSessions() {
     const { files, liveFiles, registry } = discoveredSessions();
     backgroundLifecycle.prune(registry);
-    await nativeStatus.refresh(registry, files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl")));
+    const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));
+    nativeStatus.apply(registry, transcriptStatusIds);
+    await nativeStatus.refresh(registry, transcriptStatusIds);
     const visibleFiles = new Set(files.slice(0, 50).map(({ file }) => file));
     for (const file of sessionTitleCache.keys()) {
       if (!visibleFiles.has(file) && !statSafe(file)) sessionTitleCache.delete(file);
@@ -443,11 +448,14 @@ export function createClaudeProvider(options = {}) {
       sessionSummaryCache.set(file, { key: cacheKey, value });
       sessions.push({ ...value, ...liveState });
     }
-    lastLiveSessionIds.clear();
-    for (const session of sessions) {
-      if (session.isLive) lastLiveSessionIds.add(session.localId);
-    }
-    return sessions;
+    let catalog = catalogPresence.merge(sessions, files, registry, { explicitSession });
+    const deferredStatusIds = catalog.filter((entry) => entry.detailReadiness === "unavailable").map((entry) => entry.localId);
+    // A visible native identity publishes first; cached lifecycle can refine it
+    // now, while a new optional Remote Control read finishes in the background.
+    nativeStatus.apply(registry, deferredStatusIds);
+    catalog = catalogPresence.merge(sessions, files, registry, { explicitSession });
+    if (deferredStatusIds.length) void nativeStatus.refresh(registry, deferredStatusIds).catch(() => {});
+    return catalog;
   }
 
   async function readSession(localSessionId = "") {
@@ -729,7 +737,7 @@ export function createClaudeProvider(options = {}) {
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {
-    registryRoot, liveSessionIds: () => [...lastLiveSessionIds],
+    registryRoot, liveSessionIds: catalogPresence.liveSessionIds,
   });
 
   return defineProvider({
@@ -764,7 +772,7 @@ export function createClaudeProvider(options = {}) {
     listSessions,
     readSession,
     createObserver() {
-      return createIncrementalProviderObserver({
+      return observeClaudeRegistryDepartures(createIncrementalProviderObserver({
         providerId: "claude",
         list: listSessions,
         readEvidence: readSession,
@@ -774,7 +782,7 @@ export function createClaudeProvider(options = {}) {
         concurrency: options.observerConcurrency ?? 2,
         watchTargets: [projectsRoot, registryRoot],
         watchSource: options.observerWatchSource,
-      });
+      }), registryObservation, nativeStatus);
     },
     readTranscriptPath,
     readUsageLimits: usageLimits,

@@ -57,6 +57,10 @@ export function createObservationRuntime(options = {}) {
   });
   const usageByProvider = new Map();
   const homeResponseCache = createCommittedResponseCache({ includeRevision: true, now });
+  // Registry-only sessions have catalog identity but no L1 transcript evidence.
+  // Keep their presentation response separate from the observation store and
+  // checkpoints: it is rebuilt solely from a committed catalog revision.
+  const unavailableSessionResponses = new Map();
   let usageRefreshInFlight = null;
   let homeResponseRefreshScheduled = false;
   let usageRefreshTimer = null;
@@ -338,6 +342,32 @@ export function createObservationRuntime(options = {}) {
     };
   }
 
+  function unavailableState(selectedId, catalogEntry) {
+    const provider = registry.providerForSessionId(selectedId) || registry.defaultProvider;
+    return {
+      ...createEmptyMonitorState({
+        connected: true,
+        source: provider.source,
+        capabilities: provider.capabilities,
+        view: catalogEntry?.isLive || catalogEntry?.activityStatus === "open" ? "live" : "history",
+      }),
+      readiness: createSessionReadiness("unavailable"),
+      catalogIdentity: catalogEntry || null,
+    };
+  }
+
+  function cacheUnavailableSessionResponses() {
+    const catalog = observationCoordinator.catalog()?.snapshot?.value?.sessions || [];
+    const next = new Map();
+    for (const entry of catalog) {
+      if (entry?.summaryReadiness !== "unavailable" || next.size >= 100) continue;
+      const state = unavailableState(entry.id, entry);
+      next.set(entry.id, Object.freeze({ serialized: JSON.stringify(state) }));
+    }
+    unavailableSessionResponses.clear();
+    for (const [sessionId, response] of next) unavailableSessionResponses.set(sessionId, response);
+  }
+
   async function startObservation() {
     if (observationStartPromise) return observationStartPromise;
     observationServingActive = true;
@@ -360,6 +390,7 @@ export function createObservationRuntime(options = {}) {
     });
     unsubscribeObservation = observationCoordinator.subscribe((event) => {
       if (event.type === "session") options.onSessionCommitted?.(event.qualifiedId);
+      if (event.type === "catalog") cacheUnavailableSessionResponses();
       scheduleObservedHomeRefresh();
     });
     observationStartPromise = (async () => {
@@ -395,6 +426,7 @@ export function createObservationRuntime(options = {}) {
     resourceRefreshTimer = null;
     unsubscribeObservation?.();
     unsubscribeObservation = null;
+    unavailableSessionResponses.clear();
     await observationCoordinator.stop();
     await Promise.allSettled([usageRefreshInFlight, resourceRefreshInFlight].filter(Boolean));
     observationStartPromise = null;
@@ -425,6 +457,9 @@ export function createObservationRuntime(options = {}) {
     serveCatalog: (revision) => observationCoordinator.catalog(revision),
     serveSession(sessionId, revision) {
       const result = observationCoordinator.session(sessionId, revision);
+      if (result.status === "unavailable") {
+        return { ...result, unavailableSnapshot: unavailableSessionResponses.get(result.selectedId) || null };
+      }
       return result.status === "loading" || result.status === "empty"
         ? { ...result, loadingState: loadingState(result.selectedId, result.catalogEntry) }
         : result;

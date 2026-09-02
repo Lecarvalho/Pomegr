@@ -4,6 +4,7 @@ import { Dashboard } from "../../app/Dashboard";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import type { SessionSummary } from "../../shared/monitor-contract";
+import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 const target: SessionSummary = {
   id: "codex:target",
@@ -40,5 +41,23 @@ describe("progressive readiness", () => {
     expect(screen.getByRole("heading", { name: "Target session" })).toBeInTheDocument();
     expect(screen.queryByText("Previous session")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Loading Target session" })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it.each([true, false])("shows settled pre-prompt detail without fabricated metrics (catalog arrived: %s)", async (catalogArrived) => {
+    const session = { ...target, activityStatus: "open" as const, summaryReadiness: "unavailable" as const };
+    const state = { ...createEmptyMonitorState({ connected: true }), catalogIdentity: session,
+      readiness: { core: "unavailable", agentEvidence: "unavailable", contextEvidence: "unavailable", activityEvidence: "unavailable", repository: "unavailable", resources: "unavailable", usageLimits: "unavailable" } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).includes("/api/state")
+      ? new Response(JSON.stringify(state), { status: 200, headers: { "Content-Type": "application/json" } })
+      : new Response(JSON.stringify({ providers: [], readiness: {} }), { status: 200 }));
+    const { container } = render(<SessionCatalogProvider sessions={catalogArrived ? [session] : []}><Dashboard initialSessionId={session.id} /></SessionCatalogProvider>);
+    expect(await screen.findByText("No recorded activity yet")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: session.title })).toBeInTheDocument();
+    expect(container.querySelector(".uiSkeleton")).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading session evidence", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("All-agent context")).not.toBeInTheDocument();
+    expect(screen.queryByText("Primary agent")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /report/i })).not.toBeInTheDocument();
   });
 });

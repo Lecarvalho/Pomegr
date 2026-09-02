@@ -41,7 +41,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
         response.end();
         return;
       }
-      const snapshot = result?.snapshot;
+      const snapshot = result?.snapshot || result?.unavailableSnapshot;
       const serialized = snapshot?.serialized || snapshot?.serializedState || JSON.stringify(fallbackValue);
       const revision = snapshot?.revision;
       response.writeHead(200, {

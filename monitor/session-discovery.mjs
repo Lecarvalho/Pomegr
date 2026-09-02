@@ -28,15 +28,16 @@ export function isLiveSessionActivity(activityMs, nowMs = Date.now(), windowMs =
 export function liveSessionFiles(files, registrySessionIds, {
   explicitFile = null,
   registryAvailable = false,
+  closedSessionIds = new Set(),
   nowMs = Date.now(),
 } = {}) {
   if (explicitFile) return new Set([explicitFile]);
   const registered = new Set(registrySessionIds || []);
   return new Set(files.filter(({ file, activityMs }) => {
-    if (!registryAvailable) return isLiveSessionActivity(activityMs, nowMs);
     const sessionId = path.basename(file, ".jsonl");
-    return registered.has(sessionId)
-      || isLiveSessionActivity(activityMs, nowMs, SESSION_REGISTRY_GRACE_MS);
+    if (registered.has(sessionId)) return true;
+    if (closedSessionIds.has(sessionId)) return false;
+    return isLiveSessionActivity(activityMs, nowMs, registryAvailable ? SESSION_REGISTRY_GRACE_MS : SESSION_LIVE_WINDOW_MS);
   }).map(({ file }) => file));
 }
 

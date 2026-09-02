@@ -79,7 +79,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const displayData = sharedUsage.readiness[(data.source === "Codex" ? "codex" : "claude")] === "ready" && sharedProviderUsage
     ? { ...data, usageLimits: sharedProviderUsage.usageLimits }
     : data;
-  const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
+  const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId)
+    ?? (data.catalogIdentity?.id === selectedSessionId ? data.catalogIdentity : null) : null;
   // Open can age out of the Live filter without becoming a historical snapshot.
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession
     ? !selectedSession.isLive && selectedSession.activityStatus !== "open"
@@ -122,10 +123,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
         const headerRevision = response.headers.get("x-pomegr-revision");
         if (typeof nextData.revision === "number" || typeof nextData.revision === "string") revisionsBySessionRef.current.set(revisionKey, nextData.revision);
         else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
-        setSelectedSessionId((current) => current ?? nextData.session?.id ?? null);
+        setSelectedSessionId((current) => current ?? nextData.session?.id ?? nextData.catalogIdentity?.id ?? null);
         setData(nextData);
       });
-      return Object.values(nextData.readiness || {}).includes("loading") || !nextData.session
+      return Object.values(nextData.readiness || {}).includes("loading") || (!nextData.session && nextData.readiness?.core !== "unavailable")
         ? "loading" as const
         : "ready" as const;
     } catch {
@@ -315,6 +316,13 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 }
 
 function AwaitingSession({ connected, connecting, loadingSession, session, readiness }: { connected: boolean; connecting: boolean; loadingSession: boolean; session: SessionSummary | null | undefined; readiness?: SessionReadiness }) {
+  if (session && readiness?.core === "unavailable") return <section className="sessionView" aria-label={`Session ${session.title}`}>
+    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span>{session.source}</span></div></div></header>
+    <section className="panel sessionLoadingPanel" aria-label="Recorded activity" role="status">
+      <strong>No recorded activity yet</strong>
+      <p>Pomegr has detected this session. Activity and context will appear here when the provider records them.</p>
+    </section>
+  </section>;
   if (loadingSession && session) return <SessionLoadingShell session={session} readiness={readiness || { core: "loading", agentEvidence: "loading", contextEvidence: "loading", activityEvidence: "loading", repository: "loading", resources: "loading", usageLimits: "loading" }} />;
   const heading = connecting
     ? loadingSession ? "Loading session" : "Connecting to local monitor"

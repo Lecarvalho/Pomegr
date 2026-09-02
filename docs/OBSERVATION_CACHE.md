@@ -326,8 +326,50 @@ is also hydrated against the new catalog, including a departed session older tha
 eager history window. The source fingerprint includes only normalized live/history,
 status, and needs-input state so lifecycle-only changes update detail without requiring
 transcript growth; no registry paths, owners, or raw contents enter the fingerprint
-payload or browser API. Unsupported watchers retain periodic reconciliation. Registry
-watching does not change the existing unregistered-transcript activity grace rules.
+payload or browser API. Unsupported watchers retain periodic reconciliation.
+Confirmed native owner exit overrides transcript recency, including final shutdown
+writes and the registry-directory-unavailable fallback. The adapter retains at most
+512 private PID/start associations and exit decisions in memory only. Missing
+registrations trigger a read-only process-existence check, shared by PID and cached
+for 250 ms; only definite process absence proves exit. A reused but existing PID,
+permission denial, or failed inspection does not. When registry removal precedes
+process exit, one timer checks only these departing owners every 250 ms for at most
+15 seconds, without PowerShell, transcript acquisition, or repeated catalog scans.
+A confirmed departure queues the same coalesced catalog/detail refresh. Abort and
+explicit observer stop cancel that timer. Current PID/start mismatches invalidate
+stale registrations; individual inaccessible identities remain unknown. A new
+validated registration replaces prior ownership; an unvalidated replacement cannot
+inherit its predecessor's exit. Never-observed sessions and restart uncertainty retain
+the existing recency grace. Explicit-file selection retains its compatibility override.
+No ownership history is checkpointed or added to browser state. Last-known-good
+evidence, cache-only GETs, and committed revision publication are unchanged.
+
+Claude also discovers native registry-only identities before the first prompt creates
+a transcript. Admission requires a validated process owner and a recorded native start
+time; no plugin, transcript fabrication, or prompt is required. The bounded catalog
+unions these identities with transcript-backed rows by the same normalized session ID.
+Until a source exists, title/project use safe unknown labels, idle maps to Open, and
+recorded working/input states keep their usual precedence. Open's five-minute window
+uses the native start timestamp, never repeated registry reads, mtime refresh, or a
+monitor restart. The entry remains Open under All after that window while registered.
+Cached normalized Remote Control lifecycle may apply during this catalog pass, but a
+fresh optional remote lookup never delays initial registry-only presence. A changed
+normalized result queues one scoped catalog refresh; it neither creates evidence nor
+starts a polling loop.
+Registry removal or invalidated ownership removes a never-recorded identity; no
+transcript-recency grace applies to it. Explicit-file selection does not discover
+unrelated registry-only identities.
+
+An adapter-private `detailReadiness: unavailable` marks a confirmed absent detail
+source. C/D project it into existing summary/readiness fields, with null catalog
+counts/context and a bounded committed unavailable detail shell. S serves that cached
+shell without requesting hydration; F shows “No recorded activity yet” without
+skeletons, invented agents, zero-valued metrics, or an error. There is no L1 session
+evidence or L2 checkpoint for a registry-only identity. First-source arrival removes
+the marker, queues ordinary ingestion, and commits real evidence under the same ID.
+Last-known-good snapshots override this marker; an absent previously observed
+transcript must not replace recorded evidence with an empty state. Marker changes are
+structural catalog revisions even when identity and lifecycle have not changed.
 
 Codex lifecycle observation has an explicit ownership boundary. A connected owning
 app-server supplies runtime status through read-only list/read observations with
