@@ -72,8 +72,7 @@ function SessionProgressInstrument({
     <div className="sessionProgressInstrument">
       <div className="sessionProgressHeadline">
         <div>
-          <strong>{phaseLabel}</strong>
-          <span>Provider-reported progress</span>
+          <span>Agent-reported progress</span>
         </div>
         <strong className="sessionProgressPercent" aria-hidden="true">{Math.round(displayedPercent)}%</strong>
       </div>
@@ -89,7 +88,7 @@ function SessionProgressInstrument({
           <span>REMAINING</span>
           <strong>{eta}</strong>
         </div>}
-        <div>
+        <div className="sessionProgressConfidence">
           <span>CONFIDENCE</span>
           <strong>{confidenceLabel(progress.confidence)}</strong>
         </div>
@@ -165,9 +164,7 @@ export function SessionProgressPanel({
         ? <p className="sessionProgressNote">Recorded agent estimate. This is a snapshot from the session transcript.</p>
         : etaPaused
           ? <p className="sessionProgressNote">The estimate is retained while this session is {blocked ? "blocked" : inputPaused ? "waiting for input" : "waiting"}.</p>
-          : stale
-            ? ""
-            : <p className="sessionProgressNote">Reported by the agent.</p>}
+          : null}
     </section>
   );
 }

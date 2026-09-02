@@ -31,7 +31,7 @@ describe("session progress estimate", () => {
     const { container } = render(<LiveClockProvider running={false}><SessionProgressPanel progress={progress} agents={[progressAgent()]} connected /></LiveClockProvider>);
 
     expect(screen.getByText("Agent estimate")).toBeInTheDocument();
-    expect(screen.getAllByText("Implementing")).toHaveLength(2);
+    expect(screen.getByText("Implementing")).toBeInTheDocument();
     expect(screen.getByText("10–20 min")).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "42% complete · Implementing");
