@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import {
   assertDirectoryHasNoPrivacySentinel,
@@ -24,6 +24,11 @@ import { PROVIDER_OBSERVATION_API_KEYS } from "../monitor/providers/provider-con
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import { installLocalRequestGate, startWebServer } from "../web/server.mjs";
 import { PRIVATE_FIXTURE_SENTINELS } from "./helpers/provider-fixtures.mjs";
+
+import { createProductionBuildFixture } from "./helpers/production-build.mjs";
+
+const productionBuild = await createProductionBuildFixture();
+after(() => productionBuild.close());
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 
@@ -70,6 +75,7 @@ test("desktop launch authorization supports concurrent clients and revokes for t
 
 test("production web authorization is wired to launch-lifetime revocation", async () => {
   const web = await startWebServer({
+    outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
     monitorOrigin: "http://127.0.0.1:4317",

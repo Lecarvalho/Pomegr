@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import http from "node:http";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import { createMonitorRequestHandler } from "../monitor/server.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
@@ -23,6 +23,11 @@ import {
   recordShellStage,
 } from "../desktop/shell-stage.mjs";
 import { installQuietConsole } from "../desktop/quiet-console.mjs";
+
+import { createProductionBuildFixture } from "./helpers/production-build.mjs";
+
+const productionBuild = await createProductionBuildFixture();
+after(() => productionBuild.close());
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 
@@ -374,7 +379,7 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/shell-main.mjs", import.meta.url), "utf8")),
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8")),
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8")),
-    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../dist/server/index.js", import.meta.url), "utf8")),
+    import("node:fs/promises").then(({ readFile }) => readFile(path.join(productionBuild.outDir, "server", "index.js"), "utf8")),
     import("node:fs/promises").then(({ readFile }) => readFile(new URL("../web/server.mjs", import.meta.url), "utf8")),
   ]);
   assert.ok(main.indexOf('waitForMessage(monitorChild, "ready"') < main.indexOf("startWebServer({"));

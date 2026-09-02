@@ -5,10 +5,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { startMonitorServer } from "../monitor/server.mjs";
 import { startWebServer } from "../web/server.mjs";
+
+import { createProductionBuildFixture } from "./helpers/production-build.mjs";
+
+const productionBuild = await createProductionBuildFixture();
+after(() => productionBuild.close());
 
 const quietLogger = Object.freeze({ log() {} });
 
@@ -139,6 +144,7 @@ test("production web server uses explicit runtime inputs from any working direct
   try {
     process.chdir(otherDirectory);
     web = await startWebServer({
+      outDir: productionBuild.outDir,
       host: "127.0.0.1",
       port: 0,
       monitorOrigin: monitor.origin,
@@ -161,7 +167,7 @@ test("production web server uses explicit runtime inputs from any working direct
     assert.ok(assetPaths.some((filename) => filename.endsWith(".js")));
     for (const assetPath of assetPaths) {
       const asset = await fetch(`${web.origin}${assetPath}`);
-      assert.equal(asset.status, 200);
+      assert.equal(asset.status, 200, `Production asset ${assetPath} must be served`);
       assert.match(asset.headers.get("content-type") || "", assetPath.endsWith(".css") ? /^text\/css/ : /^application\/javascript/);
       assert.ok((await asset.arrayBuffer()).byteLength > 0);
     }
@@ -191,11 +197,11 @@ test("production web server uses explicit runtime inputs from any working direct
 
 test("production web startup validation returns only fixed safe error codes", async () => {
   await assert.rejects(
-    startWebServer({ host: "0.0.0.0", port: 0, monitorOrigin: "http://127.0.0.1:4317" }),
+    startWebServer({ outDir: productionBuild.outDir, host: "0.0.0.0", port: 0, monitorOrigin: "http://127.0.0.1:4317" }),
     (error) => error.code === "WEB_INVALID_HOST" && error.message === "WEB_INVALID_HOST",
   );
   await assert.rejects(
-    startWebServer({ host: "127.0.0.1", port: 0, monitorOrigin: "https://example.invalid/private" }),
+    startWebServer({ outDir: productionBuild.outDir, host: "127.0.0.1", port: 0, monitorOrigin: "https://example.invalid/private" }),
     (error) => error.code === "WEB_INVALID_MONITOR_ORIGIN"
       && error.message === "WEB_INVALID_MONITOR_ORIGIN",
   );
@@ -233,6 +239,7 @@ test("authorized production assets retain desktop security and no-store headers"
     "X-Frame-Options": "DENY",
   };
   const web = await startWebServer({
+    outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
     monitorOrigin: "http://127.0.0.1:4317",
@@ -263,6 +270,7 @@ test("authorized production assets retain desktop security and no-store headers"
 test("production web startup stages stop at the fixed failing boundary", async () => {
   const stages = [];
   await assert.rejects(startWebServer({
+    outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
     monitorOrigin: "http://127.0.0.1:4317",
@@ -288,6 +296,7 @@ test("production web startup stages stop at the fixed failing boundary", async (
 test("production web startup stages isolate a generated entry import failure", async () => {
   const stages = [];
   await assert.rejects(startWebServer({
+    outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
     monitorOrigin: "http://127.0.0.1:4317",
@@ -309,6 +318,7 @@ test("production web startup stages isolate a generated entry import failure", a
 test("production web handle reports unexpected listener exit", async () => {
   const monitor = await startMonitorServer({ port: 0, logger: quietLogger });
   const web = await startWebServer({
+    outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
     monitorOrigin: monitor.origin,
@@ -330,6 +340,7 @@ test("production web startup awaits listener cleanup after a post-bind failure",
   const previousOrigin = process.env.POMEGR_MONITOR_ORIGIN;
   await assert.rejects(
     startWebServer({
+      outDir: productionBuild.outDir,
       host: "127.0.0.1",
       port: 0,
       monitorOrigin: "http://127.0.0.1:4317",

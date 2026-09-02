@@ -1,9 +1,16 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import test from "node:test";
+import test, { after } from "node:test";
+
+import { createProductionBuildFixture } from "./helpers/production-build.mjs";
+
+const productionBuild = await createProductionBuildFixture();
+after(() => productionBuild.close());
 
 async function render(pathname = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  const workerUrl = pathToFileURL(path.join(productionBuild.outDir, "server", "index.js"));
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   return worker.fetch(

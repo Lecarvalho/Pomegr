@@ -52,3 +52,10 @@ remains available for explicitly created release tags.
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry
 point; do not delete a module solely because a static graph cannot see a runtime load.
+
+Production web tests copy the complete `dist` tree into a private temporary fixture.
+The Vinext build wrapper and fixture copier share a filesystem lock, so concurrent
+checkout builds cannot mix server HTML with a different set of hashed client assets.
+The lock is released after copying; tests serve their private build while other work
+continues. Use `npm run build` (or `scripts/run-vinext.mjs build`) so this coordination
+is preserved.
