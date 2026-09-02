@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
-import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
+import { useProviderStatus } from "../../provider-status-client";
+import { NotificationCenter, useNotifications } from "./NotificationCenter";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
 import { ExternalLink } from "../ExternalLink";
@@ -83,43 +84,6 @@ function NavigationLink({ item, pathname, onNavigate }: { item: NavigationItem; 
   );
 }
 
-function NotificationCenter({ sessions, connected, loading, onClose }: {
-  sessions: SessionSummary[];
-  connected: boolean;
-  loading: boolean;
-  onClose: (returnFocus?: boolean) => void;
-}) {
-  const needsInput = sessions.filter((session) => session.isLive && (session.needsInput || session.activityStatus === "needs_input"));
-  const [read, setRead] = useState(false);
-  const unreadCount = read ? 0 : needsInput.length + 1;
-  return (
-    <aside className="commandNotificationTray" id="command-notification-tray" aria-label="Notifications">
-      <header>
-        <div><h2>Notifications</h2><p>Local events that may need your attention</p></div>
-        <div className="commandNotificationActions">
-          <button type="button" onClick={() => setRead(true)} disabled={read}>{read ? "All read" : "Mark all read"}</button>
-          <button className="commandIconButton" type="button" onClick={() => onClose()} aria-label="Close notifications"><CommandIcon name="close" /></button>
-        </div>
-      </header>
-      {needsInput.length > 0 ? <>
-        <div className="commandNotificationGroup"><span>Needs attention</span><b>{read ? 0 : needsInput.length}</b></div>
-        {needsInput.slice(0, 4).map((session) => <article className={`commandNotificationEntry${read ? " isRead" : ""}`} key={session.id}>
-          <i className="commandStatusDot attention" />
-          <div><strong>{session.title}</strong><p>This live session is waiting for input. Session-reported state may be stale.</p><Link href={`/sessions/${encodeSessionRoute(session.id)}`} onClick={() => onClose(false)}>Open session</Link></div>
-          <time>Now</time>
-        </article>)}
-      </> : <div className="commandNotificationEmpty"><CommandIcon name="bell" /><strong>No session needs attention</strong><p>Pomegr will keep observing local session state.</p></div>}
-      <div className="commandNotificationGroup"><span>System</span><b>{read ? 0 : 1}</b></div>
-      <article className={`commandNotificationEntry${read ? " isRead" : ""}`}>
-        <i className={`commandStatusDot ${connected ? "online" : "offline"}`} />
-        <div><strong>{loading ? "Connecting to monitor" : connected ? "Local monitor connected" : "Monitor unavailable"}</strong><p>{connected ? "The latest committed normalized state is available. No conversation content is exposed." : "Pomegr will retry automatically while preserving the last known-good state."}</p><Link href="/" onClick={() => onClose(false)}>View workspace</Link></div>
-        <time>Now</time>
-      </article>
-      <footer aria-live="polite">{unreadCount ? `${unreadCount} unread ${unreadCount === 1 ? "notification" : "notifications"}` : "You are all caught up"}</footer>
-    </aside>
-  );
-}
-
 export function CommandCenterShell({ children, pathname, sessions, connected, loading, update = null, onInstallUpdate = () => {} }: CommandCenterShellProps) {
   const router = useRouter();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -138,7 +102,9 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const searchRef = useRef<HTMLInputElement | null>(null);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const navigation = useMemo(() => primaryNavigation.map((item) => item.href === "/sessions" ? { ...item, count: liveSessionCount } : item), [liveSessionCount]);
-  const hasNeedsInput = sessions.some((session) => session.isLive && (session.needsInput || session.activityStatus === "needs_input"));
+  const { providers } = useProviderStatus();
+  const notifications = useNotifications(sessions, providers, connected, loading);
+  const hasAttention = notifications.hasUnreadAttention;
 
   const closeNotifications = useCallback((returnFocus = true) => {
     setNotificationsOpen(false);
@@ -221,11 +187,11 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
             setMobileSearchOpen(true);
           }}><CommandIcon name="search" /></button>
           <div className="commandNotificationWrap" ref={notificationWrapRef}>
-            <button ref={notificationButtonRef} className="commandIconButton commandBell" type="button" aria-label={`Notifications${hasNeedsInput ? ", attention available" : ""}`} aria-controls="command-notification-tray" aria-expanded={notificationsOpen} onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => !open); }}>
+            <button ref={notificationButtonRef} className="commandIconButton commandBell" type="button" aria-label={`Notifications${hasAttention ? ", attention available" : ""}`} aria-controls="command-notification-tray" aria-expanded={notificationsOpen} onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => !open); }}>
               <CommandIcon name="bell" />
-              {hasNeedsInput && <i aria-hidden="true" />}
+              {hasAttention && <i aria-hidden="true" />}
             </button>
-            {notificationsOpen && <NotificationCenter sessions={sessions} connected={connected} loading={loading} onClose={closeNotifications} />}
+            {notificationsOpen && <NotificationCenter {...notifications} onClose={closeNotifications} />}
           </div>
           <div className="commandProfileWrap" ref={profileWrapRef}>
             <button className="commandProfileButton" type="button" aria-label="Local profile, coming soon" aria-expanded={profileOpen} aria-controls="command-profile-menu" onClick={() => { setNotificationsOpen(false); setProfileOpen((open) => !open); }}>

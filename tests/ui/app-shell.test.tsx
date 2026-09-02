@@ -9,6 +9,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: navigation.push }),
 }));
 
+// Catalog tests isolate the independent provider-status feed.
+vi.mock("../../app/provider-status-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/provider-status-client")>();
+  return { ...actual, useProviderStatus: () => actual.EMPTY_PROVIDER_STATUS };
+});
+
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
 import { SessionsView } from "../../app/components/command-center/CommandViews";

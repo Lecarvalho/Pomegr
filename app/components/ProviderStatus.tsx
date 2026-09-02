@@ -88,8 +88,11 @@ export function dismissProviderIncident(sessionId: string, dismissal: Exclude<Pr
   dismissedProviderIncidents.set(sessionId, dismissal);
   if (dismissedProviderIncidents.size > SESSION_NOTICE_DISMISSAL_LIMIT) dismissedProviderIncidents.delete(dismissedProviderIncidents.keys().next().value!);
 }
+export function providerHasServiceIssue(status: ProviderServiceStatus | undefined): status is ProviderServiceStatus {
+  return Boolean(status && status.readiness !== "loading" && status.freshness === "fresh" && ["degraded", "outage", "maintenance"].includes(status.status));
+}
 export function providerServiceNoticeVisible(status: ProviderServiceStatus | undefined, historical: boolean, dismissed: ProviderIncidentDismissal, sessionReady = true) {
-  if (!sessionReady || historical || !status || status.freshness !== "fresh" || !["degraded", "outage", "maintenance"].includes(status.status)) return false;
+  if (!sessionReady || historical || !providerHasServiceIssue(status)) return false;
   const key = status.incidentKey || status.status;
   return !dismissed || dismissed.key !== key || providerIncidentRank(status) > dismissed.rank;
 }

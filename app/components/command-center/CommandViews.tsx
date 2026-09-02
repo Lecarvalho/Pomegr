@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeProviderUsageLimits, SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, ProviderServiceStatus, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
@@ -14,7 +14,7 @@ import { ClaudeUsageControls } from "../ClaudeUsageControls";
 import { CodexUsageHelp } from "../CodexUsageHelp";
 import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
-import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor } from "../ProviderStatus";
+import { ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerStatusFor } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 export { AgentsView } from "../agents/AgentsView";
@@ -113,10 +113,10 @@ const DASHBOARD_COLUMNS: CommandTableColumn<(typeof builtInDashboards)[number]>[
 ];
 
 const SESSION_PAGE_SIZE = 10;
-const SESSION_COLUMNS: CommandTableColumn<SessionSummary>[] = [
+function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<SessionSummary>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
-    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small></Link><SessionCurrentActivity session={session} compact /></>,
+    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{session.project} · <ProviderBadge source={session.source} compact /></span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
   },
   {
     id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
@@ -150,7 +150,13 @@ const SESSION_COLUMNS: CommandTableColumn<SessionSummary>[] = [
     id: "open", label: "Open session", hideLabel: true, colClassName: "commandSessionColAction",
     renderCell: (session) => <Link className="commandIconLink" href={sessionHref(session)} aria-label={"Open " + session.title}><CommandIcon name="arrow" size="small" /></Link>,
   },
-];
+]; }
+
+function SessionProviderWarning({ session, providers }: { session: SessionSummary; providers: ProviderServiceStatus[] }) {
+  const status = providerStatusFor(providers, session.provider);
+  if (!session.isLive || !providerHasServiceIssue(status)) return null;
+  return <ProviderStatusDetails status={status} compact chip />;
+}
 
 export function DashboardsView() {
   const [query, setQuery] = useState("");
@@ -181,6 +187,8 @@ export function DashboardsView() {
 
 export function SessionsView({ initialProject = "" }: { initialProject?: string } = {}) {
   const [project, setProject] = useState(initialProject);
+  const { providers } = useProviderStatus();
+  const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | "history" | null>(null);
@@ -214,7 +222,7 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
       <CommandTable
         caption="Observed Pomegr sessions"
         rows={filteredSessions}
-        columns={SESSION_COLUMNS}
+        columns={columns}
         getRowKey={(session) => session.id}
         className="commandSessionTable"
         pagination={{ page, pageSize: SESSION_PAGE_SIZE, onPageChange: setPage, label: "Session pages" }}

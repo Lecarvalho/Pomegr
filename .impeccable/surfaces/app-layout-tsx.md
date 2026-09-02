@@ -24,7 +24,7 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Identity | Compact raster-derived pomegranate mark plus Pomegr name | Use one small pomegranate brush mark beside the Pomegr name on desktop and mobile. On mobile, place this identity directly after the menu control. Use the generated PNG artwork as a mask so the divided and outline forms retain their organic edges while inheriting the application brand color token. |
 | Navigation | Semantic Next links and inline SVG icons | Home, Dashboards, Sessions, Agents, Usage limits, Repositories, Settings; current route and live-session count stay visible. |
 | Header | HTML/CSS | 60px global destination search, local-monitor state, notification bell, and a local-profile placeholder marked Coming soon. |
-| Notifications | Bounded normalized session catalog | Non-modal tray with needs-input and system state only; never conversation, command, credential, or transcript content. |
+| Notifications | Bounded normalized session catalog and provider status | Non-modal tray with needs-input, system, and one current normalized provider service issue per provider. Provider entries show the official incident/status link and last check; acknowledgement is held in tab memory and only fresh issues are surfaced as unread. Never conversation, command, credential, or transcript content. |
 | Home | Personal browser-local preferences plus bounded destination catalog | Pinned sessions, projects, and views; last-viewed session; What’s new, report discovery, and honest Coming soon previews. Monitoring activity, counters, usage, and polling remain on their dedicated routes. |
 | Sessions | Reusable command table | Searchable/filterable real catalog with canonical detail links. |
 | Dashboards | Built-in route directory | Real destinations only; custom composition is explicitly unavailable. |
@@ -39,6 +39,13 @@ The dark prototype is the compositional authority. The warm light theme is an in
 Approved provider-status extension: compact fixed status on Home and beside each provider
 in Usage limits (mobile headers use a 44px status-icon control with the full wording
 in accessible details, leaving room for the account update time); a reusable dismissible yellow notice below the live session header only
-for fresh relevant service issues. No global-header indicator, historical-session notice,
-or quota/authentication conflation. One shared status store consumes the independently
-revisioned cache-only endpoint; official public reports are never guarantees of availability.
+for a fresh relevant service issue. The existing global notification bell shows unread
+provider issues in the non-modal tray; it is not a separate provider-status widget. Each
+provider contributes only its current normalized issue, with the official incident/status
+link and last check, and tab-memory acknowledgement keeps already-seen issues from
+remaining unread. Live Sessions rows place the compact ProviderStatusDetails chip beside the provider
+name, wrapping when space is limited, only
+when the row is live and its normalized provider matches an issue; healthy, stale,
+unknown, and historical rows show no warning. No quota/authentication conflation. One
+shared status store consumes the independently revisioned cache-only endpoint; official
+public reports are never guarantees of availability.

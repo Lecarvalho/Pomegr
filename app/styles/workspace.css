@@ -50,6 +50,8 @@
 .commandTableSortIcon { width: 12px; height: 12px; flex: 0 0 12px; }
 .commandTable td { min-height: 64px; padding: 12px 13px; border-top: 1px solid var(--command-line); }
 .commandTable tbody tr:hover { background: var(--command-panel-2); }
+.commandSessionMetadata { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
+.commandSessionMetadata > span { min-width: 0; overflow-wrap: anywhere; }
 .commandTablePrimary { min-width: 210px; display: block; color: var(--command-ink); text-decoration: none; }
 .commandTablePrimary strong, .commandTablePrimary small { display: block; }
 .commandTablePrimary strong { font-size: var(--text-base); font-weight: 500; }
