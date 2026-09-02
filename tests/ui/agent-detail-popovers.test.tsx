@@ -166,7 +166,8 @@ describe("agent detail popovers", () => {
         { id: "request-turn", agentId: agent.id, observedAt: "2026-08-08T12:02:05.000Z", cacheLifetime: null, uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 10, totalTokens: 110 },
       ],
     };
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={false} requestSnapshots={requestSnapshots} /></LiveClockProvider>);
+    const activeAgent = { ...agent, status: "active" as const };
+    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[activeAgent]} executionTasks={[]} planTasks={[]} historical={false} requestSnapshots={requestSnapshots} /></LiveClockProvider>);
 
     expect(screen.getByText("latest context")).toBeInTheDocument();
     expect(container.querySelector(".agentTokens")).toHaveAttribute("title", "Latest non-zero provider usage snapshot for this agent; not cumulative token use.");
@@ -187,6 +188,27 @@ describe("agent detail popovers", () => {
       "href",
       "https://github.com/Lecarvalho/pomegr/blob/main/docs/CACHE_TIMING.md",
     );
+    vi.useRealTimers();
+  });
+
+  it("keeps finished and stopped live agents on plain recorded timing, then restores warnings on resume", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-08T12:04:30.000Z");
+    const requestSnapshots = {
+      status: "ready" as const,
+      items: [{ id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 }],
+    };
+    const view = (status: "active" | "finished" | "stopped") => <LiveClockProvider running={false}><AgentActivityPanel agents={[{ ...agent, status }]} executionTasks={[]} planTasks={[]} historical={false} requestSnapshots={requestSnapshots} /></LiveClockProvider>;
+    const { container, rerender } = render(view("active"));
+
+    expect(container.querySelector(".agentTurnCacheTiming")).toHaveClass("cacheTimingNear");
+    rerender(view("finished"));
+    expect(container.querySelector(".agentTurnCacheTiming")).toHaveClass("agentTurnCacheTimingPlain");
+    expect(container.querySelector(".agentTurnCacheTiming")?.closest("button")).toBeNull();
+    rerender(view("stopped"));
+    expect(container.querySelector(".agentTurnCacheTiming")).toHaveClass("agentTurnCacheTimingPlain");
+    rerender(view("active"));
+    expect(container.querySelector(".agentTurnCacheTiming")).toHaveClass("cacheTimingNear");
     vi.useRealTimers();
   });
 

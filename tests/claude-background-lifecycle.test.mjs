@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createClaudeBackgroundLifecycleReader } from "../monitor/providers/claude-background-lifecycle.mjs";
+import { createClaudeAgentLifecycleReader } from "../monitor/providers/claude-agent-lifecycle.mjs";
+import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { sessionActivityStatus } from "../monitor/providers/claude-session-status.mjs";
 
@@ -344,4 +346,110 @@ test("native idle catalog stays working for a background Agent and its nested ch
   const history = await provider.listSessions();
   assert.equal(history[0].isLive, false);
   assert.equal(history[0].activityStatus, "idle", "history cannot inherit current background work");
+});
+
+
+test("native child completion without stop_reason sets finished, freezes timing, and survives parent tail growth", async (t) => {
+  const records = launch("child", "Agent");
+  records[0].message.content[0].input.description = "Consult on queue";
+  const f = await fixture(t, [...records, terminal("child")]);
+  const childDir = path.join(path.dirname(f.file), "local", "subagents");
+  await mkdir(childDir, { recursive: true });
+  const childFile = path.join(childDir, "agent-child.jsonl");
+  await writeFile(childFile, jsonl([
+    { type: "user", timestamp: timestamp(1100), message: { content: PRIVATE } },
+    { type: "assistant", timestamp: timestamp(1900), message: { role: "assistant", stop_reason: null,
+      content: [{ type: "text", text: PRIVATE }] } },
+  ]));
+  const provider = createClaudeProvider({ homeDir: f.homeDir, env: {}, explicitSession: f.file });
+  const readChild = async () => {
+    const evidence = await provider.readSession("local");
+    const state = monitorStateFromProviderEvidence("claude", evidence);
+    assert.doesNotMatch(JSON.stringify(state), /BACKGROUND_PRIVATE|task-notification|toolUseResult|callId|completeOffset/);
+    return evidence.agents.find((agent) => agent.id === "agent-child");
+  };
+  let child = await readChild();
+  assert.equal(child.status, "finished");
+  assert.equal(child.lastSeen, timestamp(2000));
+  assert.equal(child.updatedAt, timestamp(2000));
+  assert.equal(child.durationMs, 900);
+  const filler = { type: "system", timestamp: timestamp(3000), content: PRIVATE.repeat(250) };
+  await appendFile(f.file, jsonl(Array.from({ length: 300 }, () => filler)));
+  child = await readChild();
+  assert.equal(child.status, "finished", "completion must survive moving outside the 2 MiB tail");
+  assert.equal(child.durationMs, 900);
+  const cold = createClaudeProvider({ homeDir: f.homeDir, env: {}, explicitSession: f.file });
+  assert.equal((await cold.readSession("local")).agents.find((agent) => agent.id === "agent-child").status, "finished");
+  await appendFile(childFile, jsonl([{ type: "user", timestamp: timestamp(4000), message: { content: PRIVATE } }]));
+  assert.equal((await readChild()).status, "active", "a resumed child must clear the prior completion");
+});
+
+test("agent detail accepts trusted delivery and rejects unmatched, foreground, failed-launch, and user-authored completion", async (t) => {
+  const f = await fixture(t, launch("child", "Agent"));
+  const read = createClaudeAgentLifecycleReader();
+  assert.equal((await read(f.file)).size, 0);
+  const done = terminal("child");
+  await appendFile(f.file, jsonl([
+    { type: "user", timestamp: done.timestamp, message: { content: done.content } },
+    terminal("other"), terminal("child", "unknown"), terminal("child", "completed", 500),
+    { ...done, content: done.content.replace("</task-id>", "</task-id><tool-use-id>other-call</tool-use-id>") },
+  ]));
+  assert.equal((await read(f.file)).size, 0);
+  await appendFile(f.file, jsonl([{ type: "user", timestamp: done.timestamp, origin: { kind: "task-notification" },
+    promptSource: "system", message: { content: done.content } }]));
+  assert.deepEqual((await read(f.file)).get("child"), { status: "finished", timestamp: timestamp(2000) });
+  const foreground = launch("foreground", "Agent"); foreground[1].toolUseResult.status = "completed";
+  const failed = launch("failed", "Agent"); failed[1].message.content[0].is_error = true;
+  await appendFile(f.file, jsonl([...foreground, terminal("foreground"), ...failed, terminal("failed"),
+    ...launch("shell", "Bash"), terminal("shell")]));
+  assert.deepEqual([...(await read(f.file)).keys()], ["child"]);
+});
+
+test("agent detail preserves earliest completion, handles stop and relaunch, and keeps last good replacement", async (t) => {
+  const f = await fixture(t, [...launch("child", "Agent"), terminal("child")]);
+  const read = createClaudeAgentLifecycleReader();
+  assert.equal((await read(f.file)).get("child").timestamp, timestamp(2000));
+  await appendFile(f.file, jsonl([terminal("child", "completed", 2500)]));
+  assert.equal((await read(f.file)).get("child").timestamp, timestamp(2000), "delivery must not renew completion time");
+  const resumed = launch("child", "Agent", 3000);
+  resumed[0].message.content[0].id = "resume-child";
+  resumed[1].message.content[0].tool_use_id = "resume-child";
+  await appendFile(f.file, jsonl(resumed));
+  assert.equal((await read(f.file)).size, 0, "successful new launch clears terminal state");
+  const old = terminal("child", "completed", 3500);
+  old.content = old.content.replace("</task-id>", "</task-id><tool-use-id>call-child</tool-use-id>");
+  await appendFile(f.file, jsonl([old, terminal("child", "completed", 3600)]));
+  assert.equal((await read(f.file)).size, 0, "old or ambiguous launch completion cannot finish a resumed launch");
+  const stopped = terminal("child", "stopped", 4000);
+  stopped.content = stopped.content.replace("</task-id>", "</task-id><tool-use-id>resume-child</tool-use-id>");
+  await appendFile(f.file, jsonl([stopped]));
+  assert.deepEqual((await read(f.file)).get("child"), { status: "stopped", timestamp: timestamp(4000) });
+  const replacement = jsonl(launch("child", "Agent", 5000));
+  await writeFile(f.file, replacement.slice(0, -3));
+  assert.equal((await read(f.file)).get("child").status, "stopped");
+  await appendFile(f.file, replacement.slice(-3));
+  assert.equal((await read(f.file)).size, 0);
+  await appendFile(f.file, jsonl([terminal("child", "completed", 6000)]));
+  assert.equal((await read(f.file)).get("child").status, "finished");
+  await writeFile(f.file, jsonl(launch("child", "Agent", 7000)) + "broken-json\n");
+  assert.equal((await read(f.file)).get("child").status, "finished", "invalid replacement retains completion");
+  await writeFile(f.file, jsonl([...launch("child", "Agent", 8000),
+    ...Array.from({ length: 20 }, () => ({ type: "system", timestamp: timestamp(9000), content: PRIVATE }))]));
+  assert.equal((await read(f.file)).size, 0, "a larger complete rewrite also replaces prior evidence");
+});
+
+
+test("same-size prefix replacement invalidates completion even when the suffix is unchanged", async (t) => {
+  const records = [...launch("child", "Agent"), terminal("child"),
+    { type: "system", timestamp: timestamp(3000), content: PRIVATE.repeat(50) }];
+  const f = await fixture(t, records);
+  const read = createClaudeAgentLifecycleReader();
+  assert.equal((await read(f.file)).get("child").status, "finished");
+  const original = jsonl(records);
+  const replacement = original.replace("<status>completed</status>", "<status>cancelled</status>");
+  assert.equal(Buffer.byteLength(replacement), Buffer.byteLength(original));
+  assert.equal(replacement.slice(-256), original.slice(-256));
+  await writeFile(f.file, replacement);
+  await utimes(f.file, new Date(START), new Date(START));
+  assert.equal((await read(f.file)).get("child").status, "stopped");
 });

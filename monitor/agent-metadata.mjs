@@ -248,7 +248,7 @@ export function applyWaitingStatus(agents) {
   while (changed) {
     changed = false;
     for (const agent of agents) {
-      if (liveAgentIds.has(agent.id) || agent.status === "needs_input") continue;
+      if (liveAgentIds.has(agent.id) || ["needs_input", "finished", "stopped"].includes(agent.status)) continue;
       const hasLiveChild = agents.some(
         (child) => child.parentId === agent.id && liveAgentIds.has(child.id),
       );

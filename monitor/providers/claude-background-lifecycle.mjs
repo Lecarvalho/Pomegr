@@ -11,7 +11,7 @@ const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const TERMINAL = new Set(["completed", "failed", "error", "stopped", "killed", "cancelled", "canceled", "interrupted"]);
 const safeId = (value) => typeof value === "string" && ID.test(value) ? value : null;
 
-function terminalNotification(record) {
+export function claudeTerminalTaskNotification(record) {
   const content = record?.type === "queue-operation" && record.operation === "enqueue"
     ? record.content
     : record?.type === "user" && record.origin?.kind === "task-notification" && record.promptSource === "system"
@@ -19,7 +19,10 @@ function terminalNotification(record) {
   if (typeof content !== "string" || !content.includes("<task-notification>")) return null;
   const status = content.match(/<status>([^<]+)<\/status>/)?.[1]?.trim();
   if (!TERMINAL.has(status)) return null;
-  return safeId(content.match(/<task-id>([^<]+)<\/task-id>/)?.[1]?.trim());
+  const taskId = safeId(content.match(/<task-id>([^<]+)<\/task-id>/)?.[1]?.trim());
+  const callId = content.match(/<tool-use-id>([^<]+)<\/tool-use-id>/)?.[1]?.trim();
+  if (!taskId || (callId !== undefined && !safeId(callId))) return null;
+  return { taskId, status, callId: callId || null };
 }
 
 function launchedTaskId(tool, result) {
@@ -34,8 +37,8 @@ function launchedTaskId(tool, result) {
 function reduceLifecycle(state, record, ownerStartedAt) {
   const timestamp = Date.parse(record?.timestamp || "");
   if (!Number.isFinite(timestamp) || timestamp < ownerStartedAt) return state;
-  const terminal = terminalNotification(record);
-  if (terminal) state.running.delete(terminal);
+  const terminal = claudeTerminalTaskNotification(record);
+  if (terminal) state.running.delete(terminal.taskId);
   const parts = Array.isArray(record?.message?.content) ? record.message.content : [];
   for (const part of parts) {
     if (record.type === "assistant" && part.type === "tool_use" && ["Workflow", "Bash", "Agent"].includes(part.name)) {

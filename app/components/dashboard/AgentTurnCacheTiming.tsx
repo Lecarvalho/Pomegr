@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed } from "../../../shared/monitor-contract";
+import type { Agent, CacheLifetime, RequestSnapshot, RequestSnapshotFeed } from "../../../shared/monitor-contract";
 import { coarseRelativeTime } from "../../dashboard-utils";
 import { useLiveNow } from "../../hooks/LiveClockContext";
 import { DottedInfoPopover } from "../DottedInfoPopover";
@@ -38,12 +38,14 @@ function newestSnapshot(items: RequestSnapshot[]) {
   return newest;
 }
 
-export function deriveAgentTurnCacheEvidence(requestSnapshots: RequestSnapshotFeed, agentId: string, now: number, historical: boolean): AgentTurnCacheEvidence {
+export function deriveAgentTurnCacheEvidence(requestSnapshots: RequestSnapshotFeed, agentId: string, now: number, historical: boolean, status: Agent["status"]): AgentTurnCacheEvidence {
   if (requestSnapshots.status !== "ready") return { lastRequest: null, lastCacheTouch: null, state: "unavailable" };
   const agentRequests = requestSnapshots.items.filter((item) => item.agentId === agentId);
   const lastRequest = newestSnapshot(agentRequests);
   const lastCacheTouch = newestSnapshot(agentRequests.filter((item) => item.cacheReadTokens > 0 || item.cacheWriteTokens > 0));
-  if (!lastCacheTouch || historical) return { lastRequest, lastCacheTouch, state: lastCacheTouch ? "neutral" : "unavailable" };
+  if (!lastCacheTouch || historical || status === "finished" || status === "stopped") {
+    return { lastRequest, lastCacheTouch, state: lastCacheTouch ? "neutral" : "unavailable" };
+  }
 
   const lifetimeMs = CACHE_LIFETIME_MS[lastCacheTouch.cacheLifetime || "mixed"];
   const nearWindowMs = CACHE_NEAR_WINDOW_MS[lastCacheTouch.cacheLifetime || "mixed"];
@@ -63,16 +65,17 @@ function lifetimeLabel(value: CacheLifetime | null | undefined) {
   return value || "Unavailable";
 }
 
-export function AgentTurnCacheTiming({ agentId, className = "", historical, requestSnapshots }: {
+export function AgentTurnCacheTiming({ agentId, className = "", historical, requestSnapshots, status }: {
   agentId: string;
   className?: string;
   historical: boolean;
   requestSnapshots: RequestSnapshotFeed;
+  status: Agent["status"];
 }) {
   const now = useLiveNow();
   const evidence = useMemo(
-    () => deriveAgentTurnCacheEvidence(requestSnapshots, agentId, now, historical),
-    [agentId, historical, now, requestSnapshots],
+    () => deriveAgentTurnCacheEvidence(requestSnapshots, agentId, now, historical, status),
+    [agentId, historical, now, requestSnapshots, status],
   );
   const lastRequestAt = evidence.lastRequest?.observedAt || null;
   const lastCacheTouchAt = evidence.lastCacheTouch?.observedAt || null;

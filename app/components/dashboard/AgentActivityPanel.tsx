@@ -188,7 +188,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], cacheReadDrops =
         <div className="agentDuration"><strong><AgentWallTimeText agent={agent} /></strong><span>wall time</span></div>
         <div className="agentState">
           <span className={`statusPill ${agent.status}`}>{agent.status !== "idle" && agent.status !== "finished" && <i />}{agent.status === "needs_input" ? "needs input" : agent.status}</span>
-          <AgentTurnCacheTiming agentId={agent.id} historical={historical} requestSnapshots={requestSnapshots} />
+          <AgentTurnCacheTiming agentId={agent.id} historical={historical} requestSnapshots={requestSnapshots} status={agent.status} />
         </div>
       </div>
     );

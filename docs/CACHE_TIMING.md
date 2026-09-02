@@ -41,6 +41,11 @@ model-policy minimum, not an expiry deadline; see [cache lifetime resolution](ME
 Historical sessions show recorded request and cache-touch
 times without a live warning state.
 
+Live agents with a normalized **finished** or **stopped** status also show the
+recorded last-turn age as plain text without a live warning. If the same agent
+returns to an active, warm, waiting, needs-input, or idle status, the live warning
+is evaluated again from the retained cache-touch evidence.
+
 An elapsed lifetime is not proof that a cache entry expired. Provider retention
 can exceed a documented minimum, and cache availability can also change because
 of prefix changes, routing, eviction, model changes, or a prefix that was never

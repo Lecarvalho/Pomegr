@@ -35,6 +35,7 @@ import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
+import { createClaudeAgentLifecycleReader, applyClaudeAgentTerminals } from "./claude-agent-lifecycle.mjs";
 import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifecycle.mjs";
 import { createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
@@ -316,6 +317,7 @@ export function createClaudeProvider(options = {}) {
   });
 
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
+  const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });
 
   async function cachedSessionTitle(file, stat) {
@@ -641,6 +643,7 @@ export function createClaudeProvider(options = {}) {
         ...timing,
       });
     }
+    await applyClaudeAgentTerminals(agents, recordsByFile, fileByAgentId, readAgentLifecycle);
     if (!historical) applyWaitingStatus(agents);
     for (const agent of agents) {
       const file = fileByAgentId.get(agent.id);

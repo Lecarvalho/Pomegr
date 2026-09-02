@@ -821,6 +821,23 @@ U1/U2 recognition: last-known-good retention, revision publication, bounded priv
 cursors, and cache-only GETs are unchanged; no raw agent IDs or result fields are
 added to browser or checkpoint state.
 
+Claude agent-detail U1/U2 also replays each observed parent's complete native agent
+launch/notification history, independently of process ownership. Only successful
+matched `Agent` background launches and trusted exact terminal notifications set an
+individual child to `finished` or `stopped`; a null final stop reason does not erase
+this recorded completion. A supplied notification tool-use ID must match its launch; after an agent ID is
+reused by a later launch, that tool-use ID is required to disambiguate delayed delivery.
+Duplicate delivery preserves the first terminal timestamp, while later child
+conversation or a new successful launch clears the old state. Ambiguous identities
+across parents are unavailable. The private reader retains at most 100 file cursors,
+256 pending calls and 256 agent states per file, using cooperative 64 KiB reads and
+a 256 KiB fragment bound. Tail growth cannot age out completion. Incomplete,
+malformed, or over-bound replacement retains the last valid observation; complete
+validated source replacement swaps it. Raw IDs, payloads, and cursors remain private;
+only existing normalized status and timing fields enter evidence/checkpoints.
+Observation publication and revision-aware cache-only GETs are unchanged. F suppresses
+live cache timing warnings for finished/stopped agents even within a live session.
+
 Claude sessions with a validated current registry owner remain Live between turns,
 even when the recorded activity is old. Native idle with that validated owner maps
 to catalog `open`; individual agents remain `idle`. Active, needs-input, and recorded

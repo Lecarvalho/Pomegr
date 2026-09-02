@@ -254,3 +254,17 @@ test("preserves needs-input status while a descendant is active", () => {
   assert.equal(agents[0].status, "needs_input");
   assert.equal(agents.filter(isRunningAgent).length, 1);
 });
+
+
+test("recent descendants cannot override an agent's recorded terminal status", () => {
+  for (const status of ["finished", "stopped"]) {
+    const agents = [
+      { id: "primary", parentId: null, status: "idle" },
+      { id: "parent", parentId: "primary", status },
+      { id: "child", parentId: "parent", status: "active" },
+    ];
+    applyWaitingStatus(agents);
+    assert.equal(agents[1].status, status);
+    assert.equal(agents[0].status, "idle");
+  }
+});

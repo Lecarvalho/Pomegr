@@ -268,12 +268,12 @@ Only normalized task ID, subject, status, and dependency IDs enter the browser A
 - `active` — updated within 45 seconds
 - `waiting` — has an active descendant and is waiting for that work to return
 - `needs_input` — issued a user-input request that has not received its matching result
-- `stopped` — a parent agent received a successful `TaskStop` result for that subagent
-- `finished` — a subagent transcript ends with `end_turn` or `stop_sequence`
+- `stopped` — a parent agent received a successful `TaskStop` result for that subagent, or a matched native background-agent notification records failure or cancellation
+- `finished` — a subagent transcript ends with `end_turn` or `stop_sequence`, or an exact trusted completion notification matches its successful native background-agent launch
 - `warm` — updated within 5 minutes
 - `idle` — older than 5 minutes
 
-Finished subagents are detected directly from their final assistant record and turn gray on the next poll. If a finished subagent is resumed and receives a new record, it returns to an activity-based state. Waiting status propagates through the recorded parent-child hierarchy. Primary agents use recognized registry lifecycle when available. Claude Remote Control primary agents use the native status mapping below and never substitute modification time for a missing native status. Other older transcript formats without a terminal marker retain modification-time state as a fallback.
+Finished subagents are detected from their final assistant record or a trusted parent completion notification matched to the successful structured native agent launch. The latter also covers final records with a null stop reason. Matched failure or cancellation notifications map to stopped. Completion timestamps freeze wall time and last-seen time; duplicate notification delivery does not advance them. Later conversational records or a successful new launch clear the old completion. After an agent ID is reused, notifications must also identify the matching launch; an ID-only delayed notification is ambiguous. Parent lifecycle is replayed beyond the recent transcript tail, independently of catalog process ownership. Finished agents turn gray on the next poll. If a finished subagent is resumed and receives a new record, it returns to an activity-based state. Waiting status propagates through the recorded parent-child hierarchy without overriding finished or stopped agents. Primary agents use recognized registry lifecycle when available. Claude Remote Control primary agents use the native status mapping below and never substitute modification time for a missing native status. Other older transcript formats without a terminal marker retain modification-time state as a fallback.
 
 Needs-input state is detected by matching a provider user-input tool request to its result ID. It appears only while that result is absent and clears on the next poll after the user answers. The question, choices, and answer are never returned to the browser. A needs-input agent is not counted as running, and its explicit state is preserved even if it also has an active descendant.
 
