@@ -30,7 +30,8 @@ function sanitizedUsageError(error) {
 }
 
 function normalizedUsageLimits(body) {
-  const normalized = (Array.isArray(body?.limits) ? body.limits : []).flatMap((limit) => {
+  if (!Array.isArray(body?.limits)) throw new TypeError("Usage response has no complete limits array");
+  const normalized = body.limits.flatMap((limit) => {
     const percent = clampUsageLimitPercent(limit.percent);
     if (limit.kind === "session") return [{
       id: "current-session", label: "Current session", window: "5 hours",
@@ -61,6 +62,8 @@ function normalizedUsageLimits(body) {
  *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable",
  *   retryDelay?: (error: any, currentTime: number) => number,
  *   now?: () => number,
+ *   initialState?: { value: any, nextAttemptAt: number } | null,
+ *   onUpdate?: (value: any, nextAttemptAt: number) => void,
  * }} options
  */
 export function createCoordinatedUsageLimitsReader({
@@ -69,8 +72,10 @@ export function createCoordinatedUsageLimitsReader({
   failureKind = () => "unavailable",
   retryDelay = () => USAGE_REFRESH_INTERVAL_MS,
   now = () => Date.now(),
+  initialState = null,
+  onUpdate = () => {},
 }) {
-  let cache = { value: null, nextAttemptAt: 0, pending: null };
+  const cache = { value: initialState?.value ?? null, nextAttemptAt: initialState?.nextAttemptAt ?? 0, pending: null };
 
   function cachedValue() {
     return cache.value || emptyUsageLimits();
@@ -113,6 +118,7 @@ export function createCoordinatedUsageLimitsReader({
         return value;
       } finally {
         cache.nextAttemptAt = nextAttemptAt || now() + USAGE_REFRESH_INTERVAL_MS;
+        try { onUpdate(cache.value, cache.nextAttemptAt); } catch { /* Persistence must not break live observations. */ }
         cache.pending = null;
       }
     })();
@@ -130,9 +136,11 @@ export function createCoordinatedUsageLimitsReader({
   return { get, peek: () => cache.value };
 }
 
-export function createUsageLimitsCoordinator({ request, now = () => Date.now() }) {
+export function createUsageLimitsCoordinator({ request, now = () => Date.now(), initialState = null, onUpdate = undefined }) {
   return createCoordinatedUsageLimitsReader({
     now,
+    initialState,
+    onUpdate,
     async read() {
       const response = await request();
       if (!response.ok) {

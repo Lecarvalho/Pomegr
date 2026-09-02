@@ -199,3 +199,23 @@ test("uses blue through 74, yellow from 75 through 84, and red from 85", () => {
   assert.equal(clampUsageLimitPercent(-1), 0);
   assert.equal(clampUsageLimitPercent(101), 100);
 });
+
+
+test("retains the last good observation when a successful response has no complete limits array", async () => {
+  let currentTime = Date.parse("2026-08-10T14:00:00.000Z");
+  let requests = 0;
+  const reader = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    request: async () => ++requests === 1 ? usageResponse(23) : new Response('{"private":"PRIVATE_RESPONSE"}'),
+  });
+  const first = await reader.get();
+  currentTime += USAGE_REFRESH_INTERVAL_MS;
+  await reader.get();
+  await new Promise((resolve) => setImmediate(resolve));
+  const retained = await reader.get();
+  assert.equal(retained.available, true);
+  assert.deepEqual(retained.limits, first.limits);
+  assert.equal(retained.fetchedAt, first.fetchedAt);
+  assert.equal(retained.failureKind, "unavailable");
+  assert.doesNotMatch(JSON.stringify(retained), /PRIVATE_RESPONSE/);
+});

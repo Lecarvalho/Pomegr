@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createClaudeUsageApiCache } from "./claude-usage-api-cache.mjs";
+import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { claudeUsageLimitsFromSnapshot, claudeUsageSnapshotsRoot, readClaudeUsageSnapshot } from "./claude-usage-feed.mjs";
 
@@ -29,10 +31,9 @@ export function createClaudeUsageLimitsReader(options = {}) {
   const now = options.now || (() => Date.now());
   const configDir = options.claudeConfigDir || environment.CLAUDE_CONFIG_DIR || path.join(homeDir, ".claude");
   const snapshotsRoot = options.usageSnapshotsRoot || claudeUsageSnapshotsRoot({ environment, homeDir, platform: options.platform });
-  const remote = createUsageLimitsCoordinator({
-    request: options.usageRequest || usageRequest(configDir, options.fetch || globalThis.fetch),
-    now,
-  });
+  const apiCache = createClaudeUsageApiCache({ root: snapshotsRoot, configDir, now });
+  let remote = null;
+  let sourceFingerprint = null;
   const freshMs = options.usageFeedFreshMs ?? 5 * 60_000;
   let retainedLocal = null;
   let newestSuccessful = null;
@@ -59,11 +60,44 @@ export function createClaudeUsageLimitsReader(options = {}) {
 
   function acceptRemote(usage) {
     if (!latestRemote || Date.parse(usage.attemptedAt || "") >= Date.parse(latestRemote.attemptedAt || "")) latestRemote = usage;
-    if (!usage.available || usage.failureKind !== null || usage.error || timestamp(usage) < 0) return null;
+    if (usage.failureKind !== null || usage.error || timestamp(usage) < 0) return null;
+    retainModelLimits(usage);
+    if (!usage.available) {
+      if (newestSuccessful?.origin === "provider_api") newestSuccessful = retainedLocal;
+      return null;
+    }
     const candidate = { ...usage, origin: "provider_api" };
     retainNewest(candidate);
-    retainModelLimits(candidate);
     return candidate;
+  }
+
+  // U1 initializes the private cache during background acquisition, never in GETs.
+  function coordinatedRemote() {
+    const fingerprint = apiCache.fingerprint();
+    if (remote && fingerprint === sourceFingerprint) return remote;
+    sourceFingerprint = fingerprint;
+    newestSuccessful = retainedLocal;
+    retainedModelLimits = null;
+    lastRemoteTimestamp = -1;
+    latestRemote = null;
+    const restored = apiCache.read(fingerprint);
+    if (restored) {
+      if (restored.value.available) {
+        acceptRemote({ ...restored.value, failureKind: null, retryAt: null, error: "" });
+      }
+      latestRemote = restored.value;
+    }
+    remote = createUsageLimitsCoordinator({
+      request: options.usageRequest || usageRequest(configDir, options.fetch || globalThis.fetch),
+      now,
+      initialState: restored,
+      onUpdate: (value, nextAttemptAt) => { apiCache.write(value, nextAttemptAt, fingerprint); },
+    });
+    return remote;
+  }
+
+  function currentRemote(candidate) {
+    return candidate === remote && apiCache.fingerprint() === sourceFingerprint;
   }
 
   function withRetainedLimits(usage) {
@@ -90,14 +124,15 @@ export function createClaudeUsageLimitsReader(options = {}) {
   }
 
   return async function readUsageLimits() {
+    const activeRemote = coordinatedRemote();
     const localUsage = local();
     // Keep model-specific windows current on the existing shared API cooldown.
     // A fresh local pair can be served immediately while that request is pending.
-    const remoteRead = remote.get();
-    const completedRemote = remote.peek();
+    const remoteRead = activeRemote.get();
+    const completedRemote = activeRemote.peek();
     if (completedRemote) acceptRemote(completedRemote);
     if (localUsage && freshness(localUsage, true) === "fresh") {
-      void remoteRead.then(acceptRemote).catch(() => {});
+      void remoteRead.then((usage) => { if (currentRemote(activeRemote)) acceptRemote(usage); }).catch(() => {});
       const selected = newestSuccessful;
       return withRetainedLimits(selected ? {
         ...selected,
@@ -110,6 +145,9 @@ export function createClaudeUsageLimitsReader(options = {}) {
     }
 
     const remoteUsage = await remoteRead;
+    if (!currentRemote(activeRemote)) {
+      return createEmptyUsageLimits({ error: "Claude usage credentials are unavailable." });
+    }
     const remoteCandidate = acceptRemote(remoteUsage);
     const selected = newestSuccessful;
     if (selected) {

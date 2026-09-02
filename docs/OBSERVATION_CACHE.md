@@ -560,12 +560,41 @@ The local pair does not contain model-specific weekly limits. When the adapter s
 from an API observation to a newer local pair, it retains the last normalized Fable
 window in a separate optional `retainedLimits` group with its original API `fetchedAt`.
 This group is bounded by the usage-window schema (at most 16 windows; Claude emits only
-the recognized Fable window), lives only in memory, and is display-only. It never enters
+the recognized Fable window) and is display-only. It never enters
 the current `limits` array or limit-activity sampling, and never inherits the newer
 local timestamp. A newer successful API observation replaces or clears it. No extra
 API request outside the existing shared cooldown is made to populate it. F presents **Last API value** with its own age;
 without a prior API observation, the local-feed Fable column says **Unavailable**.
 Neither missing data nor an expired reset becomes a fabricated zero-percent reading.
+
+P persists the normalized account API observation separately in `usage-snapshots/claude-api.json`.
+This bounded (8 KiB), atomically replaced file contains only a schema version, an opaque
+credential-source fingerprint, the original successful observation and last-attempt timestamps,
+a fixed failure kind, the next allowed attempt timestamp, and at most the three recognized
+windows (`current-session`, `all-models`, `model-fable`). Each stored window contains only
+its fixed ID, numeric percentage, normalized reset timestamp or null, and active flag.
+Labels, window names, severity, availability, retry state, and fixed error messages are
+reconstructed from the allowlist. Raw responses, headers, credentials, account identifiers,
+credential paths, and error text are never persisted.
+
+U1 lazily restores this cache during background usage acquisition. The source fingerprint
+uses only the selected credential file's path and filesystem metadata through a one-way hash;
+it does not read or hash credential contents. Restoration and writes require the fingerprint
+to match the current regular credential file. Profile changes, credential replacement or
+metadata changes invalidate remote reuse, including in-memory values; in-flight results from
+a changed source cannot be published or checkpointed. This deliberately favors isolation over
+cache reuse when Claude refreshes its credentials. The local status-line pair retains its
+existing operational profile/data-root scoping and separate schema.
+
+Restored remote data keeps its original observation timestamp and is marked stale by the
+existing freshness rules. A newer local pair can still show the restored Fable value as
+**Last API value**. Restoring a failed attempt preserves the last good API observation and
+the full provider retry deadline, so restarting Pomegr does not cause an early retry for
+the same credential source. A successful response that omits Fable clears the model value,
+including across restarts; failures and malformed cache files never fabricate a value.
+Cache I/O failure must not fail a live usage observation. No cache restoration or persistence
+runs inside serving GETs, no new polling loop is added, and committed revisions/204 handling,
+last-known-good serving, browser privacy, and historical-session exclusion are unchanged.
 
 During the initial API request, locally sourced usage has `attemptedAt: null`; Fable
 shows **Checking…** until the next background usage publication includes the completed

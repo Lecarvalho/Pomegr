@@ -27,7 +27,7 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost and local usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
 
@@ -93,10 +93,19 @@ Repeated identical status-line values retain their original observation timestam
 
 The local feed does not include Fable's model-specific weekly limit. Pomegr keeps its
 last API reading separately, labelled **Last API value** with its own timestamp. If none
-was observed in this monitor process, Fable shows **Checking…** while the first account
+was observed or safely restored, Fable shows **Checking…** while the first account
 check runs, then its value or the check's failure status. The initial result normally
 appears within a minute. Keeping
 this column visible uses the existing shared account-check cadence.
+
+Pomegr retains the last normalized account reading and its retry deadline across restarts
+in a separate `usage-snapshots/claude-api.json` file. A restored Fable reading keeps its
+original **Last API value** timestamp; it is not presented as a fresh account check.
+The cache contains only allowlisted usage fields and an opaque fingerprint of the selected
+credential file's filesystem metadata, never credential contents or account identifiers.
+It is reused only while that credential source matches. Changing profiles, signing in again,
+or Claude refreshing the credential file invalidates it. A provider throttle still has to
+expire before Pomegr can fetch a new value; no value is invented before a successful reading.
 
 The usage file is `usage-snapshots/claude.json` beneath Pomegr's data root. It contains
 only the schema version, observation time, and two percentage/reset pairs. It has no

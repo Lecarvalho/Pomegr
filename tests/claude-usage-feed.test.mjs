@@ -389,3 +389,81 @@ test("the bridge discards oversized input before capture or delegation buffering
   assert.equal(result.stdout, "");
   assert.equal(readClaudeUsageSnapshot({ root }), null);
 });
+
+
+test("restores Fable and the provider cooldown across monitor restarts, then clears omitted models", async (context) => {
+  const root = temporaryRoot(context);
+  const profile = path.join(root, "profile");
+  fs.mkdirSync(profile);
+  fs.writeFileSync(path.join(profile, ".credentials.json"), '{"private":"PRIVATE_CREDENTIAL"}');
+  let currentTime = Date.parse("2026-08-10T12:00:00.000Z");
+  let requests = 0;
+  const options = {
+    homeDir: root, claudeConfigDir: profile, usageSnapshotsRoot: root, now: () => currentTime,
+    usageRequest: async () => {
+      requests += 1;
+      if (requests === 2) return new Response("PRIVATE_FAILURE", { status: 429, headers: { "retry-after": "3600" } });
+      return new Response(JSON.stringify({ limits: requests === 1 ? [
+        { kind: "weekly_scoped", scope: { model: { display_name: "Fable", private: "PRIVATE_MODEL" } }, percent: 73, resets_at: "2026-08-16T17:00:00.000Z" },
+      ] : [] }));
+    },
+  };
+  const initial = createClaudeUsageLimitsReader(options);
+  const first = await initial();
+  assert.equal(first.limits[0].percent, 73);
+  currentTime += 60_000;
+  captureClaudeStatuslineUsage(statusline(0, 4), { root, now: new Date(currentTime) });
+  currentTime += 5 * 60_000;
+  await initial();
+  await new Promise((resolve) => setImmediate(resolve));
+  const throttled = await initial();
+  assert.equal(throttled.failureKind, "rate_limited");
+  const restarted = createClaudeUsageLimitsReader(options);
+  const restored = await restarted();
+  assert.equal(requests, 2, "restart must respect the persisted provider cooldown");
+  assert.equal(restored.origin, "local_observation");
+  assert.deepEqual(restored.limits.map((limit) => limit.percent), [0, 4]);
+  assert.deepEqual(restored.retainedLimits, throttled.retainedLimits);
+  assert.equal(restored.retainedLimits.fetchedAt, first.fetchedAt);
+  assert.equal(restored.retryAt, throttled.retryAt);
+  assert.equal(restored.attemptedAt, throttled.attemptedAt);
+  assert.equal(restored.failureKind, "rate_limited");
+  assert.doesNotMatch(JSON.stringify(restored), /PRIVATE|sourceFingerprint|credentials|profile/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "claude-api.json"), "utf8"), /PRIVATE|credentials|profile/);
+
+  currentTime = Date.parse(restored.retryAt) - 1;
+  await restarted();
+  assert.equal(requests, 2);
+  currentTime += 1;
+  await restarted();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal((await restarted()).retainedLimits, undefined);
+  assert.equal((await createClaudeUsageLimitsReader(options)()).retainedLimits, undefined);
+  assert.equal(requests, 3, "a successful empty response clears the old model without an extra request");
+});
+
+test("does not carry a Fable observation into a changed Claude credential source", async (context) => {
+  const root = temporaryRoot(context);
+  const profile = path.join(root, "profile");
+  fs.mkdirSync(profile);
+  const credentialFile = path.join(profile, ".credentials.json");
+  fs.writeFileSync(credentialFile, "PRIVATE_FIRST");
+  const currentTime = Date.parse("2026-08-10T12:00:00.000Z");
+  let requests = 0;
+  const reader = createClaudeUsageLimitsReader({
+    homeDir: root, claudeConfigDir: profile, usageSnapshotsRoot: root, now: () => currentTime,
+    usageRequest: async () => {
+      requests += 1;
+      return requests === 1 ? new Response(JSON.stringify({ limits: [
+        { kind: "weekly_scoped", scope: { model: { display_name: "Fable" } }, percent: 73, resets_at: "2026-08-16T17:00:00.000Z" },
+      ] })) : new Response("PRIVATE_FAILURE", { status: 401 });
+    },
+  });
+  assert.equal((await reader()).limits[0].percent, 73);
+  fs.writeFileSync(credentialFile, "PRIVATE_REPLACEMENT_CREDENTIAL");
+  const changed = await reader();
+  assert.equal(requests, 2);
+  assert.equal(changed.available, false);
+  assert.deepEqual(changed.limits, []);
+  assert.equal(changed.retainedLimits, undefined);
+});

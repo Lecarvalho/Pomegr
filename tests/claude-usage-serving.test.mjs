@@ -34,7 +34,11 @@ test(`usage GETs serve committed sanitized Claude local usage (retained Fable: $
     homePolicy: { requestModelObservations: true, modelSelection: false, usageLimitActivity: { enabled: false } },
   };
   let remoteRequests = 0;
-  const reader = createClaudeUsageLimitsReader({
+  const profile = path.join(root, "profile");
+  fs.mkdirSync(profile);
+  fs.writeFileSync(path.join(profile, ".credentials.json"), "PRIVATE_CREDENTIAL");
+  const readerOptions = {
+    claudeConfigDir: profile,
     homeDir: root,
     usageSnapshotsRoot: root,
     now: () => now,
@@ -46,8 +50,12 @@ test(`usage GETs serve committed sanitized Claude local usage (retained Fable: $
         { kind: "weekly_scoped", scope: { model: { display_name: "Fable", private: "PRIVATE_MODEL" } }, percent: 73, resets_at: "2026-08-16T17:00:00.000Z", private: "PRIVATE_LIMIT" },
       ] }));
     },
-  });
-  if (retainFable) await reader();
+  };
+  let reader = createClaudeUsageLimitsReader(readerOptions);
+  if (retainFable) {
+    await reader();
+    reader = createClaudeUsageLimitsReader(readerOptions);
+  }
   now += 60_000;
   captureClaudeStatuslineUsage(localInput, { root, now: new Date(now) });
   let providerReads = 0;
