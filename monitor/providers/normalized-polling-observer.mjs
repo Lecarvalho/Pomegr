@@ -103,7 +103,7 @@ export function createNormalizedPollingObserver(options) {
     acquisitionFailures: 0,
   };
 
-  async function runHydration(localSessionId, prepared) {
+  async function runHydration(localSessionId, prepared, requested) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     let failureStage = "worker_yield";
@@ -125,7 +125,7 @@ export function createNormalizedPollingObserver(options) {
       failureStage = "acquire_normalize";
       let candidate;
       try {
-        candidate = await acquire(localSessionId, publisher, context);
+        candidate = await acquire(localSessionId, publisher, context, { requested });
       } finally {
         timings.acquisitionNormalization.record(monotonicNow() - acquisitionStartedAt);
       }
@@ -168,7 +168,7 @@ export function createNormalizedPollingObserver(options) {
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
       }
-      const task = runHydration(item.localSessionId, item.prepared);
+      const task = runHydration(item.localSessionId, item.prepared, item.requested);
       runningHydrations.set(item.localSessionId, task);
       void task.then((result) => {
         for (const resolve of item.waiters) resolve(result);
@@ -181,13 +181,14 @@ export function createNormalizedPollingObserver(options) {
 
   /**
    * @param {string} localSessionId
-   * @param {{prepared?: unknown, priority?: number, rerunIfActive?: boolean, wait?: boolean, sourceEventAt?: number}} [hydrationOptions]
+   * @param {{prepared?: unknown, priority?: number, rerunIfActive?: boolean, wait?: boolean, requested?: boolean, sourceEventAt?: number}} [hydrationOptions]
    */
   function enqueueHydration(localSessionId, {
     prepared,
     priority = 1,
     rerunIfActive = false,
     wait = false,
+    requested = false,
     sourceEventAt,
   } = {}) {
     if (stopped || signal?.aborted || typeof localSessionId !== "string" || !localSessionId) {
@@ -198,6 +199,7 @@ export function createNormalizedPollingObserver(options) {
     const pending = pendingHydrations.get(localSessionId);
     if (pending) {
       pending.priority = Math.min(pending.priority, priority);
+      pending.requested ||= requested;
       if (prepared !== undefined) pending.prepared = prepared;
       if (Number.isFinite(sourceEventAt)) {
         pending.sourceEventAt = Number.isFinite(pending.sourceEventAt)
@@ -214,6 +216,7 @@ export function createNormalizedPollingObserver(options) {
     pendingHydrations.set(localSessionId, {
       localSessionId,
       prepared,
+      requested,
       priority,
       sequence: queueSequence += 1,
       waiters: resolveWaiter ? [resolveWaiter] : [],
@@ -401,7 +404,7 @@ export function createNormalizedPollingObserver(options) {
       void refresh();
     },
     hydrate(localSessionId) {
-      return enqueueHydration(localSessionId, { priority: 0, wait: true });
+      return enqueueHydration(localSessionId, { priority: 0, wait: true, requested: true, rerunIfActive: true });
     },
     listSessions: list,
     stop,

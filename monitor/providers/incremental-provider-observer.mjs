@@ -111,7 +111,7 @@ export function createIncrementalProviderObserver(options = {}) {
     }
   }
 
-  async function acquire(localSessionId, publisher, preparedSources) {
+  async function acquire(localSessionId, publisher, preparedSources, { requested = false } = {}) {
     const source = preparedSources instanceof Map
       ? preparedSources.get(localSessionId) || null
       : await resolveSource(localSessionId);
@@ -120,6 +120,10 @@ export function createIncrementalProviderObserver(options = {}) {
     indexSource(localSessionId, source);
     const sourceFingerprint = fingerprint(providerId, localSessionId, source.identity);
     let entry = ingestors.get(localSessionId);
+    const checkpoint = (!entry || requested) && typeof publisher?.checkpointFor === "function" ? publisher.checkpointFor(localSessionId) : null;
+    // A cursor can outlive its committed L1 snapshot. Reframe on demand after
+    // eviction; routine reconciliation must not churn the bounded history cache.
+    if (requested && entry && typeof publisher?.checkpointFor === "function" && !checkpoint) entry = null;
     if (!entry) {
       const sourceRef = { file: source.file, size: source.size, suffixDigest: source.suffixDigest || "" };
       const ingestor = createIncrementalJsonlIngestor({
@@ -136,7 +140,6 @@ export function createIncrementalProviderObserver(options = {}) {
         reduce(state) { return { completeRecords: state.completeRecords + 1 }; },
         yieldControl,
       });
-      const checkpoint = typeof publisher?.checkpointFor === "function" ? publisher.checkpointFor(localSessionId) : null;
       if (checkpoint?.fingerprint === sourceFingerprint) {
         ingestor.restore({ identity: sourceFingerprint, completeOffset: checkpoint.completeOffset });
       }

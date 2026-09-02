@@ -384,6 +384,16 @@ cannot reverse it. Unchanged silence creates no new candidate or response revisi
 - Selecting any known uncached historical row queues hydration for that one session. The
   API immediately returns its safe catalog identity with loading readiness, and the UI
   shows the session skeleton until a committed revision is ready.
+- A known selection is pinned before hydration so its first committed snapshot survives
+  competing background commits until the browser can receive it. Switching selections
+  releases the previous historical pin, including a selection still awaiting hydration.
+- Explicit hydration carries its requested status through queue coalescing and retains a
+  serialized follow-up if acquisition is already running. For the generic incremental
+  observer used by Claude, a private cursor is not proof that the L1 snapshot still exists:
+  when the scoped checkpoint lookup finds no committed source, requested hydration rebuilds
+  from complete source records. Unchanged retained sessions and ordinary background
+  reconciliation do not rebuild evicted history solely to refill the cache. Missing
+  or incomplete sources remain loading; failed normalization can retry without a source append.
 - Home never schedules history work older than seven days. Shorter provider windows still
   filter their own correlation inputs, while provider usage-limit values remain an
   independent committed domain.
@@ -482,6 +492,12 @@ catalog identity and loading readiness while asynchronous hydration proceeds.
 `/api/home` retains its committed response and provider-limit revision contract. Any correlation consumer must match that revision to the centralized usage snapshot before combining them. The personal Home page consumes neither domain; removing its polling does not change cache-only GET serving, backend derivation, last-known-good retention, or revision semantics.
 
 Historical session state never receives current Git state or current usage limits.
+
+Session publications allocate revisions from a store-wide monotonic sequence. Evicting
+and rebuilding a session cannot reuse a revision still held by a client and incorrectly
+return `204`. Checkpoint restoration preserves its recorded revision and advances the
+sequence floor; identical retained candidates do not advance their revision. This adds
+no per-session revision ledger, checkpoint fields, or browser-visible source metadata.
 
 Usage refresh failures retain the last known-good provider values. The public refresh
 state may include only the normalized `authentication_required`, `rate_limited`,

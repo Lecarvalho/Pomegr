@@ -62,6 +62,7 @@ export class SessionObservationStore {
   #touches = new Map();
   #pinned = new Set();
   #bytes = 0;
+  #revision = 0;
 
   constructor({
     validateCandidate = () => true,
@@ -164,7 +165,8 @@ export class SessionObservationStore {
       if (candidate.pinned === true) this.#pinned.add(normalized.qualifiedId);
       return Object.freeze({ accepted: true, snapshot: previous, reason: null, unchanged: true });
     }
-    const revision = preserveRevision ? normalized.revision : (previous?.revision ?? 0) + 1;
+    // Eviction must not recycle a revision still held by a polling client.
+    const revision = preserveRevision ? normalized.revision : this.#revision + 1;
     if (previous && preserveRevision && revision < previous.revision) {
       return Object.freeze({ accepted: false, snapshot: null, reason: "rejected" });
     }
@@ -174,6 +176,7 @@ export class SessionObservationStore {
       sizeBytes: Buffer.byteLength(normalized.serializedState),
     });
     if (snapshot.sizeBytes > this.maxBytes) return Object.freeze({ accepted: false, snapshot: null, reason: "rejected" });
+    this.#revision = Math.max(this.#revision, revision);
 
     // Copy-on-write makes one complete revision visible at a time to all readers.
     const entries = new Map(this.#entries);

@@ -108,3 +108,14 @@ test("does not advance a revision for an identical committed candidate", () => {
   assert.strictEqual(second.snapshot, first.snapshot);
   assert.equal(store.stats().pinnedEntries, 1);
 });
+
+test("recovered entries never reuse revisions after eviction or checkpoint restore", () => {
+  const store = new SessionObservationStore({ maxEntries: 1 });
+  const restored = store.restore(candidate("claude", "old", 1, { revision: 7 }));
+  store.publish(candidate("codex", "other", 1));
+  assert.equal(store.get("claude", "old"), null);
+  const recovered = store.publish(candidate("claude", "old", 1));
+  assert.ok(recovered.snapshot.revision > restored.snapshot.revision);
+  const unchanged = store.publish(candidate("claude", "old", 1));
+  assert.equal(unchanged.snapshot.revision, recovered.snapshot.revision);
+});

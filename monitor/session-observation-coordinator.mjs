@@ -492,30 +492,36 @@ export function createSessionObservationCoordinator(options = {}) {
         : catalog.find((entry) => entry.isLive)?.id || catalog[0]?.id || "";
       if (!selectedId) return Object.freeze({ status: "empty", selectedId: "", catalogEntry: null, snapshot: null });
       const snapshot = store.getByQualifiedId(selectedId);
+      const catalogEntry = catalog.find((entry) => entry.id === selectedId) || null;
+      if (snapshot || catalogEntry) {
+        const selected = parseProviderSessionId(selectedId);
+        // Pin a known selection before hydration so other commits cannot evict
+        // its first snapshot before the next browser poll receives it.
+        store.setPinned(selected.providerId, selected.localSessionId, true);
+        if (selectedPinnedId && selectedPinnedId !== selectedId) {
+          const previous = parseProviderSessionId(selectedPinnedId);
+          const previousSnapshot = store.getByQualifiedId(selectedPinnedId);
+          if (previous && previousSnapshot?.evidence?.historical !== false) {
+            store.setPinned(previous.providerId, previous.localSessionId, false);
+          }
+        }
+        selectedPinnedId = selectedId;
+      }
       if (!snapshot) {
         qa.cacheMisses += 1;
         hydrate(selectedId);
         return Object.freeze({
           status: "loading",
           selectedId,
-          catalogEntry: catalog.find((entry) => entry.id === selectedId) || null,
+          catalogEntry,
           snapshot: null,
         });
       }
       qa.cacheHits += 1;
-      if (selectedPinnedId && selectedPinnedId !== selectedId) {
-        const previous = parseProviderSessionId(selectedPinnedId);
-        const previousSnapshot = store.getByQualifiedId(selectedPinnedId);
-        if (previous && previousSnapshot?.evidence?.historical !== false) {
-          store.setPinned(previous.providerId, previous.localSessionId, false);
-        }
-      }
-      store.setPinned(snapshot.providerId, snapshot.localSessionId, true);
-      selectedPinnedId = selectedId;
       return Object.freeze({
         status: Number(revision) === snapshot.revision ? "unchanged" : "ready",
         selectedId,
-        catalogEntry: catalog.find((entry) => entry.id === selectedId) || null,
+        catalogEntry,
         snapshot,
       });
     },
