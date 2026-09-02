@@ -160,6 +160,12 @@ references, model/comparison identities, diagnostics, paths, prompts, summaries,
 commands, and output never enter response or checkpoint data. Report-local task
 selection consumes already normalized per-agent task feeds.
 
+## Cache-lifetime policy normalization
+
+U2 resolves Codex's documented `30m+` minimum only from each request's recognized recorded model, using the adapter-owned family allowlist documented in [Metrics](METRICS.md#cache-events). Missing or unsupported models stay unavailable; neither current settings nor a parent agent supplies a missing request model. D aggregates retained resolved lifetimes independently per normalized agent before the presentation feed is capped. F formats `30m+` as `cache TTL ≥30m` in the existing List and Tree metadata, without provider-schema logic or inline policy documentation. Minimum-only values never establish an expiry threshold.
+
+The enum extension remains compatible with checkpoint version 1. Privacy-valid normalized evidence may preserve `30m+`; legacy `null` values remain unknown until ordinary background acquisition and normalization produce a complete replacement. Startup hydration, last-known-good retention, atomic commits, original observation timestamps, revision semantics, checkpoint privacy filters, endpoint cache-only serving, readiness, and UI polling are unchanged. No cache TTL network requests, credentials, raw provider fields, or extra browser fields are introduced.
+
 ## Cache tiers and bounds
 
 | Tier | Authority and contents | Current default bound |

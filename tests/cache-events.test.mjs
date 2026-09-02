@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCacheEvents, CACHE_EVENT_RULES } from "../monitor/cache-events.mjs";
+import { buildCacheEvidence, buildCacheEvents, CACHE_EVENT_RULES } from "../monitor/cache-events.mjs";
 
 const agent = { id: "primary", label: "Primary agent", role: "orchestrator" };
 
@@ -37,6 +37,20 @@ function snapshot(id, timestamp, {
     cacheMessageChangeSequence,
   };
 }
+
+test("preserves a documented minimum without inferring expiry at any elapsed gap", () => {
+  for (const gapMinutes of [31, 25 * 60]) {
+    for (const cacheMissProviderStatus of [null, "previous_cache_entry_unavailable"]) {
+      const start = Date.parse("2026-09-02T10:00:00.000Z");
+      const result = buildCacheEvidence({ sessionId: "codex:minimum", agents: [agent], enabled: true, usageSnapshots: [
+        snapshot("before", new Date(start).toISOString(), { input: 1_000, cacheRead: 9_000, cacheLifetime: "30m+" }),
+        snapshot("after", new Date(start + gapMinutes * 60_000).toISOString(), { input: 1_000, cacheWrite: 9_000, cacheLifetime: "30m+", cacheMissProviderStatus }),
+      ] });
+      assert.equal(result.refillRequests[0].observation.previousCacheLifetime, "30m+");
+      assert.equal(result.feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, null);
+    }
+  }
+});
 
 test("projects only the fixed message-change sequence onto its qualifying occurrence", () => {
   const feed = buildCacheEvents({

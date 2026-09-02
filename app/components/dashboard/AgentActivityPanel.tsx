@@ -179,7 +179,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
           <div className="agentMeta">
             {assignment && <span className="agentMetaIdentity" dir="auto">{agent.label}</span>}
             {workflow && <span className="workflowProvenance" dir="auto">{workflow.name}{phase ? ` · ${phase.label}` : ""}</span>}
-            <span className="agentMetaKind">{agent.role || "unknown"}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaCacheLifetime" title="Provider-recorded cache lifetimes observed across this agent's requests.">{cacheLifetimeLabel(agent.cacheLifetime)}</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span>
+            <span className="agentMetaKind">{agent.role || "unknown"}</span><span className="agentMetaRuntime">{agent.model} · {agent.effort} effort</span><span className="agentMetaCacheLifetime">{cacheLifetimeLabel(agent.cacheLifetime)}</span><span className="agentMetaTools">{agent.toolCalls} tool {agent.toolCalls === 1 ? "call" : "calls"}</span>
           </div>
         </div>
         <div className="agentTokens" title="Latest non-zero provider usage snapshot for this agent; not cumulative token use."><strong>{compactNumber(agent.tokens.total)}</strong><span>{historical ? "final context" : "latest context"}</span></div>

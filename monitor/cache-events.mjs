@@ -19,6 +19,8 @@ const CACHE_LIFETIME_MS = new Map([
   // A mixed request is fully expired only after its longest-lived entry expires.
   ["mixed", 60 * 60 * 1_000],
 ]);
+// A minimum can be displayed, but cannot establish an expiry threshold.
+const CACHE_LIFETIMES = new Set([...CACHE_LIFETIME_MS.keys(), "30m+"]);
 const CACHE_TOOL_CHANGE_CAUSES = new Map([
   ["remote_control_connected", Object.freeze([
     Object.freeze({ tool: "RemoteTrigger", kind: "added" }),
@@ -274,7 +276,7 @@ export function buildCacheEvidence({
       group,
       model,
       parts,
-      cacheLifetime: CACHE_LIFETIME_MS.has(snapshot.cacheLifetime) ? snapshot.cacheLifetime : null,
+      cacheLifetime: CACHE_LIFETIMES.has(snapshot.cacheLifetime) ? snapshot.cacheLifetime : null,
     });
   }
 

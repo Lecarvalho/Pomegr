@@ -47,20 +47,12 @@ function groupToolEvidence(toolCalls) {
 }
 
 function aggregateCacheLifetime(snapshots) {
-  let sawFiveMinutes = false;
-  let sawOneHour = false;
+  const lifetimes = new Set();
   for (const snapshot of snapshots) {
-    if (snapshot.cacheLifetime === "5m") sawFiveMinutes = true;
-    else if (snapshot.cacheLifetime === "1h") sawOneHour = true;
-    else if (snapshot.cacheLifetime === "mixed") {
-      sawFiveMinutes = true;
-      sawOneHour = true;
-    }
+    if (snapshot.cacheLifetime === "mixed") return "mixed";
+    if (["5m", "1h", "30m+"].includes(snapshot.cacheLifetime)) lifetimes.add(snapshot.cacheLifetime);
   }
-  if (sawFiveMinutes && sawOneHour) return "mixed";
-  if (sawOneHour) return "1h";
-  if (sawFiveMinutes) return "5m";
-  return null;
+  return lifetimes.size > 1 ? "mixed" : lifetimes.values().next().value || null;
 }
 
 export function buildProviderTokenUsage(agents, usageSnapshots, startedAt, updatedAt, sessionId, compactions) {

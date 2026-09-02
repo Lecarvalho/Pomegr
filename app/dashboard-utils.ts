@@ -199,7 +199,7 @@ export function agentTreeRows(agents: Agent[]) {
 }
 
 export function cacheLifetimeLabel(value: CacheLifetime | null | undefined) {
-  return `cache TTL ${value || "unavailable"}`;
+  return `cache TTL ${value === "30m+" ? "≥30m" : value || "unavailable"}`;
 }
 
 export function agentAssignment(agent: Pick<Agent, "assignment" | "label">) {

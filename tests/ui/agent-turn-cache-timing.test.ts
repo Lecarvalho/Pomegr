@@ -57,4 +57,12 @@ describe("agent turn and cache timing evidence", () => {
       state: "unavailable",
     });
   });
+
+  it("never turns a documented minimum into a nearing or elapsed warning", () => {
+    const requests = feed([request("minimum", "2026-08-08T12:00:00.000Z", "30m+", 200)]);
+    for (const minutes of [29, 30, 31, 25 * 60]) {
+      const now = Date.parse("2026-08-08T12:00:00.000Z") + minutes * 60_000;
+      expect(deriveAgentTurnCacheEvidence(requests, "primary", now, false).state).toBe("unavailable");
+    }
+  });
 });

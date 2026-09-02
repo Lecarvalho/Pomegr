@@ -24,6 +24,24 @@ function dashboardState(): MonitorState {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); window.localStorage.clear(); });
 
 describe("workflow activity and agent tree view", () => {
+  it.each(["list", "tree"] as const)("shows per-agent cache minimums in %s without inline documentation", (viewMode) => {
+    const agents = [
+      worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", cacheLifetime: "30m+" }),
+      worker({ id: "child", label: "Child", cacheLifetime: "30m+" }),
+      worker({ id: "unknown", label: "Unknown", cacheLifetime: null }),
+      worker({ id: "claude", label: "Recorded", cacheLifetime: "1h" }),
+    ].map((agent) => ({ ...agent, workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null }));
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:ttl" viewMode={viewMode} workflows={[]} /></LiveClockProvider>);
+    const labels = screen.getAllByText("cache TTL ≥30m");
+    expect(labels).toHaveLength(2);
+    labels.forEach((label) => expect(label).not.toHaveAttribute("title"));
+    expect(screen.getByText("cache TTL unavailable")).toBeInTheDocument();
+    expect(screen.getByText("cache TTL 1h")).toBeInTheDocument();
+    const rowRole = viewMode === "list" ? "listitem" : "treeitem";
+    expect(screen.getByRole(rowRole, { name: /Primary.*cache TTL ≥30m/ })).toBeInTheDocument();
+    expect(screen.getByRole(rowRole, { name: /Child.*cache TTL ≥30m/ })).toBeInTheDocument();
+  });
+
   it("keeps workflow activity before the dashboard grid and summary-only", async () => {
     const state = dashboardState();
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input) === "/api/sessions" ? { sessions: [] } : state), { status: 200 })));

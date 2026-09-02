@@ -77,11 +77,12 @@ test("exposes only allowlisted request cache lifetimes", () => {
     snapshot("five", "primary", "2026-08-10T10:00:00.000Z", { input: 1, cacheLifetime: "5m" }),
     snapshot("hour", "primary", "2026-08-10T10:01:00.000Z", { input: 1, cacheLifetime: "1h" }),
     snapshot("mixed", "child", "2026-08-10T10:02:00.000Z", { input: 1, cacheLifetime: "mixed" }),
+    snapshot("minimum", "primary", "2026-08-10T10:02:30.000Z", { input: 1, cacheLifetime: "30m+" }),
     snapshot("private", "child", "2026-08-10T10:03:00.000Z", { input: 1, cacheLifetime: "PRIVATE_TTL" }),
   ];
   assert.deepEqual(
     buildRequestSnapshots({ sessionId: "session", agents, usageSnapshots }).items.map(({ cacheLifetime }) => cacheLifetime),
-    ["5m", "1h", "mixed", null],
+    ["5m", "1h", "mixed", "30m+", null],
   );
 });
 

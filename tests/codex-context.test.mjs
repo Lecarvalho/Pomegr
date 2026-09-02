@@ -8,6 +8,7 @@ import { evaluateEfficiencySignals } from "../monitor/efficiency-signals.mjs";
 import { parseCodexContextRecords } from "../monitor/providers/codex-context.mjs";
 import { createCodexLiveState } from "../monitor/providers/codex-live-state.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
+import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -66,6 +67,33 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
   }]);
   assert.equal(usageSnapshots[0].input + usageSnapshots[0].output + usageSnapshots[0].cacheWrite + usageSnapshots[0].cacheRead, 1_620);
   assert.equal(JSON.stringify(usageSnapshots).includes("total_token_usage"), false);
+});
+
+test("resolves the documented cache minimum only for recognized recorded model families", () => {
+  for (const model of ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-pro", "gpt-5.6-cyber", "gpt-5.6-2026-08-25", "gpt-5.6-sol-2026-08-25", "gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.7", "gpt-5.6-custom", "custom/gpt-5.6", "", null]) {
+    const { usageSnapshots } = parseCodexContextRecords([
+      { type: "turn_context", payload: { model } },
+      tokenCount("2026-09-02T10:00:00.000Z", { input_tokens: 100, output_tokens: 10 }),
+    ]);
+    const supported = typeof model === "string" && /^gpt-5\.6(?:$|-(?:sol|terra|luna|pro|cyber|2026))/.test(model);
+    assert.equal(usageSnapshots[0].cacheLifetime, supported ? "30m+" : null, String(model));
+  }
+});
+
+test("resolves cache lifetime per request without backfilling missing models or retaining an invalid model", () => {
+  const contexts = [
+    { type: "turn_context", payload: {} },
+    { type: "turn_context", payload: { model: "gpt-5.6-sol" } },
+    { type: "turn_context", payload: { turn_id: "same-model" } },
+    { type: "thread_settings_updated", payload: { settings: { model: "gpt-5.5" } } },
+    { type: "thread_settings", payload: { model: "gpt-5.6-luna" } },
+    { type: "turn_context", payload: { model: null } },
+  ];
+  const { usageSnapshots } = parseCodexContextRecords(contexts.flatMap((context, index) => [
+    context,
+    tokenCount(`2026-09-02T10:0${index}:00.000Z`, { input_tokens: 100 + index, output_tokens: 10 }),
+  ]));
+  assert.deepEqual(usageSnapshots.map(({ cacheLifetime }) => cacheLifetime), [null, "30m+", "30m+", null, "30m+", null]);
 });
 
 test("preserves bounded comparable usage and marks missing intermediate evidence", () => {
@@ -399,8 +427,8 @@ test("integrates primary and child latest snapshots into all-agent context", asy
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "10");
   await mkdir(directory, { recursive: true });
-  const parent = (await readProviderFixture("codex/parent.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic");
-  const child = (await readProviderFixture("codex/child.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic");
+  const parent = (await readProviderFixture("codex/parent.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic").replaceAll("gpt-synthetic", "gpt-5.6-sol");
+  const child = (await readProviderFixture("codex/child.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic").replaceAll("gpt-synthetic", "gpt-5.6-luna");
   await writeFile(path.join(directory, "rollout-parent.jsonl"), parent, "utf8");
   await writeFile(path.join(directory, "rollout-child.jsonl"), child, "utf8");
   await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({
@@ -429,6 +457,17 @@ test("integrates primary and child latest snapshots into all-agent context", asy
   assert.equal(state.metrics.tokens.output, 150);
   assert.equal(state.metrics.tokens.cacheWrite, 50);
   assert.equal(state.metrics.tokens.cacheRead, 600);
+  assert.deepEqual(state.agents.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
+  assert.deepEqual(state.metrics.tokens.requestSnapshots.items.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
+  assertNoPrivateFixtureSentinels(state, "Codex TTL public state");
+  const isolated = structuredClone(evidence);
+  isolated.usageSnapshots.find(({ actorId }) => actorId !== "primary").cacheLifetime = null;
+  isolated.usageSnapshots.push({ ...isolated.usageSnapshots[0], dedupeId: "later-unknown-model", timestamp: "2026-08-10T13:30:00.000Z", model: "unknown", cacheLifetime: null });
+  const isolatedState = monitorStateFromProviderEvidence("codex", isolated);
+  assert.equal(isolatedState.agents.find(({ id }) => id === "primary").cacheLifetime, "30m+");
+  assert.equal(isolatedState.agents.find(({ id }) => id !== "primary").cacheLifetime, null);
+
+  assert.deepEqual(parseProviderSessionEvidence(evidence).usageSnapshots.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
   assertNoPrivateFixtureSentinels(evidence, "Codex context provider evidence");
   assert.doesNotMatch(JSON.stringify(evidence), /total_token_usage|900000|980000/);
 });

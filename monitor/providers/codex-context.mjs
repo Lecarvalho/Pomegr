@@ -35,10 +35,18 @@ function isTokenCountRecord(record) {
 
 function modelFromContextRecord(record) {
   const type = normalizedType(record?.type);
-  if (!["turncontext", "threadsettings", "threadsettingsupdated"].includes(type)) return "";
+  if (!["turncontext", "threadsettings", "threadsettingsupdated"].includes(type)) return null;
   const payload = record?.payload && typeof record.payload === "object" ? record.payload : {};
   const settings = payload.settings && typeof payload.settings === "object" ? payload.settings : payload;
-  return boundedModel(settings.model);
+  return Object.hasOwn(settings, "model") ? boundedModel(settings.model) : null;
+}
+
+function cacheLifetimeForModel(model) {
+  // Documented model-policy minimum, not a recorded expiry or an API retention
+  // setting. Keep the family allowlist explicit; unknown future models fail closed.
+  return /^gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+    ? "30m+"
+    : null;
 }
 
 function recordTimestamp(record, fallbackTimestamp) {
@@ -268,7 +276,7 @@ export function parseCodexContextRecords(records, options = {}) {
       turnHasUsage = false;
       turnId = boundedIdentity(record?.payload?.turn_id ?? record?.payload?.turnId) || turnId;
     }
-    model = modelFromContextRecord(record) || model;
+    model = modelFromContextRecord(record) ?? model;
     const timestamp = recordTimestamp(record, options.fallbackTimestamp);
     const normalizedUsage = usageFromRecord(record);
     if (normalizedUsage && timestamp) {
@@ -302,7 +310,7 @@ export function parseCodexContextRecords(records, options = {}) {
         model,
         comparisonGroup,
         cacheComparable: true,
-        cacheLifetime: null,
+        cacheLifetime: cacheLifetimeForModel(model),
         cacheMissProviderStatus: null,
       };
       snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));

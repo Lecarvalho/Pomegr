@@ -54,6 +54,21 @@ test("writes atomic privacy-filtered checkpoint payloads and restores them after
   assert.equal(l1.get("provider-a", "session-1").source.completeOffset, 42);
 });
 
+test("round-trips normalized minimum lifetimes and preserves legacy unavailable values", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  const committed = snapshot("codex", "minimum", 3);
+  committed.evidence.usageSnapshots = [
+    { actorId: "primary", cacheLifetime: "30m+" },
+    { actorId: "child", cacheLifetime: null },
+  ];
+  await checkpoints.write(committed);
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  assert.equal(loaded.records[0].revision, 3);
+  assert.deepEqual(loaded.records[0].evidence.usageSnapshots, committed.evidence.usageSnapshots);
+});
+
 test("startup restore can skip stale checkpoints before public projection", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory });

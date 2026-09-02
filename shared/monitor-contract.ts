@@ -53,8 +53,8 @@ export type AgentRole =
   | "compaction"
   | "unknown";
 
-/** Provider-recorded prompt-cache lifetime evidence, normalized monitor-side. */
-export type CacheLifetime = "5m" | "1h" | "mixed";
+/** Normalized cache lifetime; 30m+ is a documented model-policy minimum, not a recorded expiry. */
+export type CacheLifetime = "5m" | "1h" | "mixed" | "30m+";
 
 /** Readiness describes the publication state of normalized evidence, not support. */
 export type Readiness = "loading" | "ready" | "unavailable";
@@ -220,7 +220,7 @@ export type CacheMessageChangeSequence = "post_tool_task_notification_resume";
 export type CacheLifetimeInference = {
   cause: "cache_lifetime_elapsed";
   /** Lifetime recorded on the preceding comparable request. */
-  cacheLifetime: CacheLifetime;
+  cacheLifetime: Exclude<CacheLifetime, "30m+">;
   elapsedMs: number;
 };
 

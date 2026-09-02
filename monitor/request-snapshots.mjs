@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 const MAX_REQUEST_SNAPSHOTS_PER_AGENT = 100;
-const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed"]);
+const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed", "30m+"]);
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;

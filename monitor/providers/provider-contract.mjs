@@ -364,7 +364,7 @@ const evidenceAgent = z.object({
 const evidenceUsageSnapshot = z.object({
   dedupeId: evidenceId, actorId: evidenceId, timestamp: evidenceTimestamp, input: evidenceCount, output: evidenceCount, cacheWrite: evidenceCount, cacheRead: evidenceCount,
   reasoningOutput: evidenceCount.optional(), totalTokens: evidenceCount.optional(), modelContextWindow: evidenceCount.nullable().optional(), model: evidenceText(256).optional(),
-  comparisonGroup: evidenceCount.optional(), cacheComparable: z.boolean().optional(), cacheLifetime: z.enum(["5m", "1h", "mixed"]).nullable().optional(),
+  comparisonGroup: evidenceCount.optional(), cacheComparable: z.boolean().optional(), cacheLifetime: z.enum(["5m", "1h", "mixed", "30m+"]).nullable().optional(),
   cacheMissReason: z.enum(["model_changed", "system_changed", "tools_changed", "messages_changed"]).nullable().optional(),
   cacheMissDiagnosticState: z.enum(["absent", "recognized_reason", "previous_cache_entry_unavailable", "inconclusive"]).optional(),
   cacheMissProviderStatus: z.literal("previous_cache_entry_unavailable").nullable().optional(), cacheToolChangeCause: z.literal("remote_control_connected").nullable().optional(),

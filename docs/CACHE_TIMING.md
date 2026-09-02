@@ -35,8 +35,10 @@ Outside the nearing and elapsed states, **Last model turn** remains ordinary
 text without an underline or popover. Pomegr adds the disclosure affordance only
 when it has cache timing that needs attention.
 
-Mixed, missing, malformed, or otherwise unavailable lifetime evidence does not
-produce a warning. Historical sessions show recorded request and cache-touch
+Mixed, minimum-only (`30m+`), missing, malformed, or otherwise unavailable lifetime
+evidence does not produce a warning. Codex's `cache TTL ≥30m` label is a documented
+model-policy minimum, not an expiry deadline; see [cache lifetime resolution](METRICS.md#cache-events).
+Historical sessions show recorded request and cache-touch
 times without a live warning state.
 
 An elapsed lifetime is not proof that a cache entry expired. Provider retention

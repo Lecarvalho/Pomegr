@@ -64,6 +64,15 @@ test("renders the approved focused evidence sections and report-local aliases", 
   assert.equal(sessionReportFilename(state(), generatedAt), "pomegr-repair-the-parser-2026-08-31.md");
 });
 
+test("formats a normalized cache minimum without presenting it as an exact TTL", () => {
+  const observed = state();
+  observed.agents[0].cacheLifetime = "30m+";
+  observed.metrics.tokens.reportEvidence.cache.transitions[0].previousCacheLifetime = "30m+";
+  const report = buildSessionReport(observed, generatedAt);
+  assert.equal(report.match(/≥30m/g)?.length, 2);
+  assert.doesNotMatch(report, /30m\+/);
+});
+
 test("keeps compaction current values unavailable and preserves only exact snapshot drops", () => {
   const report = buildSessionReport(state(), generatedAt);
   assert.match(report, /Automatic compaction.*100,000.*Unavailable/); assert.match(report, /Manual compaction.*Unavailable/);

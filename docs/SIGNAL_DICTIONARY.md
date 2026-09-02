@@ -70,6 +70,8 @@ Class: bounded cache-expiry inference attached to refill evidence.
 
 Pomegr emits this code only when there is no recognized direct divergence reason, the preceding request has a resolved `5m`, `1h`, or `mixed` cache lifetime, the full applicable threshold has elapsed, and either the provider reports `previous_cache_entry_unavailable` or the affected request contains no cache-miss diagnostic. The full threshold is five minutes for `5m` and one hour for `1h` or `mixed`.
 
+A documented minimum such as Codex's `30m+` is not an expiry threshold and never qualifies for this inference, even after 24 hours.
+
 What it means: the preceding request's resolved cache-lifetime threshold elapsed before the affected comparable request, and that request met Pomegr's possible full-refill thresholds.
 
 What it does not prove: that expiry was the provider's actual cause, when the provider removed an entry, that every cached segment expired, or that the provider charged any amount. Pomegr always labels this conclusion as an inference.

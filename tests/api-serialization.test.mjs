@@ -218,8 +218,8 @@ async function syntheticProviders(context) {
   const rolloutRoot = path.join(codexRoot, "sessions", "2026", "08", "10");
   const codexParentFile = path.join(rolloutRoot, "rollout-parent.jsonl");
   const codexChildFile = path.join(rolloutRoot, "rollout-child.jsonl");
-  await writeFixture(codexParentFile, "codex/parent.jsonl", replacements);
-  await writeFixture(codexChildFile, "codex/child.jsonl", replacements);
+  await writeFixture(codexParentFile, "codex/parent.jsonl", [...replacements, ["gpt-synthetic", "gpt-5.6-sol"]]);
+  await writeFixture(codexChildFile, "codex/child.jsonl", [...replacements, ["gpt-synthetic", "gpt-5.6-luna"]]);
   await appendFile(codexParentFile, `${[
     {
       timestamp: "2026-08-10T13:00:20.000Z",
@@ -315,6 +315,8 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   }
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  assert.deepEqual(codexState.agents.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
+  assert.deepEqual(codexState.metrics.tokens.requestSnapshots.items.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
   const home = JSON.parse(serialized[3]);
   const aggregates = JSON.parse(serialized[4]);
   const usageLimits = JSON.parse(serialized[5]);
@@ -391,7 +393,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(state.agents.flatMap((agent) => agent.executionTasks || []).every((task) => allowedWorkKinds.has(task.workKind)), true);
     for (const observedAgent of state.agents) {
       assert.equal(Object.hasOwn(observedAgent, "cacheLifetime"), true);
-      assert.equal(observedAgent.cacheLifetime === null || /^(5m|1h|mixed)$/.test(observedAgent.cacheLifetime), true);
+      assert.equal(observedAgent.cacheLifetime === null || /^(5m|1h|mixed|30m\+)$/.test(observedAgent.cacheLifetime), true);
     }
     assert.equal(state.metrics.tokens.contextHistory.buckets.at(-1).total, state.metrics.tokens.allAgents);
     assert.equal(Array.isArray(state.metrics.tokens.contextHistory.boundaries), true);
@@ -470,7 +472,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.deepEqual(Object.keys(item).sort(), [
         "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
       ]);
-      assert.equal(item.cacheLifetime === null || /^(5m|1h|mixed)$/.test(item.cacheLifetime), true);
+      assert.equal(item.cacheLifetime === null || /^(5m|1h|mixed|30m\+)$/.test(item.cacheLifetime), true);
       assert.equal(item.totalTokens, item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens);
       assert.match(item.id, /^request-[a-f0-9]{16}$/);
     }
