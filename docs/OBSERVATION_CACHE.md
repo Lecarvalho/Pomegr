@@ -130,7 +130,7 @@ URL, opaque notice/incident identities, and bounded plain-text incident labels, 
 impact, timestamps and validated official incident URLs. No raw bodies, component schemas,
 provider-native IDs outside public incident URLs, arbitrary URLs, fetch errors, credentials,
 or transcript metadata cross this boundary. Public status reports can lag actual failures;
-the normal UI label is **No reported issues**, never a guarantee of availability.
+the normal UI label is **Reported healthy**, never a guarantee of availability.
 
 The official source and component-filter details are documented in `docs/PROVIDER_STATUS.md`.
 

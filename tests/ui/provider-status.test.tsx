@@ -155,7 +155,7 @@ describe("provider service status", () => {
 
   it("provides compact keyboard-accessible details for checked time and the official status link", () => {
     render(<ProviderStatusDetails status={provider({ status: "operational", incidents: [], incidentKey: null })} compact />);
-    expect(screen.getByText("No reported issues")).toBeInTheDocument();
+    expect(screen.getByText("Reported healthy")).toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "Codex provider service status details" });
     expect(trigger).toHaveClass("dottedInfoPopoverTrigger");
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });

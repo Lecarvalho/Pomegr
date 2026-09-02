@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { UsageLimitsView } from "../../app/components/command-center/CommandViews";
 
@@ -41,18 +41,25 @@ vi.mock("../../app/provider-status-client", () => ({
   }),
 }));
 
-describe("usage provider health footer", () => {
-  it("keeps the account update in the header and moves provider health into a semantic footer", () => {
+describe("usage provider health chip", () => {
+  it("places health beside the provider name and keeps status details accessible", () => {
     const { container } = render(<UsageLimitsView />);
     const panel = container.querySelector(".commandUsageProvider");
     const header = panel?.querySelector(".commandUsageProviderHead");
-    const footer = panel?.querySelector(".commandUsageProviderHealth");
+    const trigger = within(header as HTMLElement).getByRole("button", { name: "Codex provider service status details: Reported healthy" });
 
-    expect(header).toHaveTextContent(/^CodexUpdated /);
-    expect(header?.querySelector("details")).toBeNull();
-    expect(footer).toHaveAttribute("data-health", "okay");
-    expect(footer).toHaveTextContent("Provider health");
-    expect(footer).toHaveTextContent("No reported issues");
-    expect(screen.getByLabelText("Codex provider service status details")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Codex", level: 2 }).nextElementSibling).toContainElement(trigger);
+    expect(header).toHaveTextContent("Updated ");
+    expect(trigger).toHaveTextContent("Reported healthy");
+    expect(panel?.querySelector(":scope > footer")).toBeNull();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.focus(trigger);
+    const popover = screen.getByRole("dialog");
+    expect(popover).toHaveTextContent("Last checked");
+    expect(popover).toHaveTextContent("Provider update");
+    expect(within(popover).getByRole("link", { name: "View status page; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

@@ -102,11 +102,13 @@
 .commandComingSoon h2 { margin: 12px 0 0; font-size: var(--text-sm); }
 .commandComingSoon p { max-width: 72ch; margin: 8px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
 .commandUsageProvider { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandUsageProviderHead { position: relative; min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--command-line); }
+.commandUsageProviderHead { position: relative; min-height: 48px; padding: 4px 15px; flex-wrap: wrap; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--command-line); }
+.commandUsageProviderIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
 .commandUsageProviderHead h2 { margin: 0; font-size: var(--text-xs); }
-.commandUsageProviderHead > span { color: var(--command-green); font: var(--text-xs)/1 var(--font-ui); }
+.commandUsageProviderHead > span { margin-left: auto; color: var(--command-green); font: var(--text-xs)/1 var(--font-ui); }
 @media (max-width: 760px) {
-  .commandUsageProviderHead { gap: 8px; padding-inline: 12px; }
+  .commandUsageProviderHead { gap: 4px 8px; padding-inline: 12px; }
+  .commandUsageProviderIdentity { gap: var(--space-2); }
   .commandUsageProviderHead h2 { flex-shrink: 0; }
 }
 .commandUsageRows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -123,14 +125,6 @@
 .commandUsageUnavailable { min-height: 110px; padding: 18px; display: flex; align-items: center; gap: 12px; color: var(--command-muted); }
 .commandUsageUnavailable p { margin: 0; font-size: var(--text-xs); }
 .commandUsageRefreshNote { margin: 0; padding: 9px 12px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); background: color-mix(in srgb, var(--command-amber) 8%, transparent); font-size: var(--text-xs); line-height: 1.5; }
-.commandUsageProviderHealth { min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--command-line); background: var(--command-panel-2); color: var(--command-muted); }
-.commandUsageProviderHealth > span { font: 500 var(--text-xs)/1.3 var(--font-ui); }
-.commandUsageProviderHealth[data-health="okay"] { background: var(--green-soft); color: var(--green); }
-.commandUsageProviderHealth[data-health="warning"] { background: var(--amber-soft); color: var(--amber); }
-.commandUsageProviderHealth[data-health="critical"] { background: var(--red-soft); color: var(--red); }
-@media (max-width: 760px) {
-  .commandUsageProviderHealth { min-height: 52px; padding-inline: 12px; }
-}
 .commandUsageCaution { padding: 12px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandRepositoryList { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandRepositoryRow { min-height: 76px; padding: 13px 15px; display: grid; grid-template-columns: minmax(220px, 1fr) 70px 70px 100px 140px; align-items: center; gap: 14px; }

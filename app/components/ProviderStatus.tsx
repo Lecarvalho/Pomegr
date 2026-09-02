@@ -6,7 +6,7 @@ import { ExternalLink } from "./ExternalLink";
 import styles from "./ProviderStatus.module.css";
 
 const STATUS_LABELS: Record<ProviderServiceStatus["status"], string> = {
-  operational: "No reported issues",
+  operational: "Reported healthy",
   degraded: "Degraded service",
   outage: "Service outage",
   maintenance: "Maintenance",
@@ -46,14 +46,14 @@ function ProviderStatusSymbol({ status }: { status: ProviderServiceStatus | unde
   </svg>;
 }
 
-export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean }) {
+export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false, chip = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean; chip?: boolean }) {
   const source = status?.source || "Provider";
   if (!status) return <ProviderStatusIndicator status={status} compact={compact} />;
   const label = statusLabel(status);
   const linkLabel = `View ${status.incidents.length ? "incident" : "status page"}`;
   return <DottedInfoPopover
-    ariaLabel={`${source} provider service status details${mobileIconOnly ? `: ${label}` : ""}`}
-    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}`}
+    ariaLabel={`${source} provider service status details${mobileIconOnly || chip ? `: ${label}` : ""}`}
+    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}${chip ? ` ${styles.chip} ${styles[providerStatusTone(status)]}` : ""}`}
     content={<>
       {mobileIconOnly && <p className={styles.mobileStatusLabel}>{label}</p>}
       <dl className={styles.detailList}><div><dt>Last checked</dt><dd>{timestamp(status.checkedAt)}</dd></div><div><dt>Provider update</dt><dd>{timestamp(status.updatedAt)}</dd></div></dl>

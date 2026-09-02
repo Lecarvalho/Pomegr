@@ -8,11 +8,18 @@
 .mobileSymbol, .mobileStatusLabel { display: none; }
 .details { min-width: 0; }
 .details :global(.dottedInfoPopoverTrigger) { display: inline-flex; align-items: center; min-height: var(--control-compact); }
+.chip :global(.dottedInfoPopoverTrigger) { border-radius: var(--control-radius); cursor: pointer; }
+.chip :global(.dottedInfoPopoverLabel) { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 6px; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: var(--control-radius); background: color-mix(in srgb, currentColor 4%, transparent); }
+.chip .indicator > span:last-child { color: var(--command-muted); }
+.chip :global(.dottedInfoPopoverTrigger:hover) :global(.dottedInfoPopoverLabel), .chip :global(.dottedInfoPopoverTrigger[aria-expanded="true"]) :global(.dottedInfoPopoverLabel) { background: color-mix(in srgb, currentColor 8%, transparent); }
+.chip :global(.dottedInfoPopoverLabel), .chip :global(.dottedInfoPopoverLabel) > * { text-decoration: none; }
 .dismiss:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.detailList { margin: 0; }
-.detailList > div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--space-2); }
+:global(.dottedInfoPopoverSurface):has(.detailList) { max-width: calc(100vw - 24px); }
+:global(.dottedInfoPopoverContent):has(.detailList) { max-width: none; }
+.detailList { display: grid; grid-template-columns: max-content max-content; column-gap: var(--space-2); margin: 0; }
+.detailList > div { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 .detailList dt { color: var(--command-faint); }
-.detailList dd { margin: 0; color: var(--command-ink); font-variant-numeric: tabular-nums; }
+.detailList dd { white-space: nowrap; margin: 0; color: var(--command-ink); font-variant-numeric: tabular-nums; }
 .noticeMeta a { color: var(--command-amber); text-underline-offset: 3px; }
 .area { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); margin: 0 0 var(--space-4); padding: 10px 0; border-block: 1px solid var(--command-line); }
 .areaLabel { color: var(--command-muted); font: 600 var(--text-xs)/1.3 var(--font-ui); }
