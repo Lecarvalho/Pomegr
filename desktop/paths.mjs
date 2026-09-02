@@ -28,7 +28,6 @@ export function resolveDesktopPaths(options) {
     settingsFile: path.join(dataRoot, "settings.json"),
     cacheRoot: path.join(dataRoot, "cache"),
     costSnapshotsRoot: path.join(dataRoot, "cost-snapshots"),
-    codexLivenessRoot: path.join(dataRoot, "codex-liveness"),
   });
 }
 

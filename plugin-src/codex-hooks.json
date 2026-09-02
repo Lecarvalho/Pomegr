@@ -1,5 +1,5 @@
 {
-  "description": "Load bounded Pomegr policy rows and record inert, owner-validated Codex lifecycle evidence for the local observer.",
+  "description": "Load bounded Pomegr policy rows for the local observer.",
   "hooks": {
     "SessionStart": [
       {
@@ -11,11 +11,6 @@
             "timeout": 5,
             "statusMessage": "Loading Pomegr policy",
             "additionalContextLimit": 8000
-          },
-          {
-            "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/scripts/codex-lifecycle-bridge.bundle.mjs\"",
-            "timeout": 5
           }
         ]
       }

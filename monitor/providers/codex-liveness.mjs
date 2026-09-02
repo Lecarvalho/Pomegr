@@ -3,7 +3,6 @@ import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import path from "node:path";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { isSafeCodexSessionId } from "./codex-session-metadata.mjs";
-import { resolveCodexLivenessRoot, readBridgeRecords, bridgeLiveness, currentBridgeResourceOwner, uniqueResourceOwner } from "./codex-hook-lifecycle.mjs";
 import { appServerLiveness } from "./codex-owning-runtime.mjs";
 import { readCodexLivenessTail, observedCodexRolloutLifecycle } from "./codex-rollout-lifecycle.mjs";
 import { isActiveCodexWriterLock } from "./codex-cli-observation.mjs";
@@ -11,9 +10,8 @@ import { createCodexSourceRouter, codexInferenceEligible } from "./codex-source-
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
 import { codexRecordedLiveness } from "./codex-recorded-lifecycle.mjs";
 import { aggregateCodexSessionLifecycle } from "./codex-session-lifecycle.mjs";
-import { CODEX_ROLLOUT_LIVE_WINDOW_MS, CODEX_BRIDGE_LEASE_MS, CODEX_LIVENESS_CACHE_MS, CODEX_LIVENESS_MAX_BRIDGE_FILES, CODEX_LIVENESS_MAX_TAIL_BYTES, CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS, CODEX_LIVENESS_MAX_COLD_ROLLOUTS } from "./codex-lifecycle-constants.mjs";
+import { CODEX_ROLLOUT_LIVE_WINDOW_MS, CODEX_LIVENESS_CACHE_MS, CODEX_LIVENESS_MAX_TAIL_BYTES, CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS, CODEX_LIVENESS_MAX_COLD_ROLLOUTS } from "./codex-lifecycle-constants.mjs";
 export * from "./codex-lifecycle-constants.mjs";
-export { resolveCodexLivenessRoot, captureCodexLifecycleHook, renewCodexOwnerLease, processStartIdentity, codexOwnerIdentity } from "./codex-hook-lifecycle.mjs";
 export { isActiveCodexWriterLock } from "./codex-cli-observation.mjs";
 export { parseCodexCliRolloutLiveness as parseCodexRolloutLiveness } from "./codex-cli-observation.mjs";
 export { appServerLiveness } from "./codex-owning-runtime.mjs";
@@ -47,25 +45,31 @@ function descendantsFor(rootId, threads) {
 }
 
 export function createCodexLivenessCoordinator(options = {}) {
-  const root = resolveCodexLivenessRoot(options);
   const writerLocksRoot = options.writerLocksRoot ? path.resolve(options.writerLocksRoot) : null;
   const writerLockIsActive = options.writerLockIsActive || ((file) => isActiveCodexWriterLock(file, { platform: options.platform }));
+  const currentWriterOwner = options.currentWriterOwner || (() => null);
   const now = options.now || (() => Date.now());
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : CODEX_LIVENESS_CACHE_MS;
-  const maximumBridgeFiles = Number.isInteger(options.maximumBridgeFiles)
-    ? Math.max(1, Math.min(CODEX_LIVENESS_MAX_BRIDGE_FILES, options.maximumBridgeFiles))
-    : CODEX_LIVENESS_MAX_BRIDGE_FILES;
   const maximumTailBytes = Number.isInteger(options.maximumTailBytes)
     ? Math.max(1, Math.min(CODEX_LIVENESS_MAX_TAIL_BYTES, options.maximumTailBytes))
     : CODEX_LIVENESS_MAX_TAIL_BYTES;
   const tailCache = new Map();
   const recordedSources = new Map();
   const rolloutObservations = new Map();
-  const stalePolls = new Map();
   let cache = null;
-  let lastCheckedAt = null;
-  let resumeGraceUntil = 0;
-  let stats = { bridgeFiles: 0, rolloutFiles: 0, rolloutBytes: 0 };
+  let stats = { rolloutFiles: 0, rolloutBytes: 0 };
+
+  function ownerFor(thread) {
+    // This callback consumes only the collector's private in-memory snapshot.
+    // An owning runtime's explicit unload outranks cached writer presence.
+    if (thread.archived || thread.runtimeStatus?.type === "notLoaded" || !isSafeCodexSessionId(thread.localId)) return null;
+    try {
+      const owner = currentWriterOwner(thread.localId);
+      return Number.isSafeInteger(owner?.pid) && owner.pid > 0 && owner.pid <= 0x7fffffff
+        && typeof owner.processStartIdentity === "string" && /^\d{1,20}$/.test(owner.processStartIdentity)
+        ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity } : null;
+    } catch { return null; }
+  }
 
   function hasCurrentWriterLock(thread) {
     const localId = isSafeCodexSessionId(thread?.localId) ? thread.localId : null;
@@ -152,26 +156,16 @@ export function createCodexLivenessCoordinator(options = {}) {
   }
 
   function observe(threads, observeOptions = {}) {
-    if (observeOptions.historical) return { threads: threads.map((thread) => ({ ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false })), sessions: new Map() };
+    if (observeOptions.historical) return { threads: threads.map((thread) => ({ ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false, presenceConfirmed: false })), sessions: new Map() };
     const checkedAt = now();
-    if (cache && checkedAt < cache.expiresAt && cache.input === threads) return cache.value;
-    if (lastCheckedAt !== null && checkedAt - lastCheckedAt > CODEX_BRIDGE_LEASE_MS) resumeGraceUntil = checkedAt + CODEX_BRIDGE_LEASE_MS;
-    lastCheckedAt = checkedAt;
-    stats = { bridgeFiles: 0, rolloutFiles: 0, rolloutBytes: 0 };
-    const bridgeRecords = readBridgeRecords(root, maximumBridgeFiles);
-    stats.bridgeFiles = bridgeRecords.length;
-    const bridgeByActor = new Map();
-    for (const record of bridgeRecords) {
-      const actorId = record.snapshot.agentId || record.snapshot.sessionId;
-      const key = `${record.snapshot.sessionId}\0${actorId}`;
-      const previous = bridgeByActor.get(key);
-      if (!previous || record.snapshot.sequence > previous.snapshot.sequence
-        || (record.snapshot.sequence === previous.snapshot.sequence
-          && timestampValue(record.snapshot.observedAt) > timestampValue(previous.snapshot.observedAt))) {
-        bridgeByActor.set(key, record);
-      }
-    }
-    const resourceOwnersByThreadId = new Map();
+    const resourceOwnersByThreadId = new Map(threads.flatMap((thread) => {
+      const owner = ownerFor(thread);
+      return owner ? [[thread.localId, owner]] : [];
+    }));
+    const presenceKey = JSON.stringify([...resourceOwnersByThreadId]);
+    if (cache && checkedAt >= cache.checkedAt && checkedAt < cache.expiresAt
+      && cache.input === threads && cache.presenceKey === presenceKey) return cache.value;
+    stats = { rolloutFiles: 0, rolloutBytes: 0 };
     const topLevelSourceBySessionId = new Map(
       threads
         .filter((thread) => !thread.parentThreadId)
@@ -179,47 +173,31 @@ export function createCodexLivenessCoordinator(options = {}) {
     );
     const sourceFor = createCodexSourceRouter(CODEX_LIVENESS_MAX_COLD_ROLLOUTS);
     const observedThreads = threads.map((thread) => {
-      if (thread.archived) return { ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false };
+      if (thread.archived) return { ...thread, runtimeStatus: null, liveStatus: null, liveness: null, livenessLive: false, presenceConfirmed: false };
       const app = appServerLiveness(thread.runtimeStatus, thread.runtimeObservedAt || thread.updatedAt);
-      const bridgeKey = `${thread.sessionId || thread.localId}\0${thread.localId}`;
-      const bridgeRecord = bridgeByActor.get(bridgeKey);
-      let bridge = null;
-      if (bridgeRecord) {
-        const staleKey = `${bridgeRecord.snapshot.ownerPid}\0${bridgeRecord.snapshot.ownerStartedAt}\0${bridgeRecord.snapshot.bridgeInstance}`;
-        const leaseCurrent = timestampValue(bridgeRecord.lease?.expiresAt) > checkedAt;
-        const resourceOwner = currentBridgeResourceOwner(bridgeRecord, checkedAt);
-        if (resourceOwner) resourceOwnersByThreadId.set(thread.localId, resourceOwner);
-        if (leaseCurrent) stalePolls.delete(staleKey);
-        else stalePolls.set(staleKey, (stalePolls.get(staleKey) || 0) + 1);
-        const keepStale = checkedAt < resumeGraceUntil || (stalePolls.get(staleKey) || 0) < 2;
-        bridge = bridgeLiveness(bridgeRecord, checkedAt, keepStale);
-      }
-      // A hook is an event observation, not a fresh runtime snapshot. Continue
-      // acquiring structured boundaries so a later completion can supersede it.
+      const owner = resourceOwnersByThreadId.get(thread.localId);
+      // Writer ownership establishes presence, never execution or completion.
       const authoritative = Boolean(app);
       const metadataCanBeLive = !authoritative && rolloutMetadataCanBeLive(thread, checkedAt);
       const implementation = sourceFor(topLevelSourceBySessionId.get(thread.sessionId || thread.localId) || thread.sourceKind);
       const coldCandidate = !authoritative && !metadataCanBeLive && implementation.coldCandidate(thread, hasCurrentWriterLock);
-      const rollout = !authoritative && (metadataCanBeLive || coldCandidate
+      const rollout = !authoritative && (owner || metadataCanBeLive || coldCandidate
         || recordedSources.has(thread.rolloutFile) || tailCache.has(thread.rolloutFile))
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null)
         : null;
-      // A newer recorded boundary can repair an older ambiguous hook snapshot.
       // A current owning-runtime snapshot is authoritative for its loaded task.
-      const explicitRollout = rollout?.evidence === "observed";
-      const liveness = app || (explicitRollout && (!bridge || rollout.observedAt >= bridge.observedAt) ? rollout : bridge) || rollout;
+      const liveness = app || rollout;
       return {
         ...thread,
         liveStatus: liveness?.status || "unknown",
         // Keep owner-backed presence separate from an unresolved recorded turn.
-        presenceConfirmed: Boolean(app || (bridgeRecord?.snapshot.version === 2
-          && resourceOwnersByThreadId.has(thread.localId))),
+        presenceConfirmed: Boolean(app || owner),
         liveness: liveness ? {
           source: liveness.source, observedAt: liveness.observedAt,
           evidence: liveness.evidence, freshness: liveness.freshness,
           ...(liveness.reason ? { reason: liveness.reason } : {}),
         } : null,
-        livenessLive: Boolean(liveness?.live || (bridge?.live && explicitRollout)),
+        livenessLive: Boolean(liveness?.live || owner),
       };
     });
     const sessions = new Map();
@@ -227,10 +205,13 @@ export function createCodexLivenessCoordinator(options = {}) {
       const ids = descendantsFor(rootThread.localId, observedThreads);
       const related = observedThreads.filter((thread) => ids.has(thread.localId));
       const live = related.filter((thread) => thread.livenessLive);
-      const newest = related.map((thread) => thread.liveness).filter(Boolean).sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
-      const resourceOwner = live.length > 0
-        ? uniqueResourceOwner(related.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean))
-        : null;
+      // Runtime confirmation (including the first poll after restart) is not
+      // recorded activity and must not advance the catalog's activity clock.
+      const newest = related.map((thread) => thread.liveness).filter((value) => value && value.source !== "owning_app_server")
+        .sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
+      const owners = new Map(live.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean)
+        .map((owner) => [`${owner.pid}\0${owner.processStartIdentity}`, owner]));
+      const resourceOwner = owners.size === 1 ? [...owners.values()][0] : null;
       sessions.set(rootThread.localId, {
         ...aggregateCodexSessionLifecycle(rootThread, related),
         observedAt: newest?.observedAt || null,
@@ -238,7 +219,7 @@ export function createCodexLivenessCoordinator(options = {}) {
       });
     }
     const value = { threads: observedThreads, sessions };
-    cache = { input: threads, expiresAt: checkedAt + cacheMs, value };
+    cache = { input: threads, checkedAt, expiresAt: checkedAt + cacheMs, presenceKey, value };
     return value;
   }
 

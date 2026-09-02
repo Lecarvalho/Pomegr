@@ -114,12 +114,12 @@ export function ClaudeUsageControls({ usageLimits, showObservationNote = true }:
           ? <p>Wait for the retry countdown. Pomegr respects the provider’s cooldown; signing in again does not shorten it.</p>
           : <p>Check your internet connection and that Claude Code is signed in on the computer running Pomegr. Pomegr retries automatically.</p>}
       {canSetUp && <p>Enable local usage to keep readings available when account checks fail. Supports Claude Pro and Max.</p>}
-      {(canSetUp || (canSignIn && needsSignIn)) && <div className="claudeUsageActions">
+      <div className="claudeUsageActions">
         {canSetUp && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("setup")}>{pending === "setup" ? "Enabling local usage…" : "Enable local usage"}</button>}
         {canSignIn && needsSignIn && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("signin")}>{pending === "signin" ? "Waiting for sign-in…" : "Reconnect Claude Code"}</button>}
-      </div>}
+        <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed">Setup guide</ExternalLink>
+      </div>
       {message && <p role="status" aria-live="polite">{message}</p>}
-      <p><ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed">Setup guide</ExternalLink></p>
     </details>
   </div>;
 }

@@ -45,12 +45,12 @@ export function sessionActivityStatus(isLive, entry, backgroundRunning = null) {
   return entry?.status === "idle" ? "idle" : "unknown";
 }
 
-// A transport transition must invalidate hydration even without a transcript append.
-// Only normalized lifecycle contributes to the fingerprint; never the remote ID.
+// Registry and transport transitions invalidate hydration without transcript growth.
+// Only normalized lifecycle contributes; no process, registry, or remote identity.
 export function claudeLifecycleSource(source, entry) {
-  if (!source || !entry?.remoteSessionId) return source;
+  if (!source) return source;
   return { ...source, identity: crypto.createHash("sha256")
-    .update(JSON.stringify([source.identity, registryStatus(entry, "unknown"), entry.needsInput]))
+    .update(JSON.stringify([source.identity, Boolean(source.historical), registryStatus(entry, "unknown"), Boolean(entry?.needsInput)]))
     .digest("hex") };
 }
 

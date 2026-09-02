@@ -16,6 +16,7 @@ export function isActiveCodexWriterLock(file, options = {}) {
   if ((options.platform || process.platform) !== "win32") return false;
   const statFileSync = options.statFileSync || fs.statSync;
   const openFileSync = options.openFileSync || fs.openSync;
+  const readSync = options.readSync || fs.readSync;
   const closeFileSync = options.closeFileSync || fs.closeSync;
   try {
     if (!statFileSync(file).isFile()) return false;
@@ -24,12 +25,18 @@ export function isActiveCodexWriterLock(file, options = {}) {
   }
   let descriptor;
   try {
-    descriptor = openFileSync(file, "r+");
+    descriptor = openFileSync(file, "r");
+    // Windows can let the read-only open succeed while a writer lock blocks the
+    // one-byte read at offset zero, including the beyond-EOF range. A false
+    // result means the lock was not confirmed, not that the writer is idle.
+    readSync(descriptor, Buffer.alloc(1), 0, 1, 0);
     return false;
   } catch (error) {
-    return ["EBUSY", "EACCES", "EPERM"].includes(error?.code);
+    return error?.code === "EBUSY";
   } finally {
-    if (descriptor !== undefined) closeFileSync(descriptor);
+    if (descriptor !== undefined) {
+      try { closeFileSync(descriptor); } catch { /* best-effort descriptor cleanup */ }
+    }
   }
 }
 

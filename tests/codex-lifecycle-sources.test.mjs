@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CODEX_BRIDGE_LEASE_MS, CODEX_ROLLOUT_APPROVAL_GRACE_MS, CODEX_ROLLOUT_LIVE_WINDOW_MS } from "../monitor/providers/codex-lifecycle-constants.mjs";
-import { captureCodexLifecycleHook } from "../monitor/providers/codex-hook-lifecycle.mjs";
+import { CODEX_ROLLOUT_APPROVAL_GRACE_MS, CODEX_ROLLOUT_LIVE_WINDOW_MS } from "../monitor/providers/codex-lifecycle-constants.mjs";
 import { createCodexLivenessCoordinator } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexOwningRuntime, appServerLiveness } from "../monitor/providers/codex-owning-runtime.mjs";
 import { incrementalSourceDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
@@ -13,7 +12,6 @@ import { observedCodexRolloutLifecycle, parseCodexRolloutLiveness } from "../mon
 import { createCodexSourceRouter, codexInferenceEligible } from "../monitor/providers/codex-source-routing.mjs";
 
 const START = Date.parse("2026-08-11T12:00:00.000Z");
-const OWNER = { ownerPid: 4242, ownerStartedAt: "134000000000000000", startWatcher: false };
 
 function lifecycleThread() {
   return [{ localId: "live-root", sessionId: "live-root", parentThreadId: null, sourceKind: "cli", updatedAt: new Date(START).toISOString(), runtimeStatus: null, rolloutFile: null }];
@@ -53,9 +51,9 @@ test("Codex source routing keeps CLI and recorded vscode cold policies independe
 
 test("Codex timing inference requires affirmative unavailable-channel assessment", () => {
   assert.equal(codexInferenceEligible(), false);
-  assert.equal(codexInferenceEligible({ owningRuntime: "not_integrated", hooks: "unsupported", structuredRollout: "unsupported" }), false);
-  assert.equal(codexInferenceEligible({ owningRuntime: "failed", hooks: "unsupported", structuredRollout: "unsupported" }), false);
-  assert.equal(codexInferenceEligible({ owningRuntime: "unsupported", hooks: "unsupported", structuredRollout: "unsupported" }), true);
+  assert.equal(codexInferenceEligible({ owningRuntime: "not_integrated", writerPresence: "unsupported", structuredRollout: "unsupported" }), false);
+  assert.equal(codexInferenceEligible({ owningRuntime: "failed", writerPresence: "unsupported", structuredRollout: "unsupported" }), false);
+  assert.equal(codexInferenceEligible({ owningRuntime: "unsupported", writerPresence: "unsupported", structuredRollout: "unsupported" }), true);
 });
 
 test("Codex owning-runtime adapter allows only read observation and marks failed state unavailable", async () => {
@@ -248,7 +246,7 @@ test("a cold incomplete rollout remains unknown without a prior validated lifecy
   const rolloutFile = path.join(root, "rollout.jsonl");
   const start = JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-cold" }));
   await writeFile(rolloutFile, start.slice(0, -1), "utf8");
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => START + 1_000, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => START + 1_000, cacheMs: 0 });
   coordinator.observeLifecycleSources([{
     file: rolloutFile,
     generation: incrementalSourceDescriptor(rolloutFile),
@@ -269,7 +267,7 @@ test("a compatible incomplete append retains its validated lifecycle until its n
   const end = lifecycleRecord(2_000, "turn_completed", { turn_id: "turn-tail", status: "completed" });
   await writeFile(rolloutFile, `${JSON.stringify(start)}\n`, "utf8");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0 });
   const observe = () => coordinator.observe([{ localId: "tail-root", sessionId: "tail-root", parentThreadId: null, sourceKind: "cli", updatedAt: new Date(now).toISOString(), rolloutFile }]);
   assert.equal(observe().threads[0].liveStatus, "active");
 
@@ -305,7 +303,7 @@ test("a recorded pending input survives a large compatible incomplete append bef
   const initialRecords = [start, pendingInput];
   await writeFile(rolloutFile, `${initialRecords.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
   let now = START + 2_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 256 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0, maximumTailBytes: 256 });
   const threads = [{ ...lifecycleThread()[0], localId: "pending-root", sessionId: "pending-root", rolloutFile }];
   const initialGeneration = incrementalSourceDescriptor(rolloutFile);
   coordinator.observeLifecycleSources([{
@@ -356,7 +354,7 @@ test("a recorded active turn survives a complete large append until acquired lif
   const start = lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-active" });
   await writeFile(rolloutFile, `${JSON.stringify(start)}\n`, "utf8");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 256 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0, maximumTailBytes: 256 });
   const threads = [{ ...lifecycleThread()[0], localId: "active-root", sessionId: "active-root", rolloutFile }];
   coordinator.observeLifecycleSources([{
     file: rolloutFile,
@@ -391,7 +389,7 @@ test("a malformed acquired append downgrades previously retained lifecycle evide
   const start = lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-malformed-retained" });
   await writeFile(rolloutFile, `${JSON.stringify(start)}\n`, "utf8");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0 });
   const threads = [{ ...lifecycleThread()[0], localId: "malformed-retained-root", sessionId: "malformed-retained-root", rolloutFile }];
   coordinator.observeLifecycleSources([{
     file: rolloutFile,
@@ -419,7 +417,7 @@ test("a malformed framed rollout record downgrades lifecycle evidence to unknown
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout.jsonl");
   await writeFile(rolloutFile, `${JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-malformed" }))}\n{"broken":}\n`, "utf8");
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => START + 1_000, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => START + 1_000, cacheMs: 0 });
   const observed = coordinator.observe([{ localId: "malformed-root", sessionId: "malformed-root", parentThreadId: null, sourceKind: "cli", updatedAt: new Date(START).toISOString(), rolloutFile }]).threads[0];
   assert.equal(observed.liveStatus, "unknown");
   assert.equal(observed.liveness.evidence, "unavailable");
@@ -431,7 +429,7 @@ test("a discontinuous retained tail needs a new explicit boundary before lifecyc
   const rolloutFile = path.join(root, "rollout.jsonl");
   await writeFile(rolloutFile, `${JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "turn-old" }))}\n`, "utf8");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 128 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0, maximumTailBytes: 128 });
   const observe = () => coordinator.observe([{ localId: "continuity-root", sessionId: "continuity-root", parentThreadId: null, sourceKind: "cli", updatedAt: new Date(now).toISOString(), rolloutFile }]);
   assert.equal(observe().threads[0].liveStatus, "active");
 
@@ -446,85 +444,6 @@ test("a discontinuous retained tail needs a new explicit boundary before lifecyc
   assert.equal(recovered.liveness.evidence, "observed");
 });
 
-test("hook lifecycle stays unknown without a native completion boundary", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-hook-state-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  let now = START;
-  const capture = (event, extra = {}) => captureCodexLifecycleHook({
-    session_id: "live-root", hook_event_name: event, turn_id: "turn-1", tool_name: extra.toolName,
-    prompt: "PROMPT_MUST_NOT_LEAK", tool_input: { command: "COMMAND_MUST_NOT_LEAK" },
-  }, { root, now, ...OWNER });
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
-  capture("SessionStart");
-  assert.equal(coordinator.observe(lifecycleThread()).threads[0].liveStatus, "unknown");
-  now += 1_000;
-  capture("UserPromptSubmit");
-  assert.equal(coordinator.observe(lifecycleThread()).threads[0].liveStatus, "active");
-  now += 1_000;
-  capture("Stop");
-  assert.equal(coordinator.observe(lifecycleThread()).threads[0].liveStatus, "unknown");
-  now += 1_000;
-  capture("SessionEnd");
-  const ended = coordinator.observe(lifecycleThread());
-  assert.equal(ended.sessions.get("live-root").activityStatus, "open");
-  const files = await readdir(path.join(root, "snapshots"));
-  const payload = await readFile(path.join(root, "snapshots", files[0]), "utf8");
-  assert.doesNotMatch(payload, /PROMPT_MUST_NOT_LEAK|COMMAND_MUST_NOT_LEAK|tool_input|prompt/);
-});
-
-test("an explicit current owner identity cannot reuse a prior owner's live lease", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-hook-owner-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const initial = captureCodexLifecycleHook({
-    session_id: "owner-root", hook_event_name: "PermissionRequest", turn_id: "turn-owner",
-  }, { root, now: START, ...OWNER });
-  const current = captureCodexLifecycleHook({
-    session_id: "owner-root", hook_event_name: "SessionStart", turn_id: "turn-owner", source: "compact",
-  }, {
-    root,
-    now: START + 1_000,
-    env: { POMEGR_CODEX_OWNER_PID: "5151" },
-    processStartIdentity: (pid) => pid === 5151 ? "515100000000000000" : null,
-    startWatcher: false,
-  });
-  assert.equal(initial.lifecycle, "needs_input");
-  assert.equal(current.ownerPid, 5151);
-  assert.notEqual(current.bridgeInstance, initial.bridgeInstance);
-  assert.equal(current.lifecycle, "unknown");
-});
-
-test("compact continuation preserves input only for the same owner, lease, and turn", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-hook-compact-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const prepare = (directory, now = START) => captureCodexLifecycleHook({
-    session_id: "compact-root", hook_event_name: "PermissionRequest", turn_id: "turn-compact",
-  }, { root: directory, now, ...OWNER });
-  const compact = (directory, now, options = {}) => captureCodexLifecycleHook({
-    session_id: "compact-root", hook_event_name: "SessionStart", source: "compact", ...options.input,
-  }, { root: directory, now, ...(options.owner || OWNER) });
-
-  prepare(root);
-  const continued = compact(root, START + 1_000, { input: { turn_id: "turn-compact" } });
-  assert.equal(continued.lifecycle, "needs_input");
-
-  const missingTurnRoot = path.join(root, "missing-turn");
-  prepare(missingTurnRoot);
-  assert.equal(compact(missingTurnRoot, START + 1_000).lifecycle, "unknown");
-
-  const newOwnerRoot = path.join(root, "new-owner");
-  prepare(newOwnerRoot);
-  assert.equal(compact(newOwnerRoot, START + 1_000, {
-    input: { turn_id: "turn-compact" },
-    owner: { ownerPid: 5152, ownerStartedAt: "515200000000000000", startWatcher: false },
-  }).lifecycle, "unknown");
-
-  const expiredLeaseRoot = path.join(root, "expired-lease");
-  prepare(expiredLeaseRoot);
-  assert.equal(compact(expiredLeaseRoot, START + CODEX_BRIDGE_LEASE_MS + 1, {
-    input: { turn_id: "turn-compact" },
-  }).lifecycle, "unknown");
-});
-
 for (const replacement of ["overwrite", "rename"]) {
   test(`cached starts do not cross a larger rollout ${replacement}`, async (context) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-replaced-turn-"));
@@ -533,7 +452,7 @@ for (const replacement of ["overwrite", "rename"]) {
     const start = { timestamp: new Date(START).toISOString(), type: "event_msg", payload: { type: "task_started", turn_id: "old-turn" } };
     await writeFile(rolloutFile, JSON.stringify(start) + "\n", "utf8");
     let now = START + 1_000;
-    const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+    const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0 });
     const threads = [{ ...lifecycleThread()[0], localId: "replacement-root", sessionId: "replacement-root", rolloutFile }];
     assert.equal(coordinator.observe(threads).sessions.get("replacement-root").activityStatus, "working");
     now += 4 * 60 * 60_000;
@@ -557,7 +476,7 @@ test("a validated start survives continuous bounded tails after its source recor
   const rolloutFile = path.join(root, "rollout.jsonl");
   await writeFile(rolloutFile, JSON.stringify(lifecycleRecord(0, "event_msg", { type: "task_started", turn_id: "retained-turn" })) + "\n");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 512 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0, maximumTailBytes: 512 });
   const threads = [{ ...lifecycleThread()[0], rolloutFile }];
   assert.equal(coordinator.observe(threads).sessions.get("live-root").activityStatus, "working");
   for (let index = 0; index < 12; index += 1) {

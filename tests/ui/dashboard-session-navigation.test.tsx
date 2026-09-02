@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
@@ -141,6 +141,7 @@ function mockDashboardState(state: MonitorState) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   window.history.replaceState(null, "", "/");
   window.localStorage.removeItem("pomegr-resource-panel-open");
@@ -149,6 +150,31 @@ afterEach(() => {
 });
 
 describe("dashboard session navigation", () => {
+  it("keeps refreshing an Open task after it leaves Live, but stops for a historical row", async () => {
+    vi.useFakeTimers();
+    const state = liveState("codex:quiet-open", "Quiet open task");
+    const fetchMock = mockDashboardState(state);
+    const row = catalogSession(state, { activityStatus: "open" });
+    const view = renderDashboard([row]);
+    await act(async () => {});
+    const renderRow = (session: SessionSummary) => view.rerender(
+      <DisplayPreferencesProvider><SessionCatalogProvider sessions={[session]}><Dashboard /></SessionCatalogProvider></DisplayPreferencesProvider>,
+    );
+    renderRow({ ...row, isLive: false });
+    await act(async () => {});
+    const stateCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/state")).length;
+    const beforeOpenPoll = stateCalls();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    expect(stateCalls()).toBeGreaterThan(beforeOpenPoll);
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    renderRow({ ...row, isLive: false, activityStatus: "idle" });
+    await act(async () => {});
+    const beforeHistory = stateCalls();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    expect(stateCalls()).toBe(beforeHistory);
+    view.unmount();
+  });
+
   it("places context history immediately before request snapshots and live resources", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {

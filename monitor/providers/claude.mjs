@@ -291,6 +291,10 @@ export function createClaudeProvider(options = {}) {
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const transcriptPathsBySessionId = new Map();
+  // Registry changes are lifecycle-only source changes. Keep the bounded last
+  // live set so a departure can refresh its already-visible detail after the
+  // catalog reconciliation classifies it as historical.
+  const lastLiveSessionIds = new Set();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
     env: environment,
     now,
@@ -438,6 +442,10 @@ export function createClaudeProvider(options = {}) {
       };
       sessionSummaryCache.set(file, { key: cacheKey, value });
       sessions.push({ ...value, ...liveState });
+    }
+    lastLiveSessionIds.clear();
+    for (const session of sessions) {
+      if (session.isLive) lastLiveSessionIds.add(session.localId);
     }
     return sessions;
   }
@@ -720,7 +728,9 @@ export function createClaudeProvider(options = {}) {
     return claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
   }
 
-  const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot);
+  const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {
+    registryRoot, liveSessionIds: () => [...lastLiveSessionIds],
+  });
 
   return defineProvider({
     id: "claude",
@@ -762,7 +772,7 @@ export function createClaudeProvider(options = {}) {
         routeSourceEvent: routeClaudeSourceEvent,
         intervalMs: options.observerIntervalMs ?? 10_000,
         concurrency: options.observerConcurrency ?? 2,
-        watchTargets: [projectsRoot],
+        watchTargets: [projectsRoot, registryRoot],
         watchSource: options.observerWatchSource,
       });
     },
@@ -771,7 +781,7 @@ export function createClaudeProvider(options = {}) {
     unavailableMessage(localSessionId = "") {
       return localSessionId ? "The selected session is no longer available." : `No Claude Code sessions found under ${projectsRoot}`;
     },
-    watchTargets: [projectsRoot],
+    watchTargets: [projectsRoot, registryRoot],
   });
 }
 

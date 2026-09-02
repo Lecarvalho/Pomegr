@@ -13,7 +13,6 @@ import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/
 import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings, settingsForWindowClose } from "../desktop/settings.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider, resolveCodexHome } from "../monitor/providers/codex.mjs";
-import { resolveCodexLivenessRoot } from "../monitor/providers/codex-liveness.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 
 test("installed and portable desktop paths ignore cwd and preserve spaces and non-ASCII", () => {
@@ -50,13 +49,12 @@ test("Pomegr-owned roots use stable Windows app data and explicit overrides", ()
   const environment = { APPDATA: "C:\\Users\\José\\AppData\\Roaming" };
   assert.equal(resolvePomegrDataRoot({ environment, platform: "win32", homeDir: "C:\\Users\\José" }), "C:\\Users\\José\\AppData\\Roaming\\pomegr");
   assert.equal(resolvePomegrDataRoot({ environment: { ...environment, POMEGR_DATA_DIR: "D:\\Pomegr Data" }, platform: "win32" }), "D:\\Pomegr Data");
-  assert.equal(resolveCodexLivenessRoot({ env: environment, platform: "win32", homeDir: "C:\\Users\\José" }), "C:\\Users\\José\\AppData\\Roaming\\pomegr\\codex-liveness");
 });
 
 test("provider defaults and overrides remain provider-owned", () => {
   const homeDir = "C:\\Users\\José";
   const claudeDefault = createClaudeProvider({ homeDir, env: {}, usageRequest: async () => ({}) });
-  assert.deepEqual(claudeDefault.watchTargets, [path.join(homeDir, ".claude", "projects")]);
+  assert.deepEqual(claudeDefault.watchTargets, [path.join(homeDir, ".claude", "projects"), path.join(homeDir, ".claude", "sessions")]);
   const claudeOverride = createClaudeProvider({ homeDir, env: { CLAUDE_PROJECTS_DIR: "D:\\Claude Sessions", CLAUDE_SESSION_FILE: "D:\\Claude Sessions\\one.jsonl" }, usageRequest: async () => ({}) });
   assert.equal(claudeOverride.watchTargets[0], "D:\\Claude Sessions");
   assert.equal(resolveCodexHome({ homeDir, env: {} }), path.join(homeDir, ".codex"));

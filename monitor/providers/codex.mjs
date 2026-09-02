@@ -6,36 +6,22 @@ import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
-import {
-  mergeCodexToolCalls,
-  parseCodexCanonicalTurns,
-  parseCodexActivityRecords,
-} from "./codex-activity-events.mjs";
+import { mergeCodexToolCalls, parseCodexCanonicalTurns, parseCodexActivityRecords } from "./codex-activity-events.mjs";
 import {
   mergeCodexExecutionTasks,
   parseCodexCanonicalExecutionTasks,
   parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
-import {
-  latestCodexPlanSnapshot,
-  parseCodexApprovalPlanRecords,
-} from "./codex-approval-plan.mjs";
+import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexContextRecords } from "./codex-context.mjs";
 import { parseCodexCurrentActivityStateRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
-import {
-  mergeCodexPullRequestCreations,
-  parseCodexCanonicalPullRequests,
-  parseCodexPullRequestRecords,
-} from "./codex-pull-requests.mjs";
-import {
-  mergeCodexSignals,
-  parseCodexSignalRecords,
-  readCodexSignals,
-} from "./codex-session-signals.mjs";
+import { mergeCodexPullRequestCreations, parseCodexCanonicalPullRequests, parseCodexPullRequestRecords } from "./codex-pull-requests.mjs";
+import { mergeCodexSignals, parseCodexSignalRecords, readCodexSignals } from "./codex-session-signals.mjs";
 import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
-import { createCodexLivenessCoordinator, resolveCodexLivenessRoot } from "./codex-liveness.mjs";
+import { createCodexLivenessCoordinator } from "./codex-liveness.mjs";
+import { createCodexWriterPresence } from "./codex-writer-presence.mjs";
 import { createCodexOwningRuntime } from "./codex-owning-runtime.mjs";
 import { createCodexLiveState } from "./codex-live-state.mjs";
 import {
@@ -102,16 +88,16 @@ export function createCodexProvider(options = {}) {
   const sessionsRoot = options.sessionsRoot || path.join(codexHome, "sessions");
   const archivedRoot = options.archivedRoot || path.join(codexHome, "archived_sessions");
   const indexFile = options.indexFile || path.join(codexHome, "session_index.jsonl");
-  const livenessRoot = resolveCodexLivenessRoot({
-    root: options.livenessRoot,
-    env: options.env,
-    homeDir: options.homeDir,
-  });
+  const writerLocksRoot = path.join(codexHome, "thread-writer-locks");
   const appServer = options.appServer || null;
   // This reader is intentionally account-only. Unlike `appServer`, it must
   // never supply session, catalog, liveness, or canonical-turn evidence.
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
+  const makeWriterPresence = () => options.writerPresence || createCodexWriterPresence({
+    writerLocksRoot, now, platform: options.platform, env: options.env,
+  });
+  let writerPresence = makeWriterPresence();
   const owningRuntime = createCodexOwningRuntime(appServer, { now });
   const includeArchived = options.includeArchived ?? true;
   const catalogLimit = boundedInteger(options.catalogLimit, DEFAULT_CODEX_CATALOG_LIMIT, 200);
@@ -124,11 +110,10 @@ export function createCodexProvider(options = {}) {
     ? Math.max(maximumLiveTailBytes, Math.min(8 * 1024 * 1024, options.maximumTaskHistoryBytes))
     : Math.max(maximumLiveTailBytes, CODEX_LIVE_TASK_HISTORY_MAX_BYTES);
   const liveness = createCodexLivenessCoordinator({
-    root: livenessRoot,
-    writerLocksRoot: path.join(codexHome, "thread-writer-locks"),
+    writerLocksRoot,
+    currentWriterOwner: (localId) => writerPresence.current(localId),
     now,
     cacheMs,
-    maximumBridgeFiles: options.maximumBridgeFiles,
     maximumTailBytes: options.maximumTailBytes,
     deterministicAvailability: options.deterministicAvailability,
   });
@@ -246,7 +231,10 @@ export function createCodexProvider(options = {}) {
   const discoveredMetadata = metadataCatalog.read;
 
   async function listSessions(listOptions = {}) {
-    const { threads, sessions } = liveness.observe((await discoveredMetadata(listOptions)).map(owningRuntime.decorate));
+    const metadata = (await discoveredMetadata(listOptions)).map(owningRuntime.decorate);
+    // Ownership is a separate background lane; recorded work never waits for it.
+    void writerPresence.refresh(metadata).catch(() => {});
+    const { threads, sessions } = liveness.observe(metadata);
     return threads.filter(isTopLevelCodexSession)
       .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
       .sort(compareCodexMetadata).slice(0, catalogLimit);
@@ -407,6 +395,8 @@ export function createCodexProvider(options = {}) {
       expandCodexSelectedMetadata(metadataById, selectedIds);
     }
     const selectedMetadata = mergedMetadata.filter((item) => selectedIds.has(item.localId));
+    // The collector owns a bounded catalog snapshot, not one selected subtree.
+    // Historical hydration must never acquire current owner evidence.
     const allMetadata = liveness.observe(selectedMetadata.map(owningRuntime.decorate), { historical }).threads;
     const metadata = allMetadata.find((item) => item.localId === localSessionId) || rootMetadata;
     const agents = /** @type {any[]} */ (buildCodexAgentTree({
@@ -719,7 +709,7 @@ export function createCodexProvider(options = {}) {
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
 
-  const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, livenessRoot];
+  const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];
   return defineProvider({
     id: "codex",
     source: "Codex",
@@ -768,12 +758,20 @@ export function createCodexProvider(options = {}) {
       intervalMs: options.observerIntervalMs ?? 10_000,
       concurrency: options.observerConcurrency ?? 2,
       watchTargets,
-      catalogWatchTargets: [indexFile, livenessRoot],
+      catalogWatchTargets: [indexFile, writerLocksRoot],
+      subscribeLifecycleChanges: (notify) => writerPresence.subscribe?.(notify),
+      onCatalogSourceEvent({ target }) {
+        if (path.resolve(target) === path.resolve(writerLocksRoot)) writerPresence.invalidate();
+      },
+      onStop() {
+        writerPresence.close?.();
+        writerPresence = makeWriterPresence();
+      },
       watchSource: options.observerWatchSource,
       observeLifecycleSources: liveness.observeLifecycleSources,
       observationKey(_localId, selectedMetadata, catalogEntry) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
-          thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive,
+          thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
         return createHash("sha256").update(JSON.stringify([catalogEntry?.isLive, states])).digest("hex");
       },

@@ -23,7 +23,7 @@ function normalizedSourceRoute(value) {
   if (!value || typeof value !== "object") return { catalog: true, sessionIds: [] };
   const sessionIds = [...new Set((Array.isArray(value.sessionIds) ? value.sessionIds : [])
     .filter((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 512))];
-  return { catalog: Boolean(value.catalog), sessionIds };
+  return { catalog: Boolean(value.catalog), sessionIds, afterCatalog: Boolean(value.afterCatalog) };
 }
 
 export function createNormalizedPollingObserver(options) {
@@ -72,6 +72,7 @@ export function createNormalizedPollingObserver(options) {
   let refreshQueued = false;
   let refreshQueuedFresh = false;
   let eagerPreparationActive = false;
+  let preparationGeneration = 0;
   let pendingEagerEntries = null;
   let stopped = false;
   let queueSequence = 0;
@@ -79,6 +80,7 @@ export function createNormalizedPollingObserver(options) {
   const pendingHydrations = new Map();
   const runningHydrations = new Map();
   const latestEntries = new Map();
+  const catalogHydrations = new Map();
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
@@ -200,7 +202,7 @@ export function createNormalizedPollingObserver(options) {
     if (pending) {
       pending.priority = Math.min(pending.priority, priority);
       pending.requested ||= requested;
-      if (prepared !== undefined) pending.prepared = prepared;
+      if (priority === 0 || (pending.priority !== 0 && prepared !== undefined)) pending.prepared = prepared;
       if (Number.isFinite(sourceEventAt)) {
         pending.sourceEventAt = Number.isFinite(pending.sourceEventAt)
           ? Math.min(pending.sourceEventAt, sourceEventAt)
@@ -233,6 +235,7 @@ export function createNormalizedPollingObserver(options) {
     try {
       while (pendingEagerEntries && !stopped && !signal?.aborted) {
         const batch = pendingEagerEntries;
+        const generation = preparationGeneration;
         pendingEagerEntries = null;
         let prepared;
         try {
@@ -249,6 +252,10 @@ export function createNormalizedPollingObserver(options) {
           failures.record("acquisitionFailures", error, "source_preparation");
           continue;
         }
+        if (generation !== preparationGeneration) {
+          if (pendingEagerEntries) continue;
+          prepared = undefined;
+        }
         for (const { entry, priority } of batch) {
           enqueueHydration(entry.localId, { prepared, priority });
         }
@@ -260,6 +267,7 @@ export function createNormalizedPollingObserver(options) {
   }
 
   function scheduleEagerHydration(entries, previousIds) {
+    preparationGeneration += 1;
     pendingEagerEntries = entries.filter((entry) => shouldEagerHydrate(entry)).map((entry) => ({
       entry,
       // Newly discovered sessions enter acquisition ahead of routine
@@ -269,14 +277,20 @@ export function createNormalizedPollingObserver(options) {
     void drainEagerPreparation();
   }
 
-  async function refresh({ fresh = false } = {}) {
+  /** @param {{fresh?: boolean, sessionIds?: string[], sourceEventAt?: number}} [request] */
+  async function refresh({ fresh = false, sessionIds = [], sourceEventAt } = {}) {
+    if (stopped || signal?.aborted || !publisher) return;
+    for (const id of sessionIds) {
+      if (!catalogHydrations.has(id)) catalogHydrations.set(id, sourceEventAt);
+    }
     if (refreshPending) {
       refreshQueued = true;
       refreshQueuedFresh ||= fresh;
       return;
     }
-    if (stopped || signal?.aborted || !publisher) return;
     refreshPending = true;
+    const rehydrate = new Map(catalogHydrations);
+    catalogHydrations.clear();
     qa.reconciliationRuns += 1;
     try {
       const discoveryStartedAt = monotonicNow();
@@ -286,18 +300,30 @@ export function createNormalizedPollingObserver(options) {
       } finally {
         timings.catalogDiscovery.record(monotonicNow() - discoveryStartedAt);
       }
-      if (!Array.isArray(entries) || stopped || signal?.aborted) return;
+      if (stopped || signal?.aborted) return;
+      if (!Array.isArray(entries)) throw new TypeError("Provider catalog is unavailable");
       const previousIds = new Set(latestEntries.keys());
       latestEntries.clear();
       for (const entry of entries) {
         if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
       }
       publisher.publishCatalog(entries);
+      // Lifecycle/index notifications hydrate against the catalog just read,
+      // including sessions that left the eager working set on this revision.
+      for (const [localSessionId, eventAt] of rehydrate) {
+        preparationGeneration += 1;
+        if (latestEntries.has(localSessionId)) enqueueHydration(localSessionId, {
+          priority: 0, rerunIfActive: true, sourceEventAt: eventAt,
+        });
+      }
       // Catalog discovery is an independent lane. Source preparation and
       // acquisition continue asynchronously and cannot hold a later catalog
       // publication behind a complete working-set hydration pass.
       scheduleEagerHydration(entries, previousIds);
     } catch {
+      for (const [id, eventAt] of rehydrate) {
+        if (!catalogHydrations.has(id)) catalogHydrations.set(id, eventAt);
+      }
       // The registry records observer failures.  Do not erase an existing
       // catalog or publish an incomplete replacement here.
     } finally {
@@ -315,6 +341,7 @@ export function createNormalizedPollingObserver(options) {
 
   async function handleSourceEvent(change) {
     if (stopped || signal?.aborted) return;
+    const sourceEventAt = monotonicNow();
     let routed;
     try {
       routed = normalizedSourceRoute(routeSourceEvent
@@ -327,9 +354,12 @@ export function createNormalizedPollingObserver(options) {
     else qa.unresolvedSourceEvents += 1;
     // Unknown/new sources require a cache-bypassing catalog pass. Known
     // sources skip discovery and enter acquisition immediately.
-    if (routed.catalog) void refresh({ fresh: true });
-    const sourceEventAt = monotonicNow();
+    if (routed.catalog) {
+      void refresh({ fresh: true, sessionIds: routed.sessionIds, sourceEventAt });
+      if (routed.afterCatalog) return;
+    }
     for (const localSessionId of routed.sessionIds) {
+      preparationGeneration += 1;
       enqueueHydration(localSessionId, {
         priority: 0,
         rerunIfActive: true,
@@ -367,6 +397,7 @@ export function createNormalizedPollingObserver(options) {
       for (const resolve of item.waiters) resolve(false);
     }
     pendingHydrations.clear();
+    catalogHydrations.clear();
     pendingEagerEntries = null;
   }
 
@@ -404,9 +435,11 @@ export function createNormalizedPollingObserver(options) {
       void refresh();
     },
     hydrate(localSessionId) {
+      preparationGeneration += 1;
       return enqueueHydration(localSessionId, { priority: 0, wait: true, requested: true, rerunIfActive: true });
     },
     listSessions: list,
+    refresh,
     stop,
     diagnostics: () => Object.freeze({
       ...qa,

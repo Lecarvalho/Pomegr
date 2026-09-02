@@ -1,9 +1,19 @@
 import path from "node:path";
 
-/** Build the adapter-private mapping from a Claude source notification to its root session. */
-export function createClaudeSourceEventRouter(projectsRoot) {
-  /** @param {{candidate?: string | null, eventType?: string, knownSessionIds?: string[]}} [change] */
-  return function routeClaudeSourceEvent({ candidate, eventType, knownSessionIds = [] } = {}) {
+/**
+ * Build the adapter-private mapping from a Claude source notification to its root session.
+ * @param {string} projectsRoot
+ * @param {{registryRoot?: string, liveSessionIds?: () => string[]}} [options]
+ */
+export function createClaudeSourceEventRouter(projectsRoot, options = {}) {
+  const directoryKey = (value) => typeof value === "string"
+    ? (process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value)) : null;
+  const registryKey = directoryKey(options.registryRoot);
+  /** @param {{target?: string, candidate?: string | null, eventType?: string, knownSessionIds?: string[]}} [change] */
+  return function routeClaudeSourceEvent({ target, candidate, eventType, knownSessionIds = [] } = {}) {
+    if (registryKey && directoryKey(target) === registryKey) return {
+      catalog: true, afterCatalog: true, sessionIds: (options.liveSessionIds?.() || []).slice(0, 50),
+    };
     if (typeof candidate !== "string" || !candidate) return { catalog: true, sessionIds: [] };
     const relative = path.relative(projectsRoot, candidate);
     if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {

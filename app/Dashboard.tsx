@@ -80,7 +80,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     ? { ...data, usageLimits: sharedProviderUsage.usageLimits }
     : data;
   const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId) : null;
-  const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession ? !selectedSession.isLive : data.view === "history"));
+  // Open can age out of the Live filter without becoming a historical snapshot.
+  const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession
+    ? !selectedSession.isLive && selectedSession.activityStatus !== "open"
+    : data.view === "history"));
   const [, setProviderNoticeVersion] = useState(0);
 
   useEffect(() => {

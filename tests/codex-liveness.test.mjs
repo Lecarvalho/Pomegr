@@ -1,30 +1,24 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { appendFile, mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   CODEX_ACTIVE_WINDOW_MS,
-  CODEX_BRIDGE_LEASE_MS,
   CODEX_NEEDS_INPUT_MAX_MS,
   CODEX_ROLLOUT_APPROVAL_GRACE_MS,
   CODEX_ROLLOUT_LIVE_WINDOW_MS,
-  captureCodexLifecycleHook,
   createCodexLivenessCoordinator,
   isActiveCodexWriterLock,
   parseCodexRolloutLiveness,
-  processStartIdentity,
-  renewCodexOwnerLease,
 } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 
 const START = Date.parse("2026-08-11T12:00:00.000Z");
-const OWNER = { ownerPid: 4242, ownerStartedAt: "134000000000000000", startWatcher: false };
 const LEGACY_INFERENCE = Object.freeze({
   owningRuntime: "unsupported",
-  hooks: "unsupported",
+  writerPresence: "unsupported",
   structuredRollout: "unsupported",
 });
 
@@ -40,80 +34,21 @@ function thread(localId = "live-root", options = {}) {
   };
 }
 
-function hook(root, now, hook_event_name, options = {}) {
-  return captureCodexLifecycleHook({
-    session_id: options.sessionId || "live-root",
-    hook_event_name,
-    turn_id: options.turnId || "turn-1",
-    agent_id: options.agentId,
-    tool_name: options.toolName,
-    prompt: "PROMPT_MUST_NOT_LEAK",
-    tool_input: { command: "COMMAND_MUST_NOT_LEAK", question: "QUESTION_MUST_NOT_LEAK" },
-    tool_response: "TOOL_OUTPUT_MUST_NOT_LEAK",
-  }, { root, now, ...(options.owner || OWNER) });
-}
-
-async function serializedFiles(root) {
-  const contents = [];
-  for (const directory of ["snapshots", "leases"]) {
-    let files = [];
-    try { files = await readdir(path.join(root, directory)); } catch { /* optional */ }
-    for (const file of files) contents.push(await readFile(path.join(root, directory, file), "utf8"));
-  }
-  return contents.join("\n");
-}
-
-test("bridge lease and needs-input expiry clear stale state deterministically", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-expiry-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  let now = START;
-  hook(root, now, "PermissionRequest");
-  const threads = [thread()];
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
-  assert.equal(coordinator.observe(threads).sessions.get("live-root").needsInput, true);
-
-  now += CODEX_BRIDGE_LEASE_MS - 1;
-  assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, true);
-  now += 2;
-  assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, true, "first failed lease poll receives shutdown grace");
-  assert.equal(coordinator.observe(threads).sessions.get("live-root").resourceOwner, null, "stale bridge grace never preserves resource ownership");
-  assert.equal(coordinator.observe(threads).sessions.get("live-root").isLive, false, "second failed lease poll clears liveness");
-
-  now = START;
-  hook(root, now, "PermissionRequest");
-  now += CODEX_NEEDS_INPUT_MAX_MS + 1;
-  assert.equal(renewCodexOwnerLease({
-    root,
-    now,
-    ownerPid: OWNER.ownerPid,
-    ownerStartedAt: OWNER.ownerStartedAt,
-    bridgeInstance: JSON.parse((await serializedFiles(root)).split("\n").find((line) => line.includes("bridgeInstance"))).bridgeInstance,
-    processStartIdentity: () => OWNER.ownerStartedAt,
-  }), true);
-  const freshCoordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
-  const expiredPrompt = freshCoordinator.observe(threads);
-  assert.equal(expiredPrompt.sessions.get("live-root").isLive, true);
-  assert.equal(expiredPrompt.sessions.get("live-root").needsInput, false);
-  assert.equal(expiredPrompt.threads[0].liveStatus, "unknown");
-});
-
-test("owning app-server status outranks bridge state and maps waiting and system errors", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-priority-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  hook(root, START, "Stop");
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => START, cacheMs: 0 });
+test("owning app-server status outranks native presence and maps waiting and system errors", () => {
+  const owner = { pid: 4242, processStartIdentity: "134000000000000000" };
+  const coordinator = createCodexLivenessCoordinator({
+    now: () => START,
+    cacheMs: 0,
+    currentWriterOwner: () => owner,
+  });
   const waiting = coordinator.observe([thread("live-root", {
     runtimeStatus: { type: "active", activeFlags: ["waitingOnApproval"] },
   })]);
   assert.equal(waiting.threads[0].liveStatus, "needs_input");
   assert.equal(waiting.threads[0].liveness.source, "owning_app_server");
-  assert.deepEqual(waiting.sessions.get("live-root").resourceOwner, {
-    pid: OWNER.ownerPid,
-    processStartIdentity: OWNER.ownerStartedAt,
-  });
+  assert.deepEqual(waiting.sessions.get("live-root").resourceOwner, owner);
 
   const appOnly = createCodexLivenessCoordinator({
-    root: path.join(root, "missing-app-only-bridge"),
     now: () => START,
     cacheMs: 0,
   }).observe([thread("app-only", { runtimeStatus: { type: "idle" } })]);
@@ -124,27 +59,28 @@ test("owning app-server status outranks bridge state and maps waiting and system
   assert.equal(failed.sessions.get("live-root").isLive, true);
 });
 
-test("one owner lease supports concurrent sessions while ambiguous hook stops remain unknown", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-concurrent-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  let now = START;
-  hook(root, now, "SessionStart", { sessionId: "session-a" });
-  hook(root, now, "SessionStart", { sessionId: "session-b" });
-  hook(root, now, "SubagentStart", { sessionId: "session-b", agentId: "child-b" });
-  now += 1_000;
-  hook(root, now, "SubagentStop", { sessionId: "session-b", agentId: "child-b" });
-  hook(root, now, "SessionEnd", { sessionId: "session-a" });
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
+test("native presence ignores malformed or failed owner observations without ending recorded work", () => {
+  const owner = { pid: 4242, processStartIdentity: "134000000000000000" };
+  const coordinator = createCodexLivenessCoordinator({
+    now: () => START,
+    cacheMs: 0,
+    currentWriterOwner: (localId) => {
+      if (localId === "malformed") return { pid: "not-a-pid", processStartIdentity: "unsafe" };
+      if (localId === "failed") throw new Error("collector unavailable");
+      return owner;
+    },
+  });
   const observed = coordinator.observe([
-    thread("session-a"),
-    thread("session-b"),
-    thread("child-b", { sessionId: "session-b", parentThreadId: "session-b" }),
+    thread("malformed"),
+    thread("failed"),
+    thread("valid"),
   ]);
-  assert.equal(observed.sessions.get("session-a").isLive, true);
-  assert.equal(observed.sessions.get("session-a").activityStatus, "open");
-  assert.equal(observed.sessions.get("session-b").isLive, true);
-  assert.equal(observed.threads.find((item) => item.localId === "child-b").liveStatus, "unknown");
-  assert.equal((await readdir(path.join(root, "leases"))).length, 1);
+  assert.equal(observed.threads.find((item) => item.localId === "malformed").presenceConfirmed, false);
+  assert.equal(observed.threads.find((item) => item.localId === "failed").presenceConfirmed, false);
+  assert.equal(observed.threads.find((item) => item.localId === "valid").presenceConfirmed, true);
+  assert.equal(observed.sessions.get("malformed").isLive, false);
+  assert.equal(observed.sessions.get("failed").isLive, false);
+  assert.deepEqual(observed.sessions.get("valid").resourceOwner, owner);
 });
 
 test("bounded rollout heuristic transitions active, idle, needs-input, answered, and stale", () => {
@@ -230,34 +166,6 @@ test("bounded rollout heuristic transitions active, idle, needs-input, answered,
   assert.equal(parseCodexRolloutLiveness(systemError, { now: START + 6_000 }).status, "stopped");
 });
 
-test("a persisted terminal hook snapshot remains unknown while its owner lease remains current", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-ended-compat-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  let now = START;
-  hook(root, now, "SessionStart");
-  now += 1_000;
-  const file = (await readdir(path.join(root, "snapshots"))).at(0);
-  const snapshotPath = path.join(root, "snapshots", file);
-  const snapshot = JSON.parse(await readFile(snapshotPath, "utf8"));
-  await writeFile(snapshotPath, `${JSON.stringify({ ...snapshot, lifecycle: "ended", observedAt: new Date(now).toISOString(), sequence: snapshot.sequence + 1 })}\n`, "utf8");
-
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => now, cacheMs: 0 });
-  const observed = coordinator.observe([thread()]);
-  assert.equal(observed.sessions.get("live-root").isLive, true);
-  assert.equal(observed.sessions.get("live-root").activityStatus, "open");
-  assert.deepEqual(observed.sessions.get("live-root").resourceOwner, {
-    pid: OWNER.ownerPid,
-    processStartIdentity: OWNER.ownerStartedAt,
-  });
-
-  now = START + CODEX_BRIDGE_LEASE_MS - 1;
-  assert.equal(coordinator.observe([thread()]).sessions.get("live-root").isLive, true);
-  now += 2;
-  assert.equal(coordinator.observe([thread()]).sessions.get("live-root").isLive, true, "the first expired bridge poll preserves presence during shutdown grace");
-  const closed = coordinator.observe([thread()]);
-  assert.equal(closed.sessions.get("live-root").isLive, false);
-});
-
 test("open-turn activity keeps rollout catalog working across quiet gaps until explicit completion", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-open-turn-live-"));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -276,7 +184,6 @@ test("open-turn activity keeps rollout catalog working across quiet gaps until e
   await writeFile(rolloutFile, `${openTurn.join("\n")}\n`, "utf8");
   let now = START + 70_000;
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     now: () => now,
     cacheMs: 0,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -372,7 +279,6 @@ test("a current idle app-server status outranks inferred plan confirmation", asy
     JSON.stringify({ timestamp: new Date(START + 1).toISOString(), type: "event_msg", payload: { type: "task_complete" } }),
   ].join("\n") + "\n", "utf8");
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     now: () => START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 1,
     cacheMs: 0,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -386,7 +292,6 @@ test("a current idle app-server status outranks inferred plan confirmation", asy
   assert.equal(observed.threads[0].liveness.source, "owning_app_server");
 
   const expired = createCodexLivenessCoordinator({
-    root: path.join(root, "expired-liveness"),
     now: () => START + CODEX_NEEDS_INPUT_MAX_MS + 1,
     cacheMs: 0,
   });
@@ -421,7 +326,6 @@ test("recorded desktop input waits only when no current owning runtime is availa
   await utimes(rolloutFile, staleTime, staleTime);
 
   const appObserved = createCodexLivenessCoordinator({
-    root: path.join(root, "app-liveness"),
     now: () => now,
     cacheMs: 0,
   }).observe([thread("app-edit", {
@@ -434,7 +338,6 @@ test("recorded desktop input waits only when no current owning runtime is availa
   assert.equal(appObserved.threads[0].liveness.source, "owning_app_server");
 
   const coldObserved = createCodexLivenessCoordinator({
-    root: path.join(root, "cold-liveness"),
     now: () => now,
     cacheMs: 0,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -449,7 +352,6 @@ test("recorded desktop input waits only when no current owning runtime is availa
   assert.equal(coldObserved.threads[0].liveness.source, "rollout_activity_heuristic");
 
   const descendantObserved = createCodexLivenessCoordinator({
-    root: path.join(root, "descendant-liveness"),
     now: () => now,
     cacheMs: 0,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -481,7 +383,6 @@ test("recorded desktop input waits only when no current owning runtime is availa
     },
   })}\n`, "utf8");
   const unownedObserved = createCodexLivenessCoordinator({
-    root: path.join(root, "explicit-liveness"),
     now: () => now,
     cacheMs: 0,
   }).observe([thread("explicit-input", {
@@ -493,7 +394,6 @@ test("recorded desktop input waits only when no current owning runtime is availa
   assert.equal(unownedObserved.threads[0].liveness.source, "structured_lifecycle");
 
   const idleObserved = createCodexLivenessCoordinator({
-    root: path.join(root, "idle-liveness"),
     now: () => now,
     cacheMs: 0,
   }).observe([thread("explicit-input", {
@@ -517,7 +417,6 @@ test("a growing rollout stays live when Windows reports a stale modification tim
 
   let now = START + 1_000;
   const coordinator = createCodexLivenessCoordinator({
-    root,
     cacheMs: 0,
     now: () => now,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -569,7 +468,6 @@ test("cold Codex Desktop discovery reads a bounded stale-mtime rollout whose rec
   await utimes(rolloutFile, staleTime, staleTime);
 
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     now: () => now,
     cacheMs: 0,
     deterministicAvailability: LEGACY_INFERENCE,
@@ -610,7 +508,6 @@ test("cold Codex CLI discovery requires an actively held writer lock for stale a
   await writeFile(writerLock, "", "utf8");
 
   const unlocked = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     writerLocksRoot,
     now: () => now,
     cacheMs: 0,
@@ -627,15 +524,16 @@ test("cold Codex CLI discovery requires an actively held writer lock for stale a
   const activeLock = (file) => isActiveCodexWriterLock(file, {
     platform: "win32",
     statFileSync: () => ({ isFile: () => true }),
-    openFileSync: () => {
+    openFileSync: () => 17,
+    readSync: () => {
       const error = new Error("synthetic Windows sharing violation");
-      error.code = "EPERM";
+      error.code = "EBUSY";
       throw error;
     },
+    closeFileSync: () => {},
   });
   assert.equal(activeLock(writerLock), true);
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "active-liveness"),
     writerLocksRoot,
     writerLockIsActive: (file) => file === writerLock && activeLock(file),
     now: () => now,
@@ -684,7 +582,6 @@ test("cold Desktop discovery cannot consume the actively locked CLI rollout budg
   }) + "\n", "utf8");
   await utimes(cliRolloutFile, staleTime, staleTime);
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     writerLocksRoot: path.join(root, "thread-writer-locks"),
     writerLockIsActive: (file) => file.endsWith("locked-cli.lock"),
     now: () => now,
@@ -726,7 +623,6 @@ test("liveness scans one recent pending rollout while skipping five hundred prov
     return thread(`stale-${index}`, { updatedAt: staleUpdatedAt, rolloutFile });
   }));
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     now: () => START + 2_000,
     cacheMs: 0,
   });
@@ -738,7 +634,7 @@ test("liveness scans one recent pending rollout while skipping five hundred prov
   assert.equal(observed.sessions.get("recent-pending").needsInput, true);
 });
 
-test("owning-runtime state avoids its rollout tail while hooks permit structured rollout repair", async (context) => {
+test("owning-runtime state avoids its rollout tail while native presence remains separate", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-authoritative-live-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout-unused.jsonl");
@@ -747,32 +643,32 @@ test("owning-runtime state avoids its rollout tail while hooks permit structured
     type: "session_meta",
     payload: { id: "unused" },
   }), "utf8");
-  const livenessRoot = path.join(root, "liveness");
-  hook(livenessRoot, START, "PermissionRequest", { sessionId: "bridge-root" });
   const coordinator = createCodexLivenessCoordinator({
-    root: livenessRoot,
     now: () => START + 1_000,
     cacheMs: 0,
+    currentWriterOwner: (localId) => localId === "native-root"
+      ? { pid: 4242, processStartIdentity: "134000000000000000" }
+      : null,
   });
   const observed = coordinator.observe([
     thread("app-root", { runtimeStatus: { type: "active" }, rolloutFile }),
-    thread("bridge-root", { rolloutFile }),
+    thread("native-root", { rolloutFile }),
   ]);
   assert.equal(coordinator.stats().rolloutFiles, 1);
   assert.equal(observed.threads.find((item) => item.localId === "app-root").liveness.source, "owning_app_server");
-  assert.equal(observed.threads.find((item) => item.localId === "bridge-root").liveness.source, "lifecycle_bridge");
+  assert.equal(observed.threads.find((item) => item.localId === "native-root").presenceConfirmed, true);
+  assert.equal(observed.threads.find((item) => item.localId === "native-root").livenessLive, true);
+  assert.equal(observed.threads.find((item) => item.localId === "native-root").liveStatus, "unknown");
 });
 
-test("conflicting current bridge owners keep a live session resource-ownerless", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-conflicting-owners-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  hook(root, START, "SessionStart", { sessionId: "conflict-root" });
-  hook(root, START, "SubagentStart", {
-    sessionId: "conflict-root",
-    agentId: "conflict-child",
-    owner: { ownerPid: 4343, ownerStartedAt: "134000000000000001", startWatcher: false },
+test("conflicting current native owners keep a live session resource-ownerless", () => {
+  const coordinator = createCodexLivenessCoordinator({
+    now: () => START + 1_000,
+    cacheMs: 0,
+    currentWriterOwner: (localId) => localId === "conflict-root"
+      ? { pid: 4242, processStartIdentity: "134000000000000000" }
+      : { pid: 4343, processStartIdentity: "134000000000000001" },
   });
-  const coordinator = createCodexLivenessCoordinator({ root, now: () => START + 1_000, cacheMs: 0 });
   const observed = coordinator.observe([
     thread("conflict-root"),
     thread("conflict-child", { sessionId: "conflict-root", parentThreadId: "conflict-root" }),
@@ -780,8 +676,8 @@ test("conflicting current bridge owners keep a live session resource-ownerless",
   assert.deepEqual(observed.sessions.get("conflict-root"), {
     isLive: true,
     needsInput: false,
-    activityStatus: "working",
-    observedAt: new Date(START).toISOString(),
+    activityStatus: "open",
+    observedAt: null,
     resourceOwner: null,
   });
 });
@@ -797,7 +693,6 @@ test("future-dated rollout metadata is scanned and record timestamps decide live
     payload: { id: "future-root" },
   }), "utf8");
   const coordinator = createCodexLivenessCoordinator({
-    root: path.join(root, "liveness"),
     now: () => START,
     cacheMs: 0,
   });
@@ -806,43 +701,22 @@ test("future-dated rollout metadata is scanned and record timestamps decide live
   assert.equal(observed.sessions.get("future-root").isLive, false);
 });
 
-test("Windows owner identity binds a lease to process creation time", { skip: process.platform !== "win32" }, () => {
-  const identity = processStartIdentity(process.pid);
-  assert.match(identity, /^\d{17,20}$/);
-  assert.equal(BigInt(identity) > 0n, true);
-});
-
-test("process start identities accept the sampler format and reject unsafe values", () => {
-  assert.equal(processStartIdentity(4242, { processStartIdentity: () => OWNER.ownerStartedAt }), OWNER.ownerStartedAt);
-  assert.equal(processStartIdentity(4242, { processStartIdentity: () => "../../unsafe" }), null);
-});
-
-test("the inert hook command accepts Windows lifecycle JSON and persists only its allowlist", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-hook-command-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const result = spawnSync(process.execPath, [path.resolve("scripts/codex-lifecycle-bridge.mjs")], {
-    input: JSON.stringify({
-      session_id: "command-smoke",
-      hook_event_name: "SessionEnd",
-      reason: "PRIVATE_REASON_MUST_NOT_LEAK",
-      cwd: "PRIVATE_PATH_MUST_NOT_LEAK",
-      transcript_path: "PRIVATE_TRANSCRIPT_MUST_NOT_LEAK",
-    }),
-    encoding: "utf8",
-    env: { ...process.env, POMEGR_CODEX_LIVENESS_DIR: root, POMEGR_CODEX_OWNER_PID: String(process.pid) },
-    windowsHide: true,
-  });
-  assert.equal(result.status, 0);
-  assert.equal(result.stdout, "{}\n");
-  assert.equal(result.stderr, "");
-  assert.doesNotMatch(await serializedFiles(root), /PRIVATE_|reason|cwd|transcript/i);
-});
-
 test("archived threads never become live from current app-server or rollout evidence", () => {
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(os.tmpdir(), "missing-pomegr-liveness"), now: () => START, cacheMs: 0 });
+  let calls = 0;
+  const coordinator = createCodexLivenessCoordinator({
+    now: () => START,
+    cacheMs: 0,
+    currentWriterOwner: () => { calls += 1; return { pid: 4242, processStartIdentity: "134000000000000000" }; },
+  });
   const archived = coordinator.observe([{ ...thread("archived-root", { runtimeStatus: { type: "active", activeFlags: [] } }), archived: true }]);
   assert.equal(archived.sessions.get("archived-root").isLive, false);
   assert.equal(archived.threads[0].liveness, null);
+  assert.equal(archived.threads[0].presenceConfirmed, false);
+  assert.equal(calls, 0, "archived actors do not query native presence");
+  const historical = coordinator.observe([thread("historical-root")], { historical: true });
+  assert.equal(historical.threads[0].presenceConfirmed, false);
+  assert.equal(historical.threads[0].livenessLive, false);
+  assert.equal(calls, 0, "historical actors do not query native presence");
 });
 
 function appThread(id, options = {}) {
@@ -878,7 +752,7 @@ test("active descendants keep the session live and propagate waiting through the
       return { thread: { ...value, ...(includeTurns ? { turns: [] } : {}) } };
     },
   };
-  const provider = createCodexProvider({ codexHome: root, livenessRoot: path.join(root, "liveness"), appServer, includeArchived: false, cacheMs: 0, now: () => START + 2_000 });
+  const provider = createCodexProvider({ codexHome: root, appServer, includeArchived: false, cacheMs: 0, now: () => START + 2_000 });
   const catalog = await provider.listSessions();
   assert.deepEqual(catalog.map(({ localId, isLive, needsInput, activityStatus }) => ({ localId, isLive, needsInput, activityStatus })), [
     { localId: "app-root", isLive: true, needsInput: false, activityStatus: "working" },
@@ -897,14 +771,14 @@ test("historical reads discard current app-server liveness", async (context) => 
     async listThreads() { return { data: [active] }; },
     async readThread() { return { thread: active }; },
   };
-  const provider = createCodexProvider({ codexHome: root, livenessRoot: path.join(root, "liveness"), appServer, includeArchived: false, cacheMs: 0, now: () => START + 2_000 });
+  const provider = createCodexProvider({ codexHome: root, appServer, includeArchived: false, cacheMs: 0, now: () => START + 2_000 });
   const evidence = await provider.readSession("history-root", { historical: true });
   assert.equal(evidence.historical, true);
   assert.equal(evidence.agents[0].status, "idle");
   assert.equal(evidence.agents[0].liveness, null);
 });
 
-test("automatic selection stops preferring an expired needs-input bridge and rollout polling stays bounded and cached", async (context) => {
+test("automatic selection stops preferring expired needs-input evidence and rollout polling stays bounded and cached", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-bounds-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2026", "08", "11");
@@ -926,7 +800,7 @@ test("automatic selection stops preferring an expired needs-input bridge and rol
     rolloutFiles.push(file);
   }
   let now = START + 2_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0, maximumTailBytes: 4_096 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0, maximumTailBytes: 4_096 });
   const threads = rolloutFiles.map((rolloutFile, index) => thread(`session-${index}`, { rolloutFile }));
   coordinator.observe(threads);
   const first = coordinator.stats();
@@ -937,11 +811,21 @@ test("automatic selection stops preferring an expired needs-input bridge and rol
   assert.equal(second.rolloutFiles, 0);
   assert.equal(second.cachedRollouts, 4);
 
-  hook(path.join(root, "liveness"), now, "PermissionRequest", { sessionId: "session-0" });
-  const provider = createCodexProvider({ codexHome: root, livenessRoot: path.join(root, "liveness"), cacheMs: 0, now: () => now, maximumTailBytes: 4_096 });
+  const provider = createCodexProvider({
+    codexHome: root,
+    cacheMs: 0,
+    now: () => now,
+    maximumTailBytes: 4_096,
+    writerPresence: {
+      async refresh() {},
+      current: (localId) => localId === "session-0"
+        ? { pid: 4242, processStartIdentity: "134000000000000000" }
+        : null,
+    },
+  });
   assert.deepEqual((await provider.listSessions()).find((item) => item.localId === "session-0")?.resourceOwner, {
-    pid: OWNER.ownerPid,
-    processStartIdentity: OWNER.ownerStartedAt,
+    pid: 4242,
+    processStartIdentity: "134000000000000000",
   });
   const registry = createProviderRegistry([provider]);
   assert.equal((await registry.readSession()).sessionId, "codex:session-0");
@@ -962,7 +846,7 @@ test("cached complete rollout boundaries survive hours of silence and resolve on
   const start = { timestamp: new Date(START).toISOString(), type: "event_msg", payload: { type: "task_started", turn_id: "silent" } };
   await writeFile(rolloutFile, JSON.stringify(start) + "\n", "utf8");
   let now = START + 1_000;
-  const coordinator = createCodexLivenessCoordinator({ root: path.join(root, "liveness"), now: () => now, cacheMs: 0 });
+  const coordinator = createCodexLivenessCoordinator({ now: () => now, cacheMs: 0 });
   const threads = [thread("silent-root", { rolloutFile })];
   assert.equal(coordinator.observe(threads).sessions.get("silent-root").activityStatus, "working");
   now = START + 4 * 60 * 60_000;

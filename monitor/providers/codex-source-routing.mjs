@@ -18,5 +18,5 @@ export function createCodexSourceRouter(maximumColdReads = 16) {
 
 /** Only an adapter's affirmative, per-channel support assessment permits inference. */
 export function codexInferenceEligible(availability) {
-  return ["owningRuntime", "hooks", "structuredRollout"].every((key) => availability?.[key] === "unsupported");
+  return ["owningRuntime", "writerPresence", "structuredRollout"].every((key) => availability?.[key] === "unsupported");
 }

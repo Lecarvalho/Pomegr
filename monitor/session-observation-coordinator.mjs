@@ -4,6 +4,17 @@ import { createDurationSeries } from "./pipeline-operations.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
 
+const OPEN_LIVE_WINDOW_MS = 5 * 60_000;
+
+// Live is a recent working-set view; Open remains the provider's presence state.
+// Never use observation time here: polling and restarts are not user activity.
+function openLiveDeadline(entry, nowMs) {
+  if (!entry.isLive || entry.activityStatus !== "open" || entry.needsInput) return null;
+  const activityAt = typeof entry.updatedAt === "string" ? Date.parse(entry.updatedAt) : NaN;
+  return Number.isFinite(nowMs) && Number.isFinite(activityAt) && activityAt <= nowMs
+    ? activityAt + OPEN_LIVE_WINDOW_MS : Number.NEGATIVE_INFINITY;
+}
+
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
 }
@@ -93,6 +104,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const restoredActivitySessions = new Set();
   const subscribers = new Set();
   let catalogTimer = null;
+  let openExpiryTimer = null;
   let catalogTimerDueAt = null;
   let catalogDirtyAt = null;
   let abortController = null;
@@ -146,7 +158,12 @@ export function createSessionObservationCoordinator(options = {}) {
   }
 
   function commitCatalog() {
+    if (stopped) return;
     const projectionStartedAt = monotonicNow();
+    const checkedAt = now();
+    let nextOpenExpiry = Infinity;
+    if (openExpiryTimer !== null) cancel(openExpiryTimer);
+    openExpiryTimer = null;
     catalogTimer = null;
     catalogTimerDueAt = null;
     if (catalogDirtyAt !== null) {
@@ -160,7 +177,11 @@ export function createSessionObservationCoordinator(options = {}) {
     }
     const entries = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
     const previousRows = new Map((catalogCache.current()?.value?.sessions || []).map((entry) => [entry.id, entry]));
-    const sessions = entries.map((entry) => {
+    const sessions = entries.map((nativeEntry) => {
+      const deadline = openLiveDeadline(nativeEntry, checkedAt);
+      const expired = deadline !== null && !(deadline > checkedAt);
+      if (deadline !== null && deadline > checkedAt) nextOpenExpiry = Math.min(nextOpenExpiry, deadline);
+      const entry = expired ? { ...nativeEntry, isLive: false } : nativeEntry;
       const snapshot = store.getByQualifiedId(entry.id);
       const state = snapshot?.publicState;
       const previous = previousRows.get(entry.id);
@@ -201,6 +222,14 @@ export function createSessionObservationCoordinator(options = {}) {
       sessions,
     });
     notify({ type: "catalog", revision: committed.revision });
+    if (Number.isFinite(nextOpenExpiry)) {
+      const expiryGeneration = generation;
+      openExpiryTimer = schedule(() => {
+        openExpiryTimer = null;
+        if (!stopped && generation === expiryGeneration) scheduleCatalogCommit(0);
+      }, Math.max(0, nextOpenExpiry - now()));
+      openExpiryTimer?.unref?.();
+    }
     timings.catalogProjectionCommit.record(monotonicNow() - projectionStartedAt);
   }
 
@@ -383,6 +412,8 @@ export function createSessionObservationCoordinator(options = {}) {
     abortController = new AbortController();
     stopped = false;
     generation += 1;
+    // Reapply wall-clock visibility before waiting for provider acquisition.
+    if (catalogsByProvider.size) scheduleCatalogCommit(0);
     startPromise = (async () => {
       if (checkpointStore) {
         const loaded = await checkpointStore.load({
@@ -457,6 +488,8 @@ export function createSessionObservationCoordinator(options = {}) {
     generation += 1;
     abortController?.abort();
     if (catalogTimer !== null) cancel(catalogTimer);
+    if (openExpiryTimer !== null) cancel(openExpiryTimer);
+    openExpiryTimer = null;
     catalogTimer = null;
     catalogTimerDueAt = null;
     catalogDirtyAt = null;

@@ -132,6 +132,7 @@ describe("Sessions view", () => {
     view.rerender(<SessionCatalogProvider sessions={[quietOpen]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
     expect(visibleSessionTitles()).toEqual(["Quiet open"]);
+    expect(within(screen.getByText("Quiet open").closest("tr")!).getByText("Open")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^All/ }));
     view.rerender(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);

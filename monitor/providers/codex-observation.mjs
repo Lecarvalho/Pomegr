@@ -214,7 +214,6 @@ export function createCodexIncrementalObserver(options = {}) {
   const sessions = new Map();
   const sourceSessions = new Map();
   const sourcesBySession = new Map();
-  const pendingCatalogEntries = new Map();
   const catalogTargets = new Set(catalogWatchTargets.map((target) => path.resolve(target)));
 
   if (observationKey !== undefined && typeof observationKey !== "function") {
@@ -299,25 +298,13 @@ export function createCodexIncrementalObserver(options = {}) {
   /** @param {{target?: string, filename?: string | null, eventType?: string}} [change] */
   async function routeCodexSourceEvent({ target, filename, eventType } = {}) {
     if (catalogTargets.has(path.resolve(target))) {
-      // A liveness/index notification has no rollout bytes to route. Wake a
-      // bounded observed set with a fresh catalog entry now; the normal
-      // catalog pass below still publishes the structural catalog and
-      // re-prepares its full eager working set.
-      let entries = [];
-      try {
-        const discovered = await list({ fresh: true });
-        if (Array.isArray(discovered)) entries = discovered;
-      } catch { /* reconciliation and the normal fresh catalog pass retry */ }
-      const observedIds = new Set([...sessions.keys()].slice(-MAX_LIFECYCLE_EVENT_SESSIONS));
-      const sessionIds = [];
-      for (const entry of entries) {
-        if (!observedIds.has(entry?.localId)) continue;
-        pendingCatalogEntries.set(entry.localId, entry);
-        sessionIds.push(entry.localId);
-      }
+      options.onCatalogSourceEvent?.({ target, filename, eventType });
+      // The observer owns one coalesced fresh catalog pass. Never prefetch a
+      // second catalog here, or a watcher burst serializes redundant discovery.
       return {
         catalog: true,
-        sessionIds,
+        afterCatalog: true,
+        sessionIds: [...sessions.keys()].slice(-MAX_LIFECYCLE_EVENT_SESSIONS),
       };
     }
     if (typeof filename !== "string" || !filename) return { catalog: true, sessionIds: [] };
@@ -340,11 +327,7 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   async function acquire(localSessionId, publisher, preparedSources) {
-    const freshEntry = pendingCatalogEntries.get(localSessionId);
-    if (freshEntry) pendingCatalogEntries.delete(localSessionId);
-    const sourceSet = freshEntry
-      ? (await prepareSources([freshEntry])).get(localSessionId) || null
-      : preparedSources instanceof Map
+    const sourceSet = preparedSources instanceof Map
       ? preparedSources.get(localSessionId) || null
       : (await prepareSources([{ localId: localSessionId, isLive: false }])).get(localSessionId) || null;
     if (!sourceSet || sourceSet.unavailable) return null;
@@ -481,7 +464,7 @@ export function createCodexIncrementalObserver(options = {}) {
     return candidate;
   }
 
-  return createNormalizedPollingObserver({
+  const observer = createNormalizedPollingObserver({
     list,
     ingest: acquire,
     prepare: prepareSources,
@@ -493,5 +476,33 @@ export function createCodexIncrementalObserver(options = {}) {
     yieldControl,
     now,
     shouldEagerHydrate,
+  });
+  let stopped = false;
+  let signal = null;
+  let unsubscribeLifecycle = null;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    signal?.removeEventListener("abort", stop);
+    unsubscribeLifecycle?.();
+    observer.stop();
+    options.onStop?.();
+  };
+  return Object.freeze({
+    ...observer,
+    async start(publisher, nextSignal) {
+      signal = nextSignal;
+      signal?.addEventListener("abort", stop, { once: true });
+      try {
+        const unsubscribe = options.subscribeLifecycleChanges?.(() => {
+          void observer.refresh({ sessionIds: [...sessions.keys()].slice(-MAX_LIFECYCLE_EVENT_SESSIONS) });
+        });
+        unsubscribeLifecycle = typeof unsubscribe === "function" ? unsubscribe : null;
+      } catch { /* periodic reconciliation still projects current presence */ }
+      try { await observer.start(publisher, nextSignal); }
+      catch (error) { stop(); throw error; }
+      if (signal?.aborted) stop();
+    },
+    stop,
   });
 }

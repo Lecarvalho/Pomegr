@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ClaudeUsageControls } from "../../app/components/ClaudeUsageControls";
 import type { UsageLimits } from "../../shared/monitor-contract";
 
@@ -20,6 +22,14 @@ afterEach(() => {
 });
 
 describe("Claude usage recovery", () => {
+  it("keeps recovery actions compact, wrapping, and touch-friendly", () => {
+    const styles = readFileSync(join(process.cwd(), "app/styles/evidence.css"), "utf8");
+    expect(styles).toMatch(/\.claudeUsageActions\s*\{[^}]*flex-wrap: wrap;[^}]*align-items: center/);
+    expect(styles).toMatch(/\.claudeUsageActions \.commandSecondaryAction\s*\{[^}]*min-height: var\(--control-compact\);[^}]*max-width: 100%;[^}]*font-size: var\(--text-xs\)/);
+    expect(styles).not.toMatch(/\.usageConnectionHelp button\s*\{[^}]*margin-top/);
+    expect(styles).toMatch(/@media \(max-width: 560px\), \(pointer: coarse\)\s*\{\s*\.claudeUsageActions \.commandSecondaryAction, \.claudeUsageActions a\s*\{ min-height: 44px/);
+  });
+
   it.each([
     ["provider_api", null],
     ["local_observation", null],
@@ -107,11 +117,15 @@ describe("Claude usage recovery", () => {
     desktop({ startClaudeSignIn, getClaudeUsageIntegration: async () => ({ status: "disabled" }) });
     render(<ClaudeUsageControls usageLimits={rejected} />);
     const button = await screen.findByRole("button", { name: "Reconnect Claude Code" });
+    const actions = button.closest(".claudeUsageActions");
+    expect(actions).toContainElement(screen.getByRole("link", { name: "Setup guide (opens in a new tab)" }));
     expect(startClaudeSignIn).not.toHaveBeenCalled();
     fireEvent.click(button);
     fireEvent.click(button);
     expect(startClaudeSignIn).toHaveBeenCalledTimes(1);
     expect(button).toBeDisabled();
+    expect(button).toHaveTextContent("Waiting for sign-in…");
+    expect(actions).not.toContainElement(screen.getByRole("status"));
     await act(async () => complete({ status: "completed" }));
     expect(screen.getByRole("status")).toHaveTextContent("Claude Code sign-in completed.");
     expect(button).toBeEnabled();

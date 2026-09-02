@@ -138,6 +138,16 @@ worker queue, session store, Home derivation, or checkpoint writer.
   historical views show no session notice. Dismissal is bounded tab-memory view state,
   keyed by a monitor-issued incident identity and severity. Recovery removes a notice;
   a new incident or material worsening can show it again.
+- The shell notification tray lists one current service issue per affected provider,
+  with an official incident/status link and the original last-check timestamp. The
+  bell indicates unread issues even when no session needs input. Read acknowledgement
+  lives only in bounded tab memory, survives closing the tray, ignores repeated polls,
+  and resets after recovery, a new incident, or material worsening. A failed refresh
+  may retain a fresh last-confirmed report with explicit delayed-refresh wording;
+  stale, unknown, loading, and healthy status do not create service notifications.
+  Sessions rows show the same status details only when `isLive` is true and the
+  normalized provider matches. Historical rows never acquire a current warning.
+  Both surfaces consume the existing shared store and never revise session evidence.
 
 Public serialization is limited to provider/source enums, health/readiness/freshness,
 last successful local check and provider update timestamps, a fixed official status-page
@@ -309,29 +319,59 @@ invalidation hint, never a state payload. The browser responds by fetching `/api
 with its current revision. That GET still reads only the committed response cache. A
 dropped event is harmless because focus refresh and serialized recovery polling remain.
 
+Claude observes both its project transcripts and its provider session registry.
+Registry creation, updates, and removal queue one coalesced catalog reconciliation
+instead of waiting for the ten-second safety poll. The bounded previously-live set
+is also hydrated against the new catalog, including a departed session older than the
+eager history window. The source fingerprint includes only normalized live/history,
+status, and needs-input state so lifecycle-only changes update detail without requiring
+transcript growth; no registry paths, owners, or raw contents enter the fingerprint
+payload or browser API. Unsupported watchers retain periodic reconciliation. Registry
+watching does not change the existing unregistered-transcript activity grace rules.
+
 Codex lifecycle observation has an explicit ownership boundary. A connected owning
 app-server supplies runtime status through read-only list/read observations with
 successful per-thread confirmation; its status expires after 120 seconds without a
 fresh observation as `observation_gap`. The separate account-only app-server used for
 usage limits is never a session observer. The CLI documents a proxy to a running local
 daemon, but Desktop owner association and socket discovery are not established by this
-contract, so production does not auto-attach, pair, or configure that transport. The
-hook bridge requires a recognized Codex/ChatGPT ancestor or a validated
-explicit owner PID. The Codex plugin packages an inert SessionStart bridge and its
-colocated owner watcher; installing the update and trusting the changed provider hook
-is the activation boundary. Existing sessions without a newly executed trusted hook
-remain without that presence evidence. The watcher renews only the same PID/start
-identity, does not alter the session activity timestamp, and exits when ownership
-can no longer be validated. No per-tool presence hook or new time-based session
-retention is introduced; it does not reuse an old lease when current identity is unavailable.
-It persists only its versioned bounded snapshot: v2 allowlisted lifecycle event,
-optional SessionStart source, stop-hook continuation flag, bounded IDs, timestamps,
-sequence, and local lease state. Legacy v1 snapshots remain parseable but contribute
-unavailable evidence. Stop/SubagentStop/SessionEnd are boundary signals rather than
-completion proofs; compact SessionStart preserves state only with matching non-null
-turn identity and owner/lease identity, otherwise it is unknown. Lease expiry and
-missing ownership downgrade to unknown/stale and never to idle. Historical views omit
-runtime liveness and hook snapshots.
+contract, so production does not auto-attach, pair, or configure that transport.
+On Windows, the independent native writer-presence collector observes known threads'
+provider-owned locks without a plugin. It opens read-only and probes one byte at offset
+zero, including beyond EOF on an empty file. Contention must be accompanied by stable
+file identity and exactly one Restart Manager owner whose executable matches a locally
+resolved native Codex installation and whose current process creation time matches
+the owner record. A process name, PID alone, file existence, or file recency is insufficient.
+Permission failures, ambiguous owners, source replacement and unexpected failures do
+not establish presence. The observer never locks, writes, renames, or deletes provider
+files and never shuts down, resumes, or attaches to a provider process.
+
+Acquisition probes at most 500 safe, unarchived known IDs, yields between batches of
+32, and uses at most one hidden asynchronous owner-query process per refresh, with an
+eight-second deadline and 256 KiB output bound. Refreshes coalesce with a five-second
+acquisition cache; native lock-directory notifications invalidate it. Restart Manager
+registers the held-file set as a group, following its
+[resource-grouping guidance](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmregisterresources).
+A complete single-process union can confirm each independently held file; a multi-process
+union is partitioned sequentially before attribution, never copied to every file. Queries
+are bounded to 63 groups and 512 process records per group. A complete empty, foreign-only,
+or ambiguous single-file group remains unavailable without poisoning independently resolved
+groups; native errors, incomplete results, budget exhaustion, and timeouts reject the batch.
+Successful owner
+confirmation has a separate thirty-second maximum health age, so an ongoing refresh
+does not erase accepted presence merely because its acquisition cache expired. Completed
+failed checks clear confirmation; invalidation/shutdown prevent late results from
+re-publishing it. All ownership stays in bounded adapter-private memory, never an L2
+checkpoint, browser response, diagnostic log, or transcript. This health bound is not
+an idle-session retention heuristic and cannot end an unresolved recorded turn.
+
+The lifecycle hook bridge, detached owner watcher, snapshot/lease persistence, and
+plugin build wiring are removed. Existing installed-plugin files and old user data
+are not deleted by the monitor and are not consumed. The plugin remains optional for
+policy, signals and progress. The legacy normalized `lifecycle_bridge` source enum is
+accepted only for checkpoint compatibility; restore still downgrades it, never renews
+presence, and historical views omit runtime liveness. macOS/Linux do not inherit the
+Windows probe; connected owning-runtime and recorded lifecycle remain available there.
 
 U1 detects lifecycle-only changes using a bounded private fingerprint alongside
 transcript generations, including source status, evidence, freshness, and live/history
@@ -369,21 +409,88 @@ is ready, with no timeout extension or presentation debounce.
 
 The Live catalog includes unresolved recorded work and confirmed owner-backed
 presence. A terminal record alone does not establish presence: it ends the unresolved
-work, while a current owning runtime or valid owner lease can still keep the session
+work, while a current owning runtime or confirmed native writer owner can still keep the session
 open. Catalog activity distinguishes working, needs_input, idle, stopped, open, and
 unknown. A completed idle turn with confirmed current owner-backed presence is
-`open`, remains in Live, and keeps its individual agents idle. Working, needs-input,
+`open`, remains in Live while its catalog visibility age is valid, and keeps its individual agents idle. Working, needs-input,
 and stopped evidence retain precedence. Open never follows from a recent file alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
 Unknown non-live entries must never be labeled Complete. A crash without a terminal
 record may leave unresolved work; no elapsed transcript-silence window guesses an end.
 Existing catalog, cold-discovery, working-set, and evidence-cache bounds remain in force.
 
-Owning-runtime confirmation expiry and bridge lease expiry remain independent health
+Live visibility is a shared D catalog projection, not a replacement for provider
+presence or lifecycle evidence. An owner-retained `open` row remains
+`activityStatus: open`, but `isLive` becomes false when five minutes have elapsed
+since the catalog row's last recorded activity (`updatedAt`). Missing, invalid, or
+future `updatedAt` values do not qualify `open` for Live. Working and `needs_input`
+rows, including states retained from recognized child/background aggregation, do not
+expire under this rule. Ownership probes, monitor restarts, and viewing a session do
+not renew `updatedAt`; an expired row is shown under All while its underlying runtime
+presence is not thereby declared ended. One shared expiry timer schedules this
+projection; GETs continue to serve only committed response caches. Restart reprojects
+retained catalog rows before waiting for provider acquisition. A selected Open row
+continues its normal detail polling even outside Live; this filter transition does
+not turn its current evidence into a historical snapshot.
+
+The Windows CLI cold-discovery predicate opens the native writer-lock file read-only
+and probes one byte at offset zero. An exclusive byte-range lock can deny that read
+even when opening succeeds and the file is empty. Only `EBUSY` establishes contention;
+permission errors, missing/non-file paths, and unexpected failures do not. A negative
+probe means no confirmed contention, not confirmed idle or completion. Non-Windows
+platforms do not inherit Windows mandatory-read-lock semantics. This predicate only
+gates bounded CLI acquisition; contention alone is not native session-presence authority.
+
+Native writer ownership has a separate lifecycle acceptance suite. The opt-in `tests/codex-native-lock-acceptance.test.mjs`
+suite uses an explicitly selected native executable and isolated temporary provider
+home, without credentials, installed plugins, or model turns. Its read-only owner
+query checks stable file identity, read contention, a unique file user, exact native
+executable, and matching process-start identity. Those checks establish an observation,
+not a guarantee against every concurrent ownership race. The Windows native
+acceptance run with Codex CLI 0.152.1 confirmed idle loaded tasks retain zero-byte locks, unsubscribe retains
+loaded state during its grace period, and both stdin shutdown and forced child exit
+release locks. A separate Desktop acceptance check on 2026-09-02 confirmed that a completed
+task retained its native owner after switching away, and user archiving set the native
+archive flag and removed that task's lock while Codex kept running. Archiving an empty
+synthetic task was rejected; the Desktop check covered the real completed-task case.
+The scaling acceptance additionally holds 70 real native task locks concurrently,
+confirms all within the helper deadline, distinguishes two native process owners, and
+rejects a lock with an additional foreign file user without misattributing another lock.
+The separate 500-candidate test retains one held lock among unlocked stale files; it is
+not a substitute for the many-held-lock acceptance.
+Enable the isolated test only by supplying an absolute native executable
+in `POMEGR_CODEX_NATIVE_TEST_EXECUTABLE`; normal test runs explicitly skip it. Recorded
+execution precedence, checkpoint format, and browser fields are unchanged. GETs remain cache-only and
+last-known-good retention and lifecycle-only revisions keep their existing contract.
+
+Owning-runtime confirmation expiry and native writer confirmation expiry remain independent health
 checks. Checkpoint restore still downgrades runtime claims until fresh acquisition;
 complete transcript replay can then re-establish an unresolved turn even after hours
 of silence. When hydration repairs a startup catalog classification, the observer
 updates the catalog reference used by subsequent preparation so stale startup rows
 cannot reverse it. Unchanged silence creates no new candidate or response revision.
+
+Native ownership acquisition is an independent, single-flight background lane.
+Catalog discovery schedules it without awaiting its helper; transcript acquisition,
+normalization, startup readiness, and detail reads consume only its last committed
+in-memory snapshot. A slow or unavailable owner query must never hold either transcript
+worker or catalog publication. The five-second acquisition cooldown starts at query
+completion, while the thirty-second confirmation health remains anchored to probe
+start. Watcher bursts invalidate presence conservatively without repeatedly killing
+the helper; the latest pending request replaces prior requests, and invalidated results
+cannot publish. Observer shutdown cancels the helper and removes its subscriptions.
+
+Effective owner changes, including recovery after confirmation expiry, send a private
+wakeup for one coalesced non-fresh catalog reconciliation and bounded observed-session
+hydration. Timestamp-only renewals and cache hits do not send wakeups. Index/ownership
+events use one coalesced fresh discovery pass, not a separate router prefetch. Their
+detail hydration uses the new catalog, including sessions leaving the eager set.
+Known transcript rotations also enter acquisition immediately rather than waiting on
+discovery. Failed/unavailable catalog reads retain queued lifecycle wakeups for retry.
+Source/catalog wakeups invalidate in-flight eager preparation; a superseded batch is
+replaced or freshly prepared before acquisition. Routine prepared work cannot overwrite
+a queued priority-zero source update with its older context.
+No native ownership waits, reads, or notifications are introduced into GET handlers,
+React, persisted checkpoints, or browser API fields.
 
 ### Startup working set and lazy history
 
@@ -483,7 +590,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
-| Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh |
+| Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Catalog revision notification | Backend serving / S | Carries no state; announces only the committed `sessions` revision | Emit immediately after a catalog response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |

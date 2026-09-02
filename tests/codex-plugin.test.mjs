@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { access, cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
-import { currentBridgeResourceOwner, readBridgeRecords } from "../monitor/providers/codex-hook-lifecycle.mjs";
-import { CODEX_BRIDGE_HEARTBEAT_MS } from "../monitor/providers/codex-lifecycle-constants.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repositoryRoot, "plugins", "pomegr");
@@ -19,10 +16,6 @@ async function withTemporaryDirectory(run) {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-}
-
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function readMcpToolInventory(server, cwd) {
@@ -102,71 +95,9 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   }
   assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
   assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
-  assert.match(hooks.hooks.SessionStart[0].hooks[1].command, /codex-lifecycle-bridge\.bundle\.mjs/);
+  assert.equal(hooks.hooks.SessionStart[0].hooks.length, 1);
+  assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /policy\.mjs/);
   assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
-});
-
-test("installed Codex lifecycle bridge renews its bundled watcher and fails closed after its owner exits", async () => {
-  await withTemporaryDirectory(async (temporaryRoot) => {
-    const installedPlugin = path.join(temporaryRoot, "installed-pomegr");
-    const livenessRoot = path.join(temporaryRoot, "liveness");
-    await cp(pluginRoot, installedPlugin, { recursive: true });
-    const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
-    const exited = new Promise((resolve) => owner.once("exit", resolve));
-    try {
-      const bridge = path.join(installedPlugin, "scripts", "codex-lifecycle-bridge.bundle.mjs");
-      const result = spawnSync(process.execPath, [bridge], {
-        encoding: "utf8",
-        input: JSON.stringify({
-          session_id: "plugin-presence",
-          hook_event_name: "SessionStart",
-          source: "startup",
-          prompt: "SECRET_PROMPT_MUST_NOT_PERSIST",
-          transcript_path: "SECRET_TRANSCRIPT_PATH_MUST_NOT_PERSIST",
-          tool_input: { command: "SECRET_COMMAND_MUST_NOT_PERSIST" },
-          tool_response: "SECRET_OUTPUT_MUST_NOT_PERSIST",
-        }),
-        env: { ...process.env, POMEGR_CODEX_LIVENESS_DIR: livenessRoot, POMEGR_CODEX_OWNER_PID: String(owner.pid) },
-      });
-      assert.equal(result.status, 0, result.stderr);
-      assert.equal(result.stdout, "{}\n");
-
-      const [record] = readBridgeRecords(livenessRoot, 10);
-      assert.equal(record.snapshot.version, 2);
-      assert.deepEqual(currentBridgeResourceOwner(record, Date.now()), {
-        pid: owner.pid,
-        processStartIdentity: record.snapshot.ownerStartedAt,
-      });
-      const initialLeaseObservedAt = record.lease.observedAt;
-      const initialLeaseExpiresAt = record.lease.expiresAt;
-      const persistedBefore = await Promise.all([
-        ...(await readdir(path.join(livenessRoot, "snapshots"))).map((file) => readFile(path.join(livenessRoot, "snapshots", file), "utf8")),
-        ...(await readdir(path.join(livenessRoot, "leases"))).map((file) => readFile(path.join(livenessRoot, "leases", file), "utf8")),
-      ]);
-      assert.doesNotMatch(persistedBefore.join("\n"), /SECRET_(?:PROMPT|TRANSCRIPT_PATH|COMMAND|OUTPUT)_MUST_NOT_PERSIST/);
-
-      await delay(CODEX_BRIDGE_HEARTBEAT_MS + 500);
-      const renewed = readBridgeRecords(livenessRoot, 10)[0];
-      assert.notEqual(renewed.lease.observedAt, initialLeaseObservedAt, "the installed bridge must start its colocated watcher");
-      assert.notEqual(renewed.lease.expiresAt, initialLeaseExpiresAt, "the installed watcher must renew the current owner lease");
-
-      owner.kill();
-      await exited;
-      const renewedExpiresAt = renewed.lease.expiresAt;
-      await delay(CODEX_BRIDGE_HEARTBEAT_MS + 500);
-      assert.equal(readBridgeRecords(livenessRoot, 10)[0].lease.expiresAt, renewedExpiresAt, "a dead owner cannot renew its lease");
-
-      const [leaseFile] = await readdir(path.join(livenessRoot, "leases"));
-      await writeFile(path.join(livenessRoot, "leases", leaseFile), JSON.stringify({
-        ...record.lease,
-        expiresAt: new Date(0).toISOString(),
-      }));
-      assert.equal(currentBridgeResourceOwner(readBridgeRecords(livenessRoot, 10)[0], Date.now()), null);
-    } finally {
-      if (owner.exitCode === null) owner.kill();
-      await exited;
-    }
-  });
 });
 
 test("Codex plugin hooks run under PowerShell after plugin-root expansion", { skip: process.platform !== "win32" }, async () => {
@@ -232,11 +163,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
     await access(path.join(installedPlugin, "hooks", "hooks.json"));
     await access(path.join(installedPlugin, "scripts", "policy.mjs"));
     const reminderPath = path.join(installedPlugin, "scripts", "progress-reminder.bundle.mjs");
-    const lifecycleBridgePath = path.join(installedPlugin, "scripts", "codex-lifecycle-bridge.bundle.mjs");
-    const lifecycleOwnerPath = path.join(installedPlugin, "scripts", "codex-lifecycle-owner.bundle.mjs");
     await access(reminderPath);
-    await access(lifecycleBridgePath);
-    await access(lifecycleOwnerPath);
     await access(path.join(installedPlugin, "skills", "init", "SKILL.md"));
     await access(path.join(installedPlugin, "skills", "doctor", "SKILL.md"));
     const reminder = spawnSync(process.execPath, [reminderPath], { cwd: runtimeCwd, encoding: "utf8", input: "{}" });

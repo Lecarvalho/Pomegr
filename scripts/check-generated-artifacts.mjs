@@ -13,8 +13,6 @@ const bundleDefinitions = [
   ["plugins/claude-code/scripts/rename-session.bundle.mjs", "plugins/claude-code/scripts/rename-session.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/pomegr/mcp/server.bundle.mjs", "mcp/server.mjs", "scripts/build-codex-plugin.mjs"],
   ["plugins/pomegr/scripts/progress-reminder.bundle.mjs", "scripts/progress-reminder.mjs", "scripts/build-codex-plugin.mjs"],
-  ["plugins/pomegr/scripts/codex-lifecycle-bridge.bundle.mjs", "scripts/codex-plugin-lifecycle-bridge.mjs", "scripts/build-codex-plugin.mjs"],
-  ["plugins/pomegr/scripts/codex-lifecycle-owner.bundle.mjs", "scripts/codex-lifecycle-owner.mjs", "scripts/build-codex-plugin.mjs"],
 ];
 const buildOptions = {
   bundle: true,

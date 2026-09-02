@@ -145,17 +145,16 @@ On the computer running Pomegr:
 
 If the CLI is already installed but undetected, use the absolute native executable override above. If it is already signed in with ChatGPT, check connectivity and allow the normal retry interval. A missing CLI is an unavailable setup state, not a pending account request; the dashboard settles to its normal polling cadence. Reading Codex desktop session history does not require this CLI and cannot establish account-usage access. Pomegr only displays these instructions; it does not install Codex, launch sign-in, or expose credentials through the browser.
 
-The Pomegr Codex plugin includes an inert `SessionStart` presence hook and a self-contained owner watcher. Update the installed plugin, review and trust the changed hook in `/hooks`, then start or resume a task. A validated current owner lease keeps completed idle sessions in **Live** with the **Open** label. The watcher validates the same PID/process-start identity; it does not advance session activity timestamps. Existing tasks need a new hook execution before they gain this evidence. Presence describes the owning runtime, not whether a task is visible in the app or whether the user intends to return.
+On Windows, the monitor can keep a current Codex CLI session **Live** when the native writer ownership checks pass: stable writer identity, a unique file user, the exact native executable, and matching process-start identity. This is runtime presence, not execution state. Recorded turn starts and terminal records determine execution; an incomplete or ambiguous turn remains unknown/stale. Unix does not claim native lock ownership without validated platform semantics. An explicitly connected owning app-server is supported on any platform; the separate account-only usage reader is never used as live-state evidence.
 
-For a standalone setup without the plugin, register this inert hook command for the supported Codex lifecycle events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`, and supported subagent transitions):
-
-```powershell
-node "C:\path\to\pomegr\scripts\codex-lifecycle-bridge.mjs"
-```
-
-Codex hook configuration varies by installed surface and version; use the provider's documented hook configuration to invoke that command and pass the hook JSON on stdin. The bridge always writes `{}` to stdout, adds no model context, makes no decision, and atomically persists only allowlisted lifecycle metadata. On Windows, the bridge resolves a recognized `Codex`/`ChatGPT` process ancestor and validates its process-start identity; for unusual wrappers, set `POMEGR_CODEX_OWNER_PID` so the bridge can validate the explicit owner. If neither a recognized ancestor nor a valid explicit owner identity is available, the event is not trusted and an old lease is not reused. On Windows, the default snapshot root is `%APPDATA%\pomegr\codex-liveness`. Set `POMEGR_CODEX_LIVENESS_DIR` in both the hook environment and the Pomegr monitor only when a shared override is needed.
-
-An authenticated connection to the app-server process that owns a Codex thread is the highest-confidence source for live status. The Codex CLI documents a proxy to a running daemon and a shared local app-server, but the Desktop owner association and socket discovery contract are unresolved; Pomegr does not pair, configure, or assume that transport. The standalone Windows monitor does not attach to another process's private stdio transport. Its transient account-only usage reader is not an owning app-server and is never used as live-state evidence. Without an owning connection it uses the lifecycle bridge when configured, then only the adapter-supported structured rollout assessment; missing integration remains unknown/stale rather than idle.
+An owner-retained idle session may remain `activityStatus: Open` while the shared
+catalog projection shows it under All after five minutes since its last recorded
+`updatedAt`. Missing, invalid, or future timestamps exclude Open from Live. This
+visibility age applies only to Open; Working/In progress and Needs input, including
+recognized child/background aggregation, do not expire. Ownership checks, monitor
+restarts, and viewing do not renew activity, and moving a row to All does not mean
+the underlying runtime presence ended. The projection uses one shared expiry timer;
+browser GETs remain cache-only.
 
 ## Capability availability
 
@@ -191,9 +190,7 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 | `POMEGR_CLAUDE_EXECUTABLE` | Desktop sign-in action | Absolute path to the native `claude.exe` | Standard native installation, then PATH |
 | `CODEX_HOME` | Monitor | Codex sessions, archive, and index root | `%USERPROFILE%\.codex` |
 | `POMEGR_CODEX_EXECUTABLE` | Monitor | Absolute path to a supported native Codex CLI for account-only limit reads | Native CLI discovered on `PATH` or the official npm installation |
-| `POMEGR_DATA_DIR` | Desktop, monitor, and local bridges | Override Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
-| `POMEGR_CODEX_LIVENESS_DIR` | Monitor and Codex hook bridge | Shared allowlisted lifecycle snapshot root | `%APPDATA%\pomegr\codex-liveness` on Windows |
-| `POMEGR_CODEX_OWNER_PID` | Codex hook bridge | Explicit owner PID for unusual process-wrapper topologies | Automatic owner discovery |
+| `POMEGR_DATA_DIR` | Desktop and monitor | Override Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
 | `POMEGR_COST_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized Claude estimate snapshots | `%APPDATA%\pomegr\cost-snapshots` on Windows |
 | `POMEGR_USAGE_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized local usage pair | `usage-snapshots` beneath Pomegr's data root |
 | `SESSION_PULSE_PORT` | Monitor and development launcher | Loopback monitor port | `4317` |
@@ -217,7 +214,7 @@ To customize recognized local agent types, optionally commit `.pomegr/roles.json
 
 Keys must already be normalized: lowercase, the text after the final `:`, and separators folded to `-`. The file is capped at 16 KiB and 64 mappings, keys at 64 characters, and values must be one of Pomegr's built-in roles. Extra top-level fields, an unsupported version, or malformed JSON ignore the entire file; invalid individual mapping rows are skipped. Validate it read-only with `node monitor/agent-roles.mjs validate --cwd .` or `/pomegr:doctor`. Mapping contents never enter the browser API or generated reports.
 
-To share Claude cost or Codex lifecycle snapshots with a portable build, set `POMEGR_DATA_DIR` to that portable `PomegrData` directory in the external bridge environment as well as when launching Pomegr; the specific snapshot-root variables remain available when only one bridge root should move.
+To share Claude cost snapshots with a portable build, set `POMEGR_DATA_DIR` to that portable `PomegrData` directory when launching Pomegr; the specific Claude snapshot-root variable remains available when only that root should move.
 
 ## Troubleshooting
 
@@ -263,16 +260,12 @@ On startup, compatible normalized checkpoints may make prior session state visib
 ### Codex appears historical while it is open
 
 - An owning app-server reports only threads loaded by that same process. A newly spawned app-server is not global live-state truth on Windows.
-- Update and trust the Pomegr plugin SessionStart presence hook, then start or resume a task. For standalone configuration, confirm the lifecycle hook invokes `scripts/codex-lifecycle-bridge.mjs`, shares `POMEGR_CODEX_LIVENESS_DIR` with the monitor, and can write that directory.
-- The bridge requires a recognized Codex/ChatGPT ancestor or a valid `POMEGR_CODEX_OWNER_PID`; it validates the current process-start identity and never trusts an old lease when current ownership cannot be confirmed.
-- A compact `SessionStart` without matching non-null turn identity remains unknown; this is expected when the hook payload cannot prove same-turn continuity.
-- If hooks are unavailable, only adapter-supported structured rollout evidence can contribute bounded liveness. Expiry or missing evidence is unknown/stale, not an operating-system process claim or proof of idle.
-- `POMEGR_CODEX_OWNER_PID` is only for wrapper topologies where automatic ancestry selection cannot identify the owning Codex or ChatGPT process. A stale or unrelated PID will not produce a valid lease.
+- On Windows, confirm the native Codex CLI writer is the selected executable and that its validated process ownership is present. A missing or ambiguous writer is unknown/stale, not proof of idle or completion.
+- On Unix, Pomegr does not infer runtime presence from an unvalidated native lock. Use an explicitly connected owning app-server when available, or rely on recorded turns and bounded structured rollout evidence.
 
 ### Needs-input is stale or missing
 
-- Bridge needs-input clears on the matching result/progress event, session stop, owner-lease expiry, or a 30-minute safety limit.
-- Rollout-only requests expire after 120 seconds and approval waits are unsupported without bridge or owning app-server evidence.
+- Recorded input requests clear on matching provider evidence or a subsequent turn; accepted unresolved lifecycle evidence persists until that evidence arrives. Missing, invalid, or incomplete evidence remains unavailable rather than expiring into a guessed state.
 - Questions, choices, answers, approval reasons, and commands are intentionally unavailable in diagnostics and browser state.
 
 ### Usage limits are unavailable
