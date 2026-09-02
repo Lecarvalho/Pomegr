@@ -668,3 +668,32 @@ test("does not attach collaboration records from another Codex session tree", ()
 
   assert.deepEqual(agents.map((agent) => agent.id), ["primary"]);
 });
+
+
+test("incremental approval reviews preserve stronger metadata and upgrade replayed decisions", () => {
+  const fallback = { localId: "guardian-retention", approvalReviewer: true };
+  const request = [
+    { type: "event_msg", timestamp: "2026-09-02T12:00:00.000Z", payload: { type: "task_started", turn_id: "review-turn" } },
+    { type: "event_msg", timestamp: "2026-09-02T12:00:00.100Z", payload: {
+      type: "user_message", message: JSON.stringify({ tool: "exec_command", command: ["npm", "test"], cwd: "PRIVATE_PATH_MUST_NOT_LEAK" }) + "\n>>> end",
+    } },
+  ];
+  const completed = { type: "event_msg", timestamp: "2026-09-02T12:00:02.000Z", payload: {
+    type: "task_complete", turn_id: "review-turn", duration_ms: 2_000,
+    last_agent_message: JSON.stringify({ outcome: "allow", risk_level: "low", rationale: "REASONING_MUST_NOT_LEAK" }),
+  } };
+  const initial = parseCodexAgentRecords([...request, completed], fallback).reviewDecisions;
+  const before = structuredClone(initial);
+  assert.equal(initial.items[0].action, "build_or_test");
+  const replay = { ...completed, payload: { ...completed.payload, duration_ms: null, last_agent_message: JSON.stringify({ outcome: "allow" }) } };
+  const retained = parseCodexAgentRecords([replay], fallback, initial).reviewDecisions;
+  assert.deepEqual(retained, before, "lookbehind missing the request must not downgrade known metadata");
+  assert.deepEqual(initial, before, "merging does not mutate the committed feed");
+  assert.deepEqual(parseCodexAgentRecords([], fallback, retained).reviewDecisions, before);
+
+  const incomplete = parseCodexAgentRecords([replay], fallback).reviewDecisions;
+  assert.equal(incomplete.items[0].action, "privileged_action");
+  const upgraded = parseCodexAgentRecords([...request, completed], fallback, incomplete).reviewDecisions;
+  assert.deepEqual(upgraded, before, "a stronger replay upgrades the same decision without increasing totals");
+  assertNoPrivateFixtureSentinels(upgraded, "retained review metadata");
+});

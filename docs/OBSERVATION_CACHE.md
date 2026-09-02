@@ -440,6 +440,15 @@ cannot reverse it. Unchanged silence creates no new candidate or response revisi
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
   transcript or the generic live tail for session-story normalization.
+- Completed approval-review decisions are retained per normalized agent across empty
+  and partial Codex deltas. U2 seeds review normalization from the prior normalized
+  feed, deduplicates all incoming decisions before applying the 100-row display cap,
+  and preserves prior totals and stronger action/risk/duration evidence. Bounded
+  lookbehind replays do not add reviews; a complete source replacement rebuilds the
+  feed without inherited decisions. Incomplete replacements retain the last committed
+  revision. Only the existing normalized fields reach checkpoints and browser state;
+  review requests, rationale, commands, and provider turn IDs remain private. This
+  adds no GET acquisition, polling lane, checkpoint field, or revision mechanism.
 - "Delta" describes upstream acquisition and normalization, not a partial browser payload.
   S returns one complete committed revision so a fresh page, a second client, or a client
   that missed revisions always receives a self-contained view. React replaces its prior

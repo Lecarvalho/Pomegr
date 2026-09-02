@@ -386,7 +386,7 @@ export function createCodexProvider(options = {}) {
         );
         recordsByThreadId.set(thread.localId, records);
         if (generation) generationsByThreadId.set(thread.localId, generation);
-        let summary = parseCodexAgentRecords(records, thread);
+        let summary = parseCodexAgentRecords(records, thread, incremental && !completeStory ? readOptions.previousReviewDecisionsByThreadId?.get(thread.localId) : null);
         if (!historical && generation) {
           summary = { ...summary, runtime: resolveLiveAgentRuntime(thread.rolloutFile, thread.localId, generation, thread, summary.runtime) };
           const retained = reusableLiveAgentAssignments(thread.rolloutFile, thread.localId, generation)

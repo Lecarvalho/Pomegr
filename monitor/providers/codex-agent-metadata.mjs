@@ -216,20 +216,39 @@ function approvalReviewDecision(record, action) {
   return outcome && reviewedAt ? { action: normalizeCodexReviewAction(action), outcome, risk, durationMs, reviewedAt } : null;
 }
 
-function reviewDecisionFeed(decisions) {
-  const unique = new Map();
-  for (const decision of decisions) unique.set(`${decision.reviewedAt}:${decision.outcome}`, decision);
+function reviewDecisionFeed(decisions, previous = null) {
+  const keyOf = (decision) => `${decision.reviewedAt}:${decision.outcome}`;
+  const unique = new Map((previous?.items || []).map((decision) => [keyOf(decision), decision]));
+  let allowed = previous?.allowed || 0;
+  let denied = previous?.denied || 0;
+  // Merge before capping: a large delta can otherwise hide its lookbehind
+  // overlap. Keep counts for prior decisions outside the retained display rows.
+  for (const decision of decisions) {
+    const key = keyOf(decision);
+    const existing = unique.get(key);
+    if (!existing) {
+      if (decision.outcome === "allowed") allowed += 1;
+      else denied += 1;
+    }
+    unique.set(key, existing ? {
+      ...decision,
+      action: decision.action === "privileged_action" ? existing.action : decision.action,
+      risk: decision.risk === "unknown" ? existing.risk : decision.risk,
+      durationMs: decision.durationMs ?? existing.durationMs,
+    } : decision);
+  }
   const ordered = [...unique.values()].sort((left, right) => timestampValue(left.reviewedAt) - timestampValue(right.reviewedAt));
+  const total = allowed + denied;
   return {
-    total: ordered.length,
-    allowed: ordered.filter((decision) => decision.outcome === "allowed").length,
-    denied: ordered.filter((decision) => decision.outcome === "denied").length,
+    total,
+    allowed,
+    denied,
     items: ordered.slice(-MAX_REVIEW_DECISIONS),
-    truncated: ordered.length > MAX_REVIEW_DECISIONS,
+    truncated: total > MAX_REVIEW_DECISIONS,
   };
 }
 
-function summaryFromRecords(records, fallback = {}) {
+function summaryFromRecords(records, fallback = {}, previousReviewDecisions = null) {
   const timestamps = [];
   const pendingCalls = new Map();
   const collaborations = [];
@@ -373,12 +392,12 @@ function summaryFromRecords(records, fallback = {}) {
     durationMs: Math.max(0, timestampValue(updatedAt) - timestampValue(startedAt)),
     terminal,
     collaborations,
-    reviewDecisions: approvalReviewer ? reviewDecisionFeed(reviewDecisions) : reviewDecisionFeed([]),
+    reviewDecisions: approvalReviewer ? reviewDecisionFeed(reviewDecisions, previousReviewDecisions) : reviewDecisionFeed([]),
   };
 }
 
-export function parseCodexAgentRecords(records, fallback = {}) {
-  return summaryFromRecords(Array.isArray(records) ? records : [], fallback);
+export function parseCodexAgentRecords(records, fallback = {}, previousReviewDecisions = null) {
+  return summaryFromRecords(Array.isArray(records) ? records : [], fallback, previousReviewDecisions);
 }
 
 export function readCodexAgentRollout(file, fallback = {}) {

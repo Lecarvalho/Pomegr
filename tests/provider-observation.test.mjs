@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createIncrementalJsonlIngestor } from "../monitor/providers/incremental-jsonl-ingestor.mjs";
 import { createCodexIncrementalObserver, mergeCodexObservationEvidence } from "../monitor/providers/codex-observation.mjs";
+import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
@@ -706,4 +707,77 @@ test("a child transcript change updates its session source fingerprint without a
   const after = incrementalSourceSetDescriptor([primary, child], primary);
   assert.equal(after.size, before.size);
   assert.notEqual(after.identity, before.identity);
+});
+
+
+test("Codex approval reviews survive empty deltas, overlap, large batches, and staged replacement", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-review-retention-"));
+  const directory = path.join(root, "sessions");
+  await mkdir(directory);
+  const rootId = "review-retention-root";
+  const childId = "review-retention-child";
+  const rootFile = path.join(directory, "rollout-root.jsonl");
+  const childFile = path.join(directory, "rollout-child.jsonl");
+  const timestamp = "2026-09-02T12:00:00.000Z";
+  const record = (type, payload, at = timestamp) => JSON.stringify({ type, timestamp: at, payload }) + "\n";
+  const rootHeader = record("session_meta", { id: rootId, cwd: root, source: "vscode" });
+  const childHeader = record("session_meta", { id: childId, session_id: rootId, parent_thread_id: rootId, cwd: root, source: { subagent: { other: "guardian" } } });
+  const decision = (index, outcome = "allow") => record("event_msg", {
+    type: "task_complete", turn_id: "review-" + index,
+    last_agent_message: JSON.stringify({ outcome, risk_level: "low", rationale: "REASONING_MUST_NOT_LEAK" }),
+  }, new Date(Date.parse(timestamp) + index * 1_000).toISOString());
+  await writeFile(rootFile, rootHeader + record("event_msg", { type: "task_started", turn_id: "root-turn" }));
+  await writeFile(childFile, childHeader + decision(1));
+  const provider = createCodexProvider({
+    codexHome: root, cacheMs: 0, includeArchived: false, now: () => Date.parse(timestamp) + 200_000,
+    observerIntervalMs: 60_000,
+    observerWatchSource() { return { close() {} }; },
+    writerPresence: { async refresh() {}, current() { return null; }, close() {} },
+  });
+  const observer = provider.createObserver();
+  const published = [];
+  const controller = new AbortController();
+  context.after(async () => { controller.abort(); await rm(root, { recursive: true, force: true }); });
+  await observer.start({
+    publishCatalog() {},
+    publishSession(_id, candidate) { published.push(candidate); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => published.length > 0);
+  const reviews = () => published.at(-1).agents.find((agent) => agent.id === "agent-" + childId).reviewDecisions;
+  const initial = structuredClone(reviews());
+  assert.equal(initial.total, 1);
+
+  await appendFile(rootFile, record("event_msg", { type: "agent_message", message: "RESPONSE_MUST_NOT_LEAK" }));
+  await observer.hydrate(rootId);
+  assert.deepEqual(reviews(), initial, "an unchanged reviewer must retain its completed reviews");
+  assert.deepEqual(published[0].agents.find((agent) => agent.id === "agent-" + childId).reviewDecisions, initial, "prior revisions remain immutable");
+
+  await appendFile(childFile, decision(2, "deny"));
+  await observer.hydrate(rootId);
+  assert.equal(reviews().total, 2, "lookbehind does not count the first review again");
+  assert.equal(reviews().allowed, 1);
+  assert.equal(reviews().denied, 1);
+
+  await appendFile(childFile, Array.from({ length: 105 }, (_, index) => decision(index + 3)).join(""));
+  await observer.hydrate(rootId);
+  assert.equal(reviews().total, 107, "deduplication must precede the 100-row cap");
+  assert.equal(reviews().allowed, 106);
+  assert.equal(reviews().denied, 1);
+  assert.equal(reviews().items.length, 100);
+  assert.equal(reviews().truncated, true);
+  const bounded = structuredClone(reviews());
+  await appendFile(childFile, record("event_msg", { type: "agent_message", message: "RESPONSE_MUST_NOT_LEAK" }));
+  await observer.hydrate(rootId);
+  assert.deepEqual(reviews(), bounded, "replaying bounded lookbehind must not grow totals");
+  assertNoPrivateFixtureSentinels(published.at(-1), "retained approval review evidence");
+
+  const beforeReplacement = published.length;
+  await writeFile(childFile, childHeader + '{"type":"event_msg"');
+  await observer.hydrate(rootId);
+  assert.equal(published.length, beforeReplacement, "an incomplete replacement retains the committed revision");
+  assert.deepEqual(reviews(), bounded);
+  await appendFile(childFile, ',"timestamp":"2026-09-02T12:04:00.000Z","payload":{"type":"task_started","turn_id":"replacement"}}\n');
+  await observer.hydrate(rootId);
+  assert.deepEqual(reviews(), { total: 0, allowed: 0, denied: 0, items: [], truncated: false }, "a complete replacement does not inherit old decisions");
 });

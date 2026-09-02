@@ -454,6 +454,11 @@ export function createCodexIncrementalObserver(options = {}) {
       completeStory,
       incrementalRecordsByFile,
       incrementalGenerationsByFile,
+      previousReviewDecisionsByThreadId: completeStory ? null : new Map(
+        session.evidence.agents.filter((agent) => agent.reviewDecisions).map((agent) => [
+          agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length), agent.reviewDecisions,
+        ]),
+      ),
     });
     if (!next) return null;
     const evidence = completeStory ? next : mergeCodexObservationEvidence(session.evidence, next);
