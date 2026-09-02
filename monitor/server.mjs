@@ -13,7 +13,7 @@ import { createObservationRuntime } from "./observation-runtime.mjs";
 import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./request-handler.mjs";
-import { reconcileSessionCurrentActivity } from "./session-current-activity.mjs";
+import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./session-current-activity.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -237,6 +237,7 @@ export function createMonitorRuntime(options = {}) {
       latestContextTotal: Number.isFinite(summary?.latestContextTotal) ? summary.latestContextTotal : null,
       progress: summary?.progress ?? null,
       currentActivity: reconcileSessionCurrentActivity(entry, summary?.currentActivity),
+      activityFallback: reconcileSessionActivityFallback(entry, summary?.activityFallback, summary?.lastObservedActivity),
     };
   }
 
@@ -500,6 +501,8 @@ export function createMonitorRuntime(options = {}) {
           delete session.requestModelObservations;
           delete session.usageLimitRejections;
           delete session.currentActivity;
+          delete session.activityFallback;
+          delete session.lastObservedActivity;
           return session;
         }),
         history: {

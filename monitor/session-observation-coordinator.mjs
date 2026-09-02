@@ -2,7 +2,7 @@ import { createCommittedResponseCache } from "./committed-response-cache.mjs";
 import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
-import { projectSessionCurrentActivity } from "./session-current-activity.mjs";
+import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -90,6 +90,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const scheduledSessions = new Map();
   const sessionRetryAttempts = new Map();
   const checkpointTimers = new Map();
+  const restoredActivitySessions = new Set();
   const subscribers = new Set();
   let catalogTimer = null;
   let catalogTimerDueAt = null;
@@ -184,6 +185,9 @@ export function createSessionObservationCoordinator(options = {}) {
           : retainPrevious ? previous.latestContextTotal : null,
         progress: state?.session?.progress || (retainPrevious ? previous.progress : null),
         currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
+        activityFallback: retainPrevious ? reconcileSessionActivityFallback(entry, previous.activityFallback)
+          : projectSessionActivityFallback(restoredActivitySessions.has(entry.id) ? { ...entry, isLive: false } : entry,
+            state?.agents, snapshot?.evidence?.toolCalls),
       };
     });
     const providerStates = [...catalogReadinessByProvider.values()];
@@ -249,6 +253,11 @@ export function createSessionObservationCoordinator(options = {}) {
         timings.sessionStoreCommit.record(monotonicNow() - storeStartedAt);
       }
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
+      // Restored task state remains last-observed until new provider evidence
+      // validates and commits, including an otherwise unchanged observation.
+      if (snapshot?.accepted && candidate.freshObservation && restoredActivitySessions.delete(qualifiedId)) {
+        scheduleCatalogCommit(catalogStructuralDelayMs);
+      }
       if (snapshot?.accepted && !snapshot.unchanged) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
@@ -332,6 +341,7 @@ export function createSessionObservationCoordinator(options = {}) {
         providerId,
         localSessionId,
         evidence,
+        freshObservation: true,
         source: provider?.source || "",
         checkpointSource: evidence?.observationSource || null,
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
@@ -389,6 +399,7 @@ export function createSessionObservationCoordinator(options = {}) {
           if (!registry.providers?.some((provider) => provider.id === record.providerId)) continue;
           const restored = store.restore(downgradeRestoredLifecycle(record));
           if (!restored.accepted) continue;
+          restoredActivitySessions.add(restored.snapshot.qualifiedId);
           const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
           pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
             providerId: record.providerId,

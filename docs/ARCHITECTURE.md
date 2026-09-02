@@ -219,6 +219,8 @@ Codex guardian rollouts remain ordinary child agents but normalize to the provid
 
 An agent's optional `currentActivity` contains only a bounded, one-line provider-authored activity label and its transcript-derived observation timestamp. It is live transient state, not chain-of-thought, a completion claim, a structured task, an execution-task association, or a Pomegr judgment. Provider adapters clear it when its owning turn or agent reaches a recognized terminal state, and historical state omits it. Generated reports do not consume the field.
 
+The session directory separately derives `activityFallback` from committed normalized execution tasks and tool calls. It carries only fixed work-category wording, observation time, current/last-observed qualification, execution-task/tool provenance, and bounded actor scope. The Last activity column prefers qualified provider-authored activity, then a running-task summary, then last-observed work, then an em dash; the observation age is available in its popover. Derivation and lifecycle reconciliation stay monitor-side; presentation never fetches per-session evidence or interprets provider schemas. See `docs/OBSERVATION_CACHE.md` for its qualification, restart, and privacy contract.
+
 Codex selected-state serving does not parse rollouts. The provider observer acquires source
 changes upstream, consumes append-compatible JSONL through complete-record offsets, and
 retains an independent cursor for each root and child rollout. After an initial complete

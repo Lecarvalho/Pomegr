@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { HomeProviderUsageLimits, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
@@ -12,6 +12,7 @@ import { useProviderStatus } from "../../provider-status-client";
 import { RetryCountdownText } from "../LiveTime";
 import { ClaudeUsageControls } from "../ClaudeUsageControls";
 import { CodexUsageHelp } from "../CodexUsageHelp";
+import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
@@ -26,18 +27,63 @@ function sessionTimestamp(value: string) {
   return <time dateTime={value} title={sessionListTime(value)}>{relativeTime(value)}</time>;
 }
 
-function SessionCurrentActivity({ session, compact = false }: { session: SessionSummary; compact?: boolean }) {
+type DisplayActivity = {
+  label: string;
+  observedAt: string;
+  state: "current" | "last_observed";
+  provenance: "Provider-reported" | "Execution task" | "Tool activity";
+  actor?: "primary" | "subagent" | "multiple" | "unknown";
+};
+
+const activityActorLabel = {
+  primary: "Primary agent",
+  subagent: "Subagent",
+  multiple: "Multiple agents",
+} as const;
+
+function sessionActivity(session: SessionSummary): DisplayActivity | null {
   // Guard older monitor responses during upgrades; lifecycle qualification is backend-owned.
-  const activity = session.isLive && ["working", "needs_input"].includes(session.activityStatus)
-    && session.currentActivity?.state === "current" ? session.currentActivity : null;
-  if (!activity) {
-    return compact ? null : <span className="commandTableActivityUnavailable" title="Current provider-reported activity is unavailable">—</span>;
+  const canShowCurrent = session.isLive && ["working", "needs_input"].includes(session.activityStatus);
+  if (canShowCurrent && session.currentActivity?.state === "current") {
+    return { ...session.currentActivity, provenance: "Provider-reported" };
   }
-  const provenance = `Provider-reported · observed ${relativeTime(activity.observedAt)}`;
-  return <span className={`commandTableActivity${compact ? " commandTableActivityCompact" : ""}`} title={`${activity.label} · ${provenance}`} aria-label={`Current activity: ${activity.label}. ${provenance}.`}>
-    <span className="commandTableActivityMark" aria-hidden="true" />
-    <span className="commandTableActivityLabel">{activity.label}</span>
-  </span>;
+  const fallback = session.activityFallback;
+  if (!fallback || !["current", "last_observed"].includes(fallback.state)) return null;
+  // A task-derived current label cannot outlive the live lifecycle qualification.
+  if (fallback.state === "current" && !canShowCurrent) return null;
+  return {
+    ...fallback,
+    provenance: fallback.source === "execution_task" ? "Execution task" : "Tool activity",
+  };
+}
+
+function SessionCurrentActivity({ session, compact = false }: { session: SessionSummary; compact?: boolean }) {
+  const activity = sessionActivity(session);
+  const label = activity?.label ?? "—";
+  // Relative time, actor, and provenance can refresh independently; only a displayed label change fades in.
+  const identity = label;
+  const labelRef = useRef<HTMLSpanElement | null>(null);
+  const previousIdentity = useRef<string | null>(null);
+  useEffect(() => {
+    const labelElement = labelRef.current;
+    if (labelElement && previousIdentity.current !== null && previousIdentity.current !== identity) {
+      labelElement.classList.add("commandTableActivityLabelChanged");
+    }
+    previousIdentity.current = identity;
+  }, [identity]);
+
+  const actor = activity?.actor && activity.actor !== "unknown" ? activityActorLabel[activity.actor] : null;
+  const age = activity ? relativeTime(activity.observedAt) : null;
+  const provenance = activity ? [activity.provenance, age, actor].filter(Boolean).join(" · ") : "Activity is unavailable";
+  const accessibleLabel = activity
+    ? `${activity.state === "current" ? "Current activity" : "Previous activity"}: ${activity.label}. ${provenance}.`
+    : provenance;
+  return <AgentChip className={`commandTableActivity${activity ? "" : " commandTableActivityUnavailable"}${activity?.state === "last_observed" ? " commandTableActivityLast" : ""}${compact ? " commandTableActivityCompact" : ""}`} title={`${label} · ${provenance}`} ariaLabel={accessibleLabel}>
+    {activity && <span className="commandTableActivityMark" aria-hidden="true" />}
+    {!activity && <span className="commandTableActivityMarkPlaceholder" aria-hidden="true" />}
+    <span className="commandTableActivityLabel" key={identity} ref={labelRef}>{label}</span>
+    {actor && activity?.actor !== "primary" && <span className="commandTableActivityMeta"> · {actor}</span>}
+  </AgentChip>;
 }
 
 const builtInDashboards = [
@@ -70,14 +116,14 @@ const SESSION_PAGE_SIZE = 10;
 const SESSION_COLUMNS: CommandTableColumn<SessionSummary>[] = [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
-    renderCell: (session) => <Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small><SessionCurrentActivity session={session} compact /></Link>,
+    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong><small>{session.project} · <ProviderBadge source={session.source} compact /></small></Link><SessionCurrentActivity session={session} compact /></>,
   },
   {
     id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
     renderCell: (session) => { const state = sessionState(session); return <CommandStatus state={state.state}>{state.label}</CommandStatus>; },
   },
   {
-    id: "activity", label: "Current activity", className: "commandTableActivityColumn", colClassName: "commandSessionColActivity",
+    id: "activity", label: "Last activity", className: "commandTableActivityColumn", colClassName: "commandSessionColActivity",
     renderCell: (session) => <SessionCurrentActivity session={session} />,
   },
   {

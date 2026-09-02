@@ -423,6 +423,14 @@ export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" 
 export type SessionCurrentActivity = AgentCurrentActivity & {
   state: "current";
 };
+/** Catalog-only work summary derived from normalized task/tool evidence. */
+export type SessionActivityFallback = {
+  label: string;
+  observedAt: string;
+  state: "current" | "last_observed";
+  source: "execution_task" | "tool";
+  actor: "primary" | "subagent" | "multiple" | "unknown";
+};
 /** Bounded session-directory row derived from committed normalized evidence. */
 export type SessionSummary = {
   id: string;
@@ -442,6 +450,8 @@ export type SessionSummary = {
   progress: SessionProgress | null;
   /** Confirmed current primary heading; null for inactive, uncertain, or historical rows. */
   currentActivity: SessionCurrentActivity | null;
+  /** Separate from provider-authored activity; optional for older monitor responses. */
+  activityFallback?: SessionActivityFallback | null;
 };
 
 export type SessionCatalogSnapshot = {

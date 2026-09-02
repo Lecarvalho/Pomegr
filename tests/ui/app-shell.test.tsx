@@ -211,7 +211,7 @@ describe("Command Center app shell", () => {
     expect(await screen.findAllByLabelText(/^Current activity:/)).toHaveLength(2);
     act(() => CatalogEventSource.instances[0].emitCatalog({ domain: "sessions", revision: 2 }));
     await waitFor(() => expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument());
-    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     view.unmount();

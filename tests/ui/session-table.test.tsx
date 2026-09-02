@@ -17,7 +17,7 @@ describe("sessions table", () => {
 
     const table = screen.getByRole("table", { name: "Observed Pomegr sessions" });
     expect(within(table).getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Current activity" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Last activity" })).toBeInTheDocument();
 
     const progressRow = within(table).getByText("Progress available").closest("tr");
     const unavailableRow = within(table).getByText("Progress unavailable").closest("tr");
@@ -30,8 +30,8 @@ describe("sessions table", () => {
     expect(within(progressRow!).getByTitle("Agent-reported session progress").closest("td")).toHaveAttribute("data-label", "Progress");
     expect(within(unavailableRow!).getByTitle("Agent-reported session progress is unavailable")).toHaveTextContent("—");
     expect(within(progressRow!).getAllByText("Preparing tab4 for header measurement")).toHaveLength(2);
-    expect(within(progressRow!).getAllByTitle(/Provider-reported · observed/)).toHaveLength(2);
-    expect(within(unavailableRow!).getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(within(progressRow!).getAllByRole("button", { name: /Provider-reported ·/ })).toHaveLength(2);
+    expect(within(unavailableRow!).getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
   });
 
   it("keeps the progress column stable when no visible session reports progress", () => {
@@ -50,15 +50,15 @@ describe("sessions table", () => {
     expect(screen.getByText("Idle")).toBeInTheDocument();
     expect(screen.queryByText(activity.label)).not.toBeInTheDocument();
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
-    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
   });
 
   it.each(["working", "needs_input", "idle", "open", "stopped", "unknown"] as const)("shows an em dash for a legacy retained heading in %s rows", (activityStatus) => {
     const session: SessionSummary = JSON.parse(JSON.stringify({ ...sessions[0], activityStatus, currentActivity: { ...activity, state: "last_observed" } }));
     const view = render(<SessionCatalogProvider sessions={[session]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.queryByText(/Last observed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Previous activity/)).not.toBeInTheDocument();
     expect(screen.queryByText(activity.label)).not.toBeInTheDocument();
-    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument();
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
   });
@@ -95,7 +95,7 @@ describe("sessions table", () => {
   it("shows an em dash when the catalog is uncertain", () => {
     const view = render(<SessionCatalogProvider sessions={[{ ...sessions[0], activityStatus: "unknown" }]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.queryByText(activity.label)).not.toBeInTheDocument();
-    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
   });
 
@@ -109,9 +109,9 @@ describe("sessions table", () => {
     const legacy: SessionSummary = JSON.parse(JSON.stringify(sessions[0]));
     Reflect.deleteProperty(legacy.currentActivity!, "state");
     const view = render(<SessionCatalogProvider sessions={[legacy]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.queryByLabelText(/^Last observed activity:/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Previous activity:/)).not.toBeInTheDocument();
     expect(screen.queryByText(activity.label)).not.toBeInTheDocument();
-    expect(screen.getByTitle("Current provider-reported activity is unavailable")).toHaveTextContent("—");
+    expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
   });
 

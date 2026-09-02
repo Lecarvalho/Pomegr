@@ -737,24 +737,64 @@ derived during U2 normalization. Raw commands and provider-native tool schemas r
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
-context snapshot, bounded agent-reported progress, and the normalized primary agent's
+context snapshot, bounded agent-reported progress, the activity fallback described below,
+and the normalized primary agent's
 nullable current-activity label, observation timestamp, and fixed `current`
 qualification. D derives that qualification from the primary agent's
 committed lifecycle, not from child activity, wall-clock recency, or file timestamps.
 Only an observed/current active primary in a working or needs-input catalog row is current
 (a child awaiting input does not stop the primary). Unknown, stale, inferred, missing,
 restored, or inactive primary lifecycle produces null in the catalog, even if children
-work. The older heading remains in retained agent evidence, not in Current activity.
+work. The older heading remains in retained agent evidence, not in `currentActivity`.
 An Idle or non-live catalog row suppresses any older cached heading immediately, before
 detail hydration, without erasing the retained primary evidence. Both the observation
 catalog and compatibility session feed use the same projection rules; with observation
 enabled, the feed returns the committed catalog directly rather than rebuilding from a
-separately cached summary. F renders only qualified current headings, with the original
-activity icon. All other cases show an em dash in the activity column and no compact
-heading; legacy unqualified or last-observed payloads never acquire a current icon.
+separately cached summary.
+
+The Sessions **Last activity** column prefers that qualified provider heading, then uses the
+separate nullable `activityFallback`. D derives this fallback from committed normalized
+agent execution tasks and tool calls. Its only public fields are a fixed-vocabulary
+label (or bounded running-task count label), original observation timestamp, `current`
+or `last_observed` state, `execution_task` or `tool` source, and `primary`, `subagent`,
+`multiple`, or `unknown` actor scope. No task descriptions, actor labels or IDs, tool
+names, arguments, commands, results, provider records, plan subjects, or reported
+progress enter this summary. The summary does not change `currentActivity` semantics.
+
+Recorded running execution tasks take priority while the catalog is live and working
+or needs-input and the owning agent is active, waiting, or needs-input. Tasks with a
+finish timestamp or exit code cannot qualify. A separate agent liveness observation,
+when present, must be observed/current; adapters without it use their normalized
+agent and execution-task status. No new wall-clock recency rule qualifies running work.
+Checkpoint-restored execution evidence remains last-observed until fresh provider
+evidence validates and commits; downstream rederivation alone cannot promote it.
+Multiple running tasks show a count and the appropriate actor scope. Otherwise the
+latest retained normalized tool or execution-task observation supplies the fallback,
+including completion/failure/stop observations, with deterministic ordering for ties.
+Missing or malformed evidence remains null. Unknown tool work kinds are unavailable;
+unclassified shell tasks use the generic shell category.
+
+Catalog idle, stopped, open, unknown, or non-live transitions immediately replace a
+running fallback with last-observed evidence, without new acquisition or changing the
+retained session evidence. Failed candidates preserve the previous committed revision.
+The compatibility summary cache retains a separate last-observed fallback for the same
+reconciliation; neither fallback is added to Home, session-detail state, or reports.
+F renders the work label for last-observed work, with a static version of the activity
+icon and "Previous activity" accessible naming. Delegated and multiple-agent scope remains
+inline; primary-agent attribution and the age appear only in the popover. Qualified
+current headings and execution summaries keep
+the existing animated icon. Missing activity is an em dash on desktop and compact
+layouts. Provenance is available on hover and keyboard focus, using "Provider-reported",
+"Execution task", or "Tool activity" with the relative age and actor. Only a changed label
+fades in for 150 ms, including changes to/from the dash; initial mount and timestamp-only
+updates do not animate. Icon identity and row geometry remain stable, lifecycle changes
+apply immediately, and reduced-motion preferences disable the fade and pulse.
+
 Completed rows retain their
 last committed agent count, context snapshot, and progress; their active-agent count is
-zero and current activity is null. Subagent activity, context history, resources, provider
+zero and provider current activity is null. Their last-observed fallback survives summary
+eviction when the recorded session timestamp is unchanged. Beyond the bounded fallback,
+subagent activity, context history, resources, provider
 records, and every other agent field remain outside the catalog response. React consumes
 each row directly and never joins catalog identity to a parallel summary collection.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather

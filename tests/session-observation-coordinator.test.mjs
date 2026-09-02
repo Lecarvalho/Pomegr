@@ -380,6 +380,124 @@ test("catalog idle clears an older heading before detail hydration without erasi
   await coordinator.stop();
 });
 
+test("catalog activity falls back from running tasks to recorded work without reads or private fields", async () => {
+  const scheduler = immediateScheduler();
+  const store = memoryStore();
+  let publisher;
+  let reads = 0;
+  const coordinator = createSessionObservationCoordinator({
+    registry: {
+      providers: [{ id: "claude", source: "Claude Code" }],
+      async readSession() { reads += 1; throw new Error("Serving must stay cache-only"); },
+      async startObservers(value) { publisher = value; return { async stop() {} }; },
+    },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: async ({ evidence }) => {
+      if (evidence.fail) throw new Error("Synthetic derivation failure");
+      return { readiness: { core: "ready" }, publicState: {
+        session: evidence.session, agents: evidence.agents, metrics: { agents: 1, activeAgents: 1 },
+      } };
+    },
+  });
+  await coordinator.start();
+  const entry = { localId: "activity", title: "Activity", isLive: true, activityStatus: "working", updatedAt: "2026-09-02T12:00:00.000Z" };
+  const task = { id: "PRIVATE_TASK", label: "PRIVATE_DESCRIPTION", kind: "shell", workKind: "test", status: "running", startedAt: entry.updatedAt, finishedAt: null };
+  const evidence = {
+    session: {}, agents: [{ id: "primary", status: "active", executionTasks: [task] }],
+    toolCalls: [{ id: "PRIVATE_CALL", tool: "PRIVATE_TOOL", detail: "PRIVATE_DETAIL", actor: { id: "primary", label: "PRIVATE_ACTOR" }, workKind: "write", timestamp: "2026-09-02T12:00:01.000Z" }],
+  };
+  publisher.publishCatalog("claude", [entry]);
+  publisher.publishSession("claude", "activity", evidence);
+  await scheduler.flush();
+  const first = coordinator.catalog().snapshot;
+  assert.equal(first.value.sessions[0].currentActivity, null);
+  assert.equal(first.value.sessions[0].activityFallback.label, "Running tests");
+  assert.equal(first.value.sessions[0].activityFallback.state, "current");
+  assert.doesNotMatch(JSON.stringify(first.value), /PRIVATE_|executionTasks|toolCalls/);
+  const committed = store.getByQualifiedId("claude:activity");
+  publisher.publishSession("claude", "activity", { ...evidence, fail: true });
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot, first);
+  assert.equal(store.getByQualifiedId("claude:activity"), committed);
+
+  publisher.publishCatalog("claude", [{ ...entry, activityStatus: "idle" }]);
+  await scheduler.flush();
+  const idle = coordinator.catalog().snapshot;
+  assert.equal(idle.value.sessions[0].activityFallback.label, "file edit");
+  assert.equal(idle.value.sessions[0].activityFallback.state, "last_observed");
+  assert.ok(idle.revision > first.revision);
+  assert.equal(coordinator.catalog(idle.revision).status, "unchanged");
+  assert.equal(store.getByQualifiedId("claude:activity"), committed);
+
+  publisher.publishSession("claude", "activity", { ...evidence, agents: [{ ...evidence.agents[0], executionTasks: [{ ...task, status: "completed", finishedAt: "2026-09-02T12:00:02.000Z" }] }] });
+  publisher.publishCatalog("claude", [{ ...entry, isLive: false, activityStatus: "stopped" }]);
+  await scheduler.flush();
+  const finalActivity = coordinator.catalog().snapshot.value.sessions[0].activityFallback;
+  assert.equal(finalActivity.label, "test run");
+  assert.equal(finalActivity.observedAt, "2026-09-02T12:00:02.000Z");
+  store.evict("claude:activity");
+  publisher.publishCatalog("claude", [{ ...entry, isLive: false, activityStatus: "stopped" }]);
+  await scheduler.flush();
+  assert.deepEqual(coordinator.catalog().snapshot.value.sessions[0].activityFallback, finalActivity);
+  assert.equal(reads, 0);
+  await coordinator.stop();
+});
+
+test("an evicted live snapshot cannot leave a running fallback on a completed catalog row", async () => {
+  const scheduler = immediateScheduler();
+  const store = memoryStore();
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "claude", source: "Claude Code" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    deriveSession: async ({ evidence }) => ({ readiness: {}, publicState: evidence }),
+  });
+  await coordinator.start();
+  const entry = { localId: "evicted", isLive: true, activityStatus: "working", updatedAt: "2026-09-02T12:00:00.000Z" };
+  publisher.publishCatalog("claude", [entry]);
+  publisher.publishSession("claude", "evicted", { session: {}, metrics: { agents: 1 }, agents: [{ id: "primary", status: "active", executionTasks: [{
+    id: "task", kind: "shell", workKind: "test", status: "running", startedAt: entry.updatedAt, finishedAt: null,
+  }] }] });
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].activityFallback.state, "current");
+  store.evict("claude:evicted");
+  publisher.publishCatalog("claude", [{ ...entry, isLive: false, activityStatus: "stopped" }]);
+  await scheduler.flush();
+  const completed = coordinator.catalog().snapshot.value.sessions[0];
+  assert.equal(completed.summaryReadiness, "ready");
+  assert.equal(completed.agentCount, 1);
+  assert.equal(completed.activityFallback, null);
+  await coordinator.stop();
+});
+
+test("restored task summaries stay last observed until provider evidence commits", async () => {
+  const scheduler = immediateScheduler();
+  const store = memoryStore();
+  store.restore = (candidate) => store.publish(candidate);
+  const task = { id: "task", kind: "shell", workKind: "test", status: "running", startedAt: "2026-09-02T12:00:00.000Z", finishedAt: null };
+  const agents = [{ id: "primary", status: "active", executionTasks: [task] }];
+  const evidence = { historical: false, session: {}, agents };
+  const record = { providerId: "claude", localSessionId: "restored", evidence, publicState: { agents }, readiness: {}, observedAt: "2026-09-02T12:00:00.000Z" };
+  let publisher;
+  const coordinator = createSessionObservationCoordinator({
+    registry: { providers: [{ id: "claude", source: "Claude Code" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    checkpointStore: { async load() { return { records: [record] }; }, async write() {} },
+    deriveSession: async ({ evidence }) => ({ readiness: {}, publicState: { agents: evidence.agents } }),
+  });
+  await coordinator.start();
+  publisher.publishCatalog("claude", [{ localId: "restored", isLive: true, activityStatus: "working" }]);
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].activityFallback.state, "last_observed");
+  coordinator.refreshProjection("claude:restored");
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].activityFallback.state, "last_observed");
+  publisher.publishSession("claude", "restored", evidence);
+  await scheduler.flush();
+  assert.equal(coordinator.catalog().snapshot.value.sessions[0].activityFallback.state, "current");
+  await coordinator.stop();
+});
+
 test("catalog qualifies primary activity without promoting uncertainty or child activity", async (t) => {
   const currentActivity = { label: "Retained heading", observedAt: "2026-08-30T12:00:00.000Z", privateField: "PRIVATE_ACTIVITY_INPUT" };
   const liveness = { source: "structured_lifecycle", observedAt: "2026-08-30T12:00:01.000Z", evidence: "observed", freshness: "current" };

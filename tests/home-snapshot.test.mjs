@@ -369,6 +369,7 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
     latestContextTotal: null,
     progress: null,
     currentActivity: null,
+    activityFallback: null,
   }]);
 
   const progress = { phase: "verifying", percent: 70, remainingMinutesMin: 2, remainingMinutesMax: 5, confidence: "high", reportedAt: "2026-08-23T12:00:00.000Z" };
@@ -387,9 +388,25 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
   assert.equal(Object.hasOwn(changed.sessions[0], "contextHistory"), false);
   assert.equal(Object.hasOwn(changed.sessions[0], "resources"), false);
   assert.deepEqual(Object.keys(changed.sessions[0]).sort(), [
-    "activeAgentCount", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
+    "activeAgentCount", "activityFallback", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
   ]);
   assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:ACTIVITY|CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
+});
+
+test("compatibility session feed reconciles cached execution activity without exposing descriptions", async () => {
+  const entry = { id: "claude:activity", provider: "claude", source: "Claude Code", title: "Activity", project: "pomegr", updatedAt: "2026-08-23T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working" };
+  const running = { ...agent("primary"), executionTasks: [{ id: "PRIVATE_TASK", label: "PRIVATE_DESCRIPTION", kind: "shell", workKind: "test", status: "running", startedAt: entry.updatedAt, finishedAt: null }] };
+  const runtime = runtimeFixture([entry], new Map([[entry.id, evidence({ agents: [running] })]]), { homeSummaryCacheMs: 60_000 });
+  const current = (await runtime.sessionFeed()).sessions[0];
+  assert.equal(current.activityFallback.label, "Running tests");
+  assert.equal(current.currentActivity, null);
+  assert.doesNotMatch(JSON.stringify(current), /PRIVATE_|lastObservedActivity|executionTasks/);
+  entry.activityStatus = "idle";
+  const idle = (await runtime.sessionFeed()).sessions[0];
+  assert.equal(idle.activityFallback.state, "last_observed");
+  assert.equal(idle.activityFallback.label, "test run");
+  const home = await runtime.homeSnapshot();
+  assert.doesNotMatch(JSON.stringify(home), /activityFallback|lastObservedActivity|PRIVATE_/);
 });
 
 test("compatibility session feed reconciles a cached heading with catalog idle", async () => {

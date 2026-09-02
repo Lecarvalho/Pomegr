@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -25,6 +25,7 @@ function session(index: number): SessionSummary {
     latestContextTotal: index * 1_000,
     progress: { phase: "complete", percent: 100, confidence: "high", reportedAt: createdAt },
     currentActivity: null,
+    activityFallback: null,
   };
 }
 
@@ -148,7 +149,7 @@ describe("Sessions view", () => {
     expect(screen.getByText("Showing 1–10 of 12")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Current activity" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Last activity" })).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader")).toHaveLength(8);
     expect(screen.getByRole("button", { name: "Go to page 1" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
@@ -169,5 +170,56 @@ describe("Sessions view", () => {
     expect(visibleSessionTitles()).toEqual(["Session 12"]);
     expect(screen.queryByRole("navigation", { name: "Session pages" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("toolbar", { name: "Filters" })).getByText("1 matches")).toBeInTheDocument();
+  });
+
+  it("shows normalized fallback activity with visible provenance while retaining the current mark", async () => {
+    const observedAt = "2026-08-01T12:00:00.000Z";
+    const current = {
+      ...session(1), isLive: true, activityStatus: "working" as const,
+      activityFallback: { label: "Running tests", observedAt, state: "current" as const, source: "execution_task" as const, actor: "subagent" as const },
+    };
+    const view = render(<SessionCatalogProvider sessions={[current]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getAllByText("Running tests")).toHaveLength(2);
+    expect(screen.getAllByText(/Subagent/)).toHaveLength(2);
+    expect(view.container.querySelectorAll(".commandTableActivityMark")).toHaveLength(2);
+    expect(view.container.querySelectorAll(".commandTableActivityLast")).toHaveLength(0);
+
+    const last = { ...current, isLive: false, activityStatus: "idle" as const, activityFallback: { ...current.activityFallback, label: "test run", state: "last_observed" as const, actor: "primary" as const } };
+    view.rerender(<SessionCatalogProvider sessions={[last]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getAllByText("test run")).toHaveLength(2);
+    expect(screen.queryByText(/Primary agent/)).not.toBeInTheDocument();
+    expect(view.container.querySelectorAll(".commandTableActivityMark")).toHaveLength(2);
+    expect(view.container.querySelectorAll(".commandTableActivityLast")).toHaveLength(2);
+    expect(view.container.querySelectorAll(".commandTableActivityLabelChanged")).toHaveLength(2);
+    const activity = screen.getAllByLabelText(/^Previous activity:/)[0];
+    activity.focus();
+    await waitFor(() => expect(screen.getByRole("tooltip")).toHaveTextContent("Execution task"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Primary agent");
+    const label = view.container.querySelector(".commandTableActivityLabel");
+
+    view.rerender(<SessionCatalogProvider sessions={[{ ...last, activityFallback: { ...last.activityFallback, observedAt: "2026-08-01T12:01:00.000Z" } }]}><SessionsView /></SessionCatalogProvider>);
+    expect(view.container.querySelector(".commandTableActivityLabel")).toBe(label);
+  });
+
+  it("suppresses stale fallback current work and keeps an unavailable em dash", () => {
+    const stale = {
+      ...session(1), isLive: false, activityStatus: "idle" as const,
+      activityFallback: { label: "Running tests", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const, source: "tool" as const, actor: "primary" as const },
+    };
+    const view = render(<SessionCatalogProvider sessions={[stale]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.queryByText("Running tests")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
+  });
+
+  it("keeps provider-reported current activity ahead of a fallback", () => {
+    const current = {
+      ...session(1), isLive: true, activityStatus: "working" as const,
+      currentActivity: { label: "Provider heading", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const },
+      activityFallback: { label: "Running tests", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const, source: "execution_task" as const, actor: "multiple" as const },
+    };
+    render(<SessionCatalogProvider sessions={[current]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getAllByText("Provider heading")).toHaveLength(2);
+    expect(screen.queryByText("Running tests")).not.toBeInTheDocument();
   });
 });

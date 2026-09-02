@@ -54,12 +54,21 @@
 .commandTablePrimary strong, .commandTablePrimary small { display: block; }
 .commandTablePrimary strong { font-size: var(--text-base); font-weight: 500; }
 .commandTablePrimary small { margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
-.commandTableActivity { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--command-ink); }
-.commandTableActivityCompact { display: none; }
+.commandTableActivity.agentChip { min-width: 0; max-width: 100%; min-height: 0; padding: 0; display: flex; align-items: center; gap: 0; border: 0; border-radius: 0; background: transparent; color: var(--command-ink); font: inherit; letter-spacing: 0; text-align: left; text-transform: none; }
+.commandTableActivity.agentChip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.commandTableActivity .agentChipLabel { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.commandTableActivity.agentChip.commandTableActivityCompact { min-height: 14px; margin-top: 7px; display: none; }
 .commandTableActivityMark { position: relative; width: 12px; height: 12px; flex: 0 0 12px; border: 1px dashed var(--command-faint); border-radius: 50%; }
+.commandTableActivityMarkPlaceholder { width: 12px; height: 12px; flex: 0 0 12px; }
 .commandTableActivityMark::before { position: absolute; inset: 3px; border-radius: 50%; background: var(--command-muted); content: ""; animation: activityPulse 1.8s ease-in-out infinite; }
 .commandTableActivityLabel { min-width: 0; overflow: hidden; font-size: var(--text-xs); font-weight: 400; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.commandTableActivityLabelChanged { animation: commandActivityLabelIn 150ms ease-out both; }
+.commandTableActivityMeta { flex: 0 1 auto; overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.commandTableActivityLast .commandTableActivityMark { border-style: solid; opacity: .65; }
+.commandTableActivityLast .commandTableActivityMark::before { animation: none; opacity: .65; }
 .commandTableActivityUnavailable { color: var(--command-faint); }
+@keyframes commandActivityLabelIn { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .commandTableActivityLabelChanged { animation: none; } }
 .commandTableProgress { color: var(--command-ink); font: 600 var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .commandPagination { min-height: 48px; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .commandPaginationSummary { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); }
@@ -171,10 +180,12 @@
   .commandTablePrimary strong { overflow-wrap: anywhere; }
   .commandIconLink { width: 44px; height: 44px; }
   .commandTableActivityColumn { display: none; }
-  .commandTableActivityCompact { margin-top: 7px; display: flex; }
+  .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }
   .commandTableActivityCompact .commandTableActivityMark { width: 10px; height: 10px; flex-basis: 10px; }
+  .commandTableActivityCompact .commandTableActivityMarkPlaceholder { width: 10px; height: 10px; flex-basis: 10px; }
   .commandTableActivityCompact .commandTableActivityMark::before { inset: 3px; }
   .commandTableActivityCompact .commandTableActivityLabel { color: var(--command-muted); font-size: var(--text-xs); }
+  .commandTableActivityCompact .commandTableActivityMeta { font-size: var(--text-xs); }
   .commandViewIntro { display: block; }
   .commandViewActions { margin-top: 12px; }
   .commandToolbar { align-items: stretch; flex-wrap: wrap; }

@@ -1,7 +1,7 @@
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { buildRequestModelObservations } from "./request-snapshots.mjs";
 import { buildProviderTokenUsage } from "./session-projection.mjs";
-import { projectSessionCurrentActivity } from "./session-current-activity.mjs";
+import { projectSessionActivityFallback, projectSessionCurrentActivity } from "./session-current-activity.mjs";
 
 export function median(values) {
   const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right);
@@ -44,6 +44,8 @@ export function homeSessionSummary(entry, evidence, homePolicy) {
     contextHistory: tokenUsage.contextHistory,
     progress: evidence.session.progress ?? null,
     currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
+    activityFallback: projectSessionActivityFallback(entry, agents, evidence.toolCalls),
+    lastObservedActivity: projectSessionActivityFallback({ ...entry, isLive: false }, agents, evidence.toolCalls),
     isLive: Boolean(entry.isLive),
     createdAt: evidence.session.startedAt,
     requestObservationsAvailable: true,
@@ -76,6 +78,8 @@ export function unavailableHomeSessionSummary(entry) {
     contextHistory: null,
     progress: null,
     currentActivity: null,
+    activityFallback: null,
+    lastObservedActivity: null,
     isLive: Boolean(entry.isLive),
     createdAt: null,
     requestObservationsAvailable: false,
