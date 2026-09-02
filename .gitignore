@@ -12,7 +12,10 @@
 
 # testing
 /coverage
+# Impeccable local artifacts
 /.impeccable/review/
+/.impeccable/*.log
+/.impeccable/*-handoff.md
 
 # next.js
 /.next/
