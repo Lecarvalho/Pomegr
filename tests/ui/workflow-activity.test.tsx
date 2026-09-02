@@ -6,7 +6,7 @@ import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivity
 import { AgentHistoryIndicators, cacheRefillDescription, summarizeCacheRefillOccurrences } from "../../app/components/dashboard/AgentHistoryIndicators";
 import { WorkflowActivityPanel } from "../../app/components/dashboard/WorkflowActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import type { Agent, CacheRefillCount, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
+import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 function worker(overrides: Partial<Agent> = {}): Agent {
@@ -205,6 +205,57 @@ describe("workflow activity and agent tree view", () => {
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Cache refill evidence" })).not.toBeInTheDocument();
+  });
+
+  it.each(["list", "tree"] as const)("shows scoped inferred cache-refill evidence in %s and preserves the amber refill icon", async (viewMode) => {
+    const user = userEvent.setup();
+    const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
+    const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));
+    const cacheReadDrops: CacheReadDropCount[] = [{
+      agentId: "clustered-0",
+      count: 2,
+      occurrences: [
+        { id: "drop-1", observedAt: "2026-08-15T12:01:00.000Z", previousCacheReadPercent: 92, cacheReadPercent: 4, gapMs: 60_000 },
+        { id: "drop-2", observedAt: "2026-08-15T12:02:00.000Z", previousCacheReadPercent: 85, cacheReadPercent: 9, gapMs: 90_000 },
+      ],
+    }, {
+      agentId: "clustered-3",
+      count: 1,
+      occurrences: [{ id: "drop-3", observedAt: "2026-08-15T12:03:00.000Z", previousCacheReadPercent: 88, cacheReadPercent: 3, gapMs: 120_000 }],
+    }];
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheReadDrops={cacheReadDrops} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:cache-read-drops" viewMode={viewMode} workflows={[]} /></LiveClockProvider>);
+
+    const rowRole = viewMode === "list" ? "listitem" : "treeitem";
+    const target = viewMode === "list"
+      ? screen.getByRole(rowRole, { name: /Repeated worker agent .*cache TTL 1h, 2 possible cache refills/ })
+      : screen.getByRole(rowRole, { name: /Repeated worker ×5, 5 matching agents, 3 possible cache refills/ });
+    const trigger = within(target).getByRole("button", { name: viewMode === "list" ? "Possible cache refill inferred 2 times." : "Possible cache refill inferred 3 times across 5 agents." });
+    expect(trigger).toHaveTextContent(viewMode === "list" ? "2" : "3");
+    expect(trigger.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
+
+    await user.click(trigger);
+    const popover = screen.getByRole("dialog", { name: "Possible cache refill evidence" });
+    expect(popover).toHaveTextContent("Possible cache refill");
+    expect(popover).toHaveTextContent("92% → 4% cache read");
+    expect(popover).toHaveTextContent("InferencePossible cache refill.");
+    expect(popover).toHaveTextContent("No positive cache-write evidence, so a refill and its cause cannot be confirmed.");
+    within(popover).getAllByRole("link", { name: "Open signal definition (opens in a new tab)" }).forEach((link) => expect(link).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-read-reuse-dropped"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Possible cache refill evidence" })).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, [] as CacheReadDropCount[]])("omits inferred cache-refill evidence when the separate feed is %s", (cacheReadDrops) => {
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null })]} cacheReadDrops={cacheReadDrops} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:no-cache-read-drops" viewMode="list" workflows={[]} /></LiveClockProvider>);
+    expect(screen.queryByRole("button", { name: /Possible cache refill inferred/ })).not.toBeInTheDocument();
+  });
+
+  it("caps an inferred cache-refill indicator at 99+ while retaining its full accessible count", () => {
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheReadDrops={[{
+      agentId: "primary",
+      count: 100,
+      occurrences: [{ id: "drop-overflow", observedAt: "2026-08-15T12:01:00.000Z", previousCacheReadPercent: 92, cacheReadPercent: 4, gapMs: 60_000 }],
+    }]} />);
+    expect(screen.getByRole("button", { name: "Possible cache refill inferred 100 times." })).toHaveTextContent("99+");
   });
 
   it("bounds the accessible cache-refill summary independently of occurrence count", () => {

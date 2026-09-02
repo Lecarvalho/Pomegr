@@ -3,6 +3,7 @@ import { recentActivityEvents, shellFailureActivityEvents } from "./activity-eve
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { resolveAgentRole } from "./agent-roles.mjs";
 import { buildCacheEvidence } from "./cache-events.mjs";
+import { buildCacheReadDrops } from "./cache-read-drops.mjs";
 import { buildSessionReportEvidence } from "./session-report-evidence.mjs";
 import { buildContextHistory } from "./context-history.mjs";
 import { EFFICIENCY_SIGNAL_RULES, evaluateEfficiencySignals } from "./efficiency-signals.mjs";
@@ -102,6 +103,7 @@ export function buildProviderTokenUsage(agents, usageSnapshots, startedAt, updat
       compactions,
     }),
     cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] },
+    cacheReadDrops: { status: "unavailable", items: [] },
     requestSnapshots: buildRequestSnapshots({ sessionId, agents, usageSnapshots }),
   };
 }
@@ -171,6 +173,7 @@ export function projectProviderSessionEvidence({
     enabled: evidence.efficiencyRuleEvidence.cacheUsageClassification,
   });
   tokenUsage.cacheEvents = cacheEvidence.feed;
+  tokenUsage.cacheReadDrops = buildCacheReadDrops({ sessionId, agents, usageSnapshots: evidence.usageSnapshots, compactions });
   tokenUsage.reportEvidence = buildSessionReportEvidence({
     sessionId, agents, usageSnapshots: evidence.usageSnapshots,
     compactions, cacheEvidence, capabilities,

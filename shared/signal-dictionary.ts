@@ -77,6 +77,16 @@ export const CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS: Record<CacheMessageChangeS
   },
 };
 
+export function cacheReadReuseDroppedSignalDefinition(): CacheSignalDefinition {
+  return {
+    code: "cache.read_reuse_dropped",
+    anchor: "cache-read-reuse-dropped",
+    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-read-reuse-dropped`,
+    observed: "Pomegr observed a comparable cache-read share drop.",
+    impact: "No positive cache-write evidence was recorded.",
+  };
+}
+
 export function cacheRefillSignalDefinition(occurrence: Pick<CacheRefillOccurrence, "cacheLifetimeInference" | "messageChangeSequence" | "providerStatus" | "reason" | "toolChangeAttribution">) {
   if (occurrence.messageChangeSequence) return CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS[occurrence.messageChangeSequence];
   if (occurrence.reason === "tools_changed" && occurrence.toolChangeAttribution?.cause === "remote_control_connected") {

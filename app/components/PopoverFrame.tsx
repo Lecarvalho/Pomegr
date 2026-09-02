@@ -1,7 +1,7 @@
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { CloseButton } from "./CloseButton";
 
-export function PopoverFrame({ id, ariaLabel, eyebrow, title, closeLabel, onClose, summary, children, actions, className = "", containerRef }: {
+export function PopoverFrame({ id, ariaLabel, eyebrow, title, closeLabel, onClose, summary, children, actions, className = "", containerRef, style }: {
   id: string;
   ariaLabel: string;
   eyebrow: string;
@@ -13,9 +13,10 @@ export function PopoverFrame({ id, ariaLabel, eyebrow, title, closeLabel, onClos
   actions?: ReactNode;
   className?: string;
   containerRef?: RefObject<HTMLDivElement | null>;
+  style?: CSSProperties;
 }) {
   return (
-    <div className={`agentPopover ${className}`.trim()} id={id} role="dialog" aria-label={ariaLabel} ref={containerRef}>
+    <div className={`agentPopover ${className}`.trim()} id={id} role="dialog" aria-label={ariaLabel} ref={containerRef} style={style}>
       <div className="agentPopoverHeader">
         <div><span className="label">{eyebrow}</span><strong>{title}</strong></div>
         <div className="agentPopoverActions">{actions}<CloseButton label={closeLabel} onClick={onClose} /></div>

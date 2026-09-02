@@ -198,6 +198,13 @@ function optionalAliasedInteger(object, keys) {
   return { present: true, value: values[0] };
 }
 
+function recordedCount(object, keys, absent = null) {
+  const values = keys.filter((key) => Object.hasOwn(object, key)).map((key) => object[key]);
+  if (!values.length) return absent;
+  return values.every((value) => Number.isSafeInteger(value) && value >= 0 && value === values[0])
+    ? values[0] : null;
+}
+
 function usageFromRecord(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) return null;
   const payload = record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
@@ -233,12 +240,25 @@ function usageFromRecord(record) {
   const componentTotal = input + output + cacheWrite + cacheRead;
   if (componentTotal === 0) return null;
 
+  // Context normalization remains compatible with older records. Read-drop
+  // inference additionally requires explicit, uncoerced and unclamped counts.
+  const recordedInput = recordedCount(usage, ["input_tokens", "inputTokens"]);
+  const recordedRead = recordedCount(usage, ["cached_input_tokens", "cachedInputTokens"]);
+  const recordedWrite = recordedCount(usage, [
+    "cache_creation_input_tokens", "cacheCreationInputTokens", "cache_write_input_tokens", "cacheWriteInputTokens",
+  ]);
+  const cacheReadComparable = recordedInput !== null && recordedInput > 0
+    && recordedInput === rawInput && recordedRead !== null && recordedRead === cacheRead
+    && recordedWrite !== null && recordedWrite === cacheWrite
+    && Number.isSafeInteger(componentTotal);
+
   return {
     info,
     input,
     output,
     cacheWrite,
     cacheRead,
+    cacheReadComparable,
     reasoningOutput,
     totalTokens: nonNegativeInteger(usage.total_tokens ?? usage.totalTokens) ?? componentTotal,
     modelContextWindow: positiveInteger(info.model_context_window ?? info.modelContextWindow),
@@ -252,6 +272,28 @@ function laterEvidence(previous, next) {
   return Number.isFinite(nextTime) && (!Number.isFinite(previousTime) || nextTime >= previousTime) ? next : previous;
 }
 
+/** Keep proven context when the same immutable request is reread in a smaller tail. */
+export function mergeCodexContextSnapshot(previous, next) {
+  if (!previous || previous.cacheReadComparable !== true || next.cacheReadComparable !== true
+    || !sameRecordedUsage(previous, next)
+    || (next.model && previous.model !== next.model)) return next;
+  if (!next.model || (!next.cacheReadPreviousAt && previous.cacheReadPreviousAt)) {
+    return {
+      ...next,
+      model: previous.model,
+      comparisonGroup: previous.comparisonGroup,
+      cacheLifetime: previous.cacheLifetime,
+      cacheReadPreviousAt: previous.cacheReadPreviousAt ?? null,
+    };
+  }
+  return next;
+}
+
+function sameRecordedUsage(previous, next) {
+  return ["actorId", "dedupeId", "timestamp", "input", "output", "cacheRead", "cacheWrite"]
+    .every((key) => previous[key] === next[key]);
+}
+
 function stableFallbackIdentity({ timestamp, input, output, cacheWrite, cacheRead, reasoningOutput }) {
   return `${timestamp}:${input}:${output}:${cacheWrite}:${cacheRead}:${reasoningOutput}`;
 }
@@ -260,27 +302,41 @@ export function parseCodexContextRecords(records, options = {}) {
   const recordList = Array.isArray(records) ? records : [];
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
+  // Supplied only for verified continuous sources. Context is recovered at an
+  // exact overlapping record, never from a latest-session/model guess.
+  const retained = new Map((options.priorUsageSnapshots || [])
+    .filter((snapshot) => snapshot.actorId === actorId).map((snapshot) => [snapshot.dedupeId, snapshot]));
   const snapshots = new Map();
   const compactions = new Map();
   const tokenCountsByTurn = new Map();
   let turnId = "turn";
   let model = "";
+  let sawModelContext = false;
   let comparisonGroup = 0;
   let sawTurn = false;
   let turnHasUsage = false;
+  let cacheReadPreviousAt = null;
 
   for (const [recordIndex, record] of recordList.entries()) {
     if (normalizedType(record?.type) === "turncontext") {
-      if (sawTurn && !turnHasUsage) comparisonGroup += 1;
+      if (sawTurn && !turnHasUsage) {
+        comparisonGroup += 1;
+        cacheReadPreviousAt = null;
+      }
       sawTurn = true;
       turnHasUsage = false;
       turnId = boundedIdentity(record?.payload?.turn_id ?? record?.payload?.turnId) || turnId;
     }
-    model = modelFromContextRecord(record) ?? model;
+    const recordedModel = modelFromContextRecord(record);
+    if (recordedModel !== null) {
+      model = recordedModel;
+      sawModelContext = true;
+    }
     const timestamp = recordTimestamp(record, options.fallbackTimestamp);
     const normalizedUsage = usageFromRecord(record);
     if (normalizedUsage && timestamp) {
       turnHasUsage = true;
+      const cacheReadComparable = normalizedUsage.cacheReadComparable && recordTimestamp(record, null) !== null;
       const providerIdentity = eventIdentity(record, normalizedUsage.info);
       const nextCount = (tokenCountsByTurn.get(turnId) || 0) + 1;
       tokenCountsByTurn.set(turnId, nextCount);
@@ -310,18 +366,35 @@ export function parseCodexContextRecords(records, options = {}) {
         model,
         comparisonGroup,
         cacheComparable: true,
+        cacheReadComparable,
+        cacheReadPreviousAt: cacheReadComparable ? cacheReadPreviousAt : null,
         cacheLifetime: cacheLifetimeForModel(model),
         cacheMissProviderStatus: null,
       };
-      snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
+      const anchor = retained.get(dedupeId);
+      if (anchor?.cacheReadComparable === true && cacheReadComparable && sameRecordedUsage(anchor, snapshot)
+        && anchor.model && (!sawModelContext || model === anchor.model)) {
+        if (!sawModelContext) model = anchor.model;
+        comparisonGroup = anchor.comparisonGroup;
+        snapshot.model = model;
+        snapshot.comparisonGroup = comparisonGroup;
+        snapshot.cacheLifetime = cacheLifetimeForModel(model);
+        snapshot.cacheReadPreviousAt = anchor.cacheReadPreviousAt ?? snapshot.cacheReadPreviousAt;
+      }
+      const duplicate = snapshots.get(dedupeId);
+      if (duplicate && duplicate.timestamp === timestamp) snapshot.cacheReadPreviousAt = duplicate.cacheReadPreviousAt;
+      snapshots.set(dedupeId, laterEvidence(duplicate, snapshot));
+      if (!duplicate) cacheReadPreviousAt = cacheReadComparable ? timestamp : null;
     } else if (isTokenCountRecord(record)) {
       // A recognized but unusable observation means later valid snapshots are
       // not adjacent evidence. Keep the boundary, never the malformed fields.
       comparisonGroup += 1;
       turnHasUsage = true;
+      cacheReadPreviousAt = null;
     }
 
     const compacted = compactionPayload(record);
+    if (compacted) cacheReadPreviousAt = null;
     const compactMetadata = compacted?.compactMetadata ?? compacted?.compact_metadata ?? compacted;
     const triggerEvidence = compactionTriggerEvidence(compactMetadata, record);
     if (!compacted || !timestamp || (triggerEvidence.present && !triggerEvidence.trigger)) continue;

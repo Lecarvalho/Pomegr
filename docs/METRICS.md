@@ -149,7 +149,7 @@ For Claude Remote Control, Pomegr can attach one explicitly labeled tool-change 
 
 - **Refill** — the provider records at least 8,000 cache-write tokens on one request.
 - **Reuse** — after a tracked refill or miss-refill for the same agent, model, and comparison group, the first comparable request with at least 8,000 prompt-input tokens and at least an 80% cache-read share. Later high-read requests do not flood the feed.
-- **Miss-refill** — adjacent comparable requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, the current request has at most a 10% share after at least 30 minutes, and the provider simultaneously records at least 8,000 cache-write tokens. A low-read transition without a recorded large write is not classified or warned on.
+- **Miss-refill** — adjacent comparable requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, the current request has at most a 10% share after at least 30 minutes, and the provider simultaneously records at least 8,000 cache-write tokens. A low-read transition without a recorded large write is never classified as a write-backed refill; separate read-drop evidence is described below.
 
 Automatic or manual compaction, a model or comparison-group change, invalid timestamps, or missing/malformed intermediate usage makes observations incomparable. A normal resume does not. A fork starts without prior comparable evidence, then follows the same per-agent rules as every other agent. The feed status is `unavailable` when no cache-classifiable observation exists and `ready` when an observed bounded window contains valid evidence, including when no event meets the thresholds.
 
@@ -160,6 +160,54 @@ The `possibleFullRefills` summary uses the same comparable-adjacent-request chec
 For Claude Code only, an occurrence diagnosed as `messages_changed` may additionally expose the fixed `post_tool_task_notification_resume` sequence. Complete transcript history must contain a structured assistant tool use, a matching structured user tool result, a provider-owned task-notification metadata record, and the directly resumed distinct assistant request; when both UUIDs are present the request must be parented to the notification. Unrelated user input, an unmatched result, an intervening request, malformed evidence, or incomplete history fails closed. The sequence is observed structure, not proof that the notification caused the change or that a specific outgoing request body was rewritten. Stable public wording and evidence limits live in `docs/SIGNAL_DICTIONARY.md`.
 
 Agent activity renders each agent's resolved cache lifetime or documented minimum alongside its runtime metadata in List view and as evidence in Tree view. It renders an amber stack-refill symbol from the per-agent refill summary. Tree clusters sum only the bounded counts belonging to agents represented by the cluster. The wording remains cautious because the transition alone does not prove expiration, eviction, a full-prefix rewrite, or billing impact.
+
+### Cache-read drops
+
+`metrics.tokens.cacheReadDrops` is an independent, bounded read-drop feed. It does not
+enable `cacheWriteUsage` or `cacheUsageClassification`, add write-backed cache events,
+contribute to report refill totals, or create an efficiency recommendation. Codex
+normalization explicitly marks eligible observations; other adapters and legacy
+checkpoints without that metadata remain unavailable.
+
+The deterministic starting rule requires two adjacent, distinct requests from the
+same normalized agent, recorded model, and comparison group. Both have at least
+8,000 prompt-input tokens; the preceding cache-read share is at least 80% and the
+current share at most 20%. The current cached-token count must also be at most 20%
+of its predecessor, so new uncached input alone cannot trigger a drop. The current
+request must have no positive recorded cache write. These thresholds describe a
+pattern, not a validated measurement of a refill or cache failure. The 20%
+current-share ceiling retains severe drops with partial reuse above 10%; the
+separate requirement for at least an 80% fall in actual cached tokens still applies.
+
+The adapter must retain explicit numeric input/read/write provenance and the normalized
+timestamp of the immediately preceding eligible observation. Missing counts
+are not known zero. Coerced, conflicting, clamped, invalid, or incomplete counts,
+fallback-only timestamps, missing intermediate observations, model/group changes,
+and compaction or context-reduction boundaries break comparisons. Detection checks
+all retained boundaries, not only the UI's newest 100. A smaller overlapping source
+read may recover already-proven context at an identical immutable request and
+carry it into following records. Without that exact overlap or recorded model
+context, new requests remain ineligible; no latest-session model is guessed.
+
+Only a high-to-low transition is counted; repeated low-read requests and duplicate
+observations do not add occurrences. Each agent and fork establishes its own
+baseline. Up to 999 chronological occurrences and their count are retained per
+visible agent, within the existing normalized evidence bounds. `ready` means at
+least one eligible observation exists, including when no transition qualifies;
+`unavailable` means no eligible evidence. Counts describe retained evidence only.
+
+List and Tree reuse the amber icon, scoped count, and occurrence popover. Read-drop
+occurrences are explicitly labeled as an **Inference**, with the limitation:
+**No positive cache-write evidence, so a refill and its cause cannot be confirmed.**
+The bottom **Open signal definition** link documents the complete rule and caveats
+in [Signal dictionary](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped).
+Elapsed time is supporting evidence, never proof of expiration; `30m+` never
+enables an expiry inference. No cost, charge, or savings claim is made.
+
+The public feed contains only readiness, normalized agent IDs, bounded counts,
+opaque occurrence IDs, original observation timestamps, preceding/current read
+percentages, and elapsed gaps. Eligibility, predecessor metadata, model names,
+comparison groups, dedupe keys, raw usage, prompts, and source paths stay private.
 
 ## Live resource use
 

@@ -3,7 +3,7 @@ import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import { createHash } from "node:crypto";
 import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
-import { parseCodexContextRecords } from "./codex-context.mjs";
+import { mergeCodexContextSnapshot, parseCodexContextRecords } from "./codex-context.mjs";
 import { parseCodexCurrentActivityStateRecords } from "./codex-current-activity.mjs";
 import { parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs";
 
@@ -239,7 +239,7 @@ export function createCodexLiveState({
     const byId = new Map(monotonic ? previous.snapshots.map((snapshot) => [snapshot.dedupeId, snapshot]) : []);
     for (const snapshot of snapshots) {
       const existing = byId.get(snapshot.dedupeId);
-      if (!existing || Date.parse(snapshot.timestamp) >= Date.parse(existing.timestamp)) byId.set(snapshot.dedupeId, snapshot);
+      if (!existing || Date.parse(snapshot.timestamp) >= Date.parse(existing.timestamp)) byId.set(snapshot.dedupeId, mergeCodexContextSnapshot(existing, snapshot));
     }
     const merged = [...byId.values()].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)).slice(-MAX_LIVE_USAGE_SNAPSHOTS);
     const compactionKey = (compaction) => `${compaction.actorId}:${compaction.timestamp}`;

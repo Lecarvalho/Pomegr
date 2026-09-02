@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Agent, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, PlanTask, RequestSnapshotFeed, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, PlanTask, RequestSnapshotFeed, ReviewDecision, Workflow } from "../../../shared/monitor-contract";
 import { agentAssignment, agentDisplayLabel, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, cacheLifetimeLabel, compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { AgentChip } from "../AgentChip";
@@ -11,7 +11,7 @@ import { ExecutionTaskRow } from "../ExecutionTaskRow";
 import { AgentWallTimeText, RelativeTimeText } from "../LiveTime";
 import { PanelHeader } from "../PanelHeader";
 import { PopoverFrame } from "../PopoverFrame";
-import { AgentHistoryIndicators, summarizeCacheRefills, summarizeCompactions } from "./AgentHistoryIndicators";
+import { AgentHistoryIndicators, summarizeCacheReadDrops, summarizeCacheRefills, summarizeCompactions } from "./AgentHistoryIndicators";
 import { AgentTurnCacheTiming } from "./AgentTurnCacheTiming";
 import { AgentTreeView } from "./agent-tree/AgentTreeView";
 
@@ -50,9 +50,10 @@ function activityIsCurrent(agent: Agent) {
     && agent.liveness?.evidence !== "unavailable";
 }
 
-export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundaries = [], executionTasks, planTasks, requestSnapshots = EMPTY_REQUEST_SNAPSHOTS, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
+export function AgentActivityPanel({ agents, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], executionTasks, planTasks, requestSnapshots = EMPTY_REQUEST_SNAPSHOTS, workflows = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {} }: {
   agents: Agent[];
   cacheRefills?: CacheRefillCount[];
+  cacheReadDrops?: CacheReadDropCount[];
   contextBoundaries?: ContextHistoryBoundary[];
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
@@ -118,7 +119,8 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
       : `${displayLabel} agent`;
     const compactions = summarizeCompactions(contextBoundaries, [agent.id]);
     const cacheRefillCount = summarizeCacheRefills(cacheRefills, [agent.id]);
-    const accessibleLabel = `${identityLabel}, ${cacheLifetimeLabel(agent.cacheLifetime)}${compactions.total > 0 ? `, ${compactions.total} ${compactions.total === 1 ? "compaction" : "compactions"}` : ""}${cacheRefillCount > 0 ? `, ${cacheRefillCount} possible full cache ${cacheRefillCount === 1 ? "refill" : "refills"}` : ""}`;
+    const cacheReadDropCount = summarizeCacheReadDrops(cacheReadDrops, [agent.id]);
+    const accessibleLabel = `${identityLabel}, ${cacheLifetimeLabel(agent.cacheLifetime)}${compactions.total > 0 ? `, ${compactions.total} ${compactions.total === 1 ? "compaction" : "compactions"}` : ""}${cacheRefillCount > 0 ? `, ${cacheRefillCount} possible full cache ${cacheRefillCount === 1 ? "refill" : "refills"}` : ""}${cacheReadDropCount > 0 ? `, ${cacheReadDropCount} possible cache ${cacheReadDropCount === 1 ? "refill" : "refills"}` : ""}`;
 
     return (
       <div
@@ -132,7 +134,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
         <div className="agentIdentity">
           <div className="agentTitleLine">
             <strong dir="auto">{displayName}</strong>
-            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} cacheRefills={cacheRefills} />
+            <AgentHistoryIndicators agentIds={[agent.id]} boundaries={contextBoundaries} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} />
             {agent.signal && <AgentChip className={`agentSignal ${agent.signal.tone}`} title={agent.signal.description || "Reported by this agent through the Pomegr MCP tool"}>{agent.signal.label}</AgentChip>}
             {agent.skills.length > 0 && (
               <div className="agentPopoverAnchor skillPopoverAnchor" ref={isOpen("skills", agent.id) ? popoverAnchorRef : undefined}>
@@ -201,7 +203,7 @@ export function AgentActivityPanel({ agents, cacheRefills = [], contextBoundarie
       {viewMode === "list" ? <div className="agentList">
         {agents.length === 0 && <EmptyState text="No agents have appeared in this session yet." />}
         {agentRows.length > 0 && <div className="agentRows" role="list" aria-label="Session agents">{agentRows.map(renderAgentRow)}</div>}
-      </div> : <AgentTreeView agents={visibleAgents} cacheRefills={cacheRefills} contextBoundaries={contextBoundaries} historical={historical} requestSnapshots={requestSnapshots} sessionId={sessionId} workflows={workflows} />}
+      </div> : <AgentTreeView agents={visibleAgents} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} historical={historical} requestSnapshots={requestSnapshots} sessionId={sessionId} workflows={workflows} />}
     </article>
   );
 }

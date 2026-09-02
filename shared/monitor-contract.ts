@@ -273,6 +273,26 @@ export type CacheEventFeed = {
   possibleFullRefills: CacheRefillCount[];
 };
 
+/** Read-drop evidence is separate from provider-recorded cache writes. */
+export type CacheReadDropOccurrence = {
+  id: string;
+  observedAt: string;
+  previousCacheReadPercent: number;
+  cacheReadPercent: number;
+  gapMs: number;
+};
+
+export type CacheReadDropCount = {
+  agentId: string;
+  count: number;
+  occurrences: CacheReadDropOccurrence[];
+};
+
+export type CacheReadDropFeed = {
+  status: "ready" | "unavailable";
+  items: CacheReadDropCount[];
+};
+
 export type RequestSnapshot = {
   id: string;
   agentId: string;
@@ -746,6 +766,7 @@ export type MonitorState = {
         boundaries: ContextHistoryBoundary[];
       };
       cacheEvents: CacheEventFeed;
+      cacheReadDrops: CacheReadDropFeed;
       requestSnapshots: RequestSnapshotFeed;
       reportEvidence?: SessionReportEvidence | null;
     };

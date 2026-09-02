@@ -10,6 +10,20 @@ Pomegr observed two comparable requests for the same normalized agent and model,
 
 This is deterministic threshold evidence of a possible near-full rewrite. It does not prove a charge, cost, provider defect, or why the request changed.
 
+<a id="cache-read-reuse-dropped"></a>
+
+### `cache.read_reuse_dropped`
+
+Class: bounded inferred cache-refill evidence.
+
+Pomegr emits this code only when two distinct comparable requests for the same normalized agent and model have positive prompt input of at least 8,000 tokens, cache-read share drops from at least 80% to no more than 20%, and the later request's actual cache-read count is no more than 20% of the immediately preceding comparable request's actual cache-read count (an at-least-80% collapse). The monitor derives that count comparison from request-local numeric cache-read observations and retains the preceding-request relationship monitor-side; the browser receives only the bounded preceding and affected read percentages. Any intervening context reduction — automatic compaction, manual compaction, or snapshot drop — plus missing comparable data or a recorded positive cache write makes this signal unavailable.
+
+What it means: Pomegr observed a large loss of cache reuse that is consistent with a possible cache refill.
+
+What it does not prove: that a refill occurred, why cache reuse dropped, that a cache entry expired, or that the provider charged any amount. This is not a 30-minute cache-expiry inference. No positive cache-write evidence was recorded, so Pomegr labels this as an inference rather than a confirmed refill.
+
+Privacy: browser state contains only the bounded transition percentages, elapsed wall time, normalized agent association, observation timestamp, and stable public code. Requests, models, comparison groups, cache keys, prompts, provider diagnostics, and token counts remain monitor-private.
+
 <a id="cache-model-changed"></a>
 
 ### `cache.model_changed`

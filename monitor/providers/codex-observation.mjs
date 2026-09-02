@@ -10,6 +10,7 @@ import { createNormalizedPollingObserver } from "./normalized-polling-observer.m
 import { expandCodexSelectedMetadata } from "./codex-session-discovery.mjs";
 import { readCodexRolloutHeader } from "./codex-session-metadata.mjs";
 import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
+import { mergeCodexContextSnapshot } from "./codex-context.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 4_096;
 const MAX_TOOL_CALLS = 4_096;
@@ -75,7 +76,7 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
 /** Merge a bounded live delta into the complete normalized Codex story. */
 export function mergeCodexObservationEvidence(previous, current) {
   if (!previous) return current;
-  const usageSnapshots = mergeByKey(previous.usageSnapshots, current.usageSnapshots, (item) => item?.dedupeId, MAX_USAGE_SNAPSHOTS);
+  const usageSnapshots = mergeByKey(previous.usageSnapshots, current.usageSnapshots, (item) => item?.dedupeId, MAX_USAGE_SNAPSHOTS, mergeCodexContextSnapshot);
   const toolCalls = mergeByKey(previous.toolCalls, current.toolCalls, (item) => item?.id, MAX_TOOL_CALLS);
   const activity = mergeByKey(previous.activity, current.activity, (item) => item?.id, MAX_ACTIVITY);
   const compactions = mergeByKey(

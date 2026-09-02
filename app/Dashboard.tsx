@@ -292,7 +292,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
             <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} workflows={data.workflows || []} />
           )}
           {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className={`contentGrid ${agentActivityViewMode === "tree" ? "contentGrid-tree" : ""}`.trim()}>
-            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
+            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
             <InsightsPanel insights={data.insights} />
           </section>}
 

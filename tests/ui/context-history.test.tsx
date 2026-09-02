@@ -19,6 +19,7 @@ describe("context history", () => {
     cacheRead: 0,
     contextHistory: { bucketMs: 60_000, buckets, boundaries: [{ id: "boundary-1", agentId: "primary", timestamp: "2026-08-09T12:01:30.000Z", kind: "snapshot_drop" as const, preTokens: 100_000 }] },
     cacheEvents: { status: "ready" as const, items: [], possibleFullRefills: [] },
+    cacheReadDrops: { status: "unavailable" as const, items: [] },
     requestSnapshots: { status: "ready" as const, items: [] },
   };
 

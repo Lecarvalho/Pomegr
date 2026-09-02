@@ -519,17 +519,17 @@ export function createCodexProvider(options = {}) {
       const cachedCurrentActivity = historical
         ? null
         : reusableLiveCurrentActivity(thread.rolloutFile, thread.localId, generation);
+      const previousContext = liveContextUsageCache.get(thread.rolloutFile);
       const context = parseCodexContextRecords(records, {
-        actorId: actor.id,
-        fallbackTimestamp,
-        sourceKey: thread.localId,
+        actorId: actor.id, fallbackTimestamp, sourceKey: thread.localId,
         stableFallbackIdentity: !historical,
+        priorUsageSnapshots: !historical && hasLiveContextContinuity(thread.rolloutFile, generation)
+          ? previousContext?.snapshots : [],
       });
       let existingState = historical
         ? null
         : reusableLiveTaskState(thread.rolloutFile, thread.localId, generation);
       let hydratedStateEvidence = null;
-      const previousContext = liveContextUsageCache.get(thread.rolloutFile);
       const skippedContextGap = previousContext && generation
         && (!hasLiveContextContinuity(thread.rolloutFile, generation) || generation.size - previousContext.size > maximumLiveTailBytes);
       const skippedActivityGap = cachedCurrentActivity

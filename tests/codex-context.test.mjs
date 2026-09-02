@@ -62,6 +62,8 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
     model: "",
     comparisonGroup: 0,
     cacheComparable: true,
+    cacheReadComparable: true,
+    cacheReadPreviousAt: null,
     cacheLifetime: null,
     cacheMissProviderStatus: null,
   }]);

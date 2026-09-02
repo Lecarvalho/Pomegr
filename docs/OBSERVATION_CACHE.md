@@ -181,6 +181,40 @@ U2 resolves Codex's documented `30m+` minimum only from each request's recognize
 
 The enum extension remains compatible with checkpoint version 1. Privacy-valid normalized evidence may preserve `30m+`; legacy `null` values remain unknown until ordinary background acquisition and normalization produce a complete replacement. Startup hydration, last-known-good retention, atomic commits, original observation timestamps, revision semantics, checkpoint privacy filters, endpoint cache-only serving, readiness, and UI polling are unchanged. No cache TTL network requests, credentials, raw provider fields, or extra browser fields are introduced.
 
+## Cache-read drop evidence
+
+U2 may retain optional `cacheReadComparable` and `cacheReadPreviousAt` metadata on
+normalized request observations: explicit numeric evidence eligibility and the
+normalized timestamp of the immediately preceding eligible observed request.
+These bounded monitor-private fields are not cache-write evidence. Codex marks
+only explicit, uncoerced, unclamped input/read/write counts with an original recorded timestamp;
+missing, malformed, or ambiguous evidence breaks adjacency. An overlapping smaller
+read preserves proven context for the identical request, never a fabricated
+predecessor for new data. Source replacement still requires a complete validated
+candidate; temporary read bounds do not erase retained evidence.
+
+D derives `metrics.tokens.cacheReadDrops` only from committed normalized evidence,
+before presentation caps, using the thresholds and boundaries in [Metrics](METRICS.md#cache-read-drops).
+The read-share transition is at least 80% to at most 20%, with an independent
+requirement that actual cached tokens fall by at least 80%. The broader
+current-share ceiling changes only D derivation; evidence and response shapes
+remain compatible.
+This feed is separate from write-backed cache events and report counts. F reuses
+the existing agent indicator and popover, labels the conclusion as an inference,
+and links the signal definition. It never reconstructs comparisons from request
+rows or provider schemas. S continues to serve committed responses only: no new
+endpoint, source read, subscription, polling lane, or provider request is added.
+
+The optional evidence fields are compatible with checkpoint version 1. A legacy
+checkpoint without explicit eligibility remains unknown until normal background
+normalization commits a complete replacement. Eligibility and predecessor metadata
+remain inside L1/L2 evidence and never serialize to the browser. The public feed
+allows only readiness, normalized agent IDs, bounded counts, opaque occurrence IDs,
+original timestamps, two read percentages, and elapsed gaps. No raw usage, source
+paths, model identities, comparisons, prompts, or credentials are added. Existing
+revision handling, atomic commits, last-known-good retention, readiness, cache-only
+GETs, and UI polling remain unchanged.
+
 ## Cache tiers and bounds
 
 | Tier | Authority and contents | Current default bound |

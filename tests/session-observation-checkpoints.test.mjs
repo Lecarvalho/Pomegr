@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { buildCacheReadDrops } from "../monitor/cache-read-drops.mjs";
 import {
   SessionObservationCheckpointStore,
   checkpointFilename,
@@ -58,15 +59,26 @@ test("round-trips normalized minimum lifetimes and preserves legacy unavailable 
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory });
   const committed = snapshot("codex", "minimum", 3);
+  const beforeAt = "2026-08-28T11:59:00.000Z";
   committed.evidence.usageSnapshots = [
-    { actorId: "primary", cacheLifetime: "30m+" },
-    { actorId: "child", cacheLifetime: null },
+    { dedupeId: "checkpoint-before", actorId: "primary", timestamp: beforeAt, input: 1_000, output: 10, cacheRead: 9_000, cacheWrite: 0, model: "gpt-5.6-sol", comparisonGroup: 0, cacheLifetime: "30m+", cacheReadComparable: true, cacheReadPreviousAt: null },
+    { dedupeId: "checkpoint-legacy", actorId: "child", timestamp: "2026-08-28T12:00:00.000Z", input: 1_000, output: 10, cacheRead: 9_000, cacheWrite: 0, model: "gpt-5.6-sol", comparisonGroup: 0, cacheLifetime: null },
+    { dedupeId: "checkpoint-after", actorId: "primary", timestamp: "2026-08-28T12:00:00.000Z", input: 10_000, output: 10, cacheRead: 0, cacheWrite: 0, model: "gpt-5.6-sol", comparisonGroup: 0, cacheLifetime: "30m+", cacheReadComparable: true, cacheReadPreviousAt: beforeAt },
   ];
   await checkpoints.write(committed);
   const loaded = await checkpoints.load();
   assert.equal(loaded.ignored, 0);
   assert.equal(loaded.records[0].revision, 3);
   assert.deepEqual(loaded.records[0].evidence.usageSnapshots, committed.evidence.usageSnapshots);
+  assert.equal(loaded.records[0].evidence.usageSnapshots[0].cacheReadComparable, true);
+  assert.equal(loaded.records[0].evidence.usageSnapshots[2].cacheReadPreviousAt, beforeAt);
+  assert.equal(Object.hasOwn(loaded.records[0].evidence.usageSnapshots[1], "cacheReadComparable"), false, "missing provenance stays unknown");
+  const roundTripped = loaded.records[0].evidence.usageSnapshots;
+  const feed = buildCacheReadDrops({ sessionId: "codex:minimum", agents: [{ id: "primary" }, { id: "child" }], usageSnapshots: roundTripped });
+  assert.equal(feed.status, "ready");
+  assert.equal(feed.items[0].count, 1);
+  const legacy = roundTripped.map((item) => { const copy = { ...item }; delete copy.cacheReadComparable; delete copy.cacheReadPreviousAt; return copy; });
+  assert.equal(buildCacheReadDrops({ sessionId: "codex:legacy", agents: [{ id: "primary" }], usageSnapshots: legacy.filter((item) => item.actorId === "primary") }).status, "unavailable");
 });
 
 test("startup restore can skip stale checkpoints before public projection", async (t) => {
