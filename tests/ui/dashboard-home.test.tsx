@@ -139,6 +139,7 @@ describe("personal Home", () => {
   it("opens project pins with an exact, removable filter", async () => {
     const page = await SessionsPage({ searchParams: Promise.resolve({ project: "Pomegr" }) });
     render(<SessionCatalogProvider sessions={sessions}>{page}</SessionCatalogProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Build Home")).toBeInTheDocument();
     expect(screen.queryByText("Review report")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
@@ -147,6 +148,7 @@ describe("personal Home", () => {
 
   it("does not use session-title matches when filtering a pinned project", () => {
     render(<SessionCatalogProvider sessions={[...sessions, { ...sessions[1], id: "claude:other", title: "Pomegr work" }]}><SessionsView initialProject="Pomegr" /></SessionCatalogProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Build Home")).toBeInTheDocument();
     expect(screen.queryByText("Pomegr work")).not.toBeInTheDocument();
   });

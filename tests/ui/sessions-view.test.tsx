@@ -85,19 +85,29 @@ describe("Sessions view", () => {
     expect(visibleSessionTitles()).toEqual(["Session 10", "Session 1", "Session 12", "Session 11"]);
   });
 
-  it("uses isLive only for the Live filter while preserving an unknown lifecycle label", async () => {
+  it("defaults to Live as the catalog loads and preserves a manually selected filter", async () => {
     const user = userEvent.setup();
     const liveUnknown = { ...session(1), title: "Live unknown", isLive: true, activityStatus: "unknown" as const };
     const quietOpen = { ...session(2), title: "Quiet open", isLive: false, activityStatus: "open" as const };
-    render(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
+    const view = render(<SessionCatalogProvider sessions={[]} loading><SessionsView /></SessionCatalogProvider>);
+    view.rerender(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
 
-    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    expect(screen.getByRole("button", { name: /^Live/ })).toHaveAttribute("aria-pressed", "true");
 
     expect(visibleSessionTitles()).toEqual(["Live unknown"]);
     const liveRow = screen.getByText("Live unknown").closest("tr");
     expect(liveRow).not.toBeNull();
     expect(within(liveRow!).getByText("Unknown")).toBeInTheDocument();
     expect(screen.queryByText("Quiet open")).not.toBeInTheDocument();
+
+    view.rerender(<SessionCatalogProvider sessions={[quietOpen]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    expect(visibleSessionTitles()).toEqual(["Quiet open"]);
+
+    await user.click(screen.getByRole("button", { name: /^All/ }));
+    view.rerender(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    expect(visibleSessionTitles()).toEqual(["Quiet open", "Live unknown"]);
   });
 
   it("orders by creation time descending and paginates ten rows at a time", async () => {
@@ -105,6 +115,7 @@ describe("Sessions view", () => {
     const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
     render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
 
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
     expect(visibleSessionTitles()).toEqual(Array.from({ length: 10 }, (_, index) => `Session ${12 - index}`));
     expect(screen.getByText("Showing 1–10 of 12")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();

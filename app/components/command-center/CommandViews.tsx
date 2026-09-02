@@ -136,9 +136,10 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
   const [project, setProject] = useState(initialProject);
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "live" | "needs" | "history">("all");
+  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | "history" | null>(null);
   const [page, setPage] = useState(1);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
+  const filter = selectedFilter ?? (liveSessionCount > 0 ? "live" : "all");
   const filteredSessions = useMemo(() => newestSessionsFirst(sessions.filter((session) => {
     if (project && session.project !== project) return false;
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
