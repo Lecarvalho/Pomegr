@@ -8,6 +8,7 @@ import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
+import { ExternalLink } from "../ExternalLink";
 import type { DesktopState } from "../DesktopControls";
 import { PomegrBrand, type PomegrMarkVariant } from "../PomegrBrand";
 import { ThemeToggle } from "../ThemeToggle";
@@ -234,6 +235,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
             {profileOpen && <div className="commandProfileMenu" id="command-profile-menu">
               <header><strong>Local profile</strong><span>Workspace identity and preferences are coming soon.</span></header>
               <Link href="/settings" onClick={closeProfile}>Open settings</Link>
+              <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/user-guide/README.md" onClick={closeProfile}>Documentation</ExternalLink>
               <Link href="/about" onClick={closeProfile}>About Pomegr</Link>
               <div className="commandProfileTheme"><span>Appearance</span><ThemeToggle /></div>
             </div>}

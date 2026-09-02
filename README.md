@@ -36,6 +36,11 @@ When released, LAN sharing will be unavailable in the Windows desktop app.
 
 A portable Windows x64 beta is planned. No public download is currently documented as available.
 
+## Documentation
+
+Start with the [Pomegr user guide](docs/user-guide/README.md) to understand the app,
+including [input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
+
 ## How to contribute
 
 Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https://github.com/Lecarvalho/pomegr/issues) before proposing a substantial change.
