@@ -22,7 +22,7 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | @unpic/core | 1.0.3 | MIT |
 | @unpic/react | 1.0.2 | MIT |
 | @vercel/og | 0.8.6 | MPL-2.0 |
-| acorn | 8.16.0 | MIT |
+| acorn | 8.18.0 | MIT |
 | argparse | 2.0.1 | Python-2.0 |
 | base64-js | 0.0.8 | MIT |
 | baseline-browser-mapping | 2.10.30 | Apache-2.0 |
