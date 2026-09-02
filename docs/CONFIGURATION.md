@@ -54,7 +54,14 @@ The bridge forwards bounded stdin to the delegated command unchanged, so the vis
 
 #### Claude local usage feed
 
-In the installed Windows desktop app, open **Usage limits → Claude Code → Enable local usage**.
+A failed usage check automatically expands **Usage connection help** under
+**Usage limits → Claude Code**, even when retained usage figures remain available.
+Authentication failures and missing credentials show browser users the manual
+`claude auth login --claudeai` command to run on the computer hosting Pomegr;
+desktop users can select **Reconnect Claude Code**. Throttled checks explain the
+provider cooldown, while other failures suggest checking connectivity and sign-in.
+Loading and successful checks do not show troubleshooting. The installed Windows app
+also offers **Enable local usage** when usage is unavailable and setup is supported.
 The native confirmation explains that Pomegr will update the current Claude Code profile's
 status-line setting. Setup preserves the existing command and other status-line settings;
 malformed or concurrently edited settings are refused. No sign-in or model request runs
@@ -117,7 +124,17 @@ prompts on the monitor computer. No credentials or auth URLs are copied into Pom
 
 No extra setup is required for persisted history under `%USERPROFILE%\.codex`. `CODEX_HOME` can select a different Codex root. Pomegr reads bounded rollout metadata and `session_index.jsonl`; it does not read Codex private SQLite tables.
 
-To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables and hides only the usage-limit panel. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability but produces the fixed sanitized unavailable state.
+To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables session-level usage capability, while the Usage limits page shows **Codex CLI required for usage limits** with expanded **Usage connection help**. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability and shows troubleshooting beside a sanitized failure. Retained readings do not hide help.
+
+#### Codex usage troubleshooting
+
+On the computer running Pomegr:
+
+1. Install or update the native Codex CLI using the [official installation guide](https://learn.chatgpt.com/docs/codex/cli#get-started-with-codex-cli). For Windows Pomegr, use a Windows-native CLI installation.
+2. Run `codex login` and sign in with ChatGPT. `codex login status` reports the active authentication mode; API-key-only access does not supply the ChatGPT account windows used here. These commands are documented in the [official CLI reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli#codex-login).
+3. Fully quit and reopen Pomegr after installing or updating the CLI, because executable detection is cached for the monitor process. Merely closing to the tray does not restart detection.
+
+If the CLI is already installed but undetected, use the absolute native executable override above. If it is already signed in with ChatGPT, check connectivity and allow the normal retry interval. A missing CLI is an unavailable setup state, not a pending account request; the dashboard settles to its normal polling cadence. Reading Codex desktop session history does not require this CLI and cannot establish account-usage access. Pomegr only displays these instructions; it does not install Codex, launch sign-in, or expose credentials through the browser.
 
 For higher-confidence Windows live state, register this inert hook command for the supported Codex lifecycle events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`, and supported subagent transitions):
 
@@ -251,7 +268,7 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 - Historical views always omit current usage limits.
 - Claude failures can indicate missing/expired provider authentication or provider cooldown; the browser receives only a sanitized error.
-- Codex limits require a supported native Codex CLI authenticated with ChatGPT. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native executable if automatic discovery cannot find it; Pomegr does not attach to an existing desktop or CLI stdio transport. If no valid CLI is found, only the usage-limit panel is hidden. Authentication or temporary read failures keep the panel available with a fixed sanitized unavailable state.
+- Codex limits require a supported native Codex CLI authenticated with ChatGPT. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native executable if automatic discovery cannot find it; Pomegr does not attach to an existing desktop or CLI stdio transport. If no valid CLI is found, the Usage limits page shows **Codex CLI required for usage limits** with installation, sign-in, and restart instructions. Session-level usage capability remains disabled. Account-read failures show expanded troubleshooting even when previous values remain available.
 - Concurrent tabs share one in-flight request and a five-minute cooldown, so repeated refreshes do not force another provider call.
 
 ### Git or GitHub metadata is unavailable

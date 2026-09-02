@@ -446,7 +446,7 @@ export const providerUsageLimitsSchema = z.object({
   attemptedAt: evidenceNullableTimestamp,
   origin: z.enum(["local_observation", "provider_api"]).optional(),
   freshness: z.enum(["fresh", "stale"]).optional(),
-  failureKind: z.enum(["authentication_required", "rate_limited", "unavailable"]).nullable().optional(),
+  failureKind: z.enum(["authentication_required", "rate_limited", "unavailable", "runtime_unavailable"]).nullable().optional(),
   retryAt: evidenceNullableTimestamp.optional(),
   error: evidenceOneLine(512).optional(),
   limits: z.array(providerUsageLimitSchema).max(16),

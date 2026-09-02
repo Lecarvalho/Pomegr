@@ -1,10 +1,11 @@
 import type { ProviderSource, UsageLimits } from "../shared/monitor-contract";
 
-export type UsageLimitFailureKind = "authentication_required" | "rate_limited" | "unavailable";
+export type UsageLimitFailureKind = "authentication_required" | "rate_limited" | "runtime_unavailable" | "unavailable";
 
 const FAILURE_KINDS = new Set<UsageLimitFailureKind>([
   "authentication_required",
   "rate_limited",
+  "runtime_unavailable",
   "unavailable",
 ]);
 
@@ -18,6 +19,9 @@ export function usageLimitFailureKind(usageLimits: UsageLimits): UsageLimitFailu
 
 export function usageLimitFailureMessage(source: ProviderSource, usageLimits: UsageLimits) {
   const failureKind = usageLimitFailureKind(usageLimits);
+  if (failureKind === "runtime_unavailable") {
+    return source === "Codex" ? "Codex CLI required for usage limits" : "Provider setup required for usage limits";
+  }
   if (failureKind === "authentication_required") {
     return source === "Claude Code"
       ? "Claude Code’s saved access was rejected. Pomegr will retry automatically; reconnect if this continues."

@@ -401,7 +401,10 @@ export function createProviderRegistry(adapters, options = {}) {
       if (options.historical) return createEmptyUsageLimits();
       const capabilities = options.capabilities || await resolveCapabilities(provider, options);
       if (!capabilities.usageLimits || typeof provider?.readUsageLimits !== "function") {
-        return createEmptyUsageLimits();
+        return createEmptyUsageLimits({
+          failureKind: "runtime_unavailable",
+          error: "Usage limits are unavailable.",
+        });
       }
       try {
         let value;

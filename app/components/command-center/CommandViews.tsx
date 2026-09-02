@@ -11,8 +11,9 @@ import { useUsageLimits } from "../../usage-limits-client";
 import { useProviderStatus } from "../../provider-status-client";
 import { RetryCountdownText } from "../LiveTime";
 import { ClaudeUsageControls } from "../ClaudeUsageControls";
+import { CodexUsageHelp } from "../CodexUsageHelp";
 import { ProviderBadge } from "../ProviderBadge";
-import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor, providerStatusTone } from "../ProviderStatus";
+import { ProviderStatusArea, ProviderStatusDetails, providerStatusFor } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 export { AgentsView } from "../agents/AgentsView";
@@ -203,13 +204,12 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
           ? `${limits.origin === "local_observation" ? "Last observed" : "Updated"} ${relativeTime(limits.fetchedAt)}`
           : status === "loading" ? "Connecting…" : "Unavailable";
   return <section className="commandUsageProvider" aria-labelledby={`usage-${entry.provider}`}>
-    <header className="commandUsageProviderHead"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
+    <header className="commandUsageProviderHead"><div className="commandUsageProviderIdentity"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><ProviderStatusDetails status={providerStatus} compact mobileIconOnly chip /></div><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
     {status === "loading" ? <CommandEmpty title="Waiting for provider usage" detail="The monitor is preparing the latest account-level window." icon="timer" /> : status !== "ready" || !limits.available ? <div className="commandUsageUnavailable"><CommandIcon name="limits" size="small" /><p>{failureKind ? usageLimitFailureMessage(entry.source, limits) : `Usage limits for ${entry.source} are unavailable.`}{limits.retryAt && <><br /><RetryCountdownText value={limits.retryAt} />.</>}</p></div> : displayedLimits.current.length || displayedLimits.localFable ? <><div className="commandUsageRows">{displayedLimits.current.map((limit) => <article className={`commandUsageWindow ${limit.severity}`} key={limit.id}>
       <header><strong>{limit.label}</strong><b>{Math.round(limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%` }} /></div><footer><span>{usageResetLabel(limit.resetsAt)}</span><span>Provider-reported window</span></footer>
     </article>)}{displayedLimits.localFable?.kind === "retained" && <article className={`commandUsageWindow ${displayedLimits.localFable.limit.severity}`} key="retained-model-fable"><header><strong>{displayedLimits.localFable.limit.label}</strong><b>{Math.round(displayedLimits.localFable.limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, displayedLimits.localFable.limit.percent))}%` }} /></div><footer><span>{usageResetLabel(displayedLimits.localFable.limit.resetsAt)}</span><span>Last API value {relativeTime(displayedLimits.localFable.fetchedAt)}</span></footer></article>}{displayedLimits.localFable?.kind === "unavailable" && <article className="commandUsageWindow" key="unavailable-model-fable"><header><strong>Fable</strong><span className="commandUsageStatus">{displayedLimits.localFable.label}</span></header><footer><span>{displayedLimits.localFable.detail}</span></footer></article>}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}
-    {limits.origin === "local_observation" && limits.freshness === "stale" && <p className="usageObservationNote">Showing the last observation. Current usage may have changed.</p>}
-    {entry.provider === "claude" && <ClaudeUsageControls usageLimits={limits} />}
-    <footer className="commandUsageProviderHealth" data-health={providerStatusTone(providerStatus)}><span>Provider health</span><ProviderStatusDetails status={providerStatus} compact /></footer>
+    {entry.provider === "claude" && <ClaudeUsageControls usageLimits={limits} showObservationNote={false} />}
+    {entry.provider === "codex" && <CodexUsageHelp usageLimits={limits} />}
   </section>;
 }
 
@@ -217,9 +217,9 @@ export function UsageLimitsView() {
   const snapshot = useUsageLimits();
   const statusSnapshot = useProviderStatus();
   const providersUnavailable = snapshot.providers.length === 0 && Object.values(snapshot.readiness).every((status) => status === "unavailable");
-  return <CommandPage title="Usage limits" description="Provider-reported account windows with local request evidence shown only for correlation—not attribution or billing.">
+  return <CommandPage title="Usage limits">
     {snapshot.providers.length ? snapshot.providers.map((entry) => <UsageProvider entry={entry} providerStatus={providerStatusFor(statusSnapshot.providers, entry.provider)} key={entry.provider} />) : <><ProviderStatusArea providers={statusSnapshot.providers} /><CommandEmpty title={providersUnavailable ? "Usage limits unavailable" : "Usage limits are loading"} detail={providersUnavailable ? "The local monitor could not provide account-level provider evidence." : "Pomegr is waiting for account-level provider evidence."} icon="limits" /></>}
-    <p className="commandUsageCaution">Usage is account-level. Pomegr does not assign provider usage or cost to individual sessions, agents, or repositories. Local request observations, when available, describe correlation only.</p>
+    <p className="commandUsageCaution">Provider-reported account usage reflects the last observation and may lag current activity. Pomegr does not attribute usage or cost to sessions, agents, or repositories. Local request observations show correlation only.</p>
   </CommandPage>;
 }
 

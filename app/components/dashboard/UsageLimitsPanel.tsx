@@ -3,6 +3,7 @@ import { usageLimitSeverity } from "../../../shared/usage-limit-severity.mjs";
 import { usageLimitDisplay, usageLimitFailureKind, usageLimitFailureMessage } from "../../usage-limit-presentation";
 import { EmptyState } from "../EmptyState";
 import { ClaudeUsageControls } from "../ClaudeUsageControls";
+import { CodexUsageHelp } from "../CodexUsageHelp";
 import { MinuteRelativeTimeText, ResetCountdownText, RetryCountdownText } from "../LiveTime";
 
 export function UsageLimitsPanel({ source, usageLimits }: { source: ProviderSource; usageLimits: UsageLimits }) {
@@ -21,7 +22,7 @@ export function UsageLimitsPanel({ source, usageLimits }: { source: ProviderSour
             ? <>{local ? "Last observed" : "Updated"} <MinuteRelativeTimeText value={usageLimits.fetchedAt} /></>
             : usageLimits.attemptedAt
               ? <>Checked <MinuteRelativeTimeText value={usageLimits.attemptedAt} /></>
-              : "Connecting…"}
+              : failureKind ? "Unavailable" : "Connecting…"}
         </span>
       </div>
       {local && usageLimits.freshness === "stale" && <p className="usageObservationNote">Showing the last observation. Current usage may have changed.</p>}
@@ -54,6 +55,7 @@ export function UsageLimitsPanel({ source, usageLimits }: { source: ProviderSour
         </div>
       )}
       {source === "Claude Code" && <ClaudeUsageControls usageLimits={usageLimits} />}
+      {source === "Codex" && <CodexUsageHelp usageLimits={usageLimits} />}
     </section>
   );
 }

@@ -4,7 +4,7 @@ export { CommandIcon } from "./CommandIcon";
 
 export function CommandPage({ title, description, action, children, busy = false }: {
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
   children: ReactNode;
   busy?: boolean;
@@ -14,7 +14,7 @@ export function CommandPage({ title, description, action, children, busy = false
     <header className="commandViewIntro">
       <div className="commandPageHeading">
         <h1 id={headingId}>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
       {action && <div className="commandViewActions">{action}</div>}
     </header>

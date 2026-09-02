@@ -168,16 +168,18 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .limitBottom { min-height: 15px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: var(--text-xs); }.limitBottom em { color: var(--blue); font-style: normal; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }.limitCard.warning .limitBottom em { color: var(--amber); }.limitCard.critical .limitBottom em { color: var(--red); }
 .usageRefreshNotice { min-width: 0; margin: 0; padding: 10px 20px 11px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 8px; border-top: 1px solid var(--line); background: var(--amber-soft); font-size: var(--text-xs); line-height: 1.45; }
 .usageRefreshNotice strong { color: var(--ink); font-weight: 650; white-space: nowrap; }.usageRefreshNotice span { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
-.claudeUsageControls { min-width: 0; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
-.claudeUsageControls p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; }
-.claudeUsageControls p + p, .claudeUsageActions, .claudeUsageControls [role="status"] { margin-top: 8px; }
+.usageConnectionControls { min-width: 0; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.usageConnectionControls p { margin: 0; max-width: 70ch; overflow-wrap: anywhere; }
+.usageConnectionControls p + p, .claudeUsageActions, .usageConnectionControls [role="status"] { margin-top: 8px; }
 .claudeUsageActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .claudeUsageActions button { white-space: normal; text-align: center; }
-.claudeUsageHelp { margin-top: 10px; }
-.claudeUsageHelp summary { width: fit-content; cursor: pointer; color: var(--ink); }
-.claudeUsageHelp[open] summary { margin-bottom: 8px; }
-.claudeUsageHelp a { color: var(--brand); text-underline-offset: 3px; }
-.claudeUsageHelp button { margin-top: 8px; }
+.usageConnectionHelp { margin-top: 10px; }
+.usageConnectionHelp:first-child { margin-top: 0; }
+.usageConnectionHelp summary { width: fit-content; cursor: pointer; color: var(--ink); }
+.usageConnectionHelp[open] summary { margin-bottom: 8px; }
+.usageConnectionHelp a { color: var(--brand); text-underline-offset: 3px; }
+.usageConnectionHelp code { display: inline-block; white-space: nowrap; }
+.usageConnectionHelp button { margin-top: 8px; }
 .usageObservationNote { margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
 @media (max-width: 560px) { .claudeUsageActions button { min-height: 44px; } .usageRefreshNotice { grid-template-columns: minmax(0, 1fr); } }
 

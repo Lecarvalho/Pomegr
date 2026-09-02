@@ -428,12 +428,29 @@ catalog identity and loading readiness while asynchronous hydration proceeds.
 Historical session state never receives current Git state or current usage limits.
 
 Usage refresh failures retain the last known-good provider values. The public refresh
-state may include only the normalized `authentication_required`, `rate_limited`, or
-`unavailable` kind, the safe attempt timestamp, and the earliest local retry-eligibility
+state may include only the normalized `authentication_required`, `rate_limited`,
+`runtime_unavailable`, or `unavailable` kind, the safe attempt timestamp, and the earliest local retry-eligibility
 timestamp computed from the coordinator's cooldown. Raw provider response bodies,
 headers, request identifiers, credentials, and endpoint details remain monitor-private.
 `rate_limited` means only that the usage request received a recognized throttle response;
 it is not evidence that an account or session exhausted its plan allowance.
+
+A missing or unsupported usage runtime publishes `runtime_unavailable` and unavailable
+readiness after the background capability check, with no fabricated account attempt or
+retry timestamp. Completed empty reads settle to unavailable; loading is reserved for
+pending work. This lets the shared browser usage store leave its initial one-second
+polling cadence. Codex presents **Codex CLI required for usage limits** and expanded
+setup help. Account-read failures and successful responses with no windows show sign-in
+and connectivity guidance; retained figures do not hide failures. Healthy readings
+remove the helper. Native CLI detection remains process-scoped, so installing or
+updating it requires fully quitting and reopening Pomegr.
+
+This is a normalized failure/readiness presentation change. Provider acquisition stays
+in background work, GETs serve committed caches, revisions and last-known-good values
+retain their existing semantics, and historical views still omit current usage. No raw
+runtime paths, provider errors, credentials, or account data are added to browser state
+or checkpoints. Codex help is informational in both browser and desktop windows and
+adds no native or HTTP control action.
 
 ### Local Claude usage observations and desktop recovery
 
@@ -478,7 +495,9 @@ other check failures from a successful response that simply omitted the model wi
 D publishes optional bounded `origin` (`local_observation` or `provider_api`) and
 `freshness` (`fresh` or `stale`) fields alongside the existing normalized usage shape.
 For local evidence, `fetchedAt` is the original observation time, not the latest file read.
-F labels it **Last observed** and explicitly identifies stale figures. Provider rejection
+F labels it **Last observed**. The Usage limits page consolidates provider provenance,
+freshness, and account scope into one note below all provider panels; session detail
+continues to identify stale local figures inline. Provider rejection
 means saved access was rejected; it does not prove a full login is required. Readiness,
 revision/204 handling, last-good retention, and historical exclusion are unchanged.
 Local usage files are separate from session observation checkpoints and never contribute
@@ -491,6 +510,10 @@ Claude Code's own sign-in flow. They accept no renderer-supplied paths, commands
 return only allowlisted outcomes; and neither read nor expose credentials. No HTTP
 control route exists. Serving GETs remain cache-only and never launch setup, sign-in,
 provider acquisition, or normalization. Recovery uses normal background retry cadence.
+F expands usage connection help for a recorded failure even while last-good readings
+remain available, and removes it after recovery. Browser help supplies the fixed manual
+sign-in command for the monitor computer; desktop sign-in remains explicit and native.
+Throttling help explains the cooldown without suggesting sign-in as a way around it.
 
 ### Claude Remote Control lifecycle acquisition
 

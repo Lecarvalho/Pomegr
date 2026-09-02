@@ -15,7 +15,7 @@ function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
 }
 
-const USAGE_FAILURE_KINDS = new Set(["authentication_required", "rate_limited", "unavailable"]);
+const USAGE_FAILURE_KINDS = new Set(["authentication_required", "rate_limited", "unavailable", "runtime_unavailable"]);
 
 function safeTimestamp(value) {
   const timestamp = new Date(value);
@@ -58,7 +58,7 @@ function normalizedUsageLimits(body) {
  * @param {{
  *   read: () => Promise<any[]>,
  *   errorMessage?: (error: any) => string,
- *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable",
+ *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable",
  *   retryDelay?: (error: any, currentTime: number) => number,
  *   now?: () => number,
  * }} options

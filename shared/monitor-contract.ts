@@ -643,7 +643,7 @@ export type UsageLimits = {
   /** Freshness of the complete observation at monitor read time. */
   freshness?: "fresh" | "stale";
   /** Bounded monitor-side classification of the latest failed refresh. */
-  failureKind?: "authentication_required" | "rate_limited" | "unavailable" | null;
+  failureKind?: "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable" | null;
   /** Earliest local retry eligibility after the latest failed refresh. */
   retryAt?: string | null;
   error?: string;

@@ -4,7 +4,7 @@
 /** @typedef {import("./monitor-contract").UsageLimits} UsageLimits */
 
 /**
- * @param {{ error?: string }} [options]
+ * @param {{ error?: string, failureKind?: "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable" | null }} [options]
  * @returns {UsageLimits}
  */
 export function createEmptyUsageLimits(options = {}) {
@@ -12,7 +12,7 @@ export function createEmptyUsageLimits(options = {}) {
     available: false,
     fetchedAt: null,
     attemptedAt: null,
-    failureKind: null,
+    failureKind: options.failureKind ?? null,
     retryAt: null,
     limits: [],
     error: options.error ?? "",

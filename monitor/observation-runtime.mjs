@@ -157,9 +157,14 @@ export function createObservationRuntime(options = {}) {
       } catch {
         usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }
+      // A provider task is recorded only after its read completes. A completed
+      // empty value therefore cannot remain loading: capability-disabled reads
+      // carry runtime_unavailable, while malformed/custom empty reads settle
+      // to unavailable as well. An actually pending read has no provider entry
+      // yet and remains represented by the initial loading response.
       const readiness = usageLimits.available || usageLimits.fetchedAt
         ? "ready"
-        : usageLimits.error ? "unavailable" : "loading";
+        : "unavailable";
       usageByProvider.set(provider.id, { provider: provider.id, source: provider.source, readiness, usageLimits });
       publish();
       scheduleObservedHomeRefresh();

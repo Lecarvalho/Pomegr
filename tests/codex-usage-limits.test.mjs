@@ -3,10 +3,13 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { USAGE_REFRESH_INTERVAL_MS } from "../monitor/usage-limits.mjs";
+import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { normalizeCodexRateLimits } from "../monitor/providers/codex-usage-limits.mjs";
 import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
+import { defineProvider, PROVIDER_CAPABILITY_KEYS } from "../monitor/providers/provider-contract.mjs";
+import { createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 
 const RESET_A = Date.parse("2026-08-11T18:00:00.000Z") / 1000;
 const RESET_B = Date.parse("2026-08-18T13:00:00.000Z") / 1000;
@@ -268,13 +271,85 @@ test("disables only the usage-limit capability when the native Codex CLI is unav
     available: false,
     fetchedAt: null,
     attemptedAt: null,
-    failureKind: null,
+    failureKind: "runtime_unavailable",
     retryAt: null,
     limits: [],
-    error: "",
+    error: "Usage limits are unavailable.",
   });
   assert.equal(availabilityCalls, 2);
   assert.equal(limitCalls, 0);
+});
+
+test("settles a missing Codex CLI as unavailable in the committed usage cache without affecting another provider", async (context) => {
+  let accountCalls = 0;
+  const codex = createCodexProvider({
+    codexHome: MISSING_CODEX_HOME,
+    rateLimitsReader: {
+      async isAvailable() { return false; },
+      async readRateLimits() { accountCalls += 1; throw new Error("account read must not start"); },
+    },
+  });
+  const claude = defineProvider({
+    id: "claude",
+    source: "Claude Code",
+    capabilityManifest: Object.fromEntries(PROVIDER_CAPABILITY_KEYS.map((key) => [key,
+      key === "usageLimits"
+        ? { status: "supported" }
+        : { status: "unsupported", limitation: { code: "monitor_not_implemented", documentation: `Synthetic test does not implement ${key}.` } },
+    ])),
+    listSessions: async () => [],
+    readSession: async () => null,
+    async readUsageLimits() {
+      return {
+        available: true,
+        fetchedAt: "2026-08-11T13:00:00.000Z",
+        attemptedAt: "2026-08-11T13:00:00.000Z",
+        failureKind: null,
+        retryAt: null,
+        limits: [{
+          id: "claude-primary", label: "Claude", window: "5 hours", percent: 12,
+          resetsAt: "2026-08-11T18:00:00.000Z", severity: "normal", active: false,
+        }],
+        error: "",
+      };
+    },
+  });
+  const registry = createProviderRegistry([claude, codex]);
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    checkpointStore: false,
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  await runtime.startObservation();
+  context.after(() => runtime.stopObservation());
+
+  for (let attempt = 0; attempt < 50 && runtime.serveUsageLimits().snapshot?.value?.providers?.length !== 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  const committed = runtime.serveUsageLimits().snapshot.value;
+  const codexEntry = committed.providers.find((entry) => entry.provider === "codex");
+  const claudeEntry = committed.providers.find((entry) => entry.provider === "claude");
+  assert.equal(committed.readiness.codex, "unavailable");
+  assert.equal(codexEntry.readiness, "unavailable");
+  assert.equal(codexEntry.usageLimits.failureKind, "runtime_unavailable");
+  assert.equal(codexEntry.usageLimits.error, "Usage limits are unavailable.");
+  assert.equal(claudeEntry.readiness, "ready");
+  assert.equal(claudeEntry.usageLimits.available, true);
+  assert.equal(accountCalls, 0);
+
+  const server = createMonitorServer({ runtime });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/usage-limits`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.readiness.codex, "unavailable");
+  assert.equal(body.providers.find((entry) => entry.provider === "claude").usageLimits.available, true);
+  assert.equal(accountCalls, 0);
+  const revision = response.headers.get("x-pomegr-revision");
+  assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/usage-limits?revision=${revision}`)).status, 204);
+
+  assert.deepEqual(await registry.readUsageLimits(codex, { historical: true }), createEmptyUsageLimits());
 });
 
 test("keeps usage-limit capability enabled when the CLI exists but the account read fails", async () => {

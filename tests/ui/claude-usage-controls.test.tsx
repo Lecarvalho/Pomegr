@@ -20,13 +20,85 @@ afterEach(() => {
 });
 
 describe("Claude usage recovery", () => {
-  it("offers browser-only help without creating a native launcher or request", async () => {
-    render(<ClaudeUsageControls usageLimits={rejected} />);
+  it.each([
+    ["provider_api", null],
+    ["local_observation", null],
+  ] as const)("hides recovery when %s usage is available without a failure (%s)", async (origin, failureKind) => {
+    const getClaudeUsageIntegration = vi.fn(async () => ({ status: "disabled" }));
+    desktop({ getClaudeUsageIntegration, enableClaudeUsageIntegration: vi.fn(), startClaudeSignIn: vi.fn() });
+    render(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin, freshness: "stale", failureKind }} />);
+    await waitFor(() => expect(getClaudeUsageIntegration).toHaveBeenCalled());
+    expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(Boolean(screen.queryByText(/Usage reported by Claude Code/))).toBe(origin === "local_observation");
+  });
+
+  it.each([
+    ["disabled", null],
+    ["enabled", null],
+  ] as const)("does not offer recovery for %s integration during %s", async (status, failureKind) => {
+    const getClaudeUsageIntegration = vi.fn(async () => ({ status }));
+    desktop({ getClaudeUsageIntegration, enableClaudeUsageIntegration: vi.fn(), startClaudeSignIn: vi.fn() });
+    render(<ClaudeUsageControls usageLimits={{ ...rejected, failureKind }} />);
+    await waitFor(() => expect(getClaudeUsageIntegration).toHaveBeenCalled());
+    expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("offers setup when loading failed and the local feed is not configured", async () => {
+    desktop({ getClaudeUsageIntegration: async () => ({ status: "disabled" }), enableClaudeUsageIntegration: vi.fn() });
+    render(<ClaudeUsageControls usageLimits={{ ...rejected, failureKind: "unavailable" }} />);
+    expect(await screen.findByRole("button", { name: "Enable local usage" })).toBeInTheDocument();
+    expect(screen.getByText("Usage connection help")).toBeInTheDocument();
+  });
+
+  it("shows help for missing credentials and removes it when usage arrives", () => {
+    const { rerender } = render(<ClaudeUsageControls usageLimits={{ ...rejected, failureKind: "unavailable", error: "Claude usage credentials are unavailable." }} />);
+    expect(screen.getByText("Usage connection help")).toBeInTheDocument();
+    rerender(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin: "local_observation", failureKind: null }} />);
+    expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+    expect(screen.getByText(/Usage reported by Claude Code/)).toBeInTheDocument();
+  });
+
+  it.each([false, true])("expands browser sign-in help when access is rejected with available=%s", (available) => {
+    const { container } = render(<ClaudeUsageControls usageLimits={{ ...rejected, available }} showObservationNote={false} />);
+    expect(container.querySelector("details")).toHaveAttribute("open");
+    expect(screen.getByText("claude auth login --claudeai")).toBeVisible();
+    expect(screen.getByText(/On the computer running Pomegr/)).toBeVisible();
+    expect(screen.getByText(/The Reconnect button is available in Pomegr Desktop/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Reconnect Claude Code" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enable local usage" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("Usage connection help"));
-    expect(screen.getByText(/Use Pomegr Desktop to enable local usage/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Setup guide (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed");
+  });
+
+  it.each(["provider_api", "local_observation"] as const)("keeps desktop reconnect available when %s figures survive an authentication failure", async (origin) => {
+    const startClaudeSignIn = vi.fn();
+    desktop({ startClaudeSignIn, getClaudeUsageIntegration: async () => ({ status: "disabled" }), enableClaudeUsageIntegration: vi.fn() });
+    const { container, rerender } = render(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin }} />);
+    expect(await screen.findByRole("button", { name: "Reconnect Claude Code" })).toBeVisible();
+    expect(container.querySelector("details")).toHaveAttribute("open");
+    expect(screen.queryByRole("button", { name: "Enable local usage" })).not.toBeInTheDocument();
+    expect(startClaudeSignIn).not.toHaveBeenCalled();
+    rerender(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin, failureKind: null }} />);
+    expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+    rerender(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin }} />);
+    expect(container.querySelector("details")).toHaveAttribute("open");
+  });
+
+  it.each([
+    ["rate_limited", /Wait for the retry countdown/],
+    ["unavailable", /Check your internet connection/],
+  ] as const)("expands %s help despite retained readings without suggesting a sign-in action", async (failureKind, guidance) => {
+    const getClaudeUsageIntegration = vi.fn(async () => ({ status: "disabled" }));
+    const startClaudeSignIn = vi.fn();
+    desktop({ startClaudeSignIn, getClaudeUsageIntegration, enableClaudeUsageIntegration: vi.fn() });
+    const { container } = render(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, failureKind }} />);
+    await waitFor(() => expect(getClaudeUsageIntegration).toHaveBeenCalled());
+    expect(container.querySelector("details")).toHaveAttribute("open");
+    expect(screen.getByText(guidance)).toBeVisible();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByText("claude auth login --claudeai")).not.toBeInTheDocument();
+    expect(startClaudeSignIn).not.toHaveBeenCalled();
   });
 
   it("waits for an explicit click and prevents duplicate sign-in actions", async () => {

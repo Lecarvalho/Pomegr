@@ -33,14 +33,15 @@ const SETUP_MESSAGES: Record<IntegrationResult, string> = {
 };
 
 /** Desktop actions have no corresponding HTTP endpoint in the LAN dashboard. */
-export function ClaudeUsageControls({ usageLimits }: { usageLimits: UsageLimits }) {
+export function ClaudeUsageControls({ usageLimits, showObservationNote = true }: { usageLimits: UsageLimits; showObservationNote?: boolean }) {
   const [bridge, setBridge] = useState<ClaudeDesktopBridge | null>(null);
   const [integration, setIntegration] = useState<IntegrationStatus>("unavailable");
   const [pending, setPending] = useState<"setup" | "signin" | null>(null);
   const [message, setMessage] = useState("");
   const inFlight = useRef(false);
   const mounted = useRef(false);
-  const authenticationFailed = usageLimitFailureKind(usageLimits) === "authentication_required";
+  const failureKind = usageLimitFailureKind(usageLimits);
+  const authenticationFailed = failureKind === "authentication_required";
 
   useEffect(() => {
     mounted.current = true;
@@ -91,25 +92,34 @@ export function ClaudeUsageControls({ usageLimits }: { usageLimits: UsageLimits 
     }
   }
 
-  const canSetUp = Boolean(bridge?.enableClaudeUsageIntegration) && integration === "disabled";
+  const canSetUp = !usageLimits.available && Boolean(bridge?.enableClaudeUsageIntegration) && integration === "disabled";
   const canSignIn = Boolean(bridge?.startClaudeSignIn);
   const local = usageLimits.origin === "local_observation";
+  const needsSignIn = authenticationFailed || usageLimits.error === "Claude usage credentials are unavailable.";
+  const needsConnectionHelp = Boolean(failureKind);
 
-  return <div className="claudeUsageControls">
-    {local
-      ? <p>Usage reported by Claude Code. Figures may lag activity elsewhere on your account.</p>
-      : integration === "enabled"
-        ? <p>Local usage feed enabled. Waiting for Claude Code to report supported usage windows.</p>
-        : <p>Keep usage available when account checks fail.</p>}
-    {(canSetUp || (canSignIn && authenticationFailed)) && <div className="claudeUsageActions">
-      {canSetUp && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("setup")}>{pending === "setup" ? "Enabling local usage…" : "Enable local usage"}</button>}
-      {canSignIn && authenticationFailed && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("signin")}>{pending === "signin" ? "Waiting for sign-in…" : "Reconnect Claude Code"}</button>}
-    </div>}
-    {message && <p role="status" aria-live="polite">{message}</p>}
-    <details className="claudeUsageHelp">
+  if (!needsConnectionHelp) {
+    return local && showObservationNote ? <div className="usageConnectionControls"><p>Usage reported by Claude Code. Figures may lag activity elsewhere on your account.</p></div> : null;
+  }
+
+  return <div className="usageConnectionControls">
+    {local && showObservationNote && <p>Usage reported by Claude Code. Figures may lag activity elsewhere on your account.</p>}
+    <details className="usageConnectionHelp" open key={failureKind}>
       <summary>Usage connection help</summary>
-      <p>{bridge ? "Local usage supports Claude Pro and Max." : "Use Pomegr Desktop to enable local usage or reconnect Claude Code."} <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed">Setup guide</ExternalLink></p>
-      {canSignIn && !authenticationFailed && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("signin")}>{pending === "signin" ? "Waiting for sign-in…" : "Reconnect Claude Code"}</button>}
+      {needsSignIn
+        ? canSignIn
+          ? <p>Reconnect Claude Code to sign in again.</p>
+          : <p>On the computer running Pomegr, run <code>claude auth login --claudeai</code> and complete the browser sign-in. The Reconnect button is available in Pomegr Desktop.</p>
+        : failureKind === "rate_limited"
+          ? <p>Wait for the retry countdown. Pomegr respects the provider’s cooldown; signing in again does not shorten it.</p>
+          : <p>Check your internet connection and that Claude Code is signed in on the computer running Pomegr. Pomegr retries automatically.</p>}
+      {canSetUp && <p>Enable local usage to keep readings available when account checks fail. Supports Claude Pro and Max.</p>}
+      {(canSetUp || (canSignIn && needsSignIn)) && <div className="claudeUsageActions">
+        {canSetUp && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("setup")}>{pending === "setup" ? "Enabling local usage…" : "Enable local usage"}</button>}
+        {canSignIn && needsSignIn && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("signin")}>{pending === "signin" ? "Waiting for sign-in…" : "Reconnect Claude Code"}</button>}
+      </div>}
+      {message && <p role="status" aria-live="polite">{message}</p>}
+      <p><ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed">Setup guide</ExternalLink></p>
     </details>
   </div>;
 }
