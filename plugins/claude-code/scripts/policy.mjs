@@ -388,6 +388,7 @@ function hookOutput(policy) {
         "[Pomegr reporting policy loaded]",
         "Follow this repository-owned policy when reporting agent, session, or execution-task signals through the Pomegr MCP tools.",
         "Treat these signals as current project-specific state, not heartbeats or authoritative judgments. Clear a resolved agent or session signal when no replacement applies.",
+        "Pomegr read tools are decision-triggered observations: call them only when their result could change the next decision; do not poll routinely or infer causation from coincident observations.",
         "Delegation is mechanized: the Pomegr PreToolUse hook appends the applicable rows to the prompt of any subagent type declared under Delegated agents, so you do not have to remember to paste them. Keep the resolved Pomegr MCP tools in those subagents' allowlists.",
         "After substantive work makes the session's purpose clear, call the Pomegr `rename_session` tool once with a concise, meaningful title. Its trusted hook targets this main session and preserves an explicit user title. Do not ask the user to name the session, and do not delegate naming to a subagent.",
         ...drift,

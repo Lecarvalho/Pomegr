@@ -10,6 +10,7 @@ import { createSessionObservationCoordinator } from "./session-observation-coord
 import { SessionObservationStore } from "./session-observation-store.mjs";
 import { createProviderStatusObservation } from "./provider-status-observation.mjs";
 import { createAgentsObservation } from "./agents-observation.mjs";
+import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -53,6 +54,7 @@ export function createObservationRuntime(options = {}) {
   const providerStatus = createProviderStatusObservation({
     readStatus: (providerId, requestOptions) => registry.readServiceStatus(providerId, requestOptions),
     now,
+    onUpdate: () => agentQueryProjection?.refresh?.(),
     ...options.providerStatusObservationOptions,
   });
   const usageByProvider = new Map();
@@ -143,17 +145,21 @@ export function createObservationRuntime(options = {}) {
 
   async function refreshUsageResponses() {
     if (usageRefreshInFlight) return usageRefreshInFlight;
-    const publish = () => usageResponseCache.commit({
-      generatedAt: new Date(now()).toISOString(),
-      readiness: Object.fromEntries((registry.providers || []).map((provider) => [
-        provider.id,
-        usageByProvider.get(provider.id)?.readiness || "loading",
-      ])),
-      providers: (registry.providers || []).flatMap((provider) => {
-        const entry = usageByProvider.get(provider.id);
-        return entry ? [entry] : [];
-      }),
-    });
+    const publish = () => {
+      const committed = usageResponseCache.commit({
+        generatedAt: new Date(now()).toISOString(),
+        readiness: Object.fromEntries((registry.providers || []).map((provider) => [
+          provider.id,
+          usageByProvider.get(provider.id)?.readiness || "loading",
+        ])),
+        providers: (registry.providers || []).flatMap((provider) => {
+          const entry = usageByProvider.get(provider.id);
+          return entry ? [entry] : [];
+        }),
+      });
+      agentQueryProjection?.refresh?.();
+      return committed;
+    };
     const tasks = (registry.providers || []).map(async (provider) => {
       let usageLimits = createEmptyUsageLimits();
       try {
@@ -327,6 +333,17 @@ export function createObservationRuntime(options = {}) {
     cancel: cancelObservation,
     intervalMs: options.agentsDerivationIntervalMs,
   });
+  // Agent queries are a separate D-only projection. Every source below is a
+  // committed snapshot; refresh never calls a provider, parser, or hydrator.
+  const agentQueryProjection = createAgentQueryProjectionCache({
+    now: options.agentQueryNow || Date.now,
+    sources: {
+      catalog: () => observationCoordinator.catalog()?.snapshot?.value || { sessions: [], readiness: { catalog: "loading" } },
+      entries: () => observationStore.entries(),
+      providerStatus: () => providerStatus.read()?.snapshot?.value || null,
+      usageLimits: () => usageResponseCache.current()?.value || null,
+    },
+  });
 
   function loadingState(selectedId, catalogEntry) {
     const provider = registry.providerForSessionId(selectedId) || registry.defaultProvider;
@@ -388,13 +405,16 @@ export function createObservationRuntime(options = {}) {
       providerLimitRevision: usageResponseCache.current().revision,
       readiness: createHomeReadiness(),
     });
+    agentQueryProjection.refresh();
     unsubscribeObservation = observationCoordinator.subscribe((event) => {
       if (event.type === "session") options.onSessionCommitted?.(event.qualifiedId);
       if (event.type === "catalog") cacheUnavailableSessionResponses();
+      if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
       scheduleObservedHomeRefresh();
     });
     observationStartPromise = (async () => {
       await observationCoordinator.start();
+      agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
       void refreshObservedResources();
       usageRefreshTimer = setInterval(() => {
@@ -468,6 +488,7 @@ export function createObservationRuntime(options = {}) {
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
     serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
+    serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

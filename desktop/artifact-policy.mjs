@@ -56,6 +56,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/workers/monitor-host.cjs",
   "desktop/workers/claude-statusline-bridge.cjs",
   "shared/local-auth.mjs",
+  "shared/agent-query-transport.mjs",
   "shared/local-service.mjs",
   "shared/pomegr-paths.mjs",
   "shared/session-route.mjs",

@@ -22,6 +22,11 @@ import {
   secureBrowserWindowOptions,
 } from "./security-policy.mjs";
 import { resolveDesktopPaths } from "./paths.mjs";
+import {
+  createAgentQueryCapability,
+  fetchAgentQuery,
+  resolveAgentQueryDescriptorPath,
+} from "../shared/agent-query-transport.mjs";
 
 app.disableHardwareAcceleration();
 for (const commandLineSwitch of [
@@ -38,6 +43,7 @@ const KILL_TIMEOUT_MS = 5_000;
 const OVERALL_TIMEOUT_MS = 75_000;
 const children = [];
 let webHandle;
+let agentQueryDescriptorPath;
 let smokeWindow;
 let finishing = false;
 let watchdog;
@@ -137,6 +143,7 @@ async function stopAll() {
     }
   }
   recordStage("CLEANUP_WORKERS_STOPPED");
+  if (agentQueryDescriptorPath && existsSync(agentQueryDescriptorPath)) failed = true;
   try {
     if (webHandle) await withDeadline(webHandle.close(), STOP_TIMEOUT_MS, "DESKTOP_SMOKE_WEB_STOP_TIMEOUT");
   } catch {
@@ -174,6 +181,7 @@ async function finish(exitCode) {
 async function executeSmoke() {
   try {
     const authorizationToken = randomBytes(32).toString("base64url");
+    const agentAuthorizationToken = createAgentQueryCapability();
     const expectedProfile = environmentValue(process.env, "POMEGR_SMOKE_PROFILE_ROOT");
     if (!expectedProfile || path.resolve(app.getPath("userData")) !== path.resolve(expectedProfile)) {
       throw new Error("DESKTOP_PROFILE_NOT_ISOLATED");
@@ -210,6 +218,7 @@ async function executeSmoke() {
 
     const monitorEnvironmentPath = environmentValue(process.env, "POMEGR_SMOKE_MONITOR_ENV_PATH");
     if (!monitorEnvironmentPath) throw new Error("DESKTOP_MONITOR_ENV_MISSING");
+    agentQueryDescriptorPath = resolveAgentQueryDescriptorPath(runtimePaths.dataRoot);
     const monitor = await startService(
       "monitor-host.cjs",
       [],
@@ -217,9 +226,18 @@ async function executeSmoke() {
         POMEGR_SMOKE_MONITOR_ENV_PATH: monitorEnvironmentPath,
       }),
       "MONITOR",
-      { authorizationToken, smoke: true },
+      {
+        authorizationToken,
+        agentAuthorizationToken,
+        agentQueryDescriptorPath,
+        smoke: true,
+      },
     );
     if (monitor.ready.gitProof !== "verified") throw new Error("DESKTOP_MONITOR_GIT_PROOF_MISSING");
+    const agentQueryProof = await fetchAgentQuery("/api/agent/v1/provider-health", { descriptorPath: agentQueryDescriptorPath });
+    if (!agentQueryProof.response?.ok || agentQueryProof.body?.schemaVersion !== 1) {
+      throw new Error("DESKTOP_AGENT_QUERY_PROOF_MISSING");
+    }
     recordStage("MONITOR_READY");
 
     keepOnlyRuntimeEnvironment(process.env, {

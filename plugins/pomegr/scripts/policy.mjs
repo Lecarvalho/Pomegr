@@ -292,6 +292,7 @@ function sessionStartOutput(policy) {
         POLICY_LOADED_MARKER,
         "Follow this repository-owned policy when reporting session, agent, or execution-task signals through the Pomegr MCP tools.",
         "Treat signals as project-specific, agent-reported state rather than heartbeats or authoritative judgments. Clear resolved session or agent state when no replacement applies.",
+        "Pomegr read tools are decision-triggered observations: call them only when their result could change the next decision; do not poll routinely or infer causation from coincident observations.",
         "Codex injects declared delegated rows through the Pomegr SubagentStart hook. Do not paste them into subagent prompts yourself.",
         "Use provider-native automatic session naming unless an explicit safe title capability is available; never ask the user to name the task.",
         "",

@@ -45,6 +45,7 @@ export function createProviderStatusObservation({
   schedule = (task, delay) => setTimeout(task, delay),
   cancel = clearTimeout,
   random = Math.random,
+  onUpdate = () => {},
 } = {}) {
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const jobs = new Map();
@@ -56,7 +57,8 @@ export function createProviderStatusObservation({
     const previous = rows.find((entry) => entry.provider === provider);
     if (JSON.stringify(previous) === JSON.stringify(row)) return;
     rows = rows.map((entry) => entry.provider === provider ? row : entry);
-    cache.commit({ generatedAt: new Date(now()).toISOString(), providers: rows });
+    const committed = cache.commit({ generatedAt: new Date(now()).toISOString(), providers: rows });
+    try { onUpdate(committed); } catch { /* serving observers cannot break status polling */ }
   }
 
   function queue(provider, delay) {
@@ -148,7 +150,8 @@ export function createProviderStatusObservation({
     active = true;
     generation += 1;
     rows = createEmptyProviderStatusSnapshot().providers;
-    cache.commit({ generatedAt: null, providers: rows });
+    const committed = cache.commit({ generatedAt: null, providers: rows });
+    try { onUpdate(committed); } catch { /* serving observers cannot break status polling */ }
     for (const { provider } of PROVIDER_STATUS_SOURCES) {
       jobs.set(provider, { timer: null, staleTimer: null, inFlight: null, controller: null, failures: 0 });
       void refresh(provider);

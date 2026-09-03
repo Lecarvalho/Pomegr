@@ -103,6 +103,8 @@ test("SessionStart reports plugin metadata for valid, missing, and invalid polic
     assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
     assert.match(output.hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
     assert.match(output.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
+    assert.match(output.hookSpecificOutput.additionalContext, /read tools are decision-triggered observations/i);
+    assert.match(output.hookSpecificOutput.additionalContext, /do not poll routinely or infer causation/i);
     assert.match(output.hookSpecificOutput.additionalContext, /Policy version: 7/);
 
     await rm(policyPath);

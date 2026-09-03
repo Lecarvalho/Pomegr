@@ -37,7 +37,7 @@ Use the template's exact empty-section markers and table shapes. A delegation ro
 
 ## MCP inventory
 
-Check the resolved Pomegr namespace for `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`. Display only short names. Do not invoke them as connection tests. The policy template defines when each is used.
+Check the resolved Pomegr namespace for `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, `clear_session_progress`, `get_provider_health`, `get_usage_limits`, `list_sessions`, `list_session_agents`, `get_agent_context`, and `get_recent_failures`. Display only short names. Do not invoke them as connection tests. The policy template defines when reporting tools are used. Read tools are decision-triggered observations: call them only when their result could change the next decision, and do not poll routinely.
 
 ## Finish
 

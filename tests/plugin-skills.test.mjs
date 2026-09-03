@@ -42,4 +42,10 @@ test("provider overlays keep runtime-specific instructions while sharing one pol
   assert.match(claudeInit, /\/pomegr:init/);
   assert.match(claudeDoctor, /PreToolUse/);
   assert.match(claudeInit, /rename_session/);
+  for (const skill of [codexInit, codexDoctor, claudeInit, claudeDoctor]) {
+    for (const tool of ["get_provider_health", "get_usage_limits", "list_sessions", "list_session_agents", "get_agent_context", "get_recent_failures"]) {
+      assert.match(skill, new RegExp(`\\b${tool}\\b`, "u"));
+    }
+    assert.match(skill, /decision-triggered observations/i);
+  }
 });

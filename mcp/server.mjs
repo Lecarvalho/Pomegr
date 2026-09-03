@@ -22,6 +22,8 @@ import {
   SESSION_SIGNAL_TONES,
   TASK_SIGNAL_TOOL,
 } from "../monitor/session-signals.mjs";
+import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools } from "./agent-query-tools.mjs";
+import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../shared/agent-query-transport.mjs";
 
 const labelSchema = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
   .refine((label) => normalizeSessionSignal({ label, tone: "neutral" }) !== null, "Use one line of plain text without control characters.")
@@ -57,10 +59,10 @@ const signalAnnotations = {
   openWorldHint: false,
 };
 
-export function buildPomegrMcpServer() {
+export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
     { name: "pomegr", version: "0.4.3" },
-    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful." },
+    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful. " + AGENT_QUERY_INSTRUCTIONS },
   );
 
   server.registerTool(
@@ -189,6 +191,11 @@ export function buildPomegrMcpServer() {
       };
     },
   );
+
+  const query = options.query ?? options.agentQuery ?? createAgentQueryReader({
+    dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot(),
+  });
+  registerAgentQueryTools(server, { query });
 
   return server;
 }

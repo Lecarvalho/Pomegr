@@ -1,6 +1,6 @@
-# Pomegr reporting plugins
+# Pomegr plugins
 
-Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters configure and report the same bounded, repository-specific signals through a stateless local MCP server. Pomegr remains provider-neutral: provider names and lifecycle details belong only to the distribution adapter.
+Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters configure and report the same bounded, repository-specific signals and can query committed Pomegr observations through a local MCP server. Pomegr remains provider-neutral: provider names and lifecycle details belong only to the distribution adapter.
 
 | Capability | Codex | Claude Code |
 | --- | --- | --- |
@@ -9,10 +9,11 @@ Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters con
 | Automatic policy loading | `SessionStart` hook | `SessionStart` hook |
 | Delegated policy injection | `SubagentStart` hook | `PreToolUse` hook for `Task\|Agent` |
 | Delegated-report detection | `SubagentStop` hook | `SubagentStop` hook |
-| Signal tools | Five shared tools | Five shared tools |
+| Signal and progress tools | Seven shared tools | Seven shared tools |
+| Observation query tools | Six shared tools | Six shared tools |
 | Native session-title tool | Provider automatic naming | `rename_session` |
 
-Neither plugin sends transcript contents or credentials to Pomegr. The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
+Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local, read-only capability and return only bounded normalized evidence. The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
 ## Install
 
@@ -96,7 +97,7 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 
 ## Automatic policy loading
 
-Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`.
+Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`. A compact fixed reminder identifies observation queries as decision-triggered and cautions against polling or causal interpretation; it does not change the repository policy schema.
 
 Every `SessionStart` also emits one bounded `[Pomegr plugin metadata]` line containing only the installed plugin version, policy status (`valid`, `invalid`, or `missing`), and recognized policy version. Pomegr accepts that line only from provider-owned hook context, records the provider transcript timestamp as the observation time, and never treats an absent observation as proof that the plugin is uninstalled. Historical views retain the version and policy state observed in that session rather than substituting the current machine configuration.
 
@@ -143,6 +144,24 @@ Both plugins provide:
 A visible label remains until a later report replaces it or the matching clear tool removes it. Clearing means no agent-reported state is currently meaningful for that scope. Task signals cannot be cleared; a later report for the same recognized task may replace one.
 
 The MCP server is stateless. Pomegr reconstructs reports and clears chronologically from provider transcript evidence. Task targets are resolved monitor-side against normalized execution-task IDs. Extra MCP arguments, tool results, unmatched targets, and surrounding transcript content never enter the browser API.
+
+## Observation query tools
+
+Both plugins also provide `get_provider_health`, `get_usage_limits`,
+`list_sessions`, `list_session_agents`, `get_agent_context`, and
+`get_recent_failures`. These tools read only committed monitor projections. They
+are intended for decisions whose outcome may change based on current provider
+health, account limits, retained agent context, or normalized failures; they are
+not a polling interface or a required session-start checklist.
+
+Session-specific queries begin with `list_sessions`, then use its exact
+`session_ref`. `list_session_agents` identifies the main agent as `primary` and
+returns exact delegated agent IDs. No tool infers the current session or caller
+from the working directory. If Pomegr is not running, queries return unavailable
+without launching it or affecting the existing reporting tools.
+
+The complete contracts, evidence qualifications, and local transport boundary are
+documented in [MCP observation queries](MCP_QUERIES.md).
 
 ### Claude Code native naming
 

@@ -7,6 +7,10 @@ import { Worker } from "node:worker_threads";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
+import {
+  createAgentQueryCapability,
+  resolveAgentQueryDescriptorPath,
+} from "../shared/agent-query-transport.mjs";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import {
   assertNoSystemNodeInPath,
@@ -71,6 +75,7 @@ const START_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
 const KILL_TIMEOUT_MS = 5_000;
 const authorizationToken = randomBytes(32).toString("base64url");
+const agentAuthorizationToken = createAgentQueryCapability();
 const userDataOverride = desktopUserDataOverride(process.env);
 if (userDataOverride) app.setPath("userData", userDataOverride);
 let mainWindow;
@@ -114,7 +119,13 @@ function createMonitorWorker(privateEnvironment) {
     }),
     execArgv: [],
     name: "pomegr-monitor",
-    workerData: { authorizationToken, privateEnvironment, smoke: false },
+    workerData: {
+      authorizationToken,
+      agentAuthorizationToken,
+      agentQueryDescriptorPath: resolveAgentQueryDescriptorPath(),
+      privateEnvironment,
+      smoke: false,
+    },
   });
   const child = new EventEmitter();
   let alive = true;

@@ -26,6 +26,9 @@ document and `AGENTS.md` govern repository changes.
   committed value and is still loading; it never replaces already-rendered data.
 - Provider/account usage limits and local session/request correlation are separate cached
   domains with separate readiness and revisions.
+- The monitor-private agent-query API serves only committed, privacy-filtered query
+  projections. Its GETs cannot acquire providers, hydrate sessions, parse transcripts,
+  refresh usage, or derive a response from raw evidence.
 
 ## Pipeline terminology and ownership
 
@@ -158,6 +161,45 @@ or transcript metadata cross this boundary. Public status reports can lag actual
 the normal UI label is **Reported healthy**, never a guarantee of availability.
 
 The official source and component-filter details are documented in `docs/PROVIDER_STATUS.md`.
+
+## MCP agent-query projections
+
+The six MCP observation queries form an independent D Derivation and S Serving domain.
+Background derivation captures committed catalog, session, public-provider-status, and
+account-usage revisions, removes browser-forbidden fields, and atomically publishes a
+bounded projection. A failed refresh retains the last known-good projection. Serving
+may select, filter, and cap already-projected rows, but it never reads raw evidence or
+starts U1 acquisition, U2 normalization, session hydration, provider requests, or usage
+refreshes.
+
+`GET /api/agent/v1/*` is monitor-private. It is absent from the browser proxies, event
+stream, and LAN gateway. Packaged desktop requests require a separate 256-bit per-launch
+capability that authorizes only this route family. Electron main publishes its version,
+loopback origin, and token atomically in a bounded descriptor under the stable per-user
+Pomegr data root after monitor
+startup, and removes that descriptor on clean shutdown only when the token still matches.
+A present but invalid or stale descriptor fails unavailable. Source development may use
+the fixed unauthenticated `127.0.0.1:4317` monitor only when the descriptor does not exist.
+
+The MCP transport accepts only HTTP loopback origins, rejects redirects, waits at most
+two seconds, and accepts at most 256 KiB. It never logs or returns the capability. Query
+responses carry schema version, readiness, committed revision where applicable, and the
+source observation or projection generation time. Monitor absence and missing session or
+agent references are bounded unavailable observations; invalid arguments and malformed
+internal responses remain protocol errors.
+
+Session projections contain exact qualified session references, bounded agent identity
+and relationship fields, latest non-zero context snapshots, and normalized retained
+failures. Context is one request-local snapshot, never cumulative token consumption,
+throughput, billing, or session spend. Failure selection prefers a matching execution
+task over its tool-call record and excludes commands, arguments, descriptions, output,
+raw provider errors, and tool results. Public provider health does not establish impact or
+causation for a specific account, model, or session. Current account usage limits remain
+independent of agents and historical sessions.
+
+Clients use these queries only when an observation can change the next decision. They do
+not poll or call every query at session start. The tool-specific triggers and caveats are
+documented in [MCP observation queries](MCP_QUERIES.md).
 
 ## Focused report evidence
 

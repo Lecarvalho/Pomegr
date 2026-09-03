@@ -15,6 +15,8 @@ import {
   SESSION_PROGRESS_CONFIDENCES,
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
+import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools } from "../../../mcp/agent-query-tools.mjs";
+import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
 
 const reportingAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const titleAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -55,10 +57,10 @@ function rejected(text) {
   return { isError: true, content: [{ type: "text", text }] };
 }
 
-export function buildPomegrMcpServer() {
+export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
     { name: "pomegr", version: "0.4.3" },
-    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies." },
+    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
   );
 
   server.registerTool("report_agent_signal", {
@@ -128,6 +130,11 @@ export function buildPomegrMcpServer() {
     annotations: titleAnnotations,
     _meta: { "anthropic/alwaysLoad": true },
   }, async () => success("Session title request accepted; Claude Code preserves any existing explicit title."));
+
+  const query = options.query ?? options.agentQuery ?? createAgentQueryReader({
+    dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot(),
+  });
+  registerAgentQueryTools(server, { query });
 
   return server;
 }

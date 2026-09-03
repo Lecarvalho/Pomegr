@@ -1,17 +1,103 @@
 import { createHomeReadiness } from "./observation-readiness.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
-import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
+import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
-export function createRequestHandler({ runtime, authorizationToken: rawAuthorizationToken = "" } = {}) {
+export function createRequestHandler({ runtime, authorizationToken: rawAuthorizationToken = "", agentAuthorizationToken: rawAgentAuthorizationToken = "" } = {}) {
   if (!runtime) throw new TypeError("Monitor request handler requires a runtime");
   const authorizationToken = rawAuthorizationToken
     ? requireDesktopToken(rawAuthorizationToken, "MONITOR_INVALID_AUTHORIZATION")
+    : "";
+  const agentAuthorizationToken = rawAgentAuthorizationToken
+    ? requireDesktopToken(rawAgentAuthorizationToken, "MONITOR_INVALID_AGENT_AUTHORIZATION")
     : "";
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
     const expectedHost = localAddress && localPort ? `${localAddress}:${localPort}` : "";
+    const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+    const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
+      || requestUrl.pathname.startsWith("/api/agent/v1/");
+    const agentRequestAllowed = isAgentQuery
+      && request.headers.host === expectedHost
+      && request.headers.origin === undefined
+      && (!agentAuthorizationToken || requestHasAgentQueryAuthorization(request, agentAuthorizationToken));
+    if (isAgentQuery) {
+      if (!agentRequestAllowed) {
+        response.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Unauthorized");
+        return;
+      }
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      const requestedRevisionValue = requestUrl.searchParams.get("revision");
+      const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
+      const segments = requestUrl.pathname.split("/").slice(4).filter(Boolean).map((segment) => {
+        try { return decodeURIComponent(segment); } catch { return ""; }
+      });
+      const query = requestUrl.searchParams;
+      let name = segments[0] || "";
+      let args = {};
+      let allowedQueryKeys = new Set(["revision"]);
+      if (name === "provider-health" && segments.length === 1) {
+        name = "providerHealth";
+        allowedQueryKeys = new Set(["provider", "revision"]);
+      } else if (name === "usage-limits" && segments.length === 1) {
+        name = "usageLimits";
+        allowedQueryKeys = new Set(["provider", "revision"]);
+      }
+      else if (name === "sessions") {
+        if (segments.length === 1) {
+          name = "listSessions";
+          allowedQueryKeys = new Set(["provider", "scope", "limit", "revision"]);
+          args = { provider: query.get("provider") || null, scope: query.get("scope") || "live", limit: Number(query.get("limit") || 20) };
+        } else if (segments[2] === "agents" && segments.length === 3) {
+          name = "listSessionAgents";
+          args = { sessionRef: segments[1] };
+        } else if (segments[2] === "agents" && segments[4] === "context" && segments.length === 5) {
+          name = "getAgentContext";
+          args = { sessionRef: segments[1], agentId: segments[3] };
+        } else if (segments[2] === "failures" && segments.length === 3) {
+          name = "getRecentFailures";
+          allowedQueryKeys = new Set(["agent_id", "within_minutes", "limit", "revision"]);
+          args = { sessionRef: segments[1], agentId: query.get("agent_id") || null, withinMinutes: Number(query.get("within_minutes") || 15), limit: Number(query.get("limit") || 10) };
+        } else name = "";
+      } else name = "";
+      if (name === "providerHealth" && query.get("provider")) args = { provider: query.get("provider") };
+      if (name === "usageLimits" && query.get("provider")) args = { provider: query.get("provider") };
+      const providerValue = args.provider || null;
+      const validProvider = providerValue === null || ["claude", "codex"].includes(providerValue);
+      const validScope = !Object.hasOwn(args, "scope") || ["live", "all"].includes(args.scope);
+      const validLimit = !Object.hasOwn(args, "limit") || Number.isSafeInteger(args.limit) && args.limit >= 1 && args.limit <= (name === "getRecentFailures" ? 25 : 50);
+      const validWindow = !Object.hasOwn(args, "withinMinutes") || Number.isSafeInteger(args.withinMinutes) && args.withinMinutes >= 1 && args.withinMinutes <= 1_440;
+      const validSessionRef = !Object.hasOwn(args, "sessionRef") || /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(args.sessionRef);
+      const validAgentId = !Object.hasOwn(args, "agentId") || args.agentId === null || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(args.agentId);
+      const validRefs = validSessionRef && validAgentId;
+      const validQuery = [...query.keys()].every((key) => allowedQueryKeys.has(key) && query.getAll(key).length === 1);
+      if (!validProvider || !validScope || !validLimit || !validWindow || !validRefs || !validQuery) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid agent query arguments" }));
+        return;
+      }
+      if (!name || typeof runtime.serveAgentQuery !== "function") {
+        response.writeHead(404); response.end(JSON.stringify({ error: "Agent query unavailable" })); return;
+      }
+      try {
+        const result = runtime.serveAgentQuery(name, args, requestedRevision);
+        if (result?.status === "unchanged") { response.writeHead(204); response.end(); return; }
+        const snapshot = result?.snapshot;
+        response.writeHead(200, { ...(Number.isSafeInteger(result?.revision) ? { "X-Pomegr-Revision": String(result.revision) } : {}) });
+        response.end(snapshot?.serialized || JSON.stringify(snapshot?.value || { schemaVersion: 1, readiness: "unavailable", reason: "monitor_unavailable" }));
+      } catch {
+        response.writeHead(503); response.end(JSON.stringify({ schemaVersion: 1, readiness: "unavailable", reason: "monitor_unavailable", sessions: [] }));
+      }
+      return;
+    }
     const desktopRequestAllowed = !authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -32,7 +118,6 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
     }
     response.setHeader("Cache-Control", "no-store");
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
-    const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const requestedRevisionValue = requestUrl.searchParams.get("revision");
     const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
     const writeCommitted = (result, fallbackValue) => {

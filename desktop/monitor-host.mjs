@@ -7,6 +7,11 @@ import { environmentValue, MONITOR_PRIVATE_ENVIRONMENT_NAMES } from "./environme
 import { startMonitorAfterEnvironment } from "./monitor-startup-policy.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
 import {
+  publishAgentQueryDescriptor,
+  removeAgentQueryDescriptorIfTokenMatches,
+  resolveAgentQueryDescriptorPath,
+} from "../shared/agent-query-transport.mjs";
+import {
   assertPackagedElectronRuntime,
   installShutdown,
   recordUtilityStage,
@@ -17,7 +22,17 @@ import {
 const quietLogger = Object.freeze({ log() {} });
 installQuietConsole();
 let handle;
-const shutdown = installShutdown(async () => { await handle?.close(); });
+let agentQueryDescriptorPath;
+let agentAuthorizationToken;
+const shutdown = installShutdown(async () => {
+  await handle?.close();
+  if (agentAuthorizationToken && agentQueryDescriptorPath) {
+    await removeAgentQueryDescriptorIfTokenMatches({
+      descriptorPath: agentQueryDescriptorPath,
+      token: agentAuthorizationToken,
+    });
+  }
+});
 recordUtilityStage("MONITOR_MODULE_LOADED");
 
 async function installMonitorPrivateEnvironment() {
@@ -57,6 +72,9 @@ async function main() {
     await installMonitorPrivateEnvironment();
     recordUtilityStage("MONITOR_ENV_LOADED");
     const smoke = workerData?.smoke === true;
+    agentAuthorizationToken = workerData?.agentAuthorizationToken || "";
+    agentQueryDescriptorPath = workerData?.agentQueryDescriptorPath
+      || (agentAuthorizationToken ? resolveAgentQueryDescriptorPath() : null);
     handle = await startMonitorAfterEnvironment({
       smoke,
       verifyGitExecution,
@@ -65,10 +83,18 @@ async function main() {
         host: "127.0.0.1",
         port: 0,
         authorizationToken: workerData?.authorizationToken,
+        agentAuthorizationToken,
         providerRegistry: createDefaultProviderRegistry(),
         logger: quietLogger,
       }),
     });
+    if (agentAuthorizationToken && agentQueryDescriptorPath) {
+      await publishAgentQueryDescriptor({
+        descriptorPath: agentQueryDescriptorPath,
+        origin: handle.origin,
+        token: agentAuthorizationToken,
+      });
+    }
     const health = await fetch(`${handle.origin}/health`, {
       headers: workerData?.authorizationToken
         ? { "x-pomegr-desktop-authorization": workerData.authorizationToken }

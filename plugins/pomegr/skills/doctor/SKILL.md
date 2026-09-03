@@ -25,7 +25,7 @@ Report delegation coverage. No rows means the main session owns reporting. Each 
 
 ## MCP inventory
 
-Check the resolved Pomegr namespace for `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, and `clear_session_progress`. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to the Codex plugin settings and `/mcp`. Do not read credential files or expose MCP configuration values.
+Check the resolved Pomegr namespace for `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, `clear_session_progress`, `get_provider_health`, `get_usage_limits`, `list_sessions`, `list_session_agents`, `get_agent_context`, and `get_recent_failures`. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to the Codex plugin settings and `/mcp`. Do not read credential files or expose MCP configuration values. Read tools are decision-triggered observations; do not poll routinely or infer causation from coincident observations.
 
 ## Package structure
 

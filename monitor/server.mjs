@@ -642,6 +642,7 @@ export function createMonitorRuntime(options = {}) {
     serveUsageLimits: observation.serveUsageLimits,
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
+    serveAgentQuery: observation.serveAgentQuery,
     subscribeRevisionEvents: observation.subscribeRevisionEvents,
     observationDiagnostics: observation.diagnostics,
   });
@@ -649,7 +650,11 @@ export function createMonitorRuntime(options = {}) {
 
 export function createMonitorRequestHandler(options = {}) {
   const runtime = options.runtime || createMonitorRuntime(options);
-  return createRequestHandler({ runtime, authorizationToken: options.authorizationToken });
+  return createRequestHandler({
+    runtime,
+    authorizationToken: options.authorizationToken,
+    agentAuthorizationToken: options.agentAuthorizationToken,
+  });
 }
 
 export function createMonitorServer(options = {}) {

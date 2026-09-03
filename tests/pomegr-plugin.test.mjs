@@ -346,7 +346,7 @@ test("SessionStart hook reports plugin metadata and injects valid policy context
     assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /call the Pomegr `rename_session` tool once/i);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /Delegation is mechanized/i);
+    assert.match(validOutput.hookSpecificOutput.additionalContext, /read tools are decision-triggered observations[\s\S]*do not poll routinely or infer causation[\s\S]*Delegation is mechanized/i);
     assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
 
     await writePolicy(repository, template.replace("Policy version: 7", "Policy version: invalid"));
@@ -621,16 +621,7 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     assert.equal(reminder.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-      "clear_agent_signal",
-      "clear_session_progress",
-      "clear_session_signal",
-      "rename_session",
-      "report_agent_signal",
-      "report_session_progress",
-      "report_session_signal",
-      "report_task_signal",
-    ]);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["clear_agent_signal", "clear_session_progress", "clear_session_signal", "get_agent_context", "get_provider_health", "get_recent_failures", "get_usage_limits", "list_session_agents", "list_sessions", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);
 
     const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
       cwd: clientRepository,
@@ -688,20 +679,13 @@ test("plugin namespace rejects every legacy Threadlight identifier", async () =>
 test("plugin MCP inventory contains bounded reporting, clearing, and native title tools", () => {
   const server = buildPomegrMcpServer();
   const tools = Object.keys(server._registeredTools).sort();
+  const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_usage_limits", "list_session_agents", "list_sessions"];
 
-  assert.deepEqual(tools, [
-    "clear_agent_signal",
-    "clear_session_progress",
-    "clear_session_signal",
-    "rename_session",
-    "report_agent_signal",
-    "report_session_progress",
-    "report_session_signal",
-    "report_task_signal",
-  ]);
+  assert.deepEqual(tools, ["clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
   assert.equal(tools.includes("report_session_title"), false);
   assert.equal(tools.includes("ask_pomegr"), false);
-  assert.ok(tools.every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
+  assert.ok(tools.filter((name) => !reads.includes(name)).every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
+  assert.ok(reads.every((name) => server._registeredTools[name]._meta === undefined));
   assert.equal(server._registeredTools.rename_session.annotations.readOnlyHint, false);
   assert.equal(server._registeredTools.rename_session.annotations.destructiveHint, false);
   assert.equal(server._registeredTools.rename_session.annotations.idempotentHint, true);
