@@ -114,12 +114,12 @@
 .commandComingSoon p { max-width: 72ch; margin: 8px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
 .commandUsageProvider { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandUsageProviderHead { position: relative; min-height: 48px; padding: 4px 15px; flex-wrap: wrap; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--command-line); }
-.commandUsageProviderIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
-.commandUsageProviderHead h2 { margin: 0; font-size: var(--text-xs); }
+.commandUsageProviderIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: 0; min-width: 0; }
+.commandUsageProviderHead h2 { display: flex; align-items: center; margin: 0; font-size: var(--text-xs); }
 .commandUsageProviderHead > span { margin-left: auto; color: var(--command-green); font: var(--text-xs)/1 var(--font-ui); }
 @media (max-width: 760px) {
   .commandUsageProviderHead { gap: 4px 8px; padding-inline: 12px; }
-  .commandUsageProviderIdentity { gap: var(--space-2); }
+
   .commandUsageProviderHead h2 { flex-shrink: 0; }
 }
 .commandUsageRows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }

@@ -41,7 +41,7 @@ vi.mock("../../app/provider-status-client", () => ({
   }),
 }));
 
-describe("usage provider health chip", () => {
+describe("usage provider health dot", () => {
   it("places health beside the provider name and keeps status details accessible", () => {
     const { container } = render(<UsageLimitsView />);
     const panel = container.querySelector(".commandUsageProvider");
@@ -50,12 +50,13 @@ describe("usage provider health chip", () => {
 
     expect(screen.getByRole("heading", { name: "Codex", level: 2 }).nextElementSibling).toContainElement(trigger);
     expect(header).toHaveTextContent("Updated ");
-    expect(trigger).toHaveTextContent("Reported healthy");
+    expect(trigger).toHaveTextContent(/^$/);
     expect(panel?.querySelector(":scope > footer")).toBeNull();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.focus(trigger);
     const popover = screen.getByRole("dialog");
+    expect(popover).toHaveTextContent("Reported healthy");
     expect(popover).toHaveTextContent("Last checked");
     expect(popover).toHaveTextContent("Provider update");
     expect(within(popover).getByRole("link", { name: "View status page; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/");

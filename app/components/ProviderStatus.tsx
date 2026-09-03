@@ -46,21 +46,21 @@ function ProviderStatusSymbol({ status }: { status: ProviderServiceStatus | unde
   </svg>;
 }
 
-export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false, chip = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean; chip?: boolean }) {
+export function ProviderStatusDetails({ status, compact = false, mobileIconOnly = false, chip = false, dotOnly = false }: { status: ProviderServiceStatus | undefined; compact?: boolean; mobileIconOnly?: boolean; chip?: boolean; dotOnly?: boolean }) {
   const source = status?.source || "Provider";
-  if (!status) return <ProviderStatusIndicator status={status} compact={compact} />;
+  if (!status) return dotOnly ? <span className={`${styles.dot} ${styles.unknown}`} role="img" aria-label={statusLabel(status)} /> : <ProviderStatusIndicator status={status} compact={compact} />;
   const label = statusLabel(status);
   const linkLabel = `View ${status.incidents.length ? "incident" : "status page"}`;
   return <DottedInfoPopover
-    ariaLabel={`${source} provider service status details${mobileIconOnly || chip ? `: ${label}` : ""}`}
-    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}${chip ? ` ${styles.chip} ${styles[providerStatusTone(status)]}` : ""}`}
+    ariaLabel={`${source} provider service status details${mobileIconOnly || chip || dotOnly ? `: ${label}` : ""}`}
+    className={`${styles.details}${compact ? ` ${styles.detailsCompact}` : ""}${mobileIconOnly ? ` ${styles.mobileIconOnly}` : ""}${chip ? ` ${styles.chip} ${styles[providerStatusTone(status)]}` : ""}${dotOnly ? ` ${styles.dotOnly} ${styles[providerStatusTone(status)]}` : ""}`}
     content={<>
-      {mobileIconOnly && <p className={styles.mobileStatusLabel}>{label}</p>}
+      {(mobileIconOnly || dotOnly) && <p className={dotOnly ? styles.statusLabel : styles.mobileStatusLabel}>{label}</p>}
       <dl className={styles.detailList}><div><dt>Last checked</dt><dd>{timestamp(status.checkedAt)}</dd></div><div><dt>Provider update</dt><dd>{timestamp(status.updatedAt)}</dd></div></dl>
     </>}
     link={{ href: statusLink(status), label: linkLabel, ariaLabel: linkLabel }}
   >
-    <ProviderStatusIndicator status={status} compact={compact} />
+    {dotOnly ? <span className={`${styles.dot} ${styles[providerStatusTone(status)]}`} aria-hidden="true" /> : <ProviderStatusIndicator status={status} compact={compact} />}
     {mobileIconOnly && <ProviderStatusSymbol status={status} />}
   </DottedInfoPopover>;
 }

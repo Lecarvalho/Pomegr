@@ -14,7 +14,7 @@ import { ClaudeUsageControls } from "../ClaudeUsageControls";
 import { CodexUsageHelp } from "../CodexUsageHelp";
 import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
-import { ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerStatusFor } from "../ProviderStatus";
+import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 export { AgentsView } from "../agents/AgentsView";
@@ -258,7 +258,7 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
           ? `${limits.origin === "local_observation" ? "Last observed" : "Updated"} ${relativeTime(limits.fetchedAt)}`
           : status === "loading" ? "Connecting…" : "Unavailable";
   return <section className="commandUsageProvider" aria-labelledby={`usage-${entry.provider}`}>
-    <header className="commandUsageProviderHead"><div className="commandUsageProviderIdentity"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><ProviderStatusDetails status={providerStatus} compact chip /></div><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
+    <header className="commandUsageProviderHead"><div className="commandUsageProviderIdentity"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><ProviderStatusDetails status={providerStatus} compact dotOnly /></div><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
     {status === "loading" ? <CommandEmpty title="Waiting for provider usage" detail="The monitor is preparing the latest account-level window." icon="timer" /> : status !== "ready" || !limits.available ? <div className="commandUsageUnavailable"><CommandIcon name="limits" size="small" /><p>{failureKind ? usageLimitFailureMessage(entry.source, limits) : `Usage limits for ${entry.source} are unavailable.`}{limits.retryAt && <><br /><RetryCountdownText value={limits.retryAt} />.</>}</p></div> : displayedLimits.current.length || displayedLimits.localFable ? <><div className="commandUsageRows">{displayedLimits.current.map((limit) => <article className={`commandUsageWindow ${limit.severity}`} key={limit.id}>
       <header><strong>{limit.label}</strong><b>{Math.round(limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%` }} /></div><footer><span>{usageResetLabel(limit.resetsAt)}</span><span>Provider-reported window</span></footer>
     </article>)}{displayedLimits.localFable?.kind === "retained" && <article className={`commandUsageWindow ${displayedLimits.localFable.limit.severity}`} key="retained-model-fable"><header><strong>{displayedLimits.localFable.limit.label}</strong><b>{Math.round(displayedLimits.localFable.limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, displayedLimits.localFable.limit.percent))}%` }} /></div><footer><span>{usageResetLabel(displayedLimits.localFable.limit.resetsAt)}</span><span>Last API value {relativeTime(displayedLimits.localFable.fetchedAt)}</span></footer></article>}{displayedLimits.localFable?.kind === "unavailable" && <article className="commandUsageWindow" key="unavailable-model-fable"><header><strong>Fable</strong><span className="commandUsageStatus">{displayedLimits.localFable.label}</span></header><footer><span>{displayedLimits.localFable.detail}</span></footer></article>}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}
@@ -268,10 +268,16 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
 }
 
 export function UsageLimitsView() {
+  const [dismissedIncidents, setDismissedIncidents] = useState<Partial<Record<ProviderServiceStatus["provider"], ProviderIncidentDismissal>>>({});
   const snapshot = useUsageLimits();
   const statusSnapshot = useProviderStatus();
   const providersUnavailable = snapshot.providers.length === 0 && Object.values(snapshot.readiness).every((status) => status === "unavailable");
   return <CommandPage title="Usage limits" description="Provider-reported account usage and health check.">
+    {statusSnapshot.providers.filter((provider) => providerServiceNoticeVisible(provider, false, dismissedIncidents[provider.provider] ?? null)).map((provider) => <ProviderServiceNotice
+      key={provider.provider}
+      status={provider}
+      onDismiss={() => setDismissedIncidents((current) => ({ ...current, [provider.provider]: { key: provider.incidentKey || provider.status, rank: providerIncidentRank(provider) } }))}
+    />)}
     {snapshot.providers.length ? snapshot.providers.map((entry) => <UsageProvider entry={entry} providerStatus={providerStatusFor(statusSnapshot.providers, entry.provider)} key={entry.provider} />) : <><ProviderStatusArea providers={statusSnapshot.providers} /><CommandEmpty title={providersUnavailable ? "Usage limits unavailable" : "Usage limits are loading"} detail={providersUnavailable ? "The local monitor could not provide account-level provider evidence." : "Pomegr is waiting for account-level provider evidence."} icon="limits" /></>}
     <p className="commandUsageCaution">Provider-reported account usage reflects the last observation and may lag current activity. Pomegr does not attribute usage or cost to sessions, agents, or repositories. Local request observations show correlation only.</p>
   </CommandPage>;
