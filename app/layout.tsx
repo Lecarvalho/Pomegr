@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import { AppShell } from "./components/AppShell";
+import { ClientAccessProvider } from "./hooks/ClientAccessContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -57,7 +58,7 @@ FORM: User-approved standalone HTML preview in docs/design/pomegr-ui-preview.htm
 MOTION: Preserve the current activityPulse icon animation and its reduced-motion behavior.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->` }} />
-        <AppShell>{children}</AppShell>
+        <ClientAccessProvider><AppShell>{children}</AppShell></ClientAccessProvider>
       </body>
     </html>
   );

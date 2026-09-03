@@ -289,6 +289,8 @@ test("local desktop packaging helper validates repository processes before repla
 
   assert.match(helper, /\[CmdletBinding\(SupportsShouldProcess\)\]/);
   assert.match(helper, /Resolve-Path \(Join-Path \$PSScriptRoot '\.\.'\)/);
+  assert.match(helper, /Get-Command npm\.cmd -CommandType Application \| Select-Object -First 1 -ExpandProperty Source/);
+  assert.match(helper, /Get-Command node\.exe -CommandType Application \| Select-Object -First 1 -ExpandProperty Source/);
   assert.match(helper, /Test-ExactCommandArgument/);
   assert.match(helper, /Test-ExactExecutablePath/);
   assert.match(helper, /Pomegr-Portable-\$packageVersion-x64\.exe/);

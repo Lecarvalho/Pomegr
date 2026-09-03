@@ -30,7 +30,9 @@ contract, available stages, and the separately planned browser-render timing mil
 
 Pomegr’s planned desktop app targets Windows x64. No public installer is currently documented as available.
 
-When released, LAN sharing will be unavailable in the Windows desktop app.
+Desktop builds include opt-in phone access under **Settings → Phone access**. Pair a
+phone browser by QR code on the same trusted private network. Sharing is off by default
+and uses unencrypted HTTP; see [configuration and troubleshooting](docs/CONFIGURATION.md#another-device-cannot-open-the-dashboard).
 
 ## Portable beta (planned)
 

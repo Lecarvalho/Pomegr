@@ -32,9 +32,12 @@ The approved direction is the Command Center concept in `.impeccable/mocks/decis
 | Usage limits | Existing shared usage store | Provider-reported account windows with correlation-not-attribution caveat. |
 | Repositories | Session-to-project associations | Association counts only; branch/Git aggregation is explicitly coming soon. |
 | Settings | Accessible tab system | Appearance, desktop-notification boundary, existing display preferences, and About; full keyboard tab behavior. The About pane opens with the painted Pomegr mark beside its name and concise product purpose. |
+| Phone access | Desktop Settings and standalone LAN pairing page | Phone sharing is an explicit opt-in and off by default. Desktop Settings can select a trusted private network, start or stop sharing, create a functional black-and-white QR code that expires after five minutes, show up to four paired browsers, and persist the launch auto-start preference. Retry revalidates the selected network against current candidates, using the current sole candidate or requiring a fresh choice when multiple candidates remain. The guidance calls out unencrypted HTTP on the selected private LAN and restricting access to private networks. |
 | Responsive layout | CSS grid reflow | Preserve task order and legibility rather than shrinking the desktop composition uniformly. |
 
 The dark prototype is the compositional authority. The warm light theme is an intentional accessibility/user-preference adaptation using the same topology and semantic roles. Missing global agent and repository contracts force honest unavailable states rather than illustrative production data.
+
+The paired phone uses the normal responsive dashboard. Desktop-only controls and transcript-path copying are unavailable in LAN access mode. The standalone pairing page is a recovery surface with the incumbent palette, 26px heading, 14px body copy, 6px panel radius, and 4px button radius; it reports expired or unreachable pairing states and offers retry where a retry is meaningful. These patterns describe the implemented local UI and pairing behavior; they do not claim a physical phone test or public release.
 
 Approved provider-status extension: compact fixed status on Home and beside each provider
 in Usage limits (mobile headers use a 44px status-icon control with the full wording

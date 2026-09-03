@@ -203,7 +203,9 @@ test("desktop user, contributor, architecture, and release documentation stays e
   assert.match(readme, /Windows desktop app \(planned\)/i);
   assert.match(readme, /No public installer is currently documented as available/i);
   assert.match(readme, /portable beta \(planned\)/i);
-  assert.match(readme, /When released, LAN sharing will be unavailable/i);
+  assert.match(readme, /opt-in phone access/i);
+  assert.match(readme, /Sharing is off by default/);
+  assert.match(readme, /unencrypted HTTP/);
   assert.doesNotMatch(readme, /releases\/latest/);
   assert.match(configuration, /Windows x64 only/);
   assert.match(configuration, /dynamic `127\.0\.0\.1` ports/);

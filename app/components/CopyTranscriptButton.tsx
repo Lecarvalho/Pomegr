@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useClientAccess } from "../hooks/ClientAccessContext";
 
 type CopyState = "idle" | "loading" | "copied" | "error";
 
@@ -27,6 +28,7 @@ export function CopyTranscriptButton({ sessionId, agentId, agentLabel }: {
   agentId: string;
   agentLabel: string;
 }) {
+  const { canCopyTranscriptPath } = useClientAccess();
   const [state, setState] = useState<CopyState>("idle");
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,6 +67,8 @@ export function CopyTranscriptButton({ sessionId, agentId, agentLabel }: {
     : state === "error"
       ? `Transcript path for ${agentLabel} could not be copied. Try again.`
       : "";
+
+  if (!canCopyTranscriptPath) return null;
 
   return (
     <>

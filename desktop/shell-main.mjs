@@ -38,6 +38,7 @@ import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
+import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
   createNeedsInputNotificationController,
   createSessionNotificationPoller,
@@ -95,6 +96,8 @@ let claudeSignIn;
 let removeClaudeSignInIpc;
 let claudeUsageIntegration;
 let removeClaudeUsageIpc;
+let phoneAccess;
+let removePhoneAccessIpc;
 const nativeNotifications = new Set();
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
@@ -383,6 +386,10 @@ async function stopRuntime() {
   runtimeState = "stopping";
   recordStage("SHELL_CLEANUP_STARTED");
   stopPromise = (async () => {
+    removePhoneAccessIpc?.();
+    removePhoneAccessIpc = undefined;
+    try { await withDeadline(phoneAccess?.dispose(), STOP_TIMEOUT_MS, "DESKTOP_PHONE_STOP_TIMEOUT"); } catch { /* Other services still stop. */ }
+    phoneAccess = undefined;
     removeClaudeSignInIpc?.();
     removeClaudeSignInIpc = undefined;
     removeClaudeUsageIpc?.();
@@ -541,7 +548,7 @@ async function startDesktop() {
           settings: desktopSettings,
           canPersist: settingsLoad.canPersist,
           launchAtLoginAvailable: desktopPaths.mode === "installed",
-          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window })),
+          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window, lanSharingAutoStart: current.lanSharingAutoStart })),
           setLoginItem: async (openAtLogin) => app.setLoginItemSettings({ openAtLogin, path: process.execPath, args: [] }),
           hideWindow: () => mainWindow?.hide(),
           showWindow: showShellWindow,
@@ -567,6 +574,17 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null }),
           }),
         });
+        phoneAccess = createLanSharingController({
+          upstreamOrigin: web.origin,
+          authorizationToken,
+          autoStart: desktopSettings.lanSharingAutoStart,
+          canPersist: settingsLoad.canPersist,
+          saveAutoStart: (enabled) => queueSettingsUpdate((current) => ({ ...current, lanSharingAutoStart: enabled })),
+          onChange: (state) => {
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(PHONE_ACCESS_CHANNELS.changed, state);
+          },
+        });
+        removePhoneAccessIpc = installPhoneAccessIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, controller: phoneAccess });
         startOptionalTray();
         installDesktopBehaviorIpc();
         installClaudeSignInIpc();
@@ -605,6 +623,7 @@ async function startDesktop() {
     if (startupFailed) throw new Error("DESKTOP_SERVICE_EXITED");
     runtimeState = "running";
     recordStage("SHELL_RUNTIME_READY");
+    void phoneAccess.initialize().catch(() => {});
     startNotificationPolling();
     void startDesktopUpdates();
     if (!mainWindow.isVisible()) mainWindow.show();

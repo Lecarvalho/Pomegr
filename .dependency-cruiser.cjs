@@ -15,6 +15,8 @@ module.exports = {
         pathNot: [
           "(^|[/\\\\])[.][^/\\\\]+[.](?:js|cjs|mjs|ts|cts|mts|json)$",
           "[.]d[.]ts$",
+          // Vinext discovers this fixed capability endpoint without a source import.
+          "^app[/\\\\]api[/\\\\]client-access[/\\\\]route[.]ts$",
           "(^|[/\\\\])tsconfig[.]json$",
           "(^|[/\\\\])(?:babel|webpack|vite|vitest|postcss|eslint)[.]config[.](?:js|cjs|mjs|ts|cts|mts|json)$",
         ],

@@ -17,6 +17,7 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
 
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
+import { ClientAccessProvider } from "../../app/hooks/ClientAccessContext";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { pomegrMarkVariantForSearch, shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
@@ -221,6 +222,17 @@ describe("Command Center app shell", () => {
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     view.unmount();
+  });
+
+  it("offers paired LAN viewers a recovery path after an authenticated request is rejected", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/client-access") return response({ mode: "lan", canCopyTranscriptPath: false });
+      return Promise.resolve(new Response(JSON.stringify({ error: "Pairing required" }), { status: 401 }));
+    });
+    render(<ClientAccessProvider><AppShell><main>Home content</main></AppShell></ClientAccessProvider>);
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("Phone access expired");
+    expect(screen.getByRole("link", { name: "Scan a new code on your computer" })).toHaveAttribute("href", "/__pomegr/pair");
   });
 
   it("supports both compact product-mark variants for live comparison", () => {

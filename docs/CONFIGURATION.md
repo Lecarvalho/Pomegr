@@ -1,13 +1,13 @@
 # Configuration and troubleshooting
 
-Pomegr discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`; only the web dashboard binds to the LAN interface in development.
+Pomegr discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`. Development exposes the web dashboard on the LAN; the Windows desktop app offers separate, opt-in phone access.
 
 Operational cache tiers, checkpoint rules, readiness states, and frontend refresh cadence
 are defined canonically in [Observation cache and progressive readiness](OBSERVATION_CACHE.md).
 
 ## Supported desktop modes
 
-Pomegr desktop supports Windows x64 only. The per-user installer is the normal user path and requires neither administrator credentials, Node.js, Git, nor a repository checkout. Git and GitHub metadata degrade independently when their optional command-line tools are unavailable. macOS, Linux, Windows ARM64, app-store builds, and LAN access from the desktop app are not supported.
+Pomegr desktop supports Windows x64 only. The per-user installer is the normal user path and requires neither administrator credentials, Node.js, Git, nor a repository checkout. Git and GitHub metadata degrade independently when their optional command-line tools are unavailable. macOS, Linux, Windows ARM64, and app-store builds are not supported. Optional phone access shares the dashboard with paired browsers on a trusted local network; see the phone-access instructions below.
 
 The portable beta runs without installation from a writable directory. It stores Pomegr-owned state in `PomegrData` beside its executable. Portable mode does not register launch at login and automatic updates are disabled; download and verify a newer portable artifact manually.
 
@@ -27,7 +27,7 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, and launch-at-login, notification, and update booleans. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, and launch-at-login, notification, update, and phone-sharing startup booleans. Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
 
@@ -246,7 +246,39 @@ The selected close behavior may hide Pomegr to the system tray. Reopen it from t
 
 ### Another device cannot open the dashboard
 
-This is expected in the desktop app: both services bind to dynamic `127.0.0.1` ports and LAN sharing is unavailable. The `0.0.0.0:3003` LAN binding exists only in the source-development workflow.
+In the desktop app, open **Settings → Phone access** on the computer and enable sharing.
+Choose a private Wi-Fi or Ethernet connection if more than one is available, then generate
+a pairing QR code and scan it with the phone's camera. Both devices must be on the same
+local subnet. Each code expires after five minutes and can pair one browser; generate a
+new code for another browser. Up to four browser authorizations can exist per running
+gateway. The displayed count is paired browsers, not proof of currently connected devices.
+
+Phone access is an HTTP MVP for trusted local networks. Pairing restricts access but does
+not encrypt traffic. The phone can view the existing normalized dashboard; it cannot
+retrieve transcript paths, invoke desktop controls, sign in to providers, or change the
+computer's sharing settings. No cloud account or phone installation is required.
+
+**Start sharing when Pomegr starts** remembers only the startup preference. Addresses and
+phone authorizations are not saved, so restarting Pomegr requires a fresh pairing code.
+Keeping Pomegr in the tray keeps sharing available while the computer remains awake.
+Stopping sharing or quitting Pomegr revokes access and closes open connections. Changing
+the selected interface, address, or private-network eligibility stops sharing; enable it
+again after checking the new connection. With several eligible connections, automatic
+startup waits for a selection on the computer.
+
+If the phone cannot connect:
+
+- Check that Windows classifies the chosen connection as **Private**. Public, domain,
+  VPN, virtual, IPv6-only, and unrecognized connections are not supported by this MVP.
+- Allow Pomegr through Windows Firewall for **Private** networks only; limit a manually
+  configured inbound rule to the local subnet. Pomegr does not modify firewall rules.
+- Check whether guest Wi-Fi or access-point isolation prevents devices from communicating.
+- Keep the computer awake and Pomegr running; **Sharing started** confirms the local
+  listener, not end-to-end reachability from the phone.
+- If the code expired or Pomegr restarted, generate and scan a new code.
+
+The desktop's original dashboard and monitor stay on dynamic `127.0.0.1` ports. The
+`0.0.0.0:3003` binding remains specific to the source-development workflow.
 
 ### No sessions appear
 

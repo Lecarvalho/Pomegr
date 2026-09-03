@@ -43,6 +43,40 @@ Needs-input notifications are produced from the normalized session catalog on a 
 
 ### Local monitor
 
+The desktop may also own an optional LAN gateway for paired phone browsers. The gateway
+is the only desktop listener allowed on a selected private IPv4 Wi-Fi/Ethernet interface;
+the existing web service and privileged monitor remain loopback-only and require their
+per-launch authorization. A fixed read-only Windows probe selects physical interfaces
+and private profiles. Unknown or changed eligibility fails closed. Sharing is independent
+of desktop startup success and is revoked before upstream services stop.
+
+The gateway has a fixed upstream, validates LAN host/origin and subnet membership, and
+constructs the internal authorization headers. It admits only approved dashboard pages,
+assets, and read-only normalized APIs. Pairing is the sole gateway-local POST and does
+not reach the monitor. The transcript-path endpoint and unknown routes are denied.
+Client access capabilities hide local-path controls on phones; enforcement remains at
+the gateway. Native IPC still validates the exact Electron sender and is unavailable
+over HTTP.
+
+Single-use pairing secrets expire after five minutes and are exchanged for host-only,
+HttpOnly, SameSite=Strict browser cookies. At most four authorizations live in gateway
+memory; shutdown or revocation invalidates them. HTTP deliberately provides no transport
+encryption in this trusted-LAN MVP. No pairing secret, cookie, desktop authorization,
+network probe payload, or device enrollment is persisted or logged. Settings version 4
+adds only `lanSharingAutoStart`, defaulting off for every earlier settings version.
+
+LAN HTTP browsers do not provide Web Crypto's secure-context digest API. The build
+plugin in `scripts/vinext-lan-compat.mjs` uses Vinext's already-supported legacy FNV
+cache-variant hash when that API is absent, preserving client navigation over HTTP.
+This hash is unrelated to pairing or authorization. Secure contexts retain the normal
+SHA-256 path. The compatibility transform checks the pinned Vinext version and exact
+source signature so a framework upgrade requires an explicit compatibility review.
+
+Gateway forwarding streams navigation and event responses, preserves revisions and
+no-store semantics, and cancels upstream requests when clients disconnect. It creates
+no provider jobs or observation cache. Future mobile/backend authentication is a separate
+milestone rather than an extension of these temporary local browser credentials.
+
 `monitor/server.mjs` currently:
 
 1. Starts provider-owned observers that discover Claude Code and Codex session trees and normalize source changes before browser requests.

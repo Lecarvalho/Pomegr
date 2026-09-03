@@ -1,5 +1,6 @@
 import vinext from "vinext";
 import { defineConfig, type UserConfig } from "vite";
+import { vinextLanCompatibilityPlugin } from "./scripts/vinext-lan-compat.mjs";
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -28,6 +29,7 @@ export default defineConfig(async (): Promise<UserConfig> => {
         : {}),
     },
     plugins: [
+      vinextLanCompatibilityPlugin(),
       vinext(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },

@@ -67,6 +67,7 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.equal(build.files.includes("**/*"), false);
   assert.equal(build.files.includes("desktop/**/*"), false);
   assert.equal(build.files.includes("tests/**/*"), false);
+  assert.equal(build.files.includes("!**/{test,tests,__tests__,fixtures,coverage}/**"), true);
   assert.equal(build.files.includes("assets/brand/**/*"), true);
   assert.equal(build.files.includes("build/icon.png"), true);
   assert.deepEqual(build.extraResources.map(({ to }) => to).sort(), [...EXTERNAL_LEGAL_FILES, ...EXTERNAL_RUNTIME_FILES].sort());

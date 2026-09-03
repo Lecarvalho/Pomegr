@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const DESKTOP_SETTINGS_VERSION = 3;
+export const DESKTOP_SETTINGS_VERSION = 4;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   version: DESKTOP_SETTINGS_VERSION,
   window: Object.freeze({ width: 1280, height: 800, x: null, y: null, maximized: false }),
@@ -10,6 +10,7 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   closeBehavior: "ask",
   notifications: true,
   updates: true,
+  lanSharingAutoStart: false,
   displayPreferences: Object.freeze({ contextHistory: true, estimatedCost: true }),
 });
 
@@ -35,6 +36,7 @@ function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
     && (version === 1 || ["ask", "tray", "quit"].includes(value.closeBehavior))
     && typeof value.notifications === "boolean"
     && typeof value.updates === "boolean"
+    && (version < 4 || typeof value.lanSharingAutoStart === "boolean")
     && (version < 3 || (displayPreferences && typeof displayPreferences === "object" && !Array.isArray(displayPreferences)
       && typeof displayPreferences.contextHistory === "boolean"
       && typeof displayPreferences.estimatedCost === "boolean")));
@@ -62,6 +64,7 @@ export function normalizeDesktopSettings(input) {
     closeBehavior: ["ask", "tray", "quit"].includes(source.closeBehavior) ? source.closeBehavior : "ask",
     notifications: typeof source.notifications === "boolean" ? source.notifications : true,
     updates: typeof source.updates === "boolean" ? source.updates : true,
+    lanSharingAutoStart: typeof source.lanSharingAutoStart === "boolean" ? source.lanSharingAutoStart : false,
     displayPreferences: {
       contextHistory: typeof source.displayPreferences?.contextHistory === "boolean" ? source.displayPreferences.contextHistory : true,
       estimatedCost: typeof source.displayPreferences?.estimatedCost === "boolean" ? source.displayPreferences.estimatedCost : true,
@@ -114,9 +117,9 @@ export function createDesktopSettingsStore(settingsFile, io = {}) {
           state = "future-version";
           return loadResult(normalizeDesktopSettings(), state, false);
         }
-        if ([1, 2].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
+        if ([1, 2, 3].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
           state = "loaded";
-          return loadResult(normalizeDesktopSettings(parsed), "migrated", true);
+          return loadResult(normalizeDesktopSettings({ ...parsed, lanSharingAutoStart: false }), "migrated", true);
         }
         if (!isPersistedSettings(parsed)) {
           state = "invalid";

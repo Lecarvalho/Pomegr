@@ -15,6 +15,16 @@ window.addEventListener("DOMContentLoaded", () => {
 }, { once: true });
 
 contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
+  getPhoneAccessState() { return ipcRenderer.invoke("pomegr:phone-access-state"); },
+  setPhoneSharing(enabled, networkId) { return ipcRenderer.invoke("pomegr:set-phone-sharing", enabled, networkId); },
+  setPhoneAutoStart(enabled) { return ipcRenderer.invoke("pomegr:set-phone-auto-start", enabled); },
+  createPhonePairing() { return ipcRenderer.invoke("pomegr:create-phone-pairing"); },
+  onPhoneAccessChanged(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("pomegr:phone-access-changed", listener);
+    return () => ipcRenderer.removeListener("pomegr:phone-access-changed", listener);
+  },
   saveReport(payload) {
     return ipcRenderer.invoke("pomegr:save-report", payload);
   },

@@ -244,6 +244,25 @@ Browser requests use `cache: "no-store"`. Do not add browser storage, service-wo
 storage, or shared HTTP caching for session state; the monitor-owned L1/L2 caches are the
 authoritative caching boundary.
 
+### Desktop phone access
+
+The optional desktop LAN gateway is an additional S Serving transport for the existing
+web routes. It authenticates a paired browser and forwards only approved reads to the
+loopback web service. It does not acquire provider data, normalize, derive metrics, or
+maintain a second response cache. Existing asynchronous hydration requests remain owned
+by the monitor; a phone GET never performs synchronous provider acquisition.
+
+Forwarding preserves readiness, original observation times, revision headers, `204`
+responses, no-store headers, and streaming catalog revision hints. Last-known-good
+retention and checkpoint formats remain unchanged. Closing a phone connection cancels
+its upstream read/stream, not observation work. Native desktop pause affects that
+desktop renderer; each phone retains the existing independent focus/visibility polling.
+
+Gateway pairing and native sharing state are outside normalized monitor API state and
+outside L1/L2 checkpoints. Only the startup preference persists in desktop settings.
+The gateway blocks transcript-path reads and never forwards native desktop actions.
+Unknown or changed network eligibility revokes access, independently of monitor readiness.
+
 ## Provider observer contract
 
 Every provider adapter must expose the observation lifecycle required by
@@ -825,13 +844,27 @@ Claude agent-detail U1/U2 also replays each observed parent's complete native ag
 launch/notification history, independently of process ownership. Only successful
 matched `Agent` background launches and trusted exact terminal notifications set an
 individual child to `finished` or `stopped`; a null final stop reason does not erase
-this recorded completion. A supplied notification tool-use ID must match its launch; after an agent ID is
+this recorded completion. A trusted notification can be recorded in a different related
+transcript of the same session from its launch, including a root queue notification
+for a nested child. Detail normalization joins these complete per-file observations
+on the exact native agent ID and launch tool-use ID; a cross-file notification without
+the tool-use ID is unavailable. Launch call/result pairing remains local to its file.
+A supplied notification tool-use ID must match its launch; after an agent ID is
 reused by a later launch, that tool-use ID is required to disambiguate delayed delivery.
 Duplicate delivery preserves the first terminal timestamp, while later child
-conversation or a new successful launch clears the old state. Ambiguous identities
+conversation or a new successful launch clears the old state. The private complete-history
+reader retains the latest non-synthetic child conversation timestamp so resumption
+cannot disappear behind a recent-tail bound. Equal conversation and cross-file terminal
+timestamps cannot establish their order and do not promote the child to finished. Ambiguous identities
 across parents are unavailable. The private reader retains at most 100 file cursors,
-256 pending calls and 256 agent states per file, using cooperative 64 KiB reads and
-a 256 KiB fragment bound. Tail growth cannot age out completion. Incomplete,
+256 pending calls, 256 agent states, and 256 exact-call notification candidates per
+file, using cooperative 64 KiB reads and a 256 KiB fragment bound. Session-wide
+aggregation has an explicit 25,600-entry ceiling; exceeding it rejects the candidate
+and retains the last committed normalized revision rather than truncating evidence.
+The join uses only that session's related files and rejects ambiguous identities even
+when one parent's launch has no completion. It does not change catalog background-work
+aggregation or use stop-hook success as completion evidence. Tail growth cannot age
+out completion. Incomplete,
 malformed, or over-bound replacement retains the last valid observation; complete
 validated source replacement swaps it. Raw IDs, payloads, and cursors remain private;
 only existing normalized status and timing fields enter evidence/checkpoints.

@@ -4,6 +4,7 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { PomegrMark } from "../components/PomegrBrand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { DEFAULT_DISPLAY_PREFERENCES, useDisplayPreferences, type DisplayPreferences } from "../hooks/DisplayPreferencesContext";
+import { PhoneAccessControls, usePhoneAccessDesktopAvailable } from "../components/PhoneAccessControls";
 
 function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
   label: string;
@@ -38,7 +39,10 @@ function PreferenceRow({ id, label, description, checked, onChange }: {
 }
 
 export function SettingsPage() {
-  const sections = [["appearance", "Appearance"], ["notifications", "Notifications"], ["data", "Data display"], ["about", "About"]] as const;
+  const phoneAccessAvailable = usePhoneAccessDesktopAvailable();
+  const sections = phoneAccessAvailable
+    ? [["appearance", "Appearance"], ["notifications", "Notifications"], ["phone", "Phone access"], ["data", "Data display"], ["about", "About"]] as const
+    : [["appearance", "Appearance"], ["notifications", "Notifications"], ["data", "Data display"], ["about", "About"]] as const;
   type SectionId = typeof sections[number][0];
   const [section, setSection] = useState<SectionId>("appearance");
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
@@ -66,6 +70,7 @@ export function SettingsPage() {
         </nav>
         {section === "appearance" && <section id="settings-panel-appearance" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-appearance"><h2>Workspace appearance</h2><p>These controls affect only this local Pomegr interface.</p><SettingRow label="Color theme" description="Switch between the Command Center's dark and light operating surfaces."><ThemeToggle /></SettingRow><SettingRow label="Compact density" description="A denser evidence layout will arrive in a future release."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
         {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>Notification controls are available in the desktop runtime and will move here in a future release.</p><SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow><SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
+        {section === "phone" && <section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
         {section === "data" && <section id="settings-panel-data" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-data"><h2>Data display</h2><p>These preferences apply to every live and historical session.</p><div className="displayPreferenceList"><PreferenceRow id="context-history-visible" label="Context history" description="Show the context-level timeline in live and historical sessions." checked={preferences.contextHistory} onChange={(checked) => setPreference("contextHistory", checked)} /><PreferenceRow id="estimated-cost-visible" label="API list-rate estimate" description="Show the provider-reported reference estimate when available. This is not a bill or subscription spend." checked={preferences.estimatedCost} onChange={(checked) => setPreference("estimatedCost", checked)} /></div></section>}
         {section === "about" && <section id="settings-panel-about" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-about"><div className="commandAboutIdentity"><PomegrMark className="commandAboutIdentityMark" /><div className="commandAboutIdentityText"><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p></div></div><SettingRow label="Monitor boundary" description="Normalized metadata is served from the loopback monitor. Conversation content remains private."><span className="commandReadyState">Read-only</span></SettingRow><SettingRow label="Application version" description="Command Center shell"><span className="commandMonoValue">v0.2.0</span></SettingRow></section>}
       </div>

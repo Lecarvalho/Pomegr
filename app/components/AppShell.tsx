@@ -12,6 +12,7 @@ import type { DesktopState } from "./DesktopControls";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
 import { useProviderStatusPollingPause } from "../provider-status-client";
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
+import { PhoneAccessExpiredNotice, useClientAccess } from "../hooks/ClientAccessContext";
 import { CommandCenterShell } from "./command-center/CommandCenterShell";
 
 type AppShellDesktopBridge = {
@@ -35,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const catalogReadinessRef = useRef(catalogReadiness);
   const sessionCountRef = useRef(0);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
+  const { mode: clientAccessMode, markAccessExpired, refreshAccess } = useClientAccess();
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
   useProviderStatusPollingPause(Boolean(desktopState?.paused));
   const { ready: homePreferencesReady, rememberSession } = useHomePreferences();
@@ -82,6 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
         if (!response.ok) {
           if (!controller.signal.aborted) {
+            if (response.status === 401 && clientAccessMode === "lan") markAccessExpired();
             setConnected(false);
             setLoading(false);
             setCatalogReadiness((current) => current.catalog === "loading" && sessionCountRef.current === 0 ? { ...current, catalog: "unavailable" } : current);
@@ -148,8 +151,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     };
 
-    focusListener = () => { if (!document.hidden) void poll(); };
-    visibilityListener = () => { if (!document.hidden) void poll(); };
+    focusListener = () => { if (!document.hidden) { void refreshAccess(); void poll(); } };
+    visibilityListener = () => { if (!document.hidden) { void refreshAccess(); void poll(); } };
     window.addEventListener("focus", focusListener);
     document.addEventListener("visibilitychange", visibilityListener);
     void poll();
@@ -181,7 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (focusListener) window.removeEventListener("focus", focusListener);
       if (visibilityListener) document.removeEventListener("visibilitychange", visibilityListener);
     };
-  }, [desktopState?.paused]);
+  }, [clientAccessMode, desktopState?.paused, markAccessExpired, refreshAccess]);
 
   useEffect(() => {
     const bridge = desktopBridge();
@@ -211,6 +214,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             update={desktopState?.update || null}
             onInstallUpdate={installUpdate}
           >
+            <PhoneAccessExpiredNotice />
             {children}
           </CommandCenterShell>
         </SessionCatalogProvider>

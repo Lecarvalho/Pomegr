@@ -6,6 +6,10 @@ import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivity
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { task, agent } from "./dashboard-test-fixtures";
 
+vi.mock("../../app/hooks/ClientAccessContext", () => ({
+  useClientAccess: () => ({ canCopyTranscriptPath: true }),
+}));
+
 describe("agent detail popovers", () => {
   it("copies a subagent transcript path on demand without rendering the path", async () => {
     const user = userEvent.setup();

@@ -1,0 +1,31 @@
+.phoneAccessControls { max-width: 760px; }
+.phoneAccessControls > header { margin-bottom: 18px; }
+.phoneAccessControls > header h2 { margin: 0; font-size: var(--text-base); }
+.phoneAccessControls > header p, .phoneAccessLoading { margin: 8px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.phoneAccessNetwork, .phoneAccessAction, .phoneAccessPaired, .phoneAccessAutoStart { min-height: 0; padding-block: var(--divider-content-gap); border-top: 1px solid var(--command-line); }
+.phoneAccessNetwork { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); align-items: center; gap: 22px; }
+.phoneAccessNetwork > span, .phoneAccessAction strong, .phoneAccessPaired strong, .phoneAccessAutoStart strong { display: block; font-size: var(--text-xs); }
+.phoneAccessNetwork .commandSelect { width: 100%; }
+.phoneAccessAction, .phoneAccessPaired, .phoneAccessAutoStart { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.phoneAccessAction > div, .phoneAccessAutoStart > span { min-width: 0; }
+.phoneAccessAction span, .phoneAccessAutoStart small { display: block; max-width: 64ch; margin-top: 6px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.phoneAccessAction a { color: var(--command-brand-text); font-family: var(--font-data); overflow-wrap: anywhere; text-underline-offset: 3px; }
+.phoneAccessAction button, .phoneAccessPaired button { flex: 0 0 auto; }
+.phoneAccessButtons { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); }
+.phoneAccessPaired { background: var(--command-panel-2); padding-inline: var(--space-3); margin-inline: calc(-1 * var(--space-3)); }
+.phoneAccessPaired > span { color: var(--command-muted); font-size: var(--text-xs); }
+.phoneAccessPaired strong { display: inline; color: var(--command-ink); font-family: var(--font-data); font-weight: 500; }
+.phoneAccessQr { width: max-content; margin: var(--space-4) 0; padding: var(--space-3); border: 1px solid var(--command-line); background: #ffffff; }
+.phoneAccessQr img { display: block; image-rendering: pixelated; }
+.phoneAccessQr figcaption { max-width: 224px; margin-top: var(--space-2); color: #20252b; font-size: var(--text-xs); line-height: 1.4; }
+.phoneAccessAutoStart input { flex: 0 0 auto; }
+.phoneAccessGuidance { margin-top: var(--space-4); padding: var(--space-3); border-top: 1px solid var(--command-line-strong); background: var(--command-panel-2); }
+.phoneAccessGuidance strong { font-size: var(--text-xs); }
+.phoneAccessGuidance p { max-width: 72ch; margin: 6px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.phoneAccessProblem { margin: var(--space-3) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.phoneAccessExpired { margin-bottom: var(--space-4); padding: var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); border: 1px solid var(--command-line-strong); background: var(--command-panel-2); }
+.phoneAccessExpired strong { font-size: var(--text-xs); }
+.phoneAccessExpired p { margin: 4px 0 0; color: var(--command-muted); font-size: var(--text-xs); }
+.phoneAccessExpired a { flex: 0 0 auto; color: var(--command-brand-text); font-size: var(--text-xs); font-weight: 600; text-underline-offset: 3px; }
+@media (pointer: coarse), (max-width: 760px) { .phoneAccessAction button, .phoneAccessPaired button, .phoneAccessNetwork select { min-height: 44px; } }
+@media (max-width: 520px) { .phoneAccessNetwork { grid-template-columns: 1fr; gap: var(--space-2); } .phoneAccessAction, .phoneAccessPaired, .phoneAccessAutoStart, .phoneAccessExpired { align-items: flex-start; flex-direction: column; gap: var(--space-3); } .phoneAccessButtons { width: 100%; flex-direction: column; align-items: stretch; } .phoneAccessAction button, .phoneAccessPaired button, .phoneAccessExpired a { width: 100%; } .phoneAccessQr { width: 100%; } .phoneAccessQr img { max-width: 100%; height: auto; margin: 0 auto; } }

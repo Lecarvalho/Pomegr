@@ -19,8 +19,8 @@ $runVinextPath = Join-Path $repositoryRoot 'scripts\run-vinext.mjs'
 $vinextCliPath = Join-Path $repositoryRoot 'node_modules\vinext\dist\cli.js'
 $electronInstallerPath = Join-Path $repositoryRoot 'node_modules\electron\install.js'
 $electronPath = Join-Path $repositoryRoot 'node_modules\electron\dist\electron.exe'
-$npmCommand = (Get-Command npm.cmd -CommandType Application).Source
-$nodeCommand = (Get-Command node.exe -CommandType Application).Source
+$npmCommand = Get-Command npm.cmd -CommandType Application | Select-Object -First 1 -ExpandProperty Source
+$nodeCommand = Get-Command node.exe -CommandType Application | Select-Object -First 1 -ExpandProperty Source
 $ports = 3003, 4317
 
 if (-not (Test-Path -LiteralPath $packageJsonPath -PathType Leaf)) {
