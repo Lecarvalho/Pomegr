@@ -796,10 +796,6 @@ html[data-theme="dark"] .closeButton:hover { border-color: var(--line-strong); b
 .skeletonTiny { width: 64px; height: 8px; vertical-align: middle; }
 .skeletonMetric { width: 30px; height: 11px; }
 .sessionView-loading { min-width: 0; }
-.sessionLoadingHero { min-height: 188px; padding: 44px 0 32px; display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; border-bottom: 1px solid var(--line); }
-.sessionLoadingProvider { color: var(--muted); font: 650 var(--text-xs)/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; }
-.sessionLoadingHero h1 { max-width: 70vw; margin: 12px 0 0; overflow-wrap: anywhere; color: var(--ink); font-size: clamp(34px, 5vw, 60px); font-weight: 520; letter-spacing: -.045em; line-height: .95; }
-.sessionLoadingHero p { margin: 12px 0 0; color: var(--muted); font-size: var(--text-xs); }
 .sessionLoadingStatus { width: 80px; height: 10px; flex: 0 0 auto; }
 .sessionLoadingPanels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 24px 0; }
 .sessionLoadingPanel { min-height: 150px; padding: 18px; display: grid; align-content: start; gap: 14px; }
@@ -810,7 +806,7 @@ html[data-theme="dark"] .closeButton:hover { border-color: var(--line-strong); b
 .readinessSkeletonTitle { width: 28%; height: 10px; }
 .readinessSkeletonBody { width: 86%; height: 11px; }
 .readinessSkeletonBody.short { width: 58%; }
-@media (max-width: 640px) { .sessionLoadingHero { min-height: 166px; padding-top: 32px; } .sessionLoadingPanels { grid-template-columns: 1fr; gap: 12px; } }
+@media (max-width: 640px) { .sessionLoadingPanels { grid-template-columns: 1fr; gap: 12px; } }
 @media (prefers-reduced-motion: reduce) { .uiSkeleton { animation: none; } }
 html[data-theme="dark"] .sessionSidebar { background: var(--panel); }
 html[data-theme="dark"] .liveSessionLink:hover,

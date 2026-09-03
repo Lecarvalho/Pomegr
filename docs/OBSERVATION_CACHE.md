@@ -878,6 +878,8 @@ context, activity, repository, resources, and usage as independently produced do
 
 - Use geometry-matched skeletons only when a region has no committed value and readiness
   is `loading`.
+- Session loading shells use the loaded session header's shared typography, identity
+  styling, and responsive rules; known catalog titles must not flash a different type scale.
 - Keep existing data visible during refresh, observer failure, API failure, and retry
   backoff.
 - Show normal factual empty copy for `ready` empty data and a fixed sanitized error state

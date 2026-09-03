@@ -14,6 +14,7 @@ import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
+import { ProviderBadge } from "./components/ProviderBadge";
 import { SessionProgressPanel } from "./components/dashboard/SessionProgressPanel";
 import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
 import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
@@ -345,8 +346,8 @@ function AwaitingSession({ connected, connecting, loadingSession, session, readi
 function SessionLoadingShell({ session, readiness }: { session: SessionSummary; readiness: SessionReadiness }) {
   const domainSkeleton = (domain: keyof SessionReadiness) => readiness[domain] === "loading";
   return <section className="sessionView sessionView-loading" aria-label={`Loading ${session.title}`} aria-busy="true">
-    <header className="sessionLoadingHero">
-      <div><span className="sessionLoadingProvider">{session.source}</span><h1>{session.title}</h1><p>{session.project} · {session.isLive ? "Live session" : "Recorded session"}</p></div>
+    <header className="hero">
+      <div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={session.source} /></span><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
       <span className="uiSkeleton sessionLoadingStatus" aria-hidden="true" />
     </header>
     <p className="srOnly" role="status">Loading session evidence for {session.title}.</p>

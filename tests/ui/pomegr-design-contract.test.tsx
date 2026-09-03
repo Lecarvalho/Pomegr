@@ -16,6 +16,12 @@ const sessionProgressSource = readFileSync(join(process.cwd(), "app", "component
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
+  it("keeps session loading titles on the shared desktop and mobile header scale", () => {
+    expect(styles).not.toMatch(/\.sessionLoadingHero|\.sessionLoadingProvider/);
+    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
+    expect(styles).toMatch(/@media \(max-width: 520px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*24px/);
+  });
+
   it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {
     render(<AboutPage />);
 
