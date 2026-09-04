@@ -51,12 +51,9 @@ function catalogStructure(entries = []) {
     .join("\n");
 }
 
-// Lifecycle observations in an L2 checkpoint describe the previous process;
-// they are useful context after restart but cannot be presented as current.
+// Lifecycle observations in an L2 checkpoint describe a previous provider
+// process; they are useful context after restart but cannot be current truth.
 function downgradeRestoredLifecycle(record) {
-  // Only Codex lifecycle observations are process-local. Do not alter older
-  // Claude checkpoints, and do not recursively clone unrelated evidence.
-  if (record.providerId !== "codex") return record;
   const historical = record.evidence?.historical === true;
   const downgradeAgent = (agent) => {
     if (!agent || typeof agent !== "object" || !agent.liveness) return agent;

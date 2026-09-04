@@ -646,6 +646,9 @@ React, persisted checkpoints, or browser API fields.
   arrives during acquisition retains one dirty-again follow-up.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
+- Codex fallback discovery collapses multiple rollout generations carrying the same
+  top-level session ID into one catalog entry, retaining the earliest recorded creation
+  time while the newest rollout remains the private source for current observation.
 - For multi-file Codex sessions, U1 owns an independent cursor and bounded private
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
@@ -1055,6 +1058,17 @@ Only an observed/current active primary in a working or needs-input catalog row 
 (a child awaiting input does not stop the primary). Unknown, stale, inferred, missing,
 restored, or inactive primary lifecycle produces null in the catalog, even if children
 work. The older heading remains in retained agent evidence, not in `currentActivity`.
+For Claude Code, U2 recognizes only a bounded one-line `description` on a native
+`Bash` tool-use record and associates it privately with that exact tool-use ID. A
+matching result or recognized turn/agent terminal clears the description. Commands,
+other arguments, results, thinking, prompts, response text, attachments, arbitrary
+tool descriptions, and MCP arguments never enter this field. Parallel calls are
+tracked independently and only the newest still-pending recognized description is
+selected. A validated current Claude registry owner may supply the primary agent's
+observed/current lifecycle qualification; registry ownership details remain private.
+Historical evidence omits the field, source replacement resets retained state, and
+bounded-tail acquisition may carry forward only a description previously normalized
+from a complete record.
 An Idle or non-live catalog row suppresses any older cached heading immediately, before
 detail hydration, without erasing the retained primary evidence. Both the observation
 catalog and compatibility session feed use the same projection rules; with observation

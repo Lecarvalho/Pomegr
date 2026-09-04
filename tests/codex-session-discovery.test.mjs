@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createCodexProvider, resolveCodexHome } from "../monitor/providers/codex.mjs";
-import { normalizeCodexThreadMetadata } from "../monitor/providers/codex-session-metadata.mjs";
+import { mergeCodexMetadata } from "../monitor/providers/codex-session-discovery.mjs";
+import { listCodexRolloutMetadata, normalizeCodexThreadMetadata } from "../monitor/providers/codex-session-metadata.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import {
   assertNoPrivateFixtureSentinels,
@@ -169,6 +170,40 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
   assert.doesNotMatch(JSON.stringify(evidence), /rollout-parent|parent\.jsonl/);
   assert.equal(await provider.readSession("missing-rollout", { historical: true }), null);
   assert.equal(await provider.readSession("../private", { historical: true }), null);
+});
+
+test("merges resumed fallback rollouts into one Codex catalog session", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-resumed-fallback-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessionsRoot = path.join(root, "sessions", "2026", "09", "04");
+  const firstFile = path.join(sessionsRoot, "rollout-2026-09-04T19-03-20-duplicate-root.jsonl");
+  const resumedFile = path.join(sessionsRoot, "rollout-2026-09-04T19-40-19-duplicate-root_resumed.jsonl");
+  const record = (timestamp) => `${JSON.stringify({
+    timestamp,
+    type: "session_meta",
+    payload: {
+      id: "duplicate-root",
+      session_id: "duplicate-root",
+      timestamp,
+      cwd: "C:\\synthetic\\repo",
+      source: "vscode",
+    },
+  })}\n`;
+  await mkdir(sessionsRoot, { recursive: true });
+  await writeFile(firstFile, record("2026-09-04T19:03:20.000Z"), "utf8");
+  await writeFile(resumedFile, record("2026-09-04T19:40:19.000Z"), "utf8");
+  await utimes(firstFile, new Date("2026-09-04T19:30:00.000Z"), new Date("2026-09-04T19:30:00.000Z"));
+  await utimes(resumedFile, new Date("2026-09-04T19:50:00.000Z"), new Date("2026-09-04T19:50:00.000Z"));
+
+  const provider = createCodexProvider({ codexHome: root, sessionsRoot: path.join(root, "sessions"), includeArchived: false, cacheMs: 0 });
+  const catalog = await provider.listSessions();
+  const discovered = mergeCodexMetadata(listCodexRolloutMetadata(path.join(root, "sessions")));
+
+  assert.equal(catalog.length, 1);
+  assert.equal(catalog[0].localId, "duplicate-root");
+  assert.equal(catalog[0].createdAt, "2026-09-04T19:03:20.000Z");
+  assert.equal(discovered.length, 1);
+  assert.equal(discovered[0].rolloutFile, resumedFile);
 });
 
 test("normalizes source kinds internally while the registry keeps Codex IDs provider-qualified", async () => {

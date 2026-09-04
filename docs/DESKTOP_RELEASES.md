@@ -53,14 +53,49 @@ The helper handles the usual repository-owned lock holders automatically. Use th
 
 ### Publish signed artifacts
 
-1. Start from a clean working tree and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
-2. Run `npm version X.Y.Z --no-git-tag-version`, substituting the chosen version. This updates `package.json` and `package-lock.json` without creating a tag.
-3. Run the applicable pre-release quality gates from the [release checklist](#release-checklist), commit the version change, and create the matching annotated `vX.Y.Z` or `vX.Y.Z-beta.N` tag on that commit.
-4. Push the commit, then push the tag. A tag push does not start the release workflow.
-5. When that tagged candidate is ready to package and publish, open **Actions → Windows release**, select **Run workflow**, keep the workflow source on the default branch, and enter the existing release tag in the required **tag** field. The workflow rebuilds from the clean tagged checkout, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact asset set, and publishes it.
-6. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
+The canonical desktop application version is the root [`package.json`](../package.json) `version` field. `package-lock.json` mirrors that value and must remain synchronized. Do not edit the sidebar, installer filenames, updater metadata, or `package-lock.json` by hand to set a release version.
 
-Do not publish locally built executables or manually replace release assets. Correct a failed or broken release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
+The manual GitHub Actions workflow packages an existing tag. It does not choose a version, commit changes, create a tag, or move a tag. Use this sequence for every stable or beta release:
+
+1. Finish and merge every product change intended for the release. Confirm that no pending branch or pull request must be included.
+2. Update local `main`, create a release-preparation branch, and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
+3. From the repository root, set the version without creating a tag:
+
+   ```powershell
+   npm version X.Y.Z --no-git-tag-version
+   ```
+
+   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Review both changes and update any candidate-specific acceptance document, fixture, or test that intentionally names the previous desktop version.
+4. Run the applicable pre-release quality gates from the [release checklist](#release-checklist). Commit the complete release-preparation change, open a pull request, and merge it into `main`. Do not create the release tag on the feature branch because the pull-request merge produces the commit that must be released.
+5. Update local `main` after the merge and verify the canonical version and clean release point:
+
+   ```powershell
+   git switch main
+   git pull --ff-only origin main
+   node -p "require('./package.json').version"
+   git status --short
+   ```
+
+   The printed version must equal the intended release and the status output must be empty.
+6. Create the matching annotated tag on that exact `main` commit, then push the tag:
+
+   ```powershell
+   git tag -a vX.Y.Z -m "Pomegr X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+   Use the matching beta form when applicable. A tag push does not start the release workflow or package any artifacts.
+7. Confirm that GitHub can resolve the tag before opening Actions:
+
+   ```powershell
+   git ls-remote --exit-code --tags origin refs/tags/vX.Y.Z
+   ```
+
+   If this command returns no tag, do not run the workflow. Entering a nonexistent tag causes checkout to fail with `pathspec 'refs/tags/…' did not match any file(s) known to git`. If the tag exists but its `package.json` version differs, the release verification fails.
+8. Open **GitHub → Actions → Windows release**, select **Run workflow**, keep the workflow source on the default branch, enter the complete existing tag such as `v0.2.2` in the required **tag** field, and start the run. The workflow checks out that immutable tag, runs verification, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
+9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
+
+Do not publish locally built executables, rerun a published version, move a release tag, or manually replace release assets. Correct a failed or broken published release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
 
 ## Release checklist
 

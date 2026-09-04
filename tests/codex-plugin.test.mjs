@@ -108,6 +108,7 @@ test("Codex plugin hooks run under PowerShell after plugin-root expansion", { sk
     await mkdir(runtimeCwd, { recursive: true });
 
     const hooks = JSON.parse(await readFile(path.join(installedPlugin, "hooks", "hooks.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(path.join(installedPlugin, ".codex-plugin", "plugin.json"), "utf8"));
     const cases = [
       ["SessionStart", { hook_event_name: "SessionStart", source: "startup", cwd: runtimeCwd }],
       ["SubagentStart", { hook_event_name: "SubagentStart", agent_type: "investigator", cwd: runtimeCwd }],
@@ -127,7 +128,14 @@ test("Codex plugin hooks run under PowerShell after plugin-root expansion", { sk
 
       if (event === "SessionStart") {
         const output = JSON.parse(result.stdout);
-        assert.match(output.hookSpecificOutput.additionalContext, /^\[Pomegr plugin metadata\] \{"pluginVersion":"0\.4\.3","policyStatus":"missing","policyVersion":null\}/);
+        assert.equal(
+          output.hookSpecificOutput.additionalContext,
+          `[Pomegr plugin metadata] ${JSON.stringify({
+            pluginVersion: manifest.version,
+            policyStatus: "missing",
+            policyVersion: null,
+          })}`,
+        );
       }
     }
   });
