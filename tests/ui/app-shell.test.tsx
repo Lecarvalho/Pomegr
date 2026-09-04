@@ -22,6 +22,7 @@ import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { pomegrMarkVariantForSearch, shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
+import pomegrPackageManifest from "../../package.json";
 import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
 import type { SessionSummary } from "../../shared/monitor-contract";
 
@@ -90,6 +91,7 @@ describe("Command Center app shell", () => {
     expect(await screen.findByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByRole("link", { name: "Sessions, 2 live" })).toHaveAttribute("href", "/sessions");
     expect(screen.getByRole("link", { name: "Usage limits" })).toHaveAttribute("href", "/usage-limits");
+    expect(screen.getByText(`Pomegr v${pomegrPackageManifest.version}`)).toBeInTheDocument();
     expect(screen.getByText(`MCP v${pomegrPluginManifest.version}`)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Workspace content" })).toBeInTheDocument();
   });
