@@ -284,6 +284,7 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   }
   const sourceStep = workflow.match(/- name: Prepare exact source, notices, and checksums[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   assert.match(sourceStep, /if: github\.event_name == 'push'/);
+  assert.match(sourceStep, /git restore --worktree -- \.[\s\S]*node desktop\/prepare-release\.mjs --tag/);
   assert.match(signatureVerifier, /SignatureStatus\]::Valid/);
   assert.match(signatureVerifier, /SignerCertificate\.Subject -cne \$ExpectedSubject/);
   assert.doesNotMatch(signatureVerifier, /GetNameInfo|SimpleName/);
