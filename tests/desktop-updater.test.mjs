@@ -83,7 +83,7 @@ test("release channels accept stable or beta only and never cross streams", () =
 });
 
 test("downloaded Windows installers require the exact full certificate Subject DN", async () => {
-  const expected = "CN=Leandro Carvalho, O=Pomegr, C=CA";
+  const expected = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
   const updatePath = path.resolve("Pomegr-Setup.exe");
   const calls = [];
   const verifier = createWindowsUpdateSignatureVerifier({
@@ -94,9 +94,9 @@ test("downloaded Windows installers require the exact full certificate Subject D
     },
   });
   assert.equal(isFullPublisherSubject(expected), true);
-  assert.equal(isFullPublisherSubject("Leandro Carvalho"), false);
+  assert.equal(isFullPublisherSubject("DSNK Technologie Inc"), false);
   assert.equal(await verifier([expected], updatePath), null);
-  assert.equal(await verifier(["Leandro Carvalho"], updatePath), "DESKTOP_UPDATE_PUBLISHER_SUBJECT_INVALID");
+  assert.equal(await verifier(["DSNK Technologie Inc"], updatePath), "DESKTOP_UPDATE_PUBLISHER_SUBJECT_INVALID");
   assert.equal(await verifier([expected, "CN=Other, O=Other"], updatePath), "DESKTOP_UPDATE_PUBLISHER_SUBJECT_INVALID");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, "powershell.exe");

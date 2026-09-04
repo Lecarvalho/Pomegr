@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-export const POMEGR_WINDOWS_PUBLISHER = "Leandro Carvalho";
+export const POMEGR_WINDOWS_PUBLISHER = "DSNK Technologie Inc";
 export const RELEASE_LEGAL_FILES = Object.freeze([
   "LICENSE",
   "NOTICE",

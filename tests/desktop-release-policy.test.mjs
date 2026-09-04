@@ -22,7 +22,7 @@ import {
   updateMetadataName,
 } from "../desktop/release-policy.mjs";
 
-const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=Pomegr, C=CA";
+const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
 
 async function updateSignatureFixture(contents = "synthetic executable fixture") {
   const root = await mkdtemp(path.join(tmpdir(), "pomegr-update-acceptance-"));
@@ -231,23 +231,38 @@ test("release preparation requires a clean exact tag and emits a closed checksum
 });
 
 test("release workflow fails closed around signing, drafts, and exact-source publication", async () => {
-  const [workflow, signatureVerifier, preparer, documentation] = await Promise.all([
+  const [workflow, releaseBuilderConfig, signatureVerifier, preparer, documentation] = await Promise.all([
     readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/electron-builder.release.cjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/verify-signature.ps1", import.meta.url), "utf8"),
     readFile(new URL("../desktop/prepare-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
   ]);
-  assert.equal(POMEGR_WINDOWS_PUBLISHER, "Leandro Carvalho");
+  assert.equal(POMEGR_WINDOWS_PUBLISHER, "DSNK Technologie Inc");
   assert.match(workflow, /runs-on: windows-2022/);
   assert.doesNotMatch(workflow, /runs-on: windows-latest/);
+  assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /persist-credentials: false/);
-  assert.match(workflow, /WINDOWS_CODESIGN_CERTIFICATE/);
-  assert.match(workflow, /WINDOWS_CODESIGN_PASSWORD/);
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /environment: release/);
+  assert.match(workflow, /uses: azure\/login@v2/);
+  for (const name of ["AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"]) {
+    assert.match(workflow, new RegExp(`vars\\.${name}`));
+  }
+  for (const name of ["ARTIFACT_SIGNING_ENDPOINT", "ARTIFACT_SIGNING_ACCOUNT_NAME", "ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME"]) {
+    assert.match(workflow, new RegExp(`vars\\.${name}`));
+    assert.match(releaseBuilderConfig, new RegExp(`requiredEnvironment\\("${name}"\\)`));
+  }
+  assert.doesNotMatch(workflow, /WINDOWS_CODESIGN_CERTIFICATE|WINDOWS_CODESIGN_PASSWORD|CSC_LINK|CSC_KEY_PASSWORD/);
+  assert.doesNotMatch(workflow, /AZURE_CLIENT_SECRET/);
   assert.match(workflow, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
   assert.match(workflow, /DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE/);
-  assert.match(workflow, /forceCodeSigning=true/);
+  assert.match(releaseBuilderConfig, /forceCodeSigning: true/);
+  assert.match(releaseBuilderConfig, /signtoolOptions: null/);
+  assert.match(releaseBuilderConfig, /azureSignOptions:/);
+  assert.match(releaseBuilderConfig, /timestampRfc3161: "http:\/\/timestamp\.acs\.microsoft\.com"/);
   const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   for (const command of ["npm run verify", "npm run verify:desktop:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
@@ -259,11 +274,16 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   const buildStep = workflow.match(/- name: Build and sign Windows artifacts[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   assert.doesNotMatch(buildStep, /GH_TOKEN|GITHUB_TOKEN/);
   assert.match(buildStep, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
-  assert.match(buildStep, /win\.signtoolOptions\.publisherName=\$env:WINDOWS_PUBLISHER_SUBJECT/);
+  assert.match(buildStep, /npm run desktop:prepare(?:\r?\n|$)/);
+  assert.doesNotMatch(buildStep, /desktop:prepare:from-build/);
+  assert.match(buildStep, /electron-builder --config desktop\/electron-builder\.release\.cjs/);
   for (const stepName of ["Generate release notes", "Create draft release", "Verify draft assets and publish"]) {
     const step = workflow.match(new RegExp(`- name: ${stepName}[\\s\\S]*?(?=\\n\\s+- name:|$)`))?.[0] || "";
+    assert.match(step, /if: github\.event_name == 'push'/);
     assert.match(step, /GH_TOKEN:\s*\$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   }
+  const sourceStep = workflow.match(/- name: Prepare exact source, notices, and checksums[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  assert.match(sourceStep, /if: github\.event_name == 'push'/);
   assert.match(signatureVerifier, /SignatureStatus\]::Valid/);
   assert.match(signatureVerifier, /SignerCertificate\.Subject -cne \$ExpectedSubject/);
   assert.doesNotMatch(signatureVerifier, /GetNameInfo|SimpleName/);
@@ -278,6 +298,9 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(documentation, /unsigned test package/);
   assert.match(documentation, /complete canonical Subject distinguished name/i);
   assert.match(documentation, /CN-only value is rejected/i);
+  assert.match(documentation, /immutable organization and repository IDs/i);
+  assert.match(documentation, /stores no certificate file, certificate password, Azure client secret/i);
+  assert.match(documentation, /manual run[\s\S]*skips[\s\S]*GitHub release publication/i);
   assert.match(documentation, /current installation remains usable/i);
 });
 

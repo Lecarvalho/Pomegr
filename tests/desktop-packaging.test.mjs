@@ -81,7 +81,7 @@ test("desktop builder produces per-user NSIS and portable artifacts from an expl
   assert.deepEqual(build.publish, [{ provider: "github", owner: "Lecarvalho", repo: "pomegr" }]);
   assert.equal(build.electronUpdaterCompatibility, ">=2.16");
   assert.equal(build.win.verifyUpdateCodeSignature, true);
-  assert.equal(build.win.signtoolOptions.publisherName, "Leandro Carvalho");
+  assert.equal(build.win.signtoolOptions.publisherName, "DSNK Technologie Inc");
   assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
   assert.deepEqual(build.asarUnpack, [
     "desktop/workers/**/*",
@@ -192,7 +192,7 @@ test("desktop update packaging fails closed when publishing, dependency, or sign
       extraMetadata: { pomegrPackagingScope: POMEGR_DT_08_PACKAGING_SCOPE },
       electronUpdaterCompatibility: ">=2.16",
       publish: [{ provider: "github", owner: "Lecarvalho", repo: "pomegr" }],
-      win: { verifyUpdateCodeSignature: true, signtoolOptions: { publisherName: "Leandro Carvalho" } },
+      win: { verifyUpdateCodeSignature: true, signtoolOptions: { publisherName: "DSNK Technologie Inc" } },
       nsis: { differentialPackage: true },
     },
     dependencies: { "electron-updater": "6.8.9" },

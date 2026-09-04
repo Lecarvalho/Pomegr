@@ -124,7 +124,7 @@ test("beta acceptance requires exact valid matched signature evidence without ce
     [(record) => { record.evidence.releases.older.installerSignature.status = "invalid"; }, /OLDER_INSTALLER_SIGNATURE_INVALID/],
     [(record) => { record.evidence.releases.newer.installerSignature.publisher = "different"; }, /NEWER_INSTALLER_SIGNATURE_INVALID/],
     [(record) => { record.evidence.updateVerification.signedUpdate.downloadedSignature.timestamp = "missing"; }, /DOWNLOADED_UPDATE_SIGNATURE_INVALID/],
-    [(record) => { record.evidence.updateVerification.signedUpdate.installedSignature.publisher = "Leandro Carvalho"; }, /INSTALLED_EXECUTABLE_SIGNATURE_INVALID/],
+    [(record) => { record.evidence.updateVerification.signedUpdate.installedSignature.publisher = "DSNK Technologie Inc"; }, /INSTALLED_EXECUTABLE_SIGNATURE_INVALID/],
   ];
   for (const [mutate, expected] of cases) {
     const record = acceptedRecord();

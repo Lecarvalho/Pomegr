@@ -1,12 +1,14 @@
 name: Windows release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -15,6 +17,7 @@ concurrency:
 jobs:
   windows-release:
     runs-on: windows-2022
+    environment: release
     timeout-minutes: 45
     steps:
       - name: Check out the tagged commit
@@ -30,23 +33,34 @@ jobs:
           node-version: 22.13.0
           cache: npm
 
-      - name: Verify exact release tag and clean checkout
+      - name: Verify release ref and clean checkout
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          node desktop/release-policy.mjs verify-tag --tag $env:GITHUB_REF_NAME
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            node desktop/release-policy.mjs verify-tag --tag $env:GITHUB_REF_NAME
+          }
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
 
-      - name: Require signing credentials
+      - name: Require Artifact Signing configuration
         shell: pwsh
         env:
-          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT_NAME: ${{ vars.ARTIFACT_SIGNING_ACCOUNT_NAME }}
+          ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ vars.ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
           WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) { throw 'DESKTOP_RELEASE_CERTIFICATE_MISSING' }
-          if ([string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) { throw 'DESKTOP_RELEASE_CERTIFICATE_PASSWORD_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:AZURE_CLIENT_ID)) { throw 'DESKTOP_RELEASE_AZURE_CLIENT_ID_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:AZURE_TENANT_ID)) { throw 'DESKTOP_RELEASE_AZURE_TENANT_ID_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:AZURE_SUBSCRIPTION_ID)) { throw 'DESKTOP_RELEASE_AZURE_SUBSCRIPTION_ID_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_SIGNING_ENDPOINT)) { throw 'DESKTOP_RELEASE_ARTIFACT_SIGNING_ENDPOINT_MISSING' }
+          if ($env:ARTIFACT_SIGNING_ENDPOINT -notmatch '^https://[a-z0-9]+\.codesigning\.azure\.net/?$') { throw 'DESKTOP_RELEASE_ARTIFACT_SIGNING_ENDPOINT_INVALID' }
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_SIGNING_ACCOUNT_NAME)) { throw 'DESKTOP_RELEASE_ARTIFACT_SIGNING_ACCOUNT_MISSING' }
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME)) { throw 'DESKTOP_RELEASE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_MISSING' }
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_PUBLISHER_SUBJECT)) { throw 'DESKTOP_RELEASE_PUBLISHER_SUBJECT_MISSING' }
           if ($env:WINDOWS_PUBLISHER_SUBJECT -notmatch '^CN=.+,\s*[A-Z][A-Z0-9.]*=.+$') { throw 'DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE' }
 
@@ -61,16 +75,24 @@ jobs:
           npm run verify
           npm run verify:desktop:ci
 
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Build and sign Windows artifacts
         shell: pwsh
         env:
-          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT_NAME: ${{ vars.ARTIFACT_SIGNING_ACCOUNT_NAME }}
+          ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ vars.ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
           WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run desktop:prepare:from-build
-          npx electron-builder --win nsis portable --x64 --publish never -c.forceCodeSigning=true "-c.win.signtoolOptions.publisherName=$env:WINDOWS_PUBLISHER_SUBJECT"
+          npm run desktop:prepare
+          npx electron-builder --config desktop/electron-builder.release.cjs --win nsis portable --x64 --publish never
           node desktop/finalize-package.mjs
 
       - name: Inspect packaged privacy and legal boundaries
@@ -89,6 +111,7 @@ jobs:
           )
 
       - name: Generate release notes
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,9 +122,11 @@ jobs:
           $ReleaseNotes | Out-File -LiteralPath release/RELEASE_NOTES.md -Encoding utf8NoBOM
 
       - name: Prepare exact source, notices, and checksums
+        if: github.event_name == 'push'
         run: node desktop/prepare-release.mjs --tag ${{ github.ref_name }}
 
       - name: Create draft release
+        if: github.event_name == 'push'
         id: create
         shell: pwsh
         env:
@@ -113,6 +138,7 @@ jobs:
           gh release create $env:GITHUB_REF_NAME release/publish/* --draft $Prerelease --verify-tag --title "Pomegr $Version" --notes-file release/publish/RELEASE_NOTES.md
 
       - name: Verify draft assets and publish
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
