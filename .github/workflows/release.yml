@@ -2,16 +2,18 @@ name: Windows release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
+    inputs:
+      tag:
+        description: "Existing release tag to build and publish (for example, v0.2.2)"
+        required: true
+        type: string
 
 permissions:
   contents: write
   id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -19,11 +21,13 @@ jobs:
     runs-on: windows-2022
     environment: release
     timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -37,9 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:GITHUB_EVENT_NAME -eq 'push') {
-            node desktop/release-policy.mjs verify-tag --tag $env:GITHUB_REF_NAME
-          }
+          node desktop/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
 
       - name: Require Artifact Signing configuration
@@ -111,26 +113,23 @@ jobs:
           )
 
       - name: Generate release notes
-        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $ReleaseNotes = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases/generate-notes" -f "tag_name=$env:GITHUB_REF_NAME" --jq .body
+          $ReleaseNotes = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases/generate-notes" -f "tag_name=$env:RELEASE_TAG" --jq .body
           if ([string]::IsNullOrWhiteSpace(($ReleaseNotes -join "`n"))) { throw 'DESKTOP_RELEASE_NOTES_EMPTY' }
           $ReleaseNotes | Out-File -LiteralPath release/RELEASE_NOTES.md -Encoding utf8NoBOM
 
       - name: Prepare exact source, notices, and checksums
-        if: github.event_name == 'push'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           git restore --worktree -- .
-          node desktop/prepare-release.mjs --tag ${{ github.ref_name }}
+          node desktop/prepare-release.mjs --tag $env:RELEASE_TAG
 
       - name: Create draft release
-        if: github.event_name == 'push'
         id: create
         shell: pwsh
         env:
@@ -139,17 +138,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $Version = (Get-Content package.json | ConvertFrom-Json).version
           $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--latest' }
-          gh release create $env:GITHUB_REF_NAME release/publish/* --draft $Prerelease --verify-tag --title "Pomegr $Version" --notes-file release/publish/RELEASE_NOTES.md
+          gh release create $env:RELEASE_TAG release/publish/* --draft $Prerelease --verify-tag --title "Pomegr $Version" --notes-file release/publish/RELEASE_NOTES.md
 
       - name: Verify draft assets and publish
-        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh release view $env:GITHUB_REF_NAME --json assets | Out-File -LiteralPath release/remote-assets.json -Encoding utf8NoBOM
+          gh release view $env:RELEASE_TAG --json assets | Out-File -LiteralPath release/remote-assets.json -Encoding utf8NoBOM
           $Version = (Get-Content package.json | ConvertFrom-Json).version
           node desktop/release-policy.mjs verify-assets --version $Version --assets-file release/remote-assets.json
           $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--prerelease=false' }
-          gh release edit $env:GITHUB_REF_NAME --draft=false $Prerelease
+          gh release edit $env:RELEASE_TAG --draft=false $Prerelease

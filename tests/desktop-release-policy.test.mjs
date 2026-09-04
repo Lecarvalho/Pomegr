@@ -242,7 +242,10 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /runs-on: windows-2022/);
   assert.doesNotMatch(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
+  assert.doesNotMatch(workflow, /\bpush:/);
+  assert.match(workflow, /tag:\s*\n\s*description:[^\n]+\n\s*required: true\n\s*type: string/);
+  assert.match(workflow, /ref: refs\/tags\/\$\{\{ inputs\.tag \}\}/);
+  assert.match(workflow, /RELEASE_TAG:\s*\$\{\{ inputs\.tag \}\}/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /id-token: write/);
@@ -279,12 +282,12 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(buildStep, /electron-builder --config desktop\/electron-builder\.release\.cjs/);
   for (const stepName of ["Generate release notes", "Create draft release", "Verify draft assets and publish"]) {
     const step = workflow.match(new RegExp(`- name: ${stepName}[\\s\\S]*?(?=\\n\\s+- name:|$)`))?.[0] || "";
-    assert.match(step, /if: github\.event_name == 'push'/);
     assert.match(step, /GH_TOKEN:\s*\$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+    assert.match(step, /\$env:RELEASE_TAG/);
   }
   const sourceStep = workflow.match(/- name: Prepare exact source, notices, and checksums[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  assert.match(sourceStep, /if: github\.event_name == 'push'/);
   assert.match(sourceStep, /git restore --worktree -- \.[\s\S]*node desktop\/prepare-release\.mjs --tag/);
+  assert.match(sourceStep, /\$env:RELEASE_TAG/);
   assert.match(signatureVerifier, /SignatureStatus\]::Valid/);
   assert.match(signatureVerifier, /SignerCertificate\.Subject -cne \$ExpectedSubject/);
   assert.doesNotMatch(signatureVerifier, /GetNameInfo|SimpleName/);
@@ -301,7 +304,8 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(documentation, /CN-only value is rejected/i);
   assert.match(documentation, /immutable organization and repository IDs/i);
   assert.match(documentation, /stores no certificate file, certificate password, Azure client secret/i);
-  assert.match(documentation, /manual run[\s\S]*skips[\s\S]*GitHub release publication/i);
+  assert.match(documentation, /tag push[\s\S]*does not start[\s\S]*workflow/i);
+  assert.match(documentation, /Run workflow[\s\S]*existing release tag/i);
   assert.match(documentation, /current installation remains usable/i);
 });
 
