@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
+import pomegrPackageManifest from "../../../package.json";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { useProviderStatus } from "../../provider-status-client";
 import { NotificationCenter, useNotifications } from "./NotificationCenter";
@@ -218,7 +219,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
           <div className="commandNavDivider" aria-hidden="true" />
           {update?.version && (update.status === "ready" || update.status === "installing") ? <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} /> : null}
           <span>{loading ? "Connecting to the local observer." : connected ? "Session data remains on this machine." : "Local observer unavailable. Showing last known-good state."}</span>
-          <strong>Pomegr v0.2.0</strong>
+          <strong>Pomegr v{pomegrPackageManifest.version}</strong>
           <small>MCP v{pomegrPluginManifest.version}</small>
         </div>
       </aside>
