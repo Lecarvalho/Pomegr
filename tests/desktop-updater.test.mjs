@@ -87,7 +87,7 @@ test("release channels accept stable or beta only and never cross streams", () =
 });
 
 test("downloaded Windows installers require the exact full certificate Subject DN", async () => {
-  const expected = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
+  const expected = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, L=Granby, S=Québec, C=CA";
   const updatePath = path.resolve("Pomegr-Setup.exe");
   const calls = [];
   const verifier = createWindowsUpdateSignatureVerifier({
@@ -105,6 +105,7 @@ test("downloaded Windows installers require the exact full certificate Subject D
   assert.equal(calls.length, 1);
   assert.equal(calls[0].command, "powershell.exe");
   assert.deepEqual(calls[0].args.slice(0, 5), ["-NoLogo", "-NoProfile", "-NonInteractive", "-InputFormat", "None"]);
+  assert.match(calls[0].args.at(-1), /^\[Console\]::OutputEncoding = \[System\.Text\.UTF8Encoding\]::new\(\$false\); /);
   assert.equal(calls[0].options.env.POMEGR_UPDATE_VERIFY_PATH, updatePath);
   assert.equal(calls[0].options.env.PRIVATE_TOKEN, undefined);
 

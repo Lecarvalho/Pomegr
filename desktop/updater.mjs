@@ -29,6 +29,7 @@ export function createWindowsUpdateSignatureVerifier(options = {}) {
       return;
     }
     const script = [
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
       "$signature = Get-AuthenticodeSignature -LiteralPath $env:POMEGR_UPDATE_VERIFY_PATH",
       "[PSCustomObject]@{ Status = [string]$signature.Status; Path = $signature.Path; Subject = $signature.SignerCertificate.Subject } | ConvertTo-Json -Compress",
     ].join("; ");
