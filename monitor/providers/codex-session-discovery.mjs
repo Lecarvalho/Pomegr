@@ -46,7 +46,7 @@ export function mergeCodexMetadata(items) {
       title: preferred.title !== "Untitled session" ? preferred.title : alternate.title,
       cwd: preferred.cwd || alternate.cwd,
       project: preferred.cwd ? preferred.project : alternate.project,
-      createdAt: preferred.createdAt || alternate.createdAt,
+      createdAt: [preferred.createdAt, alternate.createdAt].filter(Boolean).sort()[0] || null,
       recordedGitBranch: preferred.recordedGitBranch || alternate.recordedGitBranch,
       sessionId: preferred.sessionId || alternate.sessionId,
       parentThreadId: preferred.parentThreadId || alternate.parentThreadId,
@@ -60,7 +60,7 @@ export function mergeCodexMetadata(items) {
       liveStatus: preferred.liveStatus || alternate.liveStatus,
       liveness: preferred.liveness || alternate.liveness,
       archived: item.archived && previous.archived,
-      rolloutFile: item.rolloutFile || previous.rolloutFile,
+      rolloutFile: preferred.rolloutFile || alternate.rolloutFile,
     });
   }
   return [...byId.values()].sort(compareCodexMetadata);

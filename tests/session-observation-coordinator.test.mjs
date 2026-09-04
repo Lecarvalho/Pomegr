@@ -714,17 +714,17 @@ test("checkpoint restore downgrades lifecycle truth without removing retained ac
   };
   const legacyRecord = { ...record, localSessionId: "legacy-session", evidence: { ...record.evidence, agents: [{ ...lifecycleAgent, status: "idle", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] }, publicState: { agents: [{ ...lifecycleAgent, status: "idle", liveness: { source: "owning_app_server", observedAt: lifecycleAgent.liveness.observedAt } }] } };
   const historicalRecord = { ...record, localSessionId: "historical-session", evidence: { ...record.evidence, historical: true, agents: [{ ...lifecycleAgent, status: "finished", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] }, publicState: { agents: [{ ...lifecycleAgent, status: "finished", liveness: { source: "lifecycle_bridge", observedAt: lifecycleAgent.liveness.observedAt } }] } };
+  const claudeRecord = { ...record, providerId: "claude", localSessionId: "claude-restart-session", evidence: { ...record.evidence, agents: [{ ...lifecycleAgent, liveness: { ...lifecycleAgent.liveness, source: "lifecycle_bridge" } }] }, publicState: { agents: [{ ...lifecycleAgent, liveness: { ...lifecycleAgent.liveness, source: "lifecycle_bridge" } }] } };
   let publisher;
   const coordinator = createSessionObservationCoordinator({
-    registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
+    registry: { providers: [{ id: "codex", source: "Codex" }, { id: "claude", source: "Claude Code" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
     store,
-    checkpointStore: { async load() { return { records: [record, legacyRecord, historicalRecord] }; }, async write() {} },
+    checkpointStore: { async load() { return { records: [record, legacyRecord, historicalRecord, claudeRecord] }; }, async write() {} },
     schedule: scheduler.schedule,
     cancel: scheduler.cancel,
     deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: { agents: evidence.agents } }),
   });
-  await coordinator.start();
-  await scheduler.flush();
+  await coordinator.start(); await scheduler.flush();
   const restored = restoredCandidates[0].evidence.agents[0];
   assert.equal(restored.status, "unknown");
   assert.equal(restored.currentActivity.label, "Retained heading");
@@ -736,8 +736,8 @@ test("checkpoint restore downgrades lifecycle truth without removing retained ac
   assert.equal(legacy.liveness.evidence, "unavailable");
   assert.equal(legacy.liveness.freshness, "stale");
   const historical = restoredCandidates.find((candidate) => candidate.localSessionId === "historical-session").evidence.agents[0];
-  assert.equal(historical.status, "finished");
-  assert.equal(historical.liveness, null);
+  assert.deepEqual([historical.status, historical.liveness], ["finished", null]);
+  const claude = restoredCandidates.find((candidate) => candidate.localSessionId === "claude-restart-session").evidence.agents[0]; assert.deepEqual([claude.status, claude.liveness.evidence, claude.liveness.freshness], ["unknown", "unavailable", "stale"]);
   publisher.publishCatalog("codex", [{ localId: "restart-session", title: "Restored", isLive: true, activityStatus: "working" }]);
   await scheduler.flush();
   assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity, null);

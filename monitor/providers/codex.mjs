@@ -223,7 +223,7 @@ export function createCodexProvider(options = {}) {
   const metadataCatalog = createCodexCatalogCache({ cacheMs, now, load: async () => {
       const appServerMetadata = await readAppServerCatalog();
       const fallbackMetadata = readFallbackMetadata();
-      const combined = appServerMetadata?.length ? mergeCodexMetadata([...fallbackMetadata, ...appServerMetadata]) : fallbackMetadata;
+      const combined = mergeCodexMetadata([...fallbackMetadata, ...(appServerMetadata || [])]);
       const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
       pruneKnownFiles(knownRolloutFiles);
       return combined;

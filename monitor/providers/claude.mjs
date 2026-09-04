@@ -33,6 +33,7 @@ import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
+import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
 import { createClaudeAgentLifecycleReader, applyClaudeAgentTerminals } from "./claude-agent-lifecycle.mjs";
@@ -318,6 +319,7 @@ export function createClaudeProvider(options = {}) {
 
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
+  const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
   const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });
 
   async function cachedSessionTitle(file, stat) {
@@ -674,10 +676,9 @@ export function createClaudeProvider(options = {}) {
       manifestCache: workflowManifestCache,
     });
     for (const agent of agents) {
-      if (agent.status !== "stopped" && terminalClaudeWorkflowAgentStates.has(agent.workflowState)) {
-        agent.status = "finished";
-      }
+      if (agent.status !== "stopped" && terminalClaudeWorkflowAgentStates.has(agent.workflowState)) agent.status = "finished";
     }
+    await applyClaudeCurrentActivities(agents, { fileByAgentId, historical, reader: readCurrentActivity, registryEntry: sessionRegistryEntry });
     transcriptPathsBySessionId.delete(sessionId);
     transcriptPathsBySessionId.set(sessionId, transcriptPaths);
     while (transcriptPathsBySessionId.size > 64) transcriptPathsBySessionId.delete(transcriptPathsBySessionId.keys().next().value);
