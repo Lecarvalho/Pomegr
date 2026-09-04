@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   setDisplayPreference(key, visible) {
     return ipcRenderer.invoke("pomegr:set-display-preference", key, visible);
   },
+  checkForUpdates() {
+    return ipcRenderer.invoke("pomegr:check-for-updates");
+  },
   installUpdate() {
     return ipcRenderer.invoke("pomegr:install-update");
   },

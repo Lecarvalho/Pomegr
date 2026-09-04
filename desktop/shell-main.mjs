@@ -50,7 +50,7 @@ import {
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
 import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
-import { createDesktopUpdaterController, createWindowsUpdateSignatureVerifier } from "./updater.mjs";
+import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpdateSignatureVerifier } from "./updater.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -582,7 +582,8 @@ async function startDesktop() {
           updateTray: updateTrayMenu,
           broadcast: broadcastDesktopState,
           snapshotExtension: () => ({
-            update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null }),
+            applicationVersion: boundedDesktopVersion(app.getVersion()),
+            update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
         phoneAccess = createLanSharingController({

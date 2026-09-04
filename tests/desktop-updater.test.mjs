@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   DESKTOP_UPDATE_CHECK_INTERVAL_MS,
+  boundedDesktopVersion,
   createDesktopUpdaterController,
   createWindowsUpdateSignatureVerifier,
   desktopReleaseChannel,
@@ -62,6 +63,7 @@ function harness(overrides = {}) {
     updatesEnabled: overrides.updatesEnabled ?? true,
     scheduler,
     checkIntervalMs: overrides.checkIntervalMs,
+    now: overrides.now || (() => Date.parse("2026-09-04T12:00:00.000Z")),
     verifyUpdateCodeSignature,
     prepareInstall() { calls.push("prepare"); },
     cancelInstall() { calls.push("cancel"); },
@@ -80,6 +82,8 @@ test("release channels accept stable or beta only and never cross streams", () =
   assert.equal(isUpdateVersionAllowed("1.2.3-beta.1", "1.2.3-beta.2"), true);
   assert.equal(isUpdateVersionAllowed("1.2.3-beta.1", "1.2.3"), false);
   assert.equal(desktopReleaseChannel(`1.2.3-beta.${"x".repeat(65)}`), null);
+  assert.equal(boundedDesktopVersion("1.2.3-beta.4"), "1.2.3-beta.4");
+  assert.equal(boundedDesktopVersion("PRIVATE_PATH_MUST_NOT_LEAK"), null);
 });
 
 test("downloaded Windows installers require the exact full certificate Subject DN", async () => {
@@ -141,7 +145,7 @@ test("a matching downloaded beta remains ready until explicit installation", asy
   assert.deepEqual(updater.calls, ["check", "download"]);
   updater.emit("update-downloaded", { version: "1.0.0-beta.2", releaseNotes: "COMMAND_MUST_NOT_LEAK" });
   await flush();
-  assert.deepEqual(controller.snapshot(), { status: "ready", version: "1.0.0-beta.2" });
+  assert.deepEqual(controller.snapshot(), { status: "ready", version: "1.0.0-beta.2", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   assert.equal(calls.includes("prepare"), false);
   assert.equal(controller.install(), true);
   assert.deepEqual(calls.filter((entry) => typeof entry === "string"), ["prepare"]);
@@ -168,7 +172,7 @@ test("install is unavailable before readiness and channel isolation remains enfo
   oversized.updater.emit("update-downloaded", { version: `1.0.0-beta.${"x".repeat(65)}` });
   await flush();
   assert.deepEqual(oversized.updater.calls, ["check"]);
-  assert.deepEqual(oversized.controller.snapshot(), { status: "failed", version: null });
+  assert.deepEqual(oversized.controller.snapshot(), { status: "failed", version: null, lastCheckedAt: "2026-09-04T12:00:00.000Z" });
 
   const failed = harness();
   await failed.controller.start();
@@ -187,7 +191,7 @@ test("installer launch failure restores normal runtime behavior deterministicall
   thrownUpdater.emit("update-downloaded", { version: "1.0.0-beta.2" });
   await flush();
   assert.equal(thrown.controller.install(), false);
-  assert.deepEqual(thrown.controller.snapshot(), { status: "ready", version: "1.0.0-beta.2" });
+  assert.deepEqual(thrown.controller.snapshot(), { status: "ready", version: "1.0.0-beta.2", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   assert.deepEqual(thrown.calls.filter((entry) => typeof entry === "string"), ["prepare", "cancel"]);
   assert.doesNotMatch(JSON.stringify(thrown.calls), /PRIVATE_INSTALLER_PATH_MUST_NOT_LEAK/);
 
@@ -197,7 +201,7 @@ test("installer launch failure restores normal runtime behavior deterministicall
   emitted.updater.emit("update-downloaded", { version: "1.0.0-beta.2" });
   await flush();
   assert.equal(emitted.controller.install(), false);
-  assert.deepEqual(emitted.controller.snapshot(), { status: "ready", version: "1.0.0-beta.2" });
+  assert.deepEqual(emitted.controller.snapshot(), { status: "ready", version: "1.0.0-beta.2", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   assert.deepEqual(emitted.calls.filter((entry) => typeof entry === "string"), ["prepare", "cancel"]);
   assert.doesNotMatch(JSON.stringify(emitted.calls), /CERTIFICATE_MUST_NOT_LEAK/);
 });
@@ -227,6 +231,71 @@ test("checks run at startup and every four hours without overlap", async () => {
   await flush();
   assert.equal(controller.snapshot().status, "idle");
   assert.equal(scheduler.timers.size, 1);
+});
+
+test("manual checks share an in-flight availability request and retain only successful check time", async () => {
+  let resolveCheck;
+  const updater = new FakeUpdater();
+  updater.checkForUpdates = function checkForUpdates() {
+    this.calls.push("check");
+    return this.calls.length === 1
+      ? Promise.resolve(null)
+      : new Promise((resolve) => { resolveCheck = resolve; });
+  };
+  const { controller } = harness({ updater, now: () => Date.parse("2026-09-04T12:34:56.000Z") });
+  await controller.start();
+  const firstManualCheck = controller.check();
+  const secondManualCheck = controller.check();
+  assert.equal(firstManualCheck, secondManualCheck);
+  await flush();
+  assert.deepEqual(updater.calls, ["check", "check"]);
+  assert.equal(controller.snapshot().status, "checking");
+  resolveCheck(null);
+  await firstManualCheck;
+  assert.deepEqual(controller.snapshot(), { status: "idle", version: null, lastCheckedAt: "2026-09-04T12:34:56.000Z" });
+
+  updater.checkForUpdates = async function failedCheck() { this.calls.push("check"); throw new Error("PRIVATE_UPDATE_FAILURE"); };
+  await controller.check();
+  assert.deepEqual(controller.snapshot(), { status: "failed", version: null, lastCheckedAt: "2026-09-04T12:34:56.000Z" });
+});
+
+test("synchronous check failures release manual retries without acquiring before startup or when disabled", async () => {
+  const preStart = harness();
+  await preStart.controller.check();
+  assert.deepEqual(preStart.updater.calls, []);
+
+  const disabled = harness({ packaged: false });
+  await disabled.controller.check();
+  assert.deepEqual(disabled.updater.calls, []);
+  assert.deepEqual(disabled.controller.snapshot(), { status: "disabled", version: null, lastCheckedAt: null });
+
+  const updater = new FakeUpdater();
+  updater.checkForUpdates = function checkForUpdates() {
+    this.calls.push("check");
+    if (this.calls.length === 1) throw new Error("PRIVATE_SYNCHRONOUS_FAILURE");
+    return Promise.resolve(null);
+  };
+  const { controller } = harness({ updater });
+  await controller.start();
+  assert.equal(controller.snapshot().status, "failed");
+  await controller.check();
+  assert.deepEqual(updater.calls, ["check", "check"]);
+  assert.deepEqual(controller.snapshot(), { status: "idle", version: null, lastCheckedAt: "2026-09-04T12:00:00.000Z" });
+});
+
+test("an updater error during a resolving check preserves the prior successful check timestamp", async () => {
+  let now = Date.parse("2026-09-04T12:00:00.000Z");
+  const updater = new FakeUpdater();
+  const { controller } = harness({ updater, now: () => now });
+  await controller.start();
+  now = Date.parse("2026-09-04T13:00:00.000Z");
+  updater.checkForUpdates = function errorThenResolve() {
+    this.calls.push("check");
+    this.emit("error", new Error("PRIVATE_UPDATER_EVENT"));
+    return Promise.resolve(null);
+  };
+  await controller.check();
+  assert.deepEqual(controller.snapshot(), { status: "failed", version: null, lastCheckedAt: "2026-09-04T12:00:00.000Z" });
 });
 
 test("periodic checks pause for downloads and verified updates, then stop on disposal", async () => {

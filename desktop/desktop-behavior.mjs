@@ -6,6 +6,7 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
   setNotifications: "pomegr:set-notifications",
   setNotificationQuiet: "pomegr:set-notification-quiet",
   setDisplayPreference: "pomegr:set-display-preference",
+  checkForUpdates: "pomegr:check-for-updates",
   installUpdate: "pomegr:install-update",
   quit: "pomegr:quit",
   setTheme: "pomegr:set-native-theme",

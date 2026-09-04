@@ -33,6 +33,7 @@ export function installDesktopBehaviorIpcHandlers(options) {
     channels.setNotifications,
     channels.setNotificationQuiet,
     channels.setDisplayPreference,
+    channels.checkForUpdates,
     channels.installUpdate,
     channels.setTheme,
     channels.quit,
@@ -52,6 +53,11 @@ export function installDesktopBehaviorIpcHandlers(options) {
     ? boundedDesktopMutation(getController, (controller) => controller.setNotificationQuiet(value)) : null);
   ipcMain.handle(channels.setDisplayPreference, (event, key, visible) => trusted(event)
     ? boundedDesktopMutation(getController, (controller) => controller.setDisplayPreference(key, visible)) : null);
+  ipcMain.handle(channels.checkForUpdates, async (event) => {
+    if (!trusted(event)) return null;
+    try { await options.getUpdater?.()?.check(); } catch { /* The bounded snapshot reports the recoverable state. */ }
+    return getController()?.snapshot() || null;
+  });
   ipcMain.handle(channels.installUpdate, async (event) => {
     if (!trusted(event)) return null;
     try { await options.getUpdater?.()?.install(); } catch { /* The bounded snapshot reports the recoverable state. */ }

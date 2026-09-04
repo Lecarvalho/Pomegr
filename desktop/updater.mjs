@@ -83,13 +83,21 @@ export function isUpdateVersionAllowed(currentVersion, candidateVersion) {
   return currentChannel !== null && desktopReleaseChannel(candidateVersion) === currentChannel;
 }
 
-function boundedUpdateState(status, version = null) {
+export function boundedDesktopVersion(version) {
   const normalizedVersion = String(version || "");
+  return normalizedVersion.length <= MAX_SAFE_VERSION_LENGTH && SAFE_VERSION.test(normalizedVersion)
+    ? normalizedVersion
+    : null;
+}
+
+function boundedUpdateState(status, version = null, lastCheckedAt = null) {
+  const normalizedLastCheckedAt = typeof lastCheckedAt === "string" && Number.isFinite(Date.parse(lastCheckedAt))
+    ? lastCheckedAt
+    : null;
   return Object.freeze({
     status: DESKTOP_UPDATE_STATES.includes(status) ? status : "failed",
-    version: normalizedVersion.length <= MAX_SAFE_VERSION_LENGTH && SAFE_VERSION.test(normalizedVersion)
-      ? normalizedVersion
-      : null,
+    version: boundedDesktopVersion(version),
+    lastCheckedAt: normalizedLastCheckedAt,
   });
 }
 
@@ -103,7 +111,8 @@ export function createDesktopUpdaterController(options) {
     && options.mode === "installed"
     && options.updatesEnabled === true
     && desktopReleaseChannel(options.currentVersion) !== null;
-  let state = boundedUpdateState(enabled ? "idle" : "disabled");
+  let lastCheckedAt = null;
+  let state = boundedUpdateState(enabled ? "idle" : "disabled", null, lastCheckedAt);
   let started = false;
   let disposed = false;
   let installing = false;
@@ -126,7 +135,7 @@ export function createDesktopUpdaterController(options) {
     checkTimer?.unref?.();
   };
   const setState = (status, version = null) => {
-    state = boundedUpdateState(status, version);
+    state = boundedUpdateState(status, version, lastCheckedAt);
     options.onState?.(state);
     scheduleCheck();
     return state;
@@ -142,22 +151,35 @@ export function createDesktopUpdaterController(options) {
     if (!disposed && readyVersion) setState("ready", readyVersion);
   };
 
-  async function check() {
-    if (checkPromise || disposed || (state.status !== "idle" && state.status !== "failed")) return checkPromise;
+  const successfulCheckTimestamp = () => {
+    const timestamp = options.now ? options.now() : Date.now();
+    if (!Number.isFinite(timestamp)) return null;
+    const date = new Date(timestamp);
+    return Number.isFinite(date.valueOf()) ? date.toISOString() : null;
+  };
+
+  function check() {
+    if (checkPromise) return checkPromise;
+    if (!started || disposed || (state.status !== "idle" && state.status !== "failed")) return Promise.resolve(state);
     clearScheduledCheck();
     setState("checking");
-    checkPromise = (async () => {
-      try {
-        await updater.checkForUpdates();
-        if (!disposed && state.status === "checking") setState("idle");
-      } catch {
-        if (!disposed && state.status === "checking") setState("failed");
-      } finally {
-        checkPromise = null;
+    const operation = Promise.resolve()
+      .then(() => updater.checkForUpdates())
+      .then(
+        () => {
+          if (disposed || state.status === "failed") return;
+          lastCheckedAt = successfulCheckTimestamp() || lastCheckedAt;
+          if (state.status === "checking") setState("idle");
+          else setState(state.status, state.version);
+        },
+        () => { if (!disposed && state.status === "checking") setState("failed"); },
+      )
+      .finally(() => {
+        if (checkPromise === operation) checkPromise = null;
         scheduleCheck();
-      }
-      return state;
-    })();
+      })
+      .then(() => state);
+    checkPromise = operation;
     return checkPromise;
   }
 
@@ -219,6 +241,7 @@ export function createDesktopUpdaterController(options) {
       await check();
       return state;
     },
+    check,
     install,
     dispose() {
       disposed = true;

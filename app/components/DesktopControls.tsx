@@ -1,4 +1,5 @@
 export type DesktopState = {
+  applicationVersion?: string | null;
   paused: boolean;
   launchAtLogin: boolean;
   launchAtLoginAvailable: boolean;
@@ -12,6 +13,7 @@ export type DesktopState = {
   update?: {
     status: "disabled" | "idle" | "checking" | "downloading" | "ready" | "installing" | "failed";
     version: string | null;
+    lastCheckedAt?: string | null;
   };
 };
 

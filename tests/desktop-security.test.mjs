@@ -237,9 +237,10 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     removeHandler(channel) { handlers.delete(channel); },
     handle(channel, handler) { handlers.set(channel, handler); },
   };
-  const safeState = Object.freeze({ paused: false, update: Object.freeze({ status: "ready", version: "1.2.3" }) });
+  const safeState = Object.freeze({ paused: false, applicationVersion: "1.2.2", update: Object.freeze({ status: "ready", version: "1.2.3", lastCheckedAt: "2026-09-04T12:00:00.000Z" }) });
   let updateInstalls = 0;
-  const updater = { async install() { updateInstalls += 1; } };
+  let updateChecks = 0;
+  const updater = { async check() { updateChecks += 1; }, async install() { updateInstalls += 1; } };
   const controller = {
     snapshot: () => safeState,
     setPaused() { throw new Error("PROMPT_MUST_NOT_LEAK"); },
@@ -259,7 +260,7 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     getUpdater: () => updater,
     themeHandler: () => false,
   });
-  assert.equal(registered.length, 10);
+  assert.equal(registered.length, 11);
   for (const channel of [
     DESKTOP_BEHAVIOR_CHANNELS.setPaused,
     DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
@@ -271,6 +272,10 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     assert.deepEqual(await handlers.get(channel)(trustedEvent, true), safeState);
     assert.equal(await handlers.get(channel)({}, true), null);
   }
+  assert.deepEqual(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.checkForUpdates)(trustedEvent), safeState);
+  assert.equal(updateChecks, 1);
+  assert.equal(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.checkForUpdates)({}), null);
+  assert.equal(updateChecks, 1);
   assert.deepEqual(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.installUpdate)(trustedEvent), safeState);
   assert.equal(updateInstalls, 1);
   assert.equal(await handlers.get(DESKTOP_BEHAVIOR_CHANNELS.installUpdate)({}), null);
@@ -289,6 +294,7 @@ test("desktop bridge and runtime reject the removed legacy namespace", async () 
   const sources = `${preload}\n${behavior}\n${environment}\n${shell}`.toLowerCase();
   assert.equal(sources.includes(legacy), false);
   assert.match(preload, /exposeInMainWorld\("pomegrDesktop"/);
+  assert.match(preload, /checkForUpdates\(\)\s*\{\s*return ipcRenderer\.invoke\("pomegr:check-for-updates"\);/);
   assert.match(behavior, /pomegr:desktop-state/);
   assert.match(environment, /POMEGR_DATA_DIR/);
 });

@@ -171,6 +171,8 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSettingsNav { padding: 10px; border-right: 1px solid var(--command-line); }
 .commandSettingsNav button { width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; font-size: var(--text-xs); text-align: left; }
 .commandSettingsNav button:hover, .commandSettingsNav button.active { background: var(--command-panel-2); color: var(--command-ink); }
+.commandUpdateDot { display: inline-block; width: 6px; height: 6px; margin-left: var(--space-2); border-radius: 50%; background: var(--command-green); vertical-align: middle; }
+.commandUpdateRow button { white-space: nowrap; }
 .commandSettingsPane { padding: 20px; }
 .commandSettingsPane h2 { margin: 0; font-size: var(--text-base); }
 .commandSettingsPane > p { margin: 8px 0 18px; color: var(--command-muted); font-size: var(--text-xs); }
@@ -295,6 +297,8 @@ html[data-theme="dark"] body { background: var(--paper); }
 }
 
 @media (max-width: 520px) {
+  .commandUpdateRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  .commandUpdateRow button { justify-self: start; min-height: 44px; }
   .commandHeaderTools { gap: 0; }
   .commandIconButton { width: 44px; height: 44px; }
   .commandProfileButton { width: 44px; height: 44px; }
