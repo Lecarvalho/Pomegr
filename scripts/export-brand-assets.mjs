@@ -56,7 +56,8 @@ for (const directoryName of ["public", "landing/public"]) {
 }
 await mkdir(path.join(projectRoot, "build"), { recursive: true });
 await Promise.all([
-  renderLogo(1024).toFile(path.join(projectRoot, "build", "icon.png")),
+  // Native icons need a fuller silhouette at taskbar/tray sizes than web logos.
+  renderLogo(1024, 16).toFile(path.join(projectRoot, "build", "icon.png")),
   renderLogo(1024).toFile(path.join(projectRoot, "landing", "public", "landing", "brand", "pomegr-stackshare-logo-v4-highlight.png")),
   renderLogo(1024).toFile(path.join(projectRoot, "assets", "brand", "pomegr-logo.png")),
 ]);
