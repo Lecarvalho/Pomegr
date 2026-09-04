@@ -14,7 +14,7 @@ Use these exact artifact names when evidence is collected:
 
 The 0.0.9 artifact name and version are retained only as historical prior-fixture facts. They are not evidence that the Pomegr 0.2.0 candidate was built, signed, installed, upgraded, or accepted.
 
-The Pomegr 0.2.0 candidate must come from the intended signed release workflow. Before copying artifacts to the VM, record their byte sizes and SHA-256 hashes in a separate acceptance record, verify the Windows publisher is Leandro Carvalho, and compare the VM copies with that record. Do not bypass SmartScreen, disable it globally, accept an unsigned candidate, or continue when any signature, size, hash, filename, version, or source differs.
+The Pomegr 0.2.0 candidate must come from the intended signed release workflow. Before copying artifacts to the VM, record their byte sizes and SHA-256 hashes in a separate acceptance record, verify the Windows publisher is DSNK Technologie Inc, and compare the VM copies with that record. Do not bypass SmartScreen, disable it globally, accept an unsigned candidate, or continue when any signature, size, hash, filename, version, or source differs.
 
 ### Candidate artifact evidence
 

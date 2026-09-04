@@ -75,14 +75,25 @@ Do not publish locally built executables or manually replace release assets. Cor
 
 ## Signing configuration
 
-The repository release environment must define these GitHub Actions secrets:
+Pomegr release signing uses Azure Artifact Signing with GitHub OpenID Connect (OIDC). The certificate and private key remain in Microsoft's managed signing service; GitHub stores no certificate file, certificate password, Azure client secret, or long-lived signing credential.
 
-- `WINDOWS_CODESIGN_CERTIFICATE`: the encrypted or base64-encoded Windows code-signing certificate accepted by electron-builder as `CSC_LINK`.
-- `WINDOWS_CODESIGN_PASSWORD`: its password, passed to electron-builder as `CSC_KEY_PASSWORD`.
+Create a GitHub environment named `release`, then create a Microsoft Entra application and a GitHub Actions federated credential for the `release` environment. Use the immutable organization and repository IDs requested by the Azure portal and retain its generated subject identifier. Assign that application's service principal the `Artifact Signing Certificate Profile Signer` role on the Pomegr Artifact Signing account. Do not assign Owner or Contributor for signing.
 
-It must also define the non-secret GitHub Actions repository variable `WINDOWS_PUBLISHER_SUBJECT` as the certificate's complete canonical Subject distinguished name exactly as PowerShell reports it, including `CN=` and every organization, locality, state, country, and other Subject component in the same order. Example structure: `CN=Leandro Carvalho, O=Example Organization, L=Toronto, S=Ontario, C=CA`. Copy the actual value from the issued certificate; do not use the example.
+The `release` environment must define these non-secret GitHub Actions variables:
 
-The certificate's common name must be `Leandro Carvalho`. The checked-in package configuration uses that CN as a non-release development fallback, while the release workflow replaces the updater publisher value with `WINDOWS_PUBLISHER_SUBJECT`. The resulting installed `app-update.yml` therefore carries the complete Subject DN. Before accepting a downloaded installer, Pomegr independently requires one full DN and compares the valid Authenticode signer's Subject exactly (case-insensitively) with it; a CN-only value is rejected. CI applies the same complete Subject comparison to every executable and also requires a trusted timestamp. The workflow fails if either secret or the required Subject variable is absent, electron-builder cannot sign, any executable has an invalid signature, the full Subject differs, or a trusted timestamp is absent. Certificate material and passwords must never be stored in the repository, copied into artifacts, supplied on a command line, or printed while diagnosing a failed build. Rotate a compromised certificate and revoke it through the issuing certificate authority before attempting another release.
+- `AZURE_CLIENT_ID`: the Application (client) ID of the Microsoft Entra application trusted by the `release` environment.
+- `AZURE_TENANT_ID`: the Directory (tenant) ID containing that application.
+- `AZURE_SUBSCRIPTION_ID`: the subscription containing the Artifact Signing account.
+- `ARTIFACT_SIGNING_ENDPOINT`: the endpoint matching the Artifact Signing account region, such as `https://eus.codesigning.azure.net/` for East US.
+- `ARTIFACT_SIGNING_ACCOUNT_NAME`: the Artifact Signing account name.
+- `ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME`: the Public Trust certificate profile name.
+- `WINDOWS_PUBLISHER_SUBJECT`: the certificate's complete canonical Subject distinguished name exactly as shown by the certificate profile preview and later reported by PowerShell, including `CN=` and every organization, locality, state, country, and other Subject component in the same order. Example structure: `CN=Example Organization Inc, O=Example Organization Inc, L=Toronto, S=Ontario, C=CA`. Copy the actual value from the issued certificate; do not use the example.
+
+These IDs and resource names identify the federation and signing resources but do not authenticate by themselves. The Entra federated credential restricts token exchange to the immutable GitHub repository identity and its `release` environment. Never create or store an `AZURE_CLIENT_SECRET` for this workflow.
+
+The release-only electron-builder configuration signs the unpacked application, NSIS installer, and portable executable through Azure and writes the same complete Subject DN into the updater metadata. Before accepting a downloaded installer, Pomegr independently requires one full DN and compares the valid Authenticode signer's Subject exactly (case-insensitively) with it; a CN-only value is rejected. CI applies the same complete Subject comparison to every executable and also requires a trusted timestamp. The workflow fails if its OIDC identifiers or Artifact Signing variables are absent, the endpoint is malformed, Azure authentication or signing fails, any executable has an invalid signature, the full Subject differs, or a trusted timestamp is absent. Rotate a compromised GitHub federation or Microsoft Entra application authorization immediately; the Artifact Signing certificate itself remains non-exportable and managed by Microsoft.
+
+Run the workflow manually before the first release or after changing its signing configuration. A manual run executes the complete verifier, builds and signs every Windows artifact, inspects the package privacy boundary, and verifies the publisher and timestamp, but skips release-note generation and every GitHub release publication step. A tag-triggered run retains the same gates and publishes only after they pass.
 
 ## Release contents and integrity
 
@@ -110,7 +121,7 @@ Record the two versions, VM image/version, workflow run URLs, hashes, signature 
 Run every candidate through Pomegr's production Authenticode verifier. Set the expected complete publisher Subject only in the process environment; the command prints no path or certificate identity:
 
 ```powershell
-$env:WINDOWS_PUBLISHER_SUBJECT = "CN=Leandro Carvalho, O=YOUR ACTUAL ORGANIZATION, C=YOUR COUNTRY"
+$env:WINDOWS_PUBLISHER_SUBJECT = "CN=YOUR COMMON NAME, O=YOUR ORGANIZATION, L=YOUR CITY, S=YOUR STATE OR PROVINCE, C=YOUR COUNTRY"
 
 npm run desktop:update:verify-signature -- --file .\Pomegr-Setup-X.Y.Z-beta.N-x64.exe --expect accepted
 npm run desktop:update:verify-signature -- --file .\unsigned-negative-fixture.exe --expect rejected-unsigned

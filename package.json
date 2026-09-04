@@ -227,7 +227,7 @@
       "icon": "build/icon.png",
       "requestedExecutionLevel": "asInvoker",
       "signtoolOptions": {
-        "publisherName": "Leandro Carvalho"
+        "publisherName": "DSNK Technologie Inc"
       },
       "verifyUpdateCodeSignature": true,
       "legalTrademarks": "Pomegr"
