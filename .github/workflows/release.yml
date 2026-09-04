@@ -74,6 +74,7 @@ jobs:
 
       - name: Run canonical verifier and desktop extension
         run: |
+          npm run desktop:runtime
           npm run verify
           npm run verify:desktop:ci
 
