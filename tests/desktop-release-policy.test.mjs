@@ -231,13 +231,14 @@ test("release preparation requires a clean exact tag and emits a closed checksum
 });
 
 test("release workflow fails closed around signing, drafts, and exact-source publication", async () => {
-  const [workflow, releaseBuilderConfig, signatureVerifier, preparer, documentation] = await Promise.all([
+  const [workflowSource, releaseBuilderConfig, signatureVerifier, preparer, documentation] = await Promise.all([
     readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"),
     readFile(new URL("../desktop/electron-builder.release.cjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/verify-signature.ps1", import.meta.url), "utf8"),
     readFile(new URL("../desktop/prepare-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
   ]);
+  const workflow = workflowSource.replaceAll("\r\n", "\n");
   assert.equal(POMEGR_WINDOWS_PUBLISHER, "DSNK Technologie Inc");
   assert.match(workflow, /runs-on: windows-2022/);
   assert.doesNotMatch(workflow, /runs-on: windows-latest/);
