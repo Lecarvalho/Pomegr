@@ -65,7 +65,7 @@ The manual GitHub Actions workflow packages an existing tag. It does not choose 
    npm version X.Y.Z --no-git-tag-version
    ```
 
-   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Review both changes and update any candidate-specific acceptance document, fixture, or test that intentionally names the previous desktop version.
+   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Then replace the previous candidate version in `desktop/build-acceptance-prior.mjs`, `docs/DESKTOP_CLEAN_VM_CHECKLIST.md`, and the clean-VM fixture assertions in `tests/desktop-packaging.test.mjs`. These release-specific safeguards intentionally fail CI when only the package files were bumped.
 4. Run the applicable pre-release quality gates from the [release checklist](#release-checklist). Commit the complete release-preparation change, open a pull request, and merge it into `main`. Do not create the release tag on the feature branch because the pull-request merge produces the commit that must be released.
 5. Update local `main` after the merge and verify the canonical version and clean release point:
 

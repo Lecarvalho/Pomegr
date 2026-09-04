@@ -250,7 +250,7 @@ test("clean-VM upgrade fixture is isolated, test-only, and preserves candidate m
     readFile(new URL("../.gitignore", import.meta.url), "utf8"),
   ]);
   const packageJson = JSON.parse(packageText);
-  assert.equal(packageJson.version, "0.2.1");
+  assert.equal(packageJson.version, "0.2.3");
   assert.equal(ACCEPTANCE_PRIOR_VERSION, "0.0.9");
   assert.equal(ACCEPTANCE_PRIOR_OUTPUT, "release-acceptance");
   assert.equal(ACCEPTANCE_PRIOR_ARTIFACT, "Pomegr-TestOnly-Prior-0.0.9-x64.exe");
@@ -262,13 +262,13 @@ test("clean-VM upgrade fixture is isolated, test-only, and preserves candidate m
   assert.match(inspector, /assertPackagedApplicationFiles/);
   assert.match(gitignore, /^\/release-acceptance\/$/m);
   assert.match(checklist, /Pomegr-TestOnly-Prior-0\.0\.9-x64\.exe/);
-  assert.match(checklist, /Pomegr-Setup-0\.2\.1-x64\.exe/);
-  assert.match(checklist, /Pomegr-Portable-0\.2\.1-x64\.exe/);
+  assert.match(checklist, /Pomegr-Setup-0\.2\.3-x64\.exe/);
+  assert.match(checklist, /Pomegr-Portable-0\.2\.3-x64\.exe/);
   assert.match(checklist, /SmartScreen/);
   assert.match(checklist, /POMEGR-DT-08/);
   assert.match(checklist, /Acceptance status\s+\*\*PENDING:/);
-  assert.match(checklist, /contains no Pomegr 0\.2\.1 PASS claim/);
-  assert.match(checklist, /prior-only input, not Pomegr 0\.2\.1 proof/);
+  assert.match(checklist, /contains no Pomegr 0\.2\.3 PASS claim/);
+  assert.match(checklist, /prior-only input, not Pomegr 0\.2\.3 proof/);
   assert.doesNotMatch(checklist, /- \[x\]/i);
   assert.doesNotMatch(checklist, /\|\s*Result\s*\|\s*PASS\s*\|/i);
   assert.doesNotMatch(checklist, /\b[A-F0-9]{64}\b/);

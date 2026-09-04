@@ -12,7 +12,7 @@ import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "./
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
 assertPomegrDt08PackagingScope(packageJson);
-if (packageJson.version !== "0.2.1" || ACCEPTANCE_PRIOR_VERSION !== "0.0.9") {
+if (packageJson.version !== "0.2.3" || ACCEPTANCE_PRIOR_VERSION !== "0.0.9") {
   throw new Error("DESKTOP_ACCEPTANCE_PRIOR_VERSION_PAIR_INVALID");
 }
 
