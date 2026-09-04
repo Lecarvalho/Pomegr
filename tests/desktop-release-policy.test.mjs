@@ -268,9 +268,10 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(releaseBuilderConfig, /azureSignOptions:/);
   assert.match(releaseBuilderConfig, /timestampRfc3161: "http:\/\/timestamp\.acs\.microsoft\.com"/);
   const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm run verify", "npm run verify:desktop:ci"]) {
+  for (const command of ["npm run desktop:runtime", "npm run verify", "npm run verify:desktop:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
+  assert.ok(qualityStep.indexOf("npm run desktop:runtime") < qualityStep.indexOf("npm run verify"));
   assert.match(workflow, /verify-signature\.ps1/);
   assert.match(workflow, /gh release create[^\n]+--draft/);
   assert.match(workflow, /verify-assets/);
