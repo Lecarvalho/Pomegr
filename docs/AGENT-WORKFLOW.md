@@ -38,7 +38,7 @@ from scratch.
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
 `BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so the
-tag-triggered release workflow uses `npm run verify:desktop:ci`: it exercises the packaged
+manually dispatched release workflow uses `npm run verify:desktop:ci`: it exercises the packaged
 Electron main process, ASAR/native runtime, loopback services, provider discovery, APIs,
 privacy checks, and shutdown without constructing an Electron renderer. The canonical UI
 and desktop-security suites remain part of that workflow, while the full sandboxed preload,
@@ -46,8 +46,9 @@ renderer, and `BrowserWindow` smoke remains a local or interactive-VM release ac
 requirement.
 
 PR/main GitHub Actions verification is intentionally paused. Run `npm run verify` and the
-applicable desktop command locally before pushing. The tag-only Windows release workflow
-remains available for explicitly created release tags.
+applicable desktop command locally before pushing. Creating or pushing a tag does not start
+the Windows release workflow; dispatch it manually with the existing release tag only after
+the candidate is ready to package and publish.
 
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry

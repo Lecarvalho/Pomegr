@@ -1,6 +1,6 @@
 # Pomegr desktop releases
 
-Official Pomegr Windows releases are built only by the tag-triggered GitHub Actions workflow from a clean checkout of the tagged commit. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
+Official Pomegr Windows releases are built only by a manually dispatched GitHub Actions workflow from a clean checkout of an existing tagged commit. Creating or pushing a tag does not start packaging or publication. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
 
 ## Package and publish
 
@@ -19,7 +19,7 @@ npm run desktop:package
 npm run desktop:inspect
 ```
 
-The command prepares the desktop runtime, builds the web application, and creates the NSIS installer and portable executable under `release/`. These local artifacts are for development and acceptance testing only; do not publish them or manually substitute them for artifacts produced and signed by the tag-triggered release workflow.
+The command prepares the desktop runtime, builds the web application, and creates the NSIS installer and portable executable under `release/`. These local artifacts are for development and acceptance testing only; do not publish them or manually substitute them for artifacts produced and signed by the manually dispatched release workflow.
 
 Before running the manual commands, move any existing `release/` directory aside. The finalizer intentionally rejects stale artifacts and portable data so only the current allowlisted output can remain in the release directory.
 
@@ -56,8 +56,9 @@ The helper handles the usual repository-owned lock holders automatically. Use th
 1. Start from a clean working tree and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
 2. Run `npm version X.Y.Z --no-git-tag-version`, substituting the chosen version. This updates `package.json` and `package-lock.json` without creating a tag.
 3. Run the applicable pre-release quality gates from the [release checklist](#release-checklist), commit the version change, and create the matching annotated `vX.Y.Z` or `vX.Y.Z-beta.N` tag on that commit.
-4. Push the commit, then push the tag. The tag starts `.github/workflows/release.yml`, which rebuilds from the clean tagged checkout, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact asset set, and publishes it.
-5. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
+4. Push the commit, then push the tag. A tag push does not start the release workflow.
+5. When that tagged candidate is ready to package and publish, open **Actions → Windows release**, select **Run workflow**, keep the workflow source on the default branch, and enter the existing release tag in the required **tag** field. The workflow rebuilds from the clean tagged checkout, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact asset set, and publishes it.
+6. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
 
 Do not publish locally built executables or manually replace release assets. Correct a failed or broken release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
 
@@ -93,7 +94,7 @@ These IDs and resource names identify the federation and signing resources but d
 
 The release-only electron-builder configuration signs the unpacked application, NSIS installer, and portable executable through Azure and writes the same complete Subject DN into the updater metadata. Before accepting a downloaded installer, Pomegr independently requires one full DN and compares the valid Authenticode signer's Subject exactly (case-insensitively) with it; a CN-only value is rejected. CI applies the same complete Subject comparison to every executable and also requires a trusted timestamp. The workflow fails if its OIDC identifiers or Artifact Signing variables are absent, the endpoint is malformed, Azure authentication or signing fails, any executable has an invalid signature, the full Subject differs, or a trusted timestamp is absent. Rotate a compromised GitHub federation or Microsoft Entra application authorization immediately; the Artifact Signing certificate itself remains non-exportable and managed by Microsoft.
 
-Run the workflow manually before the first release or after changing its signing configuration. A manual run executes the complete verifier, builds and signs every Windows artifact, inspects the package privacy boundary, and verifies the publisher and timestamp, but skips release-note generation and every GitHub release publication step. A tag-triggered run retains the same gates and publishes only after they pass.
+The workflow runs only through `workflow_dispatch`. Select **Run workflow** and provide an existing release tag only when the candidate is ready to package and publish. The manual run executes the complete verifier, builds and signs every Windows artifact, inspects the package privacy boundary, verifies the publisher and timestamp, generates the exact source and checksums, creates a draft release, verifies its remote asset set, and then publishes it. Tag creation and tag pushes never start this workflow.
 
 ## Release contents and integrity
 
