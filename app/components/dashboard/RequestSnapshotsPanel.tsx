@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEv
 import type { Agent, CacheEvent, MonitorState, RequestSnapshot } from "../../../shared/monitor-contract";
 import { agentDisplayLabel, compactNumber, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
+import { CommandSelect } from "../command-center/CommandPage";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
 type SnapshotComponent = "uncachedInputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens";
@@ -312,14 +313,14 @@ export function RequestSnapshotsPanel({ agents, requestSnapshots, cacheEvents, c
         </div>
         <label className="contextScopeControl">
           <span>Scope</span>
-          <select aria-label="Request scope" value={resolvedScope} onChange={(event) => {
+          <CommandSelect aria-label="Request scope" value={resolvedScope} onChange={(event) => {
             setScope(event.target.value);
             clearInspection();
             setShowAllEvents(false);
           }}>
             {agents.map((agent) => <option value={agent.id} key={agent.id}>{agentDisplayLabel(agent)}</option>)}
             <option value={ALL_AGENTS_SCOPE}>All agents</option>
-          </select>
+          </CommandSelect>
         </label>
       </div>
 

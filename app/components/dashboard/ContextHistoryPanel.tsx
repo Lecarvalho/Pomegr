@@ -4,6 +4,7 @@ import { useId, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { Agent, ContextHistoryBoundary, MonitorState } from "../../../shared/monitor-contract";
 import { agentDisplayLabel, compactNumber, formatBucketDuration, timelineTime } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
+import { CommandSelect } from "../command-center/CommandPage";
 
 type TokenMetrics = MonitorState["metrics"]["tokens"];
 type HistoryBucket = TokenMetrics["contextHistory"]["buckets"][number];
@@ -151,13 +152,13 @@ export function ContextHistoryPanel({ agents, tokens, historical }: {
         </div>
         <label className="contextScopeControl">
           <span>Scope</span>
-          <select aria-label="Context scope" value={resolvedScope} onChange={(event) => {
+          <CommandSelect aria-label="Context scope" value={resolvedScope} onChange={(event) => {
             setScope(event.target.value);
             setActivePointIndex(null);
           }}>
             {agents.map((agent) => <option value={agent.id} key={agent.id}>{agentDisplayLabel(agent)}</option>)}
             <option value={ALL_AGENTS_SCOPE}>All agents (snapshot sum)</option>
-          </select>
+          </CommandSelect>
         </label>
       </div>
 
