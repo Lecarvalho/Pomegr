@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font: 14px/1.5 "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #edf0f3; text-decoration: underline; }
+    .num { font-family: "Geist Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .label { color: #7d8590; font: 500 11px/1.4 "Inter", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; background: #23272d; color: #a8afb9; font: 500 12px/1 "Inter", sans-serif; white-space: nowrap; }
+    .chip.on { border-color: #697482; color: #edf0f3; }
+    .btn { min-height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #a8afb9; font: 500 13px/1 "Inter", sans-serif; }
+    .node { position: absolute; width: 220px; height: 74px; padding: 10px 12px; box-sizing: border-box; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 4px 10px; border: 1px solid #4a525c; border-radius: 4px; background: #23272d; }
+    .node svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: #a8afb9; }
+    .node strong { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; font-weight: 600; line-height: 1.3; }
+    .node em { display: block; color: #7d8590; font: 11px/1.3 "Inter", sans-serif; font-style: normal; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .node b { color: #bbb3d3; font: 500 16px/1 "Geist Mono", Consolas, monospace; text-align: right; }
+    .node .st { grid-column: 2 / -1; display: flex; justify-content: space-between; color: #7d8590; font: 500 11px/1 "Inter", sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+    .node.finished { border-color: #3a4048; } .node.finished b { color: #a8afb9; }
+    .node.idle { border-style: dashed; }
+    .node.focus { border-color: #e58b80; box-shadow: 0 0 0 1px #e58b80; background: #2a2224; }
+    .node.focus .st { color: #e58b80; }
+    .node.cluster { height: 58px; grid-template-rows: auto; border-style: dashed; border-color: #697482; background: #1b1e23; }
+    .node.cluster b { font-size: 12px; color: #a8afb9; }
+    .node.attention { border-color: #e3b575; }
+    .node.attention .st { color: #e3b575; }
+    .link { fill: none; stroke: #4a525c; stroke-width: 1; }
+    .link.hot { stroke: #e58b80; stroke-width: 1.5; }
+    .badge { position: absolute; top: -9px; left: 10px; padding: 2px 6px; border: 1px solid #333941; border-radius: 4px; background: #191c20; color: #7d8590; font: 500 10px/1.2 "Inter", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+  </style>
+</helmet>
+
+<div style="width: 1156px; min-height: 760px; padding: 24px; box-sizing: border-box; background: #111315; color: #edf0f3; font-family: Inter, system-ui, sans-serif;">
+  <div style="border: 1px solid #333941; border-radius: 6px; background: #191c20; overflow: hidden;">
+    <div style="min-height: 52px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #333941;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <a href="#" style="display: inline-flex; align-items: center; gap: 6px; color: #a8afb9; font-size: 13px;"><svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 6l-6 6 6 6"></path></svg>Agent activity</a>
+        <span style="color: #4c535c;">/</span>
+        <h2 style="margin: 0; font: 600 16px/1.5 Inter, sans-serif;">Tree · focused on gate:bono:r1</h2>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span class="chip on">Ancestors</span><span class="chip">Whole session</span>
+        <span style="width: 1px; height: 20px; background: #333941; margin: 0 6px;"></span>
+        <button class="btn" type="button">Fit</button><button class="btn" type="button">−</button><button class="btn" type="button">+</button>
+      </div>
+    </div>
+    <div style="padding: 10px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #333941; color: #a8afb9; font-size: 12px;">
+      <span><span class="num" style="color: #edf0f3;">49</span> agents · <span class="num" style="color: #edf0f3;">3</span> workflows</span>
+      <span style="color: #4c535c;">·</span>
+      <span>Siblings outside the focus path are clustered. Click a cluster to expand it.</span>
+      <span style="flex: 1;"></span>
+      <span style="display: flex; align-items: center; gap: 14px;"><span><i style="display: inline-block; width: 12px; height: 8px; border: 1px solid #e58b80; border-radius: 2px; vertical-align: -1px; margin-right: 6px;"></i>focus</span><span><i style="display: inline-block; width: 12px; height: 8px; border: 1px dashed #697482; border-radius: 2px; vertical-align: -1px; margin-right: 6px;"></i>cluster</span><span><i style="display: inline-block; width: 12px; height: 8px; border: 1px solid #e3b575; border-radius: 2px; vertical-align: -1px; margin-right: 6px;"></i>signal</span></span>
+    </div>
+
+    <div style="position: relative; height: 560px; padding: 0; overflow: hidden; background: radial-gradient(#1b1e23 1px, transparent 1px); background-size: 20px 20px;">
+      <svg viewBox="0 0 1114 560" style="position: absolute; inset: 0; width: 1114px; height: 560px;" aria-hidden="true">
+        <!-- primary -> direct cluster / workflows -->
+        <path class="link" d="M557 106 C557 128 200 128 200 166"></path>
+        <path class="link" d="M557 106 C557 128 420 128 420 166"></path>
+        <path class="link hot" d="M557 106 C557 128 640 128 640 166"></path>
+        <path class="link" d="M557 106 C557 128 880 128 880 166"></path>
+        <!-- gate:bono -> phases -->
+        <path class="link" d="M640 240 C640 262 470 262 470 300"></path>
+        <path class="link hot" d="M640 240 C640 262 700 262 700 300"></path>
+        <path class="link" d="M640 240 C640 262 920 262 920 300"></path>
+        <!-- Gatekeeper phase -> siblings + focus -->
+        <path class="link" d="M700 374 C700 396 470 396 470 434"></path>
+        <path class="link hot" d="M700 374 C700 396 700 396 700 434"></path>
+        <path class="link" d="M700 374 C700 396 930 396 930 434"></path>
+      </svg>
+
+      <!-- Level 0 -->
+      <div class="node idle" style="left: 447px; top: 32px;">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"></circle><circle cx="5" cy="19" r="2"></circle><circle cx="19" cy="19" r="2"></circle><path d="M12 7v5M12 12l-6 5M12 12l6 5"></path></svg>
+        <div><strong>Primary agent</strong><em>orchestrator · claude-fable-5-1</em></div><b>210.4K</b>
+        <span class="st"><span>Idle</span><span class="num">4h 29m</span></span>
+      </div>
+
+      <!-- Level 1 -->
+      <div class="node cluster" style="left: 90px; top: 166px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>Direct subagents</strong><em>5 finished · 352.9K</em></div><b>expand</b>
+      </div>
+      <div class="node cluster" style="left: 310px; top: 166px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>Workflow · fix:r1</strong><em>11 finished · 1.3M</em></div><b>expand</b>
+      </div>
+      <div class="node finished" style="left: 530px; top: 166px;">
+        <span class="badge">Workflow</span>
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"></path></svg>
+        <div><strong>gate:bono</strong><em>3 phases · 13 agents</em></div><b>1.1M</b>
+        <span class="st"><span>Completed</span><span class="num">12m</span></span>
+      </div>
+      <div class="node cluster" style="left: 770px; top: 166px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>Workflow · verify</strong><em>9 idle · 5 finished · 1.6M</em></div><b>expand</b>
+      </div>
+
+      <!-- Level 2: phases -->
+      <div class="node cluster" style="left: 360px; top: 300px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>Phase · Implement</strong><em>4 finished · 452K</em></div><b>expand</b>
+      </div>
+      <div class="node finished" style="left: 590px; top: 300px;">
+        <span class="badge">Phase</span>
+        <svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4.5-3.4 7.5-8 8-4.6-.5-8-3.5-8-8V7z"></path><path d="M9 12l2 2 4-4"></path></svg>
+        <div><strong>Gatekeeper</strong><em>4 agents · claude-opus-5</em></div><b>318K</b>
+        <span class="st"><span>Completed</span><span class="num">7m</span></span>
+      </div>
+      <div class="node cluster" style="left: 810px; top: 300px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>Phase · Verify</strong><em>5 finished · 330K</em></div><b>expand</b>
+      </div>
+
+      <!-- Level 3: siblings around focus -->
+      <div class="node finished" style="left: 360px; top: 434px;">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg>
+        <div><strong>pr</strong><em>slice-runner · sonnet-5 · 14 calls</em></div><b>67.2K</b>
+        <span class="st"><span>Finished</span><span class="num">1m</span></span>
+      </div>
+      <div class="node finished focus attention" style="left: 590px; top: 434px;">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg>
+        <div><strong>gate:bono:r1</strong><em>workflow-worker · opus-5 · 23 calls</em></div><b>80.8K</b>
+        <span class="st"><span>Finished · repeat ×3</span><span class="num">3m</span></span>
+      </div>
+      <div class="node cluster" style="left: 820px; top: 434px;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="12" rx="2"></rect><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path></svg>
+        <div><strong>gate:bono:r2, r3</strong><em>2 finished · 157K</em></div><b>expand</b>
+      </div>
+    </div>
+
+    <div style="min-height: 40px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #333941; color: #7d8590; font-size: 12px;">
+      <span>Focus path: Primary › gate:bono › Gatekeeper › <span style="color: #edf0f3;">gate:bono:r1</span></span>
+      <span>Layout follows provider evidence order · numbers are latest snapshots</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

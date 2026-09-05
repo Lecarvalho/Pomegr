@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font: 14px/1.5 "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #edf0f3; text-decoration: underline; }
+    .num { font-family: "Geist Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .label { color: #7d8590; font: 500 11px/1.4 "Inter", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; background: #23272d; color: #a8afb9; font: 500 12px/1 "Inter", sans-serif; white-space: nowrap; }
+    .chip.on { border-color: #697482; color: #edf0f3; }
+    .tile { position: relative; height: 64px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #333941; border-radius: 4px; background: #191c20; overflow: hidden; }
+    .tile strong { display: block; font-size: 12px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .tile span { display: flex; justify-content: space-between; color: #7d8590; font: 11px/1 "Geist Mono", Consolas, monospace; }
+    .tile i { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #bbb3d3; opacity: .7; }
+    .tile.finished { color: #a8afb9; }
+    .tile.idle { border-style: dashed; }
+    .tile.active { border-color: #91c5a4; background: #1c2521; }
+    .tile.attention { border-color: #e3b575; }
+    .tile.selected { border-color: #e58b80; box-shadow: 0 0 0 1px #e58b80; }
+    .lane { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 14px; align-items: start; padding: 14px 0; border-top: 1px solid #23272d; }
+    .lane header { display: grid; gap: 4px; }
+    .lane header strong { font-size: 13px; font-weight: 600; }
+    .lane header span { color: #7d8590; font-size: 12px; }
+    .lane header span b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; }
+    .grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  </style>
+</helmet>
+
+<div style="width: 1156px; min-height: 900px; padding: 24px; box-sizing: border-box; background: #111315; color: #edf0f3; font-family: Inter, system-ui, sans-serif;">
+  <div style="border: 1px solid #333941; border-radius: 6px; background: #191c20;">
+    <div style="min-height: 52px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #333941;">
+      <div style="display: flex; align-items: center; gap: 16px;"><h2 style="margin: 0; font: 600 16px/1.5 Inter, sans-serif;">Agent activity</h2><span style="color: #a8afb9; font-size: 12px;"><span class="num">49</span> observed · grid shows every agent</span></div>
+      <div style="display: flex; align-items: center; gap: 6px;"><span class="chip">List</span><span class="chip">Tree</span><span class="chip on">Grid</span></div>
+    </div>
+    <div style="padding: 10px 20px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #333941;">
+      <span class="label">Tile bar</span>
+      <span class="chip on">Final context</span><span class="chip">Wall time</span><span class="chip">Tool calls</span>
+      <span style="flex: 1;"></span>
+      <span style="display: flex; align-items: center; gap: 16px; color: #a8afb9; font-size: 12px;">
+        <span><i class="dot" style="background: #91c5a4;"></i> active</span>
+        <span><i class="dot" style="background: transparent; box-shadow: inset 0 0 0 1px #697482;"></i> idle</span>
+        <span><i class="dot" style="background: #697482;"></i> finished</span>
+        <span><i class="dot" style="background: #e3b575;"></i> signal</span>
+      </span>
+    </div>
+    <div style="padding: 4px 20px 16px;">
+
+      <div class="lane" style="border-top: 0;">
+        <header><strong>Primary</strong><span>orchestrator · claude-fable-5-1</span><span><b>210.4K</b> context · <b>4h 29m</b></span></header>
+        <div class="grid"><div class="tile idle"><strong>Primary agent</strong><span><em style="font-style: normal;">57 calls</em><em style="font-style: normal;">210K</em></span><i style="width: 84%;"></i></div></div>
+      </div>
+
+      <div class="lane">
+        <header><strong>Direct subagents</strong><span>general-purpose · 5 agents</span><span><b>352.9K</b> context · <b>15m</b></span></header>
+        <div class="grid">
+          <div class="tile finished"><strong>Codex relay review PR #725</strong><span><em style="font-style: normal;">54 calls</em><em style="font-style: normal;">124K</em></span><i style="width: 50%;"></i></div>
+          <div class="tile finished"><strong>Run verify.sh full backend</strong><span><em style="font-style: normal;">2 calls</em><em style="font-style: normal;">55K</em></span><i style="width: 22%;"></i></div>
+          <div class="tile finished"><strong>Run Codex review iteration 1</strong><span><em style="font-style: normal;">1 call</em><em style="font-style: normal;">56K</em></span><i style="width: 22%;"></i></div>
+          <div class="tile finished"><strong>Run backend targeted tests</strong><span><em style="font-style: normal;">2 calls</em><em style="font-style: normal;">58K</em></span><i style="width: 23%;"></i></div>
+          <div class="tile finished"><strong>Codex relay review PR #724</strong><span><em style="font-style: normal;">36 calls</em><em style="font-style: normal;">60K</em></span><i style="width: 24%;"></i></div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <header><strong>Workflow · gate:bono</strong><span>13 agents · completed</span><span><b>1.1M</b> context · <b>12m</b> · <b>212</b> calls</span></header>
+        <div class="grid">
+          <div class="tile finished"><strong>pr</strong><span><em style="font-style: normal;">14</em><em style="font-style: normal;">67K</em></span><i style="width: 27%;"></i></div>
+          <div class="tile finished attention selected"><strong>gate:bono:r1</strong><span><em style="font-style: normal;">23 · repeat ×3</em><em style="font-style: normal;">81K</em></span><i style="width: 32%; background: #e3b575;"></i></div>
+          <div class="tile finished"><strong>fix:r1</strong><span><em style="font-style: normal;">30</em><em style="font-style: normal;">115K</em></span><i style="width: 46%;"></i></div>
+          <div class="tile finished"><strong>gate:bono:r2</strong><span><em style="font-style: normal;">20</em><em style="font-style: normal;">85K</em></span><i style="width: 34%;"></i></div>
+          <div class="tile finished"><strong>verify:1</strong><span><em style="font-style: normal;">13</em><em style="font-style: normal;">45K</em></span><i style="width: 18%;"></i></div>
+          <div class="tile finished"><strong>fix:verify</strong><span><em style="font-style: normal;">21</em><em style="font-style: normal;">87K</em></span><i style="width: 35%;"></i></div>
+          <div class="tile finished"><strong>verify:2</strong><span><em style="font-style: normal;">7</em><em style="font-style: normal;">62K</em></span><i style="width: 25%;"></i></div>
+          <div class="tile finished"><strong>implement</strong><span><em style="font-style: normal;">54</em><em style="font-style: normal;">132K</em></span><i style="width: 53%;"></i></div>
+          <div class="tile finished"><strong>gate:bono:r3</strong><span><em style="font-style: normal;">18</em><em style="font-style: normal;">72K</em></span><i style="width: 29%;"></i></div>
+          <div class="tile finished"><strong>fix:r2</strong><span><em style="font-style: normal;">27</em><em style="font-style: normal;">104K</em></span><i style="width: 42%;"></i></div>
+          <div class="tile finished"><strong>verify:3</strong><span><em style="font-style: normal;">6</em><em style="font-style: normal;">52K</em></span><i style="width: 21%;"></i></div>
+          <div class="tile finished"><strong>pr:final</strong><span><em style="font-style: normal;">16</em><em style="font-style: normal;">70K</em></span><i style="width: 28%;"></i></div>
+          <div class="tile finished"><strong>implement:2</strong><span><em style="font-style: normal;">41</em><em style="font-style: normal;">126K</em></span><i style="width: 50%;"></i></div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <header><strong>Workflow · fix:r1</strong><span>11 agents · completed</span><span><b>1.3M</b> context · <b>10m</b> · <b>318</b> calls</span></header>
+        <div class="grid">
+          <div class="tile finished"><strong>Codex relay review PR #723</strong><span><em style="font-style: normal;">42</em><em style="font-style: normal;">121K</em></span><i style="width: 48%;"></i></div>
+          <div class="tile finished"><strong>pr</strong><span><em style="font-style: normal;">21</em><em style="font-style: normal;">46K</em></span><i style="width: 18%;"></i></div>
+          <div class="tile finished"><strong>gate:bono:r2</strong><span><em style="font-style: normal;">33</em><em style="font-style: normal;">73K</em></span><i style="width: 29%;"></i></div>
+          <div class="tile finished"><strong>fix:r2</strong><span><em style="font-style: normal;">28</em><em style="font-style: normal;">184K</em></span><i style="width: 74%;"></i></div>
+          <div class="tile finished"><strong>gate:bono:r1</strong><span><em style="font-style: normal;">27</em><em style="font-style: normal;">62K</em></span><i style="width: 25%;"></i></div>
+          <div class="tile finished"><strong>fix:r1</strong><span><em style="font-style: normal;">35</em><em style="font-style: normal;">158K</em></span><i style="width: 63%;"></i></div>
+          <div class="tile finished"><strong>gate:bono</strong><span><em style="font-style: normal;">19</em><em style="font-style: normal;">88K</em></span><i style="width: 35%;"></i></div>
+          <div class="tile finished"><strong>verify:1</strong><span><em style="font-style: normal;">11</em><em style="font-style: normal;">58K</em></span><i style="width: 23%;"></i></div>
+          <div class="tile finished"><strong>fix:verify</strong><span><em style="font-style: normal;">24</em><em style="font-style: normal;">98K</em></span><i style="width: 39%;"></i></div>
+          <div class="tile finished"><strong>verify:2</strong><span><em style="font-style: normal;">12</em><em style="font-style: normal;">65K</em></span><i style="width: 26%;"></i></div>
+          <div class="tile finished"><strong>implement</strong><span><em style="font-style: normal;">66</em><em style="font-style: normal;">158K</em></span><i style="width: 63%;"></i></div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <header><strong>Workflow · verify</strong><span>14 agents · 9 idle · 5 finished</span><span><b>1.6M</b> context · <b>15m</b> · <b>560</b> calls</span></header>
+        <div class="grid">
+          <div class="tile idle"><strong>Worker 13 · lens</strong><span><em style="font-style: normal;">33</em><em style="font-style: normal;">133K</em></span><i style="width: 53%;"></i></div>
+          <div class="tile active"><strong>Worker 12</strong><span><em style="font-style: normal;">6</em><em style="font-style: normal;">106K</em></span><i style="width: 42%; background: #91c5a4;"></i></div>
+          <div class="tile idle"><strong>Worker 11</strong><span><em style="font-style: normal;">9</em><em style="font-style: normal;">98K</em></span><i style="width: 39%;"></i></div>
+          <div class="tile idle"><strong>Worker 10</strong><span><em style="font-style: normal;">12</em><em style="font-style: normal;">82K</em></span><i style="width: 33%;"></i></div>
+          <div class="tile idle"><strong>Worker 9</strong><span><em style="font-style: normal;">108</em><em style="font-style: normal;">173K</em></span><i style="width: 69%;"></i></div>
+          <div class="tile idle"><strong>Worker 8 · lens</strong><span><em style="font-style: normal;">31</em><em style="font-style: normal;">122K</em></span><i style="width: 49%;"></i></div>
+          <div class="tile idle"><strong>Worker 7</strong><span><em style="font-style: normal;">18</em><em style="font-style: normal;">94K</em></span><i style="width: 38%;"></i></div>
+          <div class="tile idle"><strong>Worker 6</strong><span><em style="font-style: normal;">22</em><em style="font-style: normal;">101K</em></span><i style="width: 40%;"></i></div>
+          <div class="tile idle"><strong>Worker 5</strong><span><em style="font-style: normal;">14</em><em style="font-style: normal;">77K</em></span><i style="width: 31%;"></i></div>
+          <div class="tile finished"><strong>Worker 4</strong><span><em style="font-style: normal;">27</em><em style="font-style: normal;">112K</em></span><i style="width: 45%;"></i></div>
+          <div class="tile finished"><strong>Worker 3</strong><span><em style="font-style: normal;">19</em><em style="font-style: normal;">96K</em></span><i style="width: 38%;"></i></div>
+          <div class="tile finished"><strong>Worker 2</strong><span><em style="font-style: normal;">40</em><em style="font-style: normal;">141K</em></span><i style="width: 56%;"></i></div>
+          <div class="tile finished"><strong>Worker 1 · lens</strong><span><em style="font-style: normal;">25</em><em style="font-style: normal;">118K</em></span><i style="width: 47%;"></i></div>
+          <div class="tile finished"><strong>Worker 0</strong><span><em style="font-style: normal;">23</em><em style="font-style: normal;">104K</em></span><i style="width: 42%;"></i></div>
+        </div>
+      </div>
+
+    </div>
+    <div style="min-height: 40px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #333941; color: #7d8590; font-size: 12px;"><span>Click a tile to open it in the inspector · bar length is the tile metric relative to the largest agent in the session</span><span>Latest snapshots only, never cumulative spend</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
