@@ -293,7 +293,7 @@ function createShellTray() {
   const icon = nativeImage.createFromPath(shellIconPath()).resize({ width: 16, height: 16 });
   if (icon.isEmpty()) throw new Error("DESKTOP_TRAY_ICON_MISSING");
   tray = new Tray(icon);
-  tray.setToolTip("Pomegr — local read-only observer");
+  tray.setToolTip("Pomegr - local read-only observer");
   tray.on("click", showShellWindow);
 }
 
