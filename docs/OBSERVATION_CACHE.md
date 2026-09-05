@@ -1164,7 +1164,9 @@ revision documents, browser responses, logs, or renderer IPC. Worktrees are inde
 repositories; duplicate display names receive only an opaque short disambiguator.
 
 Repository rows are derived asynchronously from committed session catalog and session
-evidence. Their GETs never resolve Git roots, read providers, capture diagnostics, parse
+evidence. Rows are ordered alphabetically by display name, with opaque repository ID as
+the tie-breaker; session activity timestamps and counts never determine repository order.
+Their GETs never resolve Git roots, read providers, capture diagnostics, parse
 output, persist data, or hydrate sessions. `/api/repositories` serves the committed list
 revision and `/api/repository-inventory` serves one already-committed immutable detail.
 Both are safe for read-only LAN presentation. Repository revision events only tell the

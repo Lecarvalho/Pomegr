@@ -88,6 +88,35 @@ test("repository inventory retention preserves compact bindings and restores the
   assert.equal((await restored.readRevision(identity.repositoryId, "claude", "ctx-012")).id, "ctx-012");
 });
 
+test("repository order stays alphabetical across session updates and catalog reordering", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-order-"));
+  const runtime = createRepositoryInventoryRuntime({ registry: { providers: [] }, storeFile: path.join(directory, "inventory.json") });
+  const session = (id, project, repositoryId, updatedAt) => ({ id: `claude:${id}`, provider: "claude", project, repositoryId, updatedAt, isLive: false });
+  const alpha = session("alpha", "Alpha", "repo-000000000000000000000001", "2026-09-04T10:00:00.000Z");
+  const zulu = session("zulu", "Zulu", "repo-000000000000000000000002", "2026-09-04T11:00:00.000Z");
+  // Identical short disambiguators exercise the full opaque-ID tie-breaker.
+  const twinA = session("twin-a", "Twin", "repo-000000000000000000010003", null);
+  const twinB = session("twin-b", "Twin", "repo-000000000000000000020003", null);
+  await runtime.reconcile([zulu, twinB, alpha, twinA]);
+  const initial = runtime.readRepositories().snapshot;
+  const expected = [alpha.repositoryId, twinA.repositoryId, twinB.repositoryId, zulu.repositoryId];
+  assert.deepEqual(initial.value.repositories.map((entry) => entry.id), expected);
+
+  const updatedZulu = { ...zulu, updatedAt: "2026-09-04T12:00:00.000Z", isLive: true };
+  await runtime.reconcile([twinA, updatedZulu, twinB, alpha, { ...updatedZulu, id: "claude:zulu-new" }]);
+  const updated = runtime.readRepositories().snapshot;
+  assert.notEqual(updated.revision, initial.revision);
+  assert.deepEqual(updated.value.repositories.map((entry) => entry.id), expected);
+  const zuluRow = updated.value.repositories.at(-1);
+  assert.equal(zuluRow.updatedAt, updatedZulu.updatedAt);
+  assert.equal(zuluRow.sessionCount, 2);
+  assert.equal(zuluRow.liveCount, 2);
+  assert.equal(initial.value.repositories.at(-1).sessionCount, 1);
+
+  await runtime.reconcile([alpha, twinB, twinA, updatedZulu, { ...updatedZulu, id: "claude:zulu-new" }]);
+  assert.equal(runtime.readRepositories().snapshot.revision, updated.revision);
+});
+
 test("repository inventory capture is single-flight per repository and provider", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-busy-"));
   let complete;

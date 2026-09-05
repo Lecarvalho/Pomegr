@@ -325,7 +325,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
         updatedAt,
         providers,
       };
-    }).sort((left, right) => Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "") || left.displayName.localeCompare(right.displayName));
+    }).sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id));
   }
 
   function commitProjection(force = false) {
