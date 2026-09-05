@@ -15,10 +15,26 @@ The target design is the canvas published on 2026-09-04 and copied verbatim into
 | `mockup-main.html` | The whole session page at 1440 px width, dark theme. Every panel, in final order. |
 | `mockup-agentgrid.html` | The "Grid" agent-activity mode: every agent as a 64 px tile, one lane per workflow. |
 | `mockup-focusedtree.html` | The tree as a drill-down focused on one agent, with off-path siblings clustered. |
+| `mockup-mobile.html` | The whole session page at 390 px (phone), dark theme, every panel in final order. |
+| `mockup-mobile-inspector.html` | The agent inspector as a full-screen phone sheet (390×844) with lineage, facts, signals, shell tasks. |
+
+Each mockup also has a rendered PNG beside it (`mockup-main.png` 1440×2700,
+`mockup-agentgrid.png` 1156×940, `mockup-focusedtree.png` 1156×760, `mockup-mobile.png`
+390×3300, `mockup-mobile-inspector.png` 390×844). An agent that cannot
+render HTML should read the PNG (Codex CLI: `codex -i docs/plans/session-page-redesign/mockup-main.png`,
+or attach the image in the prompt) and use the HTML for exact values. The PNGs were rendered
+by headless Edge without the Geist Mono web font, so numbers show the fallback face; the
+HTML is authoritative for typography. Regenerate a PNG after editing a mockup with:
+
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,2700 --screenshot="$PWD\docs\plans\session-page-redesign\mockup-main.png" "file:///$PWD/docs/plans/session-page-redesign/mockup-main.html"
+```
 
 Open each mockup in a browser. They are static HTML, no build needed. Measurements,
 colors, copy, and column order in this plan come from those files; when the plan and the
-mockup disagree, the mockup wins for visuals and this plan wins for data semantics.
+mockup disagree, the mockup wins for visuals and this plan wins for data semantics. Known wording drift: the
+mockup labels the before-list "timing correlation"; implement the label as
+"transcript adjacency" per SP-03/SP-05.
 
 Data in the mockups is illustrative and partly synthetic (the request bars, the workflow
 names, the "Largest requests" values). Never copy mockup numbers into fixtures as if they
@@ -83,7 +99,14 @@ inside an implementation task.
    invented: Inter for UI, Geist Mono for every number, 4 px control radius, 6 px panel
    radius, lavender `--color-context` for context, green for active/progress, amber for
    attention, coral brand color only for the mark, provider name, links, and selection.
-10. **Metric contract holds.** No cumulative token totals, no rates, no spend. Request
+10. **Phone is a first-class layout, not a fallback.** Pomegr is reachable from a phone
+    over LAN (desktop phone access). Every panel exists on the phone; nothing is hidden,
+    it moves into disclosures or a full-screen sheet. Phone rules per panel live in each
+    task's "Phone" subsection and in `mockup-mobile.html`. The phone breakpoint is the
+    shell's existing 760 px rule (`app/styles/shell.css`), with the 520 px rule for
+    padding. Touch targets are 44 px minimum. Chart interactions on phone are tap and
+    Prev/Next only; no drag, no minimap, no hover.
+11. **Metric contract holds.** No cumulative token totals, no rates, no spend. Request
     numbers are request-local. The KPI "All-agent context" is the existing
     `metrics.tokens.allAgents` (sum of latest snapshots).
 
@@ -119,7 +142,8 @@ see SP-01). Numbers use `var(--font-data)` and `font-variant-numeric: tabular-nu
 | Task | Title | Depends on |
 | --- | --- | --- |
 | POMEGR-SP-01 | Page skeleton, hero status card, KPI strip, three summary cards | none |
-| POMEGR-SP-02 | Collapse Repository and Session details to one-line disclosure rows | SP-01 |
+| POMEGR-SP-01M | Phone layout for the page top (hero, KPI grid, summary cards) | SP-01 |
+| POMEGR-SP-02 | Collapse Repository and Session details to one-line disclosure rows | SP-01, SP-01M |
 | POMEGR-SP-03 | Monitor: request action correlation (Claude adapter) | none |
 | POMEGR-SP-04 | Contract, serialization guard, and docs for request actions | SP-03 |
 | POMEGR-SP-05 | Requests & actions panel (chart, minimap, selection, detail, largest list) | SP-01, SP-04 |
@@ -129,9 +153,11 @@ see SP-01). Numbers use `var(--font-data)` and `font-variant-numeric: tabular-nu
 | POMEGR-SP-09 | Grid view mode | SP-07 |
 | POMEGR-SP-10 | Tree as focused drill-down | SP-08 |
 | POMEGR-SP-11 | Responsive, accessibility, dead CSS removal, final verification | all |
+| POMEGR-SP-12 | Announce the new session page in the Home "What's new" card | SP-11 |
 
-SP-03/SP-04 (monitor) and SP-01/SP-02/SP-07 (UI) are independent and can run in parallel
-sessions. SP-05 needs both branches.
+SP-03/SP-04 (monitor) and SP-01/SP-01M/SP-02/SP-07 (UI) are independent and can run in
+parallel sessions. SP-05 needs both branches. Every UI task from SP-02 onward carries a
+"Phone" subsection; a task is not complete until its phone rules pass at 390 px.
 
 ---
 
@@ -266,6 +292,61 @@ is null, thousands formatting of tool calls, and that the DOM contains no `summa
 
 ---
 
+## POMEGR-SP-01M — Phone layout for the page top
+
+### Goal
+
+Make the hero, KPI strip, and summary cards from SP-01 match `mockup-mobile.html`
+(`mockup-mobile.png`) at 390 px. SP-01 ships desktop only; this task adds the phone rules
+without touching desktop output.
+
+### Work
+
+All rules go under `@media (max-width: 760px)` in `app/styles/session.css` unless a
+finer breakpoint is named. Do not add a new breakpoint value; 760 and 520 already exist in
+`shell.css` and `session.css`.
+
+1. **Breadcrumb**: unchanged, 32 px min height.
+2. **Hero**: single column. Title 22 px/600, `overflow-wrap: anywhere`. Identity line wraps
+   (`flex-wrap: wrap; gap: 6px 10px`); the session id `code` is hidden on phone
+   (`display: none`), the "Historical snapshot" / "Live session" chip stays. Status card
+   spans full width, padding 10/12. The summary paragraph and the provider-summary row
+   move inside a `<details>` titled "Summary and provider status" with a 44 px summary
+   row and the caret glyph; open by default when the session has a provider summary or
+   signal, closed otherwise. "Download report" moves to the end of the hero as a
+   full-width 44 px ghost button.
+3. **KPI grid**: `grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px`. Each cell
+   gets a 1 px `--command-line` border, 4 px radius, padding 10/12 (on phone the cells are
+   boxes, not divider-separated). Number 24 px/500. Labels shorten: "Agents",
+   "All-agent context", "Wall time", "Tool calls", "Agent estimate". The Agent estimate
+   cell spans both columns (`grid-column: 1 / -1`) with the number left and the caveat
+   text to its right.
+4. **Summary cards**: stack, `gap: 14px`, padding 14. Progress card drops the 11 px note
+   (keep it as `title` on the eyebrow). Workflows card drops the "Open workflow detail"
+   link on phone (group headers in the roster are reachable by scrolling). Efficiency
+   card: "Show agent" link is a 32 px tap target.
+5. **Page padding** at ≤ 520 px is the shell's `16px 12px 26px` (already applied to
+   `.commandMain`); panels use `gap: 14px`.
+
+### Acceptance criteria
+
+- [ ] At 390 px the page top matches `mockup-mobile.png` down to the summary cards.
+- [ ] No horizontal scroll at 360 px.
+- [ ] Desktop snapshot tests from SP-01 unchanged.
+
+### Verification
+
+```powershell
+npx vitest run tests/ui/session-kpi-strip.test.tsx
+npm run lint
+```
+
+Add a jsdom test that renders `SessionHero` with a long title and asserts the
+`<details>` summary text exists; visual checks are manual at 390 px in the browser
+device toolbar.
+
+---
+
 ## POMEGR-SP-02 — Collapse Repository and Session details to one-line disclosure rows
 
 ### Goal
@@ -289,6 +370,12 @@ last section of `mockup-main.html`.
    16 px/600, summary 12 px muted on the right, numbers in `--font-data`.
 5. Resource usage panel (live only) stays as a full panel between Agent activity and
    these rows. Do not collapse it.
+
+### Phone
+
+Rows stay 52 px with padding 0 14px; summary text right-aligned, may wrap to two lines;
+the Session details summary shortens to `Est. cost {amount} · plugin v{version}`; the
+Repository summary to `{branch} · {commits} commits · {files} files`.
 
 ### Acceptance criteria
 
@@ -596,6 +683,27 @@ Rules:
     window was at the end, follow the newest row; otherwise keep the selection and
     window still.
 
+### Phone (≤ 760 px, see `mockup-mobile.html` "Requests & actions")
+
+- Header stacks: title row with the agent scope select on the right (32 px chip look),
+  then the two mode chips as a full-width segmented pair (each `flex: 1`, 32 px), then
+  the legend wrapping on one or two lines ("Uncached", "Cache write", "Output",
+  "Prompt size"; the compaction legend entry is dropped, the tick still draws).
+- Chart: `viewBox="0 0 334 168"`, height 168 px, plot x 34→330, y 22→150, window size
+  **20** (≤ 760 px) so each bar is ≥ 12 px wide; tap selects; the Y axis shows only
+  0 / 90K / 180K-style three labels; X axis shows first and last ordinal only.
+- **No minimap.** Below the chart a two-button row (`grid-template-columns: 1fr 1fr;
+  gap: 8px`) with 44 px "‹ Prev" / "Next ›" buttons that move the selection and shift
+  the window as on desktop.
+- Detail card: stat boxes in a 2×2 grid (18 px numbers); the before/after lists stack
+  vertically; the caveat shortens to "Surrounding actions do not establish token cost
+  per operation."
+- Largest requests: full width under the detail card, 3 rows visible (48 px each), then
+  the footer "All {n} · never summed" and "Show 20" (44 px row). Clicking a row still
+  recenters the window (20 bars) and scrolls the chart into view
+  (`scrollIntoView({ block: "start" })`).
+- Cache evidence disclosure unchanged.
+
 ### Files
 
 - `app/components/dashboard/RequestsActionsPanel.tsx` (the panel; keep under 800 lines,
@@ -803,6 +911,28 @@ Rules:
 - Popovers for skills / execution tasks / plan tasks are **removed from rows**; their
   content moves to the inspector (SP-08). Until SP-08 lands, keep the popover code in the
   file but do not render the triggers.
+### Phone (≤ 760 px, see `mockup-mobile.html` "Agent activity")
+
+- Header: title + "{n} observed · showing {m}" on the left, List/Grid chips on the right.
+- Distribution strip unchanged (legend wraps; role legend hidden on phone).
+- Filter bar becomes two controls: the search input (44 px, `flex: 1`) and a "Filters
+  {count}" chip (44 px) that opens a bottom sheet (`<dialog>` or the existing popover
+  frame positioned as a sheet) containing the Group by workflow toggle, Status select,
+  Model select, Hide finished toggle, and Sort select, each a 44 px row, plus a "Done"
+  button. `count` = number of non-default filters.
+- Column header row hidden.
+- Agent row = 56 px, grid `24px minmax(0,1fr) auto 20px`, padding 8/12/8/10: role glyph;
+  name (13/500) over meta (`{role} · {model short} · {toolCalls} calls`, 12 px muted,
+  ellipsis); right column: final context (mono bold) over `{wall} · {status pill}`;
+  chevron. Cache TTL, effort, skills, shell-task count are inspector-only on phone.
+- Group header = 48 px, grid `20px minmax(0,1fr) auto`; rollup shortens to
+  `{agents} · {context}[ · {status word}]` where the status word is "completed",
+  "running", or `{idle} idle`.
+- Primary row pinned as on desktop; region height `60vh` with `min-height: 480px`.
+- "Show {n} more" and footer rows are 44 px.
+- Tapping a row selects it and opens the inspector sheet (SP-08); on desktop the
+  inspector is inline.
+
 - Persisted state (localStorage, per session id): open groups
   (`pomegr-agent-roster-open-${sessionId}`, JSON array of group ids), view mode (existing
   key, values now `"list" | "grid"`; treat stored `"tree"` as `"list"`).
@@ -894,8 +1024,27 @@ Fill the 340 px right column with the selected agent's full evidence, as drawn i
    (delete it; the inspector replaces it). Update `tests/ui/agent-detail-popovers.test.tsx`
    to assert the same content in the inspector, and rename the file to
    `agent-inspector.test.tsx`.
-4. Responsive: below 900 px the inspector renders under the roster as a full-width
-   section; below 720 px it becomes a `DashboardDisclosurePanel` "Selected agent".
+4. Responsive: between 761 px and 900 px the inspector renders under the roster as a
+   full-width section.
+
+### Phone (≤ 760 px, see `mockup-mobile-inspector.html`)
+
+The inspector is a full-screen sheet, not inline:
+- Opened by tapping a roster row or grid tile; rendered as a fixed overlay
+  (`position: fixed; inset: 0; z-index: 90; overflow-y: auto; background:
+  var(--command-ground)`) with `role="dialog" aria-modal="true"` and focus moved to the
+  back button; body scroll locked while open; Escape and the back button close it and
+  return focus to the row that opened it.
+- Header 60 px: back button (44 px, chevron-left), agent name 15/600 with a second line
+  `Agent {i} of {n} · {workflow or "direct subagent"}`, and a 44 px tree glyph button on
+  the right that calls `onOpenTree`.
+- Body sections in this order, each `padding: 12px 16px` with 1 px dividers: status pill
+  + signal chips row and the muted role/phase/id line; Lineage; facts `.sessionKv`;
+  Signals; Shell tasks (first 3 rows, "All" link); Plan checklist (primary only); then a
+  two-button row "Copy transcript path" / "Open in tree" (44 px each).
+- Swiping is not implemented; only the back button and Escape close the sheet.
+- The sheet is the same component as the inline inspector with a `presentation:
+  "inline" | "sheet"` prop; content markup is shared, only the wrapper differs.
 
 ### Acceptance criteria
 
@@ -951,6 +1100,12 @@ Add the "Grid" tab drawn in `mockup-agentgrid.html`.
    cumulative spend".
 6. `AgentActivityViewMode` becomes `"list" | "grid"`.
 
+### Phone (≤ 760 px)
+
+Two tile columns, tile height 56 px, lane header above the tiles (not beside), metric
+chips in a horizontal scroll row (44 px). Tapping a tile opens the inspector sheet
+(SP-08). Region height `60vh`, `min-height: 480px`.
+
 ### Acceptance criteria
 
 - [ ] 49 agents render as 49 tiles with no page growth.
@@ -999,6 +1154,14 @@ The tree opens from the inspector centered on one agent, as drawn in
 5. Footer: "Focus path: Primary › {workflow} › {phase} › {agent}" and "Layout follows
    provider evidence order · numbers are latest snapshots".
 6. The rail form (`agentTreeView-rail`) stays for narrow widths.
+
+### Phone (≤ 760 px)
+
+The focused tree renders in the existing rail form inside the same full-screen sheet
+wrapper as the inspector (title `Tree · {agent}`, back button returns to the inspector
+sheet, not to the roster). The focus path is expanded, off-path siblings are the
+cluster rows, the focus row has the coral left edge. No camera controls, no
+"Whole session" chip on phone (rail already shows the whole forest when expanded).
 7. Remove the "Tree" storage value handling left from SP-07.
 
 ### Acceptance criteria
@@ -1028,14 +1191,17 @@ Ship-ready page across widths and themes, with nothing left over.
 ### Work
 
 1. Breakpoints (existing ones in `session.css`: 900 px and 520 px; `evidence.css`: 720 px
-   and 420 px):
+   and 420 px; `shell.css`: 760 px). The per-panel phone rules already landed in
+   SP-01M, SP-02, SP-05, SP-07, SP-08, SP-09, SP-10; this task verifies them together,
+   fixes cross-panel spacing, and handles the intermediate widths below:
    - ≤ 1100 px: KPI strip 3 + 2 columns; summary cards 1 column; Requests & actions
      detail area stacks (largest list under the detail card); roster columns drop Cache
      TTL and Calls (they remain in the inspector).
    - ≤ 900 px: hero stacks; inspector under roster; grid 4 columns.
-   - ≤ 720 px: roster becomes the existing mobile row layout (two lines per agent), region
-     height 60vh; chart window size 30; minimap hidden; grid 2 columns.
-   - ≤ 520 px: KPI strip 2 columns; chart window 20.
+   - ≤ 760 px: everything per the task-level Phone subsections (chart window 20, no
+     minimap, two-line rows, inspector sheet, KPI 2×3, grid 2 columns).
+   - 360 px: no horizontal scroll; verify the longest agent label and the widest KPI
+     number (`999.9K`) still fit.
 2. Accessibility: every chart bar, tile, row, and group header reachable by keyboard with
    a visible focus ring (`--focus-ring`); segmented chips use `aria-pressed`; the roster
    region has `aria-label="Agent roster"`; live regions for selection changes are not
@@ -1051,12 +1217,14 @@ Ship-ready page across widths and themes, with nothing left over.
    `README.md` screenshots or feature bullets that mention "Context history" or "Request
    snapshots" updated to "Requests & actions".
 5. Mark this plan's header with the status blockquote used by
-   `docs/plans/provider-neutral-session-observation-cache.md` once every task is done.
+   `docs/plans/provider-neutral-session-observation-cache.md` once every task including
+   SP-12 is done.
 
 ### Acceptance criteria
 
 - [ ] `npm run verify` passes (includes build, plugin tests, UI tests, landing).
-- [ ] Manual check at 1440 / 1100 / 900 / 720 / 390 px in both themes against the mockups.
+- [ ] Manual check at 1440 / 1100 / 900 / 760 / 390 / 360 px in both themes against the
+      mockups (`mockup-main.png`, `mockup-mobile.png`, `mockup-mobile-inspector.png`).
 - [ ] `/api/state` serialization test still green; no new browser-visible field beyond
       the four added in SP-04.
 
@@ -1065,6 +1233,68 @@ Ship-ready page across widths and themes, with nothing left over.
 ```powershell
 npm run verify
 npm run verify:desktop
+```
+
+---
+
+## POMEGR-SP-12 — Announce the new session page in the Home "What's new" card
+
+### Goal
+
+Replace the Home page's dismissible "What's new" card (currently "Meet the new Agents
+page") with an announcement for the redesigned session page, so users who dismissed the
+previous update see this one once.
+
+### How the card works today
+
+- Card component: `app/components/home/HomeUpdateCard.tsx` (props `title`, `description`,
+  `details`, `onDismiss`; heading "What's new" is fixed inside the component).
+- Rendered in `app/HomeDashboard.tsx` ~line 102, gated by `ready && !updateDismissed` from
+  `useHomePreferences()`.
+- Dismissal identity: `HOME_UPDATE_ID` in `app/hooks/useHomePreferences.ts` line 8
+  (`"agents-analytics-v1"`). `updateDismissed` is true only when the stored
+  `dismissedUpdateId` equals the current constant, so changing the constant re-shows the
+  card to everyone, including users who dismissed the previous one. The stored value is
+  kept only when it matches the current id (lines ~129 and ~138), so nothing else needs
+  migrating.
+- Test: `tests/ui/dashboard-home.test.tsx` asserts the card by role
+  (`complementary`, name "What's new"), dismissal, and that an older `dismissedUpdateId`
+  (`"older-update"`) still shows the card.
+
+### Work
+
+1. `app/hooks/useHomePreferences.ts`: set `HOME_UPDATE_ID = "session-page-v2"`.
+2. `app/HomeDashboard.tsx`: replace the three copy props with:
+   - `title`: `A clearer session page`
+   - `description`: `See every model request as a bar, the work around it, and a grouped
+     agent roster that never scrolls the page. Open any session to try it.`
+   - `details`: `Requests & actions replaces Context history and Request snapshots: one
+     bar per request, prompt size as the outline, compactions as dashed ticks, and a
+     Largest requests list ranked by uncached input. Agent activity groups agents by
+     workflow, keeps the roster inside a fixed region, and moves details into an
+     inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay
+     request-local and are never summed into spend.`
+   Copy must not mention cost, billing, or savings. Keep the description under 160
+   characters if the card CSS clips (check `HomeUpdateCard.module.css`).
+3. `tests/ui/dashboard-home.test.tsx`: update any assertion that matches the old title
+   text; keep the role-based assertions. Add one assertion that a stored
+   `dismissedUpdateId: "agents-analytics-v1"` shows the new card.
+4. If the landing site lists release highlights (`landing/`), add one bullet there in the
+   same release; do not edit `landing/` otherwise.
+
+### Acceptance criteria
+
+- [ ] Home shows the new card once for every user, including those who dismissed the
+      Agents-page card; dismissing it persists with the new id.
+- [ ] Card copy matches the strings above verbatim.
+- [ ] `npx vitest run tests/ui/dashboard-home.test.tsx` passes.
+
+### Verification
+
+```powershell
+npx vitest run tests/ui/dashboard-home.test.tsx
+npm run typecheck
+npm run lint
 ```
 
 ---
@@ -1083,5 +1313,6 @@ npm run verify:desktop
 
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-09-05 | Plan | Updated | Added phone layout: `mockup-mobile.html`, `mockup-mobile-inspector.html` (+PNGs), SP-01M, and Phone subsections in SP-02, SP-05, SP-07, SP-08, SP-09, SP-10, SP-11. |
 | 2026-09-04 | Plan | Written | Mockups copied to `docs/plans/session-page-redesign/`. Canvas: https://claude.ai/code/artifact/663c33bb-fb5f-41ba-9e78-8c11e0219ba2 |
 | 2026-09-05 | POMEGR-SP-01 | Complete | Hero status card, five-cell KPI strip, three summary cards, normalized insight/loop agent links. HTML typography retained (Inter headline numbers, Geist Mono compact data). Explicit open/stopped/unknown evidence remains labeled. Full npm test, final build, verify:fast, focused UI/privacy checks passed; 1440px and 390px checked in both themes. |

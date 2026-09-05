@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font: 14px/1.5 "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #edf0f3; text-decoration: underline; }
+    .num { font-family: "Geist Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .label { color: #7d8590; font: 500 11px/1.4 "Inter", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .card { border: 1px solid #333941; border-radius: 6px; background: #191c20; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: #23272d; color: #a8afb9; font: 500 12px/1 "Inter", sans-serif; white-space: nowrap; }
+    .chip.on { border-color: #697482; color: #edf0f3; }
+    .chip i { width: 7px; height: 7px; border-radius: 50%; background: #697482; display: inline-block; }
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 12px; color: #a8afb9; }
+    .kv b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; text-align: right; }
+    .btn { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #a8afb9; font: 500 13px/1 "Inter", sans-serif; }
+    .st { display: inline-flex; align-items: center; gap: 6px; color: #a8afb9; font: 500 11px/1 "Inter", sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+    .st i { width: 7px; height: 7px; border-radius: 50%; background: #697482; display: inline-block; }
+    .st.active i { background: #91c5a4; box-shadow: 0 0 0 3px #23372d; } .st.active { color: #91c5a4; }
+    .st.idle i { background: transparent; box-shadow: inset 0 0 0 1px #697482; }
+    .row { min-height: 56px; display: grid; grid-template-columns: 24px minmax(0,1fr) auto 20px; align-items: center; gap: 0 10px; padding: 8px 12px 8px 10px; border-bottom: 1px solid #23272d; }
+    .row .name { min-width: 0; display: grid; gap: 3px; }
+    .row .name strong { font-size: 13px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .row .name span { color: #7d8590; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .row .r { display: grid; gap: 3px; text-align: right; color: #a8afb9; font-family: "Geist Mono", Consolas, monospace; font-size: 12px; }
+    .row .r b { color: #edf0f3; font-weight: 500; }
+    .group { min-height: 48px; display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 0 12px 0 10px; background: #1b1e23; border-bottom: 1px solid #333941; position: sticky; top: 0; }
+    .group strong { font-size: 13px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .group .sum { color: #a8afb9; font-size: 12px; white-space: nowrap; }
+    .group .sum b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; }
+    .caret { width: 16px; height: 16px; color: #7d8590; } .caret svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .role { width: 20px; height: 20px; display: grid; place-items: center; color: #a8afb9; }
+    .role svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .seg { height: 8px; border-radius: 2px; }
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: #a8afb9; font-size: 12px; }
+    .legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: 1px; }
+    .legend b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; margin-left: 4px; }
+    .kpi { padding: 10px 12px; border: 1px solid #333941; border-radius: 4px; display: grid; gap: 4px; }
+    .kpi strong { font: 500 24px/1 "Inter", sans-serif; letter-spacing: -.02em; }
+    .kpi small { color: #a8afb9; font-size: 11px; line-height: 1.35; }
+    .stat { padding: 10px 12px; border: 1px solid #333941; border-radius: 4px; }
+    .stat strong { display: block; margin-top: 6px; font: 500 18px/1 "Geist Mono", Consolas, monospace; }
+    .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+    .lr { display: grid; grid-template-columns: 52px minmax(0,1fr) 56px; gap: 10px; align-items: center; min-height: 48px; padding: 6px 14px; border-top: 1px solid #23272d; }
+    .lr .n { display: block; font-size: 12px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .lr .b { display: block; color: #7d8590; font-size: 11px; }
+    .task { display: grid; grid-template-columns: 16px minmax(0,1fr) auto; gap: 8px; align-items: center; min-height: 32px; font-size: 12px; color: #a8afb9; }
+    .task i { width: 7px; height: 7px; border-radius: 50%; background: #91c5a4; justify-self: center; }
+    .task span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .lin { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 4px 8px; align-items: center; font-size: 12px; }
+    .lin .d { display: grid; place-items: center; } .lin .d i { width: 7px; height: 7px; border-radius: 50%; background: #697482; }
+    .lin .c { display: grid; place-items: center; height: 8px; } .lin .c i { width: 1px; height: 8px; background: #697482; }
+  </style>
+</helmet>
+
+<div style="width: 390px; min-height: 2560px; background: #111315; color: #edf0f3; font-family: Inter, system-ui, sans-serif;">
+  <header style="height: 60px; padding: 0 8px; display: grid; grid-template-columns: 44px max-content minmax(0,1fr); align-items: center; border-bottom: 1px solid #333941; background: #191c20;">
+    <span style="width: 44px; height: 44px; display: grid; place-items: center; color: #a8afb9;"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></span>
+    <span style="display: flex; align-items: center; gap: 10px;"><svg viewBox="0 0 24 24" style="width: 24px; height: 24px;" aria-hidden="true"><path d="M12 4c-4.4 0-7.5 3.2-7.5 7.6 0 4.6 3.3 8.4 7.5 8.4s7.5-3.8 7.5-8.4C19.5 7.2 16.4 4 12 4z" fill="#e58b80"></path></svg><span style="color: #a8afb9; font-size: 15px;">Pomegr</span></span>
+    <span style="justify-self: end; display: flex;"><span style="width: 44px; height: 44px; display: grid; place-items: center; color: #a8afb9;"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></span><span style="width: 44px; height: 44px; display: grid; place-items: center; color: #a8afb9;"><svg class="icon" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg></span></span>
+  </header>
+
+  <main style="padding: 16px 12px 26px; display: grid; gap: 14px;">
+    <nav style="display: flex; align-items: center; gap: 10px; color: #a8afb9; font-size: 13px; min-height: 32px;"><a href="#" style="color: #a8afb9;">Sessions</a><svg class="icon" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M9 6l6 6-6 6"></path></svg><span style="color: #edf0f3;">Clapline</span></nav>
+
+    <section style="display: grid; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #2b3037;">
+      <h1 style="margin: 0; font: 600 22px/1.25 Inter, sans-serif; letter-spacing: -.02em; overflow-wrap: anywhere;">Multi-reference wire: slice 2 (reference_set persistence)</h1>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: #a8afb9; font-size: 12px;"><strong style="color: #edf0f3;">Clapline</strong><span style="color: #4c535c;">·</span><span style="color: #e58b80; font-weight: 600;">Claude Code</span><span style="color: #4c535c;">·</span><span class="chip" style="min-height: 22px; padding: 0 8px;"><i></i>Historical snapshot</span></div>
+      <div style="padding: 10px 12px; display: grid; grid-template-columns: 8px minmax(0,1fr); gap: 3px 10px; align-items: center; border: 1px solid #333941; border-radius: 6px; background: #191c20;"><i style="width: 8px; height: 8px; border-radius: 50%; background: #697482;"></i><strong style="font-size: 13px; font-weight: 600;">Recorded session · ended</strong><span></span><span style="color: #a8afb9; font-size: 12px;">Sep 4, 8:56 p.m. · Auto mode · <span class="num">4h 29m</span> wall time</span></div>
+      <details open style="color: #a8afb9; font-size: 13px; line-height: 1.5;"><summary style="min-height: 44px; display: flex; align-items: center; gap: 8px; color: #edf0f3; font-size: 13px; font-weight: 500; cursor: pointer; list-style: none;"><span class="caret"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></span>Summary and provider status</summary><p style="margin: 4px 0 8px;">Multi-reference wire feature: slices 1 to 3 merged, remaining are the cast-name-cap and stale-FK cards then slice 4. Next action: you paste /usage output so I can decide whether to start now or next cycle.</p><div style="display: flex; align-items: center; gap: 10px;"><span class="label">Provider summary</span><span class="chip on" style="min-height: 26px;">Awaiting merge</span></div></details>
+    </section>
+
+    <section style="display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px;">
+      <div class="kpi"><span class="label">Agents</span><strong class="num">49</strong><small><span style="color: #91c5a4;">1 active</span> · 10 idle · 38 finished</small></div>
+      <div class="kpi"><span class="label">All-agent context</span><strong class="num">4.0M</strong><small>Latest snapshots · not spend</small></div>
+      <div class="kpi"><span class="label">Wall time</span><strong class="num">4h 29m</strong><small>Includes idle gaps</small></div>
+      <div class="kpi"><span class="label">Tool calls</span><strong class="num">1,214</strong><small>3 workflows · 3 repeated</small></div>
+      <div class="kpi" style="grid-column: 1 / -1; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 4px 14px;"><span class="label" style="grid-column: 1 / -1;">Agent estimate</span><strong class="num" style="color: #91c5a4;">78%</strong><small>Implementing · 30–120 min left · medium confidence</small></div>
+    </section>
+
+    <section class="card">
+      <div style="padding: 12px 14px 8px; display: grid; gap: 10px; border-bottom: 1px solid #333941;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><h2 style="margin: 0; font: 600 16px/1.5 Inter, sans-serif;">Requests &amp; actions</h2><span class="chip" style="min-height: 32px;">gate:bono:r1 <svg class="icon" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M6 9l6 6 6-6"></path></svg></span></div>
+        <div style="display: flex; gap: 6px;"><span class="chip on" style="flex: 1; justify-content: center;">Fresh tokens</span><span class="chip" style="flex: 1; justify-content: center;">Full breakdown</span></div>
+        <div class="legend"><span><i style="background: #bbb3d3;"></i>Uncached</span><span><i style="background: #91c5a4;"></i>Cache write</span><span><i style="background: #e3b575;"></i>Output</span><span><i style="background: #1e2126; box-shadow: inset 0 0 0 1px #4a525c;"></i>Prompt size</span></div>
+      </div>
+      <div style="padding: 10px 14px 4px;"><svg viewBox="0 0 334 168" style="display: block; width: 100%; height: 168px;" aria-label="20 requests around the selection; tap a bar to select it"><g stroke="#23272d" stroke-width="1"><line x1="34" y1="150" x2="330" y2="150"></line><line x1="34" y1="86" x2="330" y2="86"></line><line x1="34" y1="22" x2="330" y2="22"></line></g><g fill="#7d8590" font-family="Geist Mono, Consolas, monospace" font-size="10"><text x="2" y="26">180K</text><text x="8" y="90">90K</text><text x="22" y="154">0</text></g><rect x="34.0" y="67.6" width="11.9" height="82.4" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="34.0" y="146.6" width="11.9" height="3.4" fill="#bbb3d3"></rect><rect x="34.0" y="146.2" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="34.0" y="144.9" width="11.9" height="1.3" fill="#e3b575"></rect><rect x="49.0" y="66.3" width="11.9" height="83.7" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="49.0" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="49.0" y="148.9" width="11.9" height="0.4" fill="#e3b575"></rect><rect x="63.9" y="65.2" width="11.9" height="84.8" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="63.9" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="63.9" y="148.9" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="63.9" y="148.5" width="11.9" height="0.4" fill="#e3b575"></rect><rect x="78.9" y="60.4" width="11.9" height="89.6" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="78.9" y="146.6" width="11.9" height="3.4" fill="#bbb3d3"></rect><rect x="78.9" y="145.3" width="11.9" height="1.3" fill="#91c5a4"></rect><rect x="78.9" y="144.9" width="11.9" height="0.4" fill="#e3b575"></rect><rect x="93.8" y="59.5" width="11.9" height="90.5" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="93.8" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="93.8" y="148.1" width="11.9" height="1.3" fill="#e3b575"></rect><rect x="108.8" y="56.5" width="11.9" height="93.5" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="108.8" y="147.7" width="11.9" height="2.3" fill="#bbb3d3"></rect><rect x="108.8" y="147.4" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="123.7" y="55.9" width="11.9" height="94.1" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="123.7" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="123.7" y="149.1" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="138.7" y="54.4" width="11.9" height="95.6" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="138.7" y="149.1" width="11.9" height="0.9" fill="#bbb3d3"></rect><rect x="138.7" y="148.9" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="153.6" y="49.3" width="11.9" height="100.7" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="153.6" y="146.6" width="11.9" height="3.4" fill="#bbb3d3"></rect><rect x="153.6" y="145.3" width="11.9" height="1.3" fill="#91c5a4"></rect><rect x="153.6" y="144.0" width="11.9" height="1.3" fill="#e3b575"></rect><rect x="168.5" y="39.9" width="11.9" height="110.1" fill="#2a2224" stroke="#e58b80" stroke-width="1"></rect><rect x="168.5" y="141.0" width="11.9" height="9.0" fill="#bbb3d3"></rect><rect x="168.5" y="140.6" width="11.9" height="0.4" fill="#e3b575"></rect><text x="174.5" y="34" fill="#e58b80" font-family="Geist Mono, Consolas, monospace" font-size="10" text-anchor="middle">#842</text><rect x="183.5" y="37.2" width="11.9" height="112.8" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="183.5" y="148.2" width="11.9" height="1.8" fill="#bbb3d3"></rect><rect x="183.5" y="147.8" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="183.5" y="147.6" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="198.4" y="36.0" width="11.9" height="114.0" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="198.4" y="149.5" width="11.9" height="0.5" fill="#bbb3d3"></rect><rect x="198.4" y="149.1" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="198.4" y="148.3" width="11.9" height="0.8" fill="#e3b575"></rect><rect x="213.4" y="35.1" width="11.9" height="114.9" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="213.4" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="213.4" y="148.6" width="11.9" height="0.8" fill="#e3b575"></rect><rect x="228.3" y="96.1" width="11.9" height="53.9" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="228.3" y="149.1" width="11.9" height="0.9" fill="#bbb3d3"></rect><rect x="228.3" y="147.9" width="11.9" height="1.3" fill="#91c5a4"></rect><rect x="228.3" y="147.7" width="11.9" height="0.2" fill="#e3b575"></rect><line x1="226.8" y1="22" x2="226.8" y2="150" stroke="#e3b575" stroke-width="1" stroke-dasharray="3 4"></line><rect x="243.3" y="95.4" width="11.9" height="54.6" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="243.3" y="149.4" width="11.9" height="0.6" fill="#bbb3d3"></rect><rect x="243.3" y="148.1" width="11.9" height="1.3" fill="#e3b575"></rect><rect x="258.2" y="93.2" width="11.9" height="56.8" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="258.2" y="148.2" width="11.9" height="1.8" fill="#bbb3d3"></rect><rect x="258.2" y="147.8" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="258.2" y="147.6" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="273.2" y="90.7" width="11.9" height="59.3" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="273.2" y="147.7" width="11.9" height="2.3" fill="#bbb3d3"></rect><rect x="273.2" y="147.2" width="11.9" height="0.4" fill="#e3b575"></rect><rect x="288.1" y="89.2" width="11.9" height="60.8" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="288.1" y="149.5" width="11.9" height="0.5" fill="#bbb3d3"></rect><rect x="288.1" y="149.1" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="288.1" y="147.8" width="11.9" height="1.3" fill="#e3b575"></rect><rect x="303.1" y="85.0" width="11.9" height="65.0" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="303.1" y="146.6" width="11.9" height="3.4" fill="#bbb3d3"></rect><rect x="303.1" y="146.2" width="11.9" height="0.4" fill="#91c5a4"></rect><rect x="303.1" y="145.9" width="11.9" height="0.2" fill="#e3b575"></rect><rect x="318.0" y="82.4" width="11.9" height="67.6" fill="#1e2126" stroke="#3b424b" stroke-width="1"></rect><rect x="318.0" y="147.7" width="11.9" height="2.3" fill="#bbb3d3"></rect><rect x="318.0" y="146.9" width="11.9" height="0.8" fill="#e3b575"></rect><g fill="#7d8590" font-family="Geist Mono, Consolas, monospace" font-size="10"><text x="34" y="164">#833</text><text x="330" y="164" text-anchor="end">#852</text></g></svg></div>
+      <div style="padding: 6px 14px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><button class="btn" type="button">‹ Prev</button><button class="btn" type="button">Next ›</button></div>
+      <div style="padding: 14px; display: grid; gap: 12px; border-top: 1px solid #333941;">
+        <div><strong style="font-size: 15px; font-weight: 600;">Request <span class="num">#842</span></strong><span style="display: block; margin-top: 2px; color: #a8afb9; font-size: 12px;">gate:bono:r1 · 8:31:04 p.m. · cache lifetime <span class="num">5m</span></span></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="stat"><span class="label"><i class="sw" style="background: #bbb3d3;"></i>Uncached input</span><strong style="">12,600</strong></div>
+          <div class="stat"><span class="label"><i class="sw" style="background: #91c5a4;"></i>Cache write</span><strong style="">1,800</strong></div>
+          <div class="stat"><span class="label"><i class="sw" style="background: #1e2126; box-shadow: inset 0 0 0 1px #4a525c;"></i>Cache read</span><strong style=" color: #a8afb9;">106,800</strong></div>
+          <div class="stat"><span class="label"><i class="sw" style="background: #e3b575;"></i>Output</span><strong style="">1,300</strong></div>
+        </div>
+        <div style="display: grid; gap: 6px;"><span class="label">Results available before <span style="color: #4c535c; text-transform: none; letter-spacing: 0;">· transcript adjacency</span></span><div style="display: flex; flex-wrap: wrap; gap: 6px;"><span class="chip" style="background: #191c20;">search</span><span class="chip" style="background: #191c20;">read ×3</span><span class="chip" style="background: #191c20;">test</span></div></div>
+        <div style="display: grid; gap: 6px;"><span class="label">Actions issued by request <span style="color: #4c535c; text-transform: none; letter-spacing: 0;">· recorded link</span></span><div style="display: flex; flex-wrap: wrap; gap: 6px;"><span class="chip" style="background: #191c20;">write ×2</span><span class="chip" style="background: #191c20;">shell</span></div></div>
+        <span style="color: #7d8590; font-size: 11px; line-height: 1.45;">Surrounding actions do not establish token cost per operation.</span>
+      </div>
+      <div style="border-top: 1px solid #333941;">
+        <div style="padding: 12px 14px 8px; display: flex; align-items: center; justify-content: space-between;"><span class="label">Largest requests</span><span class="chip" style="min-height: 28px;">by uncached input</span></div>
+        <div class="lr" style=" background: #23272d; box-shadow: inset 2px 0 0 #e58b80;"><span class="num" style="font-size: 12px;">#842</span><div style="min-width: 0;"><span class="n">gate:bono:r1</span><span class="b">before: search, read ×3, test</span></div><span class="num" style="text-align: right; font-size: 12px;">12.6K</span></div>
+        <div class="lr" style=""><span class="num" style="font-size: 12px; color: #a8afb9;">#1,103</span><div style="min-width: 0;"><span class="n">Worker 9</span><span class="b">before: test, read</span></div><span class="num" style="text-align: right; font-size: 12px;">11.1K</span></div>
+        <div class="lr" style=""><span class="num" style="font-size: 12px; color: #a8afb9;">#57</span><div style="min-width: 0;"><span class="n">Codex relay review PR #725</span><span class="b">before: shell ×4</span></div><span class="num" style="text-align: right; font-size: 12px;">9.3K</span></div>
+        <div style="min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #23272d; color: #7d8590; font-size: 12px;"><span>All 1,214 · never summed</span><a href="#">Show 20</a></div>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 14px; display: grid; gap: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Agent estimate · progress</span><span class="chip" style="min-height: 24px;">Implementing</span></div>
+      <div style="display: flex; align-items: baseline; gap: 10px;"><strong class="num" style="font: 500 24px/1 Inter, sans-serif;">78%</strong><span style="color: #a8afb9; font-size: 12px;">agent-reported</span></div>
+      <div style="height: 6px; border-radius: 2px; background: #23272d; overflow: hidden;"><div style="width: 78%; height: 100%; background: #91c5a4;"></div></div>
+      <div class="kv"><span>Remaining</span><b>30–120 min</b><span>Confidence</span><b>Medium</b><span>Recorded</span><b>Sep 4, 8:19 p.m.</b></div>
+    </section>
+    <section class="card" style="padding: 14px; display: grid; gap: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Workflows</span><span class="chip" style="min-height: 24px;"><i></i>Completed</span></div>
+      <div style="display: flex; align-items: baseline; gap: 10px;"><strong class="num" style="font: 500 24px/1 Inter, sans-serif;">3</strong><span style="color: #a8afb9; font-size: 12px;">38 agents · 37m wall · 4M context</span></div>
+      <div class="kv"><span>gate:bono</span><b>13 agents · 12m</b><span>fix:r1</span><b>11 agents · 10m</b><span>verify</span><b>14 agents · 15m</b></div>
+    </section>
+    <section class="card" style="padding: 14px; display: grid; gap: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Efficiency signals</span><span class="chip" style="min-height: 24px; border-color: #5a4a2a; color: #e3b575;">1 attention</span></div>
+      <div style="display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px;"><svg class="icon" viewBox="0 0 24 24" style="stroke: #e3b575;"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4M12 17.5v.5"></path></svg><div><strong style="font-size: 13px; font-weight: 600;">Workflow worker <span class="num" style="color: #a8afb9; font-weight: 500;">a73e10</span> repeated Bash 3 times</strong><p style="margin: 3px 0 6px; color: #a8afb9; font-size: 12px; line-height: 1.5;">The same call recurred with unchanged inputs. Check whether it is making progress.</p><a href="#" style="font-size: 12px; display: inline-flex; min-height: 32px; align-items: center;">Show agent</a></div></div>
+    </section>
+
+    <section class="card">
+      <div style="padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #333941;"><div><h2 style="margin: 0; font: 600 16px/1.5 Inter, sans-serif;">Agent activity</h2><span style="color: #a8afb9; font-size: 12px;">49 observed · showing 14</span></div><div style="display: flex; gap: 4px;"><span class="chip on">List</span><span class="chip">Grid</span></div></div>
+      <div style="padding: 12px 14px; display: grid; gap: 8px; border-bottom: 1px solid #333941;">
+        <div style="display: flex; gap: 3px;"><div class="seg" style="flex: 38; background: #697482;"></div><div class="seg" style="flex: 10; box-shadow: inset 0 0 0 1px #697482;"></div><div class="seg" style="flex: 1; background: #91c5a4;"></div></div>
+        <div class="legend"><span><i style="background: #697482;"></i>Finished<b>38</b></span><span><i style="box-shadow: inset 0 0 0 1px #697482;"></i>Idle<b>10</b></span><span><i style="background: #91c5a4;"></i>Active<b>1</b></span><span><i style="background: #f09a9f;"></i>Stopped<b>0</b></span></div>
+      </div>
+      <div style="padding: 10px 14px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; border-bottom: 1px solid #333941;">
+        <div style="height: 44px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #333941; border-radius: 4px; background: #111315; color: #7d8590; font-size: 13px;"><svg class="icon" viewBox="0 0 24 24" style="width: 15px; height: 15px;"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>Filter agents</div>
+        <span class="chip" style="min-height: 44px;"><svg class="icon" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>Filters <b style="color: #edf0f3; font-weight: 500;">1</b></span>
+      </div>
+      <div style="height: 520px; overflow: hidden; position: relative;">
+        <div class="row" style="background: #1b1e23;"><span class="role"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"></circle><circle cx="5" cy="19" r="2"></circle><circle cx="19" cy="19" r="2"></circle><path d="M12 7v5M12 12l-6 5M12 12l6 5"></path></svg></span><div class="name"><strong>Primary agent</strong><span>orchestrator · claude-fable-5-1 · 57 calls</span></div><div class="r"><b>210.4K</b><span>4h 29m · <span class="st idle"><i></i>Idle</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div class="group"><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span><strong>Direct subagents</strong><span class="sum"><b>5</b> · <b>352.9K</b></span></div>
+        <div class="group"><span class="caret"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></span><strong>Workflow · gate:bono</strong><span class="sum"><b>13</b> · <b>1.1M</b> · completed</span></div>
+        <div class="row" style=""><span class="role"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg></span><div class="name"><strong>pr</strong><span>slice-runner · sonnet-5 · 14 calls</span></div><div class="r"><b>67.2K</b><span>1m · <span class="st finished"><i></i>Finished</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div class="row" style="background: #23272d; box-shadow: inset 2px 0 0 #e58b80;"><span class="role"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg></span><div class="name"><strong>gate:bono:r1 <span class="chip" style="min-height: 18px; padding: 0 6px; border-color: #5a4a2a; color: #e3b575; font-size: 11px; vertical-align: 2px;">×3</span></strong><span>workflow-worker · opus-5 · 23 calls</span></div><div class="r"><b>80.8K</b><span>3m · <span class="st finished"><i></i>Finished</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div class="row" style=""><span class="role"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg></span><div class="name"><strong>fix:r1</strong><span>workflow-worker · sonnet-5 · 30 calls</span></div><div class="r"><b>114.8K</b><span>5m · <span class="st finished"><i></i>Finished</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div class="row" style=""><span class="role"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg></span><div class="name"><strong>gate:bono:r2</strong><span>workflow-worker · opus-5 · 20 calls</span></div><div class="r"><b>85.1K</b><span>3m · <span class="st finished"><i></i>Finished</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div class="row" style=""><span class="role"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 12h8M12 8v8"></path></svg></span><div class="name"><strong>verify:1</strong><span>workflow-worker · sonnet-5 · 13 calls</span></div><div class="r"><b>44.7K</b><span>1m · <span class="st finished"><i></i>Finished</span></span></div><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span></div>
+        <div style="min-height: 44px; display: flex; align-items: center; padding: 0 14px 0 44px; border-bottom: 1px solid #23272d; font-size: 12px;"><a href="#">Show 8 more in gate:bono</a></div>
+        <div class="group"><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span><strong>Workflow · fix:r1</strong><span class="sum"><b>11</b> · <b>1.3M</b> · completed</span></div>
+        <div class="group"><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span><strong>Workflow · verify</strong><span class="sum"><b>14</b> · <b>1.6M</b> · 9 idle</span></div>
+        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: linear-gradient(180deg, transparent, #191c20);"></div>
+      </div>
+      <div style="min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #333941; color: #7d8590; font-size: 12px;"><span>Tap a row to inspect</span><a href="#">Expand all 49</a></div>
+    </section>
+
+    <div class="card" style="min-height: 52px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;"><div style="display: flex; align-items: center; gap: 10px;"><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span><strong style="font-size: 15px; font-weight: 600;">Repository</strong></div><span style="color: #a8afb9; font-size: 12px; text-align: right;">main · 3 commits · 27 files</span></div>
+    <div class="card" style="min-height: 52px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;"><div style="display: flex; align-items: center; gap: 10px;"><span class="caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></span><strong style="font-size: 15px; font-weight: 600;">Session details</strong></div><span style="color: #a8afb9; font-size: 12px; text-align: right;">Est. cost <span class="num">$41.20</span> · plugin v0.5.0</span></div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>
