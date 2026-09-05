@@ -1,5 +1,4 @@
 .home {
-  width: min(1240px, 100%);
   padding: 0 0 32px;
   color: var(--command-ink);
   font: var(--text-base, 14px)/1.5 var(--font-ui, sans-serif);
