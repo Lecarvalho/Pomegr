@@ -118,6 +118,10 @@ test("native presence updates committed Live state without transcript growth or 
     await waitFor(() => row()?.isLive === true && row()?.activityStatus === "open");
     assert.equal(row().updatedAt, timestamp, "restart rechecks native presence, not recency");
 
+    // Isolate the explicit historical read from the restart's independent,
+    // asynchronous catalog/ownership lane before comparing acquisition counts.
+    await runtime.stopObservation();
+    await waitFor(() => !provider.qaStats().catalogPending);
     const beforeHistory = acquisitions;
     const historical = await provider.readSession(id, { historical: true });
     assert.equal(acquisitions, beforeHistory, "historical reads cannot probe current ownership");

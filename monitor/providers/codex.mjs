@@ -6,6 +6,7 @@ import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
+import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
 import { mergeCodexToolCalls, parseCodexCanonicalTurns, parseCodexActivityRecords } from "./codex-activity-events.mjs";
 import {
   mergeCodexExecutionTasks,
@@ -41,7 +42,6 @@ import {
   DEFAULT_CODEX_SCAN_LIMIT,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
-  listCodexRolloutMetadata,
   normalizeCodexThreadMetadata,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
@@ -203,14 +203,13 @@ export function createCodexProvider(options = {}) {
     }
   }
 
-  function readFallbackMetadata() {
-    const indexNames = readCodexSessionIndex(indexFile);
-    const roots = [{ root: sessionsRoot, archived: false }];
-    if (includeArchived) roots.push({ root: archivedRoot, archived: true });
-    return roots.flatMap(({ root, archived }) => listCodexRolloutMetadata(root, {
-      archived,
-      maximumFiles: scanLimit,
-    })).map((item) => {
+  const makeRolloutDiscovery = () => createCodexRolloutDiscovery({
+    roots: [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])],
+    maximumFiles: scanLimit, now,
+  });
+  let rolloutDiscovery = makeRolloutDiscovery();
+  async function readFallbackMetadata(readOptions, indexNames = readCodexSessionIndex(indexFile)) {
+    return (await rolloutDiscovery.read(readOptions)).map((item) => {
       const indexed = indexNames.get(item.localId);
       return {
         ...item,
@@ -219,25 +218,25 @@ export function createCodexProvider(options = {}) {
       };
     });
   }
-
-  const metadataCatalog = createCodexCatalogCache({ cacheMs, now, load: async () => {
+  const metadataCatalog = createCodexCatalogCache({ cacheMs, now, load: async (readOptions) => {
       const appServerMetadata = await readAppServerCatalog();
-      const fallbackMetadata = readFallbackMetadata();
+      const fallbackMetadata = await readFallbackMetadata(readOptions);
       const combined = mergeCodexMetadata([...fallbackMetadata, ...(appServerMetadata || [])]);
       const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
       pruneKnownFiles(knownRolloutFiles);
       return combined;
     } });
   const discoveredMetadata = metadataCatalog.read;
-
   async function listSessions(listOptions = {}) {
     const metadata = (await discoveredMetadata(listOptions)).map(owningRuntime.decorate);
     // Ownership is a separate background lane; recorded work never waits for it.
     void writerPresence.refresh(metadata).catch(() => {});
     const { threads, sessions } = liveness.observe(metadata);
+    rolloutDiscovery.retain(threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId));
     return threads.filter(isTopLevelCodexSession)
       .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
-      .sort(compareCodexMetadata).slice(0, catalogLimit);
+      .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
+      .slice(0, catalogLimit).sort(compareCodexMetadata);
   }
   async function readAppServerSession(localSessionId) {
     if (!appServer) return null;
@@ -754,6 +753,7 @@ export function createCodexProvider(options = {}) {
       list: listSessions,
       readEvidence: readSession,
       discoveredMetadata,
+      noticeRollout: (file) => rolloutDiscovery.notice(file),
       transcriptPathsBySessionId,
       intervalMs: options.observerIntervalMs ?? 10_000,
       concurrency: options.observerConcurrency ?? 2,
@@ -764,6 +764,8 @@ export function createCodexProvider(options = {}) {
         if (path.resolve(target) === path.resolve(writerLocksRoot)) writerPresence.invalidate();
       },
       onStop() {
+        rolloutDiscovery.close();
+        rolloutDiscovery = makeRolloutDiscovery();
         writerPresence.close?.();
         writerPresence = makeWriterPresence();
       },
@@ -786,6 +788,7 @@ export function createCodexProvider(options = {}) {
       return {
         ...liveState.stats(reset),
         catalogPending: metadataCatalog.pending(),
+        discovery: rolloutDiscovery.stats(),
         livenessRolloutFiles: livenessStats.rolloutFiles,
         livenessRolloutBytes: livenessStats.rolloutBytes,
       };
@@ -793,5 +796,4 @@ export function createCodexProvider(options = {}) {
     watchTargets,
   });
 }
-
 export const codexProvider = createCodexProvider();

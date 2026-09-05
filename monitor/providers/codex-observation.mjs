@@ -309,6 +309,9 @@ export function createCodexIncrementalObserver(options = {}) {
     }
     if (typeof filename !== "string" || !filename) return { catalog: true, sessionIds: [] };
     const candidate = path.resolve(target, filename);
+    // Queue exact files before the bounded catalog pass. An older resumed source
+    // must not need to re-enter discovery through the recent-filename window.
+    options.noticeRollout?.(candidate);
     const known = sourceSessions.get(sourceKey(candidate));
     if (known?.size) {
       return {
@@ -316,6 +319,7 @@ export function createCodexIncrementalObserver(options = {}) {
         sessionIds: [...known],
       };
     }
+    if (options.noticeRollout) return { catalog: true, afterCatalog: true, sessionIds: [] };
     const header = readCodexRolloutHeader(candidate);
     const rootId = header?.sessionId && header.sessionId !== header.localId
       ? header.sessionId
@@ -373,6 +377,19 @@ export function createCodexIncrementalObserver(options = {}) {
           : snapshot?.identity || descriptor.identity;
       const replacementPending = snapshot
         && (snapshot.identity !== identity || descriptor.size < snapshot.completeOffset);
+      if (replacementPending && options.noticeRollout) {
+        const expected = sourceSet.selectedMetadata.find((item) => item.rolloutFile === descriptor.file);
+        const header = readCodexRolloutHeader(descriptor.file);
+        // A rewritten path may now belong to another session. Keep the committed
+        // evidence until discovery establishes its identity;
+        // ordinary appends continue through the incremental path without this read.
+        if (!header || !expected) return null;
+        if (header.localId !== expected.localId) {
+          options.noticeRollout?.(descriptor.file);
+          void observer.refresh({ fresh: true });
+          return null;
+        }
+      }
       if (replacementPending) {
         part.ready = false;
         part.capture = false;

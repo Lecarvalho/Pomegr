@@ -1,6 +1,6 @@
 /**
  * @template T
- * @param {{load: () => Promise<T>, cacheMs: number, now: () => number}} options
+ * @param {{load: (options: {fresh: boolean}) => Promise<T>, cacheMs: number, now: () => number}} options
  */
 export function createCodexCatalogCache({ load, cacheMs, now }) {
   /** @type {{expiresAt: number, value: T} | null} */
@@ -25,7 +25,7 @@ export function createCodexCatalogCache({ load, cacheMs, now }) {
     }
     if (!fresh && cache && now() < cache.expiresAt) return cache.value;
     const loadGeneration = generation;
-    const promise = load().then((value) => {
+    const promise = load({ fresh }).then((value) => {
       if (loadGeneration === generation) cache = { expiresAt: now() + cacheMs, value };
       return value;
     });

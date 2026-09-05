@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,6 +18,96 @@ async function writeRollout(file, fixture, replacements = []) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, contents, "utf8");
 }
+
+async function beyondDiscoveryWindow(context) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-discovery-window-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessionsRoot = path.join(root, "sessions");
+  await mkdir(sessionsRoot, { recursive: true });
+  const old = new Date(Date.now() - 30 * 24 * 60 * 60_000);
+  const write = async (name, id) => {
+    const file = path.join(sessionsRoot, name);
+    await writeFile(file, `${JSON.stringify({
+      type: "session_meta", timestamp: old.toISOString(),
+      payload: { id, source: "vscode", cwd: "C:\\synthetic\\repo" },
+    })}\n`);
+    await utimes(file, old, old);
+    return file;
+  };
+  for (let offset = 0; offset < 510; offset += 50) {
+    await Promise.all(Array.from({ length: Math.min(50, 510 - offset) }, (_, index) => {
+      const id = `newer-${String(offset + index).padStart(4, "0")}`;
+      return write(`rollout-z-${id}.jsonl`, id);
+    }));
+  }
+  const resumedFile = await write("rollout-a-resumed.jsonl", "older-resumed");
+  const writerPresence = { refresh: async () => {}, current: () => null, close() {} };
+  return { root, sessionsRoot, resumedFile, writerPresence };
+}
+
+async function waitForDiscovery(predicate) {
+  const deadline = Date.now() + 10_000;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, "discovery did not publish the resumed session");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test("a watcher admits and hydrates an older resumed session beyond 500 files", async (context) => {
+  const fixture = await beyondDiscoveryWindow(context);
+  const callbacks = new Map();
+  const catalogs = [];
+  const evidence = [];
+  const provider = createCodexProvider({
+    codexHome: fixture.root, includeArchived: false, cacheMs: 60_000,
+    writerPresence: fixture.writerPresence, observerIntervalMs: 60_000,
+    observerWatchSource(target, _options, callback) {
+      callbacks.set(target, callback);
+      return { close() {} };
+    },
+  });
+  const observer = provider.createObserver();
+  const controller = new AbortController();
+  context.after(() => { controller.abort(); observer.stop(); });
+  await observer.start({
+    publishCatalog(rows) { catalogs.push(rows); },
+    publishSession(id, value) { evidence.push({ id, value }); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitForDiscovery(() => catalogs.length > 0);
+  assert.equal(catalogs[0].some((row) => row.localId === "older-resumed"), false);
+  const timestamp = new Date().toISOString();
+  await appendFile(fixture.resumedFile, `${JSON.stringify({
+    type: "event_msg", timestamp, payload: { type: "task_started", turn_id: "resumed-turn" },
+  })}\n`);
+  const wake = callbacks.get(fixture.sessionsRoot);
+  for (let index = 0; index < 100; index += 1) wake("change", path.basename(fixture.resumedFile));
+  await waitForDiscovery(() => evidence.some((item) => item.id === "older-resumed"));
+  assert.equal(catalogs.at(-1).some((row) => row.localId === "older-resumed" && row.isLive), true);
+  assert.doesNotMatch(JSON.stringify(catalogs), /rollout-|session_meta|turn_id|synthetic/);
+  assert.ok(observer.diagnostics().reconciliationRuns <= 3, "watcher burst must coalesce catalog work");
+});
+
+test("periodic discovery finds an older running session without a watcher after startup", async (context) => {
+  const fixture = await beyondDiscoveryWindow(context);
+  let now = Date.now();
+  const timestamp = new Date().toISOString();
+  await appendFile(fixture.resumedFile, `${JSON.stringify({
+    type: "event_msg", timestamp, payload: { type: "task_started", turn_id: "already-running" },
+  })}\n`);
+  const provider = createCodexProvider({
+    codexHome: fixture.root, includeArchived: false, cacheMs: 0,
+    writerPresence: fixture.writerPresence, now: () => now,
+  });
+  const initial = await provider.listSessions();
+  assert.equal(initial.some((row) => row.localId === "older-resumed"), false);
+  let catalog = initial;
+  for (let pass = 0; pass < 10 && !catalog.some((row) => row.localId === "older-resumed"); pass += 1) {
+    now += 10_000;
+    catalog = await provider.listSessions({ fresh: true });
+  }
+  assert.equal(catalog.some((row) => row.localId === "older-resumed" && row.isLive), true);
+});
 
 function appThread(id, options = {}) {
   return {
@@ -46,6 +136,21 @@ test("discovers Codex home from the stable environment override before the defau
     path.resolve("C:\\configured-codex"),
   );
   assert.equal(resolveCodexHome({ homeDir: "C:\\fallback", env: {} }), path.resolve("C:\\fallback", ".codex"));
+});
+
+test("the bounded catalog retains a live session ahead of more recently updated history", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-live-catalog-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const history = Array.from({ length: 55 }, (_, index) => appThread(`history-${index}`, { updatedAt: 1_786_360_200 + index }));
+  const live = { ...appThread("older-live", { updatedAt: 1_786_350_000 }), status: { type: "active", activeFlags: [] } };
+  const provider = createCodexProvider({
+    codexHome: root, includeArchived: false,
+    appServer: { async listThreads() { return { data: [...history, live] }; } },
+  });
+  const catalog = await provider.listSessions();
+  assert.equal(catalog.length, 50);
+  assert.equal(catalog.some((row) => row.localId === "older-live" && row.isLive), true);
+  assert.equal(catalog.at(-1).localId, "older-live", "selected rows retain recency ordering");
 });
 
 test("prefers safe app-server thread metadata and never exposes preview, turns, or rollout paths", async (context) => {

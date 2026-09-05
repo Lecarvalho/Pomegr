@@ -649,6 +649,37 @@ React, persisted checkpoints, or browser API fields.
 - Codex fallback discovery collapses multiple rollout generations carrying the same
   top-level session ID into one catalog entry, retaining the earliest recorded creation
   time while the newest rollout remains the private source for current observation.
+- Codex fallback discovery treats its recent-file scan limit as a per-pass acquisition
+  budget, never as a permanent creation-date cutoff. A retained background cursor
+  advances through older files on subsequent discovery passes, including when no
+  watcher notification was received. Recent startup discovery remains bounded and
+  does not wait for a complete historical walk.
+  The default history batch visits at most 500 directory entries and yields every
+  32 entries; its cursor advances at most once per second and completed sweeps wait
+  at least ten seconds before restarting. The existing periodic observer drives
+  this work. A forced refresh without an exact file hint may also visit one bounded
+  recent batch, using a temporary cursor so historical progress is preserved.
+- Exact Codex transcript watcher hints enter a bounded, deduplicated private queue.
+  Discovery validates root containment and the actual file before admitting its
+  header directly; it does not send an older resumed source back through the recent
+  filename window. Watcher bursts coalesce through the existing observer scheduler
+  and do not restart the historical scan. Directory or missing-filename notifications
+  rely on reconciliation. Hints are acquisition candidates, never session identities
+  or evidence of work on their own.
+- The Codex discovery cache retains bounded private metadata and source generations.
+  It holds at most 500 headers and 128 deduplicated hints by default.
+  Unchanged retained sources reuse their headers; changed sources undergo bounded
+  header validation, and transient failures retain the last valid metadata. Cache
+  selection favors retained live sessions and recently updated candidates. The public
+  catalog selects live rows before filling its remaining bounded history slots and
+  retains its usual recency ordering. Discovery metadata, paths, cursors, and hints
+  remain in memory only; no new checkpoint or browser fields are introduced. Detail
+  hydration and normalized evidence retention continue under the existing U1/C/P
+  contracts, and GETs continue to serve committed response caches only.
+- A Codex source generation replacement revalidates the bounded header identity
+  before ingesting records against an existing session. A changed identity queues
+  discovery and leaves the prior committed evidence intact; ordinary appends retain
+  their incremental acquisition path.
 - For multi-file Codex sessions, U1 owns an independent cursor and bounded private
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
