@@ -100,9 +100,9 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="Meet the new Agents page"
-          description="See which models you use most, the roles they take, and how you delegate work across your sessions."
-          details="Filter by project and period, explore recorded work, and inspect the agents behind each count. Switch to Live agents to follow active assignments and open their sessions."
+          title="A clearer session page"
+          description="See every model request as a bar, the work around it, and a grouped agent roster that never scrolls the page. Open any session to try it."
+          details="Requests & actions replaces Context history and Request snapshots: one bar per request, prompt size as the outline, compactions as dashed ticks, and a Largest requests list ranked by uncached input. Agent activity groups agents by workflow, keeps the roster inside a fixed region, and moves details into an inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay request-local and are never summed into spend."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

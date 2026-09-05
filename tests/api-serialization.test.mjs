@@ -9,6 +9,7 @@ import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import { WORK_KINDS } from "../monitor/work-kind.mjs";
+import { assertRequestWork } from "./helpers/request-work.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   readProviderFixture,
@@ -127,16 +128,17 @@ async function syntheticProviders(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-api-audit-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const replacements = [["PRIVATE_PATH_MUST_NOT_LEAK", "synthetic-path"]];
-
+  // Replace public repository/memory paths, but retain tool-input privacy sentinels.
+  const claudeReplacements = ["repo", "AGENTS.md"].map((leaf) => [`PRIVATE_PATH_MUST_NOT_LEAK\\\\${leaf}`, `synthetic-path\\\\${leaf}`]);
   const claudeRoot = path.join(root, "claude");
   const claudeId = "claude-fixture-parent";
   const claudeFile = path.join(claudeRoot, "projects", "fixture", `${claudeId}.jsonl`);
   const claudeChildFile = path.join(claudeRoot, "projects", "fixture", claudeId, "subagents", "agent-child-fixture.jsonl");
-  await writeFixture(claudeFile, "claude/session.jsonl", replacements);
+  await writeFixture(claudeFile, "claude/session.jsonl", claudeReplacements);
   await writeFixture(
     claudeChildFile,
     "claude/subagent.jsonl",
-    replacements,
+    claudeReplacements,
   );
   await writeFixture(path.join(claudeRoot, "registry", `${claudeId}.json`), "claude/registry.json");
   await writeFixture(path.join(claudeRoot, "tasks", claudeId, "task-1.json"), "claude/task.json");
@@ -389,6 +391,10 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(codexState.metrics.tokens.cacheEvents.status, "unavailable");
   for (const state of [claudeState, codexState]) {
     const allowedWorkKinds = new Set(WORK_KINDS);
+    for (const insight of state.insights) assert.deepEqual(Object.keys(insight).sort(), Object.hasOwn(insight, "agentId") ? ["agentId", "detail", "id", "level", "title"] : ["detail", "id", "level", "title"]);
+    for (const insight of state.insights) assert.equal(insight.agentId === undefined || insight.agentId === null || state.agents.some((agent) => agent.id === insight.agentId), true);
+    for (const loop of state.loops) assert.deepEqual(Object.keys(loop).sort(), ["agent", "agentId", "calls", "detail", "id", "repeats"]);
+    for (const loop of state.loops) assert.equal(loop.agentId === null || state.agents.some((agent) => agent.id === loop.agentId), true);
     assert.equal(state.activity.every((event) => allowedWorkKinds.has(event.workKind)), true);
     assert.equal(state.agents.flatMap((agent) => agent.executionTasks || []).every((task) => allowedWorkKinds.has(task.workKind)), true);
     for (const observedAgent of state.agents) {
@@ -487,11 +493,13 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {
       assert.deepEqual(Object.keys(item).sort(), [
-        "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
+        "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "issuedAssociation", "issuedWork", "observedAt", "outputTokens", "precedingAssociation", "precedingWork", "totalTokens", "uncachedInputTokens",
       ]);
       assert.equal(item.cacheLifetime === null || /^(5m|1h|mixed|30m\+)$/.test(item.cacheLifetime), true);
       assert.equal(item.totalTokens, item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens);
       assert.match(item.id, /^request-[a-f0-9]{16}$/);
+      assertRequestWork(item.precedingWork, item.precedingAssociation, "transcript_adjacency");
+      assertRequestWork(item.issuedWork, item.issuedAssociation, "recorded_link");
     }
     assert.equal(Object.hasOwn(state.metrics.tokens, "contextGrowthTimeline"), false);
     assert.deepEqual(state.metrics.resources, {

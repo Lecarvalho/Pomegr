@@ -65,12 +65,13 @@ function lifetimeLabel(value: CacheLifetime | null | undefined) {
   return value || "Unavailable";
 }
 
-export function AgentTurnCacheTiming({ agentId, className = "", historical, requestSnapshots, status }: {
+export function AgentTurnCacheTiming({ agentId, className = "", historical, requestSnapshots, status, plain = false }: {
   agentId: string;
   className?: string;
   historical: boolean;
   requestSnapshots: RequestSnapshotFeed;
   status: Agent["status"];
+  plain?: boolean;
 }) {
   const now = useLiveNow();
   const evidence = useMemo(
@@ -87,10 +88,10 @@ export function AgentTurnCacheTiming({ agentId, className = "", historical, requ
       ? "Cache lifetime threshold elapsed"
       : null;
 
-  if (!stateLabel) return <time
+  if (plain || !stateLabel) return <time
     className={`agentTurnCacheTiming agentTurnCacheTimingPlain ${className}`.trim()}
     dateTime={lastRequestAt || undefined}
-  >last turn {triggerTime}</time>;
+  >{plain ? "" : "last turn "}{triggerTime}</time>;
 
   const content = <span className="cacheTimingPopoverContent">
     <span className="cacheTimingRow"><span>Last model turn</span><time dateTime={lastRequestAt || undefined}>{triggerTime}</time></span>

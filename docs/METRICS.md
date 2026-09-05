@@ -63,6 +63,18 @@ All-agent context is the only aggregated context total Pomegr presents. The dash
 
 ## Request snapshots
 
+Each request may carry two bounded work-kind tallies. `issuedWork` counts tool calls
+contained in the same assistant record (`recorded_link`). `precedingWork` counts tool
+results recorded for the same agent since the previous usage-bearing assistant record
+(`transcript_adjacency`); a recognized compaction between assistant records clears the
+tally. Missing content arrays produce empty tallies. Each tally keeps at most 8 kinds,
+sorted by count descending then kind ascending, with counts capped at 999. Unknown tool
+result identities stay generic (`shell`). These describe what the model could see or
+asked for; they never attribute tokens to an operation, establish causation, or rank
+operation categories by accumulated tokens.
+Codex snapshots carry empty tallies until its transcript structure is validated separately.
+Focused reports omit these action fields.
+
 `metrics.tokens.requestSnapshots` is a separate bounded feed of valid provider usage observations. Every item represents exactly one request and exposes only an opaque monitor-generated ID, normalized agent ID, normalized observation timestamp, request-local uncached input, cache write, cache read, output, and `totalTokens` recomputed from those four parts. It does not use a provider-reported total. Provider capability gates determine which components are presented; Cache write is currently omitted for Codex.
 
 For live Claude Code and Codex sessions, the provider adapters retain no more than the latest 1,000 normalized observations per agent so context history remains continuous when older transcript records leave a bounded acquisition chunk. Identity, size, complete-record offsets, and bounded continuity evidence govern append compatibility. A replacement is staged separately and atomically swaps only after its complete normalized candidate validates. The independent request-snapshot feed remains capped to its newest 100 valid observations per visible agent. When a provider omits a request identity, Pomegr derives a bounded stable internal identity only from normalized timestamp, model, and token-count fields; neither that identity nor its source fields are exposed through the browser API.
@@ -71,9 +83,29 @@ The monitor deduplicates observations privately, keeps at most the latest 100 va
 
 Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Focused reports omit the routine feed and include only selected independent supporting requests, normalized through the same allowlist, from retained evidence before the dashboard's 100-request cap.
 
+The Requests & actions view draws a prompt-size outline
+(uncached input + cache write + cache read) for each request. This outline replaces
+the former Context history panel as the session page's visible context level; it is
+request-local and does not carry values between requests. `contextHistory` stays in
+the API for report and Home projections. The current personal Home does not fetch this
+evidence; retaining the API does not introduce a Home request or change its cadence.
+
+The default Fresh tokens mode stacks uncached input, cache write (when available),
+and output. Full breakdown also stacks cache read and omits the outline. The fixed
+scope-wide scale fits both the prompt outline and the visible stack, including output,
+rounded upward to a readable step; moving the window never changes that scale.
+Uncached input describes the recorded cache classification, not proof that the model
+had never seen that content. Largest requests ranks independent requests within the
+selected agent scope, including those outside the visible window, with ordinal order
+breaking ties. Ordinals are positions in the retained feed, not provider identifiers.
+Automatic and manual compaction ticks compare successive requests for the same agent;
+snapshot drops are not drawn. No request amounts are summed across observations.
+
 The Agent activity presentation derives **Last model turn** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
 
 ## Context history
+
+Retained for normalized API and focused-report evidence; the current personal Home does not fetch context history. On the session page, Requests & actions shows each request's prompt-size outline instead of a carried-forward context timeline.
 
 Context history derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Pomegr carries forward each agent's latest non-zero snapshot and exposes both the per-agent level and their all-agent sum. Repeated snapshots produce a flat level, while context reductions caused by compaction or agent resets remain visible. The final all-agent level equals the current or final All-agent context derived from those observations.
 
@@ -399,7 +431,15 @@ A repetition signature combines the agent and tool name with a monitor-side dige
 
 ## Tool calls
 
-`toolCalls` counts every observed tool invocation in the session. Its dashboard popover groups those calls by agent, tool name, and sanitized target; the grouped call counts always sum to the headline total. Prompt text, response text, and full command contents are not exposed.
+`toolCalls` counts every observed tool invocation in the session. The session KPI strip shows this count with the number of repeated calls and recorded workflows. Prompt text, response text, and full command contents are not exposed.
+
+The summary cards show the transcript-recorded agent estimate, workflow rollups, and
+deterministic efficiency signals. Workflow context sums each member agent's latest
+snapshot once; workflow wall time sums the recorded workflow durations and can include
+overlapping intervals. Neither value represents request throughput or spend. Agent-specific
+cache, compaction, and repetition signals and loop patterns may include a normalized
+`agentId`; overlap signals have no single agent target. Links currently navigate to
+Agent activity. Signal generation rules are unchanged.
 
 ## Activity events
 
@@ -420,7 +460,8 @@ score = max(
 )
 ```
 
-The score is a heuristic attention signal, not a quality assessment.
+The score is a heuristic attention signal, not a quality assessment. It appears only
+inside Session details on the session page.
 
 ## Plan usage
 

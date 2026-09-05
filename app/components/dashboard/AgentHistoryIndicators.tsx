@@ -60,18 +60,19 @@ function cacheReadDropSummary(count: number, representedAgents = 1) {
   return `Possible cache refill inferred ${occurrences}${scope}.`;
 }
 
-function CacheRefillTrigger({ count, label, expanded, controls, onClick }: {
+function CacheRefillTrigger({ count, label, expanded, controls, onClick, text }: {
   count: number;
   label: string;
   expanded: boolean;
   controls: string;
   onClick: () => void;
+  text?: string;
 }) {
   return <AgentChip as="button" className="agentHistoryIndicator agentCacheRefillIndicator" ariaLabel={label} expanded={expanded} controls={controls} onClick={onClick}>
     <svg aria-hidden="true" className="agentHistoryIcon agentCacheRefillIcon" viewBox="0 0 24 24">
       <path d="M12 2.5v8M8.5 7l3.5 3.5L15.5 7M4 14h16M6.5 18h11M9 22h6" />
     </svg>
-    <span aria-hidden="true" className="agentHistoryCount">{count > 99 ? "99+" : count}</span>
+    <span aria-hidden="true" className="agentHistoryCount">{text || (count > 99 ? "99+" : count)}</span>
   </AgentChip>;
 }
 
@@ -244,12 +245,13 @@ export function cacheRefillDescription(
   return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
-export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], cacheReadDrops = [], className = "" }: {
+export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], cacheReadDrops = [], className = "", expandedRows = false }: {
   agentIds: string[];
   boundaries: ContextHistoryBoundary[];
   cacheRefills?: CacheRefillCount[];
   cacheReadDrops?: CacheReadDropCount[];
   className?: string;
+  expandedRows?: boolean;
 }) {
   const [cachePopoverOpen, setCachePopoverOpen] = useState(false);
   const [cacheReadDropPopoverOpen, setCacheReadDropPopoverOpen] = useState(false);
@@ -272,10 +274,10 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>
       <svg aria-hidden="true" className="agentHistoryIcon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-      <span aria-hidden="true" className="agentHistoryCount">{summary.total > 99 ? "99+" : summary.total}</span>
+      <span aria-hidden="true" className="agentHistoryCount">{expandedRows ? compactionDescription(summary, agentIds.length) : summary.total > 99 ? "99+" : summary.total}</span>
     </AgentChip>}
     {cacheRefillCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cachePopoverAnchorRef}>
-      <CacheRefillTrigger count={cacheRefillCount} label={cacheRefillLabel} expanded={cachePopoverOpen} controls={cachePopoverId} onClick={() => setCachePopoverOpen((open) => !open)} />
+      <CacheRefillTrigger count={cacheRefillCount} text={expandedRows ? `Possible cache refill ×${cacheRefillCount} · inference` : undefined} label={cacheRefillLabel} expanded={cachePopoverOpen} controls={cachePopoverId} onClick={() => setCachePopoverOpen((open) => !open)} />
       {cachePopoverOpen && <CacheEvidencePopover anchorRef={cachePopoverAnchorRef} id={cachePopoverId} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title="Possible full refill" closeLabel="Close cache refill evidence" onClose={closeCachePopover} summary={cacheRefillSummary(cacheRefillCount, agentIds.length)} className="cacheRefillPopover">
         <ol className="cacheRefillPopoverOccurrences" aria-label="Cache refill occurrences">
           {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
@@ -300,7 +302,7 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
       </CacheEvidencePopover>}
     </span>}
     {cacheReadDropCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cacheReadDropPopoverAnchorRef}>
-      <CacheRefillTrigger count={cacheReadDropCount} label={cacheReadDropLabel} expanded={cacheReadDropPopoverOpen} controls={cacheReadDropPopoverId} onClick={() => setCacheReadDropPopoverOpen((open) => !open)} />
+      <CacheRefillTrigger count={cacheReadDropCount} text={expandedRows ? `Cache-read drops ×${cacheReadDropCount} · possible refill inference` : undefined} label={cacheReadDropLabel} expanded={cacheReadDropPopoverOpen} controls={cacheReadDropPopoverId} onClick={() => setCacheReadDropPopoverOpen((open) => !open)} />
       {cacheReadDropPopoverOpen && <CacheEvidencePopover anchorRef={cacheReadDropPopoverAnchorRef} id={cacheReadDropPopoverId} ariaLabel="Possible cache refill evidence" eyebrow="Cache evidence" title="Possible cache refill" closeLabel="Close possible cache refill evidence" onClose={closeCacheReadDropPopover} summary={cacheReadDropSummary(cacheReadDropCount, agentIds.length)} className="cacheRefillPopover">
         <ol className="cacheRefillPopoverOccurrences" aria-label="Possible cache refill occurrences">
           {cacheReadDropOccurrences.map((occurrence, index) => {

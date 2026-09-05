@@ -363,6 +363,7 @@ const evidenceAgent = z.object({
   executionTasks: z.array(evidenceTask).max(256), reviewDecisions: evidenceReviewDecisions.optional(),
   lastSeen: evidenceTimestamp, startedAt: evidenceTimestamp, updatedAt: evidenceTimestamp, durationMs: evidenceCount,
 }).strict();
+const evidenceWorkCount = z.object({ kind: evidenceWorkKind, count: z.number().int().min(1).max(999) }).strict();
 const evidenceUsageSnapshot = z.object({
   dedupeId: evidenceId, actorId: evidenceId, timestamp: evidenceTimestamp, input: evidenceCount, output: evidenceCount, cacheWrite: evidenceCount, cacheRead: evidenceCount,
   reasoningOutput: evidenceCount.optional(), totalTokens: evidenceCount.optional(), modelContextWindow: evidenceCount.nullable().optional(), model: evidenceText(256).optional(),
@@ -372,6 +373,8 @@ const evidenceUsageSnapshot = z.object({
   cacheMissDiagnosticState: z.enum(["absent", "recognized_reason", "previous_cache_entry_unavailable", "inconclusive"]).optional(),
   cacheMissProviderStatus: z.literal("previous_cache_entry_unavailable").nullable().optional(), cacheToolChangeCause: z.literal("remote_control_connected").nullable().optional(),
   cacheMessageChangeSequence: z.literal("post_tool_task_notification_resume").nullable().optional(),
+  precedingWork: z.array(evidenceWorkCount).max(8).default([]),
+  issuedWork: z.array(evidenceWorkCount).max(8).default([]),
 }).strict();
 const evidenceToolCall = z.object({
   id: evidenceId, timestamp: evidenceTimestamp, actor: z.object({ id: evidenceId, label: evidenceOneLine(512) }).strict(), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024),

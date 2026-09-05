@@ -31,10 +31,10 @@ describe("session approval mode", () => {
 
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Session status")).toBeInTheDocument();
     const approvalMode = screen.getByText("Auto mode");
     expect(approvalMode).toHaveAttribute("title", "Latest recognized provider-reported mode.");
-    expect(approvalMode.tagName).toBe("STRONG");
+    expect(approvalMode.tagName).toBe("SPAN");
     expect(approvalMode).toHaveClass("sessionApprovalModeValue");
     expect(screen.queryByText(/Observed/)).not.toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe("session approval mode", () => {
 
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("APPROVAL MODE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Session status")).toBeInTheDocument();
     expect(screen.getByText("Not reported yet")).toHaveAttribute("title", "Waiting for the provider to report an approval mode for this session.");
   });
 
@@ -60,7 +60,7 @@ describe("session approval mode", () => {
 
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical /></LiveClockProvider>);
 
-    expect(screen.getByText("LAST APPROVAL MODE")).toBeInTheDocument();
+    expect(screen.getByText("Recorded session · ended")).toBeInTheDocument();
     expect(screen.getByText("Accept edits")).toHaveAttribute("title", "Last provider-reported mode recorded for this session.");
   });
 

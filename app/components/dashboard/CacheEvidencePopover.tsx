@@ -22,7 +22,7 @@ export function CacheEvidencePopover({ anchorRef, onClose, ...props }: Component
       const bounds = surface.getBoundingClientRect();
       const edge = 12;
       const gap = 8;
-      const mobileRow = window.innerWidth <= 640 ? anchor.closest(".agentRow") : null;
+      const mobileRow = window.innerWidth <= 640 ? anchor.closest(".rosterRow") : null;
       const desiredLeft = mobileRow?.getBoundingClientRect().left ?? trigger.left;
       const left = Math.max(edge, Math.min(desiredLeft, window.innerWidth - bounds.width - edge));
       const below = trigger.bottom + gap;

@@ -42,6 +42,7 @@ function cacheMissSignals(agents, cacheEvents, enabled) {
     emittedAgents.add(event.agentId);
     signals.push({
       id: `prompt-cache-miss-${event.agentId}`,
+      agentId: event.agentId,
       level: "warning",
       title: "Prompt cache miss and refill after idle gap",
       detail: `${labels.get(event.agentId)}'s prompt input was ${compactContext(event.promptInputTokens)} with ${event.cacheReadPercent}% read from cache after ${compactElapsed(event.gapMs)}. The preceding comparable request read ${event.previousCacheReadPercent}% from cache, and the provider recorded an ${compactContext(event.cacheWriteTokens)} cache refill. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.`,
@@ -94,6 +95,7 @@ export function evaluateEfficiencySignals({
         : `The provider automatically compacted this agent's conversation${occurrence}${context}.`;
     insights.push({
       id: `automatic-compaction-${agent.id}`,
+      agentId: agent.id,
       level: "warning",
       title: `${agent.label} context was automatically compacted`,
       detail: `${event} Earlier conversation detail was summarized to continue the session. Consider delegating or starting a focused follow-up before context pressure builds again.`,
@@ -121,6 +123,7 @@ export function evaluateEfficiencySignals({
 
   for (const [loopIndex, loop] of loops.slice(0, EFFICIENCY_SIGNAL_RULES.repetition.maximumSignals).entries()) insights.push({
     id: `loop-${loop.actor.id}-${loopIndex}`,
+    agentId: loop.actor.id,
     level: "warning",
     title: `${loop.actor.label} repeated ${loop.tool} ${loop.count} times`,
     detail: loop.detail ? `The same scoped call (${loop.detail}) recurred with unchanged inputs. Check whether it produced new evidence.` : "The same call recurred with unchanged inputs. Check whether it is making progress.",
@@ -129,6 +132,7 @@ export function evaluateEfficiencySignals({
   const overlapRule = EFFICIENCY_SIGNAL_RULES.concurrentMutation;
   for (const overlap of (evidence.concurrentMutation ? overlaps : []).slice(0, overlapRule.maximumSignals)) insights.push({
     id: `overlap-${overlap.display}`,
+    agentId: null,
     level: "warning",
     title: `Concurrent edits may conflict in ${overlap.display}`,
     detail: `${overlap.actors.size} agents modified the same region within ${overlapRule.windowMs / 1_000} seconds across ${overlap.calls} calls.`,

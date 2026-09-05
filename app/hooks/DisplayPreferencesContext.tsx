@@ -3,7 +3,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 export type DisplayPreferences = {
-  contextHistory: boolean;
   estimatedCost: boolean;
 };
 
@@ -24,7 +23,6 @@ type DisplayPreferencesContextValue = {
 };
 
 export const DEFAULT_DISPLAY_PREFERENCES: Readonly<DisplayPreferences> = Object.freeze({
-  contextHistory: true,
   estimatedCost: true,
 });
 
@@ -36,8 +34,8 @@ let inMemoryOnlyPreferences = false;
 function normalizePreferences(value: unknown): DisplayPreferences {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ...DEFAULT_DISPLAY_PREFERENCES };
   const source = value as Partial<DisplayPreferences>;
-  if (typeof source.contextHistory !== "boolean" || typeof source.estimatedCost !== "boolean") return { ...DEFAULT_DISPLAY_PREFERENCES };
-  return { contextHistory: source.contextHistory, estimatedCost: source.estimatedCost };
+  if (typeof source.estimatedCost !== "boolean") return { ...DEFAULT_DISPLAY_PREFERENCES };
+  return { estimatedCost: source.estimatedCost };
 }
 
 function serializedPreferences(value: unknown) {

@@ -1,23 +1,19 @@
 "use client";
 
-import Link from "next/link";
-
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorState, SessionReadiness, SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
-import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
 import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
-import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
-import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
+import { RequestsActionsPanel } from "./components/dashboard/RequestsActionsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
+import { RepositoryDisclosurePanel } from "./components/dashboard/RepositoryDisclosurePanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { ProviderBadge } from "./components/ProviderBadge";
-import { SessionProgressPanel } from "./components/dashboard/SessionProgressPanel";
-import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
-import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
+import { SessionKpiStrip } from "./components/dashboard/SessionKpiStrip";
+import { SessionSummaryCards } from "./components/dashboard/SessionSummaryCards";
 import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
@@ -27,11 +23,11 @@ import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-clien
 import { useProviderStatus, useProviderStatusPollingPause } from "./provider-status-client";
 import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor } from "./components/ProviderStatus";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
+import { usePhoneLayout } from "./hooks/usePhoneLayout";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
   getDesktopState(): Promise<DesktopState | null>;
-  setPaused(value: boolean): Promise<DesktopState | null>;
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
 
@@ -48,13 +44,14 @@ function notificationNavigationSessionId() {
 function storedAgentActivityViewMode(sessionId: string | null): AgentActivityViewMode {
   if (!sessionId || typeof window === "undefined") return "list";
   try {
-    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "tree" ? "tree" : "list";
+    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "grid" ? "grid" : "list";
   } catch {
     return "list";
   }
 }
 
 export function Dashboard({ initialSessionId = null }: { initialSessionId?: string | null }) {
+  const phone = usePhoneLayout();
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const { sessions } = useSessionCatalog();
   const sharedUsage = useUsageLimits();
@@ -68,6 +65,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [reportGenerating, setReportGenerating] = useState(false);
   const revisionsBySessionRef = useRef(new Map<string, number | string>());
   const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
+  const [workflowNavigation, setWorkflowNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
+  const [agentNavigation, setAgentNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
   const capabilities = data.capabilities || createEmptyProviderCapabilities();
   const sharedProviderUsage = sharedUsage.providers.find((entry) => entry.provider === (data.source === "Codex" ? "codex" : "claude"));
   const displayData = sharedUsage.readiness[(data.source === "Codex" ? "codex" : "claude")] === "ready" && sharedProviderUsage
@@ -168,17 +167,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     };
   }, [paused, refresh, selectedIsHistorical]);
 
-  const togglePause = useCallback(() => {
-    const next = !paused;
-    const bridge = desktopBridge();
-    setPaused(next);
-    if (!bridge) return;
-    void bridge.setPaused(next).then((state) => {
-      if (!state) return;
-      setPaused(state.paused);
-    }, () => setPaused(!next));
-  }, [paused]);
-
   const activeSessionId = data.session?.id ?? null;
   const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId
     ? agentActivityViewPreference.viewMode
@@ -247,40 +235,24 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     }
   };
 
-  const breadcrumbProject = selectedSession?.project || ((!selectedSessionId || selectedSessionId === data.session?.id) ? data.session?.project : null);
-
   return (
     <LiveClockProvider running={clockRunning}>
       <section className="commandSessionView" id="top">
-        <nav className="sessionBreadcrumb" aria-label="Breadcrumb">
-          <ol>
-            <li><Link href="/sessions">Sessions</Link></li>
-            {breadcrumbProject && <li>
-              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg>
-              <span aria-current="page">{breadcrumbProject}</span>
-            </li>}
-          </ol>
-        </nav>
-        <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} />
+        <SessionCommandBar connected={data.connected} connecting={connecting} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session) && !phone} onGenerateReport={generateReport} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
-          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
+          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} activityStatus={selectedSession?.activityStatus} reportGenerating={reportGenerating} onGenerateReport={generateReport} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionProgressPanel progress={data.session.progress} agents={data.agents} activity={data.activity} connected={data.connected} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />}
-          {capabilities.workflows && (data.workflows || []).length > 0 && (
-            <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} workflows={data.workflows || []} />
-          )}
-          {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className={`contentGrid ${agentActivityViewMode === "tree" ? "contentGrid-tree" : ""}`.trim()}>
-            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
-            <InsightsPanel insights={data.insights} />
+          <SessionKpiStrip state={data} historical={viewingHistory} />
+          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <RequestsActionsPanel key={`${data.session.id}-requests-actions`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} cacheEvents={data.metrics.tokens.cacheEvents} />}
+          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} onOpenWorkflow={(id) => { changeAgentActivityView("list"); setWorkflowNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} onShowAgent={(id) => { changeAgentActivityView("list"); setAgentNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} />}
+          {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className="contentGrid" id="agent-activity">
+            <AgentActivityPanel agentNavigation={agentNavigation?.sessionId === data.session.id ? agentNavigation : null} workflowNavigation={workflowNavigation?.sessionId === data.session.id ? workflowNavigation : null} key={data.session.id} insights={data.insights} loops={data.loops} agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
           </section>}
-
-          <SummaryMetrics state={data} historical={viewingHistory} />
-          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <>{displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}
-          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} /></>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
+          <RepositoryDisclosurePanel session={displayData.session!} historical={viewingHistory} />
           <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />
         </div> : <>
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
@@ -293,7 +265,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
 function AwaitingSession({ connected, connecting, loadingSession, session, readiness }: { connected: boolean; connecting: boolean; loadingSession: boolean; session: SessionSummary | null | undefined; readiness?: SessionReadiness }) {
   if (session && readiness?.core === "unavailable") return <section className="sessionView" aria-label={`Session ${session.title}`}>
-    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span>{session.source}</span></div></div></header>
+    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /></div></div></header>
     <section className="panel sessionLoadingPanel" aria-label="Recorded activity" role="status">
       <strong>No recorded activity yet</strong>
       <p>Pomegr has detected this session. Activity and context will appear here when the provider records them.</p>
@@ -322,7 +294,7 @@ function SessionLoadingShell({ session, readiness }: { session: SessionSummary; 
   const domainSkeleton = (domain: keyof SessionReadiness) => readiness[domain] === "loading";
   return <section className="sessionView sessionView-loading" aria-label={`Loading ${session.title}`} aria-busy="true">
     <header className="hero">
-      <div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={session.source} /></span><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
+      <div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
       <span className="uiSkeleton sessionLoadingStatus" aria-hidden="true" />
     </header>
     <p className="srOnly" role="status">Loading session evidence for {session.title}.</p>

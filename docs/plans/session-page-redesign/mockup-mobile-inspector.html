@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font: 14px/1.5 "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #edf0f3; text-decoration: underline; }
+    .num { font-family: "Geist Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .label { color: #7d8590; font: 500 11px/1.4 "Inter", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .card { border: 1px solid #333941; border-radius: 6px; background: #191c20; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: #23272d; color: #a8afb9; font: 500 12px/1 "Inter", sans-serif; white-space: nowrap; }
+    .chip.on { border-color: #697482; color: #edf0f3; }
+    .chip i { width: 7px; height: 7px; border-radius: 50%; background: #697482; display: inline-block; }
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 12px; color: #a8afb9; }
+    .kv b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; text-align: right; }
+    .btn { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #a8afb9; font: 500 13px/1 "Inter", sans-serif; }
+    .st { display: inline-flex; align-items: center; gap: 6px; color: #a8afb9; font: 500 11px/1 "Inter", sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+    .st i { width: 7px; height: 7px; border-radius: 50%; background: #697482; display: inline-block; }
+    .st.active i { background: #91c5a4; box-shadow: 0 0 0 3px #23372d; } .st.active { color: #91c5a4; }
+    .st.idle i { background: transparent; box-shadow: inset 0 0 0 1px #697482; }
+    .row { min-height: 56px; display: grid; grid-template-columns: 24px minmax(0,1fr) auto 20px; align-items: center; gap: 0 10px; padding: 8px 12px 8px 10px; border-bottom: 1px solid #23272d; }
+    .row .name { min-width: 0; display: grid; gap: 3px; }
+    .row .name strong { font-size: 13px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .row .name span { color: #7d8590; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .row .r { display: grid; gap: 3px; text-align: right; color: #a8afb9; font-family: "Geist Mono", Consolas, monospace; font-size: 12px; }
+    .row .r b { color: #edf0f3; font-weight: 500; }
+    .group { min-height: 48px; display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 0 12px 0 10px; background: #1b1e23; border-bottom: 1px solid #333941; position: sticky; top: 0; }
+    .group strong { font-size: 13px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .group .sum { color: #a8afb9; font-size: 12px; white-space: nowrap; }
+    .group .sum b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; }
+    .caret { width: 16px; height: 16px; color: #7d8590; } .caret svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .role { width: 20px; height: 20px; display: grid; place-items: center; color: #a8afb9; }
+    .role svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .seg { height: 8px; border-radius: 2px; }
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: #a8afb9; font-size: 12px; }
+    .legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: 1px; }
+    .legend b { color: #edf0f3; font-weight: 500; font-family: "Geist Mono", Consolas, monospace; margin-left: 4px; }
+    .kpi { padding: 10px 12px; border: 1px solid #333941; border-radius: 4px; display: grid; gap: 4px; }
+    .kpi strong { font: 500 24px/1 "Inter", sans-serif; letter-spacing: -.02em; }
+    .kpi small { color: #a8afb9; font-size: 11px; line-height: 1.35; }
+    .stat { padding: 10px 12px; border: 1px solid #333941; border-radius: 4px; }
+    .stat strong { display: block; margin-top: 6px; font: 500 18px/1 "Geist Mono", Consolas, monospace; }
+    .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+    .lr { display: grid; grid-template-columns: 52px minmax(0,1fr) 56px; gap: 10px; align-items: center; min-height: 48px; padding: 6px 14px; border-top: 1px solid #23272d; }
+    .lr .n { display: block; font-size: 12px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .lr .b { display: block; color: #7d8590; font-size: 11px; }
+    .task { display: grid; grid-template-columns: 16px minmax(0,1fr) auto; gap: 8px; align-items: center; min-height: 32px; font-size: 12px; color: #a8afb9; }
+    .task i { width: 7px; height: 7px; border-radius: 50%; background: #91c5a4; justify-self: center; }
+    .task span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .lin { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 4px 8px; align-items: center; font-size: 12px; }
+    .lin .d { display: grid; place-items: center; } .lin .d i { width: 7px; height: 7px; border-radius: 50%; background: #697482; }
+    .lin .c { display: grid; place-items: center; height: 8px; } .lin .c i { width: 1px; height: 8px; background: #697482; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #111315; color: #edf0f3; font-family: Inter, system-ui, sans-serif; display: grid; grid-template-rows: 60px minmax(0,1fr);">
+  <header style="padding: 0 8px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; border-bottom: 1px solid #333941; background: #191c20;">
+    <span style="width: 44px; height: 44px; display: grid; place-items: center; color: #a8afb9;"><svg class="icon" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg></span>
+    <div style="min-width: 0;"><strong style="display: block; font-size: 15px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">gate:bono:r1</strong><span style="display: block; color: #a8afb9; font-size: 12px;">Agent 8 of 49 · gate:bono</span></div>
+    <span style="width: 44px; height: 44px; display: grid; place-items: center; color: #a8afb9;"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"></circle><circle cx="5" cy="19" r="2"></circle><circle cx="19" cy="19" r="2"></circle><path d="M12 7v5M12 12l-6 5M12 12l6 5"></path></svg></span>
+  </header>
+  <div style="overflow: hidden; display: grid; align-content: start;">
+    <div style="padding: 14px 16px 12px; display: grid; gap: 8px; border-bottom: 1px solid #333941;">
+      <div style="display: flex; align-items: center; gap: 8px;"><span class="st"><i></i>Finished</span><span class="chip" style="min-height: 22px; padding: 0 6px; border-color: #5a4a2a; color: #e3b575; font-size: 11px;">repeat ×3</span></div>
+      <span style="color: #a8afb9; font-size: 12px;">Workflow worker · phase Gatekeeper · <span class="num" style="color: #7d8590;">a73e10</span></span>
+    </div>
+    <div style="padding: 12px 16px; display: grid; gap: 6px; border-bottom: 1px solid #333941;"><span class="label">Lineage</span><div class="lin">
+  <span class="d"><i style="background: transparent; box-shadow: inset 0 0 0 1px #697482;"></i></span><span style="color: #a8afb9;">Primary agent</span><span class="num" style="color: #7d8590;">210.4K</span>
+  <span class="c"><i></i></span><span></span><span></span>
+  <span class="d"><i></i></span><span style="color: #a8afb9;">Workflow gate:bono · 13 agents</span><span class="num" style="color: #7d8590;">1.1M</span>
+  <span class="c"><i></i></span><span></span><span></span>
+  <span class="d"><i></i></span><span style="color: #a8afb9;">Phase Gatekeeper · 4 siblings</span><span class="num" style="color: #7d8590;">318K</span>
+  <span class="c"><i></i></span><span></span><span></span>
+  <span class="d"><i style="background: #e58b80;"></i></span><span style="color: #edf0f3; font-weight: 500;">gate:bono:r1 · no children</span><span class="num" style="color: #bbb3d3;">80.8K</span>
+</div></div>
+    <div style="padding: 12px 16px; border-bottom: 1px solid #333941;">
+      <div class="kv" style="gap: 8px 16px;"><span>Model</span><b>claude-opus-5</b><span>Effort</span><b>xhigh</b><span>Final context</span><b style="color: #bbb3d3;">80.8K</b><span>Wall time</span><b>3m 12s</b><span>Tool calls</span><b>23</b><span>Shell tasks</span><b>21</b><span>Cache lifetime</span><b>5m</b><span>Last turn</span><b>1h ago</b></div>
+    </div>
+    <div style="padding: 12px 16px; display: grid; gap: 8px; border-bottom: 1px solid #333941;">
+      <span class="label">Signals</span>
+      <div class="task" style="min-height: 0;"><svg class="icon" viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #e3b575;"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4M12 17.5v.5"></path></svg><span style="white-space: normal;"><strong style="color: #edf0f3; font-weight: 600;">Repeated Bash ×3</strong> · unchanged inputs</span><span></span></div>
+      <div class="task" style="min-height: 0;"><svg class="icon" viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #bbb3d3;"><path d="M4 12a8 8 0 1 0 3-6.2"></path><path d="M4 4v5h5"></path></svg><span>Possible cache refill ×1 · inference</span><span></span></div>
+    </div>
+    <div style="padding: 12px 16px; display: grid; gap: 6px; border-bottom: 1px solid #333941;">
+      <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Shell tasks · 21</span><a href="#" style="font-size: 12px; min-height: 32px; display: inline-flex; align-items: center;">All</a></div>
+      <div class="task"><i></i><span>Run gate checks for bono slice</span><span class="num" style="color: #7d8590;">exit 0</span></div>
+      <div class="task"><i style="background: #f09a9f;"></i><span>Run gate checks for bono slice</span><span class="num" style="color: #f09a9f;">exit 1</span></div>
+      <div class="task"><i></i><span>Type-check gatekeeper module</span><span class="num" style="color: #7d8590;">exit 0</span></div>
+    </div>
+    <div style="padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><button class="btn" type="button">Copy transcript path</button><button class="btn" type="button">Open in tree</button></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

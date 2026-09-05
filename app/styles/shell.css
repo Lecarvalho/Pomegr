@@ -34,7 +34,17 @@ html[data-theme="dark"] body { background: var(--paper); }
 }
 .commandHeader .brand { width: max-content; height: 44px; gap: var(--space-3); color: var(--command-ink); }
 .commandHeader .brandMark { display: block; width: var(--command-brand-mark-size); height: var(--command-brand-mark-size); }
+.commandHeader .sessionBreadcrumb,
 .commandHeader .brandWordmark { color: var(--command-muted); font: 400 15px var(--font-ui); letter-spacing: -.01em; }
+.commandHeader.hasBreadcrumb { grid-template-columns: 172px minmax(140px, 1fr) minmax(180px, 380px) auto auto; }
+.sessionBreadcrumb { min-width: 0; }
+.sessionBreadcrumb ol { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.sessionBreadcrumb li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sessionBreadcrumb li:first-child { flex: 0 0 auto; }
+.sessionBreadcrumb a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: none; text-underline-offset: 4px; }
+.sessionBreadcrumb a:hover { color: var(--command-ink); text-decoration: underline; }
+.sessionBreadcrumb svg { width: 14px; height: 14px; flex: 0 0 auto; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.sessionBreadcrumb span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pomegrMark-divided { --pomegr-mark-image: url("/pomegr-mark-painted.png"); }
 .pomegrMark-outline { --pomegr-mark-image: url("/pomegr-mark-brush-outline.png"); }
 .pomegrMark {
@@ -162,7 +172,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandEmptyState { margin: 14px 0; padding: 26px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSessionBar { min-height: 44px; margin-bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 0; }
 .commandSessionConnection { display: inline-flex; align-items: center; gap: 7px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); text-transform: none; letter-spacing: 0; }
-.commandSessionBar > div { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.commandSessionBar > div { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
 .commandSessionActionIcon { display: none; width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .commandSessionBar .desktopControls > summary { min-height: 36px; border-color: var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); font-size: var(--text-xs); }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
@@ -194,6 +204,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 @media (max-width: 1080px) {
   .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
   .commandHeader { grid-template-columns: max-content minmax(180px, 1fr) auto; padding-inline: 9px; gap: 9px; }
+  .commandHeader.hasBreadcrumb { grid-template-columns: max-content minmax(100px, 1fr) minmax(150px, 250px) auto; }
   .commandEnvironment { display: none; }
   .commandSidebar { top: 56px; height: calc(100vh - 56px); padding-inline: 6px; }
   .commandNavItem { padding: 0; grid-template-columns: 1fr; place-items: center; }
@@ -205,7 +216,15 @@ html[data-theme="dark"] body { background: var(--paper); }
 @media (max-width: 760px) {
   .commandShell { grid-template-columns: minmax(0, 1fr); }
   .commandHeader { grid-template-columns: 44px max-content minmax(0, 1fr); gap: 0; padding-inline: 8px; }
-  .commandHeader .brand { grid-column: 2; grid-row: 1; justify-content: flex-start; }
+  .commandHeader.hasBreadcrumb { grid-template-columns: 44px 32px minmax(0, 1fr) auto; }
+  .commandHeader.hasBreadcrumb .brand { width: 32px; }
+  .commandHeader.hasBreadcrumb .brandWordmark { display: none; }
+  .commandHeader.hasBreadcrumb .sessionBreadcrumb { grid-column: 3; grid-row: 1; }
+  .commandHeader.hasBreadcrumb .sessionBreadcrumb :is(ol, li) { gap: 4px; }
+  .commandHeader.hasBreadcrumb .commandHeaderTools { grid-column: 4; }
+  .commandHeader.hasBreadcrumb.isSearchOpen .sessionBreadcrumb { visibility: hidden; pointer-events: none; }
+  .commandHeader .brand { grid-column: 2; grid-row: 1; justify-content: flex-start; gap: var(--space-2); }
+  .commandHeader .commandMenuButton > svg { justify-self: end; margin-right: var(--space-2); }
   .commandProfileWrap { display: none; }
   .commandHeader .commandMenuButton,
   .commandHeader .commandMobileSearchClose { grid-column: 1; grid-row: 1; display: grid; }
@@ -319,8 +338,7 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandShell .commandIconLink { width: 44px; height: 44px; }
   .commandSessionView .executionTaskTrigger,
   .commandSessionView .planTaskTrigger,
-  .commandSessionView .textButton,
-  .commandSessionView .requestSnapshotLegendItem { min-height: 44px; padding-inline: 10px; }
+  .commandSessionView .textButton { min-height: 44px; padding-inline: 10px; }
 }
 
 .agentTreeRoleKey > span { border-color: var(--popover-line); background: var(--popover); box-shadow: var(--popover-shadow); }
