@@ -78,7 +78,8 @@ test("coalesces a direct watcher hint and handles it before the background curso
 
   const rows = await discovery.read({ fresh: true });
   assert.equal(rows.some((row) => row.localId === "direct"), true);
-  assert.equal(headerOrder[0], direct);
+  // The trusted header reader receives the canonical path, even for an aliased hint.
+  assert.equal(headerOrder[0], await fs.realpath(direct));
   assert.equal(discovery.stats().scannedEntries <= 1, true, "an exact hint skips the separate fresh recent-tree pass");
   assert.equal(discovery.stats().acceptedHints, 1);
   assert.equal(headerReads >= 1, true);

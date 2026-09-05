@@ -73,7 +73,10 @@ jobs:
         run: npm ci --prefix landing
 
       - name: Run canonical verifier and desktop extension
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           npm run desktop:runtime
           npm run verify
           npm run verify:desktop:ci

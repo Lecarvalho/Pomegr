@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -536,7 +536,8 @@ test("the transcript path endpoint is one-shot, agent-scoped, and rejects browse
 
   assert.deepEqual([claudePath.status, codexPath.status, primaryPath.status, deniedPath.status], [200, 200, 404, 403]);
   assert.deepEqual(await claudePath.json(), { path: transcriptPaths.claudeChildFile });
-  assert.deepEqual(await codexPath.json(), { path: transcriptPaths.codexChildFile });
+  // Codex discovery resolves aliases, including Windows runner short temp paths.
+  assert.deepEqual(await codexPath.json(), { path: await realpath(transcriptPaths.codexChildFile) });
   assert.doesNotMatch(await primaryPath.text(), /claudeFile|\.jsonl|PRIVATE/i);
   assert.doesNotMatch(await deniedPath.text(), /agent-child-fixture|\.jsonl|PRIVATE/i);
 });

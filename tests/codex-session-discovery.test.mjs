@@ -339,11 +339,14 @@ test("a fresh Codex catalog read bypasses the short metadata cache after a new r
   const sessionsRoot = path.join(root, "sessions", "2026", "08", "29");
   const writeSyntheticRollout = async (id, timestamp) => {
     await mkdir(sessionsRoot, { recursive: true });
-    await writeFile(path.join(sessionsRoot, `rollout-${id}.jsonl`), `${JSON.stringify({
+    const file = path.join(sessionsRoot, `rollout-${id}.jsonl`);
+    await writeFile(file, `${JSON.stringify({
       timestamp,
       type: "session_meta",
       payload: { id, session_id: id, cwd: "C:\\synthetic\\repo", source: "cli" },
     })}\n`, "utf8");
+    // Catalog recency comes from file modification time, not the session header.
+    await utimes(file, new Date(timestamp), new Date(timestamp));
   };
   await writeSyntheticRollout("cached-one", "2026-08-29T12:00:00.000Z");
   const provider = createCodexProvider({

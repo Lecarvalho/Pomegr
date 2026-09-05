@@ -25,6 +25,7 @@ import {
   ACCEPTANCE_PRIOR_VERSION,
 } from "../desktop/acceptance-prior.mjs";
 import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "../desktop/pomegr-dt-08-scope.mjs";
+import { parseReleaseVersion } from "../desktop/release-policy.mjs";
 
 const REQUIRED_FILES = [
   ...PUBLIC_LEGAL_FILES,
@@ -250,7 +251,8 @@ test("clean-VM upgrade fixture is isolated, test-only, and preserves candidate m
     readFile(new URL("../.gitignore", import.meta.url), "utf8"),
   ]);
   const packageJson = JSON.parse(packageText);
-  assert.equal(packageJson.version, "0.2.4");
+  const candidateRelease = parseReleaseVersion(packageJson.version);
+  assert.notEqual(candidateRelease.version, ACCEPTANCE_PRIOR_VERSION);
   assert.equal(ACCEPTANCE_PRIOR_VERSION, "0.0.9");
   assert.equal(ACCEPTANCE_PRIOR_OUTPUT, "release-acceptance");
   assert.equal(ACCEPTANCE_PRIOR_ARTIFACT, "Pomegr-TestOnly-Prior-0.0.9-x64.exe");

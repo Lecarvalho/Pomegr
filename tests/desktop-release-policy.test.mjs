@@ -271,6 +271,8 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   for (const command of ["npm run desktop:runtime", "npm run verify", "npm run verify:desktop:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
+  assert.match(qualityStep, /\$ErrorActionPreference = 'Stop'/);
+  assert.match(qualityStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
   assert.ok(qualityStep.indexOf("npm run desktop:runtime") < qualityStep.indexOf("npm run verify"));
   assert.match(workflow, /verify-signature\.ps1/);
   assert.match(workflow, /gh release create[^\n]+--draft/);
