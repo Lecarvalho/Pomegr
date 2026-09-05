@@ -225,7 +225,7 @@ The first valid observation is `collecting` because CPU and I/O rates require a 
 
 ## Context machinery snapshot
 
-Claude Code records the rendered result of a user-invoked `/context` command in the session JSONL. Pomegr treats this as an opt-in point-in-time snapshot: if no valid result has been recorded, the dashboard asks the user to run `/context`; when one or more results exist, it shows the latest one.
+Claude Code records the rendered result of a user-invoked `/context` command in the session JSONL. When one or more valid results exist, Pomegr shows the latest immutable in-session snapshot. When none exists, the session view never asks the user to run a command: it shows only an eligible saved repository/provider inventory reference that was available when the session started, or renders no machinery panel.
 
 The parser is output-driven rather than repository-driven. It accepts both Markdown category tables and the ANSI terminal summary emitted by current Claude Code; expanded Markdown tables with a token column become machinery groups. Category names, group names, and items come from the captured output, so arbitrary repositories, MCP servers, agents, memory files, skills, and future provider-reported groups do not require a hard-coded catalog. Table column order may vary. The provider's `Messages` and `Free space` summary rows are excluded because they are not machinery and overlap Pomegr's live context presentation.
 
@@ -233,7 +233,7 @@ The **Machinery token load** is the sum of the remaining provider-estimated cate
 
 Only bounded, validated labels and the provider's formatted token estimates enter normalized state. Memory paths are reduced to their basename. The raw local-command output, repository paths, prompts, and responses never enter the browser API. These values are provider estimates from the captured `/context` rendering, not Pomegr measurements, billing totals, or cumulative token spend. Historical views use only the recorded snapshot and never substitute current machinery.
 
-Codex does not currently provide a recognized context-machinery snapshot. The panel and Claude `/context` instruction are omitted for Codex sessions.
+Codex does not currently provide a recognized context-machinery snapshot or native repository inventory operation. Pomegr reports that provider capability as unavailable and never combines or approximates Claude Code evidence for Codex.
 
 ## Execution tasks
 

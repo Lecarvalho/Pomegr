@@ -138,23 +138,102 @@
 .commandUsageRefreshNote { margin: 0; padding: 9px 12px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); background: color-mix(in srgb, var(--command-amber) 8%, transparent); font-size: var(--text-xs); line-height: 1.5; }
 .commandUsageCaution { padding: 12px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandRepositoryList { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandRepositoryRow { min-height: 76px; padding: 13px 15px; display: grid; grid-template-columns: minmax(220px, 1fr) 70px 70px 100px 140px; align-items: center; gap: 14px; }
-.commandRepositoryRow + .commandRepositoryRow { border-top: 1px solid var(--command-line); }
-.commandRepositoryIdentity { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.commandRepositoryDisclosure + .commandRepositoryDisclosure { border-top: 1px solid var(--command-line); }
+.commandRepositoryRow { width: 100%; min-height: 56px; padding: 8px 14px; display: grid; grid-template-columns: 20px minmax(220px, 1fr) 64px 64px 148px; align-items: center; gap: 10px; border: 0; color: var(--command-ink); background: transparent; font: inherit; text-align: start; cursor: pointer; }
+.commandRepositoryRow:hover { background: var(--command-panel-2); }
+.commandRepositoryRow:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.commandRepositoryChevron { display: grid; place-items: center; color: var(--command-muted); transition: transform 160ms ease-out; }
+.commandRepositoryDisclosure.expanded .commandRepositoryChevron { transform: rotate(90deg); }
+.commandRepositoryIdentity { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .commandRepositoryIdentity span, .commandRepositoryIdentity strong, .commandRepositoryIdentity small { min-width: 0; display: block; }
 .commandRepositoryIdentity strong { overflow: hidden; font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
-.commandRepositoryIdentity small { margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
-.commandRepositoryStat, .commandRepositoryUpdated, .commandRepositoryUnavailable { color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
-.commandRepositoryStat strong { display: block; margin-bottom: 4px; color: var(--command-ink); font-size: var(--text-xs); }
-.commandRepositoryUnavailable { color: var(--command-faint); text-align: right; }
+.commandRepositoryIdentity small { margin-top: 2px; color: var(--command-muted); font-size: var(--text-xs); }
+.commandRepositoryStat, .commandRepositoryProviders { color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
+.commandRepositoryStat strong { margin-inline-end: 4px; color: var(--command-ink); font-size: var(--text-xs); }
+.commandRepositoryProviders { text-align: end; }
+.commandRepositoryProviders strong { color: var(--command-ink); }
+.commandRepositoryProvidersPanel { border-top: 1px solid var(--command-line); background: color-mix(in srgb, var(--command-panel-2) 35%, var(--command-panel)); }
+.repositoryProvider + .repositoryProvider { border-top: 1px solid var(--command-line); }
+.repositoryProviderRow { min-height: 54px; padding: 9px 16px 9px 52px; display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.25fr) 232px; align-items: center; gap: 14px; }
+.repositoryProviderIdentity { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.repositoryProviderIdentity > span:last-child { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryProviderState { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.repositoryProviderState small { color: var(--command-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.repositoryProviderBadge { flex: 0 0 auto; width: fit-content; color: var(--command-muted); font: 650 11px/1 var(--font-ui); letter-spacing: .04em; }
+.repositoryProviderBadge.current { color: var(--command-green); }
+.repositoryProviderBadge.capturing { color: var(--command-amber); }
+.repositoryProviderBadge.failed { color: var(--color-error); }
+.repositoryProviderAction { min-width: 0; display: flex; justify-content: flex-end; }
+.repositoryProviderRemoteHint { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); text-align: end; }
+.repositoryGitComingSoon { min-height: 44px; padding: 8px 16px 8px 52px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--command-line); color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); }
+.commandPrimaryButton, .commandSecondaryButton { min-height: var(--control-height); padding-inline: 12px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); font: 500 var(--text-sm)/1.2 var(--font-ui); cursor: pointer; }
+.commandPrimaryButton { border-color: var(--command-brand); color: #fff; background: var(--command-brand); }
+.commandSecondaryButton { color: var(--command-ink); background: transparent; }
+.commandPrimaryButton:hover:not(:disabled), .commandSecondaryButton:hover:not(:disabled) { filter: brightness(.94); }
+.commandPrimaryButton:focus-visible, .commandSecondaryButton:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.commandPrimaryButton:disabled, .commandSecondaryButton:disabled { opacity: .58; cursor: not-allowed; }
+.repositoryCaptureConfirm { margin: 0 16px 16px 53px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--command-line-strong); background: var(--command-panel); }
+.repositoryCaptureConfirm > span:first-child { min-width: 0; display: grid; gap: 5px; }
+.repositoryCaptureConfirm small { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.repositoryCaptureConfirm > span:last-child { display: flex; gap: 8px; }
+.repositoryInventoryEvidence { margin: 0 16px 16px 53px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.repositoryInventoryLoading, .repositoryInventoryUnavailable { margin: 0 16px 16px 53px; padding: 16px; border: 1px solid var(--command-line); color: var(--command-muted); background: var(--command-panel); font-size: var(--text-xs); }
+.repositoryInventorySummary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--command-line); }
+.repositoryInventorySummary > div { min-width: 0; min-height: 78px; padding: 14px; display: grid; align-content: center; gap: 7px; }
+.repositoryInventorySummary > div + div { border-inline-start: 1px solid var(--command-line); }
+.repositoryInventorySummary span, .repositoryInventorySummary strong { overflow-wrap: anywhere; }
+.repositoryInventorySummary span { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryInventorySummary strong { font: 600 var(--text-sm)/1.35 var(--font-data); }
+.repositoryInventoryChange { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--command-line); color: var(--command-muted); background: var(--command-panel-2); font-size: var(--text-xs); }
+.repositoryInventoryChange.changed { color: var(--command-amber); }
+.repositoryInventoryBreakdown { padding: 16px; }
+.repositoryInventoryHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.repositoryInventoryHeading h3 { margin: 0; font-size: var(--text-sm); }
+.repositoryInventoryHeading span { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryCategoryGrid { margin-top: 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--command-line); }
+.repositoryCategory { min-width: 0; min-height: 66px; padding: 11px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; gap: 6px 10px; }
+.repositoryCategory:not(:nth-child(3n + 1)) { border-inline-start: 1px solid var(--command-line); }
+.repositoryCategory:nth-child(n + 4) { border-top: 1px solid var(--command-line); }
+.repositoryCategory span { overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.repositoryCategory strong { font: 600 var(--text-sm)/1 var(--font-data); }
+.repositoryCategory small { grid-column: 1 / -1; color: var(--command-muted); font: var(--text-xs)/1 var(--font-data); }
+.repositoryInventoryDetails { border-top: 1px solid var(--command-line); }
+.repositoryInventoryDetails > summary { min-height: 44px; padding: 0 16px; display: flex; align-items: center; color: var(--command-brand-text); font-size: var(--text-sm); cursor: pointer; }
+.repositoryInventoryDetails > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.repositoryInventoryGroups { max-height: 430px; padding: 0 16px 16px; overflow: auto; }
+.repositoryInventoryGroups section + section { margin-top: 18px; }
+.repositoryInventoryGroups h4 { margin: 0 0 8px; font-size: var(--text-xs); }
+.repositoryInventoryItem { min-height: 42px; padding-block: 7px; display: flex; justify-content: space-between; gap: 14px; border-top: 1px solid var(--command-line); }
+.repositoryInventoryItem > span { min-width: 0; display: grid; gap: 3px; }
+.repositoryInventoryItem strong, .repositoryInventoryItem small { overflow-wrap: anywhere; }
+.repositoryInventoryItem small { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryInventoryItem b { font: 600 var(--text-xs)/1.4 var(--font-data); }
+.repositoryRevisionCompare { padding: 0 16px 16px; display: grid; grid-template-columns: minmax(180px, .5fr) minmax(240px, 1fr); gap: 16px; }
+.repositoryRevisionCompare label { display: grid; gap: 6px; color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryRevisionCompare select { min-height: var(--control-height); padding-inline: 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); color: var(--command-ink); background: var(--command-panel); }
+.repositoryRevisionCompare dl { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--command-line); }
+.repositoryRevisionCompare dl div { padding: 10px; }
+.repositoryRevisionCompare dl div + div { border-inline-start: 1px solid var(--command-line); }
+.repositoryRevisionCompare dt { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryRevisionCompare dd { margin: 5px 0 0; font: 600 var(--text-xs)/1.35 var(--font-data); }
+.repositoryInventoryPrivacy { margin: 0; padding: 12px 16px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.sessionInventoryReference { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sessionInventoryReference > div { min-width: 0; display: grid; gap: 5px; }
+.sessionInventoryReference strong { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.sessionInventoryReference span, .sessionInventoryReference small { color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.sessionInventoryReference a { flex: 0 0 auto; color: var(--brand); font-size: var(--text-sm); text-underline-offset: 3px; }
 
 @media (max-width: 900px) {
   .commandDashboardDirectory { grid-template-columns: 1fr; }
   .commandDashboardPreview { border-top: 1px solid var(--command-line); border-left: 0; }
   .commandUsageRows { grid-template-columns: 1fr; }
   .commandUsageWindow + .commandUsageWindow { border-top: 1px solid var(--command-line); border-left: 0; }
-  .commandRepositoryRow { grid-template-columns: minmax(0, 1fr) 64px 100px; }
-  .commandRepositoryStat:nth-of-type(2), .commandRepositoryUnavailable { display: none; }
+  .commandRepositoryRow { grid-template-columns: 24px minmax(0, 1fr) 64px 120px; }
+  .commandRepositoryStat + .commandRepositoryStat { display: none; }
+  .repositoryProviderRow { grid-template-columns: minmax(160px, .8fr) minmax(180px, 1.2fr) 232px; }
+  .repositoryInventorySummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .repositoryInventorySummary > div:nth-child(3) { border-inline-start: 0; border-top: 1px solid var(--command-line); }
+  .repositoryInventorySummary > div:nth-child(4) { border-top: 1px solid var(--command-line); }
 }
 @media (max-width: 760px) {
   .commandSessionTable { min-width: 0; display: block; table-layout: auto; }
@@ -197,8 +276,23 @@
   .commandDashboardColUpdated, .commandDashboardUpdated { display: none; }
   .commandMetricsRow { grid-template-columns: 1fr; }
   .commandMetric { min-height: 92px; }
-  .commandRepositoryRow { grid-template-columns: minmax(0, 1fr) 58px; }
-  .commandRepositoryUpdated { display: none; }
+  .commandRepositoryRow { min-height: 64px; grid-template-columns: 20px minmax(0, 1fr) 100px; }
+  .commandRepositoryStat { display: none; }
+  .repositoryProviderRow { padding-inline: 16px; grid-template-columns: 1fr; }
+  .repositoryProviderAction { grid-column: auto; }
+  .repositoryProviderAction button { width: 100%; min-height: 44px; }
+  .repositoryCaptureConfirm, .repositoryInventoryEvidence, .repositoryInventoryLoading, .repositoryInventoryUnavailable { margin-inline: 12px; padding-inline-start: 14px; }
+  .repositoryCaptureConfirm { align-items: stretch; flex-direction: column; }
+  .repositoryCaptureConfirm > span:last-child { display: grid; grid-template-columns: 1fr 1fr; }
+  .repositoryCaptureConfirm button { min-height: 44px; }
+  .repositoryCategoryGrid { grid-template-columns: 1fr 1fr; }
+  .repositoryCategory:not(:nth-child(3n + 1)) { border-inline-start: 0; }
+  .repositoryCategory:nth-child(n + 4) { border-top: 0; }
+  .repositoryCategory:nth-child(even) { border-inline-start: 1px solid var(--command-line); }
+  .repositoryCategory:nth-child(n + 3) { border-top: 1px solid var(--command-line); }
+  .repositoryRevisionCompare { grid-template-columns: 1fr; }
+  .repositoryRevisionCompare dl { grid-template-columns: 1fr; }
+  .repositoryRevisionCompare dl div + div { border-top: 1px solid var(--command-line); border-inline-start: 0; }
 }
 @media (max-width: 520px) {
   .commandSessionTable tbody tr { padding: 13px 12px; gap: 13px 10px; }

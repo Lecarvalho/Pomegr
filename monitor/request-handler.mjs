@@ -98,13 +98,18 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       }
       return;
     }
-    const desktopRequestAllowed = !authorizationToken || (
+    const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
+    const desktopReadAllowed = !repositoryCaptureRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
       && request.headers.origin === undefined
       && requestHasDesktopAuthorization(request, authorizationToken)
-    );
-    if (!desktopRequestAllowed) {
+    ));
+    const desktopCaptureAllowed = repositoryCaptureRequest && Boolean(authorizationToken)
+      && request.method === "POST" && request.headers.host === expectedHost
+      && request.headers.origin === undefined
+      && requestHasDesktopAuthorization(request, authorizationToken);
+    if (!desktopReadAllowed && !desktopCaptureAllowed) {
       response.writeHead(401, {
         "Cache-Control": "no-store",
         "Content-Type": "text/plain; charset=utf-8",
@@ -117,6 +122,28 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     }
     response.setHeader("Cache-Control", "no-store");
+    if (repositoryCaptureRequest) {
+      const allowedKeys = new Set(["repositoryId", "provider"]);
+      const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
+      const provider = requestUrl.searchParams.get("provider") || "";
+      const validQuery = [...requestUrl.searchParams.keys()].every((key) => allowedKeys.has(key)
+        && requestUrl.searchParams.getAll(key).length === 1);
+      if (!validQuery || !/^repo-[a-f0-9]{24}$/u.test(repositoryId) || !["claude", "codex"].includes(provider)
+        || Number(request.headers["content-length"] || 0) > 0 || request.headers["transfer-encoding"] !== undefined) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ status: "failed" }));
+        return;
+      }
+      try {
+        const status = await runtime.captureRepositoryInventory(repositoryId, provider);
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ status }));
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ status: "failed" }));
+      }
+      return;
+    }
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
     const requestedRevisionValue = requestUrl.searchParams.get("revision");
     const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
@@ -153,10 +180,11 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       let closed = false;
       let unsubscribe = null;
       const writeRevision = (event) => {
-        if (closed || event?.domain !== "sessions"
+        if (closed || !["sessions", "repositories"].includes(event?.domain)
           || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
         try {
-          response.write(`event: catalog\ndata: ${JSON.stringify({ domain: "sessions", revision: event.revision })}\n\n`);
+          const eventName = event.domain === "sessions" ? "catalog" : "repositories";
+          response.write(`event: ${eventName}\ndata: ${JSON.stringify({ domain: event.domain, revision: event.revision })}\n\n`);
         } catch { close(); }
       };
       const heartbeat = setInterval(() => {
@@ -246,6 +274,38 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(createEmptyProviderStatusSnapshot("unavailable")));
       }
+      return;
+    }
+    if (requestUrl.pathname === "/api/repositories") {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
+      try {
+        writeCommitted(runtime.serveRepositories?.(requestedRevision), { revision: 0, readiness: "loading", repositories: [] });
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ revision: 0, readiness: "unavailable", repositories: [] }));
+      }
+      return;
+    }
+    if (requestUrl.pathname === "/api/repository-inventory") {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
+      const allowedKeys = new Set(["repositoryId", "provider", "revisionId"]);
+      const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
+      const provider = requestUrl.searchParams.get("provider") || "";
+      const revisionId = requestUrl.searchParams.get("revisionId") || "";
+      const validQuery = [...requestUrl.searchParams.keys()].every((key) => allowedKeys.has(key)
+        && requestUrl.searchParams.getAll(key).length === 1);
+      if (!validQuery || !/^repo-[a-f0-9]{24}$/u.test(repositoryId) || !["claude", "codex"].includes(provider)
+        || !/^ctx-\d{3,9}$/u.test(revisionId)) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid repository inventory reference" }));
+        return;
+      }
+      try {
+        const detail = await runtime.readRepositoryInventory?.(repositoryId, provider, revisionId);
+        if (!detail) { response.writeHead(404); response.end(); return; }
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(detail));
+      } catch { response.writeHead(503); response.end(); }
       return;
     }
     if (requestUrl.pathname === "/api/usage-limits") {

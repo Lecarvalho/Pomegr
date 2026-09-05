@@ -212,6 +212,8 @@ export function createSessionObservationCoordinator(options = {}) {
         activityFallback: retainPrevious ? reconcileSessionActivityFallback(entry, previous.activityFallback)
           : projectSessionActivityFallback(restoredActivitySessions.has(entry.id) ? { ...entry, isLive: false } : entry,
             state?.agents, snapshot?.evidence?.toolCalls),
+        repositoryId: state?.session?.repositoryId || previous?.repositoryId || null,
+        contextInventoryRef: state?.session?.contextInventoryRef || previous?.contextInventoryRef || null,
       };
     });
     const providerStates = [...catalogReadinessByProvider.values()];

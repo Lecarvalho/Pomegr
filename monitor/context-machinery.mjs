@@ -134,11 +134,10 @@ function contextModel(lines) {
   return safeLabel(modelMatch?.[0], "Unknown model");
 }
 
-export function contextMachineryFromRecord(record) {
-  if (record?.type !== "system" || record.subtype !== "local_command" || typeof record.content !== "string") return null;
-  if (record.content.length > MAX_CONTEXT_OUTPUT_CHARS) return null;
-  const content = renderedContextOutput(record.content);
-  if (!/<local-command-stdout>\s*(?:##\s+)?Context Usage\b/.test(content)) return null;
+export function contextMachineryFromOutput(output, observedAt = null) {
+  if (typeof output !== "string" || output.length > MAX_CONTEXT_OUTPUT_CHARS) return null;
+  const content = renderedContextOutput(output);
+  if (!/(?:<local-command-stdout>\s*)?(?:##\s+)?Context Usage\b/.test(content)) return null;
   const lines = content.split(/\r?\n/);
   const tables = markdownTables(lines);
   const categoryTable = tables.find((table) => {
@@ -162,13 +161,28 @@ export function contextMachineryFromRecord(record) {
     .filter((group) => group.items.length > 0);
 
   return {
-    observedAt: record.timestamp || null,
+    observedAt,
     model,
     total: totalMatch ? { used: totalMatch[1], limit: totalMatch[2], percentage: Number(totalMatch[3]) } : null,
     machineryTokens: categories.reduce((sum, category) => sum + tokenCount(category.tokens), 0),
     categories,
     groups,
   };
+}
+
+export function contextMachineryFromNativeJson(output, observedAt = null) {
+  if (typeof output !== "string" || output.length > MAX_CONTEXT_OUTPUT_CHARS) return null;
+  let envelope;
+  try { envelope = JSON.parse(output); } catch { return null; }
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)
+    || typeof envelope.result !== "string" || envelope.result.length > MAX_CONTEXT_OUTPUT_CHARS) return null;
+  return contextMachineryFromOutput(envelope.result, observedAt);
+}
+
+export function contextMachineryFromRecord(record) {
+  if (record?.type !== "system" || record.subtype !== "local_command" || typeof record.content !== "string") return null;
+  if (!/<local-command-stdout>\s*(?:##\s+)?Context Usage\b/.test(renderedContextOutput(record.content))) return null;
+  return contextMachineryFromOutput(record.content, record.timestamp || null);
 }
 
 export function latestContextMachinery(records) {

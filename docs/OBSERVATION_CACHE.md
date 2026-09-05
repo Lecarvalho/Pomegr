@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, `/api/agents`, and `/api/provider-status` handlers
+- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, and `/api/repository-inventory` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -1153,6 +1153,54 @@ records, and every other agent field remain outside the catalog response. React 
 each row directly and never joins catalog identity to a parallel summary collection.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather
 than arbitrary exception text.
+
+## Repository context inventory
+
+Repository context inventory is a separate repository/provider-scoped committed domain.
+Repository identity is an installation-salted opaque ID derived monitor-side from the
+canonical Git worktree root, or normalized session working directory for a non-Git
+project. Paths remain in memory only and never enter checkpoints, public summaries,
+revision documents, browser responses, logs, or renderer IPC. Worktrees are independent
+repositories; duplicate display names receive only an opaque short disambiguator.
+
+Repository rows are derived asynchronously from committed session catalog and session
+evidence. Their GETs never resolve Git roots, read providers, capture diagnostics, parse
+output, persist data, or hydrate sessions. `/api/repositories` serves the committed list
+revision and `/api/repository-inventory` serves one already-committed immutable detail.
+Both are safe for read-only LAN presentation. Repository revision events only tell the
+browser to fetch a newer committed response.
+
+Claude Code capture is an explicit desktop action. The renderer supplies only a bounded
+opaque repository ID and provider ID after an inline confirmation. A trusted Electron
+IPC handler sends a bodyless, token-authenticated POST directly to the loopback monitor.
+There is no same-origin POST proxy or LAN route. The monitor accepts the action only with
+an exact loopback host, no Origin, desktop authorization, and fixed parameters. Codex is
+explicitly unsupported and never receives reconstructed or Claude-derived evidence.
+
+The Claude adapter starts an allowlisted executable with a fixed argument array, the
+monitor-resolved repository root, `shell: false`, a bounded environment, timeout, and
+output buffer. Raw stdout and stderr remain process-local and are discarded. Only a
+complete parsed and validated inventory may be committed. Capturing and bounded failure
+states are in memory; cancellation, failure, timeout, invalid output, or persistence
+failure retains the last successful revision.
+
+Persistence contains only a version, installation salt, feature-introduction time,
+bounded revision counters, immutable normalized inventory revisions, and bounded session
+binding decisions. Each repository/provider retains at most ten detailed revisions; the
+domain retains at most 100 revisions and 16 MiB. The latest normalized model label,
+categories, groups, counts, capture time, and a private normalized-content fingerprint
+are saved atomically. No provider output, error text, command, executable, credential,
+or path is persisted. Fingerprints support only comparison to a previous saved capture;
+they are neither exposed nor treated as continuous configuration-drift observation.
+
+Session association is future-only and immutable. Sessions that predate the persisted
+feature-introduction time receive an explicit no-binding decision. A new session may bind
+once to the newest revision for the same repository/provider whose successful commit time
+is no later than the session start. A capture completed after session start never attaches
+retroactively. Completed sessions retain their compact reference; if bounded retention
+removes the detail, the reference remains and reports that detail is unavailable. A real
+provider snapshot recorded inside the session always takes presentation precedence. With
+neither source, F renders nothing and never asks the user to run `/context`.
 
 ## Diagnostics and acceptance
 

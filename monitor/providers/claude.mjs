@@ -44,14 +44,13 @@ import {
   claudeLifecycleSource, createClaudeSessionStatusReader,
   registryStatus, registryTimestamp, sessionActivityStatus,
 } from "./claude-session-status.mjs";
-
+import { claudeRepositoryInventoryCaptureFromProviderOptions } from "./claude-repository-inventory.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 const MAX_SESSION_TITLE_RECORD_BYTES = 16 * 1024;
 const MAX_USAGE_LIMIT_REJECTION_WINDOWS = 16;
-
 function normalizedResetTimestamp(value) {
   const numeric = typeof value === "number"
     ? value
@@ -59,7 +58,6 @@ function normalizedResetTimestamp(value) {
   const milliseconds = numeric === null ? Date.parse(value) : numeric < 1_000_000_000_000 ? numeric * 1_000 : numeric;
   return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
 }
-
 /**
  * Normalize only the first locally recorded Claude rejection for each five-hour
  * reset window. No other quota, message, or transcript fields leave the adapter.
@@ -83,7 +81,6 @@ export function claudeFiveHourLimitRejections(recordGroups = []) {
     .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
     .slice(-MAX_USAGE_LIMIT_REJECTION_WINDOWS);
 }
-
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
   if (!stat) return [];
@@ -280,6 +277,7 @@ function runtimeMetadata(records) {
 }
 
 export function createClaudeProvider(options = {}) {
+  const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
   const projectsRoot = options.projectsRoot || environment.CLAUDE_PROJECTS_DIR || path.join(homeDir, ".claude", "projects");
@@ -751,6 +749,7 @@ export function createClaudeProvider(options = {}) {
       approvalMode: { status: "supported" },
       automaticCompactions: { status: "supported" },
       contextMachinery: { status: "supported" },
+      repositoryContextInventory: { status: "supported" },
       estimatedCost: { status: "supported" },
       liveSessions: { status: "supported" },
       needsInput: { status: "supported" },
@@ -775,6 +774,7 @@ export function createClaudeProvider(options = {}) {
     },
     listSessions,
     readSession,
+    captureRepositoryContextInventory,
     createObserver() {
       return observeClaudeRegistryDepartures(createIncrementalProviderObserver({
         providerId: "claude",

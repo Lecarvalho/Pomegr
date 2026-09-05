@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pomegr context inventory contract</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #111315;
+      --panel: #191c20;
+      --raised: #23272d;
+      --ink: #edf0f3;
+      --muted: #a8afb9;
+      --line: #333941;
+      --control: #697482;
+      --brand: #e58b80;
+      --brand-fill: #a63c32;
+      --brand-soft: #322421;
+      --green: #91c5a4;
+      --green-soft: #23372d;
+      --amber: #e3b575;
+      --amber-soft: #392e20;
+      --error: #f09a9f;
+      --context: #bbb3d3;
+      --focus: #91b8ee;
+      --ui: Inter, "Segoe UI", sans-serif;
+      --data: "Geist Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--canvas); }
+    body { margin: 0; min-width: 320px; color: var(--ink); background: var(--canvas); font: 14px/1.5 var(--ui); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    ::selection { color: #fff; background: var(--brand-fill); }
+    .decision { width: min(1460px, 100%); margin: 0 auto; padding: 28px; }
+    .decisionHead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; margin-bottom: 20px; }
+    .decisionHead h1 { max-width: 760px; margin: 0; font-size: 26px; line-height: 1.08; letter-spacing: -.025em; }
+    .decisionHead p { max-width: 760px; margin: 10px 0 0; color: var(--muted); }
+    .illustrative { align-self: start; padding: 8px 10px; border: 1px solid var(--control); color: var(--muted); font: 12px/1.2 var(--data); }
+    .optionNote { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    .optionNote b { color: var(--green); font-weight: 650; }
+    .frame { overflow: hidden; border: 1px solid var(--control); border-radius: 6px; background: var(--canvas); box-shadow: 0 18px 48px #00000066; }
+    .appHeader { height: 60px; display: grid; grid-template-columns: 220px minmax(260px, 560px) 1fr auto auto; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; }
+    .brandMark { width: 25px; height: 25px; color: var(--brand); }
+    .globalSearch { height: 34px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: var(--canvas); font-size: 13px; }
+    .globalSearch kbd { margin-left: auto; color: var(--muted); font: 11px/1 var(--data); }
+    .connection { justify-self: end; color: var(--green); font-size: 12px; }
+    .iconButton { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: transparent; }
+    .icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+    .appBody { min-height: 820px; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .rail { padding: 18px 12px; border-right: 1px solid var(--line); background: var(--panel); }
+    .rail nav { display: grid; gap: 3px; }
+    .rail a { min-height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 4px; color: var(--muted); text-decoration: none; }
+    .rail a.active { color: var(--ink); background: var(--raised); }
+    .railBreak { height: 1px; margin: 12px 10px; background: var(--line); }
+    .railFoot { margin: 310px 10px 0; color: var(--muted); font-size: 12px; }
+    .workspace { min-width: 0; padding: 28px 30px 42px; }
+    .pageHead { display: flex; justify-content: space-between; align-items: start; gap: 22px; }
+    .pageHead h2 { margin: 0; font-size: 26px; line-height: 1.1; letter-spacing: -.025em; }
+    .pageHead p { max-width: 660px; margin: 8px 0 0; color: var(--muted); }
+    .desktopFlag { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .desktopFlag .icon { color: var(--green); }
+    .toolbar { min-height: 54px; margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 11px; border: 1px solid var(--line); background: var(--panel); }
+    .filter { width: min(320px, 100%); height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--control); border-radius: 4px; color: var(--muted); background: var(--canvas); }
+    .filter input { width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; }
+    .toolbarCount { color: var(--muted); font-size: 12px; }
+    .repositoryList { margin-top: 12px; border: 1px solid var(--line); background: var(--panel); }
+    .repositoryRow { min-height: 78px; display: grid; grid-template-columns: minmax(240px, 1fr) 72px 104px minmax(210px, 270px) auto; align-items: center; gap: 14px; padding: 13px 15px; }
+    .repositoryRow + .repositoryRow, .repositoryProviders + .repositoryRow { border-top: 1px solid var(--line); }
+    .repositoryDisclosure { cursor: pointer; transition: background-color 140ms ease-out; }
+    .repositoryDisclosure:hover { background: var(--raised); }
+    .repositoryDisclosure:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--brand); outline-offset: -2px; }
+    .disclosureIcon { width: 28px; height: 28px; display: grid; place-items: center; justify-self: end; color: var(--muted); }
+    .disclosureIcon .icon { width: 16px; height: 16px; transition: transform 160ms cubic-bezier(.22, 1, .36, 1); }
+    .repositoryDisclosure[aria-expanded="true"] .disclosureIcon .icon { transform: rotate(90deg); }
+    .repoIdentity { min-width: 0; display: flex; align-items: center; gap: 11px; }
+    .repoIdentity > .icon { width: 20px; height: 20px; color: var(--muted); }
+    .repoIdentity strong, .repoIdentity small { display: block; }
+    .repoIdentity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .repoIdentity small { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .repoStat { color: var(--muted); font-size: 12px; }
+    .repoStat strong { display: block; margin-bottom: 3px; color: var(--ink); font: 12px/1.2 var(--data); }
+    .inventoryCell { min-width: 0; }
+    .inventoryCell strong, .inventoryCell span { display: block; }
+    .inventoryCell strong { color: var(--context); font-size: 12px; }
+    .inventoryCell span { margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .button { min-height: 34px; padding: 0 11px; border: 1px solid var(--control); border-radius: 4px; background: transparent; cursor: pointer; white-space: nowrap; }
+    .button:hover { background: var(--raised); }
+    .button.primary { border-color: var(--brand-fill); color: #fff; background: var(--brand-fill); }
+    .button:disabled { cursor: not-allowed; opacity: .68; }
+    .remoteOnly { display: none; }
+    .metaList { margin-top: 22px; display: grid; gap: 9px; }
+    .metaLine { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+    .metaLine b { color: var(--ink); font: 500 12px/1.4 var(--data); text-align: right; }
+    .sourceNote { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .sourceNote strong { color: var(--green); }
+    .inventoryBreakdown { min-width: 0; padding: 20px; }
+    .breakdownHead { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+    .breakdownHead h3 { margin: 0; font-size: 14px; }
+    .breakdownHead span { color: var(--muted); font-size: 12px; }
+    .categoryGrid { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+    .category { min-width: 0; padding: 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .category span, .category strong { display: block; }
+    .category span { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .category strong { margin-top: 6px; font: 600 13px/1 var(--data); }
+    .categoryBar { height: 3px; margin-top: 9px; background: var(--line); }
+    .categoryBar i { height: 100%; display: block; background: var(--context); }
+    .detailLinks { margin-top: 14px; display: flex; gap: 16px; }
+    .textAction { padding: 0; border: 0; color: var(--brand); background: transparent; font-size: 12px; cursor: pointer; }
+    .privacyLine { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+    .privacyLine .icon { width: 14px; height: 14px; margin-right: 5px; vertical-align: -2px; color: var(--green); }
+    .itemPreview { margin-top: 14px; padding: 12px; border: 1px solid var(--line); background: var(--raised); }
+    .itemPreview[hidden] { display: none; }
+    .itemPreview span { display: inline-block; margin-right: 18px; color: var(--muted); font-size: 12px; }
+    .itemPreview b { color: var(--ink); font-family: var(--data); }
+    .captureConfirm { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 14px 15px; border-top: 1px solid var(--line); background: var(--brand-soft); }
+    .captureConfirm[hidden] { display: none; }
+    .captureConfirm strong, .captureConfirm span { display: block; }
+    .captureConfirm strong { font-size: 13px; }
+    .captureConfirm span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .captureConfirmActions { display: flex; gap: 8px; }
+    .repositoryProviders { border-top: 1px solid var(--line); background: var(--canvas); }
+    .providerLane + .providerLane { border-top: 1px solid var(--line); }
+    .providerLaneHead { min-height: 74px; display: grid; grid-template-columns: minmax(190px, .8fr) minmax(250px, 1.2fr) auto; align-items: center; gap: 18px; padding: 13px 15px; }
+    .providerIdentity { min-width: 0; display: flex; align-items: center; gap: 10px; }
+    .providerMark { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--control); border-radius: 4px; color: var(--ink); background: var(--panel); font: 650 10px/1 var(--data); letter-spacing: .02em; }
+    .providerIdentity strong, .providerIdentity span, .providerInventory strong, .providerInventory span { display: block; }
+    .providerIdentity strong { font-size: 13px; }
+    .providerIdentity span, .providerInventory span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .providerInventory strong { font: 650 13px/1.25 var(--data); }
+    .providerState { display: inline-flex; align-items: center; gap: 6px; margin-left: 7px; color: var(--green); font: 600 10px/1 var(--data); vertical-align: 1px; }
+    .providerState::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+    .providerState.unavailable { color: var(--muted); }
+    .providerState.working { color: var(--amber); }
+    .providerState.error { color: var(--error); }
+    .providerActions { display: flex; align-items: center; gap: 8px; }
+    .providerDetail { display: grid; grid-template-columns: 220px minmax(0, 1fr); border-top: 1px solid var(--line); background: var(--panel); }
+    .providerSummary { padding: 17px; border-right: 1px solid var(--line); }
+    .providerSummary h3 { margin: 0; font-size: 14px; }
+    .providerSummary > p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .providerUnavailable { background: var(--raised); }
+    .providerUnavailable .providerInventory strong { font-family: var(--ui); }
+    .stateLegend { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--panel); }
+    .stateItem { padding: 14px; }
+    .stateItem + .stateItem { border-left: 1px solid var(--line); }
+    .stateItem strong, .stateItem span { display: block; }
+    .stateItem strong { font-size: 12px; }
+    .stateItem span { margin-top: 5px; color: var(--muted); font-size: 12px; }
+    .sessionDecision { margin-top: 26px; }
+    .sessionDecision > h2 { margin: 0; font-size: 16px; }
+    .sessionDecision > p { max-width: 880px; margin: 7px 0 15px; color: var(--muted); }
+    .sessionFrame { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .6fr); gap: 16px; }
+    .sessionPanel, .behaviorPanel { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+    .sessionPanel { padding: 18px; }
+    .sessionHead { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+    .sessionHead h3 { margin: 0; font-size: 16px; }
+    .sessionHead p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .liveLabel { color: var(--green); font: 12px/1 var(--data); }
+    .sessionMetrics { margin-top: 17px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); }
+    .sessionMetric { min-height: 86px; padding: 13px; }
+    .sessionMetric + .sessionMetric { border-left: 1px solid var(--line); }
+    .sessionMetric span, .sessionMetric strong, .sessionMetric small { display: block; }
+    .sessionMetric span { color: var(--muted); font-size: 12px; }
+    .sessionMetric strong { margin-top: 8px; font: 650 19px/1 var(--ui); }
+    .sessionMetric.context strong { color: var(--context); }
+    .sessionMetric small { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .inventoryReference { margin-top: 13px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--line); background: var(--canvas); }
+    .inventoryReference > .icon { color: var(--context); }
+    .inventoryReference strong, .inventoryReference span { display: block; }
+    .inventoryReference strong { font-size: 12px; }
+    .inventoryReference span { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .behaviorPanel { padding: 18px; }
+    .behaviorPanel h3 { margin: 0; font-size: 14px; }
+    .behaviorList { margin: 14px 0 0; padding: 0; list-style: none; }
+    .behaviorList li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .behaviorList li:first-child { border-top: 0; padding-top: 0; }
+    .behaviorList .icon { width: 14px; height: 14px; color: var(--green); }
+    .annotation { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--control); color: var(--muted); font-size: 12px; }
+    .annotation strong { color: var(--ink); }
+    @media (max-width: 1020px) {
+      .decision { padding: 18px; }
+      .appHeader { grid-template-columns: auto minmax(220px, 1fr) auto auto; }
+      .connection { display: none; }
+      .appBody { grid-template-columns: 72px minmax(0, 1fr); }
+      .rail { padding-inline: 10px; }
+      .rail a { justify-content: center; padding: 0; }
+      .rail a span, .railFoot { display: none; }
+      .workspace { padding-inline: 22px; }
+      .repositoryRow { grid-template-columns: minmax(220px, 1fr) 62px minmax(190px, 240px) auto; }
+      .repositoryRow .repoStat:nth-of-type(2) { display: none; }
+      .providerLaneHead { grid-template-columns: minmax(170px, .8fr) minmax(210px, 1.2fr) auto; }
+      .providerDetail { grid-template-columns: 200px minmax(0, 1fr); }
+      .categoryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sessionFrame { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .decision { padding: 12px; }
+      .decisionHead { grid-template-columns: 1fr; gap: 12px; }
+      .optionNote { display: block; }
+      .optionNote b { display: block; margin-bottom: 3px; }
+      .localOnly { display: none !important; }
+      .remoteOnly { display: inline-flex; align-items: center; justify-content: center; }
+      .appHeader { grid-template-columns: auto 1fr auto; padding-inline: 12px; }
+      .globalSearch { display: none; }
+      .appBody { display: block; min-height: 0; }
+      .rail { display: none; }
+      .workspace { padding: 22px 14px 30px; }
+      .pageHead { display: block; }
+      .desktopFlag { margin-top: 10px; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .filter { width: 100%; }
+      .repositoryRow { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+      .repositoryRow .repoStat { display: none; }
+      .inventoryCell { grid-column: 1; }
+      .providerLaneHead { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+      .providerInventory { grid-column: 1; }
+      .providerActions { grid-column: 2; grid-row: 1 / 3; align-self: stretch; flex-direction: column; justify-content: center; }
+      .providerDetail { grid-template-columns: 1fr; }
+      .providerSummary { border-right: 0; border-bottom: 1px solid var(--line); }
+      .categoryGrid { grid-template-columns: 1fr; }
+      .stateLegend, .sessionMetrics { grid-template-columns: 1fr; }
+      .stateItem + .stateItem, .sessionMetric + .sessionMetric { border-top: 1px solid var(--line); border-left: 0; }
+      .sessionFrame { display: block; }
+      .behaviorPanel { margin-top: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-fruit" viewBox="0 0 24 24"><path d="M12 6c-4.7 0-8 3.1-8 7.3C4 18 7.5 21 12 21s8-3 8-7.7C20 9.1 16.7 6 12 6Z"/><path d="M12 6c-.1-2.1 1-3.5 3.2-4M10.2 6c-1.3-1.2-2.8-1.5-4.4-.9M8.5 9.2c2.2 1.1 4.5 1.1 7 0"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.5 15.5 4.3 4.3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6.5 9.7c0-3.2 1.9-5.4 5.5-5.4s5.5 2.2 5.5 5.4v4l1.6 2.5H4.9l1.6-2.5v-4Z"/><path d="M10 19h4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.8 20c.7-4 2.8-6 6.2-6s5.5 2 6.2 6"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m4 10 8-6 8 6v9H4v-9Z"/><path d="M9.5 19v-5h5v5"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3.2 2"/></symbol>
+    <symbol id="i-agents" viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="2.5"/><circle cx="6" cy="16.5" r="2.5"/><circle cx="18" cy="16.5" r="2.5"/><path d="M12 9v3.2M9.8 13.4l-2 1.4M14.2 13.4l2 1.4"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M5 18a8 8 0 1 1 14 0"/><path d="m12 14 3-4"/></symbol>
+    <symbol id="i-repo" viewBox="0 0 24 24"><path d="M5 4h11.5A2.5 2.5 0 0 1 19 6.5V20H7a2 2 0 0 1-2-2V4Z"/><path d="M5 16.5c.6-.7 1.3-1 2-1h12M9 8h6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></symbol>
+    <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="1"/><path d="M9 21h6M12 17v4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></symbol>
+    <symbol id="i-context" viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 12h10v3H4zM4 18h13v2H4z"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  </svg>
+
+  <main class="decision">
+    <header class="decisionHead">
+      <div>
+        <h1>Repository context inventory contract</h1>
+        <p>Expandable repositories contain provider-owned capture, status, revisions, and evidence. Sessions reference the immutable provider revision they matched.</p>
+      </div>
+      <span class="illustrative">ILLUSTRATIVE DATA · APPROVAL CONTRACT</span>
+    </header>
+    <p class="optionNote"><b>Approved direction:</b> repository rows disclose providers; inventory never lives on the repository row itself.</p>
+
+    <section class="optionPanel">
+      <div class="frame">
+        <header class="appHeader">
+          <div class="brand"><svg class="brandMark icon"><use href="#i-fruit"/></svg>Pomegr</div>
+          <div class="globalSearch"><svg class="icon"><use href="#i-search"/></svg>Search Pomegr destinations <kbd>Ctrl K</kbd></div>
+          <span class="connection">Observer ready</span>
+          <button class="iconButton" aria-label="Notifications"><svg class="icon"><use href="#i-bell"/></svg></button>
+          <button class="iconButton" aria-label="Local profile"><svg class="icon"><use href="#i-user"/></svg></button>
+        </header>
+        <div class="appBody">
+          <aside class="rail"><nav>
+            <a href="#"><svg class="icon"><use href="#i-home"/></svg><span>Home</span></a>
+            <a href="#"><svg class="icon"><use href="#i-grid"/></svg><span>Dashboards</span></a>
+            <a href="#"><svg class="icon"><use href="#i-clock"/></svg><span>Sessions</span></a>
+            <a href="#"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></a>
+            <div class="railBreak"></div>
+            <a href="#"><svg class="icon"><use href="#i-gauge"/></svg><span>Usage limits</span></a>
+            <a href="#" class="active"><svg class="icon"><use href="#i-repo"/></svg><span>Repositories</span></a>
+            <a href="#"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></a>
+          </nav><p class="railFoot">Local observer<br>Pomegr v0.2.0</p></aside>
+          <div class="workspace">
+            <div class="pageHead"><div><h2>Repositories</h2><p>Observed projects and saved provider configuration diagnostics.</p></div><span class="desktopFlag"><svg class="icon"><use href="#i-desktop"/></svg>Capture requires Pomegr desktop</span></div>
+            <div class="toolbar"><label class="filter"><svg class="icon"><use href="#i-search"/></svg><input aria-label="Filter projects" placeholder="Filter projects" /></label><span class="toolbarCount">4 projects · Session catalog</span></div>
+            <div class="repositoryList">
+              <article class="repositoryRow repositoryDisclosure" role="button" tabindex="0" aria-expanded="true" aria-controls="providers-pomegr" data-repository>
+                <div class="repoIdentity"><svg class="icon"><use href="#i-repo"/></svg><span><strong>Pomegr</strong><small>36 observed sessions</small></span></div>
+                <span class="repoStat"><strong>2</strong>live</span><span class="repoStat"><strong>34</strong>history</span>
+                <span class="inventoryCell"><strong>2 observed providers</strong><span>Claude Code · Codex</span></span>
+                <span class="disclosureIcon" aria-hidden="true"><svg class="icon"><use href="#i-chevron"/></svg></span>
+              </article>
+              <div class="repositoryProviders" id="providers-pomegr">
+                <section class="providerLane">
+                  <div class="providerLaneHead">
+                    <div class="providerIdentity"><span class="providerMark">CC</span><span><strong>Claude Code <span class="providerState">CURRENT</span></strong><span>Native provider diagnostic</span></span></div>
+                    <div class="providerInventory"><strong>91.2k estimated setup tokens</strong><span>Revision ctx-017 · captured 2 hours ago</span></div>
+                    <div class="providerActions"><button class="button localOnly" data-confirm-target="confirm-pomegr-claude">Capture again</button><button class="button remoteOnly" disabled>Open desktop to capture</button></div>
+                  </div>
+                  <div class="captureConfirm" id="confirm-pomegr-claude" hidden><span><strong>Run a Claude Code diagnostic for Pomegr?</strong><span>Starts a zero-turn local process and saves only normalized Claude Code inventory as a new immutable revision.</span></span><span class="captureConfirmActions"><button class="button" data-cancel>Cancel</button><button class="button primary" data-run>Run diagnostic</button></span></div>
+                  <div class="providerDetail" id="claude-provider-detail">
+                    <section class="providerSummary"><h3>Claude Code inventory</h3><p>Saved independently for this provider.</p><div class="metaList"><div class="metaLine"><span>Captured</span><b>10:42 AM</b></div><div class="metaLine"><span>Model</span><b>Fable 5.1</b></div><div class="metaLine"><span>Revision</span><b>ctx-017</b></div></div><p class="sourceNote"><strong>Current configuration match</strong><br />No relevant configuration drift detected.</p></section>
+                    <section class="inventoryBreakdown"><div class="breakdownHead"><h3>Claude Code category breakdown</h3><span>9 categories · 76 listed items</span></div><div class="categoryGrid">
+                  <div class="category"><span>System prompt</span><strong>3.8k</strong><div class="categoryBar"><i style="width:19%"></i></div></div>
+                  <div class="category"><span>System tools</span><strong>9.6k</strong><div class="categoryBar"><i style="width:48%"></i></div></div>
+                  <div class="category"><span>MCP tools</span><strong>8.9k</strong><div class="categoryBar"><i style="width:45%"></i></div></div>
+                  <div class="category"><span>MCP tools · deferred</span><strong>18.6k</strong><div class="categoryBar"><i style="width:92%"></i></div></div>
+                  <div class="category"><span>System tools · deferred</span><strong>20.2k</strong><div class="categoryBar"><i style="width:100%"></i></div></div>
+                  <div class="category"><span>Custom agents</span><strong>2.4k</strong><div class="categoryBar"><i style="width:12%"></i></div></div>
+                  <div class="category"><span>Memory files</span><strong>7.1k</strong><div class="categoryBar"><i style="width:35%"></i></div></div>
+                  <div class="category"><span>Skills</span><strong>17.8k</strong><div class="categoryBar"><i style="width:88%"></i></div></div>
+                  <div class="category"><span>Autocompact buffer</span><strong>2.8k</strong><div class="categoryBar"><i style="width:14%"></i></div></div>
+                    </div><div class="detailLinks"><button class="textAction" data-inspect="item-preview">Inspect 76 listed items</button><button class="textAction" data-revisions="revision-preview">Compare Claude Code revisions</button></div><div class="itemPreview" id="item-preview" hidden><span>MCP tools <b>14</b></span><span>Custom agents <b>7</b></span><span>Memory files <b>3</b></span><span>Skills <b>52</b></span></div><div class="itemPreview" id="revision-preview" hidden><span>ctx-017 <b>91.2k · current</b></span><span>ctx-016 <b>84.7k · 12 sessions</b></span><span>ctx-015 <b>63.1k · 7 sessions</b></span></div><p class="privacyLine"><svg class="icon"><use href="#i-check"/></svg>Raw provider output never enters browser state or persistence. Only bounded normalized names, counts, source, and capture time are saved.</p></section>
+                  </div>
+                </section>
+                <section class="providerLane providerUnavailable">
+                  <div class="providerLaneHead">
+                    <div class="providerIdentity"><span class="providerMark">CX</span><span><strong>Codex <span class="providerState unavailable">UNAVAILABLE</span></strong><span>Observed in 14 repository sessions</span></span></div>
+                    <div class="providerInventory"><strong>No comparable provider diagnostic</strong><span>Pomegr will not combine or approximate Claude Code evidence</span></div>
+                  </div>
+                </section>
+              </div>
+              <article class="repositoryRow repositoryDisclosure" role="button" tabindex="0" aria-expanded="false" aria-controls="providers-harbor" data-repository>
+                <div class="repoIdentity"><svg class="icon"><use href="#i-repo"/></svg><span><strong>Harbor</strong><small>5 observed sessions</small></span></div>
+                <span class="repoStat"><strong>0</strong>live</span><span class="repoStat"><strong>5</strong>history</span>
+                <span class="inventoryCell"><strong>1 observed provider</strong><span>Claude Code</span></span>
+                <span class="disclosureIcon" aria-hidden="true"><svg class="icon"><use href="#i-chevron"/></svg></span>
+              </article>
+              <div class="repositoryProviders" id="providers-harbor" hidden>
+                <section class="providerLane">
+                  <div class="providerLaneHead">
+                    <div class="providerIdentity"><span class="providerMark">CC</span><span><strong>Claude Code <span class="providerState unavailable">NOT CAPTURED</span></strong><span>Native provider diagnostic</span></span></div>
+                    <div class="providerInventory"><strong>No saved inventory</strong><span>Ready to capture for this provider</span></div>
+                    <div class="providerActions"><button class="button primary localOnly" data-confirm-target="confirm-harbor-claude">Capture inventory</button><button class="button remoteOnly" disabled>Open desktop to capture</button></div>
+                  </div>
+                  <div class="captureConfirm" id="confirm-harbor-claude" hidden><span><strong>Run a Claude Code diagnostic for Harbor?</strong><span>Starts a zero-turn local process and saves only normalized Claude Code inventory.</span></span><span class="captureConfirmActions"><button class="button" data-cancel>Cancel</button><button class="button primary" data-run>Run diagnostic</button></span></div>
+                </section>
+              </div>
+              <article class="repositoryRow repositoryDisclosure" role="button" tabindex="0" aria-expanded="false" aria-controls="providers-courier" data-repository>
+                <div class="repoIdentity"><svg class="icon"><use href="#i-repo"/></svg><span><strong>Courier</strong><small>11 observed sessions</small></span></div>
+                <span class="repoStat"><strong>1</strong>live</span><span class="repoStat"><strong>10</strong>history</span>
+                <span class="inventoryCell"><strong>1 observed provider</strong><span>Claude Code</span></span>
+                <span class="disclosureIcon" aria-hidden="true"><svg class="icon"><use href="#i-chevron"/></svg></span>
+              </article>
+              <div class="repositoryProviders" id="providers-courier" hidden>
+                <section class="providerLane">
+                  <div class="providerLaneHead">
+                    <div class="providerIdentity"><span class="providerMark">CC</span><span><strong>Claude Code <span class="providerState working">CAPTURING</span></strong><span>Native provider diagnostic</span></span></div>
+                    <div class="providerInventory"><strong>Capturing inventory…</strong><span>The previous revision remains available until commit</span></div>
+                  </div>
+                </section>
+              </div>
+              <article class="repositoryRow repositoryDisclosure" role="button" tabindex="0" aria-expanded="false" aria-controls="providers-ledger" data-repository>
+                <div class="repoIdentity"><svg class="icon"><use href="#i-repo"/></svg><span><strong>Ledger</strong><small>3 observed sessions</small></span></div>
+                <span class="repoStat"><strong>0</strong>live</span><span class="repoStat"><strong>3</strong>history</span>
+                <span class="inventoryCell"><strong>1 observed provider</strong><span>Claude Code</span></span>
+                <span class="disclosureIcon" aria-hidden="true"><svg class="icon"><use href="#i-chevron"/></svg></span>
+              </article>
+              <div class="repositoryProviders" id="providers-ledger" hidden>
+                <section class="providerLane">
+                  <div class="providerLaneHead">
+                    <div class="providerIdentity"><span class="providerMark">CC</span><span><strong>Claude Code <span class="providerState error">FAILED</span></strong><span>Native provider diagnostic</span></span></div>
+                    <div class="providerInventory"><strong>Capture failed</strong><span>Claude Code executable unavailable · no data saved</span></div>
+                    <div class="providerActions"><button class="button localOnly" data-confirm-target="confirm-ledger-claude">Retry</button><button class="button remoteOnly" disabled>Retry on desktop</button></div>
+                  </div>
+                  <div class="captureConfirm" id="confirm-ledger-claude" hidden><span><strong>Retry the Claude Code diagnostic for Ledger?</strong><span>The failed attempt saved nothing. Any previous revision remains unchanged.</span></span><span class="captureConfirmActions"><button class="button" data-cancel>Cancel</button><button class="button primary" data-run>Retry diagnostic</button></span></div>
+                </section>
+              </div>
+            </div>
+            <div class="stateLegend"><div class="stateItem"><strong>Repository rows</strong><span>Show session and provider counts only. The entire row is the disclosure control.</span></div><div class="stateItem"><strong>Provider rows</strong><span>Own capture, status, failures, and immutable revision history.</span></div><div class="stateItem"><strong>Cancel or permission decline</strong><span>No process starts; the previous provider revision remains unchanged.</span></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sessionDecision">
+      <h2>Session rendering contract</h2>
+      <p>Sessions show only the matching provider revision. Full categories, capture, and comparison remain on Repositories.</p>
+      <div class="sessionFrame">
+        <section class="sessionPanel"><div class="sessionHead"><div><h3>Automate context inventory capture</h3><p>Pomegr · Claude Code · started 18 minutes ago</p></div><span class="liveLabel">LIVE</span></div><div class="sessionMetrics"><div class="sessionMetric"><span>Duration</span><strong>18m</strong><small>Wall time</small></div><div class="sessionMetric context"><span>Latest context</span><strong>67.4k</strong><small>Current request snapshot</small></div><div class="sessionMetric"><span>Agents</span><strong>1</strong><small>Primary agent</small></div></div><div class="inventoryReference"><span class="providerMark">CC</span><span><strong>Claude Code inventory · 91.2k estimated setup tokens</strong><span>Immutable revision ctx-017 · matched at session start · 9 categories</span></span><button class="textAction">Open ctx-017</button></div></section>
+        <aside class="behaviorPanel"><h3>Session rules</h3><ul class="behaviorList"><li><svg class="icon"><use href="#i-check"/></svg><span>Live sessions may reference the current matching provider revision.</span></li><li><svg class="icon"><use href="#i-check"/></svg><span>Completed sessions retain the provider revision they actually matched.</span></li><li><svg class="icon"><use href="#i-check"/></svg><span>If no matching revision exists, render nothing—no instruction to run <code>/context</code>.</span></li><li><svg class="icon"><use href="#i-check"/></svg><span>A real in-session provider snapshot wins over a saved repository diagnostic.</span></li></ul></aside>
+      </div>
+      <p class="annotation"><strong>Host boundary:</strong> Capture is an explicit native desktop action, never a monitor GET or LAN-triggerable HTTP action. Remote browsers show “Open Pomegr desktop to capture.”</p>
+    </section>
+  </main>
+  <script>
+    const toggleRepository = (row) => {
+      const detail = document.getElementById(row.getAttribute('aria-controls'));
+      detail.hidden = !detail.hidden;
+      row.setAttribute('aria-expanded', String(!detail.hidden));
+    };
+    document.querySelectorAll('[data-repository]').forEach((row) => {
+      row.addEventListener('click', () => toggleRepository(row));
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleRepository(row);
+        }
+      });
+    });
+    document.querySelectorAll('[data-confirm-target]').forEach((button) => button.addEventListener('click', () => {
+      const confirmation = document.getElementById(button.dataset.confirmTarget);
+      confirmation.hidden = false;
+      confirmation.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }));
+    document.querySelectorAll('[data-cancel]').forEach((button) => button.addEventListener('click', () => {
+      button.closest('.captureConfirm').hidden = true;
+    }));
+    document.querySelectorAll('[data-run]').forEach((button) => button.addEventListener('click', (event) => {
+      event.currentTarget.disabled = true;
+      event.currentTarget.textContent = 'Starting…';
+    }));
+    const togglePreview = (button, showLabel, hideLabel) => {
+      const preview = document.getElementById(button.dataset.inspect || button.dataset.revisions);
+      preview.hidden = !preview.hidden;
+      button.textContent = preview.hidden ? showLabel : hideLabel;
+    };
+    document.querySelectorAll('[data-inspect]').forEach((button) => button.addEventListener('click', () => togglePreview(button, 'Inspect 76 listed items', 'Hide listed items')));
+    document.querySelectorAll('[data-revisions]').forEach((button) => button.addEventListener('click', () => togglePreview(button, 'Compare Claude Code revisions', 'Hide revision comparison')));
+  </script>
+</body>
+</html>

@@ -1,23 +1,23 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { ContextMachinery } from "../../../shared/monitor-contract";
+import Link from "next/link";
+import type { ContextInventoryReference, ContextMachinery } from "../../../shared/monitor-contract";
 import { compactNumber } from "../../dashboard-utils";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { PopoverFrame } from "../PopoverFrame";
 
-export function MachineryPanel({ machinery, supported, historical }: { machinery: ContextMachinery | null | undefined; supported: boolean; historical: boolean }) {
+export function MachineryPanel({ machinery, supported, inventoryRef }: { machinery: ContextMachinery | null | undefined; supported: boolean; historical: boolean; inventoryRef?: ContextInventoryReference | null }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismissibleLayer(open, rootRef, close);
-  if (!supported) return null;
+  if (!supported && !inventoryRef) return null;
   if (!machinery) {
-    return (
-      <p className="machineryNotice">
-        <span>{historical ? <>No <code>/context</code> inventory was recorded for this session.</> : <>Run <code>/context</code> in this session to capture a diagnostic inventory.</>}</span>
-      </p>
-    );
+    if (!inventoryRef) return null;
+    const params = new URLSearchParams({ repository: inventoryRef.repositoryId, provider: inventoryRef.provider, revision: inventoryRef.revisionId });
+    const source = inventoryRef.provider === "claude" ? "Claude Code" : "Codex";
+    return <section className="panel sessionInventoryReference" aria-label="Repository context inventory reference"><div><strong>{source} inventory · {compactNumber(inventoryRef.machineryTokens)} estimated setup tokens</strong><span>Immutable revision {inventoryRef.revisionId} · available when this session started · {inventoryRef.categoryCount} categories</span>{!inventoryRef.detailRetained && <small>Detailed evidence is no longer retained.</small>}</div><Link href={`/repositories?${params}`}>Open {inventoryRef.revisionId}</Link></section>;
   }
   return (
     <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Loaded context inventory">

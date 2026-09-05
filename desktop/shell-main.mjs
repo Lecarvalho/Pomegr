@@ -51,6 +51,7 @@ import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.m
 import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
 import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpdateSignatureVerifier } from "./updater.mjs";
+import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-action.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -101,6 +102,8 @@ let claudeSignIn;
 let removeClaudeSignInIpc;
 let claudeUsageIntegration;
 let removeClaudeUsageIpc;
+let removeRepositoryInventoryIpc;
+let privateMonitorOrigin;
 let phoneAccess;
 let removePhoneAccessIpc;
 const nativeNotifications = new Set();
@@ -405,6 +408,8 @@ async function stopRuntime() {
     removeClaudeSignInIpc = undefined;
     removeClaudeUsageIpc?.();
     removeClaudeUsageIpc = undefined;
+    removeRepositoryInventoryIpc?.();
+    removeRepositoryInventoryIpc = undefined;
     claudeUsageIntegration?.dispose();
     try { await claudeSignIn?.dispose(); } catch { /* Native sign-in cleanup is bounded. */ }
     notificationPoller?.stop();
@@ -509,6 +514,7 @@ async function startDesktop() {
           POMEGR_MONITOR_ORIGIN: monitorReady.origin,
           POMEGR_MONITOR_TOKEN: authorizationToken,
         });
+        privateMonitorOrigin = monitorReady.origin;
         assertNoSystemNodeInPath(process.env);
         recordStage("SHELL_WEB_IMPORTING");
         const { startWebServer } = await withDeadline(
@@ -601,6 +607,12 @@ async function startDesktop() {
         installDesktopBehaviorIpc();
         installClaudeSignInIpc();
         removeClaudeUsageIpc = installClaudeUsageIntegrationIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, integration: claudeUsageIntegration });
+        removeRepositoryInventoryIpc = installRepositoryInventoryCaptureIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
+        });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {
           getController: () => behaviorController,

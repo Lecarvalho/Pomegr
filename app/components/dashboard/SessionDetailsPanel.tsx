@@ -152,7 +152,7 @@ export function SessionDetailsPanel({
       )}
       <RepositoryPanel session={session} />
       {!historical && capabilities.usageLimits && <UsageLimitsPanel source={state.source} usageLimits={state.usageLimits} />}
-      <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} />
+      <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} inventoryRef={session.contextInventoryRef} />
       <ActivityPanel activity={state.activity} historical={historical} loading={loading} onRefresh={onRefresh} />
     </DashboardDisclosurePanel>
   );

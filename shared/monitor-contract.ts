@@ -1,17 +1,16 @@
+import type { ContextInventoryReference } from "./repository-inventory-contract";
+export type { ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
 export type ReportedSignal = {
   label: string;
   tone: "neutral" | "info" | "positive" | "warning" | "negative";
   reportedAt: string | null;
 };
-
 export type AgentReportedSignal = ReportedSignal & {
   description?: string;
 };
-
 export type SessionReportedSignal = ReportedSignal & {
   description?: string;
 };
-
 export type SessionProgress = {
   phase: "planning" | "implementing" | "verifying" | "blocked" | "complete";
   percent: number;
@@ -20,7 +19,6 @@ export type SessionProgress = {
   confidence: "low" | "medium" | "high";
   reportedAt: string;
 };
-
 export type PomegrPluginMetadata = {
   status: "active";
   version: string | null;
@@ -452,6 +450,8 @@ export type SessionSummary = {
   currentActivity: SessionCurrentActivity | null;
   /** Separate from provider-authored activity; optional for older monitor responses. */
   activityFallback?: SessionActivityFallback | null;
+  repositoryId?: string | null;
+  contextInventoryRef?: ContextInventoryReference | null;
 };
 
 export type SessionCatalogSnapshot = {
@@ -634,6 +634,8 @@ export type ProviderCapabilities = {
   approvalMode: boolean;
   automaticCompactions: boolean;
   contextMachinery: boolean;
+  /** Optional during the repository-inventory capability rollout. */
+  repositoryContextInventory?: boolean;
   estimatedCost: boolean;
   liveSessions: boolean;
   needsInput: boolean;
@@ -715,6 +717,8 @@ export type MonitorState = {
     title: string;
     project: string;
     cwd: string;
+    repositoryId?: string | null;
+    contextInventoryRef?: ContextInventoryReference | null;
     repository: {
       available: boolean;
       branch: string;

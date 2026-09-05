@@ -69,19 +69,17 @@ describe("provider capability gates", () => {
     expect(screen.queryByText(/\/context/)).not.toBeInTheDocument();
   });
 
-  it("replaces a missing live context panel with one actionable inline notice", () => {
+  it("renders no manual context instruction when a live snapshot is absent", () => {
     const { container } = render(<MachineryPanel machinery={null} supported historical={false} />);
 
-    expect(container.querySelector(".machineryNotice")).toHaveTextContent("Run /context in this session to capture a diagnostic inventory.");
-    expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
-    expect(container).not.toHaveTextContent("—");
+    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toHaveTextContent("/context");
   });
 
-  it("uses a factual inline notice when a historical context snapshot was not recorded", () => {
+  it("renders no manual context instruction when a historical snapshot is absent", () => {
     const { container } = render(<MachineryPanel machinery={null} supported historical />);
 
-    expect(container.querySelector(".machineryNotice")).toHaveTextContent("No /context inventory was recorded for this session.");
-    expect(container.querySelector(".cachePanel")).not.toBeInTheDocument();
-    expect(container).not.toHaveTextContent("—");
+    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toHaveTextContent("/context");
   });
 });

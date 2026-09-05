@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HomeProviderUsageLimits, ProviderServiceStatus, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
-import { groupSessionsByProject, newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
+import { newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { usageLimitDisplay, usageLimitFailureKind, usageLimitFailureMessage } from "../../usage-limit-presentation";
 import { useUsageLimits } from "../../usage-limits-client";
@@ -16,8 +16,9 @@ import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
-import { CommandComingSoon, CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
+import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 export { AgentsView } from "../agents/AgentsView";
+export { RepositoryInventoryView as RepositoriesView } from "../repositories/RepositoryInventoryView";
 
 function sessionHref(session: SessionSummary) {
   try { return `/sessions/${encodeSessionRoute(session.id)}`; } catch { return "/"; }
@@ -280,24 +281,5 @@ export function UsageLimitsView() {
     />)}
     {snapshot.providers.length ? snapshot.providers.map((entry) => <UsageProvider entry={entry} providerStatus={providerStatusFor(statusSnapshot.providers, entry.provider)} key={entry.provider} />) : <><ProviderStatusArea providers={statusSnapshot.providers} /><CommandEmpty title={providersUnavailable ? "Usage limits unavailable" : "Usage limits are loading"} detail={providersUnavailable ? "The local monitor could not provide account-level provider evidence." : "Pomegr is waiting for account-level provider evidence."} icon="limits" /></>}
     <p className="commandUsageCaution">Provider-reported account usage reflects the last observation and may lag current activity. Pomegr does not attribute usage or cost to sessions, agents, or repositories. Local request observations show correlation only.</p>
-  </CommandPage>;
-}
-
-export function RepositoriesView() {
-  const { sessions, loading, connected, readiness } = useSessionCatalog();
-  const [query, setQuery] = useState("");
-  const groups = useMemo(() => groupSessionsByProject(sessions).filter(({ project }) => project.toLowerCase().includes(query.trim().toLowerCase())), [query, sessions]);
-  const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
-  return <CommandPage title="Repositories" description="Projects associated with observed sessions. Detailed Git state remains a planned surface." busy={loading && !sessions.length}>
-    <CommandToolbar>
-      <CommandSearch value={query} onChange={setQuery} placeholder="Filter projects" label="Filter projects" />
-      <span className="commandToolbarCount">{groups.length} projects · Session catalog</span>
-    </CommandToolbar>
-    {catalogUnavailable && !sessions.length ? <CommandEmpty title="Project catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="repositories" /> : !groups.length ? <CommandEmpty title={sessions.length ? "No projects match" : "No repositories observed"} detail={sessions.length ? "Try a different project name." : "Projects appear here when sessions are observed."} icon="repositories" /> : <div className="commandRepositoryList">{groups.map(({ project, sessions: projectSessions }) => {
-      const liveCount = projectSessions.filter((session) => session.isLive).length;
-      const latest = projectSessions.reduce((value, session) => value > session.updatedAt ? value : session.updatedAt, "");
-      return <article className="commandRepositoryRow" key={project}><div className="commandRepositoryIdentity"><CommandIcon name="repositories" size="small" /><span><strong>{project}</strong><small>{projectSessions.length} observed session{projectSessions.length === 1 ? "" : "s"}</small></span></div><span className="commandRepositoryStat"><strong>{liveCount}</strong> live</span><span className="commandRepositoryStat"><strong>{projectSessions.length - liveCount}</strong> history</span><span className="commandRepositoryUpdated">{latest ? sessionTimestamp(latest) : "—"}</span><span className="commandRepositoryUnavailable">Git details coming soon</span></article>;
-    })}</div>}
-    <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" />
   </CommandPage>;
 }

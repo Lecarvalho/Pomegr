@@ -42,7 +42,7 @@ for (const provider of providerRegistry.providers) {
       assert.ok(declaration, `${provider.id} must classify ${capability.key}`);
       if (declaration.status === "supported") {
         assert.equal(typeof provider[capability.requiredOperation], "function", `${capability.key} requires ${capability.requiredOperation}`);
-        if (!capability.evidencePath.startsWith("catalog.") && capability.evidencePath !== "usageLimits") {
+        if (!capability.evidencePath.startsWith("catalog.") && !capability.evidencePath.startsWith("repository.") && capability.evidencePath !== "usageLimits") {
           assert.equal(valuesAtPath(evidence, capability.evidencePath).some(hasEvidence), true,
             `${provider.id} fixture must demonstrate supported ${capability.key} evidence`);
         }
@@ -52,7 +52,7 @@ for (const provider of providerRegistry.providers) {
       assert.equal(availability[capability.key].status, "not_applicable");
       assert.ok(declaration.limitation.code);
       assert.ok(declaration.limitation.documentation);
-      if (!capability.evidencePath.startsWith("catalog.") && capability.evidencePath !== "usageLimits") {
+      if (!capability.evidencePath.startsWith("catalog.") && !capability.evidencePath.startsWith("repository.") && capability.evidencePath !== "usageLimits") {
         assert.equal(valuesAtPath(evidence, capability.evidencePath).some(hasEvidence), false,
           `${provider.id} fixture must not produce unsupported ${capability.key} evidence`);
       }

@@ -64,6 +64,9 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   enableClaudeUsageIntegration() {
     return ipcRenderer.invoke("pomegr:enable-claude-usage-integration");
   },
+  captureRepositoryContextInventory(repositoryId, provider) {
+    return ipcRenderer.invoke("pomegr:capture-repository-context-inventory", repositoryId, provider);
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("pomegr:quit");

@@ -691,6 +691,7 @@ export function createCodexProvider(options = {}) {
     approvalMode: { status: "supported" },
     automaticCompactions: { status: "supported" },
     contextMachinery: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose normalized context-machinery categories." } },
+    repositoryContextInventory: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex does not expose a comparable repository context inventory diagnostic." } },
     estimatedCost: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose a provider cost estimate." } },
     liveSessions: { status: "supported" },
     needsInput: { status: "supported" },

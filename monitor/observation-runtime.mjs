@@ -11,6 +11,7 @@ import { SessionObservationStore } from "./session-observation-store.mjs";
 import { createProviderStatusObservation } from "./provider-status-observation.mjs";
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
+import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -90,6 +91,13 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
+  const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
+    registry,
+    now,
+    persistence: options.checkpointStore !== false,
+    storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
+    ...options.repositoryInventoryOptions,
+  });
 
   function checkpointPublicState({ providerId, localSessionId, evidence }) {
     const provider = registry.providers?.find((candidate) => candidate.id === providerId) || registry.defaultProvider;
@@ -305,11 +313,22 @@ export function createObservationRuntime(options = {}) {
     async deriveSession(candidate) {
       const provider = registry.providers?.find((entry) => entry.id === candidate.providerId);
       if (!provider) throw new TypeError("Unknown observed provider");
-      const publicState = await projectSelection({
+      const basePublicState = await projectSelection({
         provider,
         evidence: candidate.evidence,
         sessionId: qualifiedSessionId(candidate.providerId, candidate.localSessionId),
       }, { useObservedUsage: true });
+      const association = await repositoryInventory.associateSession({
+        sessionId: qualifiedSessionId(candidate.providerId, candidate.localSessionId),
+        provider: candidate.providerId,
+        startedAt: candidate.evidence.session.startedAt,
+        cwd: candidate.evidence.session.cwd,
+        previousReference: observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
+      });
+      const publicState = basePublicState.session ? {
+        ...basePublicState,
+        session: { ...basePublicState.session, ...association },
+      } : basePublicState;
       const usageReadiness = usageResponseCache.current()?.value?.readiness?.[candidate.providerId] || "loading";
       const readiness = createSessionReadiness("ready", {
         repository: candidate.evidence.historical || publicState.session?.repository?.available ? "ready" : "loading",
@@ -410,9 +429,14 @@ export function createObservationRuntime(options = {}) {
       if (event.type === "session") options.onSessionCommitted?.(event.qualifiedId);
       if (event.type === "catalog") cacheUnavailableSessionResponses();
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
+      if (event.type === "session" || event.type === "catalog") {
+        void repositoryInventory.reconcile(observationCoordinator.catalog()?.snapshot?.value?.sessions || []);
+      }
       scheduleObservedHomeRefresh();
     });
     observationStartPromise = (async () => {
+      await repositoryInventory.ready;
+      await repositoryInventory.reconcile([]);
       await observationCoordinator.start();
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
@@ -459,11 +483,16 @@ export function createObservationRuntime(options = {}) {
       subscriber(Object.freeze({ domain: "sessions", revision: event.revision }));
     };
     const unsubscribe = observationCoordinator.subscribe(publish);
+    const unsubscribeRepositories = repositoryInventory.subscribe(subscriber);
     const currentRevision = observationCoordinator.catalog()?.snapshot?.revision;
     if (Number.isSafeInteger(currentRevision) && currentRevision >= 0) {
       subscriber(Object.freeze({ domain: "sessions", revision: currentRevision }));
     }
-    return unsubscribe;
+    const repositoryRevision = repositoryInventory.readRepositories()?.snapshot?.revision;
+    if (Number.isSafeInteger(repositoryRevision) && repositoryRevision >= 0) {
+      subscriber(Object.freeze({ domain: "repositories", revision: repositoryRevision }));
+    }
+    return () => { unsubscribe(); unsubscribeRepositories(); };
   }
 
   return Object.freeze({
@@ -488,6 +517,9 @@ export function createObservationRuntime(options = {}) {
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
     serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
+    serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
+    readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
+    captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({

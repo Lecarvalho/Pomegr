@@ -27,6 +27,7 @@ export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
   { key: "approvalMode", label: "Approval mode", evidencePath: "session.approvalMode", requiredOperation: "readSession" },
   { key: "automaticCompactions", label: "Automatic compactions", evidencePath: "compactions", requiredOperation: "readSession" },
   { key: "contextMachinery", label: "Context machinery", evidencePath: "session.contextMachinery", requiredOperation: "readSession" },
+  { key: "repositoryContextInventory", label: "Repository context inventory", evidencePath: "repository.contextInventory", requiredOperation: "captureRepositoryContextInventory" },
   { key: "estimatedCost", label: "Estimated cost", evidencePath: "session.cost", requiredOperation: "readSession" },
   { key: "liveSessions", label: "Live sessions", evidencePath: "catalog.isLive", requiredOperation: "listSessions" },
   { key: "needsInput", label: "Needs-input state", evidencePath: "catalog.needsInput", requiredOperation: "listSessions" },
@@ -62,6 +63,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "readSession",
   "readTranscriptPath",
   "readUsageLimits",
+  "captureRepositoryContextInventory",
   "unavailableMessage",
   "qaStats",
   "watchTargets",
@@ -582,7 +584,7 @@ export function createProviderEvidenceAvailability(manifest, evidence) {
     if (manifest[capability.key].status !== "supported") {
       return [capability.key, Object.freeze({ status: "not_applicable" })];
     }
-    if (capability.evidencePath.startsWith("catalog.") || capability.evidencePath === "usageLimits") {
+    if (capability.evidencePath.startsWith("catalog.") || capability.evidencePath.startsWith("repository.") || capability.evidencePath === "usageLimits") {
       return [capability.key, Object.freeze({ status: "outside_session" })];
     }
     const observed = evidenceValuesAtPath(evidence, capability.evidencePath).length > 0;

@@ -61,6 +61,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Cache external usage requests and sanitize failures.
 - Historical views must never expose current plan limits or substitute the current Git working tree for recorded session state.
 - Observation checkpoints may persist only contract-valid normalized evidence, bounded source fingerprints and complete-record offsets, readiness, revision, and observation timestamps. Never persist raw provider records, incomplete fragments, transcript paths, or other browser-forbidden content.
+- Repository context inventories are repository/provider-scoped diagnostics captured only through an explicit trusted desktop action. Browser and LAN GETs serve committed normalized revisions only; no browser route may trigger capture. Repository roots, commands, executables, raw output, stderr, errors, credentials, and private fingerprints remain monitor-private and must not enter renderer IPC, browser state, logs, or persistence. Session references bind once only for future sessions to a revision already committed when the session started; in-session provider evidence takes precedence and absent evidence renders no `/context` instruction.
 
 ## Metric conventions
 

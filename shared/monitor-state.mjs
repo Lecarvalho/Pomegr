@@ -25,6 +25,7 @@ export function createEmptyProviderCapabilities() {
     approvalMode: false,
     automaticCompactions: false,
     contextMachinery: false,
+    repositoryContextInventory: false,
     estimatedCost: false,
     liveSessions: false,
     needsInput: false,
