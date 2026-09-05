@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, Workflow } from "../../shared/monitor-contract";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
@@ -11,10 +11,56 @@ const workflow: Workflow = { id: "run", name: "Verification", status: "completed
 function panel(agents: Agent[], props: Partial<React.ComponentProps<typeof AgentActivityPanel>> = {}) { return <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} planTasks={[]} historical sessionId="roster-test" {...props} /></LiveClockProvider>; }
 const roster = () => screen.getByRole("region", { name: "Agent roster" });
 const rows = () => within(roster()).queryAllByRole("row");
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
 
 beforeEach(() => window.localStorage.clear());
+afterEach(() => {
+  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  if (originalScrollIntoView) Object.defineProperty(Element.prototype, "scrollIntoView", originalScrollIntoView);
+  else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+});
 
 describe("grouped agent roster", () => {
+  it.each([
+    [true, "list", false], [true, "list", true], [true, "grid", true],
+    [false, "list", false], [false, "list", true], [false, "grid", true],
+  ] as const)("restores selection without scrolling (phone=%s, view=%s, saved=%s)", async (phone, viewMode, saved) => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: phone, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const pageScroll = vi.fn();
+    vi.stubGlobal("scrollTo", pageScroll);
+    const ancestorScroll = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: ancestorScroll });
+    if (saved) window.localStorage.setItem("pomegr-agent-roster-selected-roster-test", "worker");
+    const agents = [agent, child("worker")];
+    const { rerender } = render(panel(agents, { viewMode }));
+    const selectedName = saved ? "Select worker" : "Select Primary agent";
+    expect(await screen.findByRole("button", { name: selectedName })).toHaveAttribute("aria-pressed", "true");
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(roster().scrollTop).toBe(0);
+    expect(ancestorScroll).not.toHaveBeenCalled();
+    expect(pageScroll).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    rerender(panel(agents.map((item) => ({ ...item, toolCalls: item.toolCalls + 1 })), { viewMode }));
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(screen.getByRole("button", { name: selectedName })).toHaveAttribute("aria-pressed", "true");
+    expect(ancestorScroll).not.toHaveBeenCalled();
+    expect(pageScroll).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to an agent once when explicitly requested, then leaves polling alone", async () => {
+    const ancestorScroll = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: ancestorScroll });
+    const agents = [agent, child("worker")];
+    const navigation = { id: "worker", request: 1 };
+    const { rerender } = render(panel(agents));
+    rerender(panel(agents, { agentNavigation: navigation }));
+    await waitFor(() => expect(ancestorScroll).toHaveBeenCalledTimes(1));
+    expect(ancestorScroll.mock.instances[0]).toBe(screen.getByRole("button", { name: "Select worker" }).closest('[role="row"]'));
+    rerender(panel(agents.map((item) => ({ ...item, toolCalls: item.toolCalls + 1 })), { agentNavigation: navigation }));
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(ancestorScroll).toHaveBeenCalledTimes(1);
+  });
+
   it("bounds 49 agents, pins primary and group headers, expands eight then reveals the rest", async () => {
     const user = userEvent.setup();
     const agents = [agent, ...Array.from({ length: 48 }, (_, index) => child(`Child ${String(index).padStart(2, "0")}`))];

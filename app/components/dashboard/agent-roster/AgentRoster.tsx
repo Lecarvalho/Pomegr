@@ -71,6 +71,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const [treeReturnsToSheet, setTreeReturnsToSheet] = useState(false);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const tileRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingAgentScroll = useRef(false);
   const treeOpener = useRef<HTMLElement | null>(null);
   const treeReturnId = useRef<string | null>(null);
   const handledAgentNavigation = useRef<string | null>(null);
@@ -132,6 +133,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     const navigationKey = `${sessionId}:${requestedAgentRequest}:${requestedAgentId}`;
     if (handledAgentNavigation.current === navigationKey) return;
     handledAgentNavigation.current = navigationKey;
+    pendingAgentScroll.current = true;
     // Insight links are explicit navigation: reset every excluding roster view constraint.
     setFilters(DEFAULT_FILTERS);
     setSelection(requestedAgentId);
@@ -167,10 +169,13 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const flat = sort(treeRows.map(({ agent }) => agent).filter((agent) => agent.id !== "primary" && visibleIds.has(agent.id)));
   const shown = filters.grouped ? filteredGroups.reduce((sum, group) => sum + (group.kind === "primary" ? group.agents.length : openGroups.has(group.id) ? Math.min(group.agents.length, revealed.has(group.id) ? Infinity : 8) : 0), 0) : visible.length;
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || !pendingAgentScroll.current) return;
     const frame = window.requestAnimationFrame(() => {
       const row = viewMode === "grid" ? tileRefs.current.get(selected) : rowRefs.current.get(selected);
-      if (typeof row?.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
+      if (!row) return;
+      pendingAgentScroll.current = false;
+      // Only an explicit Show agent action may move the reader's scroll position.
+      row.scrollIntoView?.({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [selected, openGroups, revealed, filters.grouped, requestedAgentRequest, viewMode]);

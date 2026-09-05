@@ -1007,6 +1007,9 @@ context, activity, repository, resources, and usage as independently produced do
   styling, and responsive rules; known catalog titles must not flash a different type scale.
 - Keep existing data visible during refresh, observer failure, API failure, and retry
   backoff.
+- Restoring the agent roster selection, opening groups, and applying committed updates
+  must preserve page and roster scroll positions. Only an explicit Show agent action
+  scrolls to the selected roster row.
 - Show normal factual empty copy for `ready` empty data and a fixed sanitized error state
   for confirmed `unavailable` data.
 - One slow provider, usage limit, correlation, or session enrichment must not block a
