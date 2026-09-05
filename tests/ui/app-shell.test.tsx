@@ -178,7 +178,7 @@ describe("Command Center app shell", () => {
 
   it("keeps the desktop update offer in the persistent rail", async () => {
     const user = userEvent.setup();
-    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true }, update: { status: "ready", version: "1.2.3" } };
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { estimatedCost: true }, update: { status: "ready", version: "1.2.3" } };
     const installUpdate = vi.fn(async () => ({ ...state, update: { status: "installing" as const, version: "1.2.3" } }));
     (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = { getDesktopState: async () => state, installUpdate, onDesktopStateChanged: () => () => {} };
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));

@@ -31,12 +31,12 @@ function failureTooltip(task: ExecutionTask) {
   return `${FAILURE_CAUSE_COPY[cause]}.${exitCode}`;
 }
 
-export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
+export function ExecutionTaskRow({ task, compact = false }: { task: ExecutionTask; compact?: boolean }) {
   const running = task.status === "running";
   const failureDetails = task.status === "failed" ? failureTooltip(task) : null;
   const marker = <><WorkKindIcon kind={task.workKind} /><span className="executionTaskStatusBadge"><TaskStatusGlyph status={task.status} /></span></>;
   return (
-    <div className={`executionTaskRow ${task.status}`}>
+    <div className={`executionTaskRow ${task.status}${compact ? " executionTaskRowCompact" : ""}`}>
       {failureDetails
         ? <AgentChip className="executionTaskMark executionTaskFailureTrigger" title={failureDetails} ariaLabel={`Show failure cause. ${failureDetails}`}>{marker}</AgentChip>
         : <span className="executionTaskMark" aria-hidden="true">{marker}</span>}
@@ -47,9 +47,10 @@ export function ExecutionTaskRow({ task }: { task: ExecutionTask }) {
         </div>
         <small>
           Shell · {running && task.background ? "background · " : ""}<ExecutionTaskWallTimeText task={task} />
-          {!running && task.exitCode !== null ? ` · exit code ${task.exitCode}` : ""}
+          {!compact && !running && task.exitCode !== null ? ` · exit code ${task.exitCode}` : ""}
         </small>
       </div>
+      {compact && <span className={`executionTaskExit${task.exitCode !== null && task.exitCode !== 0 ? " executionTaskExitError" : ""}`}>{running ? "running" : task.exitCode !== null ? `exit ${task.exitCode}` : task.status}</span>}
     </div>
   );
 }

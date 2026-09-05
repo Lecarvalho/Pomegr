@@ -338,8 +338,7 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandShell .commandIconLink { width: 44px; height: 44px; }
   .commandSessionView .executionTaskTrigger,
   .commandSessionView .planTaskTrigger,
-  .commandSessionView .textButton,
-  .commandSessionView .requestSnapshotLegendItem { min-height: 44px; padding-inline: 10px; }
+  .commandSessionView .textButton { min-height: 44px; padding-inline: 10px; }
 }
 
 .agentTreeRoleKey > span { border-color: var(--popover-line); background: var(--popover); box-shadow: var(--popover-shadow); }

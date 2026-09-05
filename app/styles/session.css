@@ -2,8 +2,6 @@
 .commandSessionView {
   color: var(--command-ink);
 }
-.commandSessionView .requestSnapshotReadout > em.miss_refill,
-.commandSessionView .requestSnapshotLegendItem.cacheRead,
 .commandSessionView .textButton { color: var(--command-brand-text); }
 .commandSessionView .executionTaskTrigger,
 .commandSessionView .planTaskTrigger { min-height: 24px; }
@@ -41,8 +39,6 @@
 .commandSessionView .gitPanel,
 .commandSessionView .limitsPanel,
 .commandSessionView .contentGrid,
-.commandSessionView .requestSnapshotsPanel,
-.commandSessionView .contextHistoryPanel,
 .commandSessionView .dashboardDisclosurePanel  { margin-bottom: 0; }
 .commandSessionView .sessionProgressHeader { min-height: 52px; padding: 11px 15px; }
 .commandSessionView .sessionProgressHeader h2 { font-size: var(--text-heading); font-weight: 600; letter-spacing: 0; }
@@ -53,19 +49,13 @@
 .commandSessionView .sessionProgressNote { padding-inline: 15px; }
 .commandSessionView .panelHeader,
 .commandSessionView .gitSummary,
-.commandSessionView .limitsHeader,
-.commandSessionView .requestSnapshotsHeader,
-.commandSessionView .contextHistoryHeader { padding: 16px 20px; }
+.commandSessionView .limitsHeader { padding: 16px 20px; }
 .commandSessionView .panelHeader h2,
 .commandSessionView .gitSummary h2,
-.commandSessionView .limitsHeader h2,
-.commandSessionView .requestSnapshotsHeader h2,
-.commandSessionView .contextHistoryHeader h2 { color: var(--command-ink); font-size: var(--text-heading); font-weight: 600; letter-spacing: 0; line-height: 1.5; }
+.commandSessionView .limitsHeader h2 { color: var(--command-ink); font-size: var(--text-heading); font-weight: 600; letter-spacing: 0; line-height: 1.5; }
 .commandSessionView .panelHeader .quiet,
 .commandSessionView .panelHeader > small,
-.commandSessionView .gitSummary p,
-.commandSessionView .requestSnapshotsHeader p,
-.commandSessionView .contextHistoryHeader p { color: var(--command-muted); font-size: var(--text-xs); }
+.commandSessionView .gitSummary p { color: var(--command-muted); font-size: var(--text-xs); }
 .commandSessionView .dashboardDisclosurePanel > summary { min-height: 52px; padding: 10px 15px; }
 .commandSessionView .dashboardDisclosureTitle { color: var(--command-ink); font-size: var(--text-heading); font-weight: 600; }
 .commandSessionView .dashboardDisclosureIcon { width: 20px; height: 20px; color: var(--command-muted); }

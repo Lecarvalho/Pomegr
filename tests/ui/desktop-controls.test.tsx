@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe("desktop controls", () => {
   it("keeps observation controls out of the session toolbar", async () => {
-    let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true } };
+    let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { estimatedCost: true } };
     let stateListener: ((next: DesktopState) => void) | undefined;
     const setPaused = vi.fn(async (value: boolean) => (state = { ...state, paused: value }));
     const setLaunchAtLogin = vi.fn(async (value: boolean) => (state = { ...state, launchAtLogin: value }));
@@ -59,7 +59,7 @@ describe("desktop controls", () => {
   it("tray pause stops both state and session-catalog polling without invoking provider controls", async () => {
     vi.useFakeTimers();
     let listener: ((next: DesktopState) => void) | undefined;
-    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true } };
+    const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { estimatedCost: true } };
     (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
       saveReport: vi.fn(),
       getDesktopState: async () => state,

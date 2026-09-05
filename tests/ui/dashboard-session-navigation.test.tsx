@@ -177,8 +177,9 @@ describe("dashboard session navigation", () => {
     view.unmount();
   });
 
-  it("orders KPIs, context, requests, summary cards, agents, resources, repository and details", async () => {
+  it("orders KPIs, requests and cache evidence, summary cards, agents, resources, repository and details", async () => {
     const state = liveState("claude:live-1", "Live resource session");
+    state.capabilities.cacheWriteUsage = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/state" || url === "/api/state?sessionId=claude%3Alive-1") return Promise.resolve(jsonResponse(state));
@@ -188,17 +189,20 @@ describe("dashboard session navigation", () => {
     const { container } = renderDashboard([catalogSession(state)]);
 
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
-    const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
-    const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const repository = screen.getByText("Repository").closest("details");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · In progress");
     expect(screen.queryByLabelText("Session state: In progress")).not.toBeInTheDocument();
-    expect(contextPanel?.nextElementSibling).toBe(requestPanel);
-    expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(contextPanel);
-    expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
+    const actionsPanel = screen.getByRole("region", { name: "Requests & actions" });
+    expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(actionsPanel);
+    const cacheDisclosure = actionsPanel.nextElementSibling;
+    expect(cacheDisclosure).toHaveClass("cacheEvidenceDisclosure");
+    expect(cacheDisclosure).not.toHaveAttribute("open");
+    expect(cacheDisclosure?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
+    expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Request snapshots" })).not.toBeInTheDocument();
     expect(container.querySelector(".sessionSummaryCards")?.nextElementSibling).toBe(container.querySelector(".contentGrid"));
     expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(resourcePanel);
     expect(resourcePanel?.nextElementSibling).toBe(repository);
@@ -225,14 +229,10 @@ describe("dashboard session navigation", () => {
     const { container } = renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
-    const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
-    const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
     const repository = screen.getByText("Repository").closest("details");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
-    expect(contextPanel?.nextElementSibling).toBe(requestPanel);
-    expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
     expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(repository);
     expect(repository?.nextElementSibling).toBe(sessionDetails);
   });
@@ -249,7 +249,7 @@ describe("dashboard session navigation", () => {
     renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Focused session" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Request snapshots" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Requests & actions" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
     expect(screen.getByText("Resource use")).toBeInTheDocument();
     expect(screen.getByText("Session details")).toBeInTheDocument();

@@ -89,7 +89,7 @@ test("desktop settings persist only the bounded allowlist", async () => {
   try {
     const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, displayPreferences: { contextHistory: false, estimatedCost: true, arbitraryPanel: false, sessionId: "PRIVATE" }, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
     assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences"]);
-    assert.deepEqual(normalized.displayPreferences, { contextHistory: false, estimatedCost: true });
+    assert.deepEqual(normalized.displayPreferences, { estimatedCost: true });
     const store = createDesktopSettingsStore(file);
     assert.deepEqual(await store.load(), { settings: normalizeDesktopSettings(), status: "missing", canPersist: true });
     await store.save(normalized);
@@ -181,7 +181,7 @@ test("version-one settings migrate in memory without unsafe fields or destructiv
   assert.equal(loaded.canPersist, true);
   assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.equal(loaded.settings.closeBehavior, "ask");
-  assert.deepEqual(loaded.settings.displayPreferences, { contextHistory: true, estimatedCost: true });
+  assert.deepEqual(loaded.settings.displayPreferences, { estimatedCost: true });
   assert.equal(writes, 0, "migration waits for an ordinary explicit settings save");
 });
 
@@ -204,7 +204,7 @@ test("version-two settings migrate with visible display defaults", async () => {
   assert.equal(loaded.canPersist, true);
   assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.equal(loaded.settings.closeBehavior, "tray");
-  assert.deepEqual(loaded.settings.displayPreferences, { contextHistory: true, estimatedCost: true });
+  assert.deepEqual(loaded.settings.displayPreferences, { estimatedCost: true });
   assert.equal(writes, 0);
 });
 

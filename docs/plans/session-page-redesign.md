@@ -1,5 +1,7 @@
 # Session page redesign plan
 
+> Complete — 2026-09-05. POMEGR-SP-01 through POMEGR-SP-12, including SP-01M, are complete. See the Progress log for verification evidence.
+
 ## Objective
 
 Rebuild the individual session page (`app/Dashboard.tsx` and the panels under
@@ -588,7 +590,7 @@ export type RequestRow = RequestSnapshot & {
 
 export function scopedRows(feed: RequestSnapshotFeed, boundaries: ContextHistoryBoundary[], scope: RequestScope): RequestRow[];
 export function windowFor(rows: RequestRow[], selectedOrdinal: number | null, size: 60): { start: number; end: number }; // 1-based inclusive, clamps at edges, centers selection
-export function scaleMax(rows: RequestRow[], mode: ChartMode): number; // max over the scoped rows (not the window) of promptTokens; "nice" rounded up (1.2/1.5/2/3/4.5/6/8 × 10^n); fixed across window moves
+export function scaleMax(rows: RequestRow[], mode: ChartMode): number; // scoped maximum of the visible stack and prompt outline (fresh mode), including output to avoid clipping; "nice" rounded up (1.2/1.5/2/3/4.5/6/8 × 10^n); fixed across window moves
 export function largestRequests(rows: RequestRow[], sort: LargestSort, limit: number): RequestRow[]; // stable: ties broken by ordinal ascending
 ```
 
@@ -646,7 +648,7 @@ Rules:
     `{WORK_LABELS[kind]}{count > 1 ? " ×" + count : ""}` using `AgentChip`. When a list is
     empty render "None recorded" in muted 12 px. Footer note 11 px:
     "Surrounding actions do not establish token cost per operation. Uncached input is
-    what the model had not seen before this request."
+    the portion recorded without cache reuse or cache writes."
     When `cacheWriteAvailable` is false (Codex), hide the Cache write box and the cache
     write stack segment, keep the layout at 3 columns.
   - **Largest requests** (right): eyebrow "Largest requests" + sort chip that cycles
@@ -749,10 +751,10 @@ largest sort tie-break.
 
 ### Acceptance criteria
 
-- [ ] Visual parity with the mockup at 1440 px in dark and light themes.
-- [ ] All ten interactions above behave as written.
-- [ ] No cumulative sum, average, or rate anywhere in the panel. `grep -n "reduce(" app/components/dashboard/requests-actions/` only hits `scaleMax`/`largestRequests`/minimap helpers, never a displayed total.
-- [ ] Panel file sizes stay under the 800-line architecture limit.
+- [x] Visual parity with the mockup at 1440 px in dark and light themes.
+- [x] All ten interactions above behave as written.
+- [x] No cumulative sum, average, or rate anywhere in the panel. `grep -n "reduce(" app/components/dashboard/requests-actions/` only hits `scaleMax`/`largestRequests`/minimap helpers, never a displayed total.
+- [x] Panel file sizes stay under the 800-line architecture limit.
 
 ### Verification
 
@@ -800,9 +802,9 @@ Delete the two superseded panels and the "Context history" settings toggle.
 
 ### Acceptance criteria
 
-- [ ] `grep -rn "ContextHistoryPanel\|RequestSnapshotsPanel\|contextHistory:" app/ desktop/ tests/ui` returns only Home/report references.
-- [ ] Settings shows one toggle under Data display.
-- [ ] Desktop preference tests pass.
+- [x] No legacy panel references remain in `app/`, `desktop/`, or `tests/ui`; remaining `contextHistory` references are retained Home/report/API evidence and stale-preference migration tests.
+- [x] Settings shows one toggle under Data display.
+- [x] Desktop preference tests pass.
 
 ### Verification
 
@@ -939,13 +941,13 @@ Rules:
 
 ### Acceptance criteria
 
-- [ ] With 49 agents the page height does not depend on the agent count; the roster
+- [x] With 49 agents the page height does not depend on the agent count; the roster
       region is 560 px and scrolls internally.
-- [ ] Group headers and the primary row stay visible while scrolling the region.
-- [ ] Rollup numbers are sums of latest snapshots and are labeled "context", never
+- [x] Group headers and the primary row stay visible while scrolling the region.
+- [x] Rollup numbers are sums of latest snapshots and are labeled "context", never
       "tokens used".
-- [ ] Filter, status, model, sort, hide-finished combine (AND) and never reorder groups.
-- [ ] `agentsWithFinishedVisibility` still keeps ancestors of visible agents.
+- [x] Filter, status, model, sort, hide-finished combine (AND) and never reorder groups.
+- [x] `agentsWithFinishedVisibility` still keeps ancestors of visible agents.
 
 ### Verification
 
@@ -1048,10 +1050,10 @@ The inspector is a full-screen sheet, not inline:
 
 ### Acceptance criteria
 
-- [ ] Every datum previously visible in a list row or its popovers is visible in the
+- [x] Every datum previously visible in a list row or its popovers is visible in the
       inspector for the selected agent.
-- [ ] Lineage lists the correct ancestor chain for nested subagents and workflow workers.
-- [ ] Copy transcript path remains the only place a path can be obtained, still behind
+- [x] Lineage lists the correct ancestor chain for nested subagents and workflow workers.
+- [x] Copy transcript path remains the only place a path can be obtained, still behind
       `canCopyTranscriptPath`.
 
 ### Verification
@@ -1222,10 +1224,10 @@ Ship-ready page across widths and themes, with nothing left over.
 
 ### Acceptance criteria
 
-- [ ] `npm run verify` passes (includes build, plugin tests, UI tests, landing).
-- [ ] Manual check at 1440 / 1100 / 900 / 760 / 390 / 360 px in both themes against the
+- [x] `npm run verify` passes (includes build, plugin tests, UI tests, landing).
+- [x] Manual check at 1440 / 1100 / 900 / 760 / 390 / 360 px in both themes against the
       mockups (`mockup-main.png`, `mockup-mobile.png`, `mockup-mobile-inspector.png`).
-- [ ] `/api/state` serialization test still green; no new browser-visible field beyond
+- [x] `/api/state` serialization test still green; no new browser-visible field beyond
       the four added in SP-04.
 
 ### Verification
@@ -1284,10 +1286,10 @@ previous update see this one once.
 
 ### Acceptance criteria
 
-- [ ] Home shows the new card once for every user, including those who dismissed the
+- [x] Home shows the new card once for every user, including those who dismissed the
       Agents-page card; dismissing it persists with the new id.
-- [ ] Card copy matches the strings above verbatim.
-- [ ] `npx vitest run tests/ui/dashboard-home.test.tsx` passes.
+- [x] Card copy matches the strings above verbatim.
+- [x] `npx vitest run tests/ui/dashboard-home.test.tsx` passes.
 
 ### Verification
 
@@ -1313,6 +1315,14 @@ npm run lint
 
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-09-05 | POMEGR-SP-12 | Complete | Home announces “A clearer session page” with the exact approved description/details and session-page-v2 dismissal identity. Users who dismissed agents-analytics-v1 see the card; dismissal persists without losing pins or last-viewed navigation. All 11 focused Home tests pass. Full npm test passes build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped) and 459 UI tests. verify:fast passes, including typecheck and lint (existing warnings only). Production browser checks at 1440/390px in both themes confirm expanded copy fits, no horizontal overflow, disclosure, focus return and persisted dismissal; evidence: .impeccable/review/sp12/. No landing release-highlights section exists, so landing is unchanged. No provider/API changes or phase blockers. All planned phases are complete. Out-of-scope follow-up: the adjacent Home guide still refers to the removed Context history panel. |
+| 2026-09-05 | POMEGR-SP-11 | Complete | Compact roster columns now remain hidden through the 761–900px inspector stacking range; phone group tree targets are 44px. Removed the obsolete WorkflowActivityPanel and its rendering tests, retaining phase progress in the roster helper and workflow/tree integration coverage. Removed dead agent-row, view-mode, workflow-panel and contentGrid-tree styles; cache popovers anchor to the current roster row. Corrected the Home/context-history wording in METRICS.md; README has no obsolete panel references. Updated DESIGN.md. The desktop smoke's stale appFrame selector now targets commandShell, preserving hydration, sandbox and privacy checks. Full npm run verify, npm test, npm run verify:desktop and final verify:fast pass (existing lint warnings only): 458 UI, 966 node passed with 1 skipped, 37 plugin, 21 operations, 9 inventory, 26 landing and 130 desktop security tests; packaged window smoke and landing artifact audit pass. Integrated actual components checked with synthetic normalized 49-agent/1,200-request evidence at 1440/1100/900/760/390/360px in both themes: no horizontal overflow, long labels and 999.9K fit, chart/roster/grid keyboard focus, reduced motion and phone sheet focus return pass. Harness uses fallback fonts. Independent review: Ship. No API/provider fields changed; serialization remains green. No blockers. SP-12 remains pending; no later phase started and the overall plan completion banner is intentionally deferred. |
+| 2026-09-05 | POMEGR-SP-10 | Complete | Tree is a focused drill-down from inspector, roster groups and grid lanes; desktop Back/Escape restores the roster selection and opener. Focus projection preserves recorded ancestors, siblings and direct children with expandable off-path clusters; camera fits the path, focus/warning colors and hot connectors follow normalized evidence, and local cluster choices survive polling revisions. Desktop Ancestors/Whole session scopes and phone rail sheet share the tree; phone Back returns to the inspector then original row/tile, including controlled group entry. Removed focus safely returns to the roster. Fourteen new focus tests plus existing 11 layout tests pass; all 460 UI tests, final build and verify:fast pass (existing lint warnings only). Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 965 node tests (1 skipped), then stopped on a Windows EBUSY temp cleanup in codex-presence-responsiveness; isolated rerun passed. Actual components checked with 49 synthetic normalized agents at 1440/390px in both themes and 360px without overflow; corrected viewport captures preserve fixed phone sheets, harness uses fallback fonts. Independent review: Ship, no material fixes. No provider/API changes or blockers. No later phase started. |
+| 2026-09-05 | POMEGR-SP-09 | Complete | Grid renders every visible agent in bounded workflow lanes, with per-session context/wall/calls metric preference and bars scaled to the full session maximum even when filtered. Uses existing selection, desktop inspector and phone sheet; lane rollups reflect visible agents and List grouping preference is retained. Six columns reduce to four with viewport/container space and two 56px tiles on phone; 560px desktop and 60vh/minimum 480px phone region. Full npm test passed build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped), and all 446 UI tests; final build and verify:fast passed (existing lint warnings only). Six focused grid tests cover scale, filters, keyboard, persistence and sheet focus return. Browser checked actual components with 49 synthetic normalized agents at 1440/390px in both themes, 1200px and 360px without overflow; harness uses fallback fonts. Independent review: Ship. No provider/API changes or blockers. SP-10 owns focused-tree behavior; existing tree remains reused, and tile focus return is wired for the phone tree/inspector round trip. No later phase started. |
+| 2026-09-05 | POMEGR-SP-08 | Complete | Selected-agent inspector with normalized ancestor/workflow/phase lineage, facts, skills, expanded signals/cache evidence, sorted shell tasks, approval reviews, current activity, primary plan, and gated one-shot copy. Selection persists per session; Show agent clears filters, reopens its group and scrolls the row. Desktop inspector is bounded at 340px, stacks at 761–900px, and phone uses a shared modal sheet with tested focus and scroll isolation. Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 965 node tests (1 skipped), then hit a Windows EBUSY temp-directory cleanup in the native-presence test; that test passed on isolated rerun. Final build, all 440 UI tests and verify:fast pass (existing lint warnings only). Browser checked actual components with 49 synthetic normalized agents at desktop/phone widths in both themes, 360px without overflow, and 850/1200px layout behavior; cache overlay dismissal and nested sheet focus return verified. Harness uses fallback fonts. Independent review: Ship. No API/provider changes or blockers. SP-09 can reuse selection; SP-10 should pass retained treeAgentId into focused forest behavior; Open in tree currently reuses the existing tree. No later phase started. |
+| 2026-09-05 | POMEGR-SP-07 | Complete | Grouped bounded roster, distribution, AND filters, within-group sorting, saved groups/finished visibility, shared role glyph and workflow phases. Phone uses 56px rows and an accessible filter sheet; desktop roster stays 560px. Workflow navigation clears excluding filters and reveals its target. Retained detail popovers are exported but unmounted for SP-08; Grid is a placeholder for SP-09 and stored tree modes migrate to List. Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 966 node tests (1 skipped); initial UI legacy-role failure fixed, final all 433 UI tests, final build and verify:fast pass (existing lint warnings only). Browser checked real roster components with 49 synthetic normalized agents at 1440/390px in both themes and 360px, no horizontal overflow, pinned scrolling and phone filter focus return; harness uses fallback fonts. Independent reviewer confirmed navigation fix resolved and returned Ship. No API/provider changes or blockers. SP-08 can reuse AgentDetailPopovers and selection props; SP-09 can reuse grouping/filter state. No later phase started. |
+| 2026-09-05 | POMEGR-SP-06 | Complete | Removed ContextHistoryPanel and RequestSnapshotsPanel, their obsolete UI tests and CSS (including the shared shell selector), and the web/desktop Context history preference. Stale saved keys are ignored while estimatedCost persists. Cache rows remain in CacheEvidenceDisclosure; snapshotEventKey now lives in requests-actions/model.ts, and applicable timestamp/keyboard/compact-row assertions are retained in requests-actions tests. Live browser verification found older monitor snapshots without action fields; scopedRows now defaults those fields to empty evidence, with a regression test. Home and API context history remain unchanged; metrics/design docs updated. Full npm test passed build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped), and 427 UI tests; 45 focused desktop behavior/shell/paths checks and final verify:fast passed (existing lint warnings only). Settings and actual session checked at 1440/390px with no horizontal overflow or legacy panels. Independent review: Ship. No blockers; no later phase started. SP-07 can proceed under orchestrator sequencing. |
+| 2026-09-05 | POMEGR-SP-05 | Complete | Requests & actions now renders after the KPI strip with 60/20-request desktop/phone windows, scoped stable scale/rankings, keyboard selection, draggable minimap, live identity retention and request-local action details. Cache evidence moved to a saved closed disclosure with exact agent/timestamp links. Build, plugin/operations/inventory suites and 966 node tests passed (1 skipped); after correcting two integration-test expectations, all 434 UI tests and 25 focused panel/model/disclosure tests passed. verify:fast passed with existing lint warnings. Browser checked 1440/390px in both themes and 360px without overflow using actual components/CSS and synthetic normalized evidence; independent reviewer returned Ship. Scale includes output to avoid clipping and uncached copy describes cache classification rather than a never-seen claim; those plan clarifications are reflected above. SP-06 must remove the legacy ContextHistoryPanel and RequestSnapshotsPanel renders/files and preference; shared cache rows and snapshotEventKey now live in CacheEvidenceDisclosure.tsx. No provider/API fields or polling changes. |
 | 2026-09-05 | POMEGR-SP-04 | Complete | Verified SP-03's shared request contract/re-export, exact browser allowlists, bounded work-kind assertions, report stripping and AGENTS privacy rule. API fixture setup now retains tool-input private-path sentinels; report tests cover non-empty action tallies and omit all four fields from transition/boundary evidence. Documented request-local prompt outlines and committed-only presentation; chart replacement is explicitly pending SP-05/SP-06 and personal Home cadence remains unchanged. All 15 focused API/report tests and verify:fast passed (existing lint warnings only). No production code changes; unrelated UI test edit preserved. |
 | 2026-09-05 | POMEGR-SP-03 | Complete | Claude request-local issued/result work counts, actor-scoped parsing, recognized compaction resets, bounded projection and legacy/Codex defaults. Shared tool detail extraction, golden fixture, privacy and checkpoint coverage added. Full npm test passed (966 node tests, 1 skipped; 409 UI tests); final verify:fast and 53 focused parser/projection/privacy/checkpoint tests passed. Required SP-04 compatibility landed here: browser types/allowlists, report stripping and current evidence/privacy documentation; request types are re-exported from shared/request-snapshot-contract.ts. SP-04 remains responsible for its future panel/presentation wording. Concurrent SP-02 changes preserved; its recorded architecture blockers are resolved. |
 | 2026-09-05 | POMEGR-SP-02 | Complete | Repository and Session details are independent saved disclosures, closed by default, with bounded desktop/phone summaries and preference-gated estimated cost. Resource use stays in place. Browser verified 52px rows, padding, chevrons, keyboard toggles and persistence at 1440/390/360px; no phone horizontal overflow. Build, 409 UI tests, focused design contract, privacy/serialization and dependency checks passed. Full test wrapper was run; concurrent SP-03 request-action failures passed focused rechecks, and a temporary cleanup failure passed the node rerun (963 passed, 1 skipped, only the subsequently fixed provider fixture failed). verify:fast passes through provider docs but stops on concurrent SP-03 line limits in shared/monitor-contract.ts, tests/api-serialization.test.mjs and tests/claude-provider.test.mjs; those files were left to their owner. |

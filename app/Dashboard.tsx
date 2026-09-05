@@ -5,10 +5,9 @@ import type { MonitorState, SessionReadiness, SessionSummary } from "../shared/m
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
-import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
 import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
-import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
+import { RequestsActionsPanel } from "./components/dashboard/RequestsActionsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { RepositoryDisclosurePanel } from "./components/dashboard/RepositoryDisclosurePanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
@@ -45,7 +44,7 @@ function notificationNavigationSessionId() {
 function storedAgentActivityViewMode(sessionId: string | null): AgentActivityViewMode {
   if (!sessionId || typeof window === "undefined") return "list";
   try {
-    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "tree" ? "tree" : "list";
+    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "grid" ? "grid" : "list";
   } catch {
     return "list";
   }
@@ -66,6 +65,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [reportGenerating, setReportGenerating] = useState(false);
   const revisionsBySessionRef = useRef(new Map<string, number | string>());
   const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
+  const [workflowNavigation, setWorkflowNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
+  const [agentNavigation, setAgentNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
   const capabilities = data.capabilities || createEmptyProviderCapabilities();
   const sharedProviderUsage = sharedUsage.providers.find((entry) => entry.provider === (data.source === "Codex" ? "codex" : "claude"));
   const displayData = sharedUsage.readiness[(data.source === "Codex" ? "codex" : "claude")] === "ready" && sharedProviderUsage
@@ -244,11 +245,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <SessionKpiStrip state={data} historical={viewingHistory} />
-          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <>{displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}
-          <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} /></>}
-          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />}
+          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <RequestsActionsPanel key={`${data.session.id}-requests-actions`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} cacheEvents={data.metrics.tokens.cacheEvents} />}
+          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} onOpenWorkflow={(id) => { changeAgentActivityView("list"); setWorkflowNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} onShowAgent={(id) => { changeAgentActivityView("list"); setAgentNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} />}
           {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className="contentGrid" id="agent-activity">
-            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
+            <AgentActivityPanel agentNavigation={agentNavigation?.sessionId === data.session.id ? agentNavigation : null} workflowNavigation={workflowNavigation?.sessionId === data.session.id ? workflowNavigation : null} key={data.session.id} insights={data.insights} loops={data.loops} agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
           </section>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 

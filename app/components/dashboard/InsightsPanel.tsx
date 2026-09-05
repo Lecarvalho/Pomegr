@@ -17,9 +17,10 @@ function insightAgentId(insight: Insight) {
   return "agentId" in insight && typeof insight.agentId === "string" ? insight.agentId : null;
 }
 
-export function InsightsPanel({ insights, variant = "panel" }: {
+export function InsightsPanel({ insights, variant = "panel", onShowAgent }: {
   insights: Insight[];
   variant?: "panel" | "compact";
+  onShowAgent?: (agentId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const warningCount = insights.filter((insight) => insight.level === "warning").length;
@@ -38,7 +39,7 @@ export function InsightsPanel({ insights, variant = "panel" }: {
       </div>
       <div className="insightList">
         {insights.length === 0 && <EmptyState text="No rule-based efficiency signals for this session." />}
-        {visibleInsights.map((insight) => <InsightRow insight={insight} key={insight.id} />)}
+        {visibleInsights.map((insight) => <InsightRow insight={insight} key={insight.id} onShowAgent={onShowAgent} />)}
       </div>
       {insights.length > 2 && <a className="insightExpandLink" href="#efficiency-signals" onClick={(event) => { event.preventDefault(); setExpanded((value) => !value); }}>{expanded ? "Show fewer" : `Show all ${insights.length}`}</a>}
     </article>;
@@ -49,13 +50,13 @@ export function InsightsPanel({ insights, variant = "panel" }: {
       <PanelHeader title="Efficiency signals" trailing={<span className="quiet">{insights.length}</span>} />
       <div className="insightList">
         {insights.length === 0 && <EmptyState text="No rule-based efficiency signals for this session." />}
-        {insights.map((insight) => <InsightRow insight={insight} key={insight.id} />)}
+        {insights.map((insight) => <InsightRow insight={insight} key={insight.id} onShowAgent={onShowAgent} />)}
       </div>
     </article>
   );
 }
 
-function InsightRow({ insight }: { insight: Insight }) {
+function InsightRow({ insight, onShowAgent }: { insight: Insight; onShowAgent?: (agentId: string) => void }) {
   const agentId = insightAgentId(insight);
   const showAgent = insight.level === "warning" && agentId;
   return <div className={`insight ${insight.level}`}>
@@ -63,7 +64,7 @@ function InsightRow({ insight }: { insight: Insight }) {
     <div>
       <strong>{insight.title}</strong>
       <p>{insight.detail}</p>
-      {showAgent && <a className="insightAgentLink" href="#agent-activity">Show agent</a>}
+      {showAgent && <a className="insightAgentLink" href="#agent-activity" onClick={() => onShowAgent?.(agentId!)}>Show agent</a>}
     </div>
   </div>;
 }

@@ -83,16 +83,29 @@ The monitor deduplicates observations privately, keeps at most the latest 100 va
 
 Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Focused reports omit the routine feed and include only selected independent supporting requests, normalized through the same allowlist, from retained evidence before the dashboard's 100-request cap.
 
-The Requests & actions view specified for SP-05/SP-06 draws a prompt-size outline
-(uncached input + cache write + cache read) for each request. This outline will replace
+The Requests & actions view draws a prompt-size outline
+(uncached input + cache write + cache read) for each request. This outline replaces
 the former Context history panel as the session page's visible context level; it is
 request-local and does not carry values between requests. `contextHistory` stays in
 the API for report and Home projections. The current personal Home does not fetch this
 evidence; retaining the API does not introduce a Home request or change its cadence.
 
+The default Fresh tokens mode stacks uncached input, cache write (when available),
+and output. Full breakdown also stacks cache read and omits the outline. The fixed
+scope-wide scale fits both the prompt outline and the visible stack, including output,
+rounded upward to a readable step; moving the window never changes that scale.
+Uncached input describes the recorded cache classification, not proof that the model
+had never seen that content. Largest requests ranks independent requests within the
+selected agent scope, including those outside the visible window, with ordinal order
+breaking ties. Ordinals are positions in the retained feed, not provider identifiers.
+Automatic and manual compaction ticks compare successive requests for the same agent;
+snapshot drops are not drawn. No request amounts are summed across observations.
+
 The Agent activity presentation derives **Last model turn** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
 
 ## Context history
+
+Retained for normalized API and focused-report evidence; the current personal Home does not fetch context history. On the session page, Requests & actions shows each request's prompt-size outline instead of a carried-forward context timeline.
 
 Context history derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Pomegr carries forward each agent's latest non-zero snapshot and exposes both the per-agent level and their all-agent sum. Repeated snapshots produce a flat level, while context reductions caused by compaction or agent resets remain visible. The final all-agent level equals the current or final All-agent context derived from those observations.
 

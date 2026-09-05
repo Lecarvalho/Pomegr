@@ -1,8 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Agent, ExecutionTask } from "../../shared/monitor-contract";
-import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
+import { AgentInspector } from "../../app/components/dashboard/agent-roster/AgentInspector";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 const activity = {
@@ -49,74 +48,54 @@ const task: ExecutionTask = {
   signal: null,
 };
 
-function panel(agent: Agent, historical = false) {
-  return <LiveClockProvider running={false}><AgentActivityPanel agents={[agent]} executionTasks={[]} planTasks={[]} historical={historical} /></LiveClockProvider>;
+function detail(agent: Agent, historical = false) {
+  return <LiveClockProvider running={false}><AgentInspector agent={agent} agents={[agent]} historical={historical} onOpenTree={() => {}} /></LiveClockProvider>;
 }
 
 describe("current agent activity", () => {
-  it("keeps Activity & Execution available with only provider-reported current activity", async () => {
-    const user = userEvent.setup();
-    render(panel({ ...baseAgent, currentActivity: activity }));
+  it("keeps Activity & Execution available with only provider-reported current activity", () => {
+    render(detail({ ...baseAgent, currentActivity: activity }));
 
-    const trigger = screen.getByRole("button", { name: "Current activity" });
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await user.click(trigger);
-
-    const dialog = screen.getByRole("dialog", { name: "Agent activity for Primary agent" });
-    expect(dialog).toHaveTextContent("AGENT ACTIVITY");
+    const inspector = screen.getByRole("region", { name: "Agent inspector for Primary agent" });
     expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(activity.label);
-    expect(dialog).toHaveTextContent("Provider-reported");
-    expect(dialog).toHaveTextContent("0 running · 0 finished");
-    expect(dialog).not.toHaveTextContent("Shell");
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(inspector).toHaveTextContent("Provider-reported");
+    expect(inspector).toHaveTextContent("Shell tasks0");
   });
 
-  it("shows current activity above shell execution without changing execution counts or labels", async () => {
-    const user = userEvent.setup();
-    render(panel({ ...baseAgent, currentActivity: activity, executionTasks: [task] }));
+  it("shows current activity above shell execution without changing execution counts or labels", () => {
+    render(detail({ ...baseAgent, currentActivity: activity, executionTasks: [task] }));
 
-    await user.click(screen.getByRole("button", { name: "1 running" }));
-    const dialog = screen.getByRole("dialog", { name: "Agent activity for Primary agent" });
-    expect(dialog).toHaveTextContent("1 running · 0 finished");
-    expect(dialog).toHaveTextContent(activity.label);
-    expect(dialog).toHaveTextContent("Run verification");
-    const sections = dialog.querySelectorAll(".executionTaskSection");
+    const inspector = screen.getByRole("region", { name: "Agent inspector for Primary agent" });
+    expect(inspector).toHaveTextContent(activity.label);
+    expect(inspector).toHaveTextContent("Run verification");
+    const sections = inspector.querySelectorAll(".executionTaskSection");
     expect(sections[0]).toHaveTextContent("Current activity");
-    expect(sections[1]).toHaveTextContent("Running");
+    expect(sections[1]).toHaveTextContent("Shell tasks");
   });
 
-  it("preserves tasks-only behavior and never shows stale activity in history", async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(panel({ ...baseAgent, executionTasks: [task] }));
-    await user.click(screen.getByRole("button", { name: "1 running" }));
-    expect(screen.getByRole("dialog", { name: "Agent activity for Primary agent" })).not.toHaveTextContent("Current activity");
+  it("preserves tasks-only behavior and never shows stale activity in history", () => {
+    const { rerender } = render(detail({ ...baseAgent, executionTasks: [task] }));
+    expect(screen.getByRole("region", { name: "Agent inspector for Primary agent" })).not.toHaveTextContent("Current activity");
 
-    rerender(panel({ ...baseAgent, currentActivity: activity }, true));
-    expect(screen.queryByRole("button", { name: "Current activity" })).not.toBeInTheDocument();
+    rerender(detail({ ...baseAgent, currentActivity: activity }, true));
+    expect(screen.getByRole("region", { name: "Agent inspector for Primary agent" })).not.toHaveTextContent("Current activity");
   });
 
-  it("renders a bounded long RTL, CJK, and emoji label as text without truncating its meaning", async () => {
-    const user = userEvent.setup();
+  it("renders a bounded long RTL, CJK, and emoji label as text without truncating its meaning", () => {
     const label = "تخطيط مرحلة التنفيذ التفصيلية · 詳細な実行段階を計画中 · 🔍".repeat(2);
-    render(panel({ ...baseAgent, currentActivity: { ...activity, label } }));
-    await user.click(screen.getByRole("button", { name: "Current activity" }));
+    render(detail({ ...baseAgent, currentActivity: { ...activity, label } }));
 
     expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(label);
   });
 
-  it("labels retained activity as last observed when lifecycle state is uncertain", async () => {
-    const user = userEvent.setup();
-    render(panel({ ...baseAgent, status: "unknown", currentActivity: activity, liveness: {
+  it("labels retained activity as last observed when lifecycle state is uncertain", () => {
+    render(detail({ ...baseAgent, status: "unknown", currentActivity: activity, liveness: {
       source: "structured_lifecycle",
       observedAt: activity.observedAt,
       evidence: "unavailable",
       freshness: "stale",
       reason: "legacy_snapshot",
     } }));
-
-    await user.click(screen.getByRole("button", { name: "Last observed activity" }));
     expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent("Last observed activity");
     expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent(activity.label);
   });

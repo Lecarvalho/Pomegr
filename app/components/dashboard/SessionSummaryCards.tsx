@@ -29,7 +29,7 @@ function workflowWallTime(workflows: Workflow[]) {
   return workflows.reduce((total, workflow) => total + Math.max(0, workflow.durationMs), 0);
 }
 
-function WorkflowSummaryCard({ state }: { state: MonitorState }) {
+function WorkflowSummaryCard({ state, onOpenWorkflow }: { state: MonitorState; onOpenWorkflow?: (id: string) => void }) {
   const workflows = state.workflows || [];
   const agents = state.agents || [];
   const ids = workflowAgentIds(workflows, agents);
@@ -63,7 +63,7 @@ function WorkflowSummaryCard({ state }: { state: MonitorState }) {
           <dl className="sessionKv sessionWorkflowList">
             {workflows.slice(0, 3).map((workflow) => <Fragment key={workflow.id}><dt dir="auto">{workflow.name}</dt><dd>{agentEvidenceAvailable ? workflow.agentIds.length : "—"} agents · {formatDuration(workflow.durationMs)}</dd></Fragment>)}
           </dl>
-          <a className="sessionSummaryLink" href="#agent-activity">Open workflow detail</a>
+          <a className="sessionSummaryLink" href="#agent-activity" onClick={() => onOpenWorkflow?.(workflows[0].id)}>Open workflow detail</a>
         </>}
   </article>;
 }
@@ -73,6 +73,8 @@ type SessionSummaryCardsProps = {
   historical: boolean;
   paused: boolean;
   needsInput: boolean;
+  onOpenWorkflow?: (id: string) => void;
+  onShowAgent?: (agentId: string) => void;
 };
 
 export function SessionSummaryCards(props: SessionSummaryCardsProps) {
@@ -90,7 +92,7 @@ export function SessionSummaryCards(props: SessionSummaryCardsProps) {
       needsInput={needsInput}
       variant="compact"
     />
-    <WorkflowSummaryCard state={state} />
-    <InsightsPanel insights={state.insights} variant="compact" />
+    <WorkflowSummaryCard state={state} onOpenWorkflow={props.onOpenWorkflow} />
+    <InsightsPanel insights={state.insights} variant="compact" onShowAgent={props.onShowAgent} />
   </section>;
 }

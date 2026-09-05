@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { MonitorState } from "../../shared/monitor-contract";
 import { SessionSummaryCards } from "../../app/components/dashboard/SessionSummaryCards";
@@ -62,5 +62,14 @@ describe("session summary cards", () => {
     expect(screen.getAllByRole("link", { name: "Show agent" })).toHaveLength(2);
     await user.click(screen.getByRole("link", { name: "Show fewer" }));
     expect(screen.queryByText("Warning three")).not.toBeInTheDocument();
+  });
+
+  it("routes Show agent through the session-scoped selection callback", async () => {
+    const user = userEvent.setup();
+    const onShowAgent = vi.fn();
+    const state = stateWith({ insights: [{ id: "warning", level: "warning", title: "Worker warning", detail: "Needs review", agentId: "worker-1" }] });
+    render(<LiveClockProvider running={false}><SessionSummaryCards state={state} historical={false} paused={false} needsInput={false} onShowAgent={onShowAgent} /></LiveClockProvider>);
+    await user.click(screen.getByRole("link", { name: "Show agent" }));
+    expect(onShowAgent).toHaveBeenCalledWith("worker-1");
   });
 });

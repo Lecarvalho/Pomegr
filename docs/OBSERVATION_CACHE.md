@@ -987,6 +987,13 @@ context, activity, repository, resources, and usage as independently produced do
 
 - Requests & actions renders only committed request snapshots; window, selection, and
   sort are frontend view state and never trigger acquisition.
+  Desktop retains a 60-request visible window and phone a 20-request window. Selection
+  and window anchors follow normalized snapshot identity as the bounded feed rolls
+  over; live updates follow the newest request only while selection and window are
+  already at the end. Scope, mode, and selection reset on session change. Cache evidence
+  is a saved, closed-by-default disclosure and matches requests only by normalized
+  agent and observation timestamp. These presentation changes leave cache-only GETs,
+  last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
 - The session KPI strip renders once core evidence is ready. Agent counts and status
   tallies follow agent readiness, latest context follows context readiness, and tool
   calls and the agent estimate follow activity readiness. Each pending cell shows an

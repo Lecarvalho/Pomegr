@@ -273,6 +273,100 @@ export function buildVisualForest(forest: AgentTreeForest, threshold = 4): Agent
   return { roots, nodes, byId };
 }
 
+/**
+ * Build a bounded, presentation-only view around one recorded agent.  The spawn
+ * tree remains the source of truth: workflow fields stay on their original
+ * agents and clusters only replace visual sibling sets.
+ */
+export function focusVisualForest(forest: AgentTreeForest, focusId: string): AgentTreeVisualForest {
+  const focus = forest.byId.get(focusId);
+  if (!focus) return buildVisualForest(forest);
+
+  const pathIds = new Set<string>();
+  let pathNode: AgentTreeNode | undefined = focus;
+  while (pathNode && !pathIds.has(pathNode.id)) {
+    pathIds.add(pathNode.id);
+    pathNode = pathNode.canonicalParentId ? forest.byId.get(pathNode.canonicalParentId) : undefined;
+  }
+
+  const byId = new Map<string, AgentTreeVisualNode | AgentTreeCluster>();
+  const nodes: Array<AgentTreeVisualNode | AgentTreeCluster> = [];
+  const emptyRollup = (): AgentTreeRollup => ({ needsInput: 0, live: 0, finished: 0, contextSum: 0 });
+  const focusParentId = focus.canonicalParentId;
+  const clusterIdFor = (parent: AgentTreeNode | null) => parent ? `cluster:focus:${parent.id}` : "cluster:focus:roots";
+
+  const add = (node: AgentTreeNode, visualParentId: string | null): AgentTreeVisualNode => {
+    const visualNode: AgentTreeVisualNode = { ...node, visualParentId, children: visualChildrenFor(node) };
+    byId.set(node.id, visualNode);
+    nodes.push(visualNode);
+    return visualNode;
+  };
+
+  const cluster = (items: AgentTreeNode[], parent: AgentTreeNode | null, visualParentId: string | null): AgentTreeCluster => {
+    const id = clusterIdFor(parent);
+    const rollup = items.reduce((sum, item) => addRollup(sum, item.rollup), emptyRollup());
+    const materializedChildren = items.map((item) => add(item, id));
+    const label = parent ? `${parent.agent.label} · ${items.length} more` : `Other roots · ${items.length} more`;
+    const visualCluster: AgentTreeCluster = {
+      id,
+      agent: null,
+      parentId: parent?.id ?? null,
+      canonicalParentId: null,
+      visualParentId,
+      children: materializedChildren,
+      depth: parent ? parent.depth + 1 : 0,
+      workflowId: null,
+      workflowPhaseId: null,
+      directChildCount: items.length,
+      descendantCount: items.reduce((count, item) => count + item.descendantCount + 1, 0),
+      // A cluster has no own agent; all of its rollup belongs to descendants.
+      rollup,
+      descendantRollup: rollup,
+      isCycleRoot: false,
+      isCluster: true,
+      clusterCount: items.length,
+      clusterIds: items.map((item) => item.id),
+      label,
+    };
+    byId.set(id, visualCluster);
+    nodes.push(visualCluster);
+    return visualCluster;
+  };
+
+  const visualChildrenFor = (node: AgentTreeNode): Array<AgentTreeVisualNode | AgentTreeCluster> => {
+    if (!node.children.length) return [];
+    // The focused agent and its parent are the two places where every direct
+    // child stays visible: focus children and focus siblings, respectively.
+    if (node.id === focus.id || node.id === focusParentId) return node.children.map((child) => add(child, node.id));
+
+    const pathChild = node.children.find((child) => pathIds.has(child.id));
+    if (!pathChild) return [cluster(node.children, node, node.id)];
+
+    const visualChildren: Array<AgentTreeVisualNode | AgentTreeCluster> = [];
+    let addedCluster = false;
+    for (const child of node.children) {
+      if (child.id === pathChild.id) visualChildren.push(add(child, node.id));
+      else if (!addedCluster) {
+        visualChildren.push(cluster(node.children.filter((item) => item.id !== pathChild.id), node, node.id));
+        addedCluster = true;
+      }
+    }
+    return visualChildren;
+  };
+
+  const focusRootId = [...pathIds].find((id) => !forest.byId.get(id)?.canonicalParentId) as string;
+  const roots: Array<AgentTreeVisualNode | AgentTreeCluster> = [];
+  let addedRootCluster = false;
+  for (const root of forest.roots) {
+    if (root.id === focusRootId) roots.push(add(root, null));
+    else if (!addedRootCluster) {
+      roots.push(cluster(forest.roots.filter((item) => item.id !== focusRootId), null, null));
+      addedRootCluster = true;
+    }
+  }
+  return { roots, nodes, byId };
+}
+
 export const buildAgentTree = buildAgentForest;
 export const createAgentForest = buildAgentForest;
 export const createVisualForest = buildVisualForest;

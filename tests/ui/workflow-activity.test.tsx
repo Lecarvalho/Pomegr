@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { AgentHistoryIndicators, cacheRefillDescription, summarizeCacheRefillOccurrences } from "../../app/components/dashboard/AgentHistoryIndicators";
-import { WorkflowActivityPanel } from "../../app/components/dashboard/WorkflowActivityPanel";
+import { AgentTreeView } from "../../app/components/dashboard/agent-tree/AgentTreeView";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, MonitorState, Workflow } from "../../shared/monitor-contract";
+import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, MonitorState, RequestSnapshotFeed, Workflow } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 
 function worker(overrides: Partial<Agent> = {}): Agent {
@@ -23,6 +23,12 @@ function dashboardState(): MonitorState {
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); window.localStorage.clear(); });
 
+function treeView({ agents, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], historical = false, requestSnapshots, workflows, sessionId }: {
+  agents: Agent[]; cacheRefills?: CacheRefillCount[]; cacheReadDrops?: CacheReadDropCount[]; contextBoundaries?: ContextHistoryBoundary[]; historical?: boolean; requestSnapshots?: RequestSnapshotFeed; workflows: Workflow[]; sessionId?: string;
+}) {
+  return <LiveClockProvider running={false}><AgentTreeView agents={agents} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} historical={historical} requestSnapshots={requestSnapshots} sessionId={sessionId} workflows={workflows} /></LiveClockProvider>;
+}
+
 describe("workflow activity and agent tree view", () => {
   it.each(["list", "tree"] as const)("shows per-agent cache minimums in %s without inline documentation", (viewMode) => {
     const agents = [
@@ -31,13 +37,17 @@ describe("workflow activity and agent tree view", () => {
       worker({ id: "unknown", label: "Unknown", cacheLifetime: null }),
       worker({ id: "claude", label: "Recorded", cacheLifetime: "1h" }),
     ].map((agent) => ({ ...agent, workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null }));
-    render(<LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:ttl" viewMode={viewMode} workflows={[]} /></LiveClockProvider>);
-    const labels = screen.getAllByText("cache TTL ≥30m");
+    window.localStorage.setItem("pomegr-agent-roster-open-codex:ttl", JSON.stringify(["direct"]));
+    render(viewMode === "list"
+      ? <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:ttl" viewMode="list" workflows={[]} /></LiveClockProvider>
+      : treeView({ agents, sessionId: "codex:ttl", workflows: [] }));
+    const roster = viewMode === "list" ? screen.getByRole("table", { name: "Session agents" }) : null;
+    const labels = roster ? within(roster).getAllByText("≥30m") : screen.getAllByText("cache TTL ≥30m");
     expect(labels).toHaveLength(2);
     labels.forEach((label) => expect(label).not.toHaveAttribute("title"));
-    expect(screen.getByText("cache TTL unavailable")).toBeInTheDocument();
-    expect(screen.getByText("cache TTL 1h")).toBeInTheDocument();
-    const rowRole = viewMode === "list" ? "listitem" : "treeitem";
+    expect(roster ? within(roster).getByText("unavailable") : screen.getByText("cache TTL unavailable")).toBeInTheDocument();
+    expect(roster ? within(roster).getByText("1h") : screen.getByText("cache TTL 1h")).toBeInTheDocument();
+    const rowRole = viewMode === "list" ? "row" : "treeitem";
     expect(screen.getByRole(rowRole, { name: /Primary.*cache TTL ≥30m/ })).toBeInTheDocument();
     expect(screen.getByRole(rowRole, { name: /Child.*cache TTL ≥30m/ })).toBeInTheDocument();
   });
@@ -54,40 +64,31 @@ describe("workflow activity and agent tree view", () => {
     expect(panel.querySelector(".workflowWorkerRows, .workflowWorkerRow, .workflowWorkerGroup")).not.toBeInTheDocument();
   });
 
-  it("shows workflow identity, lifecycle, context, wall time, metadata, and phase progress without worker rows", () => {
-    const unrelated = worker({ id: "other-workflow-agent", workflowId: "workflow-2", workflowPhaseId: "implement", workflowState: "done", status: "finished" });
-    render(<LiveClockProvider running={false}><WorkflowActivityPanel agents={[worker(), unrelated]} historical sessionId="claude:workflow" workflows={[workflow({ phases: [{ id: "implement", label: "Implement", agentIds: ["workflow-agent-1", "other-workflow-agent"] }] })]} /></LiveClockProvider>);
-    expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("1 observed agent");
-    expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("83K context");
-    expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("3m wall time");
-    expect(screen.getByLabelText("quickwin-batch phase progress")).toHaveTextContent("Active");
-    expect(screen.getByLabelText("quickwin-batch phase progress")).toHaveTextContent("0/1 finished");
-    expect(screen.queryByRole("list", { name: "Workflow workers" })).not.toBeInTheDocument();
-  });
-
-  it("uses the session-scoped List default, persists Tree choice, and gives Tree the full grid width", async () => {
+  it("coerces a stored Tree view to List and persists the Grid choice", async () => {
     const state = dashboardState();
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input) === "/api/sessions" ? { sessions: [] } : state), { status: 200 })));
     const user = userEvent.setup();
+    window.localStorage.setItem("pomegr-agent-activity-view-claude:tree-preference", "tree");
     const { container, unmount } = render(<Dashboard />);
-    await screen.findByRole("button", { name: "Tree" });
+    await screen.findByRole("button", { name: "Grid" });
     expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "Tree" }));
+    await user.click(screen.getByRole("button", { name: "Grid" }));
     expect(container.querySelector(".contentGrid")).toHaveAttribute("id", "agent-activity");
-    expect(container.querySelector(".agentsPanel")).toHaveClass("agentsPanel-tree");
-    expect(window.localStorage.getItem("pomegr-agent-activity-view-claude:tree-preference")).toBe("tree");
+    expect(container.querySelector(".agentRosterPanel")).toBeInTheDocument();
+    expect(window.localStorage.getItem("pomegr-agent-activity-view-claude:tree-preference")).toBe("grid");
     unmount();
     render(<Dashboard />);
-    expect((await screen.findByRole("button", { name: "Tree" })).getAttribute("aria-pressed")).toBe("true");
+    expect((await screen.findByRole("button", { name: "Grid" })).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("lists every agent exactly once, including workflow agents, and accepts legacy missing roles", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
     const legacy = { ...worker({ id: "legacy", label: "Legacy agent", workflowId: null, workflowPhaseId: null }), role: undefined } as unknown as Agent;
+    window.localStorage.setItem("pomegr-agent-roster-open-claude:list", JSON.stringify(["direct", "workflow:workflow-1"]));
     render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, worker(), legacy]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:list" viewMode="list" onViewModeChange={() => {}} workflows={[workflow()]} /></LiveClockProvider>);
-    const rows = within(screen.getByRole("list", { name: "Session agents" })).getAllByRole("listitem");
+    const rows = within(screen.getByRole("table", { name: "Session agents" })).getAllByRole("row");
     expect(rows).toHaveLength(3);
-    expect(screen.queryByRole("button", { name: /Workflow agents/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Workflow · quickwin-batch/ })).toBeInTheDocument();
     expect(screen.getByText("unknown")).toBeInTheDocument();
   });
 
@@ -102,19 +103,22 @@ describe("workflow activity and agent tree view", () => {
       { id: "manual-child", agentId: "child", timestamp: "2026-08-15T12:02:30.000Z", kind: "manual_compaction", preTokens: 70_000 },
       { id: "drop-quiet", agentId: "quiet", timestamp: "2026-08-15T12:02:45.000Z", kind: "snapshot_drop", preTokens: 65_000 },
     ];
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child, quiet]} contextBoundaries={contextBoundaries} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:compactions" viewMode="list" workflows={[]} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child, quiet]} contextBoundaries={contextBoundaries} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:compactions" viewMode="list" workflows={[]} /></LiveClockProvider>);
 
-    const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, cache TTL 1h, 2 compactions/ });
-    const childRow = screen.getByRole("listitem", { name: /Child agent agent, cache TTL 1h, 1 compaction/ });
-    const quietRow = screen.getByRole("listitem", { name: /Quiet agent agent, cache TTL 1h/ });
+    await user.click(screen.getByRole("button", { name: /Direct subagents/ }));
+
+    const primaryRow = screen.getByRole("row", { name: /Primary agent agent, cache TTL 1h/ });
+    const childRow = screen.getByRole("row", { name: /Child agent agent, cache TTL 1h/ });
+    const quietRow = screen.getByRole("row", { name: /Quiet agent agent, cache TTL 1h/ });
     const primaryMark = within(primaryRow).getByRole("button", { name: "2 compactions · 1 automatic · 1 manual." });
     expect(primaryMark.querySelector("svg.agentHistoryIcon")).toBeInTheDocument();
     expect(primaryMark.querySelector(".agentHistoryDot")).not.toBeInTheDocument();
     expect(primaryMark).toHaveTextContent("2");
     expect(within(childRow).getByRole("button", { name: "1 compaction · 1 manual." })).toHaveTextContent("1");
     expect(within(quietRow).queryByRole("button", { name: /compaction/ })).not.toBeInTheDocument();
-    expect(container.querySelectorAll(".agentHistoryIndicator")).toHaveLength(2);
-    expect(screen.queryByText(/compaction/i)).not.toBeInTheDocument();
+    const roster = screen.getByRole("table", { name: "Session agents" });
+    expect(roster.querySelectorAll(".agentHistoryIndicator")).toHaveLength(2);
+    expect(within(roster).queryByText(/compaction/i)).not.toBeInTheDocument();
 
     await user.hover(primaryMark);
     expect(screen.getByRole("tooltip")).toHaveTextContent("2 compactions · 1 automatic · 1 manual.");
@@ -128,7 +132,7 @@ describe("workflow activity and agent tree view", () => {
       { id: "cluster-manual", agentId: "clustered-3", timestamp: "2026-08-15T12:02:00.000Z", kind: "manual_compaction", preTokens: null },
       { id: "primary-manual", agentId: "primary", timestamp: "2026-08-15T12:02:30.000Z", kind: "manual_compaction", preTokens: null },
     ];
-    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} contextBoundaries={contextBoundaries} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:cluster-compactions" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    render(treeView({ agents: [primary, ...clustered], contextBoundaries, sessionId: "codex:cluster-compactions", workflows: [] }));
 
     const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 compactions/ });
     expect(within(cluster).getByRole("button", { name: "2 compactions across 5 agents · 1 automatic · 1 manual." })).toHaveTextContent("2");
@@ -175,17 +179,21 @@ describe("workflow activity and agent tree view", () => {
         ],
       }],
     }];
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cache-refills" viewMode="list" workflows={[]} /></LiveClockProvider>);
+    window.localStorage.setItem("pomegr-agent-roster-open-claude:cache-refills", JSON.stringify(["direct", "workflow:unknown"]));
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cache-refills" viewMode="list" workflows={[]} /></LiveClockProvider>);
+    const cacheRefillGroup = screen.getAllByRole("button").find((button) => /Direct subagents|Unassigned workflow/.test(button.textContent || ""));
+    if (cacheRefillGroup?.getAttribute("aria-expanded") === "false") await user.click(cacheRefillGroup);
 
-    const primaryRow = screen.getByRole("listitem", { name: /Primary agent agent, cache TTL 1h, 2 possible full cache refills/ });
-    const childRow = screen.getByRole("listitem", { name: /Child agent agent, cache TTL 1h/ });
-    expect(within(primaryRow).getByText("cache TTL 1h")).toBeInTheDocument();
+    const primaryRow = screen.getByRole("row", { name: /Primary agent agent, cache TTL 1h/ });
+    const childRow = screen.getByRole("row", { name: /Child agent agent, cache TTL 1h/ });
+    expect(within(primaryRow).getByText("1h", { exact: true })).toBeInTheDocument();
     const refillDescription = "Possible full cache refill observed 2 times. Provider diagnostic: tool definitions changed · message history changed. Inference: Remote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed).";
     const refillMark = within(primaryRow).getByRole("button", { name: refillDescription });
     expect(refillMark).toHaveTextContent("2");
     expect(refillMark.querySelector("svg.agentCacheRefillIcon")).toBeInTheDocument();
     expect(within(childRow).queryByRole("button", { name: /cache refill/i })).not.toBeInTheDocument();
-    expect(container.querySelectorAll(".agentCacheRefillIndicator")).toHaveLength(1);
+    const roster = screen.getByRole("table", { name: "Session agents" });
+    expect(roster.querySelectorAll(".agentCacheRefillIndicator")).toHaveLength(1);
 
     await user.click(refillMark);
     const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
@@ -224,11 +232,18 @@ describe("workflow activity and agent tree view", () => {
       count: 1,
       occurrences: [{ id: "drop-3", observedAt: "2026-08-15T12:03:00.000Z", previousCacheReadPercent: 88, cacheReadPercent: 3, gapMs: 120_000 }],
     }];
-    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheReadDrops={cacheReadDrops} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:cache-read-drops" viewMode={viewMode} workflows={[]} /></LiveClockProvider>);
+    window.localStorage.setItem("pomegr-agent-roster-open-codex:cache-read-drops", JSON.stringify(["direct", "workflow:unknown"]));
+    render(viewMode === "list"
+      ? <LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheReadDrops={cacheReadDrops} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:cache-read-drops" viewMode="list" workflows={[]} /></LiveClockProvider>
+      : treeView({ agents: [primary, ...clustered], cacheReadDrops, sessionId: "codex:cache-read-drops", workflows: [] }));
+    if (viewMode === "list") {
+      const cacheDropGroup = screen.getAllByRole("button").find((button) => /Direct subagents|Unassigned workflow/.test(button.textContent || ""));
+      if (cacheDropGroup?.getAttribute("aria-expanded") === "false") await user.click(cacheDropGroup);
+    }
 
-    const rowRole = viewMode === "list" ? "listitem" : "treeitem";
+    const rowRole = viewMode === "list" ? "row" : "treeitem";
     const target = viewMode === "list"
-      ? screen.getByRole(rowRole, { name: /Repeated worker agent .*cache TTL 1h, 2 possible cache refills/ })
+      ? screen.getAllByRole(rowRole, { name: /Repeated worker agent, cache TTL 1h/ }).find((row) => within(row).queryByRole("button", { name: "Possible cache refill inferred 2 times." }))!
       : screen.getByRole(rowRole, { name: /Repeated worker ×5, 5 matching agents, 3 possible cache refills/ });
     const trigger = within(target).getByRole("button", { name: viewMode === "list" ? "Possible cache refill inferred 2 times." : "Possible cache refill inferred 3 times across 5 agents." });
     expect(trigger).toHaveTextContent(viewMode === "list" ? "2" : "3");
@@ -318,7 +333,7 @@ describe("workflow activity and agent tree view", () => {
       { agentId: "clustered-3", count: 1, occurrences: [{ observedAt: "2026-08-15T12:02:00.000Z", reason: "tools_changed", providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [{ reason: "tools_changed", count: 1 }], toolChangeAttributions: [] },
       { agentId: "primary", count: 1, occurrences: [{ observedAt: "2026-08-15T12:03:00.000Z", reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] },
     ];
-    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, ...clustered]} cacheRefills={cacheRefills} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:cluster-cache-refills" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    render(treeView({ agents: [primary, ...clustered], cacheRefills, sessionId: "claude:cluster-cache-refills", workflows: [] }));
 
     const cluster = screen.getByRole("treeitem", { name: /Repeated worker ×5, 5 matching agents, 2 possible full cache refills/ });
     expect(within(cluster).getByRole("button", { name: "Possible full cache refill observed 2 times across 5 agents. Provider diagnostic: system instructions changed · tool definitions changed." })).toHaveTextContent("2");
@@ -326,7 +341,7 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getAllByText("cache TTL 1h").length).toBeGreaterThan(0);
   });
 
-  it("toggles terminal subagents in List and Tree and remembers the choice per session", async () => {
+  it("toggles terminal subagents in the roster and remembers the choice per session", async () => {
     const user = userEvent.setup();
     const agents = [
       worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator" }),
@@ -335,32 +350,28 @@ describe("workflow activity and agent tree view", () => {
       worker({ id: "finished-leaf", parentId: "primary", label: "Finished leaf", status: "finished" }),
       worker({ id: "stopped-leaf", parentId: "primary", label: "Stopped leaf", status: "stopped" }),
     ];
-    const panel = (sessionId: string, viewMode: "list" | "tree") => <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId={sessionId} viewMode={viewMode} workflows={[]} /></LiveClockProvider>;
-    const { rerender } = render(panel("claude:finished-a", "list"));
-    const finishedToggle = screen.getByRole("button", { name: "Show finished (3)" });
+    window.localStorage.setItem("pomegr-agent-roster-open-claude:finished-a", JSON.stringify(["workflow:unknown"]));
+    const panel = (sessionId: string) => <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId={sessionId} viewMode="list" workflows={[]} /></LiveClockProvider>;
+    const { rerender } = render(panel("claude:finished-a"));
+    const finishedToggle = screen.getByRole("button", { name: "Hide finished" });
 
-    expect(finishedToggle).toHaveAttribute("aria-pressed", "true");
+    expect(finishedToggle).toHaveAttribute("aria-pressed", "false");
     await user.click(finishedToggle);
     expect(window.localStorage.getItem("pomegr-agent-activity-show-finished-claude:finished-a")).toBe("false");
-    expect(screen.getByRole("list", { name: "Session agents" })).toHaveTextContent("Finished parent");
-    expect(screen.getByRole("list", { name: "Session agents" })).toHaveTextContent("Active child");
+    expect(screen.getByRole("table", { name: "Session agents" })).toHaveTextContent("Finished parent");
+    expect(screen.getByRole("table", { name: "Session agents" })).toHaveTextContent("Active child");
     expect(screen.queryByText("Finished leaf")).not.toBeInTheDocument();
     expect(screen.queryByText("Stopped leaf")).not.toBeInTheDocument();
 
-    rerender(panel("claude:finished-a", "tree"));
-    expect(screen.getAllByRole("treeitem")).toHaveLength(3);
-    expect(screen.getByRole("treeitem", { name: /Finished parent/ })).toBeInTheDocument();
-    expect(screen.queryByRole("treeitem", { name: /Finished leaf/ })).not.toBeInTheDocument();
-
-    rerender(panel("claude:finished-b", "list"));
-    expect(screen.getByRole("button", { name: "Show finished (3)" })).toHaveAttribute("aria-pressed", "true");
-    rerender(panel("claude:finished-a", "list"));
-    expect(screen.getByRole("button", { name: "Show finished (3)" })).toHaveAttribute("aria-pressed", "false");
+    rerender(panel("claude:finished-b"));
+    expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "false");
+    rerender(panel("claude:finished-a"));
+    expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("renders the top-down tree, vertical connectors, provenance, and the List-view detail note", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, worker()]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:tree" viewMode="tree" onViewModeChange={() => {}} workflows={[workflow()]} /></LiveClockProvider>);
+    const { container } = render(treeView({ agents: [primary, worker()], sessionId: "claude:tree", workflows: [workflow()] }));
     expect(screen.getByRole("tree", { name: "Agent spawn hierarchy" })).toBeInTheDocument();
     expect(container.querySelectorAll(".agentTreeCard svg.agentTreeRoleGlyph")).toHaveLength(2);
     expect(container.querySelector(".agentTreeNode")?.getAttribute("style")).toContain("--tree-x");
@@ -370,21 +381,13 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByText("Tasks, skills, execution, and plan details are available in List view.")).toBeInTheDocument();
   });
 
-  it("advances only live running workflow wall time", () => {
-    vi.useFakeTimers(); vi.setSystemTime("2026-08-15T12:03:00.000Z");
-    render(<LiveClockProvider running><WorkflowActivityPanel agents={[]} historical={false} sessionId="claude:timer" workflows={[workflow({ agentIds: [], phases: [] })]} /></LiveClockProvider>);
-    expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("3m wall time");
-    act(() => vi.advanceTimersByTime(120_000));
-    expect(screen.getByLabelText("quickwin-batch workflow measurements")).toHaveTextContent("5m wall time");
-  });
-
   it("uses observed container width for rail/columns and preserves a stored column camera", async () => {
     let measuredWidth = 390;
     const callbacks: Array<(entries: Array<{ contentRect: { width: number } }>) => void> = [];
     class MockResizeObserver { constructor(callback: (entries: Array<{ contentRect: { width: number } }>) => void) { callbacks.push(callback); } observe() { callbacks.at(-1)?.([{ contentRect: { width: measuredWidth } }]); } disconnect() {} }
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
     window.localStorage.setItem("pomegr-agent-tree-camera-claude:responsive", JSON.stringify({ x: 12, y: 24, scale: 1.5 }));
-    const { container, rerender } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={dashboardState().agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:responsive" viewMode="tree" workflows={[workflow()]} /></LiveClockProvider>);
+    const { container, rerender } = render(treeView({ agents: dashboardState().agents, sessionId: "claude:responsive", workflows: [workflow()] }));
     await waitFor(() => expect(container.querySelector(".agentTreeView-rail")).toBeInTheDocument());
     expect(container.querySelector(".agentTreeCameraControls")).not.toBeInTheDocument();
     measuredWidth = 640; act(() => callbacks.at(-1)?.([{ contentRect: { width: measuredWidth } }]));
@@ -392,7 +395,7 @@ describe("workflow activity and agent tree view", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Fit 150%" })).toBeInTheDocument());
     measuredWidth = 1200; act(() => callbacks.at(-1)?.([{ contentRect: { width: measuredWidth } }]));
     expect(container.querySelector(".agentTreeView-columns")).toBeInTheDocument();
-    rerender(<LiveClockProvider running={false}><AgentActivityPanel agents={dashboardState().agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:responsive" viewMode="tree" workflows={[workflow()]} /></LiveClockProvider>);
+    rerender(treeView({ agents: dashboardState().agents, sessionId: "claude:responsive", workflows: [workflow()] }));
     expect(window.localStorage.getItem("pomegr-agent-tree-camera-claude:responsive")).toContain("1.5");
   });
 
@@ -408,7 +411,7 @@ describe("workflow activity and agent tree view", () => {
       worker({ id: "middle", parentId: "branch", label: "Middle" }),
       worker({ id: "bottom", parentId: "branch", label: "Bottom" }),
     ];
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:fit" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    const { container } = render(treeView({ agents, sessionId: "claude:fit", workflows: [] }));
     await userEvent.click(await screen.findByRole("button", { name: /Fit/ }));
     const surface = container.querySelector(".agentTreeSurface") as HTMLDivElement;
     const scale = Number(surface.style.getPropertyValue("--tree-camera-scale"));
@@ -434,7 +437,7 @@ describe("workflow activity and agent tree view", () => {
   it("supports roving tree keys, drag separation, and phase membership without Tree phase rows", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowState: null });
     const child = worker({ id: "child", parentId: "primary", workflowId: "workflow-1", workflowPhaseId: "implement" });
-    const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[primary, child]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:keys" viewMode="tree" workflows={[workflow({ updatedAt: null as unknown as string, agentIds: [], phases: [{ id: "implement", label: "Implement", agentIds: [] }] })]} /></LiveClockProvider>);
+    const { container } = render(treeView({ agents: [primary, child], sessionId: "claude:keys", workflows: [workflow({ updatedAt: null as unknown as string, agentIds: [], phases: [{ id: "implement", label: "Implement", agentIds: [] }] })] }));
     const root = screen.getByRole("treeitem", { name: /Primary/ });
     root.focus(); fireEvent.keyDown(root, { key: "ArrowLeft" });
     expect(screen.queryByRole("treeitem", { name: /Backend investigator/ })).not.toBeInTheDocument();
@@ -446,10 +449,6 @@ describe("workflow activity and agent tree view", () => {
     Object.assign(canvas, { setPointerCapture: vi.fn(), hasPointerCapture: vi.fn(() => true), releasePointerCapture: vi.fn() });
     fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 10, clientY: 10 }); fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 30, clientY: 10 }); fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 30, clientY: 10 });
     expect(canvas.setPointerCapture).toHaveBeenCalled();
-    window.localStorage.setItem("pomegr-workflow-panel-open-claude:tree-workflow", "false");
-    render(<LiveClockProvider running={false}><WorkflowActivityPanel agents={[child]} historical={false} sessionId="claude:tree-workflow" viewMode="tree" workflows={[workflow({ updatedAt: null as unknown as string, agentIds: [], phases: [{ id: "implement", label: "Implement", agentIds: [] }] })]} /></LiveClockProvider>);
-    expect(screen.getByText("Workflow activity").closest("summary")).toHaveTextContent("1 agent");
-    expect(screen.queryByLabelText("quickwin-batch phase progress")).not.toBeInTheDocument();
   });
 
   it("degrades without ResizeObserver and handles empty, historical, long RTL, large, and unavailable-storage trees", async () => {
@@ -460,13 +459,13 @@ describe("workflow activity and agent tree view", () => {
     const child = worker({ id: "child", parentId: "root", label: "Child" });
     const grandchild = worker({ id: "grandchild", parentId: "child", label: "Grandchild" });
     const many = Array.from({ length: 42 }, (_, index) => worker({ id: `agent-${index}`, parentId: null, label: `Agent ${index}` }));
-    const { container, rerender } = render(<LiveClockProvider running={false}><AgentActivityPanel agents={[root, child, grandchild, ...many]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:hardening" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    const { container, rerender } = render(treeView({ agents: [root, child, grandchild, ...many], sessionId: "claude:hardening", workflows: [] }));
     expect(container.querySelector(".agentTreeView-columns")).toBeInTheDocument();
     expect(screen.getAllByRole("treeitem")).toHaveLength(45);
     expect(screen.getByRole("treeitem", { name: /عنوان طويل/ })).toBeInTheDocument();
-    rerender(<LiveClockProvider running={false}><AgentActivityPanel agents={[root, child, grandchild]} executionTasks={[]} historical planTasks={[]} sessionId="claude:historical" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    rerender(treeView({ agents: [root, child, grandchild], historical: true, sessionId: "claude:historical", workflows: [] }));
     await waitFor(() => expect(screen.queryByRole("treeitem", { name: /Grandchild/ })).not.toBeInTheDocument());
-    rerender(<LiveClockProvider running={false}><AgentActivityPanel agents={[]} executionTasks={[]} historical={false} planTasks={[]} sessionId="claude:empty" viewMode="tree" workflows={[]} /></LiveClockProvider>);
+    rerender(treeView({ agents: [], sessionId: "claude:empty", workflows: [] }));
     expect(screen.getByText("No agents have appeared in this session yet.")).toBeInTheDocument();
     expect(screen.getByText("Tasks, skills, execution, and plan details are available in List view.")).toBeInTheDocument();
   });
