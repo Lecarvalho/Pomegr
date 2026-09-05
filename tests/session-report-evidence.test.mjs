@@ -11,6 +11,7 @@ function usage(index, overrides = {}) {
     actorId: "primary", dedupeId: "PRIVATE-request-" + index,
     timestamp: new Date(start + index * 1_000).toISOString(),
     input: 2, output: 3, cacheRead: 20_000, cacheWrite: 100,
+    precedingWork: [{ kind: "read", count: 2 }], issuedWork: [{ kind: "test", count: 1 }],
     cacheComparable: true, cacheLifetime: "5m", comparisonGroup: 1,
     model: "PRIVATE-model", diagnostics: "PRIVATE-diagnostics", ...overrides,
   };
@@ -53,6 +54,8 @@ test("report preserves exact request evidence before UI caps and includes a non-
     assert.equal(snapshot.totalTokens, snapshot.uncachedInputTokens + snapshot.cacheReadTokens + snapshot.cacheWriteTokens + snapshot.outputTokens);
     assert.equal(Object.hasOwn(snapshot, "precedingWork"), false);
     assert.equal(Object.hasOwn(snapshot, "issuedWork"), false);
+    assert.equal(Object.hasOwn(snapshot, "precedingAssociation"), false);
+    assert.equal(Object.hasOwn(snapshot, "issuedAssociation"), false);
   }
 });
 
@@ -106,6 +109,7 @@ test("automatic/manual compactions suppress duplicate drops and retain only meas
   assert.equal(evidence.context.boundaries[0].current, null);
   assert.equal(evidence.context.boundaries[1].preTokens, null);
   assert.equal(evidence.context.boundaries[2].current.observedAt, snapshots[3].timestamp);
+  assert.doesNotMatch(JSON.stringify(evidence), /precedingWork|issuedWork|precedingAssociation|issuedAssociation/);
 });
 
 test("duplicate request identities use the newest normalized observation and do not leak invalid output", () => {

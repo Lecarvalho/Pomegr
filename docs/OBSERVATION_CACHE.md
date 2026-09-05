@@ -985,6 +985,8 @@ context, activity, repository, resources, and usage as independently produced do
 
 ## Presentation rules
 
+- Requests & actions renders only committed request snapshots; window, selection, and
+  sort are frontend view state and never trigger acquisition.
 - The session KPI strip renders once core evidence is ready. Agent counts and status
   tallies follow agent readiness, latest context follows context readiness, and tool
   calls and the agent estimate follow activity readiness. Each pending cell shows an

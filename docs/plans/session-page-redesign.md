@@ -546,9 +546,9 @@ semantics.
 
 ### Acceptance criteria
 
-- [ ] `npm run typecheck` passes with the new contract fields used nowhere yet in `app/`.
-- [ ] api-serialization allowlist test updated and green.
-- [ ] METRICS.md, OBSERVATION_CACHE.md, AGENTS.md updated as written above.
+- [x] `npm run typecheck` passes with the new contract fields used nowhere yet in `app/`.
+- [x] api-serialization allowlist test updated and green.
+- [x] METRICS.md, OBSERVATION_CACHE.md, AGENTS.md updated as written above.
 
 ### Verification
 
@@ -1313,6 +1313,7 @@ npm run lint
 
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-09-05 | POMEGR-SP-04 | Complete | Verified SP-03's shared request contract/re-export, exact browser allowlists, bounded work-kind assertions, report stripping and AGENTS privacy rule. API fixture setup now retains tool-input private-path sentinels; report tests cover non-empty action tallies and omit all four fields from transition/boundary evidence. Documented request-local prompt outlines and committed-only presentation; chart replacement is explicitly pending SP-05/SP-06 and personal Home cadence remains unchanged. All 15 focused API/report tests and verify:fast passed (existing lint warnings only). No production code changes; unrelated UI test edit preserved. |
 | 2026-09-05 | POMEGR-SP-03 | Complete | Claude request-local issued/result work counts, actor-scoped parsing, recognized compaction resets, bounded projection and legacy/Codex defaults. Shared tool detail extraction, golden fixture, privacy and checkpoint coverage added. Full npm test passed (966 node tests, 1 skipped; 409 UI tests); final verify:fast and 53 focused parser/projection/privacy/checkpoint tests passed. Required SP-04 compatibility landed here: browser types/allowlists, report stripping and current evidence/privacy documentation; request types are re-exported from shared/request-snapshot-contract.ts. SP-04 remains responsible for its future panel/presentation wording. Concurrent SP-02 changes preserved; its recorded architecture blockers are resolved. |
 | 2026-09-05 | POMEGR-SP-02 | Complete | Repository and Session details are independent saved disclosures, closed by default, with bounded desktop/phone summaries and preference-gated estimated cost. Resource use stays in place. Browser verified 52px rows, padding, chevrons, keyboard toggles and persistence at 1440/390/360px; no phone horizontal overflow. Build, 409 UI tests, focused design contract, privacy/serialization and dependency checks passed. Full test wrapper was run; concurrent SP-03 request-action failures passed focused rechecks, and a temporary cleanup failure passed the node rerun (963 passed, 1 skipped, only the subsequently fixed provider fixture failed). verify:fast passes through provider docs but stops on concurrent SP-03 line limits in shared/monitor-contract.ts, tests/api-serialization.test.mjs and tests/claude-provider.test.mjs; those files were left to their owner. |
 | 2026-09-05 | Plan | Updated | Added phone layout: `mockup-mobile.html`, `mockup-mobile-inspector.html` (+PNGs), SP-01M, and Phone subsections in SP-02, SP-05, SP-07, SP-08, SP-09, SP-10, SP-11. |

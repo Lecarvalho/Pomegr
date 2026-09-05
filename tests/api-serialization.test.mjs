@@ -128,16 +128,17 @@ async function syntheticProviders(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-api-audit-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const replacements = [["PRIVATE_PATH_MUST_NOT_LEAK", "synthetic-path"]];
-
+  // Replace public repository/memory paths, but retain tool-input privacy sentinels.
+  const claudeReplacements = ["repo", "AGENTS.md"].map((leaf) => [`PRIVATE_PATH_MUST_NOT_LEAK\\\\${leaf}`, `synthetic-path\\\\${leaf}`]);
   const claudeRoot = path.join(root, "claude");
   const claudeId = "claude-fixture-parent";
   const claudeFile = path.join(claudeRoot, "projects", "fixture", `${claudeId}.jsonl`);
   const claudeChildFile = path.join(claudeRoot, "projects", "fixture", claudeId, "subagents", "agent-child-fixture.jsonl");
-  await writeFixture(claudeFile, "claude/session.jsonl", replacements);
+  await writeFixture(claudeFile, "claude/session.jsonl", claudeReplacements);
   await writeFixture(
     claudeChildFile,
     "claude/subagent.jsonl",
-    replacements,
+    claudeReplacements,
   );
   await writeFixture(path.join(claudeRoot, "registry", `${claudeId}.json`), "claude/registry.json");
   await writeFixture(path.join(claudeRoot, "tasks", claudeId, "task-1.json"), "claude/task.json");

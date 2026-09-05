@@ -69,8 +69,9 @@ results recorded for the same agent since the previous usage-bearing assistant r
 (`transcript_adjacency`); a recognized compaction between assistant records clears the
 tally. Missing content arrays produce empty tallies. Each tally keeps at most 8 kinds,
 sorted by count descending then kind ascending, with counts capped at 999. Unknown tool
-result identities stay generic (`shell`). These associations never attribute tokens to
-an operation, establish causation, or rank operation categories by accumulated tokens.
+result identities stay generic (`shell`). These describe what the model could see or
+asked for; they never attribute tokens to an operation, establish causation, or rank
+operation categories by accumulated tokens.
 Codex snapshots carry empty tallies until its transcript structure is validated separately.
 Focused reports omit these action fields.
 
@@ -81,6 +82,13 @@ For live Claude Code and Codex sessions, the provider adapters retain no more th
 The monitor deduplicates observations privately, keeps at most the latest 100 valid requests per visible agent, and returns the merged items chronologically. Invalid timestamps or counts, all-zero observations, unknown agents, missing internal dedupe evidence, and cumulative-only provider records are rejected. Status is `ready` when at least one valid item remains and `unavailable` otherwise.
 
 Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Focused reports omit the routine feed and include only selected independent supporting requests, normalized through the same allowlist, from retained evidence before the dashboard's 100-request cap.
+
+The Requests & actions view specified for SP-05/SP-06 draws a prompt-size outline
+(uncached input + cache write + cache read) for each request. This outline will replace
+the former Context history panel as the session page's visible context level; it is
+request-local and does not carry values between requests. `contextHistory` stays in
+the API for report and Home projections. The current personal Home does not fetch this
+evidence; retaining the API does not introduce a Home request or change its cadence.
 
 The Agent activity presentation derives **Last model turn** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
 
