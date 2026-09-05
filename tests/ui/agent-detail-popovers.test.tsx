@@ -166,8 +166,8 @@ describe("agent detail popovers", () => {
     const requestSnapshots = {
       status: "ready" as const,
       items: [
-        { id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T11:59:05.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 },
-        { id: "request-turn", agentId: agent.id, observedAt: "2026-08-08T12:02:05.000Z", cacheLifetime: null, uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 10, totalTokens: 110 },
+        { id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T11:59:05.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null },
+        { id: "request-turn", agentId: agent.id, observedAt: "2026-08-08T12:02:05.000Z", cacheLifetime: null, uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 10, totalTokens: 110, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null },
       ],
     };
     const activeAgent = { ...agent, status: "active" as const };
@@ -200,7 +200,7 @@ describe("agent detail popovers", () => {
     vi.setSystemTime("2026-08-08T12:04:30.000Z");
     const requestSnapshots = {
       status: "ready" as const,
-      items: [{ id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 }],
+      items: [{ id: "request-touch", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "5m" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null }],
     };
     const view = (status: "active" | "finished" | "stopped") => <LiveClockProvider running={false}><AgentActivityPanel agents={[{ ...agent, status }]} executionTasks={[]} planTasks={[]} historical={false} requestSnapshots={requestSnapshots} /></LiveClockProvider>;
     const { container, rerender } = render(view("active"));
@@ -222,7 +222,7 @@ describe("agent detail popovers", () => {
     const idleAgent = { ...agent, status: "idle" as const };
     const requestSnapshots = {
       status: "ready" as const,
-      items: [{ id: "request-neutral", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930 }],
+      items: [{ id: "request-neutral", agentId: agent.id, observedAt: "2026-08-08T12:00:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 20, cacheWriteTokens: 800, cacheReadTokens: 100, outputTokens: 10, totalTokens: 930, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null }],
     };
     const { container } = render(<LiveClockProvider running={false}><AgentActivityPanel
       agents={[idleAgent]}

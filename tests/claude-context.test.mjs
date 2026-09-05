@@ -1,7 +1,12 @@
+import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCacheEvents } from "../monitor/cache-events.mjs";
 import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
+import { contextCompactions } from "../monitor/context-compactions.mjs";
 
 function assistant(id, timestamp, usage, model = "claude-test", diagnostics = undefined) {
   return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics !== undefined ? { diagnostics } : {}) } };
@@ -10,6 +15,103 @@ function assistant(id, timestamp, usage, model = "claude-test", diagnostics = un
 function assistantWithoutIdentity(timestamp, usage, model = "claude-test") {
   return { type: "assistant", timestamp, message: { model, usage, content: [] } };
 }
+
+function actionRequest(id, second, content = []) {
+  const record = assistant(id, `2026-08-10T10:00:${String(second).padStart(2, "0")}.000Z`, {
+    input_tokens: 100, output_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+  });
+  record.message.content = content;
+  return record;
+}
+
+function actionResults(...ids) {
+  return { type: "user", message: { content: ids.map((id) => ({
+    type: "tool_result", tool_use_id: id, content: "PRIVATE_RESULT_MUST_NOT_LEAK",
+  })) } };
+}
+
+test("correlates only bounded work kinds from issued calls and preceding results", () => {
+  const records = [
+    actionRequest("one", 0, [
+      { type: "tool_use", id: "PRIVATE_READ_ID", name: "Read", input: { file_path: "PRIVATE_PATH_MUST_NOT_LEAK" } },
+      { type: "tool_use", id: "PRIVATE_TEST_ID", name: "Bash", input: { command: "npm test # PRIVATE_COMMAND_MUST_NOT_LEAK" } },
+    ]),
+    actionResults("PRIVATE_READ_ID", "PRIVATE_TEST_ID"),
+    actionRequest("two", 2),
+    actionRequest("three", 3),
+  ];
+  const snapshots = parseClaudeContextRecords(records);
+  const counts = [{ kind: "read", count: 1 }, { kind: "test", count: 1 }];
+  assert.deepEqual(snapshots.map(({ precedingWork }) => precedingWork), [[], counts, []]);
+  assert.deepEqual(snapshots.map(({ issuedWork }) => issuedWork), [counts, [], []]);
+  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE|tool_use|file_path|command|content/);
+});
+
+test("unknown result identities stay generic, missing identities are ignored, and no-content snapshots stay empty", () => {
+  const missingContent = actionRequest("missing", 2);
+  delete missingContent.message.content;
+  const snapshots = parseClaudeContextRecords([
+    actionRequest("one", 0), actionResults("unknown", undefined, ""), actionRequest("two", 1),
+    actionResults("unknown"), missingContent, actionRequest("three", 3),
+  ]);
+  assert.deepEqual(snapshots[1].precedingWork, [{ kind: "shell", count: 1 }]);
+  for (const snapshot of snapshots.slice(2)) {
+    assert.deepEqual(snapshot.precedingWork, []);
+    assert.deepEqual(snapshot.issuedWork, []);
+  }
+});
+
+test("recognized compactions clear preceding work only within the assistant interval", () => {
+  const records = [actionRequest("one", 1, [{ type: "tool_use", id: "read", name: "Read" }]),
+    actionResults("read"), actionRequest("two", 3)];
+  for (const [second, expected] of [[0, 1], [1, 1], [2, 0], [3, 0], [4, 1]]) {
+    const boundary = { type: "system", subtype: "compact_boundary", timestamp: `2026-08-10T10:00:0${second}.000Z`, compactMetadata: { trigger: "auto" } };
+    const snapshots = parseClaudeContextRecords(records, {
+      compactionTimestamps: contextCompactions([boundary]).map(({ timestamp }) => timestamp),
+    });
+    assert.equal(snapshots[1].precedingWork.length, expected, `boundary second ${second}`);
+  }
+  const noUsage = actionRequest("no-usage", 2);
+  delete noUsage.message.usage;
+  assert.deepEqual(parseClaudeContextRecords([records[0], records[1], noUsage, records[2]], {
+    compactionTimestamps: ["2026-08-10T10:00:02.000Z"],
+  })[1].precedingWork, []);
+});
+
+test("actor-scoped transcript parsing isolates interleaved calls and identical tool IDs", () => {
+  // Claude ownership comes from the adapter's transcript-to-actor mapping.
+  const interleaved = [
+    ["primary", actionRequest("one", 0, [{ type: "tool_use", id: "same", name: "Read" }])],
+    ["child", actionRequest("one", 1, [{ type: "tool_use", id: "same", name: "Bash", input: { command: "npm test" } }])],
+    ["primary", actionResults("same")], ["child", actionResults("same")],
+    ["child", actionRequest("two", 2)], ["primary", actionRequest("two", 3)],
+  ];
+  for (const [actorId, kind] of [["primary", "read"], ["child", "test"]]) {
+    const snapshots = parseClaudeContextRecords(interleaved.filter(([actor]) => actor === actorId).map(([, record]) => record), { actorId });
+    assert.equal(snapshots.every((snapshot) => snapshot.actorId === actorId), true);
+    assert.deepEqual(snapshots[1].precedingWork, [{ kind, count: 1 }]);
+  }
+});
+
+test("tool identities from assistant records without usage still resolve later results", () => {
+  const noUsage = actionRequest("no-usage", 1, [{ type: "tool_use", id: "test", name: "Bash", input: { command: "npm test" } }]);
+  delete noUsage.message.usage;
+  const snapshots = parseClaudeContextRecords([actionRequest("one", 0), noUsage, actionResults("test"), actionRequest("two", 2)]);
+  assert.deepEqual(snapshots[1].precedingWork, [{ kind: "test", count: 1 }]);
+});
+
+test("request work retains the eight largest kinds with deterministic ties and capped counts", () => {
+  const names = ["Read", "Write", "Search", "Build", "Git", "WebSearch", "ImageGen", "AskUserQuestion", "Skill"];
+  const blocks = names.map((name, index) => ({ type: "tool_use", id: `tool-${index}`, name }));
+  for (let index = 0; index < 1_005; index += 1) blocks.push({ type: "tool_use", id: `test-${index}`, name: "Test" });
+  const snapshots = parseClaudeContextRecords([
+    actionRequest("one", 0, blocks), actionResults(...blocks.map(({ id }) => id)), actionRequest("two", 1),
+  ]);
+  const expected = ["test", "build", "git", "image", "input", "read", "search", "skill"]
+    .map((kind) => ({ kind, count: kind === "test" ? 999 : 1 }));
+  assert.deepEqual(snapshots[0].issuedWork, expected);
+  assert.deepEqual(snapshots[1].precedingWork, expected);
+});
 
 test("strictly normalizes bounded Claude request usage and cache comparability", () => {
   const snapshots = parseClaudeContextRecords([
@@ -321,4 +423,37 @@ test("deduplicates message identities and bounds observations per agent", () => 
   assert.equal(snapshots.length, 1_000);
   assert.equal(snapshots.some((snapshot) => snapshot.dedupeId.endsWith(":message-0")), false);
   assert.equal(snapshots.at(-1).timestamp, "2026-08-10T11:00:00.000Z");
+});
+
+test("Claude adapter supplies recognized actor compactions to request action correlation", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-request-work-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const mainFile = path.join(root, "projects", "fixture", "request-work.jsonl");
+  const first = { type: "assistant", timestamp: "2026-08-12T14:00:00.000Z", message: { content: [{ type: "tool_use", id: "read", name: "Read", input: {} }] } };
+  const result = { type: "user", timestamp: "2026-08-12T14:00:01.000Z", message: { content: [{ type: "tool_result", tool_use_id: "read", content: "PRIVATE_RESULT_MUST_NOT_LEAK" }] } };
+  const writeRecords = async (file, records) => {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, records.map((record) => JSON.stringify(record)).join("\n") + "\n", "utf8");
+  };
+  first.message.id = "before";
+  first.message.usage = { input_tokens: 100, output_tokens: 10 };
+  const next = {
+    type: "assistant", timestamp: "2026-08-12T14:00:03.000Z",
+    message: { id: "after", usage: { input_tokens: 100, output_tokens: 10 }, content: [] },
+  };
+  const provider = createClaudeProvider({ homeDir: root, projectsRoot: path.join(root, "projects"), explicitSession: mainFile });
+  await writeRecords(mainFile, [first, result]);
+  const initial = await provider.readSession("request-work", { historical: false });
+  assert.deepEqual(initial.usageSnapshots[0].issuedWork, [{ kind: "read", count: 1 }]);
+  await appendFile(mainFile, `${JSON.stringify(next)}\n`);
+  const linked = await provider.readSession("request-work", { historical: false });
+  assert.deepEqual(linked.usageSnapshots.at(-1).precedingWork, [{ kind: "read", count: 1 }]);
+  // Replace the source with a recognized compaction between the result and request.
+  await writeRecords(mainFile, [first, result, {
+    type: "system", subtype: "compact_boundary", timestamp: "2026-08-12T14:00:02.000Z",
+    compactMetadata: { trigger: "manual" },
+  }, next]);
+  const compacted = await provider.readSession("request-work", { historical: false });
+  assert.deepEqual(compacted.usageSnapshots.at(-1).precedingWork, []);
+  assert.deepEqual(compacted.usageSnapshots[0].issuedWork, [{ kind: "read", count: 1 }]);
 });

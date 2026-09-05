@@ -15,6 +15,10 @@ function request(id: string, observedAt: string, cacheLifetime: CacheLifetime | 
     cacheWriteTokens,
     outputTokens,
     totalTokens: uncachedInputTokens + cacheReadTokens + cacheWriteTokens + outputTokens,
+    precedingWork: [],
+    precedingAssociation: null,
+    issuedWork: [],
+    issuedAssociation: null,
   };
 }
 

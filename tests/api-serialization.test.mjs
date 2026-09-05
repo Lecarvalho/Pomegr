@@ -9,6 +9,7 @@ import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import { WORK_KINDS } from "../monitor/work-kind.mjs";
+import { assertRequestWork } from "./helpers/request-work.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   readProviderFixture,
@@ -491,11 +492,13 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(state.metrics.tokens.requestSnapshots.items.length > 0, true);
     for (const item of state.metrics.tokens.requestSnapshots.items) {
       assert.deepEqual(Object.keys(item).sort(), [
-        "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens",
+        "agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "issuedAssociation", "issuedWork", "observedAt", "outputTokens", "precedingAssociation", "precedingWork", "totalTokens", "uncachedInputTokens",
       ]);
       assert.equal(item.cacheLifetime === null || /^(5m|1h|mixed|30m\+)$/.test(item.cacheLifetime), true);
       assert.equal(item.totalTokens, item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens);
       assert.match(item.id, /^request-[a-f0-9]{16}$/);
+      assertRequestWork(item.precedingWork, item.precedingAssociation, "transcript_adjacency");
+      assertRequestWork(item.issuedWork, item.issuedAssociation, "recorded_link");
     }
     assert.equal(Object.hasOwn(state.metrics.tokens, "contextGrowthTimeline"), false);
     assert.deepEqual(state.metrics.resources, {

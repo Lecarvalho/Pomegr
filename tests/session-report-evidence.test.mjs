@@ -51,6 +51,8 @@ test("report preserves exact request evidence before UI caps and includes a non-
   for (const snapshot of Object.values(event.requests)) {
     assert.deepEqual(Object.keys(snapshot).sort(), ["agentId", "cacheLifetime", "cacheReadTokens", "cacheWriteTokens", "id", "observedAt", "outputTokens", "totalTokens", "uncachedInputTokens"]);
     assert.equal(snapshot.totalTokens, snapshot.uncachedInputTokens + snapshot.cacheReadTokens + snapshot.cacheWriteTokens + snapshot.outputTokens);
+    assert.equal(Object.hasOwn(snapshot, "precedingWork"), false);
+    assert.equal(Object.hasOwn(snapshot, "issuedWork"), false);
   }
 });
 

@@ -9,6 +9,28 @@ import {
   checkpointFilename,
 } from "../monitor/session-observation-checkpoints.mjs";
 import { SessionObservationStore } from "../monitor/session-observation-store.mjs";
+import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
+import { buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
+
+test("checkpoint restart preserves only bounded request action evidence and its committed revision", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  evidence.usageSnapshots[0].precedingWork = [{ kind: "read", count: 2 }];
+  const committed = { ...snapshot("claude", evidence.localId, 7), evidence };
+  await checkpoints.write(committed);
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  assert.equal(loaded.records[0].revision, 7);
+  const restored = parseProviderSessionEvidence(loaded.records[0].evidence);
+  assert.deepEqual(restored.usageSnapshots, evidence.usageSnapshots);
+  const feed = buildRequestSnapshots({ agents: restored.agents, usageSnapshots: restored.usageSnapshots });
+  assert.deepEqual(feed.items[0].precedingWork, [{ kind: "read", count: 2 }]);
+  assert.equal(feed.items[0].precedingAssociation, "transcript_adjacency");
+  assert.equal(feed.items[0].issuedAssociation, "recorded_link");
+});
 
 async function temporaryCheckpointDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-observation-checkpoints-"));

@@ -12,6 +12,14 @@ function requestIdentity(snapshot) {
   ]);
 }
 
+function reportRequestSnapshot(request) {
+  const {
+    precedingWork, precedingAssociation, issuedWork, issuedAssociation,
+    ...reportRequest
+  } = request;
+  return reportRequest;
+}
+
 /**
  * D Derivation only: select bounded public report evidence from committed
  * normalized observations. Never publish the private cache classifier result.
@@ -24,7 +32,7 @@ export function buildSessionReportEvidence({
   const byAgent = new Map();
   const byTime = new Map();
   for (const item of normalized) {
-    const request = requestSnapshotFromEvidence(sessionId, item);
+    const request = reportRequestSnapshot(requestSnapshotFromEvidence(sessionId, item));
     byIdentity.set(requestIdentity(item.snapshot), request);
     const items = byAgent.get(request.agentId) || [];
     items.push(request);

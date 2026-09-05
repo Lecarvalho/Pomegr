@@ -8,9 +8,9 @@ import { agent } from "./dashboard-test-fixtures";
 describe("request snapshots and cache evidence", () => {
   const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", tokens: { ...agent.tokens, total: 5_000 } };
   const snapshots = [
-    { id: "snapshot-write", agentId: "primary", observedAt: "2026-08-09T12:03:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 1_000, cacheWriteTokens: 146_282, cacheReadTokens: 0, outputTokens: 2_000, totalTokens: 149_282 },
-    { id: "snapshot-read", agentId: "primary", observedAt: "2026-08-09T12:04:00.000Z", cacheLifetime: null, uncachedInputTokens: 1_000, cacheWriteTokens: 759, cacheReadTokens: 146_282, outputTokens: 2_000, totalTokens: 150_041 },
-    { id: "snapshot-child", agentId: "child", observedAt: "2026-08-09T12:05:00.000Z", cacheLifetime: null, uncachedInputTokens: 4_000, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 1_000, totalTokens: 5_000 },
+    { id: "snapshot-write", agentId: "primary", observedAt: "2026-08-09T12:03:00.000Z", cacheLifetime: "1h" as const, uncachedInputTokens: 1_000, cacheWriteTokens: 146_282, cacheReadTokens: 0, outputTokens: 2_000, totalTokens: 149_282, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null },
+    { id: "snapshot-read", agentId: "primary", observedAt: "2026-08-09T12:04:00.000Z", cacheLifetime: null, uncachedInputTokens: 1_000, cacheWriteTokens: 759, cacheReadTokens: 146_282, outputTokens: 2_000, totalTokens: 150_041, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null },
+    { id: "snapshot-child", agentId: "child", observedAt: "2026-08-09T12:05:00.000Z", cacheLifetime: null, uncachedInputTokens: 4_000, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 1_000, totalTokens: 5_000, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null },
   ];
   const cacheEvent = (index: number) => ({
     id: `cache-${index}`,

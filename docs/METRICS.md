@@ -63,6 +63,17 @@ All-agent context is the only aggregated context total Pomegr presents. The dash
 
 ## Request snapshots
 
+Each request may carry two bounded work-kind tallies. `issuedWork` counts tool calls
+contained in the same assistant record (`recorded_link`). `precedingWork` counts tool
+results recorded for the same agent since the previous usage-bearing assistant record
+(`transcript_adjacency`); a recognized compaction between assistant records clears the
+tally. Missing content arrays produce empty tallies. Each tally keeps at most 8 kinds,
+sorted by count descending then kind ascending, with counts capped at 999. Unknown tool
+result identities stay generic (`shell`). These associations never attribute tokens to
+an operation, establish causation, or rank operation categories by accumulated tokens.
+Codex snapshots carry empty tallies until its transcript structure is validated separately.
+Focused reports omit these action fields.
+
 `metrics.tokens.requestSnapshots` is a separate bounded feed of valid provider usage observations. Every item represents exactly one request and exposes only an opaque monitor-generated ID, normalized agent ID, normalized observation timestamp, request-local uncached input, cache write, cache read, output, and `totalTokens` recomputed from those four parts. It does not use a provider-reported total. Provider capability gates determine which components are presented; Cache write is currently omitted for Codex.
 
 For live Claude Code and Codex sessions, the provider adapters retain no more than the latest 1,000 normalized observations per agent so context history remains continuous when older transcript records leave a bounded acquisition chunk. Identity, size, complete-record offsets, and bounded continuity evidence govern append compatibility. A replacement is staged separately and atomically swaps only after its complete normalized candidate validates. The independent request-snapshot feed remains capped to its newest 100 valid observations per visible agent. When a provider omits a request identity, Pomegr derives a bounded stable internal identity only from normalized timestamp, model, and token-count fields; neither that identity nor its source fields are exposed through the browser API.

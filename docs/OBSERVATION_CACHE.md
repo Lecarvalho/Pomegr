@@ -1085,6 +1085,16 @@ last-known-good retention apply exactly as they do to other normalized evidence.
 Caches and browser responses may carry only the bounded provider-neutral work-kind enum
 derived during U2 normalization. Raw commands and provider-native tool schemas remain
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.
+Request action correlation is also derived in U2, separately for each resolved Claude
+transcript actor in file order. Only two bounded work-kind count arrays enter normalized
+usage evidence and checkpoints (8 kinds per array, counts 1–999). Tool-use/result identity
+maps and tool details remain adapter-private. Recognized actor compaction timestamps
+clear pending preceding-result counts. D revalidates the arrays and adds only the fixed
+`transcript_adjacency` and `recorded_link` association labels, or null for empty tallies;
+reports omit all four fields. Legacy and Codex evidence defaults to empty arrays.
+This additive evidence follows the existing complete-replacement, atomic-commit,
+last-known-good retention, revision and checkpoint rules. GETs still serve committed
+responses only; action correlation never runs in S Serving or changes UI polling.
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
 context snapshot, bounded agent-reported progress, the activity fallback described below,
