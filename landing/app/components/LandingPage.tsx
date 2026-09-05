@@ -4,6 +4,7 @@ import { WaitlistActions } from "./WaitlistActions";
 import styles from "./LandingPage.module.css";
 
 const GITHUB_URL = "https://github.com/Lecarvalho/pomegr";
+const DOWNLOAD_URL = `${GITHUB_URL}/releases/latest`;
 
 export function LandingPage() {
   return (
@@ -62,11 +63,11 @@ export function LandingPage() {
               <h1 id="hero-title">Visualize what your agents are <em>doing.</em></h1>
               <p>Live execution metadata.<br />Deterministic signals.<br />Visual insights.</p>
               <div className={styles.heroActions}>
-                <a className={styles.primaryAction} href="#waitlist">Join the waitlist <ArrowIcon /></a>
+                <a className={styles.primaryAction} href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
                 <a className={styles.repoAction} href={GITHUB_URL} target="_blank" rel="noreferrer">View public repo</a>
               </div>
               <p className={styles.platformLine}>
-                <span><LaptopIcon />Desktop · planned</span><i>·</i><span><PhoneIcon />iOS · planned</span><i>·</i><span><PhoneIcon />Android · planned</span>
+                <span><LaptopIcon />Windows x64 · available</span><span><PhoneIcon />iOS &amp; Android · planned</span>
               </p>
               <span className={styles.localStamp}>Local<br />first<br /><small>by design</small></span>
             </div>
@@ -203,14 +204,14 @@ export function LandingPage() {
 
       <section className={styles.waitlist} id="waitlist" aria-labelledby="waitlist-title">
         <div className={styles.waitlistIntro}>
-          <p className={styles.annotation}>Planned platforms · desktop, iOS, Android</p>
+          <p className={styles.annotation}>Coming next · iOS and Android</p>
           <h2 id="waitlist-title">Take the observer with you.</h2>
-          <p>Tell us where you want Pomegr next. The current source is public and free to use now.</p>
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">Explore the public repository <ArrowIcon /></a>
+          <p>Pomegr is available now for Windows x64, with installer and portable downloads. Join the waitlist for the planned iOS and Android apps.</p>
+          <a href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
         </div>
         <div className={styles.waitlistTicket}>
-          <div className={styles.ticketTopline}><span>Waitlist</span><code>PMGR / 001</code></div>
-          <h3>Get the app when it lands.</h3>
+          <div className={styles.ticketTopline}><span>Mobile waitlist</span><code>PMGR / 001</code></div>
+          <h3>Hear when the mobile apps land.</h3>
           <WaitlistActions />
         </div>
       </section>

@@ -200,13 +200,13 @@ test("desktop user, contributor, architecture, and release documentation stays e
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_BETA_ACCEPTANCE.md", import.meta.url), "utf8"),
   ]);
-  assert.match(readme, /Windows desktop app \(planned\)/i);
-  assert.match(readme, /No public installer is currently documented as available/i);
-  assert.match(readme, /portable beta \(planned\)/i);
+  assert.match(readme, /Windows x64 desktop app is available now/i);
+  assert.match(readme, /Pomegr-Setup-<version>-x64\.exe/);
+  assert.match(readme, /Pomegr-Portable-<version>-x64\.exe/);
   assert.match(readme, /opt-in phone access/i);
   assert.match(readme, /Sharing is off by default/);
   assert.match(readme, /unencrypted HTTP/);
-  assert.doesNotMatch(readme, /releases\/latest/);
+  assert.match(readme, /https:\/\/github\.com\/Lecarvalho\/Pomegr\/releases\/latest/);
   assert.match(configuration, /Windows x64 only/);
   assert.match(configuration, /dynamic `127\.0\.0\.1` ports/);
   assert.match(configuration, /Quiet for one hour.*temporary/i);

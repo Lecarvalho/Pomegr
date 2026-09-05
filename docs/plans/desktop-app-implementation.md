@@ -1,5 +1,10 @@
 # Pomegr desktop app implementation plan
 
+> Historical plan: Pomegr desktop has since shipped for Windows x64. The
+> [latest stable release](https://github.com/Lecarvalho/Pomegr/releases/latest) includes installer and portable downloads.
+> The planned milestones and acceptance notes below remain historical records
+> and should not be read as a statement that desktop is still unavailable.
+
 ## Objective
 
 Distribute Pomegr as a one-click Windows desktop application without requiring users to clone the repository, install Node.js, or keep a terminal open. Preserve the existing local-first, read-only architecture, normalized browser API, provider isolation, deterministic metrics, and privacy boundaries.

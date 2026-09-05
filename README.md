@@ -2,6 +2,19 @@
 
 Pomegr is a local-first, read-only observer that makes coding-agent activity and efficiency signals easier to understand without exposing private session content.
 
+## Windows desktop app
+
+The Windows x64 desktop app is available now. [Download the latest release](https://github.com/Lecarvalho/Pomegr/releases/latest) and choose:
+
+- **Installer:** `Pomegr-Setup-<version>-x64.exe` for an installed app with automatic update checks and downloads. Restart to install an update when you're ready.
+- **Portable:** `Pomegr-Portable-<version>-x64.exe` to run without installing. Portable mode does not support automatic updates or launch at login.
+
+No Node.js setup is required for either download.
+
+The desktop app includes opt-in phone access under **Settings → Phone access**. Pair a
+phone browser by QR code on the same trusted private network. Sharing is off by default
+and uses unencrypted HTTP; see [configuration and troubleshooting](docs/CONFIGURATION.md#another-device-cannot-open-the-dashboard).
+
 ## Run the web version
 
 To run from source with Node.js 22.13 or newer:
@@ -26,18 +39,6 @@ contract, available stages, and the separately planned browser-render timing mil
   <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
 </p>
 
-## Windows desktop app (planned)
-
-Pomegr’s planned desktop app targets Windows x64. No public installer is currently documented as available.
-
-Desktop builds include opt-in phone access under **Settings → Phone access**. Pair a
-phone browser by QR code on the same trusted private network. Sharing is off by default
-and uses unencrypted HTTP; see [configuration and troubleshooting](docs/CONFIGURATION.md#another-device-cannot-open-the-dashboard).
-
-## Portable beta (planned)
-
-A portable Windows x64 beta is planned. No public download is currently documented as available.
-
 ## Documentation
 
 Start with the [Pomegr user guide](docs/user-guide/README.md) to understand the app,
@@ -60,7 +61,7 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 ## Current limitations
 
-- The planned desktop app targets Windows x64 only.
+- Desktop downloads are currently available for Windows x64 only.
 - Claude Code and Codex expose different amounts of session data.
 - Efficiency signals are deterministic heuristics, not authoritative judgments.
 

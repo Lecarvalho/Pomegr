@@ -5,10 +5,10 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const description = "A quiet, local observer for coding-agent sessions.";
+const description = "A quiet, local observer for coding-agent sessions. Available now for Windows x64.";
 const socialTitle = "Pomegr — Keep your bearings while agents work";
 const socialDescription =
-  "See live activity, context, tasks, Git changes, and usage in one read-only operations view.";
+  "See live activity, context, tasks, Git changes, and usage in one read-only operations view. Download for Windows x64.";
 const socialImage = {
   url: "/landing/social/pomegr-og-inclined-quiet-observer.png",
   width: 1200,
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
 const designContract = `
 THESIS: Pomegr turns an invisible agent session into a legible operations wall; it refuses the centered SaaS hero and floating feature-card grid.
 OWN-WORLD: Warm drafting paper, a near-black monitor field, pomegranate-red stamps, acid-green live signals, thin ink rules, field notes, and the existing Pomegr logo.
-STORY: See one live session branch into context, tasks, Git, and usage; understand the local read-only boundary; join the platform waitlist or use the repository now.
+STORY: See one live session branch into context, tasks, Git, and usage; understand the local read-only boundary; download for Windows or join the mobile waitlist.
 FIRST VIEWPORT: A slim paper header sits over a dark observer canvas taking most of the fold; a torn-paper headline and primary action overlap its lower-left edge.
 FORM: Immersive operations wall, the approved sixth grounded direction, seed 65230478.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md

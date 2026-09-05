@@ -110,13 +110,13 @@ export default function AboutPage() {
         <section className={styles.closing} aria-labelledby="closing-title">
           <div>
             <h2 id="closing-title">Take the observer with you.</h2>
-            <p>Join from the landing page with one email. Duplicate signups are kept only once.</p>
+            <p>Pomegr is available now for Windows x64. Choose the installer or portable app, or join the waitlist for the planned iOS and Android apps.</p>
           </div>
           <div className={styles.ticket}>
-            <div><span>Waitlist</span><code>PMGR / ABOUT</code></div>
-            <strong>Your ticket may already be here.</strong>
-            <WaitlistStatusLink className={styles.ticketAction} />
-            <a className={styles.ticketSecondary} href={REPOSITORY} target="_blank" rel="noreferrer">Use the source now</a>
+            <div><span>Windows x64 · available</span><code>PMGR / ABOUT</code></div>
+            <strong>Your observer is ready.</strong>
+            <a className={styles.ticketAction} href={`${REPOSITORY}/releases/latest`}>Download for Windows <ArrowIcon /></a>
+            <WaitlistStatusLink className={styles.ticketSecondary} />
           </div>
         </section>
       </article>

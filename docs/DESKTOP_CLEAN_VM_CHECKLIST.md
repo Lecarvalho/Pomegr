@@ -1,5 +1,11 @@
 # Windows desktop clean-VM checklist
 
+> Historical acceptance record: this checklist covers the Pomegr 0.2.4
+> candidate and remains pending as an evidence record. Pomegr desktop is now
+> [available for Windows x64](https://github.com/Lecarvalho/Pomegr/releases/latest),
+> including installer and portable downloads. The pending 0.2.4 checklist
+> does not mean the desktop application is unavailable.
+
 Use this checklist for `POMEGR-DT-08` acceptance of Pomegr 0.2.4 on a clean, supported Windows x64 virtual machine. Record only software versions, paths owned by Pomegr, cryptographic artifact evidence, and pass/fail results. Do not record usernames, provider paths, session titles, repository paths, prompts, responses, commands, credentials, or screenshots containing private data.
 
 ## Acceptance status

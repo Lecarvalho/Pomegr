@@ -983,6 +983,7 @@
 .pitchCard .platformLine {
   margin-top: 17px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
   color: #595651;
@@ -991,6 +992,7 @@
 
 .platformLine span {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
 }
@@ -1001,11 +1003,6 @@
   fill: none;
   stroke: currentColor;
   stroke-width: 1.35;
-}
-
-.platformLine i {
-  color: var(--landing-red);
-  font-style: normal;
 }
 
 .localStamp {

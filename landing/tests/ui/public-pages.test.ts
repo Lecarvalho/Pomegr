@@ -16,8 +16,10 @@ describe("public landing surfaces", () => {
     expect(source).toContain('<SiteHeader current="home" />');
     expect(source).toContain('<SiteFooter current="home" />');
     expect(source).toContain('id="waitlist"');
-    expect(source).toContain("Planned platforms · desktop, iOS, Android");
-    expect(source).toContain("Desktop · planned");
+    expect(source).toContain("Coming next · iOS and Android");
+    expect(source).toContain("Windows x64 · available");
+    expect(source).toContain('href={DOWNLOAD_URL}>Download for Windows');
+    expect(source).toContain('`${GITHUB_URL}/releases/latest`');
     expect(source).not.toContain("Field release · desktop, iOS, Android");
     expect(source).not.toMatch(/from\s+["'](?:\.\.\/){3,}/);
     expect(source).not.toContain("issues/new");
@@ -39,7 +41,7 @@ describe("public landing surfaces", () => {
     expect(source).not.toContain('website: ""');
     expect(source).toContain("You’re on the waitlist.");
     expect(source).not.toContain("github.com");
-    expect(waitlistLink).toContain("Join the waitlist");
+    expect(waitlistLink).toContain("Join the mobile waitlist");
     expect(waitlistLink).not.toContain("/api/waitlist/status");
     expect(waitlistLink).not.toContain("Check your waitlist ticket");
     expect(waitlistLink).not.toContain("useState");

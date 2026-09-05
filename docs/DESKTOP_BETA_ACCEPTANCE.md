@@ -1,5 +1,9 @@
 # Windows desktop beta acceptance
 
+> Pomegr desktop is [available for Windows x64](https://github.com/Lecarvalho/Pomegr/releases/latest).
+> This checklist tracks beta acceptance evidence separately from public availability;
+> publication does not mark its unchecked gates as passed.
+
 This is the release-candidate checklist for a Pomegr Windows x64 beta. It complements the earlier unsigned alpha record in `DESKTOP_CLEAN_VM_CHECKLIST.md`; that alpha evidence does not prove signing or automatic updates. Complete this checklist on a clean, fully patched Windows x64 VM using assets downloaded from the same draft or prerelease. Never replace a manual result with a unit-test result.
 
 Record only product versions, public release/workflow URLs, public artifact names and checksums, the VM image/version, fixed accept/reject outcomes, and pass/fail states. Do not record usernames, provider paths, session titles, repositories, prompts, responses, commands, credentials, certificate Subjects, or screenshots containing private data. The acceptance JSON uses exact key allowlists at every level; it has no free-form notes or path fields.
