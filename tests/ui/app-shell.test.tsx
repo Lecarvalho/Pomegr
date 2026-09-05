@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -78,6 +78,23 @@ afterEach(() => {
 });
 
 describe("Command Center app shell", () => {
+  it("keeps the session breadcrumb in the header and updates it on route changes", async () => {
+    navigation.pathname = "/sessions/claude-live-1";
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    const { rerender } = render(<AppShell><h1>Session content</h1></AppShell>);
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(breadcrumb.closest("header")).toBe(screen.getByRole("banner"));
+    expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
+    expect(await within(breadcrumb).findByText("Pomegr")).toHaveAttribute("aria-current", "page");
+    navigation.pathname = "/sessions/codex-missing";
+    rerender(<AppShell><h1>Loading session</h1></AppShell>);
+    expect(within(breadcrumb).getByText("Session")).toHaveAttribute("aria-current", "page");
+    expect(within(breadcrumb).queryByText("Pomegr")).not.toBeInTheDocument();
+    navigation.pathname = "/sessions";
+    rerender(<AppShell><h1>Sessions</h1></AppShell>);
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
+  });
+
   it("uses the platform-appropriate global search hint", () => {
     expect(shortcutHintForPlatform("Win32")).toBe("Ctrl K");
     expect(shortcutHintForPlatform("Linux x86_64")).toBe("Ctrl K");

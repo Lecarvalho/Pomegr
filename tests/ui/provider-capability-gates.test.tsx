@@ -10,7 +10,7 @@ describe("provider capability gates", () => {
   it.each([
     ["Claude Code", claudeCapabilities, "claude:999b3d6b-24d5-4d66-93b1-38f502f5f811"],
     ["Codex", codexCapabilities, "codex:019ff0fa-1f93-7032-bc0d-ddec9cf3a7e4"],
-  ] as const)("shows the full project and local %s session ID without repeating the provider", (source, capabilities, id) => {
+  ] as const)("shows the local %s session ID without repeating the breadcrumb project", (source, capabilities, id) => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       id,
@@ -19,7 +19,8 @@ describe("provider capability gates", () => {
 
     render(<LiveClockProvider running={false}><SessionHero session={session} source={source} capabilities={capabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("pomegr-observability-dashboard")).toBeInTheDocument();
+    expect(screen.queryByText("pomegr-observability-dashboard")).not.toBeInTheDocument();
+    expect(screen.getByText(source)).toBeInTheDocument();
     expect(screen.getByText(id.slice(id.indexOf(":") + 1))).toBeInTheDocument();
     expect(screen.queryByText(id)).not.toBeInTheDocument();
   });

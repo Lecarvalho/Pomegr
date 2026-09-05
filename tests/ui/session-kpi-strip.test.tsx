@@ -81,13 +81,13 @@ describe("session hero status", () => {
     const session = { ...state().session!, title: "A long session title with an_unbroken_identifier_that_must_wrap_across_a_narrow_phone_viewport", summary: null, signal: null };
     render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(session.title);
-    const summary = screen.getByText("Summary and provider status");
+    const summary = screen.getByText("Session summary");
     expect(summary.tagName).toBe("SUMMARY");
     expect(summary.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(summary);
     expect(summary.closest("details")).toHaveAttribute("open");
     resize(false);
-    expect(screen.queryByText("Summary and provider status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Session summary")).not.toBeInTheDocument();
     expect(screen.getByText("No provider summary was recorded for this session.")).toBeInTheDocument();
   });
 
@@ -98,7 +98,7 @@ describe("session hero status", () => {
     else session.signal = { label: "Privacy verified", tone: "positive", reportedAt: "2026-09-05T12:00:00Z" };
     const generate = vi.fn();
     const { rerender } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
-    expect(screen.getByText("Summary and provider status").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText(kind === "summary" ? "Provider summary" : "Session summary").closest("details")).toHaveAttribute("open");
     fireEvent.click(screen.getByRole("button", { name: "Download report" }));
     expect(generate).toHaveBeenCalledOnce();
     rerender(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} reportGenerating />);
@@ -106,15 +106,17 @@ describe("session hero status", () => {
   });
 
   it.each([
-    ["working", false, "Live session · active"],
-    ["idle", false, "Live session · idle"],
-    ["needs_input", false, "Live session · needs your input"],
-    ["unknown", false, "Live session · unknown"],
+    ["working", false, "Live session · In progress"],
+    ["idle", false, "Live session · Idle"],
+    ["open", false, "Live session · Open"],
+    ["stopped", false, "Live session · Stopped"],
+    ["needs_input", false, "Live session · Needs input"],
+    ["unknown", false, "Live session · Unknown"],
     ["working", true, "Recorded session · ended"],
   ] as const)("renders %s with historical=%s", (activityStatus, historical, label) => {
     render(<SessionHero session={state().session} source="Claude Code" capabilities={claudeCapabilities} historical={historical} activityStatus={activityStatus} />);
     expect(screen.getByLabelText("Session status")).toHaveTextContent(label);
-    expect(screen.getByText(historical ? "Historical snapshot" : "Live session")).toHaveClass("commandBadge");
+    expect(screen.queryByText("Historical snapshot")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session status")).toHaveTextContent("Time unavailable");
   });
 });

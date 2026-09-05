@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorState, SessionReadiness, SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
@@ -31,7 +29,6 @@ import { usePhoneLayout } from "./hooks/usePhoneLayout";
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
   getDesktopState(): Promise<DesktopState | null>;
-  setPaused(value: boolean): Promise<DesktopState | null>;
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
 
@@ -169,17 +166,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     };
   }, [paused, refresh, selectedIsHistorical]);
 
-  const togglePause = useCallback(() => {
-    const next = !paused;
-    const bridge = desktopBridge();
-    setPaused(next);
-    if (!bridge) return;
-    void bridge.setPaused(next).then((state) => {
-      if (!state) return;
-      setPaused(state.paused);
-    }, () => setPaused(!next));
-  }, [paused]);
-
   const activeSessionId = data.session?.id ?? null;
   const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId
     ? agentActivityViewPreference.viewMode
@@ -248,21 +234,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     }
   };
 
-  const breadcrumbProject = selectedSession?.project || ((!selectedSessionId || selectedSessionId === data.session?.id) ? data.session?.project : null);
-
   return (
     <LiveClockProvider running={clockRunning}>
       <section className="commandSessionView" id="top">
-        <nav className="sessionBreadcrumb" aria-label="Breadcrumb">
-          <ol>
-            <li><Link href="/sessions">Sessions</Link></li>
-            {breadcrumbProject && <li>
-              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg>
-              <span aria-current="page">{breadcrumbProject}</span>
-            </li>}
-          </ol>
-        </nav>
-        <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session) && !phone} onGenerateReport={generateReport} onTogglePause={togglePause} />
+        <SessionCommandBar connected={data.connected} connecting={connecting} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session) && !phone} onGenerateReport={generateReport} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} activityStatus={selectedSession?.activityStatus} reportGenerating={reportGenerating} onGenerateReport={generateReport} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
@@ -290,7 +265,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
 
 function AwaitingSession({ connected, connecting, loadingSession, session, readiness }: { connected: boolean; connecting: boolean; loadingSession: boolean; session: SessionSummary | null | undefined; readiness?: SessionReadiness }) {
   if (session && readiness?.core === "unavailable") return <section className="sessionView" aria-label={`Session ${session.title}`}>
-    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span>{session.source}</span></div></div></header>
+    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /></div></div></header>
     <section className="panel sessionLoadingPanel" aria-label="Recorded activity" role="status">
       <strong>No recorded activity yet</strong>
       <p>Pomegr has detected this session. Activity and context will appear here when the provider records them.</p>
@@ -319,7 +294,7 @@ function SessionLoadingShell({ session, readiness }: { session: SessionSummary; 
   const domainSkeleton = (domain: keyof SessionReadiness) => readiness[domain] === "loading";
   return <section className="sessionView sessionView-loading" aria-label={`Loading ${session.title}`} aria-busy="true">
     <header className="hero">
-      <div><h1>{session.title}</h1><div className="sessionIdentity"><strong>{session.project}</strong><span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={session.source} /></span><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
+      <div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
       <span className="uiSkeleton sessionLoadingStatus" aria-hidden="true" />
     </header>
     <p className="srOnly" role="status">Loading session evidence for {session.title}.</p>

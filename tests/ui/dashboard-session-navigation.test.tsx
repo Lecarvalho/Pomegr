@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
@@ -167,7 +167,8 @@ describe("dashboard session navigation", () => {
     const beforeOpenPoll = stateCalls();
     await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
     expect(stateCalls()).toBeGreaterThan(beforeOpenPoll);
-    expect(screen.getByText("Open")).toBeInTheDocument();
+    expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · Open");
+    expect(screen.queryByLabelText("Session state: Open")).not.toBeInTheDocument();
     renderRow({ ...row, isLive: false, activityStatus: "idle" });
     await act(async () => {});
     const beforeHistory = stateCalls();
@@ -192,12 +193,9 @@ describe("dashboard session navigation", () => {
     const repository = screen.getByText("Repository").closest("details");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
-    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(breadcrumb.parentElement?.firstElementChild).toBe(breadcrumb);
-    expect(breadcrumb.nextElementSibling).toHaveAttribute("aria-label", "Session controls");
-    expect(screen.getByLabelText("Session state: In progress")).toBeInTheDocument();
-    expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
-    expect(within(breadcrumb).getByText(state.session!.project)).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · In progress");
+    expect(screen.queryByLabelText("Session state: In progress")).not.toBeInTheDocument();
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);
     expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(contextPanel);
     expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));

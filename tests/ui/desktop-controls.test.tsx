@@ -1,5 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
 import type { DesktopState } from "../../app/components/DesktopControls";
@@ -16,8 +15,7 @@ afterEach(() => {
 });
 
 describe("desktop controls", () => {
-  it("keeps session pause accessible without desktop settings in the session toolbar", async () => {
-    const user = userEvent.setup();
+  it("keeps observation controls out of the session toolbar", async () => {
     let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true } };
     let stateListener: ((next: DesktopState) => void) | undefined;
     const setPaused = vi.fn(async (value: boolean) => (state = { ...state, paused: value }));
@@ -42,15 +40,12 @@ describe("desktop controls", () => {
       : response(createEmptyMonitorState({ connected: true })));
 
     render(<Dashboard />);
-    await screen.findByLabelText("Session state: Unknown");
+    await screen.findByRole("heading", { name: "No active session yet" });
     expect(screen.queryByText("Desktop")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Desktop controls" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Pause updates" }));
-    expect(setPaused).toHaveBeenCalledWith(true);
-    expect(await screen.findByRole("button", { name: "Resume updates" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Session state: Unknown")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Resume updates" }));
-    expect(setPaused).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByRole("button", { name: "Pause updates" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume updates" })).not.toBeInTheDocument();
+    expect(setPaused).not.toHaveBeenCalled();
     expect(setLaunchAtLogin).not.toHaveBeenCalled();
     expect(setCloseBehavior).not.toHaveBeenCalled();
     expect(setNotifications).not.toHaveBeenCalled();
@@ -58,7 +53,7 @@ describe("desktop controls", () => {
     expect(quit).not.toHaveBeenCalled();
 
     act(() => stateListener?.({ ...state, paused: false }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Pause updates" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Pause updates" })).not.toBeInTheDocument();
   });
 
   it("tray pause stops both state and session-catalog polling without invoking provider controls", async () => {
