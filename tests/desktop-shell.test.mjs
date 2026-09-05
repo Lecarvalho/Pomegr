@@ -149,7 +149,7 @@ test("desktop navigation denies webviews, unexpected origins, and non-allowliste
   });
   const event = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
   const internal = event();
-  contents.emit("will-navigate", internal, "http://127.0.0.1:4444/about");
+  contents.emit("will-navigate", internal, "http://127.0.0.1:4444/settings?section=about");
   assert.equal(internal.prevented, false);
   const unexpected = event();
   contents.emit("will-navigate", unexpected, "http://127.0.0.1:5555/");

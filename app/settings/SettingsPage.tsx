@@ -6,6 +6,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { DEFAULT_DISPLAY_PREFERENCES, useDisplayPreferences, type DisplayPreferences } from "../hooks/DisplayPreferencesContext";
 import { PhoneAccessControls, usePhoneAccessDesktopAvailable } from "../components/PhoneAccessControls";
 import { DesktopUpdateSettings, useDesktopUpdates } from "./DesktopUpdateSettings";
+import { AboutDetails } from "./AboutDetails";
 
 function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
   label: string;
@@ -39,14 +40,14 @@ function PreferenceRow({ id, label, description, checked, onChange }: {
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "about" }) {
   const updates = useDesktopUpdates();
   const phoneAccessAvailable = usePhoneAccessDesktopAvailable();
   const sections = phoneAccessAvailable
     ? [["appearance", "Appearance"], ["notifications", "Notifications"], ["phone", "Phone access"], ["data", "Data display"], ["about", "About"]] as const
     : [["appearance", "Appearance"], ["notifications", "Notifications"], ["data", "Data display"], ["about", "About"]] as const;
   type SectionId = typeof sections[number][0];
-  const [section, setSection] = useState<SectionId>("appearance");
+  const [section, setSection] = useState<SectionId>(initialSection);
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const { preferences, setPreference, resetPreferences } = useDisplayPreferences();
   const defaultsActive = (Object.keys(DEFAULT_DISPLAY_PREFERENCES) as Array<keyof DisplayPreferences>)
@@ -74,7 +75,7 @@ export function SettingsPage() {
         {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>Notification controls are available in the desktop runtime and will move here in a future release.</p><SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow><SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
         {section === "phone" && <section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
         {section === "data" && <section id="settings-panel-data" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-data"><h2>Data display</h2><p>These preferences apply to every live and historical session.</p><div className="displayPreferenceList"><PreferenceRow id="context-history-visible" label="Context history" description="Show the context-level timeline in live and historical sessions." checked={preferences.contextHistory} onChange={(checked) => setPreference("contextHistory", checked)} /><PreferenceRow id="estimated-cost-visible" label="API list-rate estimate" description="Show the provider-reported reference estimate when available. This is not a bill or subscription spend." checked={preferences.estimatedCost} onChange={(checked) => setPreference("estimatedCost", checked)} /></div></section>}
-        {section === "about" && <section id="settings-panel-about" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-about"><div className="commandAboutIdentity"><PomegrMark className="commandAboutIdentityMark" /><div className="commandAboutIdentityText"><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p></div></div>{updates.available && <><SettingRow label="Application version" description="Pomegr desktop"><span className="commandMonoValue">{updates.state?.applicationVersion ? `v${updates.state.applicationVersion}` : "Version unavailable"}</span></SettingRow><DesktopUpdateSettings updates={updates} /></>}<SettingRow label="Monitor boundary" description="Normalized metadata is served from the loopback monitor. Conversation content remains private."><span className="commandReadyState">Read-only</span></SettingRow></section>}
+        {section === "about" && <section id="settings-panel-about" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-about"><div className="commandAboutIdentity"><PomegrMark className="commandAboutIdentityMark" /><div className="commandAboutIdentityText"><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p></div></div>{updates.available && <><SettingRow label="Application version" description="Pomegr desktop"><span className="commandMonoValue">{updates.state?.applicationVersion ? `v${updates.state.applicationVersion}` : "Version unavailable"}</span></SettingRow><DesktopUpdateSettings updates={updates} /></>}<SettingRow label="Monitor boundary" description="Normalized metadata is served from the loopback monitor. Conversation content remains private."><span className="commandReadyState">Read-only</span></SettingRow><AboutDetails /></section>}
       </div>
     </section>
   );

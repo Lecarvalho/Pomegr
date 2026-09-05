@@ -189,7 +189,7 @@ function showShellWindow() {
 
 function openAbout() {
   if (!mainWindow || mainWindow.isDestroyed() || !webHandle?.origin) return;
-  void mainWindow.loadURL(`${webHandle.origin}/about`).then(showShellWindow, showShellWindow);
+  void mainWindow.loadURL(`${webHandle.origin}/settings?section=about`).then(showShellWindow, showShellWindow);
 }
 
 function openNotificationSession(sessionId) {

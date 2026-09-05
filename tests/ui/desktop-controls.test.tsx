@@ -46,7 +46,7 @@ describe("desktop controls", () => {
     await user.click(screen.getByText("Desktop"));
     const controls = screen.getByRole("group", { name: "Desktop controls" });
     expect(controls).toBeInTheDocument();
-    expect(within(controls).getByRole("link", { name: "About Pomegr" })).toHaveAttribute("href", "/about");
+    expect(within(controls).getByRole("link", { name: "About Pomegr" })).toHaveAttribute("href", "/settings?section=about");
 
     await user.click(screen.getByRole("button", { name: "Pause live refresh" }));
     expect(setPaused).toHaveBeenCalledWith(true);

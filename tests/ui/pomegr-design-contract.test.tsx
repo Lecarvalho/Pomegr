@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import AboutPage from "../../app/about/page";
+import { SettingsPage } from "../../app/settings/SettingsPage";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
@@ -23,9 +23,9 @@ describe("Pomegr visual contract", () => {
   });
 
   it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {
-    render(<AboutPage />);
+    render(<SettingsPage initialSection="about" />);
 
-    expect(screen.getByRole("heading", { name: "A quiet view into active work." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "About Pomegr" })).toBeInTheDocument();
     expect(shellSource).toMatch(/<PomegrBrand href="\/" label="Pomegr home"/);
     expect(brandSource).not.toMatch(/<svg|brandMobileWordmark|brandText/);
     expect(brandSource).toMatch(/className=\{`pomegrMark pomegrMark-\$\{variant\}/);
@@ -33,8 +33,8 @@ describe("Pomegr visual contract", () => {
     expect(existsSync(join(process.cwd(), "public", "pomegr-mark-painted.png"))).toBe(true);
     expect(existsSync(join(process.cwd(), "public", "pomegr-mark-brush-outline.png"))).toBe(true);
     expect(brandSource).toMatch(/className="brandWordmark">Pomegr/);
-    expect(screen.getByRole("heading", { name: "Known issues" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
+    expect(screen.getByText("Known issues", { selector: "summary" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)", hidden: true })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.png/);
   });
 

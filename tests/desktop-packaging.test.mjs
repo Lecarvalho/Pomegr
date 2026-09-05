@@ -230,7 +230,7 @@ test("packaged legal copies match canonical project documents and About links ev
     assert.equal(publicCopy.replaceAll("\r\n", "\n"), source.replaceAll("\r\n", "\n"));
   }
   const [about, notices] = await Promise.all([
-    readFile(new URL("../app/about/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/settings/AboutDetails.tsx", import.meta.url), "utf8"),
     readFile(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8"),
   ]);
   for (const [, packaged] of mappings) assert.match(about, new RegExp(`/legal/${packaged.replaceAll(".", "\\.")}`));

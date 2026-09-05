@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Choose which session evidence Pomegr displays.",
 };
 
-export default function Page() {
-  return <SettingsPage />;
+export default async function Page({ searchParams }: { searchParams: Promise<{ section?: string | string[] }> }) {
+  const { section } = await searchParams;
+  const initialSection = section === "about" ? "about" : "appearance";
+  return <SettingsPage key={initialSection} initialSection={initialSection} />;
 }

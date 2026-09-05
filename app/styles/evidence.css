@@ -49,8 +49,6 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .desktopSelect { align-items: flex-start; flex-direction: column; gap: 7px; }
 .desktopSelect select { width: 100%; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); font: inherit; }
 .desktopControlsPanel > .desktopQuit { margin-top: 3px; color: var(--red); }
-
-.aboutPage { padding: clamp(70px, 10vw, 130px) 0 90px; }
 .displayPreferenceList { padding: 0 26px; }
 .displayPreferenceRow { min-height: 96px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; }
 .displayPreferenceRow + .displayPreferenceRow { border-top: 1px solid var(--line); }
@@ -63,13 +61,6 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .displayPreferenceRow input:checked { border-color: color-mix(in srgb, var(--green) 70%, var(--line)); background: color-mix(in srgb, var(--green) 24%, var(--panel)); }
 .displayPreferenceRow input:checked::after { background: var(--green); transform: translateX(18px); }
 .displayPreferenceRow input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.aboutGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 80px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
-.aboutGrid > div { min-height: 210px; padding: 28px; background: rgba(251,250,246,.94); }
-.aboutGrid h2 { margin: 28px 0 10px; font: 400 23px/1.15 var(--font-inter), sans-serif; }
-.aboutGrid p { margin: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.65; }
-.aboutNote { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 36px; margin-top: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: rgba(251,250,246,.94); }.aboutNote h2 { margin: 10px 0 0; font: 400 23px/1.15 var(--font-inter), sans-serif; }.aboutNote p { margin: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.7; }.aboutNote a { color: var(--green); text-underline-offset: 3px; }.aboutNote code { color: var(--ink); font: var(--text-xs)/1.5 var(--font-geist-mono), monospace; }.legalCopy { min-width: 0; }.legalCopy nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0; font-size: var(--text-xs); line-height: 1.6; }.legalCopy a { overflow-wrap: anywhere; }
-
-.aboutIssueList { min-width: 0; margin: 0; padding: 0; list-style: none; }.aboutIssueList li + li { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }.aboutIssueList h3 { margin: 0 0 8px; color: var(--ink); font-size: var(--text-sm); font-weight: 620; line-height: 1.35; }
 
 .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 48px; padding: 46px 0 30px; }
 .hero > div:first-child { min-width: 0; flex: 1 1 auto; }
@@ -646,8 +637,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .gitDetails { grid-template-columns: 1fr; }.gitCommits { border-right: 0; border-bottom: 1px solid var(--line); }.contentGrid { grid-template-columns: 1fr; }
   .cachePanel { grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); }
   .machineryCategories { grid-template-columns: repeat(3, 1fr); }
-  .aboutGrid { grid-template-columns: 1fr; }.aboutNote { grid-template-columns: 1fr; gap: 18px; }
-  .aboutGrid > div { min-height: 0; }
   .hero { display: block; padding: 40px 0 28px; }
   .sessionMeta { width: 100%; min-width: 0; margin-top: 28px; }
 }
@@ -691,7 +680,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .cacheEvidenceExpand { width: calc(100% - 28px); margin-right: 14px; margin-left: 14px; }
   .cacheEvidenceRow { min-height: 48px; padding: 8px 14px; grid-template-columns: 22px minmax(0, 1fr) auto; }
   .cacheEvidenceState { padding-right: 14px; padding-left: 14px; }
-  .aboutPage { padding: 58px 0 60px; }.aboutGrid { margin-top: 50px; }.aboutGrid > div { padding: 23px; }
   .displayPreferenceList { padding: 0 20px; }.displayPreferenceRow { min-height: 112px; gap: 18px; }.displayPreferenceRow label span { font-size: var(--text-xs); }
   .pullRequestPopover { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100vh - 28px); border-radius: var(--panel-radius); box-shadow: 0 24px 70px rgba(25,32,29,.28); }.pullRequestList { max-height: min(58vh, 420px); }.pullRequestRow { grid-template-columns: 36px minmax(0, 1fr); }.pullRequestTitle { align-items: flex-start; flex-direction: column; gap: 5px; }.pullRequestTitle strong { overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.35; }.pullRequestStats { grid-column: 2; display: flex; justify-content: flex-start; min-width: 0; }.pullRequestStats i { margin: 0 0 0 auto; }
   .hero { padding: 36px 0 24px; }.hero h1 { font-size: 40px; }.sessionMeta { margin-top: 23px; }
@@ -825,8 +813,6 @@ html[data-theme="dark"] .attentionNotice small,
 html[data-theme="dark"] .notice,
 html[data-theme="dark"] .planTaskCaution { color: var(--amber); }
 html[data-theme="dark"] .notice { border-color: var(--line-strong); }
-html[data-theme="dark"] .aboutGrid > div,
-html[data-theme="dark"] .aboutNote,
 html[data-theme="dark"] .panel { background: rgba(23,29,26,.94); }
 html[data-theme="dark"] .reportButton,
 html[data-theme="dark"] .reportButton:hover:not(:disabled) { border-color: var(--green); background: var(--green); color: var(--muted); }
@@ -923,17 +909,17 @@ html[data-theme="dark"] .sessionSidebar { scrollbar-color: #46524c transparent; 
 :where(a, button, summary):focus-visible { outline-color: var(--focus-ring); }
 .brand { color: var(--brand); }
 .sessionSidebar { background: var(--sidebar); }
-.panel, .aboutGrid > div, .aboutNote { background: var(--panel); }
+.panel { background: var(--panel); }
 .desktopControlsPanel, .agentPopover { border-color: var(--popover-line); background: var(--popover); }
 .insight, .currentActivitySection, .branchComparison { background: var(--panel-2); }
-.panel, .aboutGrid, .aboutNote, .attentionNotice, .notice { border-color: var(--line); }
+.panel, .attentionNotice, .notice { border-color: var(--line); }
 .liveSessionLink:hover, .historyProjectSessions button:hover, .desktopControlsPanel > button:hover,
 .desktopControlsPanel > a:hover, .ghostButton:hover { background: var(--panel-2); }
 .liveSessionLink.selected, .historyList button.selected { background: var(--panel); box-shadow: none; outline: 1px solid var(--line); outline-offset: -1px; }
 .ghostButton, .desktopControls > summary, .themeToggle { background: var(--panel); }
 .themeToggle:hover, .ghostButton:hover { border-color: var(--line-strong); color: var(--ink); }
 .reportButton, .reportButton:hover:not(:disabled) { border-color: var(--brand); background: var(--brand); color: var(--panel); }
-.textButton, .machineryPopoverTrigger, .sessionMenuButton, .aboutNote a, footer a:hover { color: var(--brand); }
+.textButton, .machineryPopoverTrigger, .sessionMenuButton, footer a:hover { color: var(--brand); }
 .pullRequestRow, .gitListHeader, .gitCommit, .gitFile, .agentPopoverIntro,
 .metricPopoverRow, .machineryMeta, .machineryCategory, .machineryItems, .machineryItem,
 .agentRow, .skillPopoverRow, .executionTaskSection + .executionTaskSection, .activityRow { border-color: var(--line); }
@@ -1007,15 +993,9 @@ body { font-size: var(--text-base); line-height: 1.5; font-weight: 400; font-fam
   background: var(--panel);
   box-shadow: none;
 }
-.aboutBrandMark { position: relative; display: block; width: 64px; height: 64px; margin: 0 0 26px; }
-.aboutBrandMark img { position: absolute; inset: 0; display: block; width: 64px; height: 64px; }
-.aboutPage > h1 { font-size: clamp(44px, 6vw, 68px); font-weight: 480; }
-.aboutLead { font-size: clamp(18px, 2vw, 24px); }
-.aboutGrid h2, .aboutNote h2 { font-size: 18px; font-weight: 520; }
 
 html[data-theme="dark"] .sessionSidebar { background: var(--sidebar); scrollbar-color: var(--line-strong) transparent; }
-html[data-theme="dark"] .panel, html[data-theme="dark"] .aboutGrid > div,
-html[data-theme="dark"] .aboutNote { background: var(--panel); }
+html[data-theme="dark"] .panel { background: var(--panel); }
 html[data-theme="dark"] .ghostButton, html[data-theme="dark"] .themeToggle,
 html[data-theme="dark"] .desktopControls > summary { background: var(--panel-2); }
 html[data-theme="dark"] .liveSessionLink:hover,

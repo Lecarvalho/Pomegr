@@ -51,7 +51,7 @@ export function DesktopControls({ state, onTogglePause, onSetLaunchAtLogin, onSe
             <option value="quit">Quit Pomegr</option>
           </select>
         </label>
-        <a href="/about">About Pomegr</a>
+        <a href="/settings?section=about">About Pomegr</a>
         <button className="desktopQuit" type="button" onClick={onQuit}>Quit Pomegr</button>
       </div>
     </details>

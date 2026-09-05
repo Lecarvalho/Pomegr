@@ -51,11 +51,16 @@ test("server-renders the personal Pomegr Home", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
-test("keeps the privacy explanation on the about page", async () => {
+test("removes the obsolete standalone About page", async () => {
   const response = await render("/about");
+  assert.equal(response.status, 404);
+});
+
+test("opens the Settings About tab with privacy and legal explanations", async () => {
+  const response = await render("/settings?section=about");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /About .* Pomegr/);
+  assert.match(html, /About Pomegr/);
   assert.match(html, /Observe coding-agent sessions without exposing prompts or responses/);
   assert.match(html, /Pomegr analyzes normalized execution metadata only/);
   assert.match(html, /What the estimate means/);
