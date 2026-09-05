@@ -68,6 +68,13 @@ test("native presence updates committed Live state without transcript growth or 
     providerRegistry: registry, checkpointStore: false, observationCommitDelayMs: 0,
     scheduleObservation: (task, delay) => setTimeout(task, delay),
     resourceUsageSampler: { async sample() {}, get() { return null; } },
+    // Keep unrelated Git processes from holding the fixture cwd during Windows cleanup.
+    readGitState() {
+      return { available: false, branch: "", files: [], isMain: false, comparison: null,
+        commits: [], remote: { status: "unavailable", checkedAt: null } };
+    },
+    async readPullRequests() { return { status: "unavailable", checkedAt: null, items: [] }; },
+    repositoryInventoryOptions: { async gitRoot(cwd) { return cwd; } },
   });
   let runtime = makeRuntime();
   let server;
