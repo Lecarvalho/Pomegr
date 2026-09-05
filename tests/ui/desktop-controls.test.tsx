@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../../app/Dashboard";
@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("desktop controls", () => {
-  it("provides keyboard-accessible equivalents for pause, login, close behavior, About, and quit", async () => {
+  it("keeps session pause accessible without desktop settings in the session toolbar", async () => {
     const user = userEvent.setup();
     let state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { contextHistory: true, estimatedCost: true } };
     let stateListener: ((next: DesktopState) => void) | undefined;
@@ -43,30 +43,22 @@ describe("desktop controls", () => {
 
     render(<Dashboard />);
     await screen.findByLabelText("Session state: Unknown");
-    await user.click(screen.getByText("Desktop"));
-    const controls = screen.getByRole("group", { name: "Desktop controls" });
-    expect(controls).toBeInTheDocument();
-    expect(within(controls).getByRole("link", { name: "About Pomegr" })).toHaveAttribute("href", "/settings?section=about");
-
-    await user.click(screen.getByRole("button", { name: "Pause live refresh" }));
+    expect(screen.queryByText("Desktop")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Desktop controls" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pause updates" }));
     expect(setPaused).toHaveBeenCalledWith(true);
-    expect(await within(controls).findByRole("button", { name: "Resume live refresh" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Resume updates" })).toBeInTheDocument();
     expect(screen.getByLabelText("Session state: Unknown")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("checkbox", { name: "Launch at login" }));
-    expect(setLaunchAtLogin).toHaveBeenCalledWith(true);
-    await user.selectOptions(screen.getByRole("combobox", { name: "When I close the window" }), "tray");
-    expect(setCloseBehavior).toHaveBeenCalledWith("tray");
-    await user.click(screen.getByRole("checkbox", { name: "Needs-input notifications" }));
-    expect(setNotifications).toHaveBeenCalledWith(false);
-    act(() => stateListener?.({ ...state, notifications: true }));
-    await user.click(screen.getByRole("button", { name: "Quiet notifications for 1 hour" }));
-    expect(setNotificationQuiet).toHaveBeenCalledWith(true);
-    await user.click(screen.getByRole("button", { name: "Quit Pomegr" }));
-    expect(quit).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "Resume updates" }));
+    expect(setPaused).toHaveBeenLastCalledWith(false);
+    expect(setLaunchAtLogin).not.toHaveBeenCalled();
+    expect(setCloseBehavior).not.toHaveBeenCalled();
+    expect(setNotifications).not.toHaveBeenCalled();
+    expect(setNotificationQuiet).not.toHaveBeenCalled();
+    expect(quit).not.toHaveBeenCalled();
 
     act(() => stateListener?.({ ...state, paused: false }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Pause live refresh" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause updates" })).toBeInTheDocument());
   });
 
   it("tray pause stops both state and session-catalog polling without invoking provider controls", async () => {

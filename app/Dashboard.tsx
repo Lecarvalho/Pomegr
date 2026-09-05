@@ -32,12 +32,6 @@ type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
   getDesktopState(): Promise<DesktopState | null>;
   setPaused(value: boolean): Promise<DesktopState | null>;
-  setLaunchAtLogin(value: boolean): Promise<DesktopState | null>;
-  setCloseBehavior(value: DesktopState["closeBehavior"]): Promise<DesktopState | null>;
-  setNotifications(value: boolean): Promise<DesktopState | null>;
-  setNotificationQuiet(value: boolean): Promise<DesktopState | null>;
-  installUpdate(): Promise<DesktopState | null>;
-  quit(): Promise<boolean>;
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
 
@@ -70,7 +64,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [paused, setPaused] = useState(false);
   useUsageLimitsPollingPause(paused);
   useProviderStatusPollingPause(paused);
-  const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const revisionsBySessionRef = useRef(new Map<string, number | string>());
@@ -104,7 +97,6 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     let active = true;
     const apply = (state: DesktopState | null) => {
       if (!active || !state) return;
-      setDesktopState(state);
       setPaused(state.paused);
     };
     void bridge.getDesktopState().then(apply, () => {});
@@ -183,26 +175,9 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     if (!bridge) return;
     void bridge.setPaused(next).then((state) => {
       if (!state) return;
-      setDesktopState(state);
       setPaused(state.paused);
     }, () => setPaused(!next));
   }, [paused]);
-
-  const setLaunchAtLogin = useCallback((value: boolean) => {
-    void desktopBridge()?.setLaunchAtLogin(value).then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
-
-  const setCloseBehavior = useCallback((value: DesktopState["closeBehavior"]) => {
-    void desktopBridge()?.setCloseBehavior(value).then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
-
-  const setNotifications = useCallback((value: boolean) => {
-    void desktopBridge()?.setNotifications(value).then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
-
-  const setNotificationQuiet = useCallback((value: boolean) => {
-    void desktopBridge()?.setNotificationQuiet(value).then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
 
   const activeSessionId = data.session?.id ?? null;
   const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId
@@ -286,7 +261,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
             </li>}
           </ol>
         </nav>
-        <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} desktopState={desktopState} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} onSetLaunchAtLogin={setLaunchAtLogin} onSetCloseBehavior={setCloseBehavior} onSetNotifications={setNotifications} onSetNotificationQuiet={setNotificationQuiet} onQuit={() => { void desktopBridge()?.quit(); }} />
+        <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
