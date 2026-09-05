@@ -136,6 +136,14 @@
 .commandSessionView .sessionFlowScore strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; }
 .commandSessionView .sessionFlowScore small { grid-column: 1 / -1; color: var(--command-muted); font-size: 12px; }
 .commandSessionView .sessionPhoneLabel { display: none; }
+.commandSessionView .sessionEvidenceDisclosure > summary { grid-template-columns: 16px max-content minmax(0, 1fr); min-height: 52px; padding: 0 20px; gap: 12px; }
+.commandSessionView .sessionEvidenceDisclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.commandSessionView .sessionEvidenceDisclosure .dashboardDisclosureIcon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.commandSessionView .sessionEvidenceDisclosure[open] .dashboardDisclosureChevron { transform: rotate(90deg); }
+.commandSessionView .sessionEvidenceSummary { min-width: 0; color: var(--command-muted); font: 400 12px/1.4 var(--font-ui); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commandSessionView .sessionRepositoryBranch { overflow-wrap: anywhere; }
+.commandSessionView .sessionRepository .gitPanel { margin: 0; border: 0; border-radius: 0; background: transparent; }
+.commandSessionView .sessionRepositoryEmpty { margin: 0; padding: 16px 20px; color: var(--command-muted); font-size: 12px; }
 
 @media (max-width: 1100px) {
   .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; }
@@ -150,6 +158,9 @@
 }
 
 @media (max-width: 760px) {
+  .commandSessionView .sessionEvidenceDisclosure > summary { padding: 0 14px; gap: 10px; }
+  .commandSessionView .sessionEvidenceDisclosure .dashboardDisclosureTitle { font-size: 15px; }
+  .commandSessionView .sessionEvidenceSummary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
   .commandSessionView .sessionView { gap: 14px; }
   .commandSessionView .hero { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 0; padding: 12px 0 14px; }
   .commandSessionView .hero h1 { font-size: 22px; overflow-wrap: anywhere; }

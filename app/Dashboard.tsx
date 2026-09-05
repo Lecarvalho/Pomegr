@@ -12,6 +12,7 @@ import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
+import { RepositoryDisclosurePanel } from "./components/dashboard/RepositoryDisclosurePanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { SessionKpiStrip } from "./components/dashboard/SessionKpiStrip";
@@ -276,6 +277,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           </section>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
+          <RepositoryDisclosurePanel session={displayData.session!} historical={viewingHistory} />
           <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />
         </div> : <>
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}

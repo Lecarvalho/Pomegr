@@ -145,6 +145,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   window.history.replaceState(null, "", "/");
   window.localStorage.removeItem("pomegr-resource-panel-open");
+  window.localStorage.removeItem("pomegr-disclosure-repository");
   window.localStorage.removeItem("pomegr-session-details-open");
   window.localStorage.removeItem(DISPLAY_PREFERENCES_STORAGE_KEY);
 });
@@ -175,7 +176,7 @@ describe("dashboard session navigation", () => {
     view.unmount();
   });
 
-  it("orders KPIs, context, requests, summary cards, agents, resources and details", async () => {
+  it("orders KPIs, context, requests, summary cards, agents, resources, repository and details", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -188,6 +189,7 @@ describe("dashboard session navigation", () => {
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
     const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
+    const repository = screen.getByText("Repository").closest("details");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
@@ -201,13 +203,16 @@ describe("dashboard session navigation", () => {
     expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
     expect(container.querySelector(".sessionSummaryCards")?.nextElementSibling).toBe(container.querySelector(".contentGrid"));
     expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(resourcePanel);
-    expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
+    expect(resourcePanel?.nextElementSibling).toBe(repository);
+    expect(repository?.nextElementSibling).toBe(sessionDetails);
     expect(sessionDetails?.nextElementSibling).toBeNull();
     expect(resourcePanel).toHaveClass("dashboardDisclosurePanel", "panel");
     expect(sessionDetails).toHaveClass("dashboardDisclosurePanel", "panel");
     expect(resourcePanel?.querySelector(":scope > .dashboardDisclosurePanelBody")).toHaveClass("resourceUsageBody");
     expect(sessionDetails?.querySelector(":scope > .dashboardDisclosurePanelBody")).toHaveClass("sessionDetailsBody");
     expect(resourcePanel?.querySelector(":scope > summary .dashboardDisclosureIcon")).toBeInTheDocument();
+    expect(repository).toHaveClass("dashboardDisclosurePanel", "panel", "sessionRepository", "sessionEvidenceDisclosure");
+    expect(repository?.querySelector(":scope > summary .dashboardDisclosureIcon")).toBeInTheDocument();
     expect(sessionDetails?.querySelector(":scope > summary .dashboardDisclosureIcon")).toBeInTheDocument();
   });
 
@@ -224,12 +229,14 @@ describe("dashboard session navigation", () => {
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
     const contextPanel = screen.getByRole("heading", { name: "Context history" }).closest("section");
+    const repository = screen.getByText("Repository").closest("details");
     const sessionDetails = screen.getByText("Session details").closest("details");
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);
     expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
-    expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(sessionDetails);
+    expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(repository);
+    expect(repository?.nextElementSibling).toBe(sessionDetails);
   });
 
   it("hides optional evidence without changing neighboring session regions", async () => {
@@ -248,73 +255,37 @@ describe("dashboard session navigation", () => {
     expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
     expect(screen.getByText("Resource use")).toBeInTheDocument();
     expect(screen.getByText("Session details")).toBeInTheDocument();
-    expect(screen.queryByText("Claude Code API list-rate estimate")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Estimated cost/)).not.toBeInTheDocument();
+    expect(screen.queryAllByText("$1.25")).toHaveLength(0);
   });
 
-  it("summarizes changed Git state, five-hour usage, and loaded context only while collapsed", async () => {
-    window.localStorage.setItem("pomegr-session-details-open", "false");
+  it("summarizes repository evidence without paths or hashes, and keeps both rows closed", async () => {
     mockDashboardState(detailedState());
 
     const { container } = renderDashboard([catalogSession(detailedState())]);
 
     const details = await waitFor(() => {
-      const element = container.querySelector("details.sessionDetails");
+      const element = container.querySelector("details.sessionRepository");
       expect(element).toBeInTheDocument();
       return element!;
     });
     const summary = details.querySelector("summary")!;
-    const compact = summary.querySelector(".disclosureSummaryMetrics");
-    const branch = summary.querySelector("[title='feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title']");
+    const compact = summary.querySelector(".sessionEvidenceSummary");
     expect(details).not.toHaveAttribute("open");
-    expect(compact).toHaveTextContent("Git");
-    expect(compact).toHaveTextContent("feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title");
-    expect(compact).toHaveTextContent("2 changes");
-    expect(compact).toHaveTextContent("Usage 5h 64%");
-    expect(compact).not.toHaveTextContent("82%");
-    expect(compact).toHaveTextContent(/Loaded inventory ≈12(?:\.3)?K/i);
-    expect(compact).not.toHaveTextContent(/Latest|activity|ago/i);
-    expect(branch).toBeInTheDocument();
-    expect(branch).toHaveAttribute("title", "feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title");
+    expect(compact).toHaveTextContent(/feature\/a-very-long-branch-name-that-must-truncate-without-losing-its-title · 0 commits · 2 files changed · working tree/);
+    expect(compact).not.toHaveTextContent(/C:\\|app\/Dashboard|sha|hash/i);
+    expect(compact).not.toHaveTextContent(/Usage|Loaded|activity/i);
 
-    await userEvent.click(screen.getByText("Session details"));
+    const sessionDetails = container.querySelector("details.sessionDetails")!;
+    expect(sessionDetails).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("Repository"));
     expect(details).toHaveAttribute("open");
-    expect(summary.querySelector(".disclosureSummaryMetrics")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Loaded context inventory" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
   });
 
-  it("summarizes the first returned usage window when five-hour usage is absent", async () => {
-    window.localStorage.setItem("pomegr-session-details-open", "false");
-    const state = detailedState();
-    state.usageLimits = {
-      ...state.usageLimits,
-      limits: [{
-        id: "weekly",
-        label: "Weekly window",
-        window: "7 days",
-        percent: 64.4,
-        resetsAt: null,
-        severity: "normal",
-        active: false,
-      }],
-    };
-    mockDashboardState(state);
-
-    const { container } = renderDashboard([catalogSession(state)]);
-    const compact = await waitFor(() => {
-      const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
-      expect(element).toBeInTheDocument();
-      return element!;
-    });
-
-    expect(compact).toHaveTextContent("Usage 7d 64%");
-    expect(compact).not.toHaveTextContent("Usage 5h");
-  });
-
-  it("persists Resource use and Session details independently across remounts", async () => {
+  it("persists Repository, Resource use, and Session details independently across remounts", async () => {
     window.localStorage.setItem("pomegr-resource-panel-open", "true");
+    window.localStorage.setItem("pomegr-disclosure-repository", "false");
     window.localStorage.setItem("pomegr-session-details-open", "false");
     mockDashboardState(detailedState({ files: [] }));
     const user = userEvent.setup();
@@ -326,10 +297,13 @@ describe("dashboard session navigation", () => {
       return element!;
     });
     const session = first.container.querySelector("details.sessionDetails")!;
+    const repository = first.container.querySelector("details.sessionRepository")!;
     expect(resource).toHaveAttribute("open");
+    expect(repository).not.toHaveAttribute("open");
     expect(session).not.toHaveAttribute("open");
-    expect(session.querySelector(".disclosureSummaryMetrics")).toHaveTextContent("Clean");
 
+    await user.click(screen.getByText("Repository"));
+    expect(repository).toHaveAttribute("open");
     await user.click(screen.getByText("Session details"));
     expect(resource).toHaveAttribute("open");
     expect(session).toHaveAttribute("open");
@@ -337,12 +311,14 @@ describe("dashboard session navigation", () => {
     expect(resource).not.toHaveAttribute("open");
     expect(session).toHaveAttribute("open");
     expect(window.localStorage.getItem("pomegr-resource-panel-open")).toBe("false");
+    expect(window.localStorage.getItem("pomegr-disclosure-repository")).toBe("true");
     expect(window.localStorage.getItem("pomegr-session-details-open")).toBe("true");
 
     first.unmount();
     const restored = renderDashboard([catalogSession(detailedState({ files: [] }))]).container;
     await waitFor(() => expect(restored.querySelector("details.resourceUsagePanel")).toBeInTheDocument());
     expect(restored.querySelector("details.resourceUsagePanel")).not.toHaveAttribute("open");
+    expect(restored.querySelector("details.sessionRepository")).toHaveAttribute("open");
     expect(restored.querySelector("details.sessionDetails")).toHaveAttribute("open");
   });
 
@@ -353,15 +329,7 @@ describe("dashboard session navigation", () => {
     state.usageLimits.error = "Codex usage limits are temporarily unavailable.";
     mockDashboardState(state);
     const { container } = renderDashboard([catalogSession(state)]);
-
-    const compact = await waitFor(() => {
-      const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
-      expect(element).toBeInTheDocument();
-      return element;
-    });
-    expect(compact).toHaveTextContent("Usage 5h unavailable");
-    expect(compact).not.toHaveTextContent("Loaded");
-
+    await screen.findByText("Session details");
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
     expect(screen.getByText("The last usage check failed. Pomegr will retry automatically.")).toBeInTheDocument();
@@ -373,16 +341,11 @@ describe("dashboard session navigation", () => {
     state.capabilities.usageLimits = false;
     mockDashboardState(state);
     const { container } = renderDashboard([catalogSession(state)]);
-
     const details = await waitFor(() => {
       const element = container.querySelector("details.sessionDetails");
       expect(element).toBeInTheDocument();
       return element!;
     });
-    const compact = details.querySelector(".disclosureSummaryMetrics");
-    expect(compact).toHaveTextContent("Git");
-    expect(compact).not.toHaveTextContent("Usage");
-
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
@@ -390,15 +353,13 @@ describe("dashboard session navigation", () => {
   });
 
   it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {
-    window.localStorage.setItem("pomegr-session-details-open", "false");
     const state = detailedState({ historical: true, withContext: false });
     mockDashboardState(state);
     const { container } = renderDashboard([catalogSession(state)]);
-
     const compact = await waitFor(() => {
-      const element = container.querySelector(".sessionDetails .disclosureSummaryMetrics");
+      const element = container.querySelector(".sessionDetails .sessionEvidenceSummary");
       expect(element).toBeInTheDocument();
-      return element;
+      return element!;
     });
     expect(compact).not.toHaveTextContent("Usage");
     expect(compact).not.toHaveTextContent("Loaded");
@@ -408,11 +369,36 @@ describe("dashboard session navigation", () => {
     window.localStorage.setItem("pomegr-session-details-open", "true");
     mockDashboardState(detailedState({ contextSupported: false }));
     const { container } = renderDashboard([catalogSession(detailedState({ contextSupported: false }))]);
-
     await screen.findByText("Session details");
     expect(container.querySelector(".sessionDetails .cachePanel")).not.toBeInTheDocument();
     expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("Loaded context inventory");
     expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("/context");
+  });
+
+  it("uses the fallback details summary when no optional evidence is available", async () => {
+    const state = liveState("claude:no-evidence", "No evidence");
+    mockDashboardState(state);
+    const { container } = renderDashboard([catalogSession(state)]);
+    const summary = await waitFor(() => {
+      const element = container.querySelector(".sessionDetails .sessionEvidenceSummary");
+      expect(element).toBeInTheDocument();
+      return element!;
+    });
+    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery, activity");
+  });
+
+  it("uses the recorded state label for historical repository evidence", async () => {
+    const state = detailedState({ historical: true, files: [] });
+    mockDashboardState(state);
+    const { container } = renderDashboard([catalogSession(state)]);
+    const summary = await waitFor(() => {
+      const element = container.querySelector(".sessionRepository .sessionEvidenceSummary");
+      expect(element).toBeInTheDocument();
+      return element!;
+    });
+    expect(summary).toHaveTextContent("recorded state");
+    expect(summary).toHaveTextContent("0 commits");
+    expect(summary).toHaveTextContent("0 files changed");
   });
 
   it("pins the first displayed session so live polling cannot navigate elsewhere", async () => {

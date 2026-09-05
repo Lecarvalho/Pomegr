@@ -59,6 +59,7 @@ export function DashboardDisclosurePanel({
   children,
   className = "",
   defaultOpen,
+  icon = "plus",
   storageKey,
   summary,
   title,
@@ -67,6 +68,7 @@ export function DashboardDisclosurePanel({
   children: ReactNode;
   className?: string;
   defaultOpen: boolean;
+  icon?: "plus" | "chevron";
   storageKey: string;
   summary?: ReactNode;
   title: string;
@@ -77,9 +79,8 @@ export function DashboardDisclosurePanel({
   return (
     <details className={`dashboardDisclosurePanel panel ${className}`.trim()} open={open} onToggle={handleToggle}>
       <summary>
-        <svg className="dashboardDisclosureIcon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 12h12" />
-          <path className="dashboardDisclosureIconVertical" d="M12 6v12" />
+        <svg className={`dashboardDisclosureIcon${icon === "chevron" ? " dashboardDisclosureChevron" : ""}`} viewBox="0 0 24 24" aria-hidden="true">
+          {icon === "chevron" ? <path d="M9 6l6 6-6 6" /> : <><path d="M6 12h12" /><path className="dashboardDisclosureIconVertical" d="M12 6v12" /></>}
         </svg>
         <span className="dashboardDisclosureTitle">{title}</span>
         {!open && summary}

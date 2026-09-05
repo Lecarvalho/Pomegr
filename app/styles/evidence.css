@@ -570,13 +570,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .resourceChartAxis span:last-child { text-align: end; }
 
 @keyframes resourceCollectingPulse { 50% { opacity: .36; transform: translateY(-50%) scale(.62); } }
-
-.sessionGitSummary { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
-.sessionSummaryBranch { display: block; min-width: 0; max-width: clamp(120px, 24vw, 320px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sessionDetailsBody { padding: 12px; }
 .sessionDetailsBody > :last-child { margin-bottom: 0; }
-.sessionPomegrSummary { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; }
-.sessionPomegrSummary b { color: var(--ink); font-weight: 650; }
 .sessionPomegrIntegration { min-width: 0; margin: 0 0 12px; padding: 10px 8px 12px; border-bottom: 1px solid var(--line); }
 .sessionPomegrIntegrationHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .sessionPomegrIntegrationHeader > span { color: var(--ink); font: 650 var(--text-xs)/1.3 var(--font-ui); letter-spacing: .07em; text-transform: uppercase; }
@@ -677,7 +672,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .workflowAgentGroupSummary > span:last-child { white-space: normal; text-align: right; }
   .agentTreeCanvas { padding: 14px; }.agentTreeCard { gap: 6px 10px; padding: 11px; }.agentTreeEvidence { gap-inline: 8px; }.agentTreeNote { margin: 8px 14px 14px; }
   .workflowDisclosureSummary > span:first-child { flex-basis: 100%; }
-  .sessionSummaryBranch { max-width: min(42vw, 220px); }
   .resourceStatStrip { grid-template-columns: 1fr; }
   .resourceStat { min-height: 82px; padding: 14px 16px; border-inline-end: 0; border-bottom: 1px solid var(--line); }
   .resourceStat:last-child { border-bottom: 0; }
