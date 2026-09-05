@@ -3,8 +3,11 @@ import { shortTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { SessionWallTimeText } from "../LiveTime";
 import { ProviderBadge } from "../ProviderBadge";
+import { usePhoneLayout } from "../../hooks/usePhoneLayout";
+import { SessionReportButton } from "./SessionReportButton";
 
-export function SessionHero({ session, source, capabilities, historical, activityStatus = "unknown" }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean; activityStatus?: SessionActivityStatus }) {
+export function SessionHero({ session, source, capabilities, historical, activityStatus = "unknown", reportGenerating = false, onGenerateReport }: { session: MonitorState["session"]; source: ProviderSource; capabilities: ProviderCapabilities; historical: boolean; activityStatus?: SessionActivityStatus; reportGenerating?: boolean; onGenerateReport?: () => void }) {
+  const phone = usePhoneLayout();
   const sessionLabel = session?.title || "Waiting for a session";
   const providerSummary = capabilities.sessionSummary ? session?.summary : null;
   const reportedSummary = !capabilities.sessionSummary && capabilities.signals
@@ -33,6 +36,15 @@ export function SessionHero({ session, source, capabilities, historical, activit
     ? historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."
     : historical ? "The provider did not record an approval mode for this session." : "Waiting for the provider to report an approval mode for this session.";
   const updatedTime = session?.updatedAt && Number.isFinite(Date.parse(session.updatedAt)) ? shortTime(session.updatedAt) : "Time unavailable";
+  const summary = <>
+    {session && <p title={summaryTitle}>{summaryText || emptySummary}</p>}
+    {(summarySource || session?.signal) && <div className="heroSummaryRow">
+      {summarySource && <small className="heroSummarySource sessionEyebrow">{summarySource}</small>}
+      {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
+        <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
+      </div>}
+    </div>}
+  </>;
   return (
     <section className="hero">
       <div>
@@ -40,16 +52,10 @@ export function SessionHero({ session, source, capabilities, historical, activit
         {session && <div className="sessionIdentity">
           <strong>{session.project}</strong>
           <span className="sessionIdentityPart"><span aria-hidden="true">·</span><ProviderBadge source={source} /></span>
-          <span className="sessionIdentityPart"><span aria-hidden="true">·</span><code>{sessionDisplayId}</code></span>
+          <span className="sessionIdentityPart sessionIdentityId"><span aria-hidden="true">·</span><code>{sessionDisplayId}</code></span>
           <span className="sessionIdentityPart"><span aria-hidden="true">·</span><span className="commandBadge">{historical ? "Historical snapshot" : "Live session"}</span></span>
         </div>}
-        {session && <p title={summaryTitle}>{summaryText || emptySummary}</p>}
-        {(summarySource || session?.signal) && <div className="heroSummaryRow">
-          {summarySource && <small className="heroSummarySource sessionEyebrow">{summarySource}</small>}
-          {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
-            <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
-          </div>}
-        </div>}
+        {!phone && summary}
       </div>
       {session && <div className="sessionHeroActions">
         <div className={`sessionStatusCard ${statusTone}`} aria-label="Session status">
@@ -61,6 +67,13 @@ export function SessionHero({ session, source, capabilities, historical, activit
           </small>
         </div>
       </div>}
+      {phone && <>
+        <details className="sessionHeroSummary" open={Boolean(summaryText || session?.signal)}>
+          <summary><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>Summary and provider status</summary>
+          {summary}
+        </details>
+        {session && onGenerateReport && <SessionReportButton generating={reportGenerating} onGenerate={onGenerateReport} />}
+      </>}
     </section>
   );
 }

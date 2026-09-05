@@ -1,6 +1,6 @@
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import { render as renderUi, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render as renderUi, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent, MonitorState } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import { SessionKpiStrip } from "../../app/components/dashboard/SessionKpiStrip";
@@ -67,6 +67,44 @@ describe("session KPI strip", () => {
 });
 
 describe("session hero status", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function phoneViewport() {
+    let matches = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) })));
+    return (phone: boolean) => act(() => { matches = phone; listeners.forEach((listener) => listener()); });
+  }
+
+  it("discloses a long-title session summary on phone and restores desktop content on resize", () => {
+    const resize = phoneViewport();
+    const session = { ...state().session!, title: "A long session title with an_unbroken_identifier_that_must_wrap_across_a_narrow_phone_viewport", summary: null, signal: null };
+    render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(session.title);
+    const summary = screen.getByText("Summary and provider status");
+    expect(summary.tagName).toBe("SUMMARY");
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(summary);
+    expect(summary.closest("details")).toHaveAttribute("open");
+    resize(false);
+    expect(screen.queryByText("Summary and provider status")).not.toBeInTheDocument();
+    expect(screen.getByText("No provider summary was recorded for this session.")).toBeInTheDocument();
+  });
+
+  it.each(["summary", "signal"] as const)("opens the phone disclosure when a %s exists and keeps report behavior", (kind) => {
+    phoneViewport();
+    const session: NonNullable<MonitorState["session"]> = { ...state().session!, summary: null, signal: null };
+    if (kind === "summary") session.summary = { text: "Recorded provider summary", observedAt: "2026-09-05T12:00:00Z", source: "provider" };
+    else session.signal = { label: "Privacy verified", tone: "positive", reportedAt: "2026-09-05T12:00:00Z" };
+    const generate = vi.fn();
+    const { rerender } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
+    expect(screen.getByText("Summary and provider status").closest("details")).toHaveAttribute("open");
+    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
+    expect(generate).toHaveBeenCalledOnce();
+    rerender(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} reportGenerating />);
+    expect(screen.getByRole("button", { name: "Preparing report…" })).toBeDisabled();
+  });
+
   it.each([
     ["working", false, "Live session · active"],
     ["idle", false, "Live session · idle"],

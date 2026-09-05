@@ -176,20 +176,19 @@ export function SessionProgressPanel({
   const reportLabel = historical
     ? <><span>Recorded agent estimate · </span><time dateTime={progress.reportedAt}>{absoluteTime(progress.reportedAt)}</time></>
     : <><span>Reported </span><time dateTime={progress.reportedAt}><RelativeTimeText value={progress.reportedAt} /></time></>;
+  const compactNote = !historical && etaPaused
+    ? `The estimate is retained while this session is ${blocked ? "blocked" : inputPaused ? "waiting for input" : "waiting"}.`
+    : "Snapshot from the session transcript, not a Pomegr judgment.";
 
   if (variant === "compact") {
     return <article className={`sessionSummaryCard sessionProgressCard panel${stale ? " sessionProgressStale" : ""}`} aria-label="Agent estimate progress">
       <div className="sessionSummaryCardHeader">
-        <span className="sessionEyebrow">Agent estimate · progress</span>
+        <span className="sessionEyebrow" title={compactNote}>Agent estimate · progress</span>
         <span className={`sessionSummaryChip sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
       </div>
       <SessionProgressInstrument progress={progress} phaseLabel={phaseLabel} eta={eta} complete={complete} historical={historical} compact />
       {stale && <p className="sessionProgressCompactWarning">May be stale — later primary-agent activity was observed.</p>}
-      {historical
-        ? <p className="sessionProgressNote">Snapshot from the session transcript, not a Pomegr judgment.</p>
-        : etaPaused
-          ? <p className="sessionProgressNote">The estimate is retained while this session is {blocked ? "blocked" : inputPaused ? "waiting for input" : "waiting"}.</p>
-          : <p className="sessionProgressNote">Snapshot from the session transcript, not a Pomegr judgment.</p>}
+      <p className="sessionProgressNote">{compactNote}</p>
     </article>;
   }
 

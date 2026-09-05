@@ -19,7 +19,7 @@ describe("Pomegr visual contract", () => {
   it("keeps session loading titles on the shared desktop and mobile header scale", () => {
     expect(styles).not.toMatch(/\.sessionLoadingHero|\.sessionLoadingProvider/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
-    expect(styles).toMatch(/@media \(max-width: 520px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*24px/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*22px/);
   });
 
   it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {

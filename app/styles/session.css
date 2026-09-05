@@ -135,6 +135,7 @@
 .commandSessionView .sessionFlowScore { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 16px 20px; }
 .commandSessionView .sessionFlowScore strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; }
 .commandSessionView .sessionFlowScore small { grid-column: 1 / -1; color: var(--command-muted); font-size: 12px; }
+.commandSessionView .sessionPhoneLabel { display: none; }
 
 @media (max-width: 1100px) {
   .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; }
@@ -148,13 +149,47 @@
   .commandSessionView .sessionHeroActions { max-width: 100%; align-items: stretch; }
 }
 
+@media (max-width: 760px) {
+  .commandSessionView .sessionView { gap: 14px; }
+  .commandSessionView .hero { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 0; padding: 12px 0 14px; }
+  .commandSessionView .hero h1 { font-size: 22px; overflow-wrap: anywhere; }
+  .commandSessionView .sessionIdentity { flex-wrap: wrap; gap: 6px 10px; margin-bottom: 0; }
+  .commandSessionView .sessionIdentityId,
+  .commandSessionView .sessionIdentity code,
+  .commandSessionView .sessionDesktopLabel { display: none; }
+  .commandSessionView .sessionPhoneLabel { display: inline; }
+  .commandSessionView .sessionStatusCard { min-width: 0; width: 100%; padding: 10px 12px; }
+  .commandSessionView .sessionHeroSummary { min-width: 0; }
+  .commandSessionView .sessionHeroSummary > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--command-ink); font-size: 13px; font-weight: 500; cursor: pointer; list-style: none; }
+  .commandSessionView .sessionHeroSummary > summary::-webkit-details-marker { display: none; }
+  .commandSessionView .sessionHeroSummary > summary svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--command-faint); stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .commandSessionView .sessionHeroSummary[open] > summary svg { transform: rotate(90deg); }
+  .commandSessionView .sessionHeroSummary p { margin: 4px 0 8px; overflow-wrap: anywhere; }
+  .commandSessionView .sessionHeroSummary .heroSummaryRow { margin-top: 8px; }
+  .commandSessionView .hero .sessionReportButton { width: 100%; min-height: 44px; background: transparent; }
+  .commandSessionView .hero .sessionReportButton .commandSessionActionLabel { display: inline; }
+  .commandSessionView .sessionHeroSummary > summary:focus-visible,
+  .commandSessionView .hero .sessionReportButton:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; }
+  .commandSessionView .sessionKpi:nth-child(n) { padding: 10px 12px; border: 1px solid var(--command-line); border-radius: var(--control-radius); gap: 4px; }
+  .commandSessionView .sessionKpi > strong { font-size: 24px; }
+  .commandSessionView .sessionKpi > small { font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+  .commandSessionView .sessionKpiEstimate:nth-child(n) { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 14px; }
+  .commandSessionView .sessionKpiEstimate > .sessionEyebrow { grid-column: 1 / -1; }
+  .commandSessionView .sessionSummaryCards { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .commandSessionView .sessionSummaryCard { padding: 14px; gap: 8px; }
+  .commandSessionView .sessionSummaryNumber,
+  .commandSessionView .sessionProgressCard .sessionProgressPercent { font-size: 24px !important; }
+  .commandSessionView .sessionProgressCard .sessionProgressNote,
+  .commandSessionView .sessionWorkflowCard .sessionSummaryLink { display: none; }
+  .commandSessionView .sessionSignalsCard .sessionSummaryCardHeader { padding: 0; }
+  .commandSessionView .sessionSignalsCard .insight { padding: 8px 0; }
+  .commandSessionView .sessionSignalsCard .insight:first-child { padding-top: 0; }
+  .commandSessionView .sessionSignalsCard .insight:last-child { padding-bottom: 0; }
+  .commandSessionView .insightAgentLink { display: inline-flex; align-items: center; min-height: 32px; }
+  .commandSessionView .insightExpandLink { display: inline-flex; align-items: center; min-height: 44px; margin: 0; }
+}
+
 @media (max-width: 520px) {
-  .commandSessionView .hero { padding: 18px 0; }
-  .commandSessionView .hero h1 { font-size: 24px; }
-  .commandSessionView .sessionStatusCard { min-width: 0; }
-  .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .commandSessionView .sessionKpi:nth-child(n) { padding: 4px 12px; border-left: 1px solid var(--command-line); }
-  .commandSessionView .sessionKpi:nth-child(odd) { padding-left: 0; border-left: 0; }
-  .commandSessionView .sessionKpi > strong { font-size: 26px; }
   .commandSessionView .sessionProgressMeasures { grid-template-columns: 1fr 1fr; gap: 12px; }
 }

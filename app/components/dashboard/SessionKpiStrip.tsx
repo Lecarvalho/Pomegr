@@ -18,7 +18,7 @@ export function SessionKpiStrip({ state, historical }: { state: MonitorState; hi
 
   return <section className="sessionKpiStrip" aria-label="Session totals">
     <div className="sessionKpi">
-      <span className="sessionEyebrow">Agents observed</span>
+      <span className="sessionEyebrow"><span className="sessionDesktopLabel">Agents observed</span><span className="sessionPhoneLabel">Agents</span></span>
       <strong>{agentReady ? metrics.agents.toLocaleString() : "—"}</strong>
       <small>{agentReady ? <><span className={active > 0 ? "sessionPositive" : undefined}>{active} active</span> · {idle} idle · {finished} finished</> : unavailable("agentEvidence")}</small>
     </div>
@@ -28,7 +28,7 @@ export function SessionKpiStrip({ state, historical }: { state: MonitorState; hi
       <small>{contextReady ? "Sum of latest snapshots · not spend" : unavailable("contextEvidence")}</small>
     </div>
     <div className="sessionKpi">
-      <span className="sessionEyebrow">{historical ? "Recorded wall time" : "Wall time"}</span>
+      <span className="sessionEyebrow">{historical ? <><span className="sessionDesktopLabel">Recorded wall time</span><span className="sessionPhoneLabel">Wall time</span></> : "Wall time"}</span>
       <strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong>
       <small>Includes idle gaps</small>
     </div>
@@ -37,7 +37,7 @@ export function SessionKpiStrip({ state, historical }: { state: MonitorState; hi
       <strong>{activityReady ? metrics.toolCalls.toLocaleString() : "—"}</strong>
       <small>{activityReady ? <>{workflows.length > 0 && `${workflows.length} workflows · `}{metrics.repeatedCalls.toLocaleString()} repeated</> : unavailable("activityEvidence")}</small>
     </div>
-    <div className="sessionKpi">
+    <div className="sessionKpi sessionKpiEstimate">
       <span className="sessionEyebrow">Agent estimate</span>
       <strong className={activityReady && progress ? "sessionPositive" : undefined}>{activityReady && progress ? `${progress.percent}%` : "—"}</strong>
       <small>{!activityReady ? unavailable("activityEvidence") : progress ? `${PHASE_LABELS[progress.phase]} · ${remainingLabel(progress)} · ${progress.confidence} confidence` : "No estimate recorded"}</small>
