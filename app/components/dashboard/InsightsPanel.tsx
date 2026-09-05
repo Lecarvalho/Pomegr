@@ -1,6 +1,7 @@
 import type { Insight } from "../../../shared/monitor-contract";
 import { EmptyState } from "../EmptyState";
 import { PanelHeader } from "../PanelHeader";
+import { useState } from "react";
 
 function InsightGlyph({ warning }: { warning: boolean }) {
   return (
@@ -12,14 +13,57 @@ function InsightGlyph({ warning }: { warning: boolean }) {
   );
 }
 
-export function InsightsPanel({ insights }: { insights: Insight[] }) {
+function insightAgentId(insight: Insight) {
+  return "agentId" in insight && typeof insight.agentId === "string" ? insight.agentId : null;
+}
+
+export function InsightsPanel({ insights, variant = "panel" }: {
+  insights: Insight[];
+  variant?: "panel" | "compact";
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const warningCount = insights.filter((insight) => insight.level === "warning").length;
+  const visibleInsights = variant === "compact" && !expanded ? insights.slice(0, 2) : insights;
+
+  if (variant === "compact") {
+    const countLabel = insights.length === 0
+      ? "No signals"
+      : warningCount > 0
+        ? `${warningCount} attention`
+        : `${insights.length} signals`;
+    return <article className="sessionSummaryCard sessionSignalsCard panel">
+      <div className="sessionSummaryCardHeader">
+        <span className="sessionEyebrow">Efficiency signals</span>
+        <span className={`sessionSignalCount${warningCount > 0 ? " sessionSignalCount-warning" : ""}`}>{countLabel}</span>
+      </div>
+      <div className="insightList">
+        {insights.length === 0 && <EmptyState text="No rule-based efficiency signals for this session." />}
+        {visibleInsights.map((insight) => <InsightRow insight={insight} key={insight.id} />)}
+      </div>
+      {insights.length > 2 && <a className="insightExpandLink" href="#efficiency-signals" onClick={(event) => { event.preventDefault(); setExpanded((value) => !value); }}>{expanded ? "Show fewer" : `Show all ${insights.length}`}</a>}
+    </article>;
+  }
+
   return (
     <article className="panel insightPanel">
       <PanelHeader title="Efficiency signals" trailing={<span className="quiet">{insights.length}</span>} />
       <div className="insightList">
         {insights.length === 0 && <EmptyState text="No rule-based efficiency signals for this session." />}
-        {insights.map((insight) => <div className={`insight ${insight.level}`} key={insight.id}><InsightGlyph warning={insight.level === "warning"} /><div><strong>{insight.title}</strong><p>{insight.detail}</p></div></div>)}
+        {insights.map((insight) => <InsightRow insight={insight} key={insight.id} />)}
       </div>
     </article>
   );
+}
+
+function InsightRow({ insight }: { insight: Insight }) {
+  const agentId = insightAgentId(insight);
+  const showAgent = insight.level === "warning" && agentId;
+  return <div className={`insight ${insight.level}`}>
+    <InsightGlyph warning={insight.level === "warning"} />
+    <div>
+      <strong>{insight.title}</strong>
+      <p>{insight.detail}</p>
+      {showAgent && <a className="insightAgentLink" href="#agent-activity">Show agent</a>}
+    </div>
+  </div>;
 }

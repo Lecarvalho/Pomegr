@@ -412,8 +412,8 @@ export type ResourceUsage = {
   samples: ResourceUsageSample[];
 };
 
-export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
-export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
+export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string; agentId?: string | null };
+export type LoopPattern = { id: string; agent: string; agentId?: string | null; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 /** Bounded observed work/presence state. Provider-native lifecycle values stay monitor-private. */
 export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "unknown";

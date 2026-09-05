@@ -985,6 +985,13 @@ context, activity, repository, resources, and usage as independently produced do
 
 ## Presentation rules
 
+- The session KPI strip renders once core evidence is ready. Agent counts and status
+  tallies follow agent readiness, latest context follows context readiness, and tool
+  calls and the agent estimate follow activity readiness. Each pending cell shows an
+  em dash instead of an invented zero; core wall time remains visible independently.
+  Summary cards retain the activity-evidence gate, with independent placeholders for
+  workflow agent/context evidence. These are presentation-only consumers of committed
+  revisions; they do not change hydration, serving, checkpointing, or polling.
 - Use geometry-matched skeletons only when a region has no committed value and readiness
   is `loading`.
 - Session loading shells use the loaded session header's shared typography, identity

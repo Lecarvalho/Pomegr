@@ -119,6 +119,10 @@ export function SessionDetailsPanel({
       summary={<SessionDetailsSummary state={state} historical={historical} />}
       title="Session details"
     >
+      <div className="sessionFlowScore">
+        <span>Flow score</span><strong>{state.readiness?.activityEvidence && state.readiness.activityEvidence !== "ready" ? "—" : `${state.score}/100`}</strong>
+        <small>Deterministic attention heuristic based on repeated tool calls and overlapping edit targets; not a quality assessment.</small>
+      </div>
       {plugin && (
         <section className="sessionPomegrIntegration" aria-label="Pomegr integration">
           <div className="sessionPomegrIntegrationHeader">

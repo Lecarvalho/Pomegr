@@ -245,12 +245,12 @@ Reference: `mockup-main.html`, from the breadcrumb down to and including the thr
 
 ### Acceptance criteria
 
-- [ ] Page top matches `mockup-main.html` at 1440 px: hero, status card, five KPI cells
+- [x] Page top matches `mockup-main.html` at 1440 px: hero, status card, five KPI cells
       with hairline dividers, three equal-height cards.
-- [ ] `SummaryMetrics` no longer exists; flow score is visible only inside Session details.
-- [ ] `WorkflowActivityPanel` is no longer rendered on the page (file kept).
-- [ ] No number in the strip is a sum across requests or a rate.
-- [ ] Light theme renders with the same structure (no hard-coded hex).
+- [x] `SummaryMetrics` no longer exists; flow score is visible only inside Session details.
+- [x] `WorkflowActivityPanel` is no longer rendered on the page (file kept).
+- [x] No number in the strip is a sum across requests or a rate.
+- [x] Light theme renders with the same structure (no hard-coded hex).
 
 ### Verification
 
@@ -1084,3 +1084,4 @@ npm run verify:desktop
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
 | 2026-09-04 | Plan | Written | Mockups copied to `docs/plans/session-page-redesign/`. Canvas: https://claude.ai/code/artifact/663c33bb-fb5f-41ba-9e78-8c11e0219ba2 |
+| 2026-09-05 | POMEGR-SP-01 | Complete | Hero status card, five-cell KPI strip, three summary cards, normalized insight/loop agent links. HTML typography retained (Inter headline numbers, Geist Mono compact data). Explicit open/stopped/unknown evidence remains labeled. Full npm test, final build, verify:fast, focused UI/privacy checks passed; 1440px and 390px checked in both themes. |

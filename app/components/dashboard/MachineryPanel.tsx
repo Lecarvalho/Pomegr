@@ -28,7 +28,7 @@ export function MachineryPanel({ machinery, supported, inventoryRef }: { machine
         <small>Estimated tokens across {machinery.categories.length} {machinery.categories.length === 1 ? "category" : "categories"}</small>
           <button className="machineryPopoverTrigger" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="loaded-machinery-popover">View inventory breakdown <span aria-hidden="true">▸</span></button>
           {open && (
-            <PopoverFrame id="loaded-machinery-popover" ariaLabel="Loaded context breakdown" eyebrow="CONTEXT BREAKDOWN" title="Estimated token inventory" closeLabel="Close context breakdown" onClose={close} className="metricPopover machineryPopover">
+            <PopoverFrame id="loaded-machinery-popover" ariaLabel="Loaded context breakdown" eyebrow="CONTEXT BREAKDOWN" title="Estimated token inventory" closeLabel="Close context breakdown" onClose={close} className="machineryPopover">
               <div className="machineryPopoverBody">
                 <div className="machineryMeta"><span>Diagnostic · provider <code>/context</code> snapshot</span><strong>{machinery.model}</strong></div>
                 <div className="machineryCategories" role="list" aria-label="Estimated context categories">{machinery.categories.map((category) => (

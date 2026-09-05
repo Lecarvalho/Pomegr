@@ -399,7 +399,15 @@ A repetition signature combines the agent and tool name with a monitor-side dige
 
 ## Tool calls
 
-`toolCalls` counts every observed tool invocation in the session. Its dashboard popover groups those calls by agent, tool name, and sanitized target; the grouped call counts always sum to the headline total. Prompt text, response text, and full command contents are not exposed.
+`toolCalls` counts every observed tool invocation in the session. The session KPI strip shows this count with the number of repeated calls and recorded workflows. Prompt text, response text, and full command contents are not exposed.
+
+The summary cards show the transcript-recorded agent estimate, workflow rollups, and
+deterministic efficiency signals. Workflow context sums each member agent's latest
+snapshot once; workflow wall time sums the recorded workflow durations and can include
+overlapping intervals. Neither value represents request throughput or spend. Agent-specific
+cache, compaction, and repetition signals and loop patterns may include a normalized
+`agentId`; overlap signals have no single agent target. Links currently navigate to
+Agent activity. Signal generation rules are unchanged.
 
 ## Activity events
 
@@ -420,7 +428,8 @@ score = max(
 )
 ```
 
-The score is a heuristic attention signal, not a quality assessment.
+The score is a heuristic attention signal, not a quality assessment. It appears only
+inside Session details on the session page.
 
 ## Plan usage
 

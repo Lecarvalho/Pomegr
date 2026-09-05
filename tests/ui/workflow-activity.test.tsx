@@ -42,14 +42,15 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByRole(rowRole, { name: /Child.*cache TTL ≥30m/ })).toBeInTheDocument();
   });
 
-  it("keeps workflow activity before the dashboard grid and summary-only", async () => {
+  it("places the workflow summary card before agent activity", async () => {
     const state = dashboardState();
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input) === "/api/sessions" ? { sessions: [] } : state), { status: 200 })));
     const { container } = render(<Dashboard />);
-    const panel = await waitFor(() => { const element = container.querySelector("details.workflowActivityPanel"); expect(element).toBeInTheDocument(); return element!; });
+    const panel = await waitFor(() => { const element = container.querySelector(".sessionSummaryCards"); expect(element).toBeInTheDocument(); return element!; });
     expect(panel.nextElementSibling).toBe(container.querySelector(".contentGrid"));
-    expect(panel).toHaveTextContent("Phase metadata ready");
-    expect(panel).toHaveTextContent("Implement");
+    expect(panel).toHaveTextContent("quickwin-batch");
+    expect(panel.querySelector('a[href="#agent-activity"]')).toBeInTheDocument();
+    expect(container.querySelector("details.workflowActivityPanel")).not.toBeInTheDocument();
     expect(panel.querySelector(".workflowWorkerRows, .workflowWorkerRow, .workflowWorkerGroup")).not.toBeInTheDocument();
   });
 
@@ -72,7 +73,7 @@ describe("workflow activity and agent tree view", () => {
     await screen.findByRole("button", { name: "Tree" });
     expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Tree" }));
-    expect(container.querySelector(".contentGrid")).toHaveClass("contentGrid-tree");
+    expect(container.querySelector(".contentGrid")).toHaveAttribute("id", "agent-activity");
     expect(container.querySelector(".agentsPanel")).toHaveClass("agentsPanel-tree");
     expect(window.localStorage.getItem("pomegr-agent-activity-view-claude:tree-preference")).toBe("tree");
     unmount();

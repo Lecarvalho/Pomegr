@@ -9,15 +9,13 @@ import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../sha
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
 import { ContextHistoryPanel } from "./components/dashboard/ContextHistoryPanel";
 import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
-import { InsightsPanel } from "./components/dashboard/InsightsPanel";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
 import { RequestSnapshotsPanel } from "./components/dashboard/RequestSnapshotsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "./components/dashboard/SessionHero";
 import { ProviderBadge } from "./components/ProviderBadge";
-import { SessionProgressPanel } from "./components/dashboard/SessionProgressPanel";
-import { SummaryMetrics } from "./components/dashboard/SummaryMetrics";
-import { WorkflowActivityPanel } from "./components/dashboard/WorkflowActivityPanel";
+import { SessionKpiStrip } from "./components/dashboard/SessionKpiStrip";
+import { SessionSummaryCards } from "./components/dashboard/SessionSummaryCards";
 import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
 import { LiveClockProvider } from "./hooks/LiveClockContext";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
@@ -263,22 +261,17 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
         </nav>
         <SessionCommandBar activityStatus={selectedSession?.activityStatus} connected={data.connected} connecting={connecting} historical={viewingHistory} paused={paused} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session)} onGenerateReport={generateReport} onTogglePause={togglePause} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
-          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} />
+          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} activityStatus={selectedSession?.activityStatus} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionProgressPanel progress={data.session.progress} agents={data.agents} activity={data.activity} connected={data.connected} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />}
-          {capabilities.workflows && (data.workflows || []).length > 0 && (
-            <WorkflowActivityPanel agents={data.agents} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} workflows={data.workflows || []} />
-          )}
-          {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className={`contentGrid ${agentActivityViewMode === "tree" ? "contentGrid-tree" : ""}`.trim()}>
-            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
-            <InsightsPanel insights={data.insights} />
-          </section>}
-
-          <SummaryMetrics state={data} historical={viewingHistory} />
+          <SessionKpiStrip state={data} historical={viewingHistory} />
           {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <>{displayPreferences.contextHistory && <ContextHistoryPanel key={data.session?.id || "awaiting-session"} agents={data.agents} tokens={data.metrics.tokens} historical={viewingHistory} />}
           <RequestSnapshotsPanel key={`${data.session?.id || "awaiting-session"}-requests`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheEvents={data.metrics.tokens.cacheEvents} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} /></>}
+          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} />}
+          {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className="contentGrid" id="agent-activity">
+            <AgentActivityPanel agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
+          </section>}
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
           <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />

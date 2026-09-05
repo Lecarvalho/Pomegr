@@ -56,6 +56,17 @@ function aggregateCacheLifetime(snapshots) {
   return lifetimes.size > 1 ? "mixed" : lifetimes.values().next().value || null;
 }
 
+function publicInsight(insight) {
+  const { id, level, title, detail, agentId } = insight;
+  return {
+    id,
+    level,
+    title,
+    detail,
+    ...(typeof agentId === "string" || agentId === null ? { agentId } : {}),
+  };
+}
+
 export function buildProviderTokenUsage(agents, usageSnapshots, startedAt, updatedAt, sessionId, compactions) {
   const snapshotsById = new Map(usageSnapshots.map((snapshot) => [`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot]));
   const visibleAgentIds = new Set(agents.map((agent) => agent.id));
@@ -197,6 +208,7 @@ export function projectProviderSessionEvidence({
   const loopPatterns = loops.map((loop, loopIndex) => ({
     id: `loop-${loop.actor.id}-${loopIndex}`,
     agent: loop.actor.label,
+    agentId: loop.actor.id,
     tool: loop.tool,
     detail: loop.detail,
     calls: loop.count,
@@ -263,7 +275,7 @@ export function projectProviderSessionEvidence({
     activity: recentActivityEvents(allEvents),
     executionTasks,
     planTasks: evidence.planTasks,
-    insights,
+    insights: insights.map(publicInsight),
     usageLimits,
   };
 }

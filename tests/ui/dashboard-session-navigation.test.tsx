@@ -175,7 +175,7 @@ describe("dashboard session navigation", () => {
     view.unmount();
   });
 
-  it("places context history immediately before request snapshots and live resources", async () => {
+  it("orders KPIs, context, requests, summary cards, agents, resources and details", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -183,7 +183,7 @@ describe("dashboard session navigation", () => {
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    renderDashboard([catalogSession(state)]);
+    const { container } = renderDashboard([catalogSession(state)]);
 
     const resourcePanel = (await screen.findByText("Resource use")).closest("details");
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
@@ -197,7 +197,10 @@ describe("dashboard session navigation", () => {
     expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
     expect(within(breadcrumb).getByText(state.session!.project)).toHaveAttribute("aria-current", "page");
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);
-    expect(requestPanel?.nextElementSibling).toBe(resourcePanel);
+    expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(contextPanel);
+    expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
+    expect(container.querySelector(".sessionSummaryCards")?.nextElementSibling).toBe(container.querySelector(".contentGrid"));
+    expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(resourcePanel);
     expect(resourcePanel?.nextElementSibling).toBe(sessionDetails);
     expect(sessionDetails?.nextElementSibling).toBeNull();
     expect(resourcePanel).toHaveClass("dashboardDisclosurePanel", "panel");
@@ -216,7 +219,7 @@ describe("dashboard session navigation", () => {
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
 
-    renderDashboard([catalogSession(state)]);
+    const { container } = renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Historical session" })).toBeInTheDocument();
     const requestPanel = screen.getByRole("heading", { name: "Request snapshots" }).closest("section");
@@ -225,7 +228,8 @@ describe("dashboard session navigation", () => {
 
     expect(screen.queryByText("Resource use")).not.toBeInTheDocument();
     expect(contextPanel?.nextElementSibling).toBe(requestPanel);
-    expect(requestPanel?.nextElementSibling).toBe(sessionDetails);
+    expect(requestPanel?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
+    expect(container.querySelector(".contentGrid")?.nextElementSibling).toBe(sessionDetails);
   });
 
   it("hides optional evidence without changing neighboring session regions", async () => {
