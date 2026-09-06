@@ -39,6 +39,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/lan-pairing-page.mjs",
   "desktop/lan-sharing.mjs",
   "desktop/main.mjs",
+  "desktop/monitor-worker.mjs",
   "desktop/native-security.mjs",
   "desktop/notifications.mjs",
   "desktop/paths.mjs",

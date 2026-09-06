@@ -407,7 +407,8 @@ test("desktop shell startup ordering and failure UI remain bounded", async () =>
   assert.match(main, /startShellRuntime\(\{/);
   assert.match(main, /requestSingleInstanceLock\(\)/);
   assert.match(main, /installDesktopAppLifecycle\(app/);
-  assert.match(main, /stopChild\(monitorChild/);
+  assert.match(main, /await monitorChild\.stop\(/);
+  assert.match(main, /stopMonitor: \(child\) => child\.stop\(/);
   assert.match(main, /POMEGR_RESOURCE_ROOT:\s*desktopPaths\.applicationRoot/);
   assert.match(main, /resourcesPath:\s*process\.resourcesPath/);
   assert.match(main, /userDataPath:\s*app\.getPath\("userData"\)/);

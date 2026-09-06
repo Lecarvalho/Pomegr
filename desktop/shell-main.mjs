@@ -1,9 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Worker } from "node:worker_threads";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
@@ -36,7 +34,8 @@ import {
   installWebContentsSecurity,
   secureBrowserWindowOptions,
 } from "./security-policy.mjs";
-import { stopChild, waitForMessage } from "./utility-lifecycle.mjs";
+import { waitForMessage } from "./utility-lifecycle.mjs";
+import { createMonitorWorker } from "./monitor-worker.mjs";
 import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
@@ -119,8 +118,8 @@ function workerEntrypoint() {
   return entrypoint;
 }
 
-function createMonitorWorker(privateEnvironment) {
-  const worker = new Worker(workerEntrypoint(), {
+function startMonitorWorker(privateEnvironment) {
+  return createMonitorWorker(workerEntrypoint(), {
     env: minimalRuntimeEnvironment(process.env, {
       POMEGR_RESOURCE_ROOT: desktopPaths.applicationRoot,
     }),
@@ -134,18 +133,6 @@ function createMonitorWorker(privateEnvironment) {
       smoke: false,
     },
   });
-  const child = new EventEmitter();
-  let alive = true;
-  Object.defineProperty(child, "pid", { get: () => alive ? worker.threadId : undefined });
-  child.send = (message) => worker.postMessage(message);
-  child.postMessage = child.send;
-  child.kill = () => { void worker.terminate(); return true; };
-  child.forceKill = child.kill;
-  worker.once("online", () => child.emit("spawn"));
-  worker.on("message", (message) => child.emit("message", message));
-  worker.once("error", () => child.emit("error", new Error("DESKTOP_MONITOR_FAILED")));
-  worker.once("exit", (code) => { alive = false; child.emit("exit", code); });
-  return child;
 }
 
 function createSecureWindow(browserSession, windowState) {
@@ -449,8 +436,8 @@ async function stopRuntime() {
     }
     nativeNotifications.clear();
     try {
-      if (monitorChild?.pid) {
-        await stopChild(monitorChild, {
+      if (monitorChild) {
+        await monitorChild.stop({
           gracefulTimeoutMs: STOP_TIMEOUT_MS,
           killTimeoutMs: KILL_TIMEOUT_MS,
         });
@@ -521,7 +508,7 @@ async function startDesktop() {
       stopTimeoutMs: STOP_TIMEOUT_MS + KILL_TIMEOUT_MS,
       startMonitor() {
         recordStage("SHELL_MONITOR_STARTING");
-        monitorChild = createMonitorWorker(privateEnvironment);
+        monitorChild = startMonitorWorker(privateEnvironment);
         privateEnvironment = undefined;
         const monitorFailed = () => {
           if (runtimeState === "starting") startupFailed = true;
@@ -677,7 +664,7 @@ async function startDesktop() {
         await window.loadURL(origin);
         recordStage("SHELL_WINDOW_READY");
       },
-      stopMonitor: (child) => stopChild(child, {
+      stopMonitor: (child) => child.stop({
         gracefulTimeoutMs: STOP_TIMEOUT_MS,
         killTimeoutMs: KILL_TIMEOUT_MS,
       }),

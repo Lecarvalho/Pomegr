@@ -25,12 +25,15 @@ let handle;
 let agentQueryDescriptorPath;
 let agentAuthorizationToken;
 const shutdown = installShutdown(async () => {
-  await handle?.close();
-  if (agentAuthorizationToken && agentQueryDescriptorPath) {
-    await removeAgentQueryDescriptorIfTokenMatches({
-      descriptorPath: agentQueryDescriptorPath,
-      token: agentAuthorizationToken,
-    });
+  try {
+    await handle?.close();
+  } finally {
+    if (agentAuthorizationToken && agentQueryDescriptorPath) {
+      await removeAgentQueryDescriptorIfTokenMatches({
+        descriptorPath: agentQueryDescriptorPath,
+        token: agentAuthorizationToken,
+      });
+    }
   }
 });
 recordUtilityStage("MONITOR_MODULE_LOADED");

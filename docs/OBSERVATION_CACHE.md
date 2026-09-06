@@ -201,6 +201,13 @@ capability that authorizes only this route family. Electron main publishes its v
 loopback origin, and token atomically in a bounded descriptor under the stable per-user
 Pomegr data root after monitor
 startup, and removes that descriptor on clean shutdown only when the token still matches.
+The desktop parent also removes its matching descriptor after confirmed monitor-worker
+exit, including forced termination, startup failure, and an unexpected worker exit.
+Both normal quit and startup rollback await this parent-owned cleanup even if the
+worker has already exited. Cleanup never removes a descriptor belonging to another
+launch, never stops the development monitor, and never changes MCP GET serving or
+fallback behavior. Terminating the entire desktop process without running parent
+cleanup can still leave a stale descriptor.
 A present but invalid or stale descriptor fails unavailable. Source development may use
 the fixed unauthenticated `127.0.0.1:4317` monitor only when the descriptor does not exist.
 
