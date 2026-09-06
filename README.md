@@ -25,6 +25,12 @@ npm run dev
 
 Then open [http://localhost:3003](http://localhost:3003).
 
+On Windows, running `npm run dev` again stops this checkout's existing development
+web and monitor processes before starting a fresh instance. Orphaned development
+services are cleaned up too. An unrelated app (including the packaged desktop app)
+using port 3003 or 4317 is left running and startup explains which port is blocked.
+On other platforms, stop the previous instance before running the command again.
+
 For internal pipeline timing diagnostics, attach the passive terminal monitor from a
 second shell:
 

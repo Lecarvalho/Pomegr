@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,39 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const monitorPort = 4317;
 const webPort = 3003;
+const execFileAsync = promisify(execFile);
+
+class DevelopmentStartupError extends Error {}
+
+export async function replaceDevelopmentServices({
+  platform = process.platform,
+  execFileFn = execFileAsync,
+  logger = console,
+} = {}) {
+  if (platform !== "win32") return;
+  try {
+    const { stdout } = await execFileFn("powershell.exe", [
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+      "-File", path.join(root, "scripts", "stop-dev-services.ps1"),
+    ], {
+      windowsHide: true,
+      timeout: 30_000,
+      maxBuffer: 1024,
+      env: { ...process.env, POMEGR_DEV_LAUNCHER_PID: String(process.pid) },
+    });
+    if (/^\d+$/.test(stdout.trim()) && Number(stdout.trim()) > 0) {
+      logger.log("[pomegr] Stopped the previous Pomegr development services.");
+    }
+  } catch (error) {
+    const messages = {
+      10: "Port 3003 is already in use by an unrecognized process. Close that app and retry.",
+      11: "Port 4317 is already in use by an unrecognized process. Close that app and retry.",
+      12: "Pomegr process ownership changed during cleanup. Retry npm run dev.",
+    };
+    throw new DevelopmentStartupError(messages[error.code] ??
+      "Could not inspect or stop existing Pomegr development services. Close the previous instance and retry.");
+  }
+}
 
 function isPortOpen(port, host, timeoutMs) {
   return new Promise((resolve) => {
@@ -27,7 +61,8 @@ export async function assertDevelopmentPortsAvailable({ checkPortFn = isPortOpen
     checkPortFn(monitorPort, "127.0.0.1", 100),
     checkPortFn(webPort, "127.0.0.1", 100),
   ]);
-  if (occupied.some(Boolean)) throw new Error("A Pomegr development port is already in use.");
+  const ports = [monitorPort, webPort].filter((_, index) => occupied[index]);
+  if (ports.length) throw new DevelopmentStartupError(`Development port ${ports.join(" / ")} is already in use. Close the app using it and retry.`);
 }
 
 export async function waitForPort(port, { host = "127.0.0.1", timeoutMs = 30_000, retryMs = 50 } = {}) {
@@ -130,6 +165,7 @@ export async function terminateChildTree(child, {
 
 export async function startDev({
   spawnFn = spawn,
+  replaceServicesFn = replaceDevelopmentServices,
   assertPortsAvailableFn = assertDevelopmentPortsAvailable,
   prewarmFn = prewarmDevelopmentServices,
   terminateFn = terminateChildTree,
@@ -160,6 +196,7 @@ export async function startDev({
   }
 
   try {
+    await replaceServicesFn({ logger });
     await assertPortsAvailableFn();
     const specs = [
       [process.execPath, [path.join(root, "monitor", "cli.mjs")]],
@@ -171,8 +208,10 @@ export async function startDev({
       child.on("error", failLifecycle);
       child.on("exit", failLifecycle);
     }
-  } catch {
-    logger.warn("[pomegr] Development startup failed before services became ready.");
+  } catch (error) {
+    logger.warn(error instanceof DevelopmentStartupError
+      ? `[pomegr] ${error.message}`
+      : "[pomegr] Development startup failed before services became ready.");
     await close(1);
     return false;
   }
