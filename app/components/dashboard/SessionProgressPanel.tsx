@@ -24,7 +24,7 @@ function confidenceLabel(value: SessionProgress["confidence"]) {
 }
 
 export function remainingLabel(progress: SessionProgress) {
-  if (progress.remainingMinutesMin === undefined || progress.remainingMinutesMax === undefined) return "Not reported";
+  if (progress.remainingMinutesMin === undefined || progress.remainingMinutesMax === undefined) return null;
   if (progress.remainingMinutesMin === progress.remainingMinutesMax) return `${progress.remainingMinutesMin} min`;
   return `${progress.remainingMinutesMin}–${progress.remainingMinutesMax} min`;
 }
@@ -63,7 +63,7 @@ function SessionProgressInstrument({
 }: {
   progress: SessionProgress;
   phaseLabel: string;
-  eta: string;
+  eta: string | null;
   complete: boolean;
   historical: boolean;
   compact?: boolean;
@@ -82,7 +82,7 @@ function SessionProgressInstrument({
         blocked={progress.phase === "blocked"}
       />
       <dl className="sessionKv sessionProgressCompactMeasures">
-        <dt>Remaining</dt><dd>{complete ? "Complete" : eta}</dd>
+        {(complete || eta) && <><dt>Remaining</dt><dd>{complete ? "Complete" : eta}</dd></>}
         <dt>Confidence</dt><dd>{confidenceLabel(progress.confidence)}</dd>
         <dt>Recorded</dt><dd><time dateTime={progress.reportedAt}>{absoluteTime(progress.reportedAt)}</time></dd>
       </dl>
@@ -105,7 +105,7 @@ function SessionProgressInstrument({
         motion="detail"
       />
       <div className="sessionProgressMeasures">
-        {!complete && <div>
+        {!complete && eta && <div>
           <span>REMAINING</span>
           <strong>{eta}</strong>
         </div>}

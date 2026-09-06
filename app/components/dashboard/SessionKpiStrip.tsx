@@ -40,7 +40,7 @@ export function SessionKpiStrip({ state, historical }: { state: MonitorState; hi
     <div className="sessionKpi sessionKpiEstimate">
       <span className="sessionEyebrow">Agent estimate</span>
       <strong className={activityReady && progress ? "sessionPositive" : undefined}>{activityReady && progress ? `${progress.percent}%` : "—"}</strong>
-      <small>{!activityReady ? unavailable("activityEvidence") : progress ? `${PHASE_LABELS[progress.phase]} · ${remainingLabel(progress)} · ${progress.confidence} confidence` : "No estimate recorded"}</small>
+      <small>{!activityReady ? unavailable("activityEvidence") : progress ? [PHASE_LABELS[progress.phase], remainingLabel(progress), `${progress.confidence} confidence`].filter(Boolean).join(" · ") : "No estimate recorded"}</small>
     </div>
   </section>;
 }
