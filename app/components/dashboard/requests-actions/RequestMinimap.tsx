@@ -34,7 +34,10 @@ export function RequestMinimap({ rows, start, end, mode, onMove }: {
       }} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { drag.current = null; }}>
       {rows.map((row, index) => {
         const height = Math.max(.5, (mode === "fresh" ? row.freshTokens : row.promptTokens) / maximum * 22);
-        return <rect className="requestsActionsMiniBar" key={row.id} x={index / rows.length * 1000} y={25 - height} width={.7} height={height} />;
+        return <g key={row.id}>
+          <rect className="requestsActionsMiniBar" x={index / rows.length * 1000} y={25 - height} width={.7} height={height} />
+          {row.cacheEvidence && <line className={`requestsActionsMiniRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`} x1={(index + .5) / rows.length * 1000} x2={(index + .5) / rows.length * 1000} y1={1} y2={8} />}
+        </g>;
       })}
       <rect className="requestsActionsMiniWindow" x={(start - 1) / rows.length * 1000} y={1} width={(end - start + 1) / rows.length * 1000} height={24} />
     </svg>

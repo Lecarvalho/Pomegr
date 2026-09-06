@@ -842,7 +842,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsScope .commandSelect { min-width: 0; }
 .requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
 .requestsActionsPlot { padding: 0 20px 8px; scroll-margin-top: 80px; }
-.requestsActionsChart { display: block; width: 100%; height: 246px; overflow: visible; }
+.requestsActionsChart { display: block; width: 100%; height: 274px; overflow: visible; }
 .requestsActionsAxis text, .requestsActionsSelectedLabel { fill: var(--command-faint); font: 11px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsAxis line { stroke: var(--command-panel-2); stroke-width: 1; }
 .requestsActionsBar { cursor: pointer; }
@@ -856,6 +856,22 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsSelectedLabel { fill: var(--command-brand-text); }
 .requestsActionsCompaction line { stroke: var(--command-amber); stroke-dasharray: 3 4; }
 .requestsActionsCompaction text { fill: var(--command-amber); font: 10px var(--font-ui); }
+.requestsActionsLegendIcon { width: 16px; height: 16px; color: var(--command-amber); }
+.requestsActionsRefill { color: var(--command-amber); }
+.requestsActionsRefill .cacheRefillIcon { width: 16px; height: 20px; }
+.requestsActionsRefill > line { stroke: currentColor; stroke-width: 1; stroke-dasharray: 1 4; stroke-linecap: round; }
+.requestsActionsRefillLabel { fill: var(--command-amber); stroke: var(--command-panel); stroke-width: 4px; paint-order: stroke; font: 11px var(--font-ui); pointer-events: none; }
+.requestsActionsMiniRefill { stroke: var(--command-amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.requestsActionsMiniRefill.isInferred { stroke-dasharray: 1 2; }
+.requestsActionsCacheDetail { padding-top: 12px; border-top: 1px solid var(--command-line); font-size: 12px; line-height: 1.5; }
+.requestsActionsCacheDetail h4 { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--command-amber); font-size: 13px; font-weight: 600; }
+.requestsActionsCacheDetail .cacheRefillIcon { width: 18px; height: 20px; }
+.requestsActionsCacheDetail p { margin: 6px 0 0; color: var(--command-muted); }
+.requestsActionsCacheDetail .requestsActionsCacheProvenance { color: var(--command-amber); }
+.requestsActionsCacheDetail dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0; }
+.requestsActionsCacheDetail dt { color: var(--command-muted); }
+.requestsActionsCacheDetail dd { margin: 2px 0 0; color: var(--command-ink); font-family: var(--font-data); }
+.requestsActionsCacheDetail a { display: inline-flex; align-items: center; margin-top: 8px; color: var(--command-brand-text); }
 .requestsActionsMinimap { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 18px; margin-top: 4px; color: var(--command-faint); font: 11px var(--font-data); }
 .requestsActionsMinimap svg { width: 100%; height: 26px; cursor: grab; touch-action: none; outline: none; }
 .requestsActionsMinimap svg:active { cursor: grabbing; }
@@ -916,7 +932,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsLegend { grid-row: 3; gap: 5px 10px; }
   .requestsActionsPanel .requestsActionsButton, .requestsActionsScope .commandSelect select { min-height: 44px; }
   .requestsActionsPlot { padding: 10px 14px 12px; }
-  .requestsActionsChart { height: 168px; }
+  .requestsActionsChart { height: 196px; }
+  .requestsActionsCacheDetail a { min-height: 44px; }
   .requestsActionsAxis text { font-size: 10px; }
   .requestsActionsPlot .requestsActionsNavigation { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; }
   .requestsActionsDetail { gap: 12px; padding: 14px; }

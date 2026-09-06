@@ -195,6 +195,24 @@ Agent activity renders each agent's resolved cache lifetime or documented minimu
 
 ### Cache-read drops
 
+Requests & actions overlays cache evidence on the matching request as an amber dotted
+line and stack-refill icon, distinct from dashed compaction boundaries. Only the
+monitor's `possibleFullRefills` occurrences produce **Possible full refill** lines;
+they preserve qualifying transitions beyond the detailed event cap. Detailed
+`refill`/`miss_refill` events may enrich a matched transition but never create a line
+on their own. Ordinary cache growth and initial cache creation remain visible in
+cache-write bars, request token details, and the separate event disclosure. Independent
+read-drop occurrences use an open arrowhead and **Possible refill**, with the selected
+request explicitly labeled **Inference · no recorded cache write**. Neither bar height
+nor an uncached-input spike creates a marker. Reuse events have no refill marker.
+Association requires a unique retained request with the same normalized agent and
+observation timestamp; unmatched or ambiguous evidence is omitted. Recorded-write
+evidence takes precedence if both feeds match the same request. The agent filter scopes
+markers and minimap ticks together. Labels appear on selection, focus, or hover; request
+details retain the evidence on phones and distinguish provider diagnostics from
+inferences. These are presentation associations only; classification, feed limits,
+report totals, and API contracts remain unchanged.
+
 `metrics.tokens.cacheReadDrops` is an independent, bounded read-drop feed. It does not
 enable `cacheWriteUsage` or `cacheUsageClassification`, add write-backed cache events,
 contribute to report refill totals, or create an efficiency recommendation. Codex

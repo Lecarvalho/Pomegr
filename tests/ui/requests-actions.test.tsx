@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Agent, CacheEvent, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
 import { RequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
 import { agent } from "./dashboard-test-fixtures";
@@ -36,13 +36,18 @@ function requestFeed(items: RequestSnapshot[], status: RequestSnapshotFeed["stat
   return { status, items };
 }
 
-function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cacheWriteAvailable?: boolean; historical?: boolean } = {}) {
+function fullRefill(agentId: string, observedAt: string): CacheEventFeed["possibleFullRefills"] {
+  return [{ agentId, count: 1, occurrences: [{ observedAt, reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }];
+}
+
+function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
   return render(<RequestsActionsPanel
     agents={options.agents ?? [agent]}
     requestSnapshots={requestFeed(items)}
     contextBoundaries={[]}
     cacheWriteAvailable={options.cacheWriteAvailable ?? true}
     historical={options.historical ?? false}
+    cacheReadDrops={options.cacheReadDrops}
   />);
 }
 
@@ -251,6 +256,107 @@ describe("RequestsActionsPanel", () => {
     expect(snapshotEventKey("primary", "2026-08-09T08:04:00.000-04:00")).toBe(snapshotEventKey("primary", "2026-08-09T12:04:00.000Z"));
     expect(snapshotEventKey("primary", "not-a-timestamp")).toBeNull();
     expect(snapshotEventKey("primary", "2026-08-09T12:04:00.000Z")).not.toBe(snapshotEventKey("child", "2026-08-09T12:04:00.000Z"));
+  });
+
+  it("keeps ordinary cache writes in bars and details without refill lines", () => {
+    const target = snapshot(1, "primary", { uncachedInputTokens: 2, cacheWriteTokens: 40415, cacheReadTokens: 0 });
+    const event: CacheEvent = { id: "initial", agentId: "primary", kind: "refill", observedAt: target.observedAt, promptInputTokens: 40417, cacheReadPercent: 0, cacheWriteTokens: 40415, previousCacheReadPercent: null, gapMs: null, relatedEventId: null };
+    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([target])} contextBoundaries={[]} cacheWriteAvailable historical cacheEvents={{ status: "ready", items: [event], possibleFullRefills: [] }} />);
+    expect(container.querySelector(".requestsActionsRefill")).toBeNull();
+    expect(container.querySelector(".requestsActionsMiniRefill")).toBeNull();
+    expect(container.querySelector(".requestsActionsSegment.write")).toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsStat.write")).toHaveTextContent("40,415");
+    expect(screen.queryByRole("region", { name: "Request cache evidence" })).not.toBeInTheDocument();
+  });
+
+  it("marks recorded and inferred refills, selects their request, and preserves markers across modes", async () => {
+    const user = userEvent.setup();
+    const target = snapshot(2);
+    const event: CacheEvent = {
+      id: "refill-2", agentId: "primary", kind: "refill", observedAt: target.observedAt,
+      promptInputTokens: 5_000, cacheReadPercent: 5, cacheWriteTokens: 5_000,
+      previousCacheReadPercent: 90, gapMs: 1_000, relatedEventId: null,
+    };
+    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([snapshot(1), target])} contextBoundaries={[]} cacheWriteAvailable historical={false}
+      cacheEvents={{ status: "ready", items: [event], possibleFullRefills: fullRefill("primary", target.observedAt) }}
+      cacheReadDrops={{ status: "ready", items: [] }} />);
+    const marker = container.querySelector(".requestsActionsRefill")!;
+    expect(marker.querySelector("title")).toHaveTextContent("Possible full refill · request #2");
+    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("width", "16");
+    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("height", "16");
+    const bar = marker.closest(".requestsActionsBar")!;
+    expect(bar).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
+    expect(marker).not.toHaveClass("isInferred");
+    fireEvent.keyDown(bar, { key: "Enter" });
+    expect(screen.getByRole("heading", { name: "Request #2" })).toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsRefill")).toBeInTheDocument();
+    fireEvent.click(marker);
+    await user.click(screen.getByRole("button", { name: "Full breakdown" }));
+    expect(container.querySelector(".requestsActionsRefill")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
+    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("90% → 5%");
+    expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
+  });
+
+  it("renders read-drop evidence as an inferred marker and keeps it usable on phone", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const target = snapshot(2);
+    const cacheReadDrops: CacheReadDropFeed = { status: "ready", items: [{ agentId: "primary", count: 1, occurrences: [{ id: "drop-2", observedAt: target.observedAt, previousCacheReadPercent: 90, cacheReadPercent: 5, gapMs: 1_000 }] }] };
+    const { container } = renderPanel([snapshot(1), target], { cacheReadDrops });
+    const marker = container.querySelector(".requestsActionsRefill.isInferred")!;
+    expect(marker.querySelector("title")).toHaveTextContent("Possible refill · request #2");
+    expect(marker.closest(".requestsActionsBar")).toHaveAttribute("aria-label", expect.stringContaining("Possible refill"));
+    expect(container.querySelector(".requestsActionsMiniRefill")).toBeNull();
+    fireEvent.click(marker);
+    expect(screen.getByRole("heading", { name: "Request #2" })).toBeInTheDocument();
+    const evidence = screen.getByRole("region", { name: "Request cache evidence" });
+    expect(evidence).toHaveTextContent("Possible refill");
+    expect(evidence).toHaveTextContent(/Inference/i);
+    expect(evidence).toHaveTextContent("90% → 5%");
+    await user.click(screen.getByRole("button", { name: "Full breakdown" }));
+    expect(container.querySelector(".requestsActionsRefill.isInferred")).toBeInTheDocument();
+  });
+
+  it("renders compaction and refill markers together and refreshes selected evidence", () => {
+    const first = snapshot(1);
+    const target = snapshot(2);
+    const event: CacheEvent = {
+      id: "refill-refresh", agentId: "primary", kind: "refill", observedAt: target.observedAt,
+      promptInputTokens: 5_000, cacheReadPercent: 5, cacheWriteTokens: 5_000,
+      previousCacheReadPercent: 90, gapMs: 1_000, relatedEventId: null,
+    };
+    const props = { agents: [agent], requestSnapshots: requestFeed([first, target]), contextBoundaries: [{
+      id: "compact", agentId: "primary", timestamp: "2026-08-09T12:01:30.000Z", kind: "automatic_compaction" as const, preTokens: null,
+    }], cacheWriteAvailable: true, historical: false };
+    const { container, rerender } = render(<RequestsActionsPanel {...props} />);
+    fireEvent.click(container.querySelectorAll(".requestsActionsBar")[1]);
+    expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsCompaction")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Request cache evidence" })).not.toBeInTheDocument();
+    rerender(<RequestsActionsPanel {...props} cacheEvents={{ status: "ready", items: [event], possibleFullRefills: fullRefill("primary", target.observedAt) }} />);
+    expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsCompaction")).toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsRefill")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
+  });
+
+  it("keeps duplicate request timestamps visible in evidence without arbitrary interaction", () => {
+    const observedAt = "2026-08-09T12:00:00.000Z";
+    const event: CacheEvent = {
+      id: "refill-duplicate", agentId: "primary", kind: "refill", observedAt,
+      promptInputTokens: 5_000, cacheReadPercent: 5, cacheWriteTokens: 5_000,
+      previousCacheReadPercent: 90, gapMs: 1_000, relatedEventId: null,
+    };
+    const duplicate = snapshot(1, "primary", { observedAt });
+    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([duplicate, { ...duplicate, id: "request-duplicate" }])}
+      contextBoundaries={[]} cacheWriteAvailable historical={false} cacheEvents={{ status: "ready", items: [event], possibleFullRefills: [] }} />);
+    fireEvent.click(container.querySelector(".cacheEvidenceDisclosure summary")!);
+    const evidenceList = screen.getByRole("list");
+    const row = within(evidenceList).getByText("Cache refill").closest(".cacheEvidenceRow")!;
+    expect(row).toBeInTheDocument();
+    expect(row).not.toHaveClass("interactive");
+    expect(row).not.toHaveAttribute("role");
+    expect(row).not.toHaveAttribute("tabindex");
+    expect(row).toHaveTextContent("5% read");
   });
 
   it("matches cache evidence by normalized timestamp across scope and recenters the request", async () => {

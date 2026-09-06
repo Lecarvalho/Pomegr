@@ -1,4 +1,6 @@
-import type { ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
+import type { CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
+import { requestCacheEvidence, type RequestCacheEvidence } from "./cache-evidence";
+export { snapshotEventKey } from "./cache-evidence";
 
 export type RequestScope = "all" | string;
 export type ChartMode = "fresh" | "full";
@@ -13,6 +15,7 @@ export type RequestRow = RequestSnapshot & {
   freshTokens: number;
   /** Whether a recognized compaction occurred after the prior same-agent row. */
   compactionBefore: boolean;
+  cacheEvidence?: RequestCacheEvidence;
 };
 
 const NICE_STEPS = [1.2, 1.5, 2, 3, 4.5, 6, 8] as const;
@@ -49,10 +52,13 @@ export function scopedRows(
   feed: RequestSnapshotFeed,
   boundaries: ContextHistoryBoundary[],
   scope: RequestScope,
+  cacheEvents?: CacheEventFeed,
+  cacheReadDrops?: CacheReadDropFeed,
 ): RequestRow[] {
   if (feed.status !== "ready") return [];
 
   const rows: RequestRow[] = [];
+  const evidence = requestCacheEvidence(feed.items, cacheEvents, cacheReadDrops);
   const previousByAgent = new Map<string, RequestSnapshot>();
   for (const snapshot of feed.items) {
     if (scope !== "all" && snapshot.agentId !== scope) continue;
@@ -69,6 +75,7 @@ export function scopedRows(
       promptTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.cacheReadTokens,
       freshTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.outputTokens,
       compactionBefore: hasCompactionBetween(boundaries, snapshot.agentId, previous?.observedAt, snapshot.observedAt),
+      cacheEvidence: evidence.get(snapshot.id),
     });
     previousByAgent.set(snapshot.agentId, snapshot);
   }
@@ -138,10 +145,4 @@ export function largestRequests(rows: RequestRow[], sort: LargestSort, limit: nu
     .slice()
     .sort((left, right) => sortValue(right, sort) - sortValue(left, sort) || left.ordinal - right.ordinal)
     .slice(0, count);
-}
-
-export function snapshotEventKey(agentId: string, observedAt: string) {
-  const timestamp = Date.parse(observedAt);
-  if (!Number.isFinite(timestamp)) return null;
-  return `${agentId}\u0000${new Date(timestamp).toISOString()}`;
 }

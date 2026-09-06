@@ -1,6 +1,8 @@
-import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { compactNumber, shortTime } from "../../../dashboard-utils";
 import type { ChartMode, RequestRow } from "./model";
+import { cacheEvidenceLabel } from "./cache-evidence";
+import { CacheRefillIcon } from "../CacheRefillIcon";
 
 export function RequestBarsChart({ rows, start, end, size, maximum, mode, selectedId, phone, cacheWriteAvailable, onSelect, onStep }: {
   rows: RequestRow[]; start: number; end: number; size: number; maximum: number; mode: ChartMode;
@@ -8,6 +10,8 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   onSelect: (row: RequestRow) => void; onStep: (delta: number) => void;
 }) {
   const chartRef = useRef<SVGSVGElement>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusSelection = useRef(false);
   useLayoutEffect(() => {
     if (!focusSelection.current) return;
@@ -16,20 +20,24 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   });
   const left = phone ? 34 : 56;
   const right = phone ? 330 : 1100;
-  const top = phone ? 22 : 26;
-  const bottom = phone ? 150 : 222;
+  const top = phone ? 50 : 54;
+  const bottom = phone ? 178 : 250;
   const gap = phone ? 2.8 : 3;
   const step = (right - left + gap) / size;
   const width = step - gap;
   const height = (value: number) => value / maximum * (bottom - top);
   const visible = rows.slice(start - 1, end);
+  const labeledRow = [hoveredId, focusedId, selectedId]
+    .map((id) => visible.find((row) => row.id === id && row.cacheEvidence))
+    .find((row) => row !== undefined);
+  const labelX = labeledRow ? left + step * visible.indexOf(labeledRow) + width / 2 : left;
   const keyboardStep = (event: KeyboardEvent<SVGSVGElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     focusSelection.current = true;
     onStep(event.key === "ArrowLeft" ? -1 : 1);
   };
-  return <svg className="requestsActionsChart" viewBox={phone ? "0 0 334 168" : "0 0 1112 246"}
+  return <svg className="requestsActionsChart" viewBox={phone ? "0 0 334 196" : "0 0 1112 274"}
     ref={chartRef} role="group" aria-label={`Model requests, positions ${start} to ${end}`} onKeyDown={keyboardStep}>
     {(phone ? [0, .5, 1] : [0, .25, .5, .75, 1]).map((fraction) => <g key={fraction} className="requestsActionsAxis">
       <line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} />
@@ -50,22 +58,30 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
         return <rect key={kind} className={`requestsActionsSegment ${kind}`} x={x} y={bottom - height(stacked)} width={width} height={height(value)} />;
       });
       return <g key={row.id} className={`requestsActionsBar${selected ? " isSelected" : ""}`} role="button" tabIndex={0}
-        aria-pressed={selected} aria-label={`Request #${row.ordinal}, ${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output`}
+        aria-pressed={selected} aria-label={`Request #${row.ordinal}, ${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceLabel(row.cacheEvidence)}` : ""}`}
+        onPointerEnter={() => setHoveredId(row.id)} onPointerLeave={() => setHoveredId(null)}
+        onFocus={() => setFocusedId(row.id)} onBlur={() => setFocusedId(null)}
         onClick={() => onSelect(row)} onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(row); }
         }}>
-        <rect className="requestsActionsHit" x={x - gap / 2} y={top} width={step} height={bottom - top} />
+        <rect className="requestsActionsHit" x={x - gap / 2} y={row.cacheEvidence ? top - 44 : top} width={step} height={bottom - top + (row.cacheEvidence ? 44 : 0)} />
         {mode === "fresh" && <rect className="requestsActionsOutline" x={x} y={bottom - height(row.promptTokens)} width={width} height={height(row.promptTokens)} />}
         {stack}
         {selected && <rect className="requestsActionsSelection" x={x} y={bottom - height(Math.max(stacked, mode === "fresh" ? row.promptTokens : 0))} width={width} height={Math.max(1, height(Math.max(stacked, mode === "fresh" ? row.promptTokens : 0)))} />}
         {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} /><text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text></g>}
+        {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`}>
+          <title>{cacheEvidenceLabel(row.cacheEvidence)} · request #{row.ordinal}</title>
+          <line x1={x + width / 2} x2={x + width / 2} y1={top - 18} y2={bottom} />
+          <g transform={`translate(${x + width / 2 - 8} ${top - 42})`}><CacheRefillIcon size={16} inferred={row.cacheEvidence.kind === "possible_refill"} /></g>
+        </g>}
         {selected && <text className="requestsActionsSelectedLabel" x={Math.min(right - 16, Math.max(left + 16, x + width / 2))} y={Math.max(top + 10, bottom - height(Math.max(stacked, row.promptTokens))) - 5} textAnchor="middle">#{row.ordinal}</text>}
       </g>;
     })}
+    {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelX < right - 115 ? labelX + 12 : labelX - 12} y={top - 43} textAnchor={labelX < right - 115 ? "start" : "end"}>{cacheEvidenceLabel(labeledRow.cacheEvidence)}</text>}
     <g className="requestsActionsAxis">
-      <text x={left} y={phone ? 164 : 238}>#{start}</text>
-      {!phone && visible.length > 2 && <text x={(left + right) / 2} y={238} textAnchor="middle">#{visible[Math.floor(visible.length / 2)].ordinal} · {shortTime(visible[Math.floor(visible.length / 2)].observedAt)}</text>}
-      <text x={right} y={phone ? 164 : 238} textAnchor="end">#{end}</text>
+      <text x={left} y={phone ? 192 : 266}>#{start}</text>
+      {!phone && visible.length > 2 && <text x={(left + right) / 2} y={266} textAnchor="middle">#{visible[Math.floor(visible.length / 2)].ordinal} · {shortTime(visible[Math.floor(visible.length / 2)].observedAt)}</text>}
+      <text x={right} y={phone ? 192 : 266} textAnchor="end">#{end}</text>
     </g>
   </svg>;
 }

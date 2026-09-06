@@ -4,6 +4,7 @@ import { useState, type KeyboardEvent } from "react";
 import type { Agent, CacheEvent, RequestSnapshot, RequestSnapshotFeed, CacheEventFeed } from "../../../shared/monitor-contract";
 import { agentDisplayLabel, timelineTime } from "../../dashboard-utils";
 import { snapshotEventKey } from "./requests-actions/model";
+import { uniqueByRequest } from "./requests-actions/cache-evidence";
 import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 
 export const CACHE_EVIDENCE_STORAGE_KEY = "pomegr-disclosure-cache-evidence";
@@ -101,11 +102,7 @@ export function CacheEvidenceDisclosure({ agents, cacheEvents, requestSnapshots,
     : [];
   const visibleEvents = showAllEvents ? allEvents : allEvents.slice(-RECENT_CACHE_EVENT_COUNT);
   const hiddenEventCount = Math.max(0, allEvents.length - RECENT_CACHE_EVENT_COUNT);
-  const snapshotByKey = new Map<string, RequestSnapshot>();
-  for (const snapshot of requestSnapshots?.items || []) {
-    const key = snapshotEventKey(snapshot.agentId, snapshot.observedAt);
-    if (key !== null && !snapshotByKey.has(key)) snapshotByKey.set(key, snapshot);
-  }
+  const snapshotByKey = uniqueByRequest(requestSnapshots?.status === "ready" ? requestSnapshots.items : []);
   const selectedKey = selectedSnapshot ? snapshotEventKey(selectedSnapshot.agentId, selectedSnapshot.observedAt) : null;
   const summary = `${allEvents.length} ${allEvents.length === 1 ? "event" : "events"}`;
 

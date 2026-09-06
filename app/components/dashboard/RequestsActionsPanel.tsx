@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { Agent, CacheEventFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../shared/monitor-contract";
+import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../shared/monitor-contract";
 import { agentDisplayName, agentTreeRows } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { EmptyState } from "../EmptyState";
@@ -13,16 +13,17 @@ import { RequestMinimap } from "./requests-actions/RequestMinimap";
 import { scopedRows, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
 import { useRequestSelection } from "./requests-actions/useRequestSelection";
 import { CacheEvidenceDisclosure } from "./CacheEvidenceDisclosure";
+import { CacheRefillIcon } from "./CacheRefillIcon";
 
-export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundaries, cacheWriteAvailable, historical, cacheEvents }: {
+export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundaries, cacheWriteAvailable, historical, cacheEvents, cacheReadDrops }: {
   agents: Agent[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
-  cacheWriteAvailable: boolean; historical: boolean; cacheEvents?: CacheEventFeed;
+  cacheWriteAvailable: boolean; historical: boolean; cacheEvents?: CacheEventFeed; cacheReadDrops?: CacheReadDropFeed;
 }) {
   const phone = usePhoneLayout();
   const [scope, setScope] = useState("all");
   const [mode, setMode] = useState<ChartMode>("fresh");
   const resolvedScope = scope === "all" || agents.some((agent) => agent.id === scope) ? scope : "all";
-  const rows = useMemo(() => scopedRows(requestSnapshots, contextBoundaries, resolvedScope), [requestSnapshots, contextBoundaries, resolvedScope]);
+  const rows = useMemo(() => scopedRows(requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops), [requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops]);
   const size = phone ? 20 : 60;
   const { selected, start, end, select, selectScope, step, moveWindow } = useRequestSelection(rows, resolvedScope, size, historical);
   const maximum = Math.max(1, scaleMax(rows, mode));
@@ -33,7 +34,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundari
   };
   const locateEvidence = (snapshot: RequestSnapshot) => {
     const nextScope = resolvedScope === "all" ? "all" : snapshot.agentId;
-    const nextRows = scopedRows(requestSnapshots, contextBoundaries, nextScope);
+    const nextRows = scopedRows(requestSnapshots, contextBoundaries, nextScope, cacheEvents, cacheReadDrops);
     const row = nextRows.find((item) => item.id === snapshot.id);
     if (!row) return;
     setScope(nextScope);
@@ -49,7 +50,9 @@ export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundari
         {mode === "full" && <span><i className="requestsActionsSwatch read" />Cache read</span>}
         <span><i className="requestsActionsSwatch output" />Output</span>
         {mode === "fresh" && <span><i className="requestsActionsSwatch outline" />{phone ? "Prompt size" : "Prompt size outline"}</span>}
-        {!phone && <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>}
+        <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>
+        {rows.some((row) => row.cacheEvidence?.kind === "refill") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Possible full refill dotted</span>}
+        {rows.some((row) => row.cacheEvidence?.kind === "possible_refill") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Possible refill dotted</span>}
       </div>
       <div className="requestsActionsModes" aria-label="Chart mode">{([['fresh', 'Fresh tokens'], ['full', 'Full breakdown']] as const).map(([value, label]) => <button type="button" className="requestsActionsButton" aria-pressed={mode === value} key={value} onClick={() => setMode(value)}>{label}</button>)}</div>
       <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>

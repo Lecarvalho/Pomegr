@@ -3,6 +3,7 @@ import { agentDisplayName, cacheLifetimeLabel, shortTime } from "../../../dashbo
 import { AgentChip } from "../../AgentChip";
 import { WORK_LABELS } from "../../agents/agent-presentation";
 import type { RequestRow } from "./model";
+import { RequestCacheDetail } from "./RequestCacheDetail";
 
 export function RequestNavigation({ ordinal, count, onStep }: { ordinal: number; count: number; onStep: (delta: number) => void }) {
   return <div className="requestsActionsNavigation"><button type="button" className="requestsActionsButton" disabled={ordinal <= 1} onClick={() => onStep(-1)}>Prev</button><button type="button" className="requestsActionsButton" disabled={ordinal >= count} onClick={() => onStep(1)}>Next</button></div>;
@@ -23,6 +24,7 @@ export function RequestDetail({ row, agent, count, phone, cacheWriteAvailable, o
     <div className={`requestsActionsStats${cacheWriteAvailable ? "" : " withoutWrite"}`}>
       {stats.map(({ label, kind, value }) => <div className={`requestsActionsStat ${kind}`} key={kind}><span className="sessionEyebrow"><i className={`requestsActionsSwatch ${kind}`} aria-hidden="true" />{label}</span><strong>{value.toLocaleString()}</strong></div>)}
     </div>
+    <RequestCacheDetail row={row} />
     <div className="requestsActionsWork">
       {[{ title: "Results available before", association: "transcript adjacency", work: row.precedingWork }, { title: "Actions issued by request", association: "recorded link", work: row.issuedWork }].map(({ title, association, work }) => <div key={title}>
         <h4 className="sessionEyebrow">{title} <span>· {association}</span></h4>

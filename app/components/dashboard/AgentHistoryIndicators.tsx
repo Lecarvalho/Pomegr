@@ -7,6 +7,7 @@ import { formatDuration, timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { ExternalLink } from "../ExternalLink";
 import { CacheEvidencePopover } from "./CacheEvidencePopover";
+import { CacheRefillIcon } from "./CacheRefillIcon";
 
 export type CompactionSummary = {
   automatic: number;
@@ -69,9 +70,7 @@ function CacheRefillTrigger({ count, label, expanded, controls, onClick, text }:
   text?: string;
 }) {
   return <AgentChip as="button" className="agentHistoryIndicator agentCacheRefillIndicator" ariaLabel={label} expanded={expanded} controls={controls} onClick={onClick}>
-    <svg aria-hidden="true" className="agentHistoryIcon agentCacheRefillIcon" viewBox="0 0 24 24">
-      <path d="M12 2.5v8M8.5 7l3.5 3.5L15.5 7M4 14h16M6.5 18h11M9 22h6" />
-    </svg>
+    <CacheRefillIcon className="agentHistoryIcon agentCacheRefillIcon" />
     <span aria-hidden="true" className="agentHistoryCount">{text || (count > 99 ? "99+" : count)}</span>
   </AgentChip>;
 }

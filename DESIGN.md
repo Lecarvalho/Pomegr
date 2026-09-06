@@ -206,6 +206,14 @@ Session headers show recorded or live lifecycle state in the status card without
 
 ### Session Evidence
 
+Only monitor-qualified possible full-refill transitions receive amber dotted lines
+with the shared stack-refill icon and the label Possible full refill. Ordinary
+cache growth and initial cache creation remain in the cache-write bars and details;
+read-drop inferences use an open arrowhead and the label Possible refill. Their
+symbol and label lane sits above compaction labels. Show marker labels on selection,
+focus, or hover, with matching desktop minimap ticks and request-local evidence in
+the selected-request details. Match only unambiguous normalized agent/timestamp pairs.
+
 Requests & actions is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop, selected-request detail and action labels, and a scoped Largest requests ranking. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars; Full breakdown adds cache read. The prompt-size outline represents uncached input + cache write + cache read, and compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
 
 Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart uses Prev/Next navigation without drag, minimap, or hover. Keep the Cache evidence disclosure directly below the panel, closed by default, with its saved disclosure state and event count. Requests & actions replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
