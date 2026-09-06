@@ -47,7 +47,7 @@ function WorkflowSummaryCard({ state, onOpenWorkflow }: { state: MonitorState; o
   return <article className="sessionSummaryCard sessionWorkflowCard panel">
     <div className="sessionSummaryCardHeader">
       <span className="sessionEyebrow">Workflows</span>
-      {workflows.length > 0 && <span className={`sessionSummaryChip sessionWorkflowStatus sessionWorkflowStatus-${status}`}><i aria-hidden="true" />{workflowStatusLabel(status)}</span>}
+      {workflows.length > 0 && <span className={`commandChip sessionWorkflowStatus sessionWorkflowStatus-${status}`}><i aria-hidden="true" />{workflowStatusLabel(status)}</span>}
     </div>
     <div className="sessionSummaryHeadline">
       <strong className="sessionSummaryNumber">{loading || unavailable ? "—" : workflows.length}</strong>

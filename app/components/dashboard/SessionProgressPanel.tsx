@@ -184,7 +184,7 @@ export function SessionProgressPanel({
     return <article className={`sessionSummaryCard sessionProgressCard panel${stale ? " sessionProgressStale" : ""}`} aria-label="Agent estimate progress">
       <div className="sessionSummaryCardHeader">
         <span className="sessionEyebrow" title={compactNote}>Agent estimate · progress</span>
-        <span className={`sessionSummaryChip sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
+        <span className={`commandChip sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
       </div>
       <SessionProgressInstrument progress={progress} phaseLabel={phaseLabel} eta={eta} complete={complete} historical={historical} compact />
       {stale && <p className="sessionProgressCompactWarning">May be stale — later primary-agent activity was observed.</p>}
@@ -199,7 +199,7 @@ export function SessionProgressPanel({
           <span className="sessionProgressEyebrow">Agent estimate</span>
           <h2 id="session-progress-title">Session progress</h2>
         </div>
-        <span className={`sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
+        <span className={`commandChip sessionProgressPhase sessionProgressPhase-${progress.phase}`}>{phaseLabel}</span>
       </header>
       <SessionProgressInstrument progress={progress} phaseLabel={phaseLabel} eta={eta} complete={complete} historical={historical} />
       <div className="sessionProgressReportRow">

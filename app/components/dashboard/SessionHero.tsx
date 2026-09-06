@@ -61,6 +61,7 @@ export function SessionHero({ session, source, capabilities, historical, activit
             {" · "}<span><SessionWallTimeText session={session} historical={historical} /></span> wall time
           </small>
         </div>
+        {!phone && onGenerateReport && <SessionReportButton generating={reportGenerating} onGenerate={onGenerateReport} />}
       </div>}
       {phone && <>
         <details className="sessionHeroSummary" open={Boolean(summaryText || session?.signal)}>

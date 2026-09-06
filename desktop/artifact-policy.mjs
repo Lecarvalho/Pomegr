@@ -46,6 +46,8 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/quiet-console.mjs",
   "desktop/report-save.mjs",
   "desktop/repository-inventory-action.mjs",
+  "desktop/repository-plugin-action.mjs",
+  "desktop/plugin-cli.mjs",
   "desktop/security-policy.mjs",
   "desktop/shell-stage.mjs",
   "desktop/settings.mjs",

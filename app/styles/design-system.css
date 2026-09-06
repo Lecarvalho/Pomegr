@@ -1,0 +1,36 @@
+/* Design-system reference layout. Imported only by app/design-system/page.tsx; samples use the shared classes unchanged. */
+.designSystemSection { margin-top: var(--space-8); }
+.designSystemSection > h2 { margin: 0; font: 600 var(--text-heading)/1.35 var(--font-ui); }
+.designSystemLede { max-width: 72ch; margin: var(--space-2) 0 0; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
+.designSystemRole { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.designSystemRole > h3 { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); font: 600 var(--text-base)/1.4 var(--font-ui); }
+.designSystemRole > h3 code, .designSystemSelector { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.designSystemRole > p { max-width: 84ch; margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.designSystemStates { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: var(--space-3); }
+.designSystemSample { min-width: 0; display: grid; align-content: start; gap: var(--space-2); padding: var(--space-3); border: 1px dashed var(--command-line); border-radius: var(--control-radius); }
+.designSystemSample > span:first-child { color: var(--command-faint); font: 500 11px/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.designSystemSampleBody { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.designSystemSample > small { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.designSystemNote { margin: var(--space-4) 0 0; padding: var(--space-2) var(--space-3); border-left: 2px solid var(--command-line-strong); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.designSystemGrid { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); align-items: start; }
+.designSystemGrid > .panel { min-width: 0; }
+.designSystemPanelBody { padding: 0 var(--space-4) var(--space-2); }
+.designSystemPanelBody .commandSettingRow:first-child { border-top: 0; }
+.designSystemSession { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.designSystemSwatches { margin: var(--space-4) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); list-style: none; }
+.designSystemSwatch { display: grid; gap: var(--space-1); }
+.designSystemSwatch i { display: block; height: 40px; border: 1px solid var(--command-line); border-radius: var(--control-radius); }
+.designSystemSwatch code, .designSystemTokenList code { font: var(--text-xs)/1.5 var(--font-data); overflow-wrap: anywhere; }
+.designSystemTokenList { margin: var(--space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); list-style: none; color: var(--command-muted); }
+.designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
+.designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
+.designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.designSystemType code { color: var(--command-muted); font: var(--text-xs)/1.5 var(--font-data); }
+.designSystemSpacing { margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
+.designSystemSpacing li { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.designSystemSpacing i { display: block; height: 12px; border-radius: var(--control-radius); background: var(--command-lavender); }
+.designSystemSpacing code { font: var(--text-xs)/1.5 var(--font-data); }
+@media (max-width: 760px) {
+  .designSystemType > div { grid-template-columns: minmax(0, 1fr); }
+  .designSystemSpacing li { grid-template-columns: 120px minmax(0, 1fr); }
+}

@@ -20,7 +20,7 @@ export function LargestRequestsList({ rows, agents, selectedId, phone, cacheWrit
   const maximum = largest[0]?.[valueKey] || 1;
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   return <section className="requestsActionsLargest" aria-label="Largest requests">
-    <header><h3 className="sessionEyebrow">Largest requests</h3><button type="button" className="requestsActionsButton" onClick={() => setSort(sorts[(sorts.indexOf(resolvedSort) + 1) % sorts.length])}>by {SORT_LABELS[resolvedSort]}</button></header>
+    <header><h3 className="sessionEyebrow">Largest requests</h3><button type="button" className="commandQuietAction" onClick={() => setSort(sorts[(sorts.indexOf(resolvedSort) + 1) % sorts.length])}>by {SORT_LABELS[resolvedSort]}</button></header>
     <div>{largest.map((row) => {
       const agent = byId.get(row.agentId);
       return <button type="button" key={row.id} className={`requestsActionsLargestRow${selectedId === row.id ? " isSelected" : ""}`} aria-pressed={selectedId === row.id}
@@ -33,6 +33,6 @@ export function LargestRequestsList({ rows, agents, selectedId, phone, cacheWrit
         <span className="requestsActionsNumber">{compactNumber(row[valueKey])}</span>
       </button>;
     })}</div>
-    <footer><span>{phone ? `All ${rows.length.toLocaleString()} · never summed` : "Individual request measurements, never summed"}</span><button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? `Show ${phone ? 3 : 5}` : "Show 20"}</button></footer>
+    <footer><span>{phone ? `All ${rows.length.toLocaleString()} · never summed` : "Individual request measurements, never summed"}</span><button type="button" className="commandTextLink" onClick={() => setExpanded(!expanded)}>{expanded ? `Show ${phone ? 3 : 5}` : "Show 20"}</button></footer>
   </section>;
 }

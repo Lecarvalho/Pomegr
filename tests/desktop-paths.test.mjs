@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   MONITOR_PRIVATE_ENVIRONMENT_NAMES,
   monitorPrivateEnvironment,
+  nativeCodexEnvironment,
 } from "../desktop/environment-policy.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "../desktop/paths.mjs";
 import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/report-save.mjs";
@@ -81,6 +82,17 @@ test("monitor environment keeps only allowlisted provider configuration and defa
   assert.equal(snapshot.POMEGR_COST_SNAPSHOTS_DIR, source.POMEGR_COST_SNAPSHOTS_DIR);
   assert.equal(snapshot.POMEGR_DATA_DIR, "D:\\PomegrData");
   assert.equal(Object.hasOwn(snapshot, "CODEX_AUTH_TOKEN"), false);
+});
+
+test("native Codex actions retain only the private profile needed by the installed CLI", () => {
+  const environment = nativeCodexEnvironment({
+    APPDATA: "C:\\Users\\José\\AppData\\Roaming", CODEX_HOME: "D:\\Codex", USERPROFILE: "C:\\Users\\José",
+    POMEGR_CODEX_EXECUTABLE: "C:\\Users\\José\\.local\\bin\\codex.exe", PATH: "C:\\Windows\\System32", CODEX_AUTH_TOKEN: "SECRET",
+  });
+  assert.equal(environment.CODEX_HOME, "D:\\Codex");
+  assert.equal(environment.POMEGR_CODEX_EXECUTABLE, "C:\\Users\\José\\.local\\bin\\codex.exe");
+  assert.equal(environment.CODEX_AUTH_TOKEN, undefined);
+  assert.equal(environment.PATH, "C:\\Windows\\System32");
 });
 
 test("desktop settings persist only the bounded allowlist", async () => {

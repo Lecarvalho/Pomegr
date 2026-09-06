@@ -5,7 +5,6 @@
 .commandPageHeading h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
 .commandPageHeading p { max-width: 66ch; margin: 7px 0 0; color: var(--command-muted); font-size: var(--text-base); line-height: 1.55; }
 .commandViewActions { flex: 0 0 auto; }
-.commandPrimaryAction, .commandSecondaryAction { display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; }
 .commandToolbar { min-height: 48px; margin-top: 24px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); flex-wrap: wrap; }
 .commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; background: var(--command-ground); }
 /* Keep filter controls above the legacy button shape and shell font resets. */
@@ -17,6 +16,17 @@
   .commandToolbar .commandFilterChip, .commandToolbar .commandSearch { min-height: 44px; }
 }
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
+/* Official chip: shared by AgentChip (.agentChip in evidence.css) and Command Center session badges. Tone modifiers recolor text (and the optional dot) only -- the border and panel-2 fill never change. */
+.commandChip { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); background: var(--command-panel-2); font: 500 11px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }
+.commandChip > i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--command-line-strong); }
+.commandChip.info { color: var(--command-blue); }
+.commandChip.info > i { background: var(--command-blue); }
+.commandChip.positive { color: var(--command-green); }
+.commandChip.positive > i { background: var(--command-green); }
+.commandChip.warning { color: var(--command-amber); }
+.commandChip.warning > i { background: var(--command-amber); }
+.commandChip.negative { color: var(--command-error); }
+.commandChip.negative > i { background: var(--command-error); }
 .commandDashboardDirectory { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandDashboardRows { min-width: 0; }
 .commandDashboardRows .commandTableWrap { margin-top: 0; border: 0; border-radius: 0; }
@@ -45,7 +55,7 @@
 .commandTable th.commandTableSortable { padding: 0; }
 .commandTableSort { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 40px; padding: 0 13px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .commandTableSort:hover { background: var(--command-panel-2); color: var(--command-ink); }
-.commandTableSort:focus-visible { outline: 2px solid var(--command-brand-text); outline-offset: -2px; }
+.commandTableSort:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .commandTable th[aria-sort] { color: var(--command-ink); }
 .commandTableSortIcon { width: 12px; height: 12px; flex: 0 0 12px; }
 .commandTable td { min-height: 64px; padding: 12px 13px; border-top: 1px solid var(--command-line); }
@@ -154,9 +164,36 @@
 .commandRepositoryProviders strong { color: var(--command-ink); }
 .commandRepositoryProvidersPanel { border-top: 1px solid var(--command-line); background: color-mix(in srgb, var(--command-panel-2) 35%, var(--command-panel)); }
 .repositoryProvider + .repositoryProvider { border-top: 1px solid var(--command-line); }
+.repositoryProviderHead { min-height: 52px; padding: 16px 16px 4px 52px; display: flex; align-items: center; }
 .repositoryProviderRow { min-height: 54px; padding: 9px 16px 9px 52px; display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.25fr) 232px; align-items: center; gap: 14px; }
 .repositoryProviderIdentity { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 .repositoryProviderIdentity > span:last-child { color: var(--command-muted); font-size: var(--text-xs); }
+.repositorySetupRow { min-height: 66px; padding: 8px 16px 12px 52px; display: flex; align-items: center; gap: 16px; }
+.repositorySetupInfo { min-width: 0; flex: 1; }
+.repositorySetupTitle { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; font-size: var(--text-sm); }
+.repositorySetupTitle strong { font-weight: 600; }
+.repositorySetupTitle code { color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-data); }
+.repositorySetupInfo small { display: block; margin-top: 4px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.repositorySetupChecked { margin-inline-start: 8px; color: var(--command-faint); white-space: nowrap; }
+.repositorySetupStatus { display: inline-flex; align-items: center; color: var(--command-muted); font: 600 11px/1 var(--font-ui); letter-spacing: .025em; }
+.repositorySetupStatus.ready { color: var(--command-green); }
+.repositorySetupStatus.warning { color: var(--command-amber); }
+.repositorySetupStatus.checking { color: var(--command-muted); }
+.repositorySetupFeedback { margin: 8px 0 0; font-size: var(--text-xs); line-height: 1.45; }
+.repositorySetupFeedback.pending { color: var(--command-muted); }
+.repositorySetupFeedback.success { color: var(--command-green); }
+.repositorySetupFeedback.error { color: var(--color-error); }
+.repositorySetupFeedback.neutral { color: var(--command-muted); }
+.repositorySetupActions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.repositorySetupActions .commandQuietAction:disabled { cursor: wait; }
+.repositorySetupInstructions { color: var(--command-muted); font-size: var(--text-xs); }
+.repositorySetupInstructions summary { min-height: 32px; display: flex; align-items: center; color: var(--command-brand-text); cursor: pointer; }
+.repositorySetupInstructions summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.repositorySetupInstructions p { max-width: 36ch; margin: 7px 0 0; line-height: 1.5; }
+.repositoryContextDisclosure { border-top: 1px solid var(--command-line); }
+.repositoryContextDisclosure > summary { min-height: 42px; padding: 0 16px 0 52px; display: flex; align-items: center; gap: 6px; color: var(--command-brand-text); font-size: var(--text-xs); cursor: pointer; }
+.repositoryContextDisclosure > summary span { color: var(--command-muted); }
+.repositoryContextDisclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .repositoryProviderState { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
 .repositoryProviderState small { color: var(--command-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .repositoryProviderBadge { flex: 0 0 auto; width: fit-content; color: var(--command-muted); font: 650 11px/1 var(--font-ui); letter-spacing: .04em; }
@@ -166,12 +203,6 @@
 .repositoryProviderAction { min-width: 0; display: flex; justify-content: flex-end; }
 .repositoryProviderRemoteHint { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); text-align: end; }
 .repositoryGitComingSoon { min-height: 44px; padding: 8px 16px 8px 52px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--command-line); color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); }
-.commandPrimaryButton, .commandSecondaryButton { min-height: var(--control-height); padding-inline: 12px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); font: 500 var(--text-sm)/1.2 var(--font-ui); cursor: pointer; }
-.commandPrimaryButton { border-color: var(--command-brand); color: #fff; background: var(--command-brand); }
-.commandSecondaryButton { color: var(--command-ink); background: transparent; }
-.commandPrimaryButton:hover:not(:disabled), .commandSecondaryButton:hover:not(:disabled) { filter: brightness(.94); }
-.commandPrimaryButton:focus-visible, .commandSecondaryButton:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.commandPrimaryButton:disabled, .commandSecondaryButton:disabled { opacity: .58; cursor: not-allowed; }
 .repositoryCaptureConfirm { margin: 0 16px 16px 53px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--command-line-strong); background: var(--command-panel); }
 .repositoryCaptureConfirm > span:first-child { min-width: 0; display: grid; gap: 5px; }
 .repositoryCaptureConfirm small { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
@@ -217,6 +248,11 @@
 .repositoryRevisionCompare dt { color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryRevisionCompare dd { margin: 5px 0 0; font: 600 var(--text-xs)/1.35 var(--font-data); }
 .repositoryInventoryPrivacy { margin: 0; padding: 12px 16px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.repositoryReporting { border-top: 1px solid var(--command-line); }
+.repositoryReportingHelp { margin: 0 16px 16px 52px; padding: 13px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
+.repositoryReportingHelp strong { font-size: var(--text-sm); }
+.repositoryReportingHelp p { max-width: 65ch; margin: 5px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.repositoryReportingHelp code { color: var(--command-ink); font: 500 var(--text-xs)/1.3 var(--font-data); }
 .sessionInventoryReference { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .sessionInventoryReference > div { min-width: 0; display: grid; gap: 5px; }
 .sessionInventoryReference strong { font-size: var(--text-sm); overflow-wrap: anywhere; }
@@ -230,6 +266,9 @@
   .commandUsageWindow + .commandUsageWindow { border-top: 1px solid var(--command-line); border-left: 0; }
   .commandRepositoryRow { grid-template-columns: 24px minmax(0, 1fr) 64px 120px; }
   .commandRepositoryStat + .commandRepositoryStat { display: none; }
+  .repositoryProviderHead { padding-inline-start: 34px; }
+  .repositorySetupRow { padding-inline-start: 34px; }
+  .repositoryContextDisclosure > summary { padding-inline-start: 34px; }
   .repositoryProviderRow { grid-template-columns: minmax(160px, .8fr) minmax(180px, 1.2fr) 232px; }
   .repositoryInventorySummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .repositoryInventorySummary > div:nth-child(3) { border-inline-start: 0; border-top: 1px solid var(--command-line); }
@@ -278,13 +317,21 @@
   .commandMetric { min-height: 92px; }
   .commandRepositoryRow { min-height: 64px; grid-template-columns: 20px minmax(0, 1fr) 100px; }
   .commandRepositoryStat { display: none; }
+  .repositoryProviderHead { min-height: 48px; padding: 14px 16px 2px; }
+  .repositorySetupRow { padding: 8px 16px 14px; align-items: flex-start; flex-direction: column; gap: 10px; }
+  .repositorySetupActions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .repositorySetupActions .commandPrimaryAction, .repositorySetupActions .commandSecondaryAction, .repositorySetupActions .commandQuietAction { width: auto; min-height: 44px; }
+  .repositorySetupInstructions { width: 100%; }
+  .repositorySetupInstructions summary { min-height: 40px; }
+  .repositoryContextDisclosure > summary { min-height: 44px; padding-inline: 16px; }
   .repositoryProviderRow { padding-inline: 16px; grid-template-columns: 1fr; }
   .repositoryProviderAction { grid-column: auto; }
   .repositoryProviderAction button { width: 100%; min-height: 44px; }
   .repositoryCaptureConfirm, .repositoryInventoryEvidence, .repositoryInventoryLoading, .repositoryInventoryUnavailable { margin-inline: 12px; padding-inline-start: 14px; }
+  .repositoryReportingHelp { margin-inline: 12px; }
   .repositoryCaptureConfirm { align-items: stretch; flex-direction: column; }
   .repositoryCaptureConfirm > span:last-child { display: grid; grid-template-columns: 1fr 1fr; }
-  .repositoryCaptureConfirm button { min-height: 44px; }
+  .repositoryCaptureConfirm button { width: auto; min-height: 44px; }
   .repositoryCategoryGrid { grid-template-columns: 1fr 1fr; }
   .repositoryCategory:not(:nth-child(3n + 1)) { border-inline-start: 0; }
   .repositoryCategory:nth-child(n + 4) { border-top: 0; }

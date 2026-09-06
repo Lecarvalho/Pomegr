@@ -167,6 +167,7 @@ This matrix is generated from the same explicit manifests enforced for every pro
 | Automatic compactions | `compactions` | Supported | Supported |
 | Context machinery | `session.contextMachinery` | Supported | Unsupported — Codex session evidence does not expose normalized context-machinery categories. |
 | Repository context inventory | `repository.contextInventory` | Supported | Unsupported — Codex does not expose a comparable repository context inventory diagnostic. |
+| Repository plugin setup | `repository.pluginSetup` | Supported | Supported |
 | Estimated cost | `session.cost` | Supported | Unsupported — Codex session evidence does not expose a provider cost estimate. |
 | Live sessions | `catalog.isLive` | Supported | Supported |
 | Needs-input state | `catalog.needsInput` | Supported | Supported |

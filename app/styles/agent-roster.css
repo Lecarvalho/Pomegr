@@ -3,13 +3,10 @@
 .rosterPanelHeader > div:first-child { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
 .rosterPanelHeader h2 { margin: 0; font: 600 16px/1.4 var(--font-ui); }
 .rosterPanelHeader span { font-size: 12px; color: var(--command-muted); }
-.rosterViewModes { display: flex; gap: 4px; }
 .rosterTreePanelHeader { justify-content: flex-start; }
 .rosterTreePanelHeader > div:first-child { align-items: center; gap: 8px 16px; }
 .rosterTreeBack { min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--command-brand-text); font: 500 12px/1.4 var(--font-ui); }
 .agentRosterPanel button, .rosterFilterSheet button { cursor: pointer; }
-.rosterViewModes button, .rosterFilterBar button, .rosterFilterSheet button { min-height: 32px; padding: 4px 10px; background: transparent; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); color: var(--command-muted); font: 500 12px/1.4 var(--font-ui); }
-.agentRosterPanel button[aria-pressed="true"], .rosterFilterSheet button[aria-pressed="true"] { background: var(--command-panel-2); color: var(--command-ink); border-color: var(--command-brand-text); }
 .rosterDistribution { display: grid; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--command-line); }
 .rosterSegments { display: flex; gap: 3px; height: 8px; }
 .rosterSegment { min-width: 2px; border-radius: 2px; }
@@ -51,7 +48,7 @@
 .rosterRole { color: var(--command-muted); padding-left: min(var(--agent-indent), 12px); }
 .rosterRole svg { width: 16px; height: 16px; }
 .rosterIdentity { min-width: 0; padding-left: var(--agent-indent); }
-.rosterNameLine { display: flex; align-items: center; min-width: 0; gap: 5px; height: 19px; }
+.rosterNameLine { display: flex; align-items: center; min-width: 0; gap: 5px; min-height: 20px; }
 .rosterSelectAgent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: none !important; color: var(--command-ink); font: 500 13px/1.4 var(--font-ui); text-align: left; }
 .rosterSelectAgent::after { content: ""; position: absolute; inset: 0; }
 .rosterSelectAgent strong { font-weight: 500; }
@@ -80,10 +77,9 @@
 .rosterGroupHeading .rosterPhaseProgress { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: 0; padding: 4px 12px 4px 36px; min-height: 28px; list-style: none; }
 .rosterGroupHeading .rosterPhaseProgress li { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; font-size: 10px; }
 .rosterGroupHeading .rosterPhaseProgress:empty { display: none; }
-.rosterShowMore, .rosterFooter button { border: 0; background: transparent; color: var(--command-brand-text); font: 400 12px/1.4 var(--font-ui); }
-.rosterShowMore { width: 100%; min-height: 36px; text-align: left; padding: 4px 12px 4px 48px; border-bottom: 1px solid var(--command-panel-2); }
+.rosterShowMore.commandTextLink { width: 100%; min-height: 36px; display: block; text-align: left; padding: 4px 12px 4px 48px; border-bottom: 1px solid var(--command-panel-2); }
 .rosterFooter { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: 11px; }
-.rosterFooter button { min-height: 36px; white-space: nowrap; }
+.rosterFooter .commandTextLink { min-height: 36px; display: inline-flex; align-items: center; white-space: nowrap; }
 .agentRosterPanel :is(button, input, select, [tabindex]):focus-visible, .rosterFilterSheet :is(button, select):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .rosterRow:has(.rosterSelectAgent:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .rosterFilterSheet { padding: 0; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius) var(--panel-radius) 0 0; background: var(--command-panel); color: var(--command-ink); }
@@ -100,10 +96,9 @@
   .rosterWorkspace { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .rosterPanelHeader { padding: 12px 14px; gap: 8px; }
+  .rosterPanelHeader { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
   .rosterPanelHeader > div:first-child { display: grid; gap: 0; }
   .rosterPanelHeader span { font-size: 11px; }
-  .rosterViewModes button { min-height: 44px; }
   .rosterTreeBack { min-height: 44px; }
   .rosterDistribution { padding: 12px 14px; gap: 8px; }
   .rosterRoleLegend, .rosterDesktopFilters, .rosterColumns, .rosterDesktop, .rosterDesktop.rosterMeta { display: none; }
@@ -128,9 +123,8 @@
   .rosterGroupTitle strong { font-size: 12px; }
   .rosterGroupSummary { font-size: 10px; max-width: 136px; }
   .rosterHasPrimary .rosterGroupHeading { top: 56px; }
-  .rosterShowMore, .rosterFooter, .rosterFooter button { min-height: 44px; }
+  .rosterShowMore.commandTextLink, .rosterFooter, .rosterFooter .commandTextLink { min-height: 44px; }
   .rosterFooter { padding: 0 14px; }
   .rosterFooter > span { max-width: 170px; }
-  .rosterNameLine .agentChip { font-size: 9px; }
 }
 @media (prefers-reduced-motion: no-preference) { .rosterGroupToggle > .rosterCaret { transition: transform 120ms ease-out; } }

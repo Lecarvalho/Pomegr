@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const DESKTOP_THEME_CHANNEL = "pomegr:set-native-theme";
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 
 function setNativeTheme(source) {
   if (source !== "light" && source !== "dark" && source !== "system") return Promise.resolve(false);
@@ -66,6 +67,11 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   },
   captureRepositoryContextInventory(repositoryId, provider) {
     return ipcRenderer.invoke("pomegr:capture-repository-context-inventory", repositoryId, provider);
+  },
+  repositoryPluginAction(repositoryId, provider, action) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || (provider !== "claude" && provider !== "codex") || (action !== "recheck" && action !== "install" && action !== "update")) return Promise.resolve("unavailable");
+    return ipcRenderer.invoke("pomegr:repository-plugin-action", repositoryId, provider, action);
   },
   setNativeTheme,
   quit() {

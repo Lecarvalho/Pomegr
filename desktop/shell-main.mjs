@@ -52,6 +52,8 @@ import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
 import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpdateSignatureVerifier } from "./updater.mjs";
 import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-action.mjs";
+import { createRepositoryPluginCli } from "./plugin-cli.mjs";
+import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -103,6 +105,8 @@ let removeClaudeSignInIpc;
 let claudeUsageIntegration;
 let removeClaudeUsageIpc;
 let removeRepositoryInventoryIpc;
+let removeRepositoryPluginActionIpc;
+let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
 let removePhoneAccessIpc;
@@ -363,6 +367,25 @@ async function confirmClaudeUsageSetup() {
   return result.response === 1 && runtimeState === "running";
 }
 
+async function confirmRepositoryPluginAction(plan) {
+  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
+  const updating = plan.operation === "update";
+  const provider = plan.provider === "claude" ? "Claude Code" : "Codex";
+  const current = plan.currentVersion ? `Version ${plan.currentVersion}` : "Not installed";
+  const scope = `${plan.scope[0].toUpperCase()}${plan.scope.slice(1)} scope`;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    title: updating ? "Update Pomegr plugin" : "Install Pomegr plugin",
+    message: `${updating ? "Update" : "Install"} Pomegr for ${provider}?`,
+    detail: `${plan.repositoryName}\n${scope}\n${current} → Observed published version ${plan.targetVersion}\n\nPomegr will run the installed ${provider} CLI to change only the official Pomegr plugin. If its source changes while the CLI refreshes, Pomegr will recheck and report the changed version.`,
+    buttons: ["Cancel", updating ? "Update plugin" : "Install plugin"],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+  });
+  return result.response === 1 && runtimeState === "running";
+}
+
 async function showStartupError() {
   recordStage("SHELL_ERROR_LOADING");
   // Electron's native theme is process-global. Keep the fixed dark error page and
@@ -410,6 +433,10 @@ async function stopRuntime() {
     removeClaudeUsageIpc = undefined;
     removeRepositoryInventoryIpc?.();
     removeRepositoryInventoryIpc = undefined;
+    removeRepositoryPluginActionIpc?.();
+    removeRepositoryPluginActionIpc = undefined;
+    repositoryPluginCli?.dispose();
+    repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
     try { await claudeSignIn?.dispose(); } catch { /* Native sign-in cleanup is bounded. */ }
     notificationPoller?.stop();
@@ -453,6 +480,7 @@ async function startDesktop() {
     nativeEnvironment: nativeClaudeEnvironment(process.env),
     confirm: confirmClaudeSignIn,
   });
+  repositoryPluginCli = createRepositoryPluginCli({ environment: process.env });
   desktopPaths = resolveDesktopPaths({
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
@@ -612,6 +640,17 @@ async function startDesktop() {
           isTrustedEvent: trustedDesktopEvent,
           monitorOrigin: privateMonitorOrigin,
           authorizationToken,
+        });
+        removeRepositoryPluginActionIpc = installRepositoryPluginActionIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          action: createRepositoryPluginAction({
+            isTrustedEvent: trustedDesktopEvent,
+            monitorOrigin: privateMonitorOrigin,
+            authorizationToken,
+            confirm: confirmRepositoryPluginAction,
+            runPlan: (plan) => repositoryPluginCli?.run(plan) || "unavailable",
+          }),
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

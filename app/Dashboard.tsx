@@ -23,7 +23,6 @@ import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-clien
 import { useProviderStatus, useProviderStatusPollingPause } from "./provider-status-client";
 import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor } from "./components/ProviderStatus";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
-import { usePhoneLayout } from "./hooks/usePhoneLayout";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -51,7 +50,6 @@ function storedAgentActivityViewMode(sessionId: string | null): AgentActivityVie
 }
 
 export function Dashboard({ initialSessionId = null }: { initialSessionId?: string | null }) {
-  const phone = usePhoneLayout();
   const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
   const { sessions } = useSessionCatalog();
   const sharedUsage = useUsageLimits();
@@ -238,7 +236,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   return (
     <LiveClockProvider running={clockRunning}>
       <section className="commandSessionView" id="top">
-        <SessionCommandBar connected={data.connected} connecting={connecting} reportGenerating={reportGenerating} canGenerateReport={Boolean(data.session) && !phone} onGenerateReport={generateReport} />
+        <SessionCommandBar connected={data.connected} connecting={connecting} />
         {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
           <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} activityStatus={selectedSession?.activityStatus} reportGenerating={reportGenerating} onGenerateReport={generateReport} />
           {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}

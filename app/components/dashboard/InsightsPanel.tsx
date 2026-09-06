@@ -35,7 +35,7 @@ export function InsightsPanel({ insights, variant = "panel", onShowAgent }: {
     return <article className="sessionSummaryCard sessionSignalsCard panel">
       <div className="sessionSummaryCardHeader">
         <span className="sessionEyebrow">Efficiency signals</span>
-        <span className={`sessionSignalCount${warningCount > 0 ? " sessionSignalCount-warning" : ""}`}>{countLabel}</span>
+        <span className={`commandChip sessionSignalCount${warningCount > 0 ? " sessionSignalCount-warning" : ""}`}>{countLabel}</span>
       </div>
       <div className="insightList">
         {insights.length === 0 && <EmptyState text="No rule-based efficiency signals for this session." />}

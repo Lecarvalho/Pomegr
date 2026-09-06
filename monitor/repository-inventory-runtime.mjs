@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
+import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
 const execFile = promisify(execFileCallback);
 const STORE_VERSION = 1;
@@ -162,6 +163,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   let catalog = [];
   let lastProjection = "";
   let mutationQueue = Promise.resolve();
+  const pluginSetup = createRepositoryPluginRuntime({ registry, now, ...options.pluginSetupOptions, onChange: () => commitProjection() });
 
   async function persist(candidate) {
     if (!persistence) return;
@@ -304,6 +306,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
         const status = !supported ? "unavailable" : transient?.status || (revisions.length ? "current" : "not_captured");
         return {
           provider: providerId,
+          pluginSetup: pluginSetup.read(repositoryId, providerId),
           source: provider?.source || providerId,
           sessionCount: sessions.filter((session) => session.provider === providerId).length,
           supported,
@@ -316,6 +319,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
       const updatedAt = sessions.map((entry) => entry.updatedAt).filter(Boolean).sort().at(-1) || null;
       return {
         id: repositoryId,
+        reporting: pluginSetup.reporting(repositoryId),
         name,
         displayName: nameCounts.get(name) > 1 ? `${name} · ${repositoryId.slice(-4)}` : name,
         sessionCount: sessions.length,
@@ -343,6 +347,10 @@ export function createRepositoryInventoryRuntime(options = {}) {
   async function reconcile(nextCatalog = []) {
     await ready;
     catalog = Array.isArray(nextCatalog) ? nextCatalog : [];
+    const currentTargets = [...targets].filter(([id]) => catalog.some((session) => session.repositoryId === id));
+    pluginSetup.syncTargets(currentTargets.map(([id, target]) => ({ id, ...target,
+      providers: [...new Set(catalog.filter((session) => session.repositoryId === id).map((session) => session.provider))].filter((id) => SAFE_PROVIDER.test(id)),
+    })));
     commitProjection();
   }
 
@@ -404,6 +412,11 @@ export function createRepositoryInventoryRuntime(options = {}) {
     associateSession,
     reconcile,
     capture,
+    startPluginObservation: pluginSetup.start,
+    stopPluginObservation: pluginSetup.stop,
+    refreshPluginSetup: pluginSetup.refresh,
+    readPluginSetup: pluginSetup.read,
+    preparePluginAction: pluginSetup.prepare,
     readRepositories: (revision) => cache.read(revision),
     readRevision,
     subscribe(subscriber) { subscribers.add(subscriber); return () => subscribers.delete(subscriber); },

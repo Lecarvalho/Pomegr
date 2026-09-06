@@ -103,6 +103,20 @@ describe("session hero status", () => {
     expect(generate).toHaveBeenCalledOnce();
     rerender(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} reportGenerating />);
     expect(screen.getByRole("button", { name: "Preparing report…" })).toBeDisabled();
+    const heroActions = screen.getByLabelText("Session status").closest(".sessionHeroActions");
+    expect(heroActions).not.toContainElement(screen.getByRole("button", { name: "Preparing report…" }));
+  });
+
+  it("renders the quiet download-report action under the status card on desktop", () => {
+    const session = { ...state().session!, summary: null, signal: null };
+    const generate = vi.fn();
+    render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
+    const button = screen.getByRole("button", { name: "Download report" });
+    expect(button).toHaveClass("commandQuietAction");
+    const heroActions = screen.getByLabelText("Session status").closest(".sessionHeroActions");
+    expect(heroActions).toContainElement(button);
+    fireEvent.click(button);
+    expect(generate).toHaveBeenCalledOnce();
   });
 
   it.each([

@@ -68,12 +68,39 @@ components:
     rounded: "{rounded.control}"
     padding: "0 12px"
     height: "36px"
-  compact-action:
+  secondary-action:
     backgroundColor: "transparent"
     textColor: "{colors.text}"
-    typography: "{typography.control}"
+    border: "1px solid {colors.line}"
+    typography: "{typography.metadata}"
     rounded: "{rounded.control}"
     padding: "0 10px"
+    height: "32px"
+  segmented-action:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted}"
+    border: "1px solid {colors.line}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.control}"
+    padding: "0 10px"
+    height: "30px"
+  quiet-action:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.control}"
+    padding: "0 6px"
+    height: "28px"
+  text-link:
+    backgroundColor: "transparent"
+    textColor: "{colors.brand-text}"
+    typography: "{typography.metadata}"
+    padding: "0"
+  icon-action:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted}"
+    rounded: "{rounded.control}"
+    padding: "0"
     height: "32px"
   evidence-panel:
     backgroundColor: "{colors.light-panel}"
@@ -170,8 +197,19 @@ Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders 
 
 ### Buttons
 
-- **Primary:** 36px default height, 4px radius, pomegranate fill, white text, and Inter control typography.
-- **Secondary / compact:** transparent or raised neutral surface, one-pixel rule, 32px compact height, and application text color.
+Every button in the application belongs to one of six roles, implemented as shared classes in `app/styles/shell.css`. All six share the 4px control radius, one focus ring (2px `--focus-ring`, offset 2px; inset inside segmented frames), and one disabled treatment (opacity .48). Borders use the panel line token; the stronger control line appears only on hover and on form fields such as selects. Evidence chips stay flat fills with no border so they never read as buttons.
+
+- **Primary** (`.commandPrimaryAction`): 36px, pomegranate fill, white text, 13px/500. One per view, for real commitments only: install, reconnect, confirm.
+- **Secondary** (`.commandSecondaryAction`): 32px, one-pixel panel-line rule, application text at 12px/500, transparent background. Hover, pressed, and selected all move to the raised panel tone with the stronger line. Used for Prev/Next, Copy, toolbar actions, and independent toggles such as Group by workflow.
+- **Segmented** (`.commandSegmented` with `> button`): mutually exclusive views share one frame with a panel-line border and 4px radius; segments are 30px, borderless, muted 12px/500, divided by one-pixel lines, and the segment with `aria-pressed="true"` takes the raised tone and application text. Used for Fresh tokens / Full breakdown, List / Grid, Ancestors / Whole session, and the tile-bar metric.
+- **Quiet** (`.commandQuietAction`): no border, no fill, muted 12px/500, 28px minimum height, 6px horizontal padding, optional 14px icon. Hover tints the background with 6% ink and lifts the text to application ink; pressed uses 10%. Used for optional actions such as Download report and sort cycling ("by uncached input").
+- **Text link** (`.commandTextLink`): brand-text color, 12px/400, inline with content, no border or fill. Hover underlines with a 3px offset. Used for "Show 20", "Show more", "Expand all", and other section expanders; never a standalone action.
+- **Icon** (`.commandIconAction`): 32px square quiet button with a 16px stroke icon. Requires a `title` or `aria-label`. Same hover as quiet.
+
+On phone widths and coarse pointers the roles do not change, only their size: every target reaches 44px, primary and segmented stretch to the full row width (segments flex evenly), secondary pairs split the row, quiet actions become full-width rows, icon buttons become 44px squares, and text links keep a 44px tap box. Local layouts may reset a full-width role back to `auto` where a header keeps two controls on one line.
+
+A live reference of all six roles and their states, plus selects, chips and pills, panels, and the token scale, renders at `/design-system` on the web development server (`app/design-system/page.tsx`, `app/components/design-system/DesignSystemView.tsx`). It uses the real shared classes with static sample data only, is absent from every navigation menu and the LAN allowlist, renders the not-found view inside the desktop app, and the desktop shell refuses to navigate to it (`desktop/security-policy.mjs`).
+
 - **Hover / focus:** move between neutral tones without lift; every interactive control receives the visible focus ring. Preserve reduced-motion behavior.
 
 ### Inputs / Fields
@@ -205,6 +243,15 @@ At intermediate widths, the roster omits the Calls and Cache TTL columns from 76
 Session headers show recorded or live lifecycle state in the status card without a duplicate identity badge. The provider row omits the repository name already shown in the breadcrumb, including while session evidence loads. Live and historical views omit the redundant status row; connection failures remain visible. The live status card uses the shared activity labels, including In progress for working sessions. Phone summary disclosures identify the summary source once in their toggle, with agent-reported signals retained below. Session toolbars offer report download without a pause action.
 
 ### Session Evidence
+
+Repositories place current Pomegr plugin setup inside each expanded repository's
+provider section: installed version and enablement, quiet Recheck, and a contextual
+Install plugin or Update plugin action. Update availability and failed verification
+remain distinct from installed state. Context inventory is a secondary disclosure
+under that provider and opens for a revision deep link. One shared Repository
+reporting row follows the providers. Native confirmation owns mutation scope and
+version review; browser clients receive setup instructions. Action results remain
+visible beside their provider, and phone controls have at least 44px targets.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary

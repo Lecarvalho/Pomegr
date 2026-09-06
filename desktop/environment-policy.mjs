@@ -51,6 +51,17 @@ export const NATIVE_CLAUDE_ENVIRONMENT_NAMES = Object.freeze([
   "USERPROFILE",
 ]);
 
+export const NATIVE_CODEX_ENVIRONMENT_NAMES = Object.freeze([
+  "APPDATA",
+  "CODEX_HOME",
+  "HOME",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "LOCALAPPDATA",
+  "POMEGR_CODEX_EXECUTABLE",
+  "USERPROFILE",
+]);
+
 export function environmentValue(environment, name) {
   const key = Object.keys(environment).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
   return key ? environment[key] : undefined;
@@ -114,6 +125,17 @@ export function monitorPrivateEnvironment(source, options = {}) {
 export function nativeClaudeEnvironment(source, overrides = {}, fileExists = existsSync) {
   const environment = minimalRuntimeEnvironment(source, {}, fileExists);
   for (const name of NATIVE_CLAUDE_ENVIRONMENT_NAMES) {
+    const value = environmentValue(source, name);
+    if (typeof value === "string" && value) environment[name] = value;
+  }
+  return Object.assign(environment, overrides);
+}
+
+// Keep a provider's normal profile and user-level npm location for an explicitly
+// confirmed native action. This remains private to the Electron main process.
+export function nativeCodexEnvironment(source, overrides = {}, fileExists = existsSync) {
+  const environment = minimalRuntimeEnvironment(source, {}, fileExists);
+  for (const name of NATIVE_CODEX_ENVIRONMENT_NAMES) {
     const value = environmentValue(source, name);
     if (typeof value === "string" && value) environment[name] = value;
   }

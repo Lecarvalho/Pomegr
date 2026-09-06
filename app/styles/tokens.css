@@ -79,6 +79,8 @@
   --command-brand-text: var(--color-brand-text);
   --command-green: var(--color-green);
   --command-amber: var(--color-amber);
+  --command-blue: var(--color-context);
+  --command-error: var(--color-error);
   --command-lavender: var(--color-context);
   --command-overlay-shadow: var(--shadow-overlay);
 }

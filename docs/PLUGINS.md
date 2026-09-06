@@ -18,6 +18,31 @@ Neither plugin sends transcript contents or provider credentials to Pomegr. Obse
 
 ## Install
 
+### From Pomegr desktop
+
+Open **Repositories**, expand a repository, and find **Pomegr plugin** under its
+provider. Pomegr automatically checks local installation records and configuration.
+The row shows the installed version, enablement, scope, and last check. **Recheck**
+refreshes local evidence; it respects the separate marketplace request cooldown.
+**Install plugin** and **Update plugin** appear only when the official source and
+target can be verified. A native confirmation shows the repository, provider,
+installation scope, and current-to-target version before the installed provider CLI
+is invoked. The result is verified from local records before completion is reported.
+
+Update availability compares with the published manifest in the official Pomegr
+marketplace at the configured ref, with one-hour caching and five-minute failure
+backoff. Pins are preserved; a pin is not silently switched to `main`. An unavailable
+update check retains the installed version. Unknown local formats, conflicting
+sources, or ambiguous cache versions show **Unable to verify**. Disabled Codex
+installations require manual updating because its add command may enable a plugin.
+
+**Repository reporting** is shared by both providers. **Configure reporting** opens
+the existing init guidance below; it does not silently create or replace a policy.
+Browser and phone clients show setup instructions, while changes run through the
+local desktop. Reload Claude Code plugins or restart Codex and review its hooks as
+described below. Running and historical sessions continue to show the version they
+actually loaded, even after the on-disk installation changes.
+
 ### Codex
 
 Register this Git repository as a marketplace and install Pomegr:

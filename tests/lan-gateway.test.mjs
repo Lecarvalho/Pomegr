@@ -149,6 +149,9 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal((await fetch(`${gateway.origin}/api/transcript-path`, { headers: { Cookie: cookie } })).status, 404);
     assert.equal((await fetch(`${gateway.origin}/api%2fstate`, { headers: { Cookie: cookie } })).status, 400);
     assert.equal((await fetch(`${gateway.origin}/unknown`, { headers: { Cookie: cookie } })).status, 404);
+    // The web-only design-system reference is intentionally absent from the LAN page allowlist.
+    assert.equal((await fetch(`${gateway.origin}/design-system`, { headers: { Cookie: cookie } })).status, 404);
+    assert.equal((await fetch(`${gateway.origin}/design-system.rsc`, { headers: { Cookie: cookie, RSC: "1" } })).status, 404);
     assert.equal(observed.length, beforeDenied);
 
     const stream = await fetch(`${gateway.origin}/api/events`, { headers: { Cookie: cookie } });

@@ -152,10 +152,35 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandTimeRange, .commandComingSoonLabel, .commandReadyState, .commandMonoValue { flex: 0 0 auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; }
 .commandComingSoonLabel { padding: 6px 8px; border: 1px solid var(--command-line); border-radius: 5px; text-transform: none; letter-spacing: 0; }
 .commandReadyState { color: var(--command-green); }
-.commandSecondaryAction, .commandPrimaryAction { min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); cursor: pointer; font-size: var(--text-sm); font-weight: 500; }
-.commandSecondaryAction:hover:not(:disabled) { background: var(--command-panel-2); }
-.commandPrimaryAction { border-color: var(--command-brand); background: var(--command-brand); color: #fff; }
-.commandSecondaryAction:disabled, .commandPrimaryAction:disabled { cursor: default; opacity: .48; }
+/* Button roles. Six roles share one 4px radius, one focus ring, and one disabled opacity; see DESIGN.md "Buttons". */
+.commandPrimaryAction, .commandSecondaryAction, .commandQuietAction, .commandIconAction, .commandSegmented > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--control-radius); cursor: pointer; text-decoration: none; white-space: nowrap; }
+/* Primary: brand fill, one per view, real commitments only. */
+.commandPrimaryAction { min-height: var(--control-height); padding: 0 12px; gap: 7px; border: 1px solid var(--command-brand); background: var(--command-brand); color: #fff; font-size: var(--text-sm); font-weight: 500; }
+/* Secondary: compact bordered action for toolbars, pagers, copy, and independent toggles. */
+.commandSecondaryAction { min-height: var(--control-compact); padding: 0 10px; border: 1px solid var(--command-line); background: transparent; color: var(--command-ink); font-size: var(--text-xs); font-weight: 500; }
+.commandSecondaryAction:hover:not(:disabled), .commandSecondaryAction[aria-pressed="true"], .commandSecondaryAction[aria-expanded="true"] { border-color: var(--command-line-strong); background: var(--command-panel-2); }
+/* Segmented: mutually exclusive views share one frame; the selected segment carries aria-pressed. */
+.commandSegmented { display: inline-flex; align-items: stretch; max-width: 100%; overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--control-radius); }
+.commandSegmented > button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--command-muted); font-size: var(--text-xs); font-weight: 500; }
+.commandSegmented > button + button { border-left: 1px solid var(--command-line); }
+.commandSegmented > button:hover:not(:disabled) { color: var(--command-ink); }
+.commandSegmented > button[aria-pressed="true"] { background: var(--command-panel-2); color: var(--command-ink); }
+/* Quiet: optional actions such as report download and sort cycling; no border, no fill. */
+.commandQuietAction { min-height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--command-muted); font-size: var(--text-xs); font-weight: 500; }
+.commandQuietAction:hover:not(:disabled), .commandQuietAction[aria-expanded="true"] { background: color-mix(in srgb, var(--command-ink) 6%, transparent); color: var(--command-ink); }
+.commandQuietAction:active:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, transparent); }
+.commandQuietAction > svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Text link: inline expanders such as "Show 20"; never a standalone action. */
+.commandTextLink { padding: 0; border: 0; background: transparent; color: var(--command-brand-text); cursor: pointer; font-size: var(--text-xs); font-weight: 400; text-decoration: none; }
+.commandTextLink:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+/* Icon: square quiet button; requires an aria-label or title. */
+.commandIconAction { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: var(--command-muted); }
+.commandIconAction > svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.commandIconAction:hover:not(:disabled), .commandIconAction[aria-expanded="true"] { background: color-mix(in srgb, var(--command-ink) 6%, transparent); color: var(--command-ink); }
+.commandIconAction:active:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, transparent); }
+.commandPrimaryAction:focus-visible, .commandSecondaryAction:focus-visible, .commandQuietAction:focus-visible, .commandTextLink:focus-visible, .commandIconAction:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.commandSegmented > button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.commandPrimaryAction:disabled, .commandSecondaryAction:disabled, .commandQuietAction:disabled, .commandTextLink:disabled, .commandIconAction:disabled, .commandSegmented > button:disabled { cursor: default; opacity: .48; }
 .commandAttention { min-height: 48px; margin-top: 14px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid color-mix(in srgb, var(--command-amber) 48%, var(--command-line)); background: color-mix(in srgb, var(--command-amber) 8%, var(--command-panel)); }
 .commandAttention > span { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .commandAttention strong { font-size: var(--text-xs); }
@@ -172,8 +197,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandEmptyState { margin: 14px 0; padding: 26px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSessionBar { min-height: 44px; margin-bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 0; }
 .commandSessionConnection { display: inline-flex; align-items: center; gap: 7px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); text-transform: none; letter-spacing: 0; }
-.commandSessionBar > div { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
-.commandSessionActionIcon { display: none; width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .commandSessionBar .desktopControls > summary { min-height: 36px; border-color: var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); font-size: var(--text-xs); }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
 .commandSessionView .hero { padding-top: 32px; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 0 20px; margin-bottom: 4px; }
@@ -301,10 +324,6 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandSettingsNav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--command-line); }
   .commandSettingsNav button { width: auto; flex: 0 0 auto; }
   .commandSessionBar { align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 0; }
-  .commandSessionBar > div { margin-left: auto; }
-  .commandSessionBar .commandSecondaryAction { display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; }
-  .commandSessionActionIcon { display: block; }
-  .commandSessionActionLabel { display: none; }
   .commandSessionView .hero { padding-top: 24px; }
 }
 
@@ -332,8 +351,17 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandHeader > .commandSearch { transform: none; transition: none; }
 }
 
+/* Phone and coarse pointers keep the roles and change only size: every target reaches 44px. */
+@media (max-width: 760px), (pointer: coarse) {
+  .commandPrimaryAction, .commandSecondaryAction, .commandQuietAction, .commandSegmented > button { min-height: 44px; }
+  .commandPrimaryAction, .commandSegmented { width: 100%; }
+  .commandSegmented > button { flex: 1 1 0; }
+  .commandQuietAction { width: 100%; justify-content: flex-start; }
+  .commandIconAction { width: 44px; height: 44px; }
+  .commandTextLink { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
 @media (pointer: coarse) {
-  .commandSessionBar .commandSecondaryAction { min-width: 44px; min-height: 44px; }
   footer a { min-width: 44px; min-height: 44px; justify-content: center; }
   .commandShell .commandIconLink { width: 44px; height: 44px; }
   .commandSessionView .executionTaskTrigger,

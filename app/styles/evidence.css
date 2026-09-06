@@ -232,7 +232,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .panelHeader { min-width: 0; padding: 20px 21px 17px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }.panelHeader > div { min-width: 0; }
 .panelHeader h2 { margin: 0; font: 400 21px/1.1 var(--font-inter), sans-serif; letter-spacing: -.02em; }.quiet { font-size: var(--text-xs); color: var(--muted); }
 .agentMetaIdentity { font-weight: 650; }
-.agentChip { min-width: 0; max-width: 100%; min-height: 18px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--control-radius); padding: 3px 7px; white-space: nowrap; font-size: var(--text-xs); line-height: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.agentChip { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--line); border-radius: var(--control-radius); color: var(--muted); background: var(--panel-2); white-space: nowrap; font: 500 11px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }
+.agentChip i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--line-strong); }
 .agentChipLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agentChipButton { cursor: pointer; }
 .agentChipTooltipTrigger { position: relative; overflow: visible; cursor: help; }
@@ -263,7 +264,7 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .agentTurnCacheTiming.cacheTimingNear .dottedInfoPopoverTrigger time,
 .agentTurnCacheTiming.cacheTimingElapsed .dottedInfoPopoverTrigger time { color: var(--amber); }
 @keyframes signalTooltipIn { from { opacity: 0; transform: translateY(3px); } }
-.agentSignal, .executionTaskSignal, .sessionSignal { color: var(--muted); background: var(--panel); }.agentSignal.info, .executionTaskSignal.info, .sessionSignal.info { color: var(--blue); background: rgba(80,101,168,.12); }.agentSignal.positive, .executionTaskSignal.positive, .sessionSignal.positive { color: var(--green); background: var(--green-soft); }.agentSignal.warning, .executionTaskSignal.warning, .sessionSignal.warning { color: var(--amber); background: var(--amber-soft); }.agentSignal.negative, .executionTaskSignal.negative, .sessionSignal.negative { color: var(--red); background: var(--panel); }
+.agentSignal, .executionTaskSignal, .sessionSignal { color: var(--muted); }.agentSignal.info, .executionTaskSignal.info, .sessionSignal.info { color: var(--blue); }.agentSignal.positive, .executionTaskSignal.positive, .sessionSignal.positive { color: var(--green); }.agentSignal.warning, .executionTaskSignal.warning, .sessionSignal.warning { color: var(--amber); }.agentSignal.negative, .executionTaskSignal.negative, .sessionSignal.negative { color: var(--red); }
 .sessionSignal { flex: 0 1 auto; max-width: 190px; overflow: hidden; }
 .agentPopoverAnchor { position: static; flex: 0 0 auto; display: flex; align-items: center; }.skillPopoverTrigger { background: var(--panel-2); color: var(--muted); }.skillPopoverTrigger:hover, .skillPopoverTrigger[aria-expanded="true"] { background: var(--panel-2); }.skillPopoverTrigger[aria-expanded="true"] { box-shadow: 0 0 0 1px #718c7d; }
 .skillPopover, .executionTaskPopover, .planTaskPopover { position: absolute; z-index: 20; top: calc(50% + 10px); left: calc(25px + var(--agent-indent)); width: min(410px, calc(100vw - 48px)); }
@@ -551,16 +552,10 @@ html[data-theme="dark"] .pullRequestTitle em.merged { color: var(--muted); backg
 html[data-theme="dark"] .pullRequestIcon.closed,
 html[data-theme="dark"] .pullRequestTitle em.closed,
 html[data-theme="dark"] .gitStatus.del,
-html[data-theme="dark"] .gitStatus.conflict,
-html[data-theme="dark"] .agentSignal.negative,
-html[data-theme="dark"] .executionTaskSignal.negative,
-html[data-theme="dark"] .sessionSignal.negative { background: var(--panel); }
+html[data-theme="dark"] .gitStatus.conflict { background: var(--panel); }
 html[data-theme="dark"] .pullRequestTitle em,
 html[data-theme="dark"] .pullRequestTitle em.draft,
-html[data-theme="dark"] .branchComparison.pending,
-html[data-theme="dark"] .agentSignal,
-html[data-theme="dark"] .executionTaskSignal,
-html[data-theme="dark"] .sessionSignal { background: var(--panel); }
+html[data-theme="dark"] .branchComparison.pending { background: var(--panel); }
 html[data-theme="dark"] .currentActivitySection { background: rgba(155,172,232,.075); }
 html[data-theme="dark"] .pullRequestBody code { color: var(--muted); }
 html[data-theme="dark"] .branchComparison { background: var(--panel); }
@@ -667,7 +662,7 @@ body { font-size: var(--text-base); line-height: 1.5; font-weight: 400; font-fam
 .desktopControlsPanel > button, .desktopControlsPanel > a,
 .desktopToggle, .desktopSelect { font-size: var(--text-xs); font-weight: 450; }
 .textButton, .machineryPopoverTrigger { font-size: var(--text-xs); font-weight: 560; }
-.agentChip, .pullRequestBadge, .pullRequestTitle em, .branchComparison, .gitStatus {
+.pullRequestBadge, .pullRequestTitle em, .branchComparison, .gitStatus {
   min-height: 20px;
   padding: 3px 6px;
   border: 1px solid var(--line);
@@ -833,10 +828,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsSwatch.output, .requestsActionsSegment.output { background: var(--command-amber); fill: var(--command-amber); }
 .requestsActionsSwatch.read, .requestsActionsSegment.read { background: color-mix(in srgb, var(--command-line-strong) 45%, transparent); fill: color-mix(in srgb, var(--command-line-strong) 45%, transparent); }
 .requestsActionsSwatch.compaction { height: 0; border-top: 1px dashed var(--command-amber); }
-.requestsActionsModes { display: flex; gap: 6px; }
-.requestsActionsPanel .requestsActionsButton { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 4px 9px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
-.requestsActionsButton:hover:not(:disabled), .requestsActionsButton[aria-pressed="true"] { background: var(--command-panel-2); border-color: var(--command-line-strong); color: var(--command-ink); }
-.requestsActionsButton:disabled { opacity: .45; cursor: default; }
 .requestsActionsScope.contextScopeControl { width: 100%; grid-template-columns: minmax(0, 1fr); padding-left: 12px; border-left: 1px solid var(--command-line); }
 .requestsActionsScope .commandSelect { min-width: 0; }
 .requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
@@ -911,7 +902,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsLargestIdentity small { color: var(--command-faint); font-size: 11px; }
 .requestsActionsLargestIdentity i { display: block; height: 3px; margin-top: 5px; background: var(--color-context); }
 .requestsActionsLargest footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 10px 20px; border-top: 1px solid var(--command-panel-2); color: var(--command-faint); font-size: 11px; }
-.requestsActionsPanel .requestsActionsLargest footer button { flex: 0 0 auto; padding: 0; border: 0; background: transparent; color: var(--command-brand-text); font-size: 12px; cursor: pointer; }
+.requestsActionsLargest footer .commandTextLink { flex: 0 0 auto; }
 .requestsActionsRetention { margin: 0; padding: 8px 20px; border-top: 1px solid var(--command-line); color: var(--command-faint); font-size: 11px; }
 @media (max-width: 1200px) {
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) auto minmax(120px, 160px); gap: 12px; }
@@ -927,9 +918,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsHeading .sessionEyebrow { display: none; }
   .requestsActionsScope.contextScopeControl { grid-column: 2; grid-row: 1; padding: 0; border: 0; }
   .requestsActionsModes { grid-column: 1 / -1; grid-row: 2; }
-  .requestsActionsModes button { flex: 1; }
   .requestsActionsLegend { grid-row: 3; gap: 5px 10px; }
-  .requestsActionsPanel .requestsActionsButton, .requestsActionsScope .commandSelect select { min-height: 44px; }
+  .requestsActionsScope .commandSelect select { min-height: 44px; }
+  .requestsActionsLargest > header .commandQuietAction { width: auto; }
   .requestsActionsPlot { padding: 10px 14px 12px; }
   .requestsActionsChart { height: 196px; }
   .requestsActionsCacheDetail a { min-height: 44px; }
@@ -946,6 +937,5 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsPanel .requestsActionsLargestRow { min-height: 48px; padding: 8px 14px; grid-template-columns: 42px minmax(0, 1fr) 54px; }
   .requestsActionsLargestIdentity i { display: none; }
   .requestsActionsLargest footer { min-height: 44px; padding: 0 14px; }
-  .requestsActionsPanel .requestsActionsLargest footer button { min-height: 44px; }
   .requestsActionsRetention { padding: 8px 14px; }
 }

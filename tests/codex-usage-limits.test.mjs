@@ -253,6 +253,7 @@ test("disables only the usage-limit capability when the native Codex CLI is unav
     automaticCompactions: { status: "ready" },
     contextMachinery: { status: "not_applicable" },
     repositoryContextInventory: { status: "not_applicable" },
+    repositoryPluginSetup: { status: "ready" },
     estimatedCost: { status: "not_applicable" },
     liveSessions: { status: "ready" },
     needsInput: { status: "ready" },

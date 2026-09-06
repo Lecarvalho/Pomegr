@@ -99,13 +99,15 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       return;
     }
     const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
-    const desktopReadAllowed = !repositoryCaptureRequest && (!authorizationToken || (
+    const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest;
+    const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
       && request.headers.origin === undefined
       && requestHasDesktopAuthorization(request, authorizationToken)
     ));
-    const desktopCaptureAllowed = repositoryCaptureRequest && Boolean(authorizationToken)
+    const desktopCaptureAllowed = privateActionRequest && Boolean(authorizationToken)
       && request.method === "POST" && request.headers.host === expectedHost
       && request.headers.origin === undefined
       && requestHasDesktopAuthorization(request, authorizationToken);
@@ -122,6 +124,26 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     }
     response.setHeader("Cache-Control", "no-store");
+    if (repositoryPluginRequest) {
+      const preparing = requestUrl.pathname.endsWith("/prepare");
+      const allowedKeys = new Set(preparing ? ["repositoryId", "provider", "action"] : ["repositoryId", "provider"]);
+      const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
+      const provider = requestUrl.searchParams.get("provider") || "";
+      const action = requestUrl.searchParams.get("action");
+      const validQuery = [...requestUrl.searchParams.keys()].every((key) => allowedKeys.has(key) && requestUrl.searchParams.getAll(key).length === 1);
+      if (!validQuery || !/^repo-[a-f0-9]{24}$/u.test(repositoryId) || !["claude", "codex"].includes(provider)
+        || preparing && !["install", "update"].includes(action)
+        || Number(request.headers["content-length"] || 0) > 0 || request.headers["transfer-encoding"] !== undefined) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ status: "failed" })); return;
+      }
+      try {
+        const result = preparing
+          ? { plan: await runtime.prepareRepositoryPluginAction(repositoryId, provider, action) }
+          : { status: await runtime.refreshRepositoryPluginSetup(repositoryId, provider), setup: runtime.readRepositoryPluginSetup(repositoryId, provider) };
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify(result));
+      } catch { response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ status: "failed" })); }
+      return;
+    }
     if (repositoryCaptureRequest) {
       const allowedKeys = new Set(["repositoryId", "provider"]);
       const repositoryId = requestUrl.searchParams.get("repositoryId") || "";

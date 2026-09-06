@@ -6,7 +6,7 @@ import type { RequestRow } from "./model";
 import { RequestCacheDetail } from "./RequestCacheDetail";
 
 export function RequestNavigation({ ordinal, count, onStep }: { ordinal: number; count: number; onStep: (delta: number) => void }) {
-  return <div className="requestsActionsNavigation"><button type="button" className="requestsActionsButton" disabled={ordinal <= 1} onClick={() => onStep(-1)}>Prev</button><button type="button" className="requestsActionsButton" disabled={ordinal >= count} onClick={() => onStep(1)}>Next</button></div>;
+  return <div className="requestsActionsNavigation"><button type="button" className="commandSecondaryAction" disabled={ordinal <= 1} onClick={() => onStep(-1)}>Prev</button><button type="button" className="commandSecondaryAction" disabled={ordinal >= count} onClick={() => onStep(1)}>Next</button></div>;
 }
 
 export function RequestDetail({ row, agent, count, phone, cacheWriteAvailable, onStep }: {

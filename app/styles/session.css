@@ -63,7 +63,7 @@
 .commandSessionView .resourceStat > strong { font: 500 20px/1 var(--font-geist-mono), Consolas, monospace; }
 
 .commandSessionView .sessionEyebrow { color: var(--command-faint); font: 500 11px/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
-.commandSessionView .sessionHeroActions { min-width: 0; max-width: 380px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.commandSessionView .sessionHeroActions { min-width: 0; max-width: 380px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .commandSessionView .sessionStatusCard { min-width: 260px; max-width: 100%; padding: 12px 14px; display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 6px 10px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .commandSessionView .sessionStatusCard > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--command-line-strong); }
 .commandSessionView .sessionStatusCard.active > i { background: var(--command-green); }
@@ -85,10 +85,8 @@
 .commandSessionView :is(.sessionProgressCard, .sessionWorkflowCard) { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
 .commandSessionView .sessionSummaryCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .commandSessionView .sessionSummaryCardHeader .sessionEyebrow { margin: 0; }
-.commandSessionView :is(.sessionProgressPhase, .sessionWorkflowStatus, .sessionSignalCount) { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); background: var(--command-panel-2); font: 500 11px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }
 .commandSessionView .sessionSignalCount-warning,
 .commandSessionView .sessionProgressPhase-blocked { border-color: color-mix(in srgb, var(--command-amber) 40%, var(--command-line)); color: var(--command-amber); }
-.commandSessionView .sessionWorkflowStatus i { width: 6px; height: 6px; border-radius: 50%; background: var(--command-line-strong); }
 .commandSessionView .sessionWorkflowStatus-running i { background: var(--command-green); }
 .commandSessionView :is(.sessionSummaryHeadline, .sessionProgressCompactValue) { display: flex; align-items: baseline; gap: 10px; }
 .commandSessionView .sessionSummaryNumber,
@@ -157,10 +155,9 @@
   .commandSessionView .sessionHeroSummary[open] > summary svg { transform: rotate(90deg); }
   .commandSessionView .sessionHeroSummary p { margin: 4px 0 8px; overflow-wrap: anywhere; }
   .commandSessionView .sessionHeroSummary .heroSummaryRow { margin-top: 8px; }
-  .commandSessionView .hero .sessionReportButton { width: 100%; min-height: 44px; background: transparent; }
-  .commandSessionView .hero .sessionReportButton .commandSessionActionLabel { display: inline; }
-  .commandSessionView .sessionHeroSummary > summary:focus-visible,
-  .commandSessionView .hero .sessionReportButton:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .commandSessionView .hero .sessionReportButton { width: 100%; justify-content: flex-start; margin-top: 4px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--command-line) 60%, transparent); color: var(--command-muted); font-size: 13px; }
+  .commandSessionView .hero .sessionReportButton > svg { width: 16px; height: 16px; }
+  .commandSessionView .sessionHeroSummary > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
   .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; }
   .commandSessionView .sessionKpi:nth-child(n) { padding: 10px 12px; border: 1px solid var(--command-line); border-radius: var(--control-radius); gap: 4px; }
   .commandSessionView .sessionKpi > strong { font-size: 24px; }

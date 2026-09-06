@@ -68,7 +68,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-ui\)/);
-    expect(styles).toMatch(/\.agentChip, \.pullRequestBadge[^}]*font-size:\s*var\(--text-xs\)/);
+    expect(styles).toMatch(/\.pullRequestBadge, \.pullRequestTitle em, \.branchComparison, \.gitStatus\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
     expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--color-raised:\s*#23272d/);
@@ -85,6 +85,27 @@ describe("Pomegr visual contract", () => {
     expect(layoutSource).not.toMatch(/font-rokkitt|localFont/);
   });
 
+  it("defines the six shared button roles with one radius, one focus ring, and one disabled state", () => {
+    expect(styles).toMatch(/\.commandPrimaryAction\s*\{[^}]*min-height:\s*var\(--control-height\)[^}]*background:\s*var\(--command-brand\)[^}]*color:\s*#fff[^}]*font-size:\s*var\(--text-sm\)/);
+    expect(styles).toMatch(/\.commandSecondaryAction\s*\{[^}]*min-height:\s*var\(--control-compact\)[^}]*border:\s*1px solid var\(--command-line\)[^}]*background:\s*transparent[^}]*font-size:\s*var\(--text-xs\)/);
+    expect(styles).toMatch(/\.commandSecondaryAction:hover:not\(:disabled\), \.commandSecondaryAction\[aria-pressed="true"\][^{]*\{[^}]*border-color:\s*var\(--command-line-strong\);[^}]*background:\s*var\(--command-panel-2\)/);
+    expect(styles).toMatch(/\.commandSegmented\s*\{[^}]*overflow:\s*hidden;[^}]*border:\s*1px solid var\(--command-line\);[^}]*border-radius:\s*var\(--control-radius\)/);
+    expect(styles).toMatch(/\.commandSegmented > button\s*\{[^}]*min-height:\s*30px;[^}]*border:\s*0;/);
+    expect(styles).toMatch(/\.commandSegmented > button \+ button\s*\{\s*border-left:\s*1px solid var\(--command-line\)/);
+    expect(styles).toMatch(/\.commandSegmented > button\[aria-pressed="true"\]\s*\{\s*background:\s*var\(--command-panel-2\);\s*color:\s*var\(--command-ink\)/);
+    expect(styles).toMatch(/\.commandQuietAction\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*0 6px;[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*color:\s*var\(--command-muted\)/);
+    expect(styles).toMatch(/\.commandQuietAction:hover:not\(:disabled\)[^{]*\{[^}]*color-mix\(in srgb, var\(--command-ink\) 6%, transparent\)/);
+    expect(styles).toMatch(/\.commandTextLink\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--command-brand-text\)[^}]*font-weight:\s*400/);
+    expect(styles).toMatch(/\.commandTextLink:hover:not\(:disabled\)\s*\{\s*text-decoration:\s*underline;\s*text-underline-offset:\s*3px/);
+    expect(styles).toMatch(/\.commandIconAction\s*\{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*border:\s*0/);
+    expect(styles).toMatch(/\.commandQuietAction > svg\s*\{[^}]*width:\s*14px;[^}]*fill:\s*none;[^}]*stroke:\s*currentColor/);
+    expect(styles).toMatch(/\.commandIconAction > svg\s*\{[^}]*width:\s*16px;[^}]*fill:\s*none;[^}]*stroke:\s*currentColor/);
+    expect(styles).toMatch(/\.commandPrimaryAction:focus-visible, \.commandSecondaryAction:focus-visible, \.commandQuietAction:focus-visible, \.commandTextLink:focus-visible, \.commandIconAction:focus-visible\s*\{\s*outline:\s*2px solid var\(--focus-ring\);\s*outline-offset:\s*2px/);
+    expect(styles).toMatch(/\.commandPrimaryAction:disabled, \.commandSecondaryAction:disabled, \.commandQuietAction:disabled, \.commandTextLink:disabled, \.commandIconAction:disabled, \.commandSegmented > button:disabled\s*\{[^}]*opacity:\s*\.48/);
+    expect(styles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\)\s*\{\s*\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction, \.commandSegmented > button\s*\{\s*min-height:\s*44px/);
+    expect(styles).not.toMatch(/\.requestsActionsButton|\.commandPrimaryButton|\.commandSecondaryButton|\.repositoryQuietButton/);
+  });
+
   it("keeps session progress semantic, flat, and motion-safe", () => {
     expect(animatedProgressSource).toMatch(/<progress[^>]*aria-label=\{label\}[^>]*aria-valuetext=\{valueText\}/);
     expect(animatedProgressSource).toMatch(/transform: `scaleX\(\$\{scale\}\)`/);
@@ -96,5 +117,20 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/(?:animation|transition)-duration:\s*\.01ms/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.attentionGlyph[\s\S]*?\.uiSkeleton \{ animation: none; \}/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.limitTrack i[\s\S]*?\.commandNotificationEntry \{ transition: none; \}/);
+  });
+
+  it("shares one official chip contract between .commandChip and .agentChip, with tones that recolor text only", () => {
+    expect(styles).toMatch(/\.commandChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--command-line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*font:\s*500 11px\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
+    expect(styles).toMatch(/\.commandChip > i\s*\{[^}]*width:\s*6px;[^}]*height:\s*6px;/);
+    expect(styles).toMatch(/\.commandChip\.info\s*\{\s*color:\s*var\(--command-blue\);\s*\}/);
+    expect(styles).toMatch(/\.commandChip\.positive\s*\{\s*color:\s*var\(--command-green\);\s*\}/);
+    expect(styles).toMatch(/\.commandChip\.warning\s*\{\s*color:\s*var\(--command-amber\);\s*\}/);
+    expect(styles).toMatch(/\.commandChip\.negative\s*\{\s*color:\s*var\(--command-error\);\s*\}/);
+    expect(styles).not.toMatch(/\.commandChip\.(?:info|positive|warning|negative)\s*\{[^}]*background/);
+    expect(styles).toMatch(/\.agentChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*font:\s*500 11px\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
+    expect(styles).toMatch(/\.agentSignal, \.executionTaskSignal, \.sessionSignal \{ color: var\(--muted\); \}/);
+    expect(styles).not.toMatch(/\.agentSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
+    expect(styles).not.toMatch(/\.executionTaskSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
+    expect(styles).not.toMatch(/\.sessionSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
   });
 });

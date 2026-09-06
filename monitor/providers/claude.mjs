@@ -46,6 +46,7 @@ import {
   registryStatus, registryTimestamp, sessionActivityStatus,
 } from "./claude-session-status.mjs";
 import { claudeRepositoryInventoryCaptureFromProviderOptions } from "./claude-repository-inventory.mjs";
+import { createClaudePluginSetupReader } from "./claude-plugin-setup.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
@@ -265,6 +266,7 @@ export function createClaudeProvider(options = {}) {
   const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
+  const readRepositoryPluginSetup = createClaudePluginSetupReader({ env: environment, homeDir });
   const projectsRoot = options.projectsRoot || environment.CLAUDE_PROJECTS_DIR || path.join(homeDir, ".claude", "projects");
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const tasksRoot = options.tasksRoot || path.join(homeDir, ".claude", "tasks");
@@ -737,6 +739,7 @@ export function createClaudeProvider(options = {}) {
       automaticCompactions: { status: "supported" },
       contextMachinery: { status: "supported" },
       repositoryContextInventory: { status: "supported" },
+      repositoryPluginSetup: { status: "supported" },
       estimatedCost: { status: "supported" },
       liveSessions: { status: "supported" },
       needsInput: { status: "supported" },
@@ -762,6 +765,7 @@ export function createClaudeProvider(options = {}) {
     listSessions,
     readSession,
     captureRepositoryContextInventory,
+    readRepositoryPluginSetup,
     createObserver() {
       return observeClaudeRegistryDepartures(createIncrementalProviderObserver({
         providerId: "claude",

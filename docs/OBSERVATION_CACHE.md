@@ -1262,6 +1262,51 @@ removes the detail, the reference remains and reports that detail is unavailable
 provider snapshot recorded inside the session always takes presentation precedence. With
 neither source, F renders nothing and never asks the user to run `/context`.
 
+## Current repository plugin setup
+
+This current-machine observation is independent of transcript-derived plugin
+metadata and saved context inventories. It does not attach to session evidence,
+reports, or checkpoints. No installation, upgrade, or policy edit runs automatically.
+
+- U1/U2 provider methods `readRepositoryPluginSetup({ cwd })` own provider-native
+  installation registries, manifest resolution, configuration precedence, and source
+  provenance. Complete local observations run in background when a repository becomes
+  known and every minute, with at most 200 repository targets, provider single-flight
+  reads, bounded files/directory entries, and serialized repository batches. Unsupported
+  or ambiguous formats degrade to unknown; an old cache folder alone is not evidence
+  of the version selected by the provider.
+- Official published manifest checks use only fixed `raw.githubusercontent.com`
+  Pomegr paths and bounded `main`, release-tag, or commit refs, without credentials or
+  redirects. Each request has an eight-second deadline and 32 KiB response ceiling.
+  Shutdown cancels pending requests and prevents late local reads from starting new ones.
+  At most 64 provider/ref entries retain successful responses for one hour or failures
+  for five minutes. Failed checks retain the last successful available version and
+  its original observation time while marking update status unavailable. No check
+  rewrites an existing pin or infers a billing or efficiency benefit.
+- C validates an explicit normalized projection; D includes it in the committed
+  repositories response with the repository revision and existing revision event.
+  Failure retains last-known installed version/scope/time, marks readiness unavailable,
+  and disables mutation affordances. Shared policy recognition uses the shipped policy
+  validator with a 24 KiB read bound; policy text and validation errors stay private.
+  Removal prunes current observations. There is no P persistence for this domain.
+- S repository GETs serve only committed snapshots and never inspect configuration,
+  start a release check, or install anything. F serializes polling, refreshes on focus,
+  aborts on unmount, retains visible data, and distinguishes loading from failure.
+  Installed, enabled, available update, and session-loaded versions remain separate.
+- The narrow native `repositoryPluginAction` IPC accepts only a known opaque repository
+  ID, provider, and `recheck`/`install`/`update` enum. It accepts no paths, versions,
+  commands, or URLs from the renderer. Private loopback preparation/recheck POSTs
+  require the desktop token, exact loopback host, no Origin, and no request body.
+  Preparation may return a known root only to desktop main; it must never cross
+  renderer IPC or a public route. Preparation itself remains read-only.
+- Desktop main confirms repository/provider/scope/current-to-target version and
+  re-prepares the plan before running fixed provider CLI argument arrays. It owns
+  and bounds only the new CLI children; provider session processes are untouched.
+  Only the official Pomegr marketplace/plugin is eligible. Native CLI output and
+  errors are discarded. Mutations serialize, retain the existing scope, and verify
+  the resulting version from a fresh local check before returning a bounded outcome.
+  Browser and LAN clients receive instructions and current normalized status only.
+
 ## Diagnostics and acceptance
 
 Monitor-private QA counters may measure observer wakeups, routed and unresolved source

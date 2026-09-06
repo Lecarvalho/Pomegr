@@ -18,7 +18,7 @@ export function AgentGridToolbar({ metric, onChange, historical }: { metric: Age
   const choices = [["context", historical ? "Final context" : "Latest context"], ["wall", "Wall time"], ["toolCalls", "Tool calls"]] as const;
   return <div className="agentGridToolbar" role="group" aria-label="Tile bar metric">
     <span className="sessionEyebrow">Tile bar</span>
-    {choices.map(([value, label]) => <button type="button" key={value} aria-pressed={metric === value} onClick={() => onChange(value)}>{label}</button>)}
+    <div className="commandSegmented">{choices.map(([value, label]) => <button type="button" key={value} aria-pressed={metric === value} onClick={() => onChange(value)}>{label}</button>)}</div>
   </div>;
 }
 

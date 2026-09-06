@@ -21,6 +21,20 @@ const ALLOWED_EXTERNAL_PREFIXES = Object.freeze([
   "https://github.com/Lecarvalho/pomegr",
 ]);
 
+// Web-only development routes. The desktop shell refuses to navigate to them even
+// though they share the application origin; the client view also hides them.
+export const DESKTOP_HIDDEN_PATHS = Object.freeze(["/design-system"]);
+
+export function isDesktopHiddenPath(pathname) {
+  if (typeof pathname !== "string") return false;
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); } catch { return true; }
+  const normalized = decoded.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return DESKTOP_HIDDEN_PATHS.some((hidden) => normalized === hidden
+    || normalized === `${hidden}.rsc`
+    || normalized.startsWith(`${hidden}/`));
+}
+
 export function isAllowedExternalUrl(value) {
   let url;
   try { url = new URL(value); } catch { return false; }
@@ -96,7 +110,10 @@ export function installSessionSecurity(browserSession, { webOrigin, authorizatio
 export function installWebContentsSecurity(webContents, { webOrigin, openExternal }) {
   const expectedOrigin = new URL(webOrigin).origin;
   const allowInternal = (value) => {
-    try { return new URL(value).origin === expectedOrigin; } catch { return false; }
+    try {
+      const url = new URL(value);
+      return url.origin === expectedOrigin && !isDesktopHiddenPath(url.pathname);
+    } catch { return false; }
   };
   const denyUnexpectedNavigation = (event, target) => {
     if (!allowInternal(target)) event.preventDefault();

@@ -11,6 +11,7 @@ import {
   installSessionSecurity,
   installWebContentsSecurity,
   isAllowedExternalUrl,
+  isDesktopHiddenPath,
   secureBrowserWindowOptions,
 } from "../desktop/security-policy.mjs";
 import { installLocalRequestGate, installStaticAssetFallback } from "../web/server.mjs";
@@ -154,6 +155,25 @@ test("desktop navigation denies webviews, unexpected origins, and non-allowliste
   const unexpected = event();
   contents.emit("will-navigate", unexpected, "http://127.0.0.1:5555/");
   assert.equal(unexpected.prevented, true);
+  for (const target of [
+    "http://127.0.0.1:4444/design-system",
+    "http://127.0.0.1:4444/design-system/?logo=outline",
+    "http://127.0.0.1:4444/Design-System",
+    "http://127.0.0.1:4444/design-system.rsc?_rsc=1",
+    "http://127.0.0.1:4444/%64esign-system",
+  ]) {
+    const hiddenNavigation = event();
+    contents.emit("will-navigate", hiddenNavigation, target);
+    assert.equal(hiddenNavigation.prevented, true, `same-origin web-only route is refused: ${target}`);
+    const hiddenRedirect = event();
+    contents.emit("will-redirect", hiddenRedirect, target);
+    assert.equal(hiddenRedirect.prevented, true, `same-origin web-only redirect is refused: ${target}`);
+  }
+  assert.equal(isDesktopHiddenPath("/design-system"), true);
+  assert.equal(isDesktopHiddenPath("/design-system/tokens"), true);
+  assert.equal(isDesktopHiddenPath("/design-systems"), false);
+  assert.equal(isDesktopHiddenPath("/settings"), false);
+  assert.equal(isDesktopHiddenPath("/sessions/design-system"), false);
   const webview = event();
   contents.emit("will-attach-webview", webview);
   assert.equal(webview.prevented, true);

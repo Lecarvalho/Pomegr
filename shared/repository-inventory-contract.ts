@@ -1,3 +1,5 @@
+import type { RepositoryPluginSetup, RepositoryReportingSetup } from "./repository-plugin-contract";
+
 export type ContextInventoryReference = {
   repositoryId: string;
   provider: "claude" | "codex";
@@ -27,6 +29,7 @@ export type ContextInventoryRevisionDetail = ContextInventoryRevisionSummary & {
 };
 
 export type RepositoryProviderInventory = {
+  pluginSetup?: RepositoryPluginSetup;
   provider: "claude" | "codex";
   source: "Claude Code" | "Codex";
   sessionCount: number;
@@ -38,6 +41,7 @@ export type RepositoryProviderInventory = {
 };
 
 export type RepositorySummary = {
+  reporting?: RepositoryReportingSetup;
   id: string;
   name: string;
   displayName: string;

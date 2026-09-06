@@ -443,6 +443,7 @@ export function createObservationRuntime(options = {}) {
     observationStartPromise = (async () => {
       await repositoryInventory.ready;
       await repositoryInventory.reconcile([]);
+      repositoryInventory.startPluginObservation?.();
       await observationCoordinator.start();
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
@@ -457,6 +458,7 @@ export function createObservationRuntime(options = {}) {
     try { await observationStartPromise; }
     catch (error) {
       observationServingActive = false;
+      await repositoryInventory.stopPluginObservation?.();
       agentsObservation.stop();
       await providerStatus.stop();
       observationStartPromise = null;
@@ -468,6 +470,7 @@ export function createObservationRuntime(options = {}) {
 
   async function stopObservation() {
     observationServingActive = false;
+    await repositoryInventory.stopPluginObservation?.();
     agentsObservation.stop();
     await providerStatus.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
@@ -526,6 +529,9 @@ export function createObservationRuntime(options = {}) {
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
     readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
     captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),
+    refreshRepositoryPluginSetup: (repositoryId, provider) => repositoryInventory.refreshPluginSetup(repositoryId, provider),
+    readRepositoryPluginSetup: (repositoryId, provider) => repositoryInventory.readPluginSetup(repositoryId, provider),
+    prepareRepositoryPluginAction: (repositoryId, provider, action) => repositoryInventory.preparePluginAction(repositoryId, provider, action),
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({

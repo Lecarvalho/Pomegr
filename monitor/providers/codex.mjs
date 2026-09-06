@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
+import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
@@ -58,13 +59,11 @@ const ALL_SOURCE_KINDS = [
   "subAgentThreadSpawn",
   "subAgentOther",
 ];
-
 export function resolveCodexHome(options = {}) {
   const environment = options.env ?? process.env;
   const configured = options.codexHome ?? environment.CODEX_HOME;
   return path.resolve(configured || path.join(options.homeDir || os.homedir(), ".codex"));
 }
-
 function mergeSkillUsage(groups) {
   const usage = new Map();
   for (const item of groups.flat()) {
@@ -82,7 +81,6 @@ function mergeSkillUsage(groups) {
     Date.parse(right.lastUsed || "") - Date.parse(left.lastUsed || "") || left.name.localeCompare(right.name)
   ));
 }
-
 export function createCodexProvider(options = {}) {
   const codexHome = resolveCodexHome(options);
   const sessionsRoot = options.sessionsRoot || path.join(codexHome, "sessions");
@@ -692,6 +690,7 @@ export function createCodexProvider(options = {}) {
     automaticCompactions: { status: "supported" },
     contextMachinery: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose normalized context-machinery categories." } },
     repositoryContextInventory: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex does not expose a comparable repository context inventory diagnostic." } },
+    repositoryPluginSetup: { status: "supported" },
     estimatedCost: { status: "unsupported", limitation: { code: "provider_does_not_expose", documentation: "Codex session evidence does not expose a provider cost estimate." } },
     liveSessions: { status: "supported" },
     needsInput: { status: "supported" },
@@ -750,6 +749,7 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
+    readRepositoryPluginSetup: createCodexPluginSetupReader({ env: options.env ?? process.env, codexHome }),
     createObserver: () => createCodexIncrementalObserver({
       list: listSessions, now,
       readEvidence: readSession,

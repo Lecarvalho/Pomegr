@@ -615,6 +615,7 @@ export type ProviderCapabilities = {
   contextMachinery: boolean;
   /** Optional during the repository-inventory capability rollout. */
   repositoryContextInventory?: boolean;
+  repositoryPluginSetup?: boolean;
   estimatedCost: boolean;
   liveSessions: boolean;
   needsInput: boolean;
