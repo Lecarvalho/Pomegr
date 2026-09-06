@@ -65,7 +65,7 @@ test("startup and recorded Working/input/end transitions never wait for slow nat
   context.after(async () => {
     await runtime.stopObservation();
     for (const query of queries) query.resolve([]);
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   const row = () => runtime.serveCatalog().snapshot?.value?.sessions.find((entry) => entry.id === qualifiedId);
   const agent = () => runtime.serveSession(qualifiedId).snapshot?.publicState?.agents?.[0];
