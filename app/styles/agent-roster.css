@@ -36,9 +36,10 @@
 .rosterWorkspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
 .rosterMain { min-width: 0; }
 .rosterInspectorPlaceholder { border-left: 1px solid var(--command-line); min-width: 0; }
-.rosterColumns, .rosterRow { display: grid; grid-template-columns: 28px minmax(0,1fr) 92px 96px 72px 84px 96px 24px; gap: 0 12px; padding: 0 12px 0 8px; align-items: center; }
+.rosterColumns, .rosterRow { display: grid; grid-template-columns: 28px minmax(0,1fr) 112px 96px 72px 84px 96px 24px; gap: 0 12px; padding: 0 12px 0 8px; align-items: center; }
 .rosterColumns { height: 32px; border-bottom: 1px solid var(--command-line); font-size: 10px; color: var(--command-faint); }
 .rosterColumns > span:nth-child(n+3) { text-align: right; }
+.rosterColumns > span:nth-child(3) { white-space: nowrap; }
 .rosterScrollFrame { position: relative; }
 .rosterScrollFrame::after { content: ""; position: absolute; inset: auto 0 0; height: 36px; background: linear-gradient(transparent, var(--command-panel)); pointer-events: none; z-index: 3; }
 .rosterRegion { height: 560px; overflow-y: auto; overflow-x: hidden; position: relative; overscroll-behavior: contain; scrollbar-color: var(--command-line-strong) var(--command-panel); scrollbar-width: thin; padding-bottom: 36px; }
@@ -60,6 +61,7 @@
 .rosterContext strong { font-weight: 600; }
 .rosterTtl { color: var(--command-muted); }
 .rosterStatus { text-align: right; }
+.rosterStatus .statusPill { justify-content: flex-end; }
 .agentRosterPanel .statusPill { font: 400 10px/1.4 var(--font-ui); text-transform: uppercase; min-height: 0; }
 .rosterCaret { width: 14px; height: 14px; fill: none; stroke: var(--command-muted); stroke-width: 1.7; }
 .rosterRepeat { color: var(--command-amber); white-space: nowrap; font-size: 10px; }
@@ -89,7 +91,7 @@
 .rosterFilterSheet h3 { margin: 0 0 4px; font-size: 16px; }
 /* Keep secondary measurements in the inspector when the roster narrows. */
 @media (min-width: 761px) and (max-width: 1250px) {
-  .rosterColumns, .rosterRow { grid-template-columns: 22px minmax(0,1fr) 72px 65px 65px 16px; gap: 0 6px; }
+  .rosterColumns, .rosterRow { grid-template-columns: 22px minmax(0,1fr) 112px 65px 65px 16px; gap: 0 6px; }
   .rosterRow > :nth-child(5), .rosterRow > :nth-child(6), .rosterColumns > :nth-child(5), .rosterColumns > :nth-child(6) { display: none; }
   .rosterGroupSummary.rosterDesktop { max-width: 200px; }
 }
