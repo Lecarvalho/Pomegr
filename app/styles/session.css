@@ -147,8 +147,6 @@
   .commandSessionView .hero { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 0; padding: 12px 0 14px; }
   .commandSessionView .hero h1 { font-size: 22px; overflow-wrap: anywhere; }
   .commandSessionView .sessionIdentity { flex-wrap: wrap; gap: 6px 10px; margin-bottom: 0; }
-  .commandSessionView .sessionIdentityId,
-  .commandSessionView .sessionIdentity code,
   .commandSessionView .sessionDesktopLabel { display: none; }
   .commandSessionView .sessionPhoneLabel { display: inline; }
   .commandSessionView .sessionStatusCard { min-width: 0; width: 100%; padding: 10px 12px; }

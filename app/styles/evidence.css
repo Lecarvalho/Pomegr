@@ -846,10 +846,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsChart { display: block; width: 100%; height: 274px; overflow: visible; }
 .requestsActionsAxis text, .requestsActionsSelectedLabel { fill: var(--command-faint); font: 11px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsAxis line { stroke: var(--command-panel-2); stroke-width: 1; }
-.requestsActionsBar { cursor: pointer; }
+.requestsActionsBar { cursor: pointer; outline: none; }
 .requestsActionsHit { fill: transparent; }
 .requestsActionsSelection { fill: none; stroke: var(--command-brand-text); stroke-width: 1; pointer-events: none; }
-.requestsActionsBar:focus-visible { outline: none; }
 .requestsActionsBar:focus-visible .requestsActionsHit { stroke: var(--focus-ring); stroke-width: 2; }
 .requestsActionsSelectedLabel { fill: var(--command-brand-text); }
 .requestsActionsCompaction line { stroke: var(--command-amber); stroke-dasharray: 3 4; }
