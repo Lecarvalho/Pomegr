@@ -161,7 +161,13 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const visibleIds = new Set(visible.map((agent) => agent.id));
   const treeRows = agentTreeRows(agents);
   const depthById = new Map(treeRows.map(({ agent, depth }) => [agent.id, depth]));
-  const sort = (members: Agent[]) => [...members].sort((a, b) => filters.sort === "context" ? b.tokens.total - a.tokens.total : filters.sort === "calls" ? b.toolCalls - a.toolCalls : filters.sort === "wall" ? liveWallTimeMs(b.durationMs, b.startedAt, !historical && ["active", "waiting"].includes(b.status), now) - liveWallTimeMs(a.durationMs, a.startedAt, !historical && ["active", "waiting"].includes(a.status), now) : 0);
+  const sort = (members: Agent[]) => [...members].sort((a, b) => {
+    if (filters.sort === "created") return (Date.parse(b.startedAt || "") || 0) - (Date.parse(a.startedAt || "") || 0);
+    if (filters.sort === "context") return b.tokens.total - a.tokens.total;
+    if (filters.sort === "calls") return b.toolCalls - a.toolCalls;
+    if (filters.sort === "wall") return liveWallTimeMs(b.durationMs, b.startedAt, !historical && ["active", "waiting"].includes(b.status), now) - liveWallTimeMs(a.durationMs, a.startedAt, !historical && ["active", "waiting"].includes(a.status), now);
+    return 0;
+  });
   const filteredGroups = groups.map((group) => ({ ...group, agents: sort(group.agents.filter((agent) => visibleIds.has(agent.id))) })).filter((group) => group.agents.length > 0);
   const gridGroups = buildRosterGroups(visible, workflows, { historical, now }).map((group) => ({ ...group, agents: sort(group.agents) }));
   const collapsible = filteredGroups.filter((group) => group.kind !== "primary");

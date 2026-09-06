@@ -123,6 +123,7 @@ describe("grouped agent roster", () => {
     const agents = [agent, child("parent", { startedAt: "2026-08-01T00:00:00Z" }), child("nested", { parentId: "parent" })];
     const { container } = render(panel(agents, { onSelectAgent: selected }));
     await user.click(screen.getByRole("button", { name: "Group by workflow" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort agents" }), "provider");
     expect(rows().map((row) => row.getAttribute("aria-label"))).toEqual([expect.stringContaining("Primary"), expect.stringContaining("parent"), expect.stringContaining("nested")]);
     screen.getByRole("button", { name: "Select nested" }).focus();
     await user.keyboard("{Enter}");
