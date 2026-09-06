@@ -17,6 +17,7 @@ test("both MCP entrypoints register the six read tools with read-only metadata a
     const server = build();
     assert.match(server.server._instructions, /only when their result could materially change the next decision/i);
     assert.match(server.server._instructions, /do not poll routinely/i);
+    assert.match(server.server._instructions, /configured local guard checkpoint.*local concurrency.*not a reason for repeated MCP polling/i);
     assert.match(server.server._instructions, /coincident.*causation|causation/i);
     assert.deepEqual(Object.keys(server._registeredTools).filter((name) => readNames.includes(name)).sort(), readNames);
     for (const name of readNames) {
@@ -88,6 +89,36 @@ test("closed-world response validation rejects unexpected private fields", async
   const response = await server._registeredTools.get_provider_health.handler({});
   assert.equal(response.isError, true);
   assert.doesNotMatch(response.content[0].text, /PROMPT_SENTINEL/u);
+});
+
+test("usage limits accept only bounded local concurrency evidence", async () => {
+  const localActivity = {
+    scope: "machine_provider", readiness: "ready", observedAt: "2026-09-03T12:00:00.000Z",
+    liveSessions: 3, workingSessions: 2, unknownSessions: 1, truncated: false,
+  };
+  const server = buildPomegrMcpServer({ query: async () => ({
+    schemaVersion: 1, readiness: "ready", observedAt: "2026-09-03T12:00:00.000Z",
+    generatedAt: "2026-09-03T12:00:00.000Z", revision: 1,
+    providers: [{
+      provider: "codex", readiness: "ready", available: true, origin: "provider_api", freshness: "fresh",
+      observedAt: "2026-09-03T12:00:00.000Z", attemptedAt: null, retryAt: null, failureCategory: null,
+      localActivity, windows: [],
+    }],
+  }) });
+  const response = await server._registeredTools.get_usage_limits.handler({ provider: "codex" });
+  assert.deepEqual(response.structuredContent.providers[0].localActivity, localActivity);
+
+  const malformed = buildPomegrMcpServer({ query: async () => ({
+    schemaVersion: 1, readiness: "ready", observedAt: null, generatedAt: null, revision: 1,
+    providers: [{
+      provider: "codex", readiness: "ready", available: true, origin: "provider_api", freshness: "fresh",
+      observedAt: null, attemptedAt: null, retryAt: null, failureCategory: null,
+      localActivity: { ...localActivity, liveSessions: 10_001, privatePath: "PATH_SENTINEL" }, windows: [],
+    }],
+  }) });
+  const invalid = await malformed._registeredTools.get_usage_limits.handler({ provider: "codex" });
+  assert.equal(invalid.isError, true);
+  assert.doesNotMatch(invalid.content[0].text, /PATH_SENTINEL/u);
 });
 
 test("the default MCP reader reaches a running packaged-style monitor through its descriptor capability", async (t) => {

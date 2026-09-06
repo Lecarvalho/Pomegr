@@ -7,6 +7,7 @@ Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters con
 | Repository initialization | `$pomegr:init` | `/pomegr:init` |
 | Read-only diagnosis | `$pomegr:doctor` | `/pomegr:doctor` |
 | Automatic policy loading | `SessionStart` hook | `SessionStart` hook |
+| Optional usage guard | Advisory `SessionStart` and `PostToolUse` hooks | Advisory `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `PostToolBatch` hooks |
 | Delegated policy injection | `SubagentStart` hook | `PreToolUse` hook for `Task\|Agent` |
 | Delegated-report detection | `SubagentStop` hook | `SubagentStop` hook |
 | Signal and progress tools | Seven shared tools | Seven shared tools |
@@ -65,7 +66,7 @@ The init skill is the authoring workflow: it inspects, proposes, confirms, write
 
 Before writing, the skill previews the complete policy or a focused diff and asks for confirmation. It creates or updates `.pomegr/signals.md`. It does not add reporting instructions to `AGENTS.md`, and it does not blindly replace an existing policy. Generic lifecycle, context, Git, approval, plan-task, and execution-task metadata already derived by Pomegr should not be duplicated as signals.
 
-The Codex skill changes only `.pomegr/signals.md`. The Claude Code skill may also update explicit `tools` allowlists in `.claude/agents/*.md` when a confirmed delegated-reporting choice requires Pomegr access; those definition edits appear in the same preview.
+The Codex skill changes `.pomegr/signals.md` and, when explicitly requested, `.pomegr/usage-guard.json`. The optional guard configuration is supported by both skills; neither creates handoff files nor changes ignore rules. The Claude Code skill may also update explicit `tools` allowlists in `.claude/agents/*.md` when a confirmed delegated-reporting choice requires Pomegr access; those definition edits appear in the same preview.
 
 Use `$pomegr:doctor` in Codex or `/pomegr:doctor` in Claude Code for a read-only checklist. Doctor validates the policy, loading marker, delegated-agent coverage, expected tools, packaged files, and optional `.pomegr/roles.json` display mappings. It does not edit files, invoke a report or clear tool, rename a session, or emit a diagnostic signal.
 
@@ -108,6 +109,35 @@ Both packages also register an all-tool `PostToolUse` reminder hook. Reminder st
 - An unavailable MCP server never blocks the coding session.
 
 Codex runs the hook for startup, resume, clear, and compaction. Claude Code also covers forks; a fork already carries inherited context and is excluded from separate delegated-row injection.
+
+## Optional usage guard
+
+The usage guard is off unless a repository explicitly creates `.pomegr/usage-guard.json`. Installing or updating a plugin never creates or activates it. When enabled, it reads only Pomegr's already-committed, cached usage observations at a bounded cadence. It does not persist hook stdin, prompt text, tool input or output, credentials, account identifiers, or handoff notes.
+
+The version-1 configuration is deliberately narrow:
+
+```json
+{
+  "version": 1,
+  "mode": "advisory",
+  "checkIntervalSeconds": 60,
+  "warnAt": 70,
+  "handoffAt": 80,
+  "stopAt": 90,
+  "concurrencyReservePercent": 5,
+  "maxConcurrencyReservePercent": 15
+}
+```
+
+`mode` accepts `advisory` or `off`; a missing file is off. `checkIntervalSeconds` is at least 60 seconds. The guard uses fixed comparisons of cached common account quota windows, including the five-hour and weekly windows where supplied. It may make a separate model-window caution, but cannot prove the current model, account, or remaining capacity. It makes no context-window or cache-lifetime prediction. It counts only locally observed executing work on the same machine and provider; idle and activity-unknown sessions are excluded, and this is not evidence that those sessions share a billing account.
+
+For a cached local working-session count `w`, the guard advances every threshold by this reserve: `min(maxConcurrencyReservePercent, max(0, w - 1) * concurrencyReservePercent)`. It subtracts that result from `warnAt`, `handoffAt`, and `stopAt`; it never changes the observed percentage. The count is bounded before catalog-listing truncation, so a truncated listing is only a bounded lower count, never a proof of a complete machine or account inventory.
+
+Warnings are deterministic heuristics and recommendations, never Pomegr judgments or confirmed quota state. At the handoff threshold the advice asks the agent to write the goal, decisions, changed files, tests, and next steps using the repository's existing handoff workflow before voluntarily stopping. Pomegr never reads or ingests those contents. The guard does not block a prompt or tool call, force a stop, reserve quota, or resume work automatically. Unknown, stale, unavailable, rejected, or reset-time observations do not fabricate recovery or capacity.
+
+Codex uses the supported `SessionStart` and `PostToolUse` advisory hooks. Claude Code 2.1.263 also supports `UserPromptSubmit` and `PostToolBatch`; its package registers both, while the runtime deduplicates overlapping post-tool checks. Trust the added hook definitions through the provider's hook review flow before relying on the guard.
+
+The hook keeps only a bounded, hashed per-provider/session/agent record beneath `usage-guards` in the Pomegr data root: version, stage, last-check time, and configuration hash. Persistent records are capped at 256 for 30 days; stale locks and temporary coordination files are cleaned up, while concurrently active transient files are not part of that cap. All guard events, including `SessionStart` after a resume, respect the configured cadence. Routine due checks emit pressure only when the stage changes; a due SessionStart can repeat current pressure to refresh resumed context: the first missing, stale, or otherwise unknown reading may warn once, but unchanged low, unknown, and threshold stages do not produce periodic reminder noise. It stores no usage response, hook payload, prompt, tool content, path, or handoff text. Handoff guidance follows each repository's existing workflow, location, format, and privacy/version-control conventions. Pomegr does not impose a handoff directory or modify ignore rules. If no workflow is defined, the agent leaves a concise handoff in the conversation instead of creating a new directory. Pomegr does not create, read, or ingest handoffs.
 
 ## Delegated agents
 

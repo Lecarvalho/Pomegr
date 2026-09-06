@@ -68,6 +68,73 @@ test("session, provider-health, and usage-limit projections expose only V1 field
   assert.doesNotMatch(JSON.stringify(usage), /retainedLimits|supplemental/u);
 });
 
+test("usage local activity counts the complete committed catalog before listing caps", () => {
+  const sessions = [
+    ...Array.from({ length: 101 }, (_, index) => ({ id: `codex:live-${index}`, provider: "codex", isLive: true, activityStatus: "working", project: `Project ${index}` })),
+    { id: "codex:unknown", provider: "codex", isLive: true, activityStatus: "unknown" },
+    { id: "codex:malformed-status", provider: "codex", isLive: true, activityStatus: "not-a-status" },
+    { id: "codex:live-0", provider: "codex", isLive: true, activityStatus: "unknown" },
+    { id: "codex:history", provider: "codex", isLive: false, activityStatus: "working" },
+    { id: "claude:live", provider: "claude", isLive: true, activityStatus: "working" },
+    { id: "codex:wrong-provider", provider: "claude", isLive: true, activityStatus: "working" },
+    { id: "codex:bad/slash", provider: "codex", isLive: true, activityStatus: "working" },
+    { id: "codex:truthy-live", provider: "codex", isLive: "true", activityStatus: "working" },
+    { agents: [{ id: "codex:nested", isLive: true, activityStatus: "working" }] },
+  ];
+  const value = buildAgentQueryProjection({
+    now: () => NOW,
+    catalog: { readiness: { catalog: "ready" }, observedAt: at(-10 * 60_000), sessions },
+    usageLimits: { generatedAt: at(-1), providers: [
+      { provider: "codex", readiness: "ready", usageLimits: { available: true, limits: [] } },
+      { provider: "claude", readiness: "ready", usageLimits: { available: true, limits: [] } },
+    ] },
+  });
+  const codex = value.usageLimits({ provider: "codex" }).providers[0].localActivity;
+  assert.deepEqual(codex, {
+    scope: "machine_provider", readiness: "ready", observedAt: at(-10 * 60_000),
+    liveSessions: 103, workingSessions: 101, unknownSessions: 2, truncated: false,
+  });
+  assert.deepEqual(value.usageLimits({ provider: "claude" }).providers[0].localActivity, {
+    scope: "machine_provider", readiness: "ready", observedAt: at(-10 * 60_000),
+    liveSessions: 1, workingSessions: 1, unknownSessions: 0, truncated: false,
+  });
+  assert.equal(value.listSessions({ scope: "all", limit: 50 }).sessions.length, 50, "listing cap does not cap local activity");
+  assert.match(value.usageLimits().caveat, /same-machine.*lower-bound.*not establish a matching billing account.*burn rate/i);
+});
+
+test("usage local activity keeps catalog readiness provider-scoped", () => {
+  const value = buildAgentQueryProjection({
+    catalog: {
+      readiness: { catalog: "ready" }, providerReadiness: { codex: "ready", claude: "loading" }, observedAt: at(-2),
+      sessions: [{ id: "codex:one", provider: "codex", isLive: true, activityStatus: "working" }],
+    },
+    usageLimits: { providers: [
+      { provider: "codex", readiness: "ready", usageLimits: { available: true, limits: [] } },
+      { provider: "claude", readiness: "ready", usageLimits: { available: true, limits: [] } },
+    ] },
+  });
+  const providers = value.usageLimits().providers;
+  assert.equal(providers.find((provider) => provider.provider === "codex").localActivity.readiness, "ready");
+  assert.deepEqual(providers.find((provider) => provider.provider === "claude").localActivity, {
+    scope: "machine_provider", readiness: "loading", observedAt: at(-2),
+    liveSessions: 0, workingSessions: 0, unknownSessions: 0, truncated: false,
+  });
+});
+
+test("usage local activity is bounded at ten thousand observed live sessions", () => {
+  const value = buildAgentQueryProjection({
+    catalog: {
+      readiness: { catalog: "ready" }, observedAt: at(-2),
+      sessions: Array.from({ length: 10_001 }, (_, index) => ({ id: `codex:bounded-${index}`, provider: "codex", isLive: true, activityStatus: "working" })),
+    },
+    usageLimits: { providers: [{ provider: "codex", readiness: "ready", usageLimits: { available: true, limits: [] } }] },
+  });
+  assert.deepEqual(value.usageLimits().providers[0].localActivity, {
+    scope: "machine_provider", readiness: "ready", observedAt: at(-2),
+    liveSessions: 10_000, workingSessions: 10_000, unknownSessions: 0, truncated: true,
+  });
+});
+
 test("recent failures are bounded, opaque, and prefer matching execution tasks", () => {
   const failures = projection().getRecentFailures("codex:session-1", null, 15, 10).failures;
   assert.equal(failures.length, 2);
@@ -187,4 +254,32 @@ test("query cache reuses exact serialized response until a D refresh", () => {
   rejectRefresh = false;
   cache.refresh();
   assert.notStrictEqual(cache.read("listSessions", { scope: "live" }).snapshot, first.snapshot);
+});
+
+test("usage refreshes retain committed catalog observation time and last known-good local activity", () => {
+  let usageGeneratedAt = at(-1);
+  let rejectRefresh = false;
+  const catalog = {
+    readiness: { catalog: "ready" }, observedAt: at(-5 * 60_000),
+    sessions: [{ id: "codex:session-1", provider: "codex", isLive: true, activityStatus: "working" }],
+  };
+  const cache = createAgentQueryProjectionCache({ now: () => NOW, sources: {
+    catalog: () => {
+      if (rejectRefresh) throw new Error("catalog derivation failed");
+      return catalog;
+    },
+    entries: () => [],
+    providerStatus: {},
+    usageLimits: () => ({ generatedAt: usageGeneratedAt, providers: [{ provider: "codex", readiness: "ready", usageLimits: { available: true, limits: [] } }] }),
+  } });
+  cache.refresh();
+  const first = cache.read("usageLimits");
+  usageGeneratedAt = at(1);
+  cache.refresh();
+  const refreshed = cache.read("usageLimits");
+  assert.equal(refreshed.snapshot.value.providers[0].localActivity.observedAt, at(-5 * 60_000));
+  assert.notStrictEqual(refreshed.snapshot, first.snapshot, "usage response may refresh independently");
+  rejectRefresh = true;
+  assert.throws(() => cache.refresh(), /catalog derivation failed/u);
+  assert.strictEqual(cache.read("usageLimits").snapshot, refreshed.snapshot, "failed derivation retains local activity from the committed catalog");
 });

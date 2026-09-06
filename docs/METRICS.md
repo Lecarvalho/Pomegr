@@ -61,6 +61,19 @@ The initial Codex adapter has no cost source. Cost is capability-gated and omitt
 
 All-agent context is the only aggregated context total Pomegr presents. The dashboard context totals and context composition use only the latest snapshots or sums derived from them. Focused Markdown reports may additionally include independent request-local observations around selected events. Cumulative transcript-throughput and token-spend session totals remain excluded.
 
+## Optional usage-guard recommendations
+
+When a repository explicitly enables `.pomegr/usage-guard.json`, hooks compare only
+already-committed account-usage percentages with the configured fixed thresholds. These
+are deterministic advisory heuristics: the guard may warn, suggest a handoff, or request
+a voluntary stop after a handoff following the repository's existing workflow. It never confirms account
+capacity, shares a quota across local sessions, controls a provider, blocks work, or
+automatically resumes it. Common five-hour and weekly account windows are the primary
+evidence. Model-specific pressure is separate cautionary evidence because a hook cannot
+reliably identify the active model or capacity on every event. It does not predict a
+context limit, cache lifetime, or future cache cost. Unknown, stale, rejected, or
+reset-time observations remain unknown and never create a recovery signal.
+
 ## Request snapshots
 
 Each request may carry two bounded work-kind tallies. `issuedWork` counts tool calls

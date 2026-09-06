@@ -34,6 +34,14 @@ Usage limits are current provider/account observations. They are separate from
 session history and per-agent context, and are never tokens spent or billing data.
 Current limits must not be attached to a historical session.
 
+The optional repository usage guard consumes the same committed usage projection at
+most once per configured interval, which is at least 60 seconds for every hook event.
+Its threshold messages are deterministic advisory
+heuristics, not account capacity, billing, or reset guarantees. A common five-hour or
+weekly account window may be useful for a warning; model-specific observations remain
+separate and cannot establish the current model's available capacity. Missing, stale,
+rejected, or reset-time observations remain unknown and never imply recovery.
+
 Agent context is the latest retained non-zero context snapshot for that normalized
 agent. Its input, cache-read, cache-write, and output components describe that one
 request-local observation. They are never accumulated across requests. Cache

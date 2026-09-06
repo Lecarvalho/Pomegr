@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,8 @@ import { buildPluginSkills } from "./build-plugin-skills.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
+const hooksSourceFile = path.join(repositoryRoot, "plugin-src", "claude-hooks.json");
+const hooksOutputFile = path.join(pluginRoot, "hooks", "hooks.json");
 const bundles = [
   {
     entryPoint: path.join(pluginRoot, "mcp", "server.mjs"),
@@ -20,6 +22,10 @@ const bundles = [
   {
     entryPoint: path.join(repositoryRoot, "scripts", "progress-reminder.mjs"),
     outputFile: path.join(pluginRoot, "scripts", "progress-reminder.bundle.mjs"),
+  },
+  {
+    entryPoint: path.join(repositoryRoot, "scripts", "usage-guard.mjs"),
+    outputFile: path.join(pluginRoot, "scripts", "usage-guard.bundle.mjs"),
   },
 ];
 
@@ -41,7 +47,9 @@ export async function buildClaudePluginMcp() {
       },
     });
   }
-  return [...skillFiles, ...bundles.map((bundle) => bundle.outputFile)];
+  await mkdir(path.dirname(hooksOutputFile), { recursive: true });
+  await writeFile(hooksOutputFile, await readFile(hooksSourceFile, "utf8"), "utf8");
+  return [...skillFiles, ...bundles.map((bundle) => bundle.outputFile), hooksOutputFile];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

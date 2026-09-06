@@ -11,8 +11,10 @@ const bundleDefinitions = [
   ["plugins/claude-code/mcp/server.bundle.mjs", "plugins/claude-code/mcp/server.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/claude-code/scripts/progress-reminder.bundle.mjs", "scripts/progress-reminder.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/claude-code/scripts/rename-session.bundle.mjs", "plugins/claude-code/scripts/rename-session.mjs", "scripts/build-claude-plugin.mjs"],
+  ["plugins/claude-code/scripts/usage-guard.bundle.mjs", "scripts/usage-guard.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/pomegr/mcp/server.bundle.mjs", "mcp/server.mjs", "scripts/build-codex-plugin.mjs"],
   ["plugins/pomegr/scripts/progress-reminder.bundle.mjs", "scripts/progress-reminder.mjs", "scripts/build-codex-plugin.mjs"],
+  ["plugins/pomegr/scripts/usage-guard.bundle.mjs", "scripts/usage-guard.mjs", "scripts/build-codex-plugin.mjs"],
 ];
 const buildOptions = {
   bundle: true,
@@ -44,6 +46,7 @@ for (const provider of ["claude", "codex"]) {
 }
 
 for (const [outputFile, sourceFile] of [
+  ["plugins/claude-code/hooks/hooks.json", "plugin-src/claude-hooks.json"],
   ["plugins/pomegr/hooks/hooks.json", "plugin-src/codex-hooks.json"],
 ]) {
   const error = await compareFile(outputFile, await readFile(path.join(repositoryRoot, sourceFile), "utf8"));

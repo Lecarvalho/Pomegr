@@ -26,6 +26,29 @@ document and `AGENTS.md` govern repository changes.
   committed value and is still loading; it never replaces already-rendered data.
 - Provider/account usage limits and local session/request correlation are separate cached
   domains with separate readiness and revisions.
+- The optional repository usage guard consumes only the committed, monitor-private
+  account-usage projection. Its hooks cannot start acquisition, refresh a provider,
+  hydrate sessions, parse transcripts, or alter a committed revision. Hook-local
+  cadence/deduplication state is not observation evidence, browser state, or a checkpoint.
+  The bounded Pomegr-data-root record is keyed by a hash of provider/session/agent and
+  contains only version, stage, configuration hash, and last-check time; persistent
+  `usage-guards` records retain at most 256 entries for 30 days. Stale locks and
+  temporary coordination files are cleaned up separately; concurrently active transient
+  files are not counted as retained records. It serializes concurrent hook checks and
+  suppresses unchanged low, unknown, or threshold notices during routine checks. Every
+  guard event, including `SessionStart` after resume, obeys configured cadence. Routine
+  due checks emit only on stage changes; a due `SessionStart` may repeat current pressure
+  to refresh resumed context.
+  Handoff advice follows the repository's existing workflow, location, format, and
+  privacy/version-control conventions. No handoff directory or ignore rule is imposed;
+  absent an existing workflow, advice requests a concise conversational handoff.
+  Handoff contents never enter the monitor or its persistence.
+- `localActivity` is a separately committed, bounded same-machine/provider observation:
+  original catalog `committedAt`, live count, working count, unknown-activity count, and
+  count-truncation flag. It is independent of usage observation time and revision.
+  D derives it before catalog-listing truncation, excludes idle and unknown activity from
+  the working count, and publishes it with the cached usage projection. Browser or MCP
+  GETs never rederive it, list sessions, acquire providers, or refresh usage.
 - The monitor-private agent-query API serves only committed, privacy-filtered query
   projections. Its GETs cannot acquire providers, hydrate sessions, parse transcripts,
   refresh usage, or derive a response from raw evidence.

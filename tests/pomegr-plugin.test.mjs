@@ -567,6 +567,7 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".claude-plugin", "marketplace.json"), "utf8"));
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   const hooks = JSON.parse(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
+  const hookSource = await readFile(path.join(repositoryRoot, "plugin-src", "claude-hooks.json"), "utf8");
   const mcp = JSON.parse(await readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
   const packageManifest = JSON.parse(await readFile(path.join(pluginRoot, "package.json"), "utf8"));
 
@@ -574,18 +575,25 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(manifest.name, "pomegr");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
-    assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
-    assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
+  assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
+  assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
+  assert.equal(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"), hookSource);
   assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
   assert.match(hooks.hooks.PreToolUse[0].hooks[0].command, /policy\.mjs" delegate/);
   assert.match(hooks.hooks.PreToolUse[1].hooks[0].command, /rename-session\.bundle\.mjs/);
   assert.match(hooks.hooks.SubagentStop[0].hooks[0].command, /policy\.mjs" subagent-stop/);
-  for (const event of ["SessionStart", "PreToolUse", "PostToolUse", "SubagentStop"]) {
+  for (const event of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
     assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
-    if (event !== "PostToolUse") assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
+    if (["SessionStart", "PreToolUse", "SubagentStop"].includes(event)) assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
   }
   assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
+  for (const [event, index = 0] of [["SessionStart", 1], ["UserPromptSubmit"], ["PostToolUse", 1], ["PostToolBatch"]]) {
+    const guard = hooks.hooks[event][0].hooks[index];
+    assert.match(guard.command, /usage-guard\.bundle\.mjs" --provider claude/);
+    assert.equal(guard.timeout, 5);
+    assert.equal(guard.additionalContextLimit, 1600);
+  }
   assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
   assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
   assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/server", "zod"]);
@@ -615,10 +623,15 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     await mkdir(clientRepository, { recursive: true });
     await assert.rejects(access(path.join(isolatedPlugin, "node_modules")), { code: "ENOENT" });
     const reminderPath = path.join(isolatedPlugin, "scripts", "progress-reminder.bundle.mjs");
+    const guardPath = path.join(isolatedPlugin, "scripts", "usage-guard.bundle.mjs");
     await access(reminderPath);
+    await access(guardPath);
     const reminder = spawnSync(process.execPath, [reminderPath], { cwd: clientRepository, encoding: "utf8", input: "{}" });
     assert.equal(reminder.status, 0);
     assert.equal(reminder.stdout, "");
+    const guard = spawnSync(process.execPath, [guardPath, "--provider", "claude"], { cwd: clientRepository, encoding: "utf8", input: "{}" });
+    assert.equal(guard.status, 0);
+    assert.equal(guard.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), ["clear_agent_signal", "clear_session_progress", "clear_session_signal", "get_agent_context", "get_provider_health", "get_recent_failures", "get_usage_limits", "list_session_agents", "list_sessions", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);

@@ -95,8 +95,14 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   }
   assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
   assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
-  assert.equal(hooks.hooks.SessionStart[0].hooks.length, 1);
+  assert.match(hooks.hooks.PostToolUse[0].hooks[1].command, /usage-guard\.bundle\.mjs" --provider codex/);
+  assert.equal(hooks.hooks.PostToolUse[0].hooks[1].timeout, 5);
+  assert.equal(hooks.hooks.PostToolUse[0].hooks[1].additionalContextLimit, 1600);
+  assert.equal(hooks.hooks.SessionStart[0].hooks.length, 2);
   assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /policy\.mjs/);
+  assert.match(hooks.hooks.SessionStart[0].hooks[1].command, /usage-guard\.bundle\.mjs" --provider codex/);
+  assert.equal(hooks.hooks.SessionStart[0].hooks[1].timeout, 5);
+  assert.equal(hooks.hooks.SessionStart[0].hooks[1].additionalContextLimit, 1600);
   assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
 });
 
@@ -171,12 +177,17 @@ test("installed Codex plugin starts without repository dependencies and lists bo
     await access(path.join(installedPlugin, "hooks", "hooks.json"));
     await access(path.join(installedPlugin, "scripts", "policy.mjs"));
     const reminderPath = path.join(installedPlugin, "scripts", "progress-reminder.bundle.mjs");
+    const guardPath = path.join(installedPlugin, "scripts", "usage-guard.bundle.mjs");
     await access(reminderPath);
+    await access(guardPath);
     await access(path.join(installedPlugin, "skills", "init", "SKILL.md"));
     await access(path.join(installedPlugin, "skills", "doctor", "SKILL.md"));
     const reminder = spawnSync(process.execPath, [reminderPath], { cwd: runtimeCwd, encoding: "utf8", input: "{}" });
     assert.equal(reminder.status, 0);
     assert.equal(reminder.stdout, "");
+    const guard = spawnSync(process.execPath, [guardPath, "--provider", "codex"], { cwd: runtimeCwd, encoding: "utf8", input: "{}" });
+    assert.equal(guard.status, 0);
+    assert.equal(guard.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), runtimeCwd);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [

@@ -11,6 +11,12 @@
             "timeout": 5,
             "statusMessage": "Loading Pomegr policy",
             "additionalContextLimit": 8000
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider codex",
+            "timeout": 5,
+            "additionalContextLimit": 1600
           }
         ]
       }
@@ -24,6 +30,12 @@
             "command": "node \"${PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs\"",
             "timeout": 5,
             "additionalContextLimit": 800
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider codex",
+            "timeout": 5,
+            "additionalContextLimit": 1600
           }
         ]
       }

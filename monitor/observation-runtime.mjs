@@ -357,7 +357,13 @@ export function createObservationRuntime(options = {}) {
   const agentQueryProjection = createAgentQueryProjectionCache({
     now: options.agentQueryNow || Date.now,
     sources: {
-      catalog: () => observationCoordinator.catalog()?.snapshot?.value || { sessions: [], readiness: { catalog: "loading" } },
+      catalog: () => {
+        const snapshot = observationCoordinator.catalog()?.snapshot;
+        const providerReadiness = observationCoordinator.catalogReadiness?.() || {};
+        return snapshot
+          ? { ...snapshot.value, observedAt: snapshot.committedAt, providerReadiness }
+          : { sessions: [], readiness: { catalog: "loading" }, providerReadiness };
+      },
       entries: () => observationStore.entries(),
       providerStatus: () => providerStatus.read()?.snapshot?.value || null,
       usageLimits: () => usageResponseCache.current()?.value || null,

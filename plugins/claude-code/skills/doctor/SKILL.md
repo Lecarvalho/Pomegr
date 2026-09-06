@@ -23,13 +23,17 @@ For a valid policy, check for `[Pomegr reporting policy loaded]`. If absent, exp
 
 Report delegation coverage. No rows means the main session owns reporting. Each declared type receives matching rows under `[Pomegr delegated reporting policy]` through `PreToolUse`.
 
+## Optional usage guard
+
+Report `.pomegr/usage-guard.json` as off when it is missing. If present, inspect only its bounded version-1 JSON fields: `version`, `mode`, `checkIntervalSeconds`, `warnAt`, `handoffAt`, `stopAt`, `concurrencyReservePercent`, and `maxConcurrencyReservePercent`. A valid active configuration has `version: 1`, `mode: "advisory"`, and `checkIntervalSeconds` of at least 60; `mode: "off"` is inactive. Report invalid JSON as inactive and recommend `/pomegr:init` to preview a repair. Handoffs follow the repository's existing workflow and conventions; no Pomegr handoff directory or ignore rule is required. Do not diagnose a missing handoff path or inspect handoff contents. It is an opt-in deterministic recommendation based on cached usage observations, never automatic enforcement, capacity confirmation, or a resume mechanism. Confirm the user trusts the optional `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `PostToolBatch` hook definitions.
+
 ## MCP inventory
 
 Check the resolved Pomegr namespace for `rename_session`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, `clear_session_progress`, `get_provider_health`, `get_usage_limits`, `list_sessions`, `list_session_agents`, `get_agent_context`, and `get_recent_failures`. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to `/mcp` and `/reload-plugins`. Do not read credential files or expose MCP configuration values. Read tools are decision-triggered observations; do not poll routinely or infer causation from coincident observations.
 
 ## Package structure
 
-Verify `.mcp.json`, `hooks/hooks.json`, `scripts/policy.mjs`, and the bundled progress reminder hook. Confirm the hooks manifest registers `SessionStart`, `PreToolUse`, `SubagentStop`, and an all-tool `PostToolUse` hook. This proves package structure, not runtime registration.
+Verify `.mcp.json`, `hooks/hooks.json`, `scripts/policy.mjs`, the bundled progress reminder hook, and `scripts/usage-guard.bundle.mjs`. Confirm the hooks manifest registers `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolBatch`, and `SubagentStop`. This proves package structure, not runtime registration.
 
 ## Role mappings
 
@@ -37,6 +41,6 @@ Run `node <repository-root>/monitor/agent-roles.mjs validate --cwd <repository-r
 
 ## Result
 
-Return a compact checklist for policy validity, automatic loading, delegation, MCP tools, package structure, and role mappings. Include native session naming: it passes when `rename_session` is available or provider automatic naming is the only fallback; an idle session may remain Untitled.
+Return a compact checklist for policy validity, automatic loading, delegation, optional usage guard, MCP tools, package structure, and role mappings. Include native session naming: it passes when `rename_session` is available or provider automatic naming is the only fallback; an idle session may remain Untitled.
 
-Never modify `AGENTS.md`, `CLAUDE.md`, `.claude/settings*`, or `.pomegr/signals.md`.
+Never modify `AGENTS.md`, `CLAUDE.md`, `.claude/settings*`, `.pomegr/signals.md`, `.pomegr/usage-guard.json`, or `.gitignore`.

@@ -5,6 +5,7 @@ import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 
 const SCHEMA_VERSION = 1;
 const MAX_SESSIONS = 100;
+const MAX_LOCAL_ACTIVITY_SESSIONS = 10_000;
 const MAX_AGENTS = 128;
 const MAX_FAILURES = 256;
 const MAX_FAILURE_WINDOW_MINUTES = 1_440;
@@ -17,6 +18,7 @@ const PROVIDER_FRESHNESS_SET = new Set(["fresh", "stale", "unknown"]);
 const INCIDENT_STATUS_SET = new Set(["investigating", "identified", "monitoring", "maintenance"]);
 const INCIDENT_IMPACT_SET = new Set(["none", "minor", "major", "critical"]);
 const SAFE_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+const SAFE_SESSION_REF = /^(claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const WORK_LABELS = Object.freeze({
   shell: "shell task", search: "search", read: "file read", write: "file edit",
   test: "test run", build: "build", git: "Git operation", git_push: "Git push",
@@ -122,7 +124,55 @@ function normalizeProviderHealth(snapshot) {
   };
 }
 
-function normalizeUsageLimits(snapshot) {
+function catalogObservationTime(catalog) {
+  return iso(catalog?.observedAt) || iso(catalog?.committedAt) || iso(catalog?.generatedAt);
+}
+
+function normalizedCatalogSessionRef(entry) {
+  if (!entry || typeof entry !== "object" || typeof entry.id !== "string") return null;
+  const match = SAFE_SESSION_REF.exec(entry.id);
+  if (!match || (entry.provider && entry.provider !== match[1])) return null;
+  return { sessionRef: entry.id, provider: match[1] };
+}
+
+function localActivityByProvider(catalog, catalogReadiness) {
+  const observedAt = catalogObservationTime(catalog);
+  const counts = new Map();
+  const seen = new Set();
+  for (const entry of Array.isArray(catalog?.sessions) ? catalog.sessions : []) {
+    if (entry?.isLive !== true) continue;
+    const normalized = normalizedCatalogSessionRef(entry);
+    if (!normalized) continue;
+    const current = counts.get(normalized.provider) || { liveSessions: 0, workingSessions: 0, unknownSessions: 0, truncated: false };
+    if (current.liveSessions >= MAX_LOCAL_ACTIVITY_SESSIONS) {
+      current.truncated = true;
+      counts.set(normalized.provider, current);
+      continue;
+    }
+    if (seen.has(normalized.sessionRef)) continue;
+    seen.add(normalized.sessionRef);
+    current.liveSessions += 1;
+    const activity = ACTIVITY_STATUS_SET.has(entry.activityStatus) ? entry.activityStatus : "unknown";
+    if (activity === "working") current.workingSessions += 1;
+    if (activity === "unknown") current.unknownSessions += 1;
+    counts.set(normalized.provider, current);
+  }
+  return (provider) => {
+    const count = counts.get(provider) || { liveSessions: 0, workingSessions: 0, unknownSessions: 0, truncated: false };
+    const providerReadiness = readiness(catalog?.providerReadiness?.[provider] ?? catalog?.readiness?.[provider], catalogReadiness);
+    return {
+      scope: "machine_provider",
+      readiness: providerReadiness,
+      observedAt,
+      liveSessions: count.liveSessions,
+      workingSessions: count.workingSessions,
+      unknownSessions: count.unknownSessions,
+      truncated: count.truncated,
+    };
+  };
+}
+
+function normalizeUsageLimits(snapshot, localActivityForProvider) {
   const providers = (Array.isArray(snapshot?.providers) ? snapshot.providers : []).filter((entry) => ["claude", "codex"].includes(entry?.provider));
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -130,7 +180,7 @@ function normalizeUsageLimits(snapshot) {
     observedAt: iso(snapshot?.generatedAt),
     generatedAt: iso(snapshot?.generatedAt),
     revision: Number.isSafeInteger(snapshot?.revision) ? snapshot.revision : null,
-    caveat: "Usage limits are current account observations. They are not per-agent consumption and are not attached to historical sessions.",
+    caveat: "Usage limits are current account observations. Local activity is a same-machine, provider-scoped observed lower-bound concurrency count; it does not establish a matching billing account, other machines, quota attribution, or a burn rate.",
     providers: providers.map((entry) => {
       const usage = entry.usageLimits || {};
       return {
@@ -147,6 +197,7 @@ function normalizeUsageLimits(snapshot) {
         attemptedAt: iso(usage.attemptedAt),
         retryAt: iso(usage.retryAt),
         failureCategory: ["authentication_required", "rate_limited", "unavailable", "runtime_unavailable"].includes(usage.failureKind) ? usage.failureKind : null,
+        localActivity: localActivityForProvider(entry.provider),
         windows: (Array.isArray(usage.limits) ? usage.limits : []).slice(0, 8).map((limit) => ({
           id: boundedText(limit.id, "unknown", 80),
           window: boundedText(limit.window, "unknown", 80),
@@ -305,7 +356,7 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
     }));
   }
   const normalizedHealth = normalizeProviderHealth(providerStatus);
-  const normalizedUsage = normalizeUsageLimits(usageLimits);
+  const normalizedUsage = normalizeUsageLimits(usageLimits, localActivityByProvider(catalogValue, catalogReadiness));
   return Object.freeze({
     providerHealth({ provider = null } = {}) {
       const providers = provider ? normalizedHealth.providers.filter((entry) => entry.provider === provider) : normalizedHealth.providers;

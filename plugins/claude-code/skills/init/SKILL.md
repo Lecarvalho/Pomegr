@@ -9,7 +9,7 @@ description: Initialize or update a repository's Pomegr reporting policy. Use wh
 
 ## Scope
 
-Create or update `.pomegr/signals.md` and, only when needed, the `tools` allowlists of signal-owning agent definitions. Never edit `AGENTS.md`, `CLAUDE.md`, provider settings, or application code.
+Create or update `.pomegr/signals.md`, and, only after an explicit request to activate it, `.pomegr/usage-guard.json`; update the `tools` allowlists of signal-owning agent definitions only when needed. Never edit `AGENTS.md`, `CLAUDE.md`, `.gitignore`, provider settings, or application code.
 
 Inspect safe repository context before asking questions: project structure, package/build manifests, test and CI configuration, contributor guidance, `.claude/agents/*.md`, and any existing policy. Never inspect secrets, credentials, transcripts, prompts, responses, command-output archives, or environment files.
 
@@ -24,6 +24,7 @@ Read [the policy template](references/policy-template.md) and use it as the runt
 - Configure only project-specific outcomes Pomegr cannot derive. Exclude generic lifecycle, context-size, Git, tool-count, approval, agent-liveness, and task-lifecycle states.
 - Ask only what is needed to settle each signal's scope, label, tone, trigger, and replacement or clearing condition. Session scope describes the overall goal; agent scope describes one agent's role or conclusion; task scope requires a known execution-task ID.
 - Session progress defaults to no and requires explicit confirmation to enable.
+- The optional usage guard is separate from reporting policy and defaults to off when `.pomegr/usage-guard.json` is missing. Describe it as a deterministic advisory based on cached account-usage observations, never a quota guarantee or automatic control. Offer this exact version-1 preview only when the user asks to activate it: `{ "version": 1, "mode": "advisory", "checkIntervalSeconds": 60, "warnAt": 70, "handoffAt": 80, "stopAt": 90, "concurrencyReservePercent": 5, "maxConcurrencyReservePercent": 15 }`; `checkIntervalSeconds` has a 60-second minimum. The guard follows the repository's existing handoff workflow, location, format, and privacy/version-control conventions. It may recommend preserving the goal, decisions, files, tests, and next steps before a voluntary stop; Pomegr never reads that material. If no handoff workflow is defined, the agent leaves a concise handoff in the conversation instead of creating a new directory. Do not impose a handoff path, alter ignore rules, or create this config merely because the plugin is installed. If the user already explicitly requested activation, include the config in the normal preview without asking a redundant second approval.
 - For agent or task signals, add `Delegated agents` rows only for user-confirmed types that can reach a configured outcome. Use `*` only when every spawned type may report; otherwise leave delegation empty when the main session owns reporting.
 
 For each declared type, prepare any needed `tools` allowlist repair with the resolved namespace—typically `mcp__plugin_pomegr_pomegr__*`—or exact reporting suffixes; the user confirms them at the preview step. Do not add reporting prose to agent definitions: `PreToolUse` supplies the rows even when a definition is a thin wrapper around a canonical body elsewhere.
@@ -32,9 +33,9 @@ Use the template's exact empty-section markers and table shapes. A delegation ro
 
 ## Preview, write, and verify
 
-- Preview the complete proposed Markdown or a focused diff together with every agent-definition edit and explain omitted duplicates.
+- Preview the complete proposed Markdown or a focused diff together with every agent-definition edit, plus the optional usage-guard JSON when requested, and explain omitted duplicates.
 - Obtain explicit user confirmation before writing.
-- After confirmation, apply only the policy and allowlist changes, creating `.pomegr/` if needed. Preserve unrelated valid guidance instead of replacing the policy wholesale.
+- After confirmation, apply only the policy, explicitly requested usage-guard, and allowlist changes, creating `.pomegr/` if needed. Preserve unrelated valid guidance instead of replacing the policy wholesale.
 - Re-run the validator and fix structural errors without changing approved semantics. Report its warnings as delegation drift.
 
 ## MCP inventory
@@ -45,7 +46,7 @@ The policy template defines when report and clear suffixes are used. After subst
 
 ## Finish
 
-Report the final path, configured scopes, delegated agents, Session progress state, tool availability, and delegation drift. Follow the policy immediately; the delegation hook supplies applicable rows, so do not paste them into subagent prompts.
+Report the final path, configured scopes, delegated agents, Session progress state, optional usage-guard state, tool availability, and delegation drift. If the optional guard is enabled, ask the user to trust its `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `PostToolBatch` hook definitions. The guard only advises, it never blocks or resumes work. Follow the policy immediately; the delegation hook supplies applicable rows, so do not paste them into subagent prompts.
 
 ## Policy limits
 

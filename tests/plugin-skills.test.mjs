@@ -38,11 +38,22 @@ test("provider overlays keep runtime-specific instructions while sharing one pol
   assert.equal(codexPolicy, claudePolicy);
   assert.match(codexInit, /\$pomegr:init/);
   assert.match(codexDoctor, /SubagentStart/);
+  assert.match(codexInit, /usage-guard\.json/);
+  assert.match(codexInit, /"mode": "advisory"/);
+  assert.match(codexInit, /repository's existing handoff workflow/);
+  assert.match(codexInit, /60-second minimum/);
+  assert.match(codexDoctor, /optional usage guard/i);
+  assert.match(codexDoctor, /no Pomegr handoff directory or ignore rule is required/);
   assert.doesNotMatch(codexInit, /rename_session/);
   assert.match(claudeInit, /\/pomegr:init/);
   assert.match(claudeDoctor, /PreToolUse/);
+  assert.match(claudeInit, /usage-guard\.json/);
+  assert.match(claudeInit, /repository's existing handoff workflow/);
+  assert.match(claudeDoctor, /PostToolBatch/);
+  assert.match(claudeDoctor, /no Pomegr handoff directory or ignore rule is required/);
   assert.match(claudeInit, /rename_session/);
   for (const skill of [codexInit, codexDoctor, claudeInit, claudeDoctor]) {
+    assert.doesNotMatch(skill, /\.pomegr\/handoffs/);
     for (const tool of ["get_provider_health", "get_usage_limits", "list_sessions", "list_session_agents", "get_agent_context", "get_recent_failures"]) {
       assert.match(skill, new RegExp(`\\b${tool}\\b`, "u"));
     }

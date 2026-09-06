@@ -522,6 +522,10 @@ export function createSessionObservationCoordinator(options = {}) {
     hydrate,
     refreshProjection,
     catalog: (revision) => catalogCache.read(revision),
+    catalogReadiness: () => Object.freeze(Object.fromEntries((registry.providers || []).map((provider) => [
+      provider.id,
+      catalogReadinessByProvider.get(provider.id) || "loading",
+    ]))),
     session(requestedSessionId, revision) {
       const catalog = catalogCache.current()?.value?.sessions || [];
       const parsed = requestedSessionId ? parseProviderSessionId(requestedSessionId) : null;

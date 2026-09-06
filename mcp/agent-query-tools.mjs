@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const AGENT_QUERY_SCHEMA_VERSION = 1;
 export const AGENT_QUERY_MAX_TEXT = 1200;
-export const AGENT_QUERY_INSTRUCTIONS = "Use Pomegr read tools only when their result could materially change the next decision; do not poll routinely or call every read tool at session start. Use get_provider_health before provider-sensitive long or parallel work, or after a relevant provider/server failure; public status does not prove impact or causation. Use get_usage_limits before expensive or lengthy work when account capacity could change scope, timing, or concurrency; limits are not per-agent consumption or billing. Use list_sessions and list_session_agents only to discover exact references for focused queries. Use get_agent_context when deciding whether to continue, compact, split, or stop work for an agent; snapshots are latest observations, not cumulative usage. Use get_recent_failures while diagnosing an observed problem and correlate cautiously with provider health; coincident failures do not prove causation. Unavailable or stale observations are bounded evidence, not guarantees.";
+export const AGENT_QUERY_INSTRUCTIONS = "Use Pomegr read tools only when their result could materially change the next decision; do not poll routinely or call every read tool at session start. Use get_provider_health before provider-sensitive long or parallel work, or after a relevant provider/server failure; public status does not prove impact or causation. Use get_usage_limits before expensive or lengthy work when account capacity could change scope, timing, or concurrency; limits are not per-agent consumption or billing. A configured local guard checkpoint may use its bounded same-machine/provider local concurrency observation when that changes planned concurrency; it is not a reason for repeated MCP polling. Use list_sessions and list_session_agents only to discover exact references for focused queries. Use get_agent_context when deciding whether to continue, compact, split, or stop work for an agent; snapshots are latest observations, not cumulative usage. Use get_recent_failures while diagnosing an observed problem and correlate cautiously with provider health; coincident failures do not prove causation. Unavailable or stale observations are bounded evidence, not guarantees.";
 
 const providerSchema = z.enum(["claude", "codex"])
   .describe("Optional provider filter. Omit it to include every supported provider.");
@@ -58,6 +58,15 @@ const responseSchema = z.object({
       attemptedAt: timestampSchema,
       retryAt: timestampSchema,
       failureCategory: z.enum(["authentication_required", "rate_limited", "unavailable", "runtime_unavailable"]).nullable(),
+      localActivity: z.object({
+        scope: z.literal("machine_provider"),
+        readiness: readinessSchema,
+        observedAt: timestampSchema,
+        liveSessions: z.number().int().min(0).max(10_000),
+        workingSessions: z.number().int().min(0).max(10_000),
+        unknownSessions: z.number().int().min(0).max(10_000),
+        truncated: z.boolean(),
+      }).strict().optional(),
       windows: z.array(z.object({
         id: z.string().max(80), window: z.string().max(80), usedPercent: z.number().min(0).max(100).nullable(),
         resetsAt: timestampSchema, severity: z.enum(["normal", "warning", "critical"]), active: z.boolean(),
@@ -170,7 +179,7 @@ export const AGENT_QUERY_TOOLS = Object.freeze({
   },
   get_usage_limits: {
     title: "Get Pomegr usage limits",
-    description: "Decision-triggered read of current account-scoped usage windows. Call before expensive or lengthy work when remaining capacity could change scope, timing, or concurrency. Do not poll routinely. Usage windows expose usedPercent, reset time, and severity with bounded readiness/freshness and observation/attempt/retry times. These limits are current account observations, not per-agent consumption, billing, or historical session usage.",
+    description: "Decision-triggered read of current account-scoped usage windows. Call before expensive or lengthy work when remaining capacity could change scope, timing, or concurrency. Do not poll routinely. Usage windows expose usedPercent, reset time, and severity with bounded readiness/freshness and observation/attempt/retry times. Optional localActivity is a same-machine/provider observed lower-bound concurrency count, not matched-account attribution, other-machine activity, a burn rate, or billing. These limits are current account observations, not per-agent consumption, billing, or historical session usage.",
     inputSchema: z.object({ provider: providerSchema.optional() }).strict(),
     path: "/api/agent/v1/usage-limits",
     params: (input) => input.provider === undefined ? {} : { provider: input.provider },
