@@ -323,6 +323,12 @@ Every provider adapter must expose the observation lifecycle required by
 Adapters may watch files, poll a local API, or subscribe to provider events. The transport
 does not change the shared store or browser contract.
 
+An adapter's injected observation clock must also reach its observer scheduler. Catalog
+age and eager working-set hydration use that same clock, including after restart;
+the scheduler must not silently fall back to wall-clock time when the adapter supplies one.
+This clock wiring does not change cache-only GETs, committed evidence retention,
+revision or checkpoint semantics, or the browser privacy boundary.
+
 ### Event-driven acquisition pipeline
 
 Provider notifications are the primary acquisition trigger. The ten-second poll is a

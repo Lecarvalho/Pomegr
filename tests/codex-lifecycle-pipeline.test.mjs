@@ -5,7 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 
-const NOW = Date.parse("2026-08-30T12:00:00.000Z");
+// Keep fixtures well outside the real-clock working set: eager hydration must
+// use the provider's injected clock, including after a cold observer restart.
+const NOW = Date.parse("2000-01-01T12:00:00.000Z");
 const iso = (ms) => new Date(ms).toISOString();
 
 async function waitFor(predicate, timeoutMs = 3_000) {
@@ -24,7 +26,7 @@ test("real Codex observer publishes lifecycle state without transcript growth an
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-lifecycle-pipeline-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = NOW;
-  const sessions = path.join(root, "sessions", "2026", "08", "30");
+  const sessions = path.join(root, "sessions", "2000", "01", "01");
   const rollout = path.join(sessions, "rollout-lifecycle-root.jsonl");
   await mkdir(sessions, { recursive: true });
   const old = NOW - 20 * 60_000;
@@ -126,7 +128,7 @@ test("real Codex observer publishes lifecycle state without transcript growth an
 test("incremental observation rebuilds lifecycle after a larger in-place rollout replacement", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-replaced-pipeline-"));
   context.after(() => rm(root, { recursive: true, force: true }));
-  const sessions = path.join(root, "sessions", "2026", "08", "30");
+  const sessions = path.join(root, "sessions", "2000", "01", "01");
   await mkdir(sessions, { recursive: true });
   const rollout = path.join(sessions, "rollout-replaced-root.jsonl");
   const header = record(NOW, "session_meta", { id: "replaced-root", source: "vscode", cwd: "C:\\synthetic\\pomegr" });
@@ -154,7 +156,7 @@ test("pending Codex input keeps catalog and detail aligned during a large incomp
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-pending-lifecycle-pipeline-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   let now = NOW + 2_000;
-  const sessions = path.join(root, "sessions", "2026", "08", "30");
+  const sessions = path.join(root, "sessions", "2000", "01", "01");
   const rollout = path.join(sessions, "rollout-pending-root.jsonl");
   await mkdir(sessions, { recursive: true });
   const pendingAt = NOW + 1_000;

@@ -50,6 +50,13 @@ applicable desktop command locally before pushing. Creating or pushing a tag doe
 the Windows release workflow; dispatch it manually with the existing release tag only after
 the candidate is ready to package and publish.
 
+`npm run release:windows -- --tag vX.Y.Z` installs locked dependencies, runs the
+canonical verifier and CI desktop extension locally, rechecks the clean local and
+remote tagged commit, and dispatches the Windows workflow only on success. Use
+`--check-only` for validation without dispatch. Run in the Windows host environment
+with Git and GitHub CLI available. The helper obtains and caches the workflow's
+pinned Node.js executable automatically; see `docs/DESKTOP_RELEASES.md`.
+
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry
 point; do not delete a module solely because a static graph cannot see a runtime load.

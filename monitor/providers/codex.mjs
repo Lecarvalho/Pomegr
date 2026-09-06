@@ -751,7 +751,7 @@ export function createCodexProvider(options = {}) {
     listSessions,
     readSession,
     createObserver: () => createCodexIncrementalObserver({
-      list: listSessions,
+      list: listSessions, now,
       readEvidence: readSession,
       discoveredMetadata,
       noticeRollout: (file) => rolloutDiscovery.notice(file),
