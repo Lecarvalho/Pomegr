@@ -44,7 +44,9 @@ function modelFromContextRecord(record) {
 function cacheLifetimeForModel(model) {
   // Documented model-policy minimum, not a recorded expiry or an API retention
   // setting. Keep the family allowlist explicit; unknown future models fail closed.
-  return /^gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+  // https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime
+  // https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra
+  return /^(?:gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?|gpt-6-astra)(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
     ? "30m+"
     : null;
 }

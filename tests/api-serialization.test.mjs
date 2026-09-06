@@ -220,7 +220,7 @@ async function syntheticProviders(context) {
   const rolloutRoot = path.join(codexRoot, "sessions", "2026", "08", "10");
   const codexParentFile = path.join(rolloutRoot, "rollout-parent.jsonl");
   const codexChildFile = path.join(rolloutRoot, "rollout-child.jsonl");
-  await writeFixture(codexParentFile, "codex/parent.jsonl", [...replacements, ["gpt-synthetic", "gpt-5.6-sol"]]);
+  await writeFixture(codexParentFile, "codex/parent.jsonl", [...replacements, ["gpt-synthetic", "gpt-6-astra"]]);
   await writeFixture(codexChildFile, "codex/child.jsonl", [...replacements, ["gpt-synthetic", "gpt-5.6-luna"]]);
   await appendFile(codexParentFile, `${[
     {

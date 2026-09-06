@@ -72,12 +72,14 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
 });
 
 test("resolves the documented cache minimum only for recognized recorded model families", () => {
-  for (const model of ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-pro", "gpt-5.6-cyber", "gpt-5.6-2026-08-25", "gpt-5.6-sol-2026-08-25", "gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.7", "gpt-5.6-custom", "custom/gpt-5.6", "", null]) {
+  const supportedModels = ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-pro", "gpt-5.6-cyber", "gpt-5.6-2026-08-25", "gpt-5.6-sol-2026-08-25", "gpt-6-astra", "gpt-6-astra-2026-09-03"];
+  const unsupportedModels = ["gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.7", "gpt-5.6-custom", "custom/gpt-5.6", "gpt-6", "gpt-6-astra-custom", "gpt-6-astra-2026-09", "custom/gpt-6-astra", "gpt-7-astra", "codex-auto-review", "", null];
+  for (const model of [...supportedModels, ...unsupportedModels]) {
     const { usageSnapshots } = parseCodexContextRecords([
       { type: "turn_context", payload: { model } },
       tokenCount("2026-09-02T10:00:00.000Z", { input_tokens: 100, output_tokens: 10 }),
     ]);
-    const supported = typeof model === "string" && /^gpt-5\.6(?:$|-(?:sol|terra|luna|pro|cyber|2026))/.test(model);
+    const supported = supportedModels.includes(model);
     assert.equal(usageSnapshots[0].cacheLifetime, supported ? "30m+" : null, String(model));
   }
 });
@@ -89,13 +91,15 @@ test("resolves cache lifetime per request without backfilling missing models or 
     { type: "turn_context", payload: { turn_id: "same-model" } },
     { type: "thread_settings_updated", payload: { settings: { model: "gpt-5.5" } } },
     { type: "thread_settings", payload: { model: "gpt-5.6-luna" } },
+    { type: "turn_context", payload: { model: "gpt-6-astra" } },
+    { type: "turn_context", payload: { model: "codex-auto-review" } },
     { type: "turn_context", payload: { model: null } },
   ];
   const { usageSnapshots } = parseCodexContextRecords(contexts.flatMap((context, index) => [
     context,
     tokenCount(`2026-09-02T10:0${index}:00.000Z`, { input_tokens: 100 + index, output_tokens: 10 }),
   ]));
-  assert.deepEqual(usageSnapshots.map(({ cacheLifetime }) => cacheLifetime), [null, "30m+", "30m+", null, "30m+", null]);
+  assert.deepEqual(usageSnapshots.map(({ cacheLifetime }) => cacheLifetime), [null, "30m+", "30m+", null, "30m+", "30m+", null, null]);
 });
 
 test("preserves bounded comparable usage and marks missing intermediate evidence", () => {
@@ -429,7 +433,7 @@ test("integrates primary and child latest snapshots into all-agent context", asy
   context.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "sessions", "2026", "08", "10");
   await mkdir(directory, { recursive: true });
-  const parent = (await readProviderFixture("codex/parent.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic").replaceAll("gpt-synthetic", "gpt-5.6-sol");
+  const parent = (await readProviderFixture("codex/parent.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic").replaceAll("gpt-synthetic", "gpt-6-astra");
   const child = (await readProviderFixture("codex/child.jsonl")).replaceAll("PRIVATE_PATH_MUST_NOT_LEAK", "synthetic").replaceAll("gpt-synthetic", "gpt-5.6-luna");
   await writeFile(path.join(directory, "rollout-parent.jsonl"), parent, "utf8");
   await writeFile(path.join(directory, "rollout-child.jsonl"), child, "utf8");
