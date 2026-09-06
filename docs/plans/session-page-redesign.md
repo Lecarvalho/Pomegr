@@ -518,7 +518,7 @@ semantics.
    `["agentId","cacheLifetime","cacheReadTokens","cacheWriteTokens","id","issuedAssociation","issuedWork","observedAt","outputTokens","precedingAssociation","precedingWork","totalTokens","uncachedInputTokens"]`
    and assert every `kind` is in the `WORK_KINDS` allowlist and no entry has extra keys.
    Add a fixture sentinel: put a `tool_use` in `tests/fixtures/providers/claude/session.jsonl`
-   whose `input.file_path` contains `PRIVATE_PATH_MUST_NOT_LEAK` if one does not already,
+   whose `input.file_path` contains the private-path sentinel from the test fixture if one does not already,
    and confirm `assertNoPrivateFixtureSentinels` still passes on `/api/state`.
 3. `app/session-report.mjs` and `monitor/session-report*.mjs`: reports embed request
    snapshots through `reportEvidence`. Either pass the new fields through the same

@@ -124,7 +124,11 @@ the npm CLI that launched the command. The standalone executable avoids the npm
 `node` package's Git Bash placeholder problem on Windows.
 
 Close this checkout's development server and local Electron app before running:
-the command reinstalls locked root and landing dependencies. It then runs
+the command first checks the exact tagged source ZIP with the release privacy rules,
+including extracted documentation and fixtures, using Windows' built-in `tar.exe`.
+This standalone check is also available as
+`npm run check:release-source -- --tag vX.Y.Z`. It then reinstalls locked root and
+landing dependencies and runs
 `npm run desktop:runtime`, `npm run verify`, and `npm run verify:desktop:ci`
 in sequence, stopping at the first failure. The full verifier includes lint,
 type checks, builds, generated-artifact checks, root tests, and landing tests/build.

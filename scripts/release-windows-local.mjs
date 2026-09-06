@@ -183,6 +183,7 @@ export async function validateThenDispatchRelease({
   await assertReleasePoint(runCommand, { tag, head }, cwd);
 
   for (const args of [
+    ["run", "check:release-source", "--", "--tag", tag],
     ["ci"],
     ["ci", "--prefix", "landing"],
     ["run", "desktop:runtime"],

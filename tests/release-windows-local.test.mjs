@@ -88,6 +88,7 @@ test("successful preflight dispatches the tag-bound release workflow exactly onc
   }]);
   const npmCalls = source.calls.filter(({ command }) => command === process.execPath);
   assert.deepEqual(npmCalls.map(({ args }) => args.slice(1)), [
+    ["run", "check:release-source", "--", "--tag", TAG],
     ["ci"], ["ci", "--prefix", "landing"], ["run", "desktop:runtime"], ["run", "verify"], ["run", "verify:desktop:ci"],
   ]);
 });
@@ -98,6 +99,7 @@ test("every failed preflight gate blocks dispatch", async () => {
     "gh api --hostname github.com --method GET repos/Lecarvalho/Pomegr",
     "git status --porcelain=v1 --untracked-files=all",
     `git rev-parse refs/tags/${TAG}^{commit}`,
+    `npm run check:release-source -- --tag ${TAG}`,
     "npm ci",
     "npm ci --prefix landing",
     "npm run desktop:runtime",
