@@ -1,5 +1,7 @@
 # Session page redesign plan
 
+> Complete — 2026-09-05. POMEGR-SP-01 through POMEGR-SP-12, including SP-01M, are complete. See the Progress log for verification evidence.
+
 ## Objective
 
 Rebuild the individual session page (`app/Dashboard.tsx` and the panels under
@@ -15,10 +17,26 @@ The target design is the canvas published on 2026-09-04 and copied verbatim into
 | `mockup-main.html` | The whole session page at 1440 px width, dark theme. Every panel, in final order. |
 | `mockup-agentgrid.html` | The "Grid" agent-activity mode: every agent as a 64 px tile, one lane per workflow. |
 | `mockup-focusedtree.html` | The tree as a drill-down focused on one agent, with off-path siblings clustered. |
+| `mockup-mobile.html` | The whole session page at 390 px (phone), dark theme, every panel in final order. |
+| `mockup-mobile-inspector.html` | The agent inspector as a full-screen phone sheet (390×844) with lineage, facts, signals, shell tasks. |
+
+Each mockup also has a rendered PNG beside it (`mockup-main.png` 1440×2700,
+`mockup-agentgrid.png` 1156×940, `mockup-focusedtree.png` 1156×760, `mockup-mobile.png`
+390×3300, `mockup-mobile-inspector.png` 390×844). An agent that cannot
+render HTML should read the PNG (Codex CLI: `codex -i docs/plans/session-page-redesign/mockup-main.png`,
+or attach the image in the prompt) and use the HTML for exact values. The PNGs were rendered
+by headless Edge without the Geist Mono web font, so numbers show the fallback face; the
+HTML is authoritative for typography. Regenerate a PNG after editing a mockup with:
+
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,2700 --screenshot="$PWD\docs\plans\session-page-redesign\mockup-main.png" "file:///$PWD/docs/plans/session-page-redesign/mockup-main.html"
+```
 
 Open each mockup in a browser. They are static HTML, no build needed. Measurements,
 colors, copy, and column order in this plan come from those files; when the plan and the
-mockup disagree, the mockup wins for visuals and this plan wins for data semantics.
+mockup disagree, the mockup wins for visuals and this plan wins for data semantics. Known wording drift: the
+mockup labels the before-list "timing correlation"; implement the label as
+"transcript adjacency" per SP-03/SP-05.
 
 Data in the mockups is illustrative and partly synthetic (the request bars, the workflow
 names, the "Largest requests" values). Never copy mockup numbers into fixtures as if they
@@ -83,7 +101,14 @@ inside an implementation task.
    invented: Inter for UI, Geist Mono for every number, 4 px control radius, 6 px panel
    radius, lavender `--color-context` for context, green for active/progress, amber for
    attention, coral brand color only for the mark, provider name, links, and selection.
-10. **Metric contract holds.** No cumulative token totals, no rates, no spend. Request
+10. **Phone is a first-class layout, not a fallback.** Pomegr is reachable from a phone
+    over LAN (desktop phone access). Every panel exists on the phone; nothing is hidden,
+    it moves into disclosures or a full-screen sheet. Phone rules per panel live in each
+    task's "Phone" subsection and in `mockup-mobile.html`. The phone breakpoint is the
+    shell's existing 760 px rule (`app/styles/shell.css`), with the 520 px rule for
+    padding. Touch targets are 44 px minimum. Chart interactions on phone are tap and
+    Prev/Next only; no drag, no minimap, no hover.
+11. **Metric contract holds.** No cumulative token totals, no rates, no spend. Request
     numbers are request-local. The KPI "All-agent context" is the existing
     `metrics.tokens.allAgents` (sum of latest snapshots).
 
@@ -119,7 +144,8 @@ see SP-01). Numbers use `var(--font-data)` and `font-variant-numeric: tabular-nu
 | Task | Title | Depends on |
 | --- | --- | --- |
 | POMEGR-SP-01 | Page skeleton, hero status card, KPI strip, three summary cards | none |
-| POMEGR-SP-02 | Collapse Repository and Session details to one-line disclosure rows | SP-01 |
+| POMEGR-SP-01M | Phone layout for the page top (hero, KPI grid, summary cards) | SP-01 |
+| POMEGR-SP-02 | Collapse Repository and Session details to one-line disclosure rows | SP-01, SP-01M |
 | POMEGR-SP-03 | Monitor: request action correlation (Claude adapter) | none |
 | POMEGR-SP-04 | Contract, serialization guard, and docs for request actions | SP-03 |
 | POMEGR-SP-05 | Requests & actions panel (chart, minimap, selection, detail, largest list) | SP-01, SP-04 |
@@ -129,9 +155,11 @@ see SP-01). Numbers use `var(--font-data)` and `font-variant-numeric: tabular-nu
 | POMEGR-SP-09 | Grid view mode | SP-07 |
 | POMEGR-SP-10 | Tree as focused drill-down | SP-08 |
 | POMEGR-SP-11 | Responsive, accessibility, dead CSS removal, final verification | all |
+| POMEGR-SP-12 | Announce the new session page in the Home "What's new" card | SP-11 |
 
-SP-03/SP-04 (monitor) and SP-01/SP-02/SP-07 (UI) are independent and can run in parallel
-sessions. SP-05 needs both branches.
+SP-03/SP-04 (monitor) and SP-01/SP-01M/SP-02/SP-07 (UI) are independent and can run in
+parallel sessions. SP-05 needs both branches. Every UI task from SP-02 onward carries a
+"Phone" subsection; a task is not complete until its phone rules pass at 390 px.
 
 ---
 
@@ -245,12 +273,12 @@ Reference: `mockup-main.html`, from the breadcrumb down to and including the thr
 
 ### Acceptance criteria
 
-- [ ] Page top matches `mockup-main.html` at 1440 px: hero, status card, five KPI cells
+- [x] Page top matches `mockup-main.html` at 1440 px: hero, status card, five KPI cells
       with hairline dividers, three equal-height cards.
-- [ ] `SummaryMetrics` no longer exists; flow score is visible only inside Session details.
-- [ ] `WorkflowActivityPanel` is no longer rendered on the page (file kept).
-- [ ] No number in the strip is a sum across requests or a rate.
-- [ ] Light theme renders with the same structure (no hard-coded hex).
+- [x] `SummaryMetrics` no longer exists; flow score is visible only inside Session details.
+- [x] `WorkflowActivityPanel` is no longer rendered on the page (file kept).
+- [x] No number in the strip is a sum across requests or a rate.
+- [x] Light theme renders with the same structure (no hard-coded hex).
 
 ### Verification
 
@@ -263,6 +291,61 @@ npm run lint
 
 Add `tests/ui/session-kpi-strip.test.tsx` covering: status tally text, "—" when progress
 is null, thousands formatting of tool calls, and that the DOM contains no `summaryStrip`.
+
+---
+
+## POMEGR-SP-01M — Phone layout for the page top
+
+### Goal
+
+Make the hero, KPI strip, and summary cards from SP-01 match `mockup-mobile.html`
+(`mockup-mobile.png`) at 390 px. SP-01 ships desktop only; this task adds the phone rules
+without touching desktop output.
+
+### Work
+
+All rules go under `@media (max-width: 760px)` in `app/styles/session.css` unless a
+finer breakpoint is named. Do not add a new breakpoint value; 760 and 520 already exist in
+`shell.css` and `session.css`.
+
+1. **Breadcrumb**: unchanged, 32 px min height.
+2. **Hero**: single column. Title 22 px/600, `overflow-wrap: anywhere`. Identity line wraps
+   (`flex-wrap: wrap; gap: 6px 10px`); the session id `code` is hidden on phone
+   (`display: none`), the "Historical snapshot" / "Live session" chip stays. Status card
+   spans full width, padding 10/12. The summary paragraph and the provider-summary row
+   move inside a `<details>` titled "Summary and provider status" with a 44 px summary
+   row and the caret glyph; open by default when the session has a provider summary or
+   signal, closed otherwise. "Download report" moves to the end of the hero as a
+   full-width 44 px ghost button.
+3. **KPI grid**: `grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px`. Each cell
+   gets a 1 px `--command-line` border, 4 px radius, padding 10/12 (on phone the cells are
+   boxes, not divider-separated). Number 24 px/500. Labels shorten: "Agents",
+   "All-agent context", "Wall time", "Tool calls", "Agent estimate". The Agent estimate
+   cell spans both columns (`grid-column: 1 / -1`) with the number left and the caveat
+   text to its right.
+4. **Summary cards**: stack, `gap: 14px`, padding 14. Progress card drops the 11 px note
+   (keep it as `title` on the eyebrow). Workflows card drops the "Open workflow detail"
+   link on phone (group headers in the roster are reachable by scrolling). Efficiency
+   card: "Show agent" link is a 32 px tap target.
+5. **Page padding** at ≤ 520 px is the shell's `16px 12px 26px` (already applied to
+   `.commandMain`); panels use `gap: 14px`.
+
+### Acceptance criteria
+
+- [ ] At 390 px the page top matches `mockup-mobile.png` down to the summary cards.
+- [ ] No horizontal scroll at 360 px.
+- [ ] Desktop snapshot tests from SP-01 unchanged.
+
+### Verification
+
+```powershell
+npx vitest run tests/ui/session-kpi-strip.test.tsx
+npm run lint
+```
+
+Add a jsdom test that renders `SessionHero` with a long title and asserts the
+`<details>` summary text exists; visual checks are manual at 390 px in the browser
+device toolbar.
 
 ---
 
@@ -289,6 +372,12 @@ last section of `mockup-main.html`.
    16 px/600, summary 12 px muted on the right, numbers in `--font-data`.
 5. Resource usage panel (live only) stays as a full panel between Agent activity and
    these rows. Do not collapse it.
+
+### Phone
+
+Rows stay 52 px with padding 0 14px; summary text right-aligned, may wrap to two lines;
+the Session details summary shortens to `Est. cost {amount} · plugin v{version}`; the
+Repository summary to `{branch} · {commits} commits · {files} files`.
 
 ### Acceptance criteria
 
@@ -386,13 +475,13 @@ the snapshot. This task adds the link inside the adapter and exposes only counts
 
 ### Acceptance criteria
 
-- [ ] Every Claude usage snapshot carries `precedingWork` and `issuedWork` arrays bounded
+- [x] Every Claude usage snapshot carries `precedingWork` and `issuedWork` arrays bounded
       to 8 entries × count ≤ 999, kinds from `WORK_KINDS` only.
-- [ ] No tool name, tool_use id, tool input, file path, or result text is stored on the
+- [x] No tool name, tool_use id, tool input, file path, or result text is stored on the
       snapshot. `grep -n "tool_use_id\|content.id" monitor/request-snapshots.mjs` returns
       nothing.
-- [ ] Codex evidence validates without changes.
-- [ ] `npm run test:contracts` passes (provider conformance).
+- [x] Codex evidence validates without changes.
+- [x] `npm run test:contracts` passes (provider conformance).
 
 ### Verification
 
@@ -459,9 +548,9 @@ semantics.
 
 ### Acceptance criteria
 
-- [ ] `npm run typecheck` passes with the new contract fields used nowhere yet in `app/`.
-- [ ] api-serialization allowlist test updated and green.
-- [ ] METRICS.md, OBSERVATION_CACHE.md, AGENTS.md updated as written above.
+- [x] `npm run typecheck` passes with the new contract fields used nowhere yet in `app/`.
+- [x] api-serialization allowlist test updated and green.
+- [x] METRICS.md, OBSERVATION_CACHE.md, AGENTS.md updated as written above.
 
 ### Verification
 
@@ -501,7 +590,7 @@ export type RequestRow = RequestSnapshot & {
 
 export function scopedRows(feed: RequestSnapshotFeed, boundaries: ContextHistoryBoundary[], scope: RequestScope): RequestRow[];
 export function windowFor(rows: RequestRow[], selectedOrdinal: number | null, size: 60): { start: number; end: number }; // 1-based inclusive, clamps at edges, centers selection
-export function scaleMax(rows: RequestRow[], mode: ChartMode): number; // max over the scoped rows (not the window) of promptTokens; "nice" rounded up (1.2/1.5/2/3/4.5/6/8 × 10^n); fixed across window moves
+export function scaleMax(rows: RequestRow[], mode: ChartMode): number; // scoped maximum of the visible stack and prompt outline (fresh mode), including output to avoid clipping; "nice" rounded up (1.2/1.5/2/3/4.5/6/8 × 10^n); fixed across window moves
 export function largestRequests(rows: RequestRow[], sort: LargestSort, limit: number): RequestRow[]; // stable: ties broken by ordinal ascending
 ```
 
@@ -559,7 +648,7 @@ Rules:
     `{WORK_LABELS[kind]}{count > 1 ? " ×" + count : ""}` using `AgentChip`. When a list is
     empty render "None recorded" in muted 12 px. Footer note 11 px:
     "Surrounding actions do not establish token cost per operation. Uncached input is
-    what the model had not seen before this request."
+    the portion recorded without cache reuse or cache writes."
     When `cacheWriteAvailable` is false (Codex), hide the Cache write box and the cache
     write stack segment, keep the layout at 3 columns.
   - **Largest requests** (right): eyebrow "Largest requests" + sort chip that cycles
@@ -595,6 +684,27 @@ Rules:
 10. Live sessions append rows every poll. If the selection was the newest row and the
     window was at the end, follow the newest row; otherwise keep the selection and
     window still.
+
+### Phone (≤ 760 px, see `mockup-mobile.html` "Requests & actions")
+
+- Header stacks: title row with the agent scope select on the right (32 px chip look),
+  then the two mode chips as a full-width segmented pair (each `flex: 1`, 32 px), then
+  the legend wrapping on one or two lines ("Uncached", "Cache write", "Output",
+  "Prompt size"; the compaction legend entry is dropped, the tick still draws).
+- Chart: `viewBox="0 0 334 168"`, height 168 px, plot x 34→330, y 22→150, window size
+  **20** (≤ 760 px) so each bar is ≥ 12 px wide; tap selects; the Y axis shows only
+  0 / 90K / 180K-style three labels; X axis shows first and last ordinal only.
+- **No minimap.** Below the chart a two-button row (`grid-template-columns: 1fr 1fr;
+  gap: 8px`) with 44 px "‹ Prev" / "Next ›" buttons that move the selection and shift
+  the window as on desktop.
+- Detail card: stat boxes in a 2×2 grid (18 px numbers); the before/after lists stack
+  vertically; the caveat shortens to "Surrounding actions do not establish token cost
+  per operation."
+- Largest requests: full width under the detail card, 3 rows visible (48 px each), then
+  the footer "All {n} · never summed" and "Show 20" (44 px row). Clicking a row still
+  recenters the window (20 bars) and scrolls the chart into view
+  (`scrollIntoView({ block: "start" })`).
+- Cache evidence disclosure unchanged.
 
 ### Files
 
@@ -641,10 +751,10 @@ largest sort tie-break.
 
 ### Acceptance criteria
 
-- [ ] Visual parity with the mockup at 1440 px in dark and light themes.
-- [ ] All ten interactions above behave as written.
-- [ ] No cumulative sum, average, or rate anywhere in the panel. `grep -n "reduce(" app/components/dashboard/requests-actions/` only hits `scaleMax`/`largestRequests`/minimap helpers, never a displayed total.
-- [ ] Panel file sizes stay under the 800-line architecture limit.
+- [x] Visual parity with the mockup at 1440 px in dark and light themes.
+- [x] All ten interactions above behave as written.
+- [x] No cumulative sum, average, or rate anywhere in the panel. `grep -n "reduce(" app/components/dashboard/requests-actions/` only hits `scaleMax`/`largestRequests`/minimap helpers, never a displayed total.
+- [x] Panel file sizes stay under the 800-line architecture limit.
 
 ### Verification
 
@@ -692,9 +802,9 @@ Delete the two superseded panels and the "Context history" settings toggle.
 
 ### Acceptance criteria
 
-- [ ] `grep -rn "ContextHistoryPanel\|RequestSnapshotsPanel\|contextHistory:" app/ desktop/ tests/ui` returns only Home/report references.
-- [ ] Settings shows one toggle under Data display.
-- [ ] Desktop preference tests pass.
+- [x] No legacy panel references remain in `app/`, `desktop/`, or `tests/ui`; remaining `contextHistory` references are retained Home/report/API evidence and stale-preference migration tests.
+- [x] Settings shows one toggle under Data display.
+- [x] Desktop preference tests pass.
 
 ### Verification
 
@@ -803,19 +913,41 @@ Rules:
 - Popovers for skills / execution tasks / plan tasks are **removed from rows**; their
   content moves to the inspector (SP-08). Until SP-08 lands, keep the popover code in the
   file but do not render the triggers.
+### Phone (≤ 760 px, see `mockup-mobile.html` "Agent activity")
+
+- Header: title + "{n} observed · showing {m}" on the left, List/Grid chips on the right.
+- Distribution strip unchanged (legend wraps; role legend hidden on phone).
+- Filter bar becomes two controls: the search input (44 px, `flex: 1`) and a "Filters
+  {count}" chip (44 px) that opens a bottom sheet (`<dialog>` or the existing popover
+  frame positioned as a sheet) containing the Group by workflow toggle, Status select,
+  Model select, Hide finished toggle, and Sort select, each a 44 px row, plus a "Done"
+  button. `count` = number of non-default filters.
+- Column header row hidden.
+- Agent row = 56 px, grid `24px minmax(0,1fr) auto 20px`, padding 8/12/8/10: role glyph;
+  name (13/500) over meta (`{role} · {model short} · {toolCalls} calls`, 12 px muted,
+  ellipsis); right column: final context (mono bold) over `{wall} · {status pill}`;
+  chevron. Cache TTL, effort, skills, shell-task count are inspector-only on phone.
+- Group header = 48 px, grid `20px minmax(0,1fr) auto`; rollup shortens to
+  `{agents} · {context}[ · {status word}]` where the status word is "completed",
+  "running", or `{idle} idle`.
+- Primary row pinned as on desktop; region height `60vh` with `min-height: 480px`.
+- "Show {n} more" and footer rows are 44 px.
+- Tapping a row selects it and opens the inspector sheet (SP-08); on desktop the
+  inspector is inline.
+
 - Persisted state (localStorage, per session id): open groups
   (`pomegr-agent-roster-open-${sessionId}`, JSON array of group ids), view mode (existing
   key, values now `"list" | "grid"`; treat stored `"tree"` as `"list"`).
 
 ### Acceptance criteria
 
-- [ ] With 49 agents the page height does not depend on the agent count; the roster
+- [x] With 49 agents the page height does not depend on the agent count; the roster
       region is 560 px and scrolls internally.
-- [ ] Group headers and the primary row stay visible while scrolling the region.
-- [ ] Rollup numbers are sums of latest snapshots and are labeled "context", never
+- [x] Group headers and the primary row stay visible while scrolling the region.
+- [x] Rollup numbers are sums of latest snapshots and are labeled "context", never
       "tokens used".
-- [ ] Filter, status, model, sort, hide-finished combine (AND) and never reorder groups.
-- [ ] `agentsWithFinishedVisibility` still keeps ancestors of visible agents.
+- [x] Filter, status, model, sort, hide-finished combine (AND) and never reorder groups.
+- [x] `agentsWithFinishedVisibility` still keeps ancestors of visible agents.
 
 ### Verification
 
@@ -894,15 +1026,34 @@ Fill the 340 px right column with the selected agent's full evidence, as drawn i
    (delete it; the inspector replaces it). Update `tests/ui/agent-detail-popovers.test.tsx`
    to assert the same content in the inspector, and rename the file to
    `agent-inspector.test.tsx`.
-4. Responsive: below 900 px the inspector renders under the roster as a full-width
-   section; below 720 px it becomes a `DashboardDisclosurePanel` "Selected agent".
+4. Responsive: between 761 px and 900 px the inspector renders under the roster as a
+   full-width section.
+
+### Phone (≤ 760 px, see `mockup-mobile-inspector.html`)
+
+The inspector is a full-screen sheet, not inline:
+- Opened by tapping a roster row or grid tile; rendered as a fixed overlay
+  (`position: fixed; inset: 0; z-index: 90; overflow-y: auto; background:
+  var(--command-ground)`) with `role="dialog" aria-modal="true"` and focus moved to the
+  back button; body scroll locked while open; Escape and the back button close it and
+  return focus to the row that opened it.
+- Header 60 px: back button (44 px, chevron-left), agent name 15/600 with a second line
+  `Agent {i} of {n} · {workflow or "direct subagent"}`, and a 44 px tree glyph button on
+  the right that calls `onOpenTree`.
+- Body sections in this order, each `padding: 12px 16px` with 1 px dividers: status pill
+  + signal chips row and the muted role/phase/id line; Lineage; facts `.sessionKv`;
+  Signals; Shell tasks (first 3 rows, "All" link); Plan checklist (primary only); then a
+  two-button row "Copy transcript path" / "Open in tree" (44 px each).
+- Swiping is not implemented; only the back button and Escape close the sheet.
+- The sheet is the same component as the inline inspector with a `presentation:
+  "inline" | "sheet"` prop; content markup is shared, only the wrapper differs.
 
 ### Acceptance criteria
 
-- [ ] Every datum previously visible in a list row or its popovers is visible in the
+- [x] Every datum previously visible in a list row or its popovers is visible in the
       inspector for the selected agent.
-- [ ] Lineage lists the correct ancestor chain for nested subagents and workflow workers.
-- [ ] Copy transcript path remains the only place a path can be obtained, still behind
+- [x] Lineage lists the correct ancestor chain for nested subagents and workflow workers.
+- [x] Copy transcript path remains the only place a path can be obtained, still behind
       `canCopyTranscriptPath`.
 
 ### Verification
@@ -950,6 +1101,12 @@ Add the "Grid" tab drawn in `mockup-agentgrid.html`.
    relative to the largest agent in the session" and "Latest snapshots only, never
    cumulative spend".
 6. `AgentActivityViewMode` becomes `"list" | "grid"`.
+
+### Phone (≤ 760 px)
+
+Two tile columns, tile height 56 px, lane header above the tiles (not beside), metric
+chips in a horizontal scroll row (44 px). Tapping a tile opens the inspector sheet
+(SP-08). Region height `60vh`, `min-height: 480px`.
 
 ### Acceptance criteria
 
@@ -999,6 +1156,14 @@ The tree opens from the inspector centered on one agent, as drawn in
 5. Footer: "Focus path: Primary › {workflow} › {phase} › {agent}" and "Layout follows
    provider evidence order · numbers are latest snapshots".
 6. The rail form (`agentTreeView-rail`) stays for narrow widths.
+
+### Phone (≤ 760 px)
+
+The focused tree renders in the existing rail form inside the same full-screen sheet
+wrapper as the inspector (title `Tree · {agent}`, back button returns to the inspector
+sheet, not to the roster). The focus path is expanded, off-path siblings are the
+cluster rows, the focus row has the coral left edge. No camera controls, no
+"Whole session" chip on phone (rail already shows the whole forest when expanded).
 7. Remove the "Tree" storage value handling left from SP-07.
 
 ### Acceptance criteria
@@ -1028,14 +1193,17 @@ Ship-ready page across widths and themes, with nothing left over.
 ### Work
 
 1. Breakpoints (existing ones in `session.css`: 900 px and 520 px; `evidence.css`: 720 px
-   and 420 px):
+   and 420 px; `shell.css`: 760 px). The per-panel phone rules already landed in
+   SP-01M, SP-02, SP-05, SP-07, SP-08, SP-09, SP-10; this task verifies them together,
+   fixes cross-panel spacing, and handles the intermediate widths below:
    - ≤ 1100 px: KPI strip 3 + 2 columns; summary cards 1 column; Requests & actions
      detail area stacks (largest list under the detail card); roster columns drop Cache
      TTL and Calls (they remain in the inspector).
    - ≤ 900 px: hero stacks; inspector under roster; grid 4 columns.
-   - ≤ 720 px: roster becomes the existing mobile row layout (two lines per agent), region
-     height 60vh; chart window size 30; minimap hidden; grid 2 columns.
-   - ≤ 520 px: KPI strip 2 columns; chart window 20.
+   - ≤ 760 px: everything per the task-level Phone subsections (chart window 20, no
+     minimap, two-line rows, inspector sheet, KPI 2×3, grid 2 columns).
+   - 360 px: no horizontal scroll; verify the longest agent label and the widest KPI
+     number (`999.9K`) still fit.
 2. Accessibility: every chart bar, tile, row, and group header reachable by keyboard with
    a visible focus ring (`--focus-ring`); segmented chips use `aria-pressed`; the roster
    region has `aria-label="Agent roster"`; live regions for selection changes are not
@@ -1051,13 +1219,15 @@ Ship-ready page across widths and themes, with nothing left over.
    `README.md` screenshots or feature bullets that mention "Context history" or "Request
    snapshots" updated to "Requests & actions".
 5. Mark this plan's header with the status blockquote used by
-   `docs/plans/provider-neutral-session-observation-cache.md` once every task is done.
+   `docs/plans/provider-neutral-session-observation-cache.md` once every task including
+   SP-12 is done.
 
 ### Acceptance criteria
 
-- [ ] `npm run verify` passes (includes build, plugin tests, UI tests, landing).
-- [ ] Manual check at 1440 / 1100 / 900 / 720 / 390 px in both themes against the mockups.
-- [ ] `/api/state` serialization test still green; no new browser-visible field beyond
+- [x] `npm run verify` passes (includes build, plugin tests, UI tests, landing).
+- [x] Manual check at 1440 / 1100 / 900 / 760 / 390 / 360 px in both themes against the
+      mockups (`mockup-main.png`, `mockup-mobile.png`, `mockup-mobile-inspector.png`).
+- [x] `/api/state` serialization test still green; no new browser-visible field beyond
       the four added in SP-04.
 
 ### Verification
@@ -1065,6 +1235,68 @@ Ship-ready page across widths and themes, with nothing left over.
 ```powershell
 npm run verify
 npm run verify:desktop
+```
+
+---
+
+## POMEGR-SP-12 — Announce the new session page in the Home "What's new" card
+
+### Goal
+
+Replace the Home page's dismissible "What's new" card (currently "Meet the new Agents
+page") with an announcement for the redesigned session page, so users who dismissed the
+previous update see this one once.
+
+### How the card works today
+
+- Card component: `app/components/home/HomeUpdateCard.tsx` (props `title`, `description`,
+  `details`, `onDismiss`; heading "What's new" is fixed inside the component).
+- Rendered in `app/HomeDashboard.tsx` ~line 102, gated by `ready && !updateDismissed` from
+  `useHomePreferences()`.
+- Dismissal identity: `HOME_UPDATE_ID` in `app/hooks/useHomePreferences.ts` line 8
+  (`"agents-analytics-v1"`). `updateDismissed` is true only when the stored
+  `dismissedUpdateId` equals the current constant, so changing the constant re-shows the
+  card to everyone, including users who dismissed the previous one. The stored value is
+  kept only when it matches the current id (lines ~129 and ~138), so nothing else needs
+  migrating.
+- Test: `tests/ui/dashboard-home.test.tsx` asserts the card by role
+  (`complementary`, name "What's new"), dismissal, and that an older `dismissedUpdateId`
+  (`"older-update"`) still shows the card.
+
+### Work
+
+1. `app/hooks/useHomePreferences.ts`: set `HOME_UPDATE_ID = "session-page-v2"`.
+2. `app/HomeDashboard.tsx`: replace the three copy props with:
+   - `title`: `A clearer session page`
+   - `description`: `See every model request as a bar, the work around it, and a grouped
+     agent roster that never scrolls the page. Open any session to try it.`
+   - `details`: `Requests & actions replaces Context history and Request snapshots: one
+     bar per request, prompt size as the outline, compactions as dashed ticks, and a
+     Largest requests list ranked by uncached input. Agent activity groups agents by
+     workflow, keeps the roster inside a fixed region, and moves details into an
+     inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay
+     request-local and are never summed into spend.`
+   Copy must not mention cost, billing, or savings. Keep the description under 160
+   characters if the card CSS clips (check `HomeUpdateCard.module.css`).
+3. `tests/ui/dashboard-home.test.tsx`: update any assertion that matches the old title
+   text; keep the role-based assertions. Add one assertion that a stored
+   `dismissedUpdateId: "agents-analytics-v1"` shows the new card.
+4. If the landing site lists release highlights (`landing/`), add one bullet there in the
+   same release; do not edit `landing/` otherwise.
+
+### Acceptance criteria
+
+- [x] Home shows the new card once for every user, including those who dismissed the
+      Agents-page card; dismissing it persists with the new id.
+- [x] Card copy matches the strings above verbatim.
+- [x] `npx vitest run tests/ui/dashboard-home.test.tsx` passes.
+
+### Verification
+
+```powershell
+npx vitest run tests/ui/dashboard-home.test.tsx
+npm run typecheck
+npm run lint
 ```
 
 ---
@@ -1083,4 +1315,18 @@ npm run verify:desktop
 
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-09-05 | POMEGR-SP-12 | Complete | Home announces “A clearer session page” with the exact approved description/details and session-page-v2 dismissal identity. Users who dismissed agents-analytics-v1 see the card; dismissal persists without losing pins or last-viewed navigation. All 11 focused Home tests pass. Full npm test passes build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped) and 459 UI tests. verify:fast passes, including typecheck and lint (existing warnings only). Production browser checks at 1440/390px in both themes confirm expanded copy fits, no horizontal overflow, disclosure, focus return and persisted dismissal; evidence: .impeccable/review/sp12/. No landing release-highlights section exists, so landing is unchanged. No provider/API changes or phase blockers. All planned phases are complete. Out-of-scope follow-up: the adjacent Home guide still refers to the removed Context history panel. |
+| 2026-09-05 | POMEGR-SP-11 | Complete | Compact roster columns now remain hidden through the 761–900px inspector stacking range; phone group tree targets are 44px. Removed the obsolete WorkflowActivityPanel and its rendering tests, retaining phase progress in the roster helper and workflow/tree integration coverage. Removed dead agent-row, view-mode, workflow-panel and contentGrid-tree styles; cache popovers anchor to the current roster row. Corrected the Home/context-history wording in METRICS.md; README has no obsolete panel references. Updated DESIGN.md. The desktop smoke's stale appFrame selector now targets commandShell, preserving hydration, sandbox and privacy checks. Full npm run verify, npm test, npm run verify:desktop and final verify:fast pass (existing lint warnings only): 458 UI, 966 node passed with 1 skipped, 37 plugin, 21 operations, 9 inventory, 26 landing and 130 desktop security tests; packaged window smoke and landing artifact audit pass. Integrated actual components checked with synthetic normalized 49-agent/1,200-request evidence at 1440/1100/900/760/390/360px in both themes: no horizontal overflow, long labels and 999.9K fit, chart/roster/grid keyboard focus, reduced motion and phone sheet focus return pass. Harness uses fallback fonts. Independent review: Ship. No API/provider fields changed; serialization remains green. No blockers. SP-12 remains pending; no later phase started and the overall plan completion banner is intentionally deferred. |
+| 2026-09-05 | POMEGR-SP-10 | Complete | Tree is a focused drill-down from inspector, roster groups and grid lanes; desktop Back/Escape restores the roster selection and opener. Focus projection preserves recorded ancestors, siblings and direct children with expandable off-path clusters; camera fits the path, focus/warning colors and hot connectors follow normalized evidence, and local cluster choices survive polling revisions. Desktop Ancestors/Whole session scopes and phone rail sheet share the tree; phone Back returns to the inspector then original row/tile, including controlled group entry. Removed focus safely returns to the roster. Fourteen new focus tests plus existing 11 layout tests pass; all 460 UI tests, final build and verify:fast pass (existing lint warnings only). Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 965 node tests (1 skipped), then stopped on a Windows EBUSY temp cleanup in codex-presence-responsiveness; isolated rerun passed. Actual components checked with 49 synthetic normalized agents at 1440/390px in both themes and 360px without overflow; corrected viewport captures preserve fixed phone sheets, harness uses fallback fonts. Independent review: Ship, no material fixes. No provider/API changes or blockers. No later phase started. |
+| 2026-09-05 | POMEGR-SP-09 | Complete | Grid renders every visible agent in bounded workflow lanes, with per-session context/wall/calls metric preference and bars scaled to the full session maximum even when filtered. Uses existing selection, desktop inspector and phone sheet; lane rollups reflect visible agents and List grouping preference is retained. Six columns reduce to four with viewport/container space and two 56px tiles on phone; 560px desktop and 60vh/minimum 480px phone region. Full npm test passed build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped), and all 446 UI tests; final build and verify:fast passed (existing lint warnings only). Six focused grid tests cover scale, filters, keyboard, persistence and sheet focus return. Browser checked actual components with 49 synthetic normalized agents at 1440/390px in both themes, 1200px and 360px without overflow; harness uses fallback fonts. Independent review: Ship. No provider/API changes or blockers. SP-10 owns focused-tree behavior; existing tree remains reused, and tile focus return is wired for the phone tree/inspector round trip. No later phase started. |
+| 2026-09-05 | POMEGR-SP-08 | Complete | Selected-agent inspector with normalized ancestor/workflow/phase lineage, facts, skills, expanded signals/cache evidence, sorted shell tasks, approval reviews, current activity, primary plan, and gated one-shot copy. Selection persists per session; Show agent clears filters, reopens its group and scrolls the row. Desktop inspector is bounded at 340px, stacks at 761–900px, and phone uses a shared modal sheet with tested focus and scroll isolation. Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 965 node tests (1 skipped), then hit a Windows EBUSY temp-directory cleanup in the native-presence test; that test passed on isolated rerun. Final build, all 440 UI tests and verify:fast pass (existing lint warnings only). Browser checked actual components with 49 synthetic normalized agents at desktop/phone widths in both themes, 360px without overflow, and 850/1200px layout behavior; cache overlay dismissal and nested sheet focus return verified. Harness uses fallback fonts. Independent review: Ship. No API/provider changes or blockers. SP-09 can reuse selection; SP-10 should pass retained treeAgentId into focused forest behavior; Open in tree currently reuses the existing tree. No later phase started. |
+| 2026-09-05 | POMEGR-SP-07 | Complete | Grouped bounded roster, distribution, AND filters, within-group sorting, saved groups/finished visibility, shared role glyph and workflow phases. Phone uses 56px rows and an accessible filter sheet; desktop roster stays 560px. Workflow navigation clears excluding filters and reveals its target. Retained detail popovers are exported but unmounted for SP-08; Grid is a placeholder for SP-09 and stored tree modes migrate to List. Full npm test passed build, 37 plugin, 21 operations, 9 inventory and 966 node tests (1 skipped); initial UI legacy-role failure fixed, final all 433 UI tests, final build and verify:fast pass (existing lint warnings only). Browser checked real roster components with 49 synthetic normalized agents at 1440/390px in both themes and 360px, no horizontal overflow, pinned scrolling and phone filter focus return; harness uses fallback fonts. Independent reviewer confirmed navigation fix resolved and returned Ship. No API/provider changes or blockers. SP-08 can reuse AgentDetailPopovers and selection props; SP-09 can reuse grouping/filter state. No later phase started. |
+| 2026-09-05 | POMEGR-SP-06 | Complete | Removed ContextHistoryPanel and RequestSnapshotsPanel, their obsolete UI tests and CSS (including the shared shell selector), and the web/desktop Context history preference. Stale saved keys are ignored while estimatedCost persists. Cache rows remain in CacheEvidenceDisclosure; snapshotEventKey now lives in requests-actions/model.ts, and applicable timestamp/keyboard/compact-row assertions are retained in requests-actions tests. Live browser verification found older monitor snapshots without action fields; scopedRows now defaults those fields to empty evidence, with a regression test. Home and API context history remain unchanged; metrics/design docs updated. Full npm test passed build, 37 plugin, 21 operations, 9 inventory, 966 node tests (1 skipped), and 427 UI tests; 45 focused desktop behavior/shell/paths checks and final verify:fast passed (existing lint warnings only). Settings and actual session checked at 1440/390px with no horizontal overflow or legacy panels. Independent review: Ship. No blockers; no later phase started. SP-07 can proceed under orchestrator sequencing. |
+| 2026-09-05 | POMEGR-SP-05 | Complete | Requests & actions now renders after the KPI strip with 60/20-request desktop/phone windows, scoped stable scale/rankings, keyboard selection, draggable minimap, live identity retention and request-local action details. Cache evidence moved to a saved closed disclosure with exact agent/timestamp links. Build, plugin/operations/inventory suites and 966 node tests passed (1 skipped); after correcting two integration-test expectations, all 434 UI tests and 25 focused panel/model/disclosure tests passed. verify:fast passed with existing lint warnings. Browser checked 1440/390px in both themes and 360px without overflow using actual components/CSS and synthetic normalized evidence; independent reviewer returned Ship. Scale includes output to avoid clipping and uncached copy describes cache classification rather than a never-seen claim; those plan clarifications are reflected above. SP-06 must remove the legacy ContextHistoryPanel and RequestSnapshotsPanel renders/files and preference; shared cache rows and snapshotEventKey now live in CacheEvidenceDisclosure.tsx. No provider/API fields or polling changes. |
+| 2026-09-05 | POMEGR-SP-04 | Complete | Verified SP-03's shared request contract/re-export, exact browser allowlists, bounded work-kind assertions, report stripping and AGENTS privacy rule. API fixture setup now retains tool-input private-path sentinels; report tests cover non-empty action tallies and omit all four fields from transition/boundary evidence. Documented request-local prompt outlines and committed-only presentation; chart replacement is explicitly pending SP-05/SP-06 and personal Home cadence remains unchanged. All 15 focused API/report tests and verify:fast passed (existing lint warnings only). No production code changes; unrelated UI test edit preserved. |
+| 2026-09-05 | POMEGR-SP-03 | Complete | Claude request-local issued/result work counts, actor-scoped parsing, recognized compaction resets, bounded projection and legacy/Codex defaults. Shared tool detail extraction, golden fixture, privacy and checkpoint coverage added. Full npm test passed (966 node tests, 1 skipped; 409 UI tests); final verify:fast and 53 focused parser/projection/privacy/checkpoint tests passed. Required SP-04 compatibility landed here: browser types/allowlists, report stripping and current evidence/privacy documentation; request types are re-exported from shared/request-snapshot-contract.ts. SP-04 remains responsible for its future panel/presentation wording. Concurrent SP-02 changes preserved; its recorded architecture blockers are resolved. |
+| 2026-09-05 | POMEGR-SP-02 | Complete | Repository and Session details are independent saved disclosures, closed by default, with bounded desktop/phone summaries and preference-gated estimated cost. Resource use stays in place. Browser verified 52px rows, padding, chevrons, keyboard toggles and persistence at 1440/390/360px; no phone horizontal overflow. Build, 409 UI tests, focused design contract, privacy/serialization and dependency checks passed. Full test wrapper was run; concurrent SP-03 request-action failures passed focused rechecks, and a temporary cleanup failure passed the node rerun (963 passed, 1 skipped, only the subsequently fixed provider fixture failed). verify:fast passes through provider docs but stops on concurrent SP-03 line limits in shared/monitor-contract.ts, tests/api-serialization.test.mjs and tests/claude-provider.test.mjs; those files were left to their owner. |
+| 2026-09-05 | Plan | Updated | Added phone layout: `mockup-mobile.html`, `mockup-mobile-inspector.html` (+PNGs), SP-01M, and Phone subsections in SP-02, SP-05, SP-07, SP-08, SP-09, SP-10, SP-11. |
 | 2026-09-04 | Plan | Written | Mockups copied to `docs/plans/session-page-redesign/`. Canvas: https://claude.ai/code/artifact/663c33bb-fb5f-41ba-9e78-8c11e0219ba2 |
+| 2026-09-05 | POMEGR-SP-01 | Complete | Hero status card, five-cell KPI strip, three summary cards, normalized insight/loop agent links. HTML typography retained (Inter headline numbers, Geist Mono compact data). Explicit open/stopped/unknown evidence remains labeled. Full npm test, final build, verify:fast, focused UI/privacy checks passed; 1440px and 390px checked in both themes. |
+| 2026-09-05 | POMEGR-SP-01M | Complete | Phone hero disclosure and full-width report action, shortened KPI labels and boxed two-column grid, stacked summary cards and touch targets. Desktop layout and report placement preserved. Long-title/disclosure, resize, report and disabled-state tests added; phone heading contract updated to 22px at 760px. Full test wrapper passed build/plugin/operations/inventory/node checks; all 408 UI tests passed after updating the old phone heading assertion. Final build and verify:fast passed; browser checks at 390px, 360px (no horizontal overflow), and 1440px. |

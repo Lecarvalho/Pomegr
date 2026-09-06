@@ -1,0 +1,82 @@
+.agentInspector { display: flex; flex-direction: column; min-width: 0; color: var(--command-muted); background: color-mix(in srgb, var(--command-ground) 40%, var(--command-panel)); font: 400 12px/1.5 var(--font-ui); overflow-wrap: anywhere; }
+.agentInspector-inline { border-left: 1px solid var(--command-line); max-height: 632px; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--command-line-strong) var(--command-panel); scrollbar-width: thin; }
+.rosterWorkspace > .rosterInspectorPlaceholder { display: contents; }
+.rosterWorkspace[hidden] { display: none; }
+@media (max-width: 760px) { .rosterWorkspace > .rosterInspectorPlaceholder { display: none; } }
+.inspectorHeader { padding: 16px 20px 12px; border-bottom: 1px solid var(--command-line); }
+.inspectorHeader h3 { margin: 6px 0; color: var(--command-ink); font: 600 15px/1.4 var(--font-ui); }
+.inspectorHeader p { margin: 6px 0 0; }
+.inspectorHeader code, .inspectorFacts dd, .inspectorLineage b { font: 400 12px/1.5 var(--font-data); font-variant-numeric: tabular-nums; }
+.inspectorStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.inspectorStatus .statusPill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+.inspectorStatus .statusPill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--command-line-strong); }
+.inspectorStatus .statusPill.active::before { background: var(--command-green); }
+.inspectorStatus .statusPill.needs_input::before { background: var(--command-amber); }
+.inspectorStatus .statusPill.stopped::before { background: var(--red); }
+.inspectorStatus .agentSignal { font-size: 11px; }
+.inspectorSection, .agentInspectorSection { padding: 14px 20px; border-bottom: 1px solid var(--command-line); }
+.inspectorSection h4, .agentInspectorSection h3 { margin: 0 0 8px; color: var(--command-faint); font: 500 11px/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.inspectorSection p { margin: 4px 0; }
+.inspectorSectionHeading, .agentInspectorSectionHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.inspectorSectionHeading h4, .agentInspectorSectionHeading h3 { margin: 0; }
+.inspectorSectionHeading button, .agentInspectorSectionHeading button { display: inline-flex; align-items: center; gap: 6px; padding: 0; min-height: 24px; border: 0; background: transparent; color: var(--command-brand-text); font: 400 12px/1.4 var(--font-ui); cursor: pointer; }
+.inspectorSectionHeading svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.inspectorLineage { display: grid; margin: 0; padding: 0; list-style: none; }
+.inspectorLineage li { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding-bottom: 14px; }
+.inspectorLineage li:last-child { padding-bottom: 0; }
+.inspectorLineage li:not(:last-child)::after { content: ""; position: absolute; width: 1px; left: 6px; top: 16px; bottom: 4px; background: var(--command-line-strong); }
+.inspectorLineage i { width: 7px; height: 7px; margin: 5px auto 0; border-radius: 50%; background: var(--command-line-strong); }
+.inspectorLineage-primary i { background: transparent; outline: 1px solid var(--command-line-strong); }
+.inspectorLineage-selected i { background: var(--command-brand-text); }
+.inspectorLineage-selected > span { color: var(--command-ink); font-weight: 600; }
+.inspectorLineage b { color: var(--command-faint); text-align: right; }
+.inspectorLineage-selected b, .inspectorFacts .inspectorContext { color: var(--color-context); }
+.inspectorFacts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 6px 16px; margin: 0; }
+.inspectorFacts dd { margin: 0; color: var(--command-ink); text-align: right; }
+.inspectorFacts .agentTurnCacheTiming { white-space: normal; }
+.inspectorInsight { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; margin: 8px 0; }
+.inspectorInsight svg { width: 16px; height: 16px; fill: none; stroke: var(--command-muted); stroke-width: 1.6; }
+.inspectorInsight.warning svg { stroke: var(--command-amber); }
+.inspectorInsight strong, .inspectorReportedSignal strong { color: var(--command-ink); font-weight: 600; }
+.inspectorHistory { display: grid; gap: 8px; margin-top: 8px; }
+.inspectorHistory .agentHistoryIndicator { display: flex; flex-direction: row; align-items: center; gap: 8px; width: auto; max-width: 100%; height: auto; min-height: 24px; padding: 0; border: 0; border-radius: 0; background: transparent; justify-content: flex-start; white-space: normal; text-align: left; }
+.inspectorHistory .agentHistoryCount { position: static; inset: auto; width: auto; height: auto; padding: 0; border: 0; background: transparent; font: 400 12px/1.5 var(--font-ui); }
+.inspectorHistory .agentChipLabel { display: flex; align-items: center; gap: 8px; }
+.inspectorHistory .agentHistoryIcon { flex: 0 0 16px; }
+.inspectorHistory .agentPopoverAnchor { min-width: 0; }
+.agentInspectorSection .skillPopoverList { padding: 0; }
+.agentInspectorSection .skillPopoverRow { padding: 6px 0; }
+.agentInspectorSection .skillPopoverRow strong { font-size: 12px; }
+.agentInspectorSection .skillPopoverRow small { font-size: 11px; }
+.agentInspector .executionTaskSection { margin: 0; }
+.agentInspector .executionTaskRow { padding: 8px 0; }
+.agentInspector .executionTaskRow strong { font-size: 12px; }
+.agentInspector .executionTaskRow small, .agentInspector .reviewDecisionRow small { font-size: 11px; }
+.agentInspector .executionTaskRowCompact { grid-template-columns: 16px minmax(0,1fr) auto; align-items: start; gap: 8px; }
+.executionTaskRowCompact .executionTaskMark { width: 16px; height: 20px; min-height: 0; padding: 0; border: 0; background: transparent; }
+.executionTaskRowCompact .executionTaskMark > svg { display: none; }
+.executionTaskRowCompact .executionTaskStatusBadge { position: static; display: block; width: 7px; height: 7px; min-width: 7px; border: 0; margin: 0; }
+.executionTaskRowCompact .executionTaskStatusBadge svg { display: none; }
+.executionTaskExit { padding-top: 2px; color: var(--command-muted); font: 400 11px/1.5 var(--font-data); white-space: nowrap; }
+.executionTaskExitError { color: var(--red); }
+.inspectorActions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px; margin-top: auto; }
+.inspectorActions .copyTranscriptButton, .inspectorActions > button { width: auto; height: auto; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); font: 500 12px/1.4 var(--font-ui); cursor: pointer; }
+.agentInspector :is(button, a):focus-visible, .agentInspectorSheet :is(button, a, [tabindex]):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.agentInspectorSheet { position: fixed; inset: 0; z-index: 90; overflow-y: auto; overscroll-behavior: contain; background: var(--command-ground); color: var(--command-ink); font: 400 12px/1.5 var(--font-ui); }
+.inspectorSheetHeader { position: sticky; top: 0; z-index: 2; min-height: 60px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; gap: 8px; padding: 0 8px; background: var(--command-panel); border-bottom: 1px solid var(--command-line); }
+.inspectorSheetHeader > div { min-width: 0; }
+.inspectorSheetHeader strong, .inspectorSheetHeader span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspectorSheetHeader strong { font-size: 15px; font-weight: 600; }
+.inspectorSheetHeader span { color: var(--command-muted); }
+.inspectorSheetHeader button { width: 44px; height: 44px; padding: 12px; background: transparent; color: var(--command-muted); border: 0; cursor: pointer; }
+.inspectorSheetHeader svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.agentInspector-sheet { min-height: calc(100dvh - 60px); background: var(--command-ground); }
+.agentInspector-sheet :is(.inspectorHeader, .inspectorSection, .agentInspectorSection, .inspectorActions) { padding: 12px 16px; }
+.agentInspector-sheet :is(.inspectorSectionHeading, .agentInspectorSectionHeading) button { min-height: 44px; }
+.agentInspector-sheet .inspectorActions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.agentInspector-sheet .inspectorActions button { min-height: 44px; }
+.agentInspector-sheet .inspectorHistory button { min-height: 44px; }
+body:has(.agentInspectorSheet) .cacheRefillPopover { z-index: 100; }
+@media (max-width: 900px) {
+  .agentInspector-inline { border-left: 0; border-top: 1px solid var(--command-line); max-height: none; overflow: visible; }
+}

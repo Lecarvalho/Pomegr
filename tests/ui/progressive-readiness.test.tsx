@@ -54,7 +54,7 @@ describe("progressive readiness", () => {
     const loadingHeader = screen.getByRole("heading", { name: session.title }).closest(".hero");
     expect(loadingHeader).not.toBeNull();
     expect(loadingHeader?.firstElementChild?.firstElementChild).toHaveRole("heading");
-    expect(loadingHeader?.querySelector(".sessionIdentity strong")).toHaveTextContent(session.project);
+    expect(within(loadingHeader as HTMLElement).queryByText(session.project)).not.toBeInTheDocument();
     expect(loadingHeader?.querySelector(".sessionIdentity .providerBadge")).toHaveTextContent(source);
     expect(within(loadingHeader as HTMLElement).getByText(session.isLive ? "Live session" : "Recorded session")).toBeInTheDocument();
     expect(container.querySelectorAll('.sessionLoadingPanel[aria-hidden="true"]')).toHaveLength(6);

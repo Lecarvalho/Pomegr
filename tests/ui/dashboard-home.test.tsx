@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
-import { HOME_PREFERENCES_STORAGE_KEY, HOME_UPDATE_ID } from "../../app/hooks/useHomePreferences";
+import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import SessionsPage from "../../app/sessions/page";
 import type { SessionSummary } from "../../shared/monitor-contract";
@@ -28,7 +28,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "Meet the new Agents page" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "A clearer session page" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -37,7 +37,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
-      lastViewedSessionId: sessions[1].id, dismissedUpdateId: HOME_UPDATE_ID,
+      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-page-v2",
     });
     view.unmount();
     home();
@@ -50,6 +50,15 @@ describe("personal Home", () => {
       window.dispatchEvent(new StorageEvent("storage", { key: HOME_PREFERENCES_STORAGE_KEY }));
     });
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
+  });
+
+  it("shows the session update after the Agents announcement was dismissed", () => {
+    window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "agents-analytics-v1",
+    }));
+    home();
+    const update = screen.getByRole("complementary", { name: "What’s new" });
+    expect(within(update).getByRole("heading", { name: "A clearer session page" })).toBeInTheDocument();
   });
 
   it("offers navigation with a compact local provider-status exception", async () => {

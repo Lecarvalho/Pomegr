@@ -18,7 +18,8 @@ describe("Pomegr plugin metadata", () => {
     const { container } = render(<SessionDetailsPanel state={detailsState(session)} historical={false} loading={false} onRefresh={vi.fn()} />);
 
     expect(container.querySelector(".sessionPomegrIntegration")).not.toBeInTheDocument();
-    expect(container.querySelector(".sessionPomegrSummary")).not.toBeInTheDocument();
+    expect(container.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Approval mode, usage limits, machinery, activity");
+    expect(container.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent(/plugin|policy/i);
   });
 
   it("shows the active plugin and valid policy in summary and details", () => {
@@ -28,7 +29,7 @@ describe("Pomegr plugin metadata", () => {
     };
     render(<SessionDetailsPanel state={detailsState(session)} historical={false} loading={false} onRefresh={vi.fn()} />);
 
-    expect(document.querySelector(".sessionPomegrSummary")).toHaveTextContent("Pomegr v0.4.1 · Policy v7");
+    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("plugin v0.4.1 · policy v7");
     expect(screen.getByRole("region", { name: "Pomegr integration" })).toHaveTextContent("Pluginv0.4.1PolicyValid · v7");
     expect(screen.getByText("Observed at session start")).toBeInTheDocument();
     expect(screen.getByText("Valid · v7").closest(".sessionPomegrPolicy")).toHaveClass("sessionPomegrPolicy-valid");
@@ -41,7 +42,7 @@ describe("Pomegr plugin metadata", () => {
     };
     render(<SessionDetailsPanel state={detailsState(session)} historical loading={false} onRefresh={vi.fn()} />);
 
-    expect(document.querySelector(".sessionPomegrSummary")).toHaveTextContent("Pomegr Version unavailable · Policy needs attention");
+    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent(/policy v7/i);
     expect(screen.getByText("Invalid — needs attention · v7")).toBeInTheDocument();
     expect(screen.getByText("Recorded for this session")).toBeInTheDocument();
   });

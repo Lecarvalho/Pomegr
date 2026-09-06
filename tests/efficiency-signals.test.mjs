@@ -78,6 +78,7 @@ test("automatic context compaction emits a warning with bounded event metadata",
     id: "automatic-compaction-primary",
     level: "warning",
     title: "Primary agent context was automatically compacted",
+    agentId: "primary",
     detail: "The provider automatically compacted this agent's conversation at 207.4K context. Earlier conversation detail was summarized to continue the session. Consider delegating or starting a focused follow-up before context pressure builds again.",
   }]);
 });
@@ -128,6 +129,7 @@ test("inferred automatic compaction emits a warning with transparent lifecycle c
 
   assert.deepEqual(insights, [{
     id: "automatic-compaction-primary",
+    agentId: "primary",
     level: "warning",
     title: "Primary agent context was automatically compacted",
     detail: "Codex compacted context during an active task and resumed that task at 235.3K context. Pomegr classifies this recorded lifecycle as automatic; this rollout did not persist the provider trigger itself. Earlier conversation detail was summarized to continue the session. Consider delegating or starting a focused follow-up before context pressure builds again.",
@@ -182,6 +184,8 @@ test("the centralized catalog selects and caps repetition and overlap signals", 
   assert.deepEqual(loops.map((loop) => loop.count), [6, 5, 4, 3]);
   assert.equal(insights.filter((insight) => insight.id.startsWith("loop-")).length, 3);
   assert.equal(insights.filter((insight) => insight.id.startsWith("overlap-")).length, 2);
+  assert.deepEqual(insights.filter((insight) => insight.id.startsWith("loop-")).map((insight) => insight.agentId), ["primary", "primary", "primary"]);
+  assert.deepEqual(insights.filter((insight) => insight.id.startsWith("overlap-")).map((insight) => insight.agentId), [null, null]);
 });
 
 test("user-input attention stays out of the efficiency signal catalog", () => {
@@ -238,6 +242,7 @@ test("normalized miss-refill events produce cautious bounded insights", () => {
   assert.deepEqual(insights, [{
     id: "prompt-cache-miss-primary",
     level: "warning",
+    agentId: "primary",
     title: "Prompt cache miss and refill after idle gap",
     detail: "Primary agent's prompt input was 16K with 5% read from cache after 25 hours. The preceding comparable request read 80% from cache, and the provider recorded an 8K cache refill. Cache expiration or eviction may have reduced efficiency, but a changed prefix, cache key, or routing can produce the same pattern.",
   }]);

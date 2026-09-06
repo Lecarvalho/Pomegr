@@ -8,7 +8,7 @@ const initial: DesktopState = {
   applicationVersion: "0.2.2",
   paused: false, launchAtLogin: false, launchAtLoginAvailable: true,
   closeBehavior: "ask", notifications: true, notificationQuietUntil: null,
-  displayPreferences: { contextHistory: true, estimatedCost: true },
+  displayPreferences: { estimatedCost: true },
   update: { status: "idle", version: null, lastCheckedAt: null },
 };
 

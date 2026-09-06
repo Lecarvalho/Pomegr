@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { normalizedRequestWork } from "./request-work.mjs";
 
 const MAX_REQUEST_SNAPSHOTS_PER_AGENT = 100;
 const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed", "30m+"]);
@@ -70,6 +71,8 @@ export function buildRequestSnapshots({ sessionId = "session", agents = [], usag
 
 /** Serialize public request-local fields from validated evidence. */
 export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, parts }) {
+  const precedingWork = normalizedRequestWork(snapshot.precedingWork);
+  const issuedWork = normalizedRequestWork(snapshot.issuedWork);
   return {
     id: opaqueId(sessionId, snapshot, timestamp),
     agentId: snapshot.actorId,
@@ -82,6 +85,10 @@ export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, pa
     cacheReadTokens: parts.cacheReadTokens,
     outputTokens: parts.outputTokens,
     totalTokens: parts.totalTokens,
+    precedingWork,
+    issuedWork,
+    precedingAssociation: precedingWork.length > 0 ? "transcript_adjacency" : null,
+    issuedAssociation: issuedWork.length > 0 ? "recorded_link" : null,
   };
 }
 

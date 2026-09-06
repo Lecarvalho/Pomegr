@@ -43,51 +43,60 @@ describe("display preferences", () => {
     expect(document.querySelector(".commandAboutIdentity .commandAboutIdentityMark.pomegrMark-divided")).toBeInTheDocument();
   });
 
-  it("defaults both session displays on, persists changes, and restores defaults", async () => {
+  it("defaults the single session display on, persists changes, and restores defaults", async () => {
     const user = userEvent.setup();
     const view = renderSettings();
     await openDataDisplay(user);
-    const contextHistory = screen.getByRole("switch", { name: /Context history/ });
     const estimatedCost = screen.getByRole("switch", { name: /API list-rate estimate/ });
     const restore = screen.getByRole("button", { name: "Restore defaults" });
 
-    expect(contextHistory).toBeChecked();
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+    expect(screen.queryByRole("switch", { name: /Context history/ })).not.toBeInTheDocument();
     expect(estimatedCost).toBeChecked();
     expect(restore).toBeDisabled();
 
-    await user.click(contextHistory);
-    expect(contextHistory).not.toBeChecked();
-    expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ contextHistory: false, estimatedCost: true });
+    await user.click(estimatedCost);
+    expect(estimatedCost).not.toBeChecked();
+    expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ estimatedCost: false });
     expect(restore).toBeEnabled();
 
     view.unmount();
     renderSettings();
     await openDataDisplay(user);
-    expect(screen.getByRole("switch", { name: /Context history/ })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Restore defaults" }));
-    expect(screen.getByRole("switch", { name: /Context history/ })).toBeChecked();
     expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).toBeChecked();
-    expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ contextHistory: true, estimatedCost: true });
+    expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ estimatedCost: true });
   });
 
   it("fails malformed or incomplete browser preferences closed to visible defaults", async () => {
-    for (const value of ["malformed", JSON.stringify({ contextHistory: false }), JSON.stringify([false, false])]) {
+    for (const value of ["malformed", JSON.stringify({ unknownPreference: false }), JSON.stringify([false, false])]) {
       window.localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, value);
       const view = renderSettings();
       await openDataDisplay();
-      expect(screen.getByRole("switch", { name: /Context history/ })).toBeChecked();
       expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).toBeChecked();
       view.unmount();
     }
   });
 
+  it("ignores the retired key without resetting the saved estimate preference", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, JSON.stringify({ contextHistory: false, estimatedCost: false, unknownPreference: true }));
+    renderSettings();
+    await openDataDisplay(user);
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Restore defaults" }));
+    expect(JSON.parse(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || "null")).toEqual({ estimatedCost: true });
+  });
+
   it("uses the bounded desktop bridge instead of renderer storage", async () => {
     const user = userEvent.setup();
-    const stored = JSON.stringify({ contextHistory: true, estimatedCost: false });
+    const stored = JSON.stringify({ estimatedCost: true });
     window.localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, stored);
-    let state = { displayPreferences: { contextHistory: false, estimatedCost: true } };
+    let state = { displayPreferences: { estimatedCost: false } };
     let listener: ((next: typeof state) => void) | undefined;
-    const setDisplayPreference = vi.fn(async (key: "contextHistory" | "estimatedCost", visible: boolean) => {
+    const setDisplayPreference = vi.fn(async (key: "estimatedCost", visible: boolean) => {
       state = { displayPreferences: { ...state.displayPreferences, [key]: visible } };
       listener?.(state);
       return state;
@@ -100,10 +109,9 @@ describe("display preferences", () => {
 
     renderSettings();
     await openDataDisplay(user);
-    await waitFor(() => expect(screen.getByRole("switch", { name: /Context history/ })).not.toBeChecked());
-    expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).toBeChecked();
-    await user.click(screen.getByRole("switch", { name: /Context history/ }));
-    expect(setDisplayPreference).toHaveBeenCalledWith("contextHistory", true);
+    await waitFor(() => expect(screen.getByRole("switch", { name: /API list-rate estimate/ })).not.toBeChecked());
+    await user.click(screen.getByRole("switch", { name: /API list-rate estimate/ }));
+    expect(setDisplayPreference).toHaveBeenCalledWith("estimatedCost", true);
     expect(window.localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY)).toBe(stored);
   });
 });

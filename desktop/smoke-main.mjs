@@ -297,7 +297,7 @@ async function executeSmoke() {
     const rendererBoundary = await smokeWindow.webContents.executeJavaScript(`(async () => {
       const deadline = Date.now() + 15000;
       while (Date.now() < deadline) {
-        const frame = document.querySelector('.appFrame');
+        const frame = document.querySelector('.commandShell');
         const hydrated = document.documentElement.dataset.pomegrHydrated === 'true';
         if (frame && hydrated && getComputedStyle(frame).display === 'grid') {
           const [response, sessionsResponse] = await Promise.all([

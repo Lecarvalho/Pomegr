@@ -1,5 +1,7 @@
 import type { ContextInventoryReference } from "./repository-inventory-contract";
+import type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
+export type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type ReportedSignal = {
   label: string;
   tone: "neutral" | "info" | "positive" | "warning" | "negative";
@@ -51,14 +53,8 @@ export type AgentRole =
   | "compaction"
   | "unknown";
 
-/** Normalized cache lifetime; 30m+ is a documented model-policy minimum, not a recorded expiry. */
-export type CacheLifetime = "5m" | "1h" | "mixed" | "30m+";
-
 /** Readiness describes the publication state of normalized evidence, not support. */
 export type Readiness = "loading" | "ready" | "unavailable";
-
-/** Bounded monitor-derived purpose. Raw commands and provider-native tool schemas stay private. */
-export type WorkKind = "shell" | "search" | "read" | "write" | "test" | "build" | "git" | "git_push" | "pull_request" | "process" | "web" | "image" | "input" | "transfer" | "skill" | "report" | "agent" | "integration" | "wait";
 
 export type HomeReadiness = {
   catalog: Readiness;
@@ -291,23 +287,6 @@ export type CacheReadDropFeed = {
   items: CacheReadDropCount[];
 };
 
-export type RequestSnapshot = {
-  id: string;
-  agentId: string;
-  observedAt: string;
-  cacheLifetime: CacheLifetime | null;
-  uncachedInputTokens: number;
-  cacheWriteTokens: number;
-  cacheReadTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-};
-
-export type RequestSnapshotFeed = {
-  status: "ready" | "unavailable";
-  items: RequestSnapshot[];
-};
-
 /** Bounded selection from retained normalized evidence, before UI caps. */
 export type SessionReportRefill = {
   id: string;
@@ -322,7 +301,7 @@ export type SessionReportRefill = {
   reason: CacheRefillReason | null;
   providerStatus: CacheRefillProviderStatus | null;
   messageChangeSequence: CacheMessageChangeSequence | null;
-  requests: { previous: RequestSnapshot | null; current: RequestSnapshot | null; next: RequestSnapshot | null };
+  requests: { previous: SessionReportRequestSnapshot | null; current: SessionReportRequestSnapshot | null; next: SessionReportRequestSnapshot | null };
 };
 
 export type SessionReportEvidence = {
@@ -341,7 +320,7 @@ export type SessionReportEvidence = {
     automaticCompactions: number | null;
     manualCompactions: number | null;
     snapshotDrops: number | null;
-    boundaries: Array<ContextHistoryBoundary & { current: RequestSnapshot | null }>;
+    boundaries: Array<ContextHistoryBoundary & { current: SessionReportRequestSnapshot | null }>;
   };
   limits: { refillTransitions: number; contextBoundaries: number };
 };
@@ -412,8 +391,8 @@ export type ResourceUsage = {
   samples: ResourceUsageSample[];
 };
 
-export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string };
-export type LoopPattern = { id: string; agent: string; tool: string; detail: string; calls: number; repeats: number };
+export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string; agentId?: string | null };
+export type LoopPattern = { id: string; agent: string; agentId?: string | null; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 /** Bounded observed work/presence state. Provider-native lifecycle values stay monitor-private. */
 export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "unknown";

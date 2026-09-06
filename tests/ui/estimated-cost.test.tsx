@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MonitorState } from "../../shared/monitor-contract";
 import { SessionDetailsPanel } from "../../app/components/dashboard/SessionDetailsPanel";
@@ -28,8 +28,9 @@ describe("estimated session cost", () => {
 
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
+    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $1.23 (Claude Code estimate)");
     expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
-    expect(screen.getByText("$1.23")).toBeInTheDocument();
+    expect(within(document.querySelector(".sessionCostDetail")!).getByText("$1.23")).toBeInTheDocument();
     expect(screen.getByText(/Reference only — not a bill or subscription spend\. Observed/)).toBeInTheDocument();
   });
 
@@ -41,7 +42,8 @@ describe("estimated session cost", () => {
 
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
-    expect(screen.getByText("$0.0042")).toBeInTheDocument();
+    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $0.0042 (Claude Code estimate)");
+    expect(within(document.querySelector(".sessionCostDetail")!).getByText("$0.0042")).toBeInTheDocument();
     expect(screen.getByText(/Recorded Aug 9/)).toBeInTheDocument();
   });
 
@@ -52,6 +54,7 @@ describe("estimated session cost", () => {
     };
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} showEstimatedCost={false} /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
+    expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
     expect(screen.getByText("Session details")).toBeInTheDocument();
   });
 
@@ -60,6 +63,7 @@ describe("estimated session cost", () => {
     const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
+    expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
     rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();

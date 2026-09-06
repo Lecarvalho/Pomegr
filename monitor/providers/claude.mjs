@@ -23,7 +23,7 @@ import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signal
 import { latestSessionSummary } from "../session-summary.mjs";
 import { readSessionCost } from "../session-cost.mjs";
 import { latestSessionApprovalMode } from "../session-approval-mode.mjs";
-import { buildSkillUsage, normalizedSkillName } from "../skill-usage.mjs";
+import { buildSkillUsage } from "../skill-usage.mjs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
@@ -33,6 +33,7 @@ import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { parseClaudeContextRecords } from "./claude-context.mjs";
+import { safeDetail } from "./claude-tool-detail.mjs";
 import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
@@ -147,22 +148,6 @@ function mergeLiveUsageSnapshots(previous, current) {
   return [...byId.values()]
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
     .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
-}
-
-function safeDetail(tool, input = {}) {
-  const skill = tool === "Skill" ? normalizedSkillName(input) : "";
-  if (skill) return skill;
-  if (tool === "TaskCreate" && typeof input.subject === "string") {
-    return input.subject.replace(/\s+/g, " ").trim().slice(0, 54);
-  }
-  if (tool === "TaskUpdate" && typeof input.taskId === "string") return `task ${input.taskId}`;
-  const file = input.file_path || input.path;
-  if (typeof file === "string") return path.basename(file);
-  if (typeof input.pattern === "string") return input.pattern.slice(0, 54);
-  if (typeof input.description === "string") return input.description.replace(/\s+/g, " ").slice(0, 54);
-  if (typeof input.taskId === "string") return `task ${input.taskId}`;
-  if (typeof input.delaySeconds === "number") return `${input.delaySeconds}s`;
-  return "";
 }
 
 function actorFor(file, mainFile, metadata, workflowFiles = new Map()) {
@@ -350,13 +335,14 @@ export function createClaudeProvider(options = {}) {
     }
   }
 
-  function liveUsageSnapshots(file, records, actor, stat, historical, sessionId) {
+  function liveUsageSnapshots(file, records, actor, stat, historical, sessionId, compactionTimestamps) {
     const parsed = parseClaudeContextRecords(records, {
       actorId: actor.id,
       sourceKey: actor.id,
       fallbackTimestamp: stat.mtime.toISOString(),
       completeHistory: stat.size <= MAX_BYTES_PER_FILE,
       expectedSessionId: sessionId,
+      compactionTimestamps,
     });
     if (historical) return parsed;
 
@@ -551,11 +537,12 @@ export function createClaudeProvider(options = {}) {
       if (file !== mainFile) transcriptPaths.set(actor.id, file);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
-      usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical, sessionId));
       let observedCompactions = contextCompactionsCache.get(file);
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
       contextCompactionsCache.set(file, observedCompactions);
+      usageSnapshots.push(...liveUsageSnapshots(file, records, actor, stat, historical, sessionId,
+        observedCompactions.map((compaction) => compaction.timestamp)));
       compactions.push(...observedCompactions.map((compaction) => ({
         actorId: actor.id,
         timestamp: compaction.timestamp,

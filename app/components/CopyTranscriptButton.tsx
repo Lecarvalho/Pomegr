@@ -23,10 +23,11 @@ async function copyText(value: string) {
   if (!copied) throw new Error("Clipboard unavailable");
 }
 
-export function CopyTranscriptButton({ sessionId, agentId, agentLabel }: {
+export function CopyTranscriptButton({ sessionId, agentId, agentLabel, showLabel = false }: {
   sessionId: string;
   agentId: string;
   agentLabel: string;
+  showLabel?: boolean;
 }) {
   const { canCopyTranscriptPath } = useClientAccess();
   const [state, setState] = useState<CopyState>("idle");
@@ -85,6 +86,7 @@ export function CopyTranscriptButton({ sessionId, agentId, agentLabel }: {
             ? <path d="m3.5 8.2 2.7 2.7 6.3-6.3" />
             : <><rect x="5.5" y="2.5" width="7.5" height="9" /><path d="M10.5 13.5h-7.5v-9" /></>}
         </svg>
+        {showLabel && <span>{title}</span>}
       </button>
       <span className="copyTranscriptAnnouncement" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
     </>

@@ -1,0 +1,50 @@
+.agentGridToolbar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--command-line); }
+.agentGridToolbar > span { flex-shrink: 0; }
+.agentGridToolbar button { min-height: 32px; padding: 4px 8px; flex-shrink: 0; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); font: 500 12px/1.4 var(--font-ui); white-space: nowrap; }
+.agentGridView { padding: 4px 20px 16px; --agent-grid-bar: var(--color-context); }
+.agentGridMetric-wall { --agent-grid-bar: var(--command-green); }
+.agentGridMetric-toolCalls { --agent-grid-bar: var(--command-muted); }
+.agentGridLane { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: start; gap: 14px; padding: 14px 0; border-top: 1px solid var(--command-panel-2); }
+.agentGridLane:first-child { border-top: 0; }
+.agentGridLane > header { display: grid; min-width: 0; gap: 4px; overflow-wrap: anywhere; }
+.agentGridLaneTitle { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.agentGridLane > header > strong { font: 600 13px/1.4 var(--font-ui); color: var(--command-ink); }
+.agentGridLaneTitle > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.4 var(--font-ui); color: var(--command-ink); }
+.agentGridOpenTree { display: grid; place-items: center; flex: 0 0 auto; width: 24px; min-height: 24px; padding: 3px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); }
+.agentGridOpenTree:hover { background: var(--command-panel-2); color: var(--command-ink); }
+.agentGridOpenTree svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.agentGridLane > header > span { color: var(--command-muted); font: 400 12px/1.5 var(--font-ui); }
+.agentGridLane .agentGridRollup, .agentGridRollup b { font: 400 11px/1.5 var(--font-data); font-variant-numeric: tabular-nums; }
+.agentGridRollup b { color: var(--command-ink); }
+.agentGridTiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.agentGridTile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; height: 64px; padding: 8px 10px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); text-align: left; overflow: hidden; }
+.agentGridTile > strong { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px/1.4 var(--font-ui); }
+.agentGridTileMetrics { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; min-width: 0; color: var(--command-muted); font: 400 11px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
+.agentGridTileMetrics > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.agentGridTileMetrics > b { margin-left: auto; flex-shrink: 0; font-weight: 400; white-space: nowrap; }
+.agentGridBar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--agent-grid-bar); opacity: .7; }
+.agentGridStatus-finished { color: var(--command-muted); }
+.agentGridStatus-idle, .agentGridStatus-waiting, .agentGridStatus-warm { border-style: dashed; border-color: var(--command-line-strong); }
+.agentGridStatus-active { border-color: var(--command-green); background: color-mix(in srgb, var(--command-green) 8%, var(--command-panel)); }
+.agentGridStatus-stopped { border-color: var(--red); }
+.agentGridStatus-needs_input, .agentGridWarning { border-color: var(--command-amber); }
+.agentGridWarning { --agent-grid-bar: var(--command-amber); }
+.agentRosterPanel .agentGridTile.agentGridSelected { border-color: var(--command-brand-text); box-shadow: 0 0 0 1px var(--command-brand-text); }
+.agentGridTile:hover { background: var(--command-panel-2); }
+.agentGridFooter { flex-wrap: wrap; gap: 4px 16px; padding: 10px 20px; }
+.rosterMain { container-type: inline-size; }
+/* The inspector also reduces available tile space before the viewport breakpoint. */
+@container (max-width: 700px) { .agentGridTiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (max-width: 560px) { .agentGridLane { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+@media (max-width: 1100px) { .agentGridTiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .agentGridToolbar { overflow-x: auto; padding: 10px 14px; }
+  .agentGridToolbar button { min-height: 44px; }
+  .agentGridView { padding: 4px 14px 16px; }
+  .agentGridLane { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .agentGridOpenTree { width: 44px; min-height: 44px; }
+  .agentGridTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agentGridTile { height: 56px; }
+  .agentGridFooter { padding: 10px 14px; }
+  .agentGridFooter > span { max-width: none; }
+}

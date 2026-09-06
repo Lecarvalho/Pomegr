@@ -7,7 +7,6 @@ export type DesktopState = {
   notifications: boolean;
   notificationQuietUntil: string | null;
   displayPreferences: {
-    contextHistory: boolean;
     estimatedCost: boolean;
   };
   update?: {

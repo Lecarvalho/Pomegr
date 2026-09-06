@@ -34,7 +34,10 @@ for (const provider of providerRegistry.providers) {
   test(`${provider.source} satisfies the shared adapter and normalized evidence contract`, async () => {
     const evidence = await fixture(provider.id);
     assert.equal(assertProviderConformance(provider, [evidence]), true);
-    assert.deepEqual(parseProviderSessionEvidence(evidence), evidence);
+    assert.deepEqual(parseProviderSessionEvidence(evidence), {
+      ...evidence,
+      usageSnapshots: evidence.usageSnapshots.map((snapshot) => ({ precedingWork: [], issuedWork: [], ...snapshot })),
+    });
     const availability = createProviderEvidenceAvailability(provider.capabilityManifest, evidence);
 
     for (const capability of PROVIDER_CAPABILITY_CATALOG) {
@@ -64,6 +67,24 @@ test("deep evidence parsing rejects unsafe normalized text before projection", a
   const evidence = await fixture("codex");
   evidence.agents[0].assignment = "safe label\nPROMPT_MUST_NOT_LEAK";
   assert.throws(() => parseProviderSessionEvidence(evidence), /one-line text/);
+});
+
+test("request action evidence defaults legacy and Codex snapshots and rejects unbounded or private fields", async () => {
+  const evidence = await fixture("codex");
+  const parsed = parseProviderSessionEvidence(evidence);
+  assert.deepEqual(parsed.usageSnapshots[0].precedingWork, []);
+  assert.deepEqual(parsed.usageSnapshots[0].issuedWork, []);
+  for (const field of ["precedingWork", "issuedWork"]) {
+    for (const invalid of [
+      [{ kind: "PRIVATE_TOOL_NAME", count: 1 }], [{ kind: "read", count: 1, input: "PRIVATE_INPUT" }],
+      [{ kind: "read", count: 0 }], [{ kind: "read", count: 1_000 }], [{ kind: "read", count: 1.5 }],
+      Array.from({ length: 9 }, () => ({ kind: "read", count: 1 })),
+    ]) {
+      const candidate = structuredClone(evidence);
+      candidate.usageSnapshots[0][field] = invalid;
+      assert.throws(() => parseProviderSessionEvidence(candidate));
+    }
+  }
 });
 
 test("missing session evidence does not rewrite static support or runtime readiness", async () => {

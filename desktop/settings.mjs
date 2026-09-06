@@ -11,7 +11,7 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   notifications: true,
   updates: true,
   lanSharingAutoStart: false,
-  displayPreferences: Object.freeze({ contextHistory: true, estimatedCost: true }),
+  displayPreferences: Object.freeze({ estimatedCost: true }),
 });
 
 function boundedInteger(value, minimum, maximum, fallback) {
@@ -38,7 +38,6 @@ function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
     && typeof value.updates === "boolean"
     && (version < 4 || typeof value.lanSharingAutoStart === "boolean")
     && (version < 3 || (displayPreferences && typeof displayPreferences === "object" && !Array.isArray(displayPreferences)
-      && typeof displayPreferences.contextHistory === "boolean"
       && typeof displayPreferences.estimatedCost === "boolean")));
 }
 
@@ -66,7 +65,6 @@ export function normalizeDesktopSettings(input) {
     updates: typeof source.updates === "boolean" ? source.updates : true,
     lanSharingAutoStart: typeof source.lanSharingAutoStart === "boolean" ? source.lanSharingAutoStart : false,
     displayPreferences: {
-      contextHistory: typeof source.displayPreferences?.contextHistory === "boolean" ? source.displayPreferences.contextHistory : true,
       estimatedCost: typeof source.displayPreferences?.estimatedCost === "boolean" ? source.displayPreferences.estimatedCost : true,
     },
   };

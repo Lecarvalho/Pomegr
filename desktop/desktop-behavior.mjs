@@ -15,7 +15,7 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
 
 export const CLOSE_BEHAVIORS = Object.freeze(["ask", "tray", "quit"]);
 export const DESKTOP_THEME_SOURCES = Object.freeze(["light", "dark", "system"]);
-export const DISPLAY_PREFERENCE_KEYS = Object.freeze(["contextHistory", "estimatedCost"]);
+export const DISPLAY_PREFERENCE_KEYS = Object.freeze(["estimatedCost"]);
 
 export function applyDesktopNativeTheme(nativeTheme, source) {
   if (!nativeTheme || !DESKTOP_THEME_SOURCES.includes(source)) return false;
@@ -98,7 +98,6 @@ export function createDesktopBehaviorController(options) {
     closeBehavior: isCloseBehavior(settings.closeBehavior) ? settings.closeBehavior : "ask",
     notifications: Boolean(settings.notifications),
     displayPreferences: Object.freeze({
-      contextHistory: settings.displayPreferences?.contextHistory !== false,
       estimatedCost: settings.displayPreferences?.estimatedCost !== false,
     }),
     notificationQuietUntil: notificationQuietUntil > now() ? new Date(notificationQuietUntil).toISOString() : null,
@@ -218,7 +217,6 @@ export function createDesktopBehaviorController(options) {
       return enqueueMutation(async () => {
         await persist({
           displayPreferences: {
-            contextHistory: settings.displayPreferences?.contextHistory !== false,
             estimatedCost: settings.displayPreferences?.estimatedCost !== false,
             [key]: visible,
           },

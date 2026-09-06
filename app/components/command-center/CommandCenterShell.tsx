@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { SessionSummary } from "../../../shared/monitor-contract";
+import { decodeSessionRoute } from "../../../shared/session-route.mjs";
 import pomegrPackageManifest from "../../../package.json";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
 import { useProviderStatus } from "../../provider-status-client";
@@ -106,6 +107,8 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const { providers } = useProviderStatus();
   const notifications = useNotifications(sessions, providers, connected, loading);
   const hasAttention = notifications.hasUnreadAttention;
+  const sessionRouteId = pathname.startsWith("/sessions/") ? decodeSessionRoute(pathname.slice("/sessions/".length)) : null;
+  const breadcrumbProject = sessions.find((session) => session.id === sessionRouteId)?.project;
 
   const closeNotifications = useCallback((returnFocus = true) => {
     setNotificationsOpen(false);
@@ -165,7 +168,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
 
   return (
     <div className="commandShell">
-      <header className={`commandHeader${mobileSearchOpen ? " isSearchOpen" : ""}`}>
+      <header className={`commandHeader${sessionRouteId ? " hasBreadcrumb" : ""}${mobileSearchOpen ? " isSearchOpen" : ""}`}>
         <button ref={mobileNavigationButtonRef} className="commandIconButton commandMenuButton" type="button" aria-label={mobileNavigationOpen ? "Close primary menu" : "Open primary menu"} aria-controls="command-primary-navigation" aria-expanded={mobileNavigationOpen} onClick={() => {
           setNotificationsOpen(false);
           setProfileOpen(false);
@@ -173,6 +176,15 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
           setMobileNavigationOpen((open) => !open);
         }}><CommandIcon name={mobileNavigationOpen ? "close" : "menu"} /></button>
         <PomegrBrand href="/" label="Pomegr home" markVariant={markVariant} />
+        {sessionRouteId && <nav className="sessionBreadcrumb" aria-label="Breadcrumb">
+          <ol>
+            <li><Link href="/sessions">Sessions</Link></li>
+            <li>
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg>
+              <span aria-current="page" title={breadcrumbProject || "Session"}>{breadcrumbProject || "Session"}</span>
+            </li>
+          </ol>
+        </nav>}
         <button className="commandIconButton commandMobileSearchClose" type="button" aria-label="Close search" onClick={() => closeMobileSearch()}><CommandIcon name="close" /></button>
         <form className="commandSearch" id="command-global-search" role="search" onSubmit={search}>
           <CommandIcon name="search" />

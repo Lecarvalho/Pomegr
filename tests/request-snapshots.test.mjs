@@ -1,8 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildRequestModelObservations, buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
+import { WORK_KINDS } from "../monitor/work-kind.mjs";
 
 const agents = [{ id: "primary" }, { id: "child" }];
+
+test("sanitizes request work again at projection and derives association labels from surviving counts", () => {
+  const evidence = snapshot("one", "primary", "2026-08-10T10:00:00.000Z", { input: 1 });
+  evidence.precedingWork = [
+    { kind: "read", count: 800, input: "PRIVATE_INPUT" }, { kind: "read", count: 400 },
+    { kind: "test", count: 2, tool: "PRIVATE_TOOL_NAME" }, { kind: "PRIVATE_KIND", count: 5 },
+    ...[0, -1, 1.5, "2", NaN, Infinity].map((count) => ({ kind: "shell", count })), null,
+  ];
+  evidence.issuedWork = WORK_KINDS.map((kind, index) => ({ kind, count: index + 1 }));
+  const item = buildRequestSnapshots({ agents, usageSnapshots: [evidence] }).items[0];
+  assert.deepEqual(item.precedingWork, [{ kind: "read", count: 999 }, { kind: "test", count: 2 }]);
+  assert.equal(item.precedingAssociation, "transcript_adjacency");
+  assert.equal(item.issuedAssociation, "recorded_link");
+  assert.deepEqual(item.issuedWork, evidence.issuedWork.slice(-8).reverse());
+  assert.doesNotMatch(JSON.stringify(item), /PRIVATE|"tool":|"input":/);
+  evidence.precedingWork = [{ kind: "unknown", count: 1 }];
+  evidence.issuedWork = "PRIVATE_RAW_CONTENT";
+  const empty = buildRequestSnapshots({ agents, usageSnapshots: [evidence] }).items[0];
+  assert.deepEqual(empty.precedingWork, []);
+  assert.deepEqual(empty.issuedWork, []);
+  assert.equal(empty.precedingAssociation, null);
+  assert.equal(empty.issuedAssociation, null);
+});
 
 function snapshot(dedupeId, actorId, timestamp, parts = {}) {
   return {

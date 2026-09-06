@@ -2,31 +2,12 @@
 
 import type { MonitorState, PomegrPluginMetadata } from "../../../shared/monitor-contract";
 import { createEmptyProviderCapabilities } from "../../../shared/monitor-state.mjs";
-import { compactNumber, sessionListTime } from "../../dashboard-utils";
+import { sessionListTime } from "../../dashboard-utils";
 import { RelativeTimeText } from "../LiveTime";
 import { ActivityPanel } from "./ActivityPanel";
 import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 import { MachineryPanel } from "./MachineryPanel";
-import { RepositoryPanel } from "./RepositoryPanel";
 import { UsageLimitsPanel } from "./UsageLimitsPanel";
-
-function changeLabel(count: number) {
-  if (count === 0) return "Clean";
-  return `${count} ${count === 1 ? "change" : "changes"}`;
-}
-
-function usageSummaryLimit(state: MonitorState) {
-  return state.usageLimits.limits.find((candidate) => candidate.active) || state.usageLimits.limits[0] || null;
-}
-
-function compactUsageWindow(window: string) {
-  return window
-    .replace(/\s+minutes?\b/gi, "m")
-    .replace(/\s+hours?\b/gi, "h")
-    .replace(/\s+days?\b/gi, "d")
-    .replace(/\s+weeks?\b/gi, "w")
-    .replace(/\s+months?\b/gi, "mo");
-}
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 
@@ -41,12 +22,6 @@ function policyStatusLabel(status: PomegrPluginMetadata["policyStatus"]) {
   return "Unavailable";
 }
 
-function policySummaryLabel(plugin: PomegrPluginMetadata) {
-  if (plugin.policyStatus === "valid") return plugin.policyVersion === null ? "Policy valid" : `Policy v${plugin.policyVersion}`;
-  if (plugin.policyStatus === "invalid") return "Policy needs attention";
-  return "Policy not configured";
-}
-
 function estimatedCostLabel(cost: SessionCost) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -56,38 +31,28 @@ function estimatedCostLabel(cost: SessionCost) {
   }).format(cost.amount);
 }
 
-function SessionDetailsSummary({ state, historical }: { state: MonitorState; historical: boolean }) {
+function SessionDetailsSummary({ state, showEstimatedCost }: { state: MonitorState; showEstimatedCost: boolean }) {
   if (!state.session) return null;
   const capabilities = state.capabilities || createEmptyProviderCapabilities();
-  const repository = state.session.repository;
-  const usageLimit = usageSummaryLimit(state);
-  const usagePercent = typeof usageLimit?.percent === "number" && Number.isFinite(usageLimit.percent)
-    ? usageLimit.percent
-    : null;
-  const machinery = state.session.contextMachinery;
+  const cost = showEstimatedCost && capabilities.estimatedCost ? state.session.cost : null;
   const plugin = state.session.pomegrPlugin;
+  const pluginVersion = plugin?.version ? pluginVersionLabel(plugin.version) : null;
+  const policyVersion = plugin?.policyVersion ?? null;
+  const fallback = "Approval mode, usage limits, machinery, activity";
 
   return (
-    <span className="disclosureSummaryMetrics sessionDetailsSummary">
-      {repository.available ? (
-        <span className="sessionGitSummary">
-          <b>Git</b>
-          <span className="sessionSummaryBranch" title={repository.branch}>{repository.branch}</span>
-          <span aria-hidden="true">{"\u00b7"}</span>
-          <span>{changeLabel(repository.files.length)}</span>
-        </span>
-      ) : <span><b>Git</b> Unavailable</span>}
-      {!historical && capabilities.usageLimits && (
-        <span><b>Usage {usageLimit ? compactUsageWindow(usageLimit.window) : "5h"}</b> {state.usageLimits.available && usagePercent !== null ? `${Math.round(usagePercent)}%` : "unavailable"}</span>
-      )}
-      {plugin && (
-        <span className="sessionPomegrSummary">
-          <b>Pomegr</b> {pluginVersionLabel(plugin.version)} <span aria-hidden="true">{"\u00b7"}</span> {policySummaryLabel(plugin)}
-        </span>
-      )}
-      {capabilities.contextMachinery && machinery && (
-        <span><b>Loaded inventory</b> {"\u2248"}{compactNumber(machinery.machineryTokens)}</span>
-      )}
+    <span className="sessionEvidenceSummary sessionDetailsSummary">
+      <span className="sessionDesktopLabel">
+        {cost && <>Estimated cost <span className="sessionSummaryData">{estimatedCostLabel(cost)}</span> (Claude Code estimate)</>}
+        {pluginVersion && <>{cost ? " · " : ""}plugin <span className="sessionSummaryData">{pluginVersion}</span></>}
+        {policyVersion !== null && <>{cost || pluginVersion ? " · " : ""}policy <span className="sessionSummaryData">v{policyVersion}</span></>}
+        {!cost && !pluginVersion && policyVersion === null && fallback}
+      </span>
+      <span className="sessionPhoneLabel">
+        {cost && <>Est. cost <span className="sessionSummaryData">{estimatedCostLabel(cost)}</span></>}
+        {pluginVersion && <>{cost ? " · " : ""}plugin <span className="sessionSummaryData">{pluginVersion}</span></>}
+        {!cost && !pluginVersion && fallback}
+      </span>
     </span>
   );
 }
@@ -113,12 +78,17 @@ export function SessionDetailsPanel({
   return (
     <DashboardDisclosurePanel
       bodyClassName="sessionDetailsBody"
-      className="sessionDetails"
+      className="sessionDetails sessionEvidenceDisclosure"
       defaultOpen={false}
+      icon="chevron"
       storageKey="pomegr-session-details-open"
-      summary={<SessionDetailsSummary state={state} historical={historical} />}
+      summary={<SessionDetailsSummary state={state} showEstimatedCost={showEstimatedCost} />}
       title="Session details"
     >
+      <div className="sessionFlowScore">
+        <span>Flow score</span><strong>{state.readiness?.activityEvidence && state.readiness.activityEvidence !== "ready" ? "—" : `${state.score}/100`}</strong>
+        <small>Deterministic attention heuristic based on repeated tool calls and overlapping edit targets; not a quality assessment.</small>
+      </div>
       {plugin && (
         <section className="sessionPomegrIntegration" aria-label="Pomegr integration">
           <div className="sessionPomegrIntegrationHeader">
@@ -150,7 +120,6 @@ export function SessionDetailsPanel({
           <strong>{estimatedCostLabel(session.cost)}</strong>
         </div>
       )}
-      <RepositoryPanel session={session} />
       {!historical && capabilities.usageLimits && <UsageLimitsPanel source={state.source} usageLimits={state.usageLimits} />}
       <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} inventoryRef={session.contextInventoryRef} />
       <ActivityPanel activity={state.activity} historical={historical} loading={loading} onRefresh={onRefresh} />

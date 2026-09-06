@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import { normalizedRequestWork } from "../request-work.mjs";
+import { toolWorkKind } from "../work-kind.mjs";
+import { safeDetail } from "./claude-tool-detail.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 1_000;
 
@@ -330,13 +333,42 @@ export function parseClaudeContextRecords(records, options = {}) {
   const snapshots = new Map();
   const toolChangeCauses = inferredToolChangeCauses(records, options.completeHistory === true, expectedSessionId);
   const messageChangeSequences = inferredMessageChangeSequences(records, options.completeHistory === true);
+  // The adapter calls this parser separately for each transcript's resolved actor.
+  // Raw record agent IDs must not override that ownership.
+  const pendingResults = new Map();
+  const issuedKinds = new Map();
+  const compactionTimes = (Array.isArray(options.compactionTimestamps) ? options.compactionTimestamps : [])
+    .map((timestamp) => Date.parse(timestamp)).filter(Number.isFinite).sort((left, right) => left - right);
+  let previousAssistantTime = -Infinity;
   let comparisonGroup = 0;
 
   for (const record of Array.isArray(records) ? records : []) {
+    if (record?.type === "user") {
+      for (const block of structuredContent(record)) {
+        if (!plainObject(block) || block.type !== "tool_result" || typeof block.tool_use_id !== "string" || !block.tool_use_id) continue;
+        const kind = issuedKinds.get(block.tool_use_id) || "shell";
+        pendingResults.set(kind, Math.min(999, (pendingResults.get(kind) || 0) + 1));
+      }
+    }
     if (!assistantRecord(record)) continue;
+    const issued = new Map();
+    for (const block of structuredContent(record)) {
+      if (!plainObject(block) || block.type !== "tool_use") continue;
+      const tool = block.name || "Tool";
+      const input = plainObject(block.input) ? block.input : {};
+      const kind = toolWorkKind(tool, { detail: safeDetail(tool, input), input });
+      issued.set(kind, Math.min(999, (issued.get(kind) || 0) + 1));
+      if (typeof block.id === "string" && block.id) issuedKinds.set(block.id, kind);
+    }
     const usage = normalizedUsage(record);
     const observedTimestamp = validTimestamp(record.timestamp ?? record.message?.timestamp);
     const timestamp = observedTimestamp || fallbackTimestamp;
+    const assistantTime = Date.parse(observedTimestamp || "");
+    if (!Number.isFinite(assistantTime) || compactionTimes.some((time) => time > previousAssistantTime && time <= assistantTime)) {
+      pendingResults.clear();
+    }
+    // Advance only with observed time; fallback filesystem times cannot establish adjacency.
+    if (Number.isFinite(assistantTime)) previousAssistantTime = assistantTime;
     if (!usage || !timestamp) {
       comparisonGroup += 1;
       continue;
@@ -364,7 +396,11 @@ export function parseClaudeContextRecords(records, options = {}) {
       cacheMissDiagnosticState: normalizedCacheMissDiagnosticState(record),
       cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
       cacheMessageChangeSequence: messageChangeSequences.get(providerIdentity) || null,
+      precedingWork: Array.isArray(record.message.content)
+        ? normalizedRequestWork([...pendingResults].map(([kind, count]) => ({ kind, count }))) : [],
+      issuedWork: normalizedRequestWork([...issued].map(([kind, count]) => ({ kind, count }))),
     };
+    pendingResults.clear();
     snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
     if (!snapshot.cacheComparable) comparisonGroup += 1;
   }

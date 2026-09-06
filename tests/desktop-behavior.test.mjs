@@ -41,7 +41,7 @@ function harness(overrides = {}) {
     closeBehavior: "ask",
     notifications: true,
     updates: true,
-    displayPreferences: { contextHistory: true, estimatedCost: true },
+    displayPreferences: { estimatedCost: true },
     ...overrides.settings,
   };
   const controller = createDesktopBehaviorController({
@@ -119,7 +119,7 @@ test("pause changes only bounded UI state and login startup is opt-in and revers
     closeBehavior: "ask",
     notifications: true,
     notificationQuietUntil: null,
-    displayPreferences: { contextHistory: true, estimatedCost: true },
+    displayPreferences: { estimatedCost: true },
   });
   assert.equal(calls.some(([name]) => /monitor|provider|session|command/i.test(name)), false);
   await controller.initializeLogin();
@@ -169,7 +169,7 @@ test("desktop renderer contract is fixed, bounded, and contains no provider meta
   const update = Object.freeze({ status: "ready", version: "1.2.3", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   const state = harness({ snapshotExtension: () => ({ update }) }).controller.snapshot();
   assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
-  assert.deepEqual(state.displayPreferences, { contextHistory: true, estimatedCost: true });
+  assert.deepEqual(state.displayPreferences, { estimatedCost: true });
   assert.deepEqual(state.update, update);
   assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
 });
@@ -217,7 +217,7 @@ test("display preferences persist only recognized booleans and serialize concurr
     controller.setDisplayPreference("contextHistory", false),
     controller.setDisplayPreference("estimatedCost", false),
   ]);
-  assert.deepEqual(persisted().displayPreferences, { contextHistory: false, estimatedCost: false });
+  assert.deepEqual(persisted().displayPreferences, { estimatedCost: false });
   const saves = calls.filter(([name]) => name === "save").length;
   assert.deepEqual(await controller.setDisplayPreference("unknown", false), controller.snapshot());
   assert.deepEqual(await controller.setDisplayPreference("contextHistory", "false"), controller.snapshot());

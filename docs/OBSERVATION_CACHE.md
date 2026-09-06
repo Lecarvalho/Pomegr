@@ -985,12 +985,31 @@ context, activity, repository, resources, and usage as independently produced do
 
 ## Presentation rules
 
+- Requests & actions renders only committed request snapshots; window, selection, and
+  sort are frontend view state and never trigger acquisition.
+  Desktop retains a 60-request visible window and phone a 20-request window. Selection
+  and window anchors follow normalized snapshot identity as the bounded feed rolls
+  over; live updates follow the newest request only while selection and window are
+  already at the end. Scope, mode, and selection reset on session change. Cache evidence
+  is a saved, closed-by-default disclosure and matches requests only by normalized
+  agent and observation timestamp. These presentation changes leave cache-only GETs,
+  last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
+- The session KPI strip renders once core evidence is ready. Agent counts and status
+  tallies follow agent readiness, latest context follows context readiness, and tool
+  calls and the agent estimate follow activity readiness. Each pending cell shows an
+  em dash instead of an invented zero; core wall time remains visible independently.
+  Summary cards retain the activity-evidence gate, with independent placeholders for
+  workflow agent/context evidence. These are presentation-only consumers of committed
+  revisions; they do not change hydration, serving, checkpointing, or polling.
 - Use geometry-matched skeletons only when a region has no committed value and readiness
   is `loading`.
 - Session loading shells use the loaded session header's shared typography, identity
   styling, and responsive rules; known catalog titles must not flash a different type scale.
 - Keep existing data visible during refresh, observer failure, API failure, and retry
   backoff.
+- Restoring the agent roster selection, opening groups, and applying committed updates
+  must preserve page and roster scroll positions. Only an explicit Show agent action
+  scrolls to the selected roster row.
 - Show normal factual empty copy for `ready` empty data and a fixed sanitized error state
   for confirmed `unavailable` data.
 - One slow provider, usage limit, correlation, or session enrichment must not block a
@@ -1078,6 +1097,16 @@ last-known-good retention apply exactly as they do to other normalized evidence.
 Caches and browser responses may carry only the bounded provider-neutral work-kind enum
 derived during U2 normalization. Raw commands and provider-native tool schemas remain
 adapter-private; missing or ambiguous classification degrades to the generic shell kind.
+Request action correlation is also derived in U2, separately for each resolved Claude
+transcript actor in file order. Only two bounded work-kind count arrays enter normalized
+usage evidence and checkpoints (8 kinds per array, counts 1–999). Tool-use/result identity
+maps and tool details remain adapter-private. Recognized actor compaction timestamps
+clear pending preceding-result counts. D revalidates the arrays and adds only the fixed
+`transcript_adjacency` and `recorded_link` association labels, or null for empty tallies;
+reports omit all four fields. Legacy and Codex evidence defaults to empty arrays.
+This additive evidence follows the existing complete-replacement, atomic-commit,
+last-known-good retention, revision and checkpoint rules. GETs still serve committed
+responses only; action correlation never runs in S Serving or changes UI polling.
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
 context snapshot, bounded agent-reported progress, the activity fallback described below,

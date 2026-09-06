@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
+import { contextCompactions } from "../monitor/context-compactions.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   PRIVATE_FIXTURE_SENTINELS,
@@ -70,6 +72,17 @@ test("Claude fixtures cover current normalized extraction inputs", async () => {
   assert.equal((await readProviderJsonFixture("claude/registry.json")).needsInput, true);
   assert.equal((await readProviderJsonFixture("claude/task.json")).status, "in_progress");
   assert.equal(typeof (await readProviderJsonFixture("claude/statusline.json")).cost.total_cost_usd, "number");
+});
+
+test("Claude golden request work matches the synthetic transcript extraction", async () => {
+  const { records } = await readProviderJsonlFixture("claude/session.jsonl");
+  const expected = await readProviderJsonFixture("claude/expected-session-evidence.json");
+  const snapshots = parseClaudeContextRecords(records, {
+    actorId: "primary", compactionTimestamps: contextCompactions(records).map(({ timestamp }) => timestamp),
+  });
+  const work = ({ precedingWork, issuedWork }) => ({ precedingWork, issuedWork });
+  assert.deepEqual(snapshots.map(work), expected.usageSnapshots.map(work));
+  assertNoPrivateFixtureSentinels(snapshots, "Claude request work");
 });
 
 test("Codex rollout fixtures cover metadata, usage, and supported item lifecycles", async () => {

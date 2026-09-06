@@ -12,7 +12,7 @@ const rect = (left: number, top: number, width: number, height: number) => ({
 
 function Harness({ onClose }: { onClose: () => void }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
-  return <div className="agentRow">
+  return <div className="rosterRow">
     <span ref={anchorRef} className="cache-anchor">Trigger</span>
     <CacheEvidencePopover anchorRef={anchorRef} id="cache-evidence" ariaLabel="Cache evidence" eyebrow="Cache" title="Possible refill" closeLabel="Close" onClose={onClose} summary="Summary">
       <div>Evidence</div>
@@ -29,7 +29,7 @@ describe("CacheEvidencePopover", () => {
     Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 800 });
     geometry = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       if (this.classList.contains("cache-anchor")) return rect(420, 180, 20, 20);
-      if (this.classList.contains("agentRow")) return rect(100, 160, 900, 64);
+      if (this.classList.contains("rosterRow")) return rect(100, 160, 900, 40);
       if (this.classList.contains("agentPopover")) return rect(0, 0, 300, 240);
       return rect(0, 0, 0, 0);
     });
@@ -46,12 +46,12 @@ describe("CacheEvidencePopover", () => {
     resizeCallback = undefined;
   });
 
-  it("positions from the trigger rect and portals outside the row", async () => {
+  it("positions from the trigger rect and portals outside the roster row", async () => {
     render(<Harness onClose={vi.fn()} />);
     const surface = await screen.findByRole("dialog", { name: "Cache evidence" });
     expect(surface.parentElement).toBe(document.body);
     expect(surface).toHaveStyle({ left: "420px", top: "208px", visibility: "visible" });
-    expect(surface.closest(".agentRow")).toBeNull();
+    expect(surface.closest(".rosterRow")).toBeNull();
   });
 
   it("clamps to viewport edges and flips above when below does not fit", async () => {
@@ -69,7 +69,7 @@ describe("CacheEvidencePopover", () => {
     window.innerWidth = 640;
     geometry.mockImplementation(function (this: HTMLElement) {
       if (this.classList.contains("cache-anchor")) return rect(580, 180, 20, 20);
-      if (this.classList.contains("agentRow")) return rect(24, 160, 600, 64);
+      if (this.classList.contains("rosterRow")) return rect(24, 160, 600, 56);
       if (this.classList.contains("agentPopover")) return rect(0, 0, 300, 240);
       return rect(0, 0, 0, 0);
     });
@@ -129,6 +129,6 @@ describe("CacheEvidencePopover", () => {
     expect(workspace).toContain(".cacheRefillEvidenceGrid { grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); }");
     expect(workspace).toContain(".cacheRefillEvidenceGrid > div { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: inherit; }");
     expect(workspace).toContain("@media (max-width: 640px) { .cacheRefillPopover { width: calc(100vw - 54px); } }");
-    expect(evidence).toContain(".agentRow .agentPopover { left: 0; width: calc(100vw - 54px); }");
+    expect(evidence).not.toContain(".agentRow");
   });
 });
