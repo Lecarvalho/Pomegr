@@ -9,7 +9,7 @@ export type LargestSort = "uncachedInput" | "output" | "cacheWrite" | "total";
 export type RequestRow = RequestSnapshot & {
   /** 1-based position in the retained feed after applying the selected scope. */
   ordinal: number;
-  /** The prompt represented by the bar outline. */
+  /** Full request-local input, displayed numerically in request details. */
   promptTokens: number;
   /** The stacked fresh-token segments in the default chart mode. */
   freshTokens: number;
@@ -104,20 +104,19 @@ function nonNegativeFinite(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function plottedTotal(row: RequestRow, mode: ChartMode): number {
+export function plottedTotal(row: RequestRow, mode: ChartMode, cacheWriteAvailable = true): number {
+  const cacheWrite = cacheWriteAvailable ? row.cacheWriteTokens : 0;
   if (mode === "full") {
     return nonNegativeFinite(
-      row.uncachedInputTokens + row.cacheWriteTokens + row.cacheReadTokens + row.outputTokens,
+      row.uncachedInputTokens + cacheWrite + row.cacheReadTokens + row.outputTokens,
     );
   }
-  // Fresh mode still draws the prompt outline, so include both the outline
-  // and the visible stack when choosing the fixed scale.
-  return Math.max(nonNegativeFinite(row.promptTokens), nonNegativeFinite(row.freshTokens));
+  return nonNegativeFinite(row.uncachedInputTokens + cacheWrite + row.outputTokens);
 }
 
 /** Computes a fixed, readable scale over the complete scoped feed. */
-export function scaleMax(rows: RequestRow[], mode: ChartMode): number {
-  const maximum = rows.reduce((current, row) => Math.max(current, plottedTotal(row, mode)), 0);
+export function scaleMax(rows: RequestRow[], mode: ChartMode, cacheWriteAvailable = true): number {
+  const maximum = rows.reduce((current, row) => Math.max(current, plottedTotal(row, mode, cacheWriteAvailable)), 0);
   if (maximum === 0) return 0;
 
   const exponent = Math.floor(Math.log10(maximum));

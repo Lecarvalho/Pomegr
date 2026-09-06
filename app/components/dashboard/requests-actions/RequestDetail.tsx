@@ -21,6 +21,7 @@ export function RequestDetail({ row, agent, count, phone, cacheWriteAvailable, o
   return <section className="requestsActionsDetail" aria-label="Selected request">
     <header><div><h3>Request <span className="requestsActionsNumber">#{row.ordinal}</span></h3><p>{agent ? agentDisplayName(agent) : "Unknown agent"} · {shortTime(row.observedAt)} · {cacheLifetimeLabel(row.cacheLifetime).replace("cache TTL", "cache lifetime")}</p></div>
       {!phone && <RequestNavigation ordinal={row.ordinal} count={count} onStep={onStep} />}</header>
+    <p className="requestsActionsPrompt"><span>Full prompt</span><strong>{row.promptTokens.toLocaleString()} tokens</strong></p>
     <div className={`requestsActionsStats${cacheWriteAvailable ? "" : " withoutWrite"}`}>
       {stats.map(({ label, kind, value }) => <div className={`requestsActionsStat ${kind}`} key={kind}><span className="sessionEyebrow"><i className={`requestsActionsSwatch ${kind}`} aria-hidden="true" />{label}</span><strong>{value.toLocaleString()}</strong></div>)}
     </div>

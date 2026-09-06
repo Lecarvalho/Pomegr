@@ -148,18 +148,64 @@ describe("RequestsActionsPanel", () => {
 
   it("keeps selection and window while changing mode and draws the appropriate stacks", async () => {
     const user = userEvent.setup();
-    const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
+    const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1, "primary", {
+      uncachedInputTokens: 1_000, cacheReadTokens: 90_000,
+    })));
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[9]);
     expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
     const labels = axisLabels(container);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(0);
-    expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(60);
+    expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
+    expect(screen.getByText("0–8,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText("Rescaled · cache reads excluded")).toBeInTheDocument();
+    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
+    const freshHeight = Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"));
+    expect(freshHeight).toBeCloseTo(171.5);
+    expect(Number(container.querySelector(".requestsActionsSelectedLabel")!.getAttribute("y"))).toBeCloseTo(73.5);
 
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
     expect(axisLabels(container)).toEqual(labels);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(60);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
+    expect(screen.getByText("0–120K tokens")).toBeInTheDocument();
+    expect(screen.getByText("All input + output")).toBeInTheDocument();
+    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
+
+    await user.click(screen.getByRole("button", { name: "Fresh tokens" }));
+    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
+    expect(axisLabels(container)).toEqual(labels);
+    expect(Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"))).toBe(freshHeight);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Request window" }), { key: "Home" });
+    expect(screen.getByText("0–8,000 tokens")).toBeInTheDocument();
+  });
+
+  it("includes output when comparing full-breakdown requests in the minimap", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel([
+      snapshot(1, "primary", { uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 900, outputTokens: 9_000 }),
+      snapshot(2, "primary", { uncachedInputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 900, outputTokens: 1_000 }),
+    ]);
+    await user.click(screen.getByRole("button", { name: "Full breakdown" }));
+    const heights = Array.from(container.querySelectorAll(".requestsActionsMiniBar"), (bar) => Number(bar.getAttribute("height")));
+    expect(heights[0]).toBeCloseTo(22);
+    expect(heights[1]).toBeCloseTo(4.4);
+  });
+
+  it("rescales on phones while preserving prompt size and selection", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { container } = renderPanel([snapshot(1, "primary", {
+      uncachedInputTokens: 2_000, cacheWriteTokens: 0, cacheReadTokens: 90_000, outputTokens: 1_000,
+    })], { cacheWriteAvailable: false });
+    expect(screen.getByText("0–3,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("92,000 tokens");
+    await user.click(screen.getByRole("button", { name: "Full breakdown" }));
+    expect(screen.getByText("0–120K tokens")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Request #1" })).toBeInTheDocument();
+    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("92,000 tokens");
+    expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
+    expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
   });
 
   it("hides cache-write evidence for Codex and keeps zero-valued geometry finite", () => {

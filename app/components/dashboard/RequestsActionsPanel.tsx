@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../shared/monitor-contract";
-import { agentDisplayName, agentTreeRows } from "../../dashboard-utils";
+import { agentDisplayName, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { EmptyState } from "../EmptyState";
 import { CommandSelect } from "../command-center/CommandPage";
@@ -26,7 +26,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundari
   const rows = useMemo(() => scopedRows(requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops), [requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops]);
   const size = phone ? 20 : 60;
   const { selected, start, end, select, selectScope, step, moveWindow } = useRequestSelection(rows, resolvedScope, size, historical);
-  const maximum = Math.max(1, scaleMax(rows, mode));
+  const maximum = Math.max(1, scaleMax(rows, mode, cacheWriteAvailable));
   const chartRef = useRef<HTMLDivElement>(null);
   const locate = (row: RequestRow) => {
     select(row, true);
@@ -49,7 +49,6 @@ export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundari
         {cacheWriteAvailable && <span><i className="requestsActionsSwatch write" />Cache write</span>}
         {mode === "full" && <span><i className="requestsActionsSwatch read" />Cache read</span>}
         <span><i className="requestsActionsSwatch output" />Output</span>
-        {mode === "fresh" && <span><i className="requestsActionsSwatch outline" />{phone ? "Prompt size" : "Prompt size outline"}</span>}
         <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>
         {rows.some((row) => row.cacheEvidence?.kind === "refill") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Possible full refill dotted</span>}
         {rows.some((row) => row.cacheEvidence?.kind === "possible_refill") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Possible refill dotted</span>}
@@ -59,8 +58,9 @@ export function RequestsActionsPanel({ agents, requestSnapshots, contextBoundari
     </header>
     {requestSnapshots?.status !== "ready" || !rows.length || !selected ? <EmptyState text="No request observations for this session yet." /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
+        <p className="requestsActionsScale" aria-live="polite"><strong>0–{compactNumber(maximum)} tokens</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
         <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} />
-        {!phone && <RequestMinimap rows={rows} start={start} end={end} mode={mode} onMove={moveWindow} />}
+        {!phone && <RequestMinimap rows={rows} start={start} end={end} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={moveWindow} />}
         {phone && <RequestNavigation ordinal={selected.ordinal} count={rows.length} onStep={step} />}
       </div>
       <div className="requestsActionsDetails">

@@ -832,7 +832,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsSwatch.write, .requestsActionsSegment.write { background: var(--command-green); fill: var(--command-green); }
 .requestsActionsSwatch.output, .requestsActionsSegment.output { background: var(--command-amber); fill: var(--command-amber); }
 .requestsActionsSwatch.read, .requestsActionsSegment.read { background: color-mix(in srgb, var(--command-line-strong) 45%, transparent); fill: color-mix(in srgb, var(--command-line-strong) 45%, transparent); }
-.requestsActionsSwatch.outline { background: var(--command-panel-2); border: 1px solid var(--command-line-strong); }
 .requestsActionsSwatch.compaction { height: 0; border-top: 1px dashed var(--command-amber); }
 .requestsActionsModes { display: flex; gap: 6px; }
 .requestsActionsPanel .requestsActionsButton { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 4px 9px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
@@ -842,17 +841,16 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsScope .commandSelect { min-width: 0; }
 .requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
 .requestsActionsPlot { padding: 0 20px 8px; scroll-margin-top: 80px; }
+.requestsActionsScale { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; color: var(--command-muted); font-size: 12px; }
+.requestsActionsScale strong { color: var(--command-ink); font: 500 12px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsChart { display: block; width: 100%; height: 274px; overflow: visible; }
 .requestsActionsAxis text, .requestsActionsSelectedLabel { fill: var(--command-faint); font: 11px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsAxis line { stroke: var(--command-panel-2); stroke-width: 1; }
 .requestsActionsBar { cursor: pointer; }
 .requestsActionsHit { fill: transparent; }
-.requestsActionsOutline { fill: color-mix(in srgb, var(--command-panel-2) 60%, transparent); stroke: color-mix(in srgb, var(--command-line-strong) 70%, var(--command-line)); stroke-width: 1; }
-.requestsActionsBar.isSelected .requestsActionsOutline { stroke: var(--command-brand-text); fill: color-mix(in srgb, var(--command-brand-text) 12%, var(--command-panel)); }
 .requestsActionsSelection { fill: none; stroke: var(--command-brand-text); stroke-width: 1; pointer-events: none; }
 .requestsActionsBar:focus-visible { outline: none; }
 .requestsActionsBar:focus-visible .requestsActionsHit { stroke: var(--focus-ring); stroke-width: 2; }
-.requestsActionsBar:hover .requestsActionsOutline { stroke: var(--command-muted); }
 .requestsActionsSelectedLabel { fill: var(--command-brand-text); }
 .requestsActionsCompaction line { stroke: var(--command-amber); stroke-dasharray: 3 4; }
 .requestsActionsCompaction text { fill: var(--command-amber); font: 10px var(--font-ui); }
@@ -884,6 +882,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsDetail > header > div { min-width: 0; }
 .requestsActionsDetail h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .requestsActionsDetail header p { margin: 3px 0 0; color: var(--command-muted); font-size: 12px; overflow-wrap: anywhere; }
+.requestsActionsPrompt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0; color: var(--command-muted); font-size: 12px; }
+.requestsActionsPrompt strong { color: var(--command-ink); font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsNumber { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsNavigation { display: flex; flex: 0 0 auto; gap: 8px; }
 .requestsActionsStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }

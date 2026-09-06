@@ -1,11 +1,11 @@
 import { useRef, type PointerEvent } from "react";
-import type { ChartMode, RequestRow } from "./model";
+import { plottedTotal, type ChartMode, type RequestRow } from "./model";
 
-export function RequestMinimap({ rows, start, end, mode, onMove }: {
-  rows: RequestRow[]; start: number; end: number; mode: ChartMode; onMove: (start: number) => void;
+export function RequestMinimap({ rows, start, end, mode, cacheWriteAvailable, onMove }: {
+  rows: RequestRow[]; start: number; end: number; mode: ChartMode; cacheWriteAvailable: boolean; onMove: (start: number) => void;
 }) {
   const drag = useRef<{ pointerId: number; offset: number } | null>(null);
-  const maximum = Math.max(1, ...rows.map((row) => mode === "fresh" ? row.freshTokens : row.promptTokens));
+  const maximum = Math.max(1, ...rows.map((row) => plottedTotal(row, mode, cacheWriteAvailable)));
   const point = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return Math.max(0, Math.min(rows.length, (event.clientX - bounds.left) / Math.max(1, bounds.width) * rows.length));
@@ -33,7 +33,7 @@ export function RequestMinimap({ rows, start, end, mode, onMove }: {
         move(event);
       }} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { drag.current = null; }}>
       {rows.map((row, index) => {
-        const height = Math.max(.5, (mode === "fresh" ? row.freshTokens : row.promptTokens) / maximum * 22);
+        const height = Math.max(.5, plottedTotal(row, mode, cacheWriteAvailable) / maximum * 22);
         return <g key={row.id}>
           <rect className="requestsActionsMiniBar" x={index / rows.length * 1000} y={25 - height} width={.7} height={height} />
           {row.cacheEvidence && <line className={`requestsActionsMiniRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`} x1={(index + .5) / rows.length * 1000} x2={(index + .5) / rows.length * 1000} y1={1} y2={8} />}
