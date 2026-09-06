@@ -93,8 +93,8 @@ describe("focused agent tree view", () => {
       return node;
     });
     expect(target.querySelector(".agentTreeCard")).toHaveClass("isFocus", "isAttention");
-    expect(container.querySelectorAll(".agentTreeConnectors path.isHot")).toHaveLength(2);
-    expect(screen.getByText("Focus path: Primary › Branch › Audit workflow › Review › Focused worker")).toBeInTheDocument();
+    expect(container.querySelectorAll(".agentTreeConnectors path.isHot")).toHaveLength(5);
+    expect(screen.getByText("Focus path: Primary › Direct subagents › Branch › Audit workflow › Review › Focused worker")).toBeInTheDocument();
     expect(screen.getByText("Layout follows provider evidence order · numbers are latest snapshots")).toBeInTheDocument();
   });
 

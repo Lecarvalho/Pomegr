@@ -215,7 +215,7 @@ describe("grouped agent roster", () => {
     const inspector = screen.getByRole("dialog", { name: /worker/ });
     expect(inspector).toBeInTheDocument();
     await user.click(within(inspector).getAllByRole("button", { name: "Open in tree" })[0]);
-    expect(screen.getByRole("tree", { name: "Agent spawn hierarchy" })).toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "Agent hierarchy with workflow groups" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     const restoredInspector = screen.getByRole("dialog", { name: /worker/ });
     expect(within(restoredInspector).getByRole("button", { name: "Back" })).toHaveFocus();

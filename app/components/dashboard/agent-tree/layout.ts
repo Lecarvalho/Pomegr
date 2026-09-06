@@ -43,6 +43,7 @@ export type LayoutForest = AgentTreeForest | AgentTreeVisualForest;
 export type ColumnLayoutOptions = {
   tileWidth?: number;
   tileHeight?: number;
+  heightOf?: (node: LayoutNode) => number;
   columnGap?: number;
   rowGap?: number;
   padding?: number;
@@ -116,6 +117,7 @@ export function layoutTopDown(
   const root = typeof rootOrOptions === "string" || (rootOrOptions && "id" in rootOrOptions) ? rootOrOptions : null;
   const tileWidth = options.tileWidth ?? 156;
   const tileHeight = options.tileHeight ?? 140;
+  const heightOf = (node: LayoutNode) => options.heightOf?.(node) ?? tileHeight;
   const columnGap = options.columnGap ?? 32;
   const rowGap = options.rowGap ?? 24;
   const padding = options.padding ?? 24;
@@ -134,7 +136,7 @@ export function layoutTopDown(
     const children = visibleChildren(node, collapsed, visibleIds).filter((child) => byId.has(child.id));
     if (!children.length) {
       const left = reserve(depth, desiredLeft);
-      rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
+      rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: heightOf(node), width: tileWidth, height: heightOf(node), depth });
       return { left, right: left + tileWidth };
     }
     const childPlaced = children.map((child) => place(child, depth + 1, desiredLeft));
@@ -142,7 +144,7 @@ export function layoutTopDown(
     const childRight = Math.max(...childPlaced.map(({ right }) => right));
     const desired = (childLeft + childRight - tileWidth) / 2;
     const left = reserve(depth, Math.max(desired, desiredLeft));
-    rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: tileHeight, width: tileWidth, height: tileHeight, depth });
+    rects.set(node.id, { x: left, y: padding + depth * (tileHeight + rowGap), w: tileWidth, h: heightOf(node), width: tileWidth, height: heightOf(node), depth });
     return { left: Math.min(left, childLeft), right: Math.max(left + tileWidth, childRight) };
   };
   let nextRootLeft = padding;

@@ -51,10 +51,10 @@ export type AgentTreeCluster = {
   canonicalParentId: null;
   visualParentId: string | null;
   /** Materialized presentation children; each child retains canonical parent truth. */
-  children: AgentTreeVisualNode[];
+  children: Array<AgentTreeVisualNode | AgentTreeCluster>;
   depth: number;
-  workflowId: null;
-  workflowPhaseId: null;
+  workflowId: string | null;
+  workflowPhaseId: string | null;
   directChildCount: number;
   descendantCount: number;
   rollup: AgentTreeRollup;
@@ -64,6 +64,12 @@ export type AgentTreeCluster = {
   clusterCount: number;
   clusterIds: string[];
   label: string;
+  /** Presentation grouping kind. Plain clusters leave this unset. */
+  groupKind?: "workflow" | "phase" | "direct";
+  /** Workflow provenance for presentation groups; never changes canonical ancestry. */
+  groupStatus?: "running" | "completed" | "unknown";
+  groupPhaseCount?: number;
+  groupWallTimeMs?: number | null;
 };
 
 export type AgentTreeVisualForest = {
@@ -335,9 +341,27 @@ export function focusVisualForest(forest: AgentTreeForest, focusId: string): Age
 
   const visualChildrenFor = (node: AgentTreeNode): Array<AgentTreeVisualNode | AgentTreeCluster> => {
     if (!node.children.length) return [];
-    // The focused agent and its parent are the two places where every direct
-    // child stays visible: focus children and focus siblings, respectively.
-    if (node.id === focus.id || node.id === focusParentId) return node.children.map((child) => add(child, node.id));
+    // The focused agent keeps every direct child visible. Keep small sibling
+    // sets intact for the original tree behavior; larger sets retain one
+    // neighboring sibling and put the remainder behind one expandable cluster.
+    if (node.id === focus.id) return node.children.map((child) => add(child, node.id));
+    if (node.id === focusParentId) {
+      if (node.children.length <= 4) return node.children.map((child) => add(child, node.id));
+      const siblingItems = node.children.filter((child) => child.id !== focus.id);
+      const focusIndex = node.children.findIndex((child) => child.id === focus.id);
+      const keep = siblingItems[focusIndex > 0 ? focusIndex - 1 : 0];
+      const remainder = siblingItems.filter((child) => child.id !== keep.id);
+      const visualChildren: Array<AgentTreeVisualNode | AgentTreeCluster> = [];
+      let addedCluster = false;
+      for (const child of node.children) {
+        if (child.id === focus.id || child.id === keep.id) visualChildren.push(add(child, node.id));
+        else if (!addedCluster) {
+          visualChildren.push(cluster(remainder, node, node.id));
+          addedCluster = true;
+        }
+      }
+      return visualChildren;
+    }
 
     const pathChild = node.children.find((child) => pathIds.has(child.id));
     if (!pathChild) return [cluster(node.children, node, node.id)];

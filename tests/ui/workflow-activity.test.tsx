@@ -375,7 +375,7 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByRole("tree", { name: "Agent spawn hierarchy" })).toBeInTheDocument();
     expect(container.querySelectorAll(".agentTreeCard svg.agentTreeRoleGlyph")).toHaveLength(2);
     expect(container.querySelector(".agentTreeNode")?.getAttribute("style")).toContain("--tree-x");
-    expect(container.querySelector(".agentTreeConnectors path")?.getAttribute("d")).toMatch(/^M[^V]+V[^H]+H[^V]+V/);
+    expect(container.querySelector(".agentTreeConnectors path")?.getAttribute("d")).toMatch(/^M[^C]+C/);
     expect(container.querySelector(".agentTreeCard.activeAgent .agentTreeRole")).toBeInTheDocument();
     expect(screen.getByText("Workflow: quickwin-batch · Implement")).toBeInTheDocument();
     expect(screen.getByText("Tasks, skills, execution, and plan details are available in List view.")).toBeInTheDocument();
