@@ -39,12 +39,13 @@ from scratch.
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
 `BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so the
-manually dispatched release workflow uses `npm run verify:desktop:ci`: it exercises the packaged
+manually dispatched release workflow uses `npm run desktop:smoke:ci`: it exercises the packaged
 Electron main process, ASAR/native runtime, loopback services, provider discovery, APIs,
-privacy checks, and shutdown without constructing an Electron renderer. The canonical UI
-and desktop-security suites remain part of that workflow, while the full sandboxed preload,
-renderer, and `BrowserWindow` smoke remains a local or interactive-VM release acceptance
-requirement.
+privacy checks, and shutdown without constructing an Electron renderer. The canonical UI,
+landing, and desktop-security suites run in the mandatory local release preflight.
+`npm run verify:desktop:ci` remains the local runtime-smoke and desktop-security wrapper.
+The full sandboxed preload, renderer, and `BrowserWindow` smoke remains a local or
+interactive-VM release acceptance requirement.
 
 PR/main GitHub Actions verification is intentionally paused. Run `npm run verify` and the
 applicable desktop command locally before pushing. Creating or pushing a tag does not start
@@ -53,7 +54,10 @@ the candidate is ready to package and publish.
 
 `npm run release:windows -- --tag vX.Y.Z` installs locked dependencies, runs the
 canonical verifier and CI desktop extension locally, rechecks the clean local and
-remote tagged commit, and dispatches the Windows workflow only on success. Use
+remote tagged commit, and dispatches the Windows workflow only on success with the
+verified commit SHA. CI checks that SHA before installing dependencies, builds once,
+and retains runtime smoke, signing, artifact/privacy checks, and publication. The SHA
+is an operator assertion of local verification, not proof that tests ran. Use
 `--check-only` for validation without dispatch. Run in the Windows host environment
 with Git and GitHub CLI available. The helper obtains and caches the workflow's
 pinned Node.js executable automatically; see `docs/DESKTOP_RELEASES.md`.

@@ -100,7 +100,7 @@ The manual GitHub Actions workflow packages an existing tag. It does not choose 
    ```
 
    If this command returns no tag, do not run the workflow. Entering a nonexistent tag causes checkout to fail with `pathspec 'refs/tags/…' did not match any file(s) known to git`. If the tag exists but its `package.json` version differs, the release verification fails.
-8. Run the local validation and dispatch command below. It starts the workflow only after local checks pass. The manual alternative is **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source and enter that same tag in the required **tag** field. The workflow checks out that immutable tag, runs verification, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
+8. Run the local validation and dispatch command below. It starts the workflow only after local checks pass. The manual alternative is to first run the helper with `--check-only`, then open **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source, enter that same tag in **tag**, and copy the successful preflight's full commit SHA into **verified_sha**. The workflow checks out that immutable tag, checks the SHA, builds and smoke-tests the desktop runtime, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
 9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
 
 Do not publish locally built executables, rerun a published version, move a release tag, or manually replace release assets. Correct a failed or broken published release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
@@ -137,8 +137,8 @@ The desktop extension exercises the packaged runtime and desktop security suite.
 The command requires the tag to match `package.json` and both the local tag and
 GitHub tag to resolve to the current clean commit. It checks these again after
 validation, so edits, build-induced tracked changes, or a moved tag prevent dispatch.
-It dispatches `release.yml` from the validated tag with the same tag as the release
-input. It never commits, pushes, creates tags, or moves them. Commit and push the
+It dispatches `release.yml` from the validated tag with the same tag and the verified
+commit SHA as inputs. It never commits, pushes, creates tags, or moves them. Commit and push the
 complete fix before tagging; an older tag will still run the older code.
 
 Append `--check-only` to run the same checks without dispatching. Both modes require
@@ -146,10 +146,23 @@ a clean, already-pushed release tag. Use `npm run verify` while developing uncom
 changes. Run this helper in the host terminal; Codex must use host permissions because
 it invokes Git/GitHub and rebuilds generated plugin bundles.
 
-CI still repeats validation and performs Azure authentication, signed packaging,
-artifact inspection, and publication. Local success cannot guarantee those remote
-steps will pass. The full renderer smoke (`npm run desktop:smoke`) and clean-VM
-acceptance remain separate release requirements.
+The general application and landing suites run locally. CI installs only root
+dependencies, builds once, checks generated artifacts, and runs
+`npm run desktop:smoke:ci` before Azure authentication, signed packaging, artifact
+inspection, signature verification, and publication. It does not reinstall or test
+the landing site or repeat the general application and desktop-security suites.
+Local success cannot guarantee those remote steps will pass. The full renderer
+smoke (`npm run desktop:smoke`) and clean-VM acceptance remain separate release requirements.
+
+CI rejects a missing, malformed, or mismatched `verified_sha` before dependency
+installation or signing. This input is a trusted operator assertion that local
+preflight passed, not cryptographic proof that tests ran. Prefer the local helper,
+which supplies it only after every gate and the final clean-tag check succeed.
+Both normal and `--check-only` runs print the verified SHA.
+
+CI packaging uses `npm run desktop:prepare:from-build` to reuse the production
+web output already built and smoke-tested in CI. It still regenerates the
+desktop service bundles and legal notices, but does not run a second web build.
 
 ## Release checklist
 
@@ -183,7 +196,7 @@ These IDs and resource names identify the federation and signing resources but d
 
 The release-only electron-builder configuration signs the unpacked application, NSIS installer, and portable executable through Azure and writes the same complete Subject DN into the updater metadata. Before accepting a downloaded installer, Pomegr independently requires one full DN and compares the valid Authenticode signer's Subject exactly (case-insensitively) with it; a CN-only value is rejected. CI applies the same complete Subject comparison to every executable and also requires a trusted timestamp. The workflow fails if its OIDC identifiers or Artifact Signing variables are absent, the endpoint is malformed, Azure authentication or signing fails, any executable has an invalid signature, the full Subject differs, or a trusted timestamp is absent. Rotate a compromised GitHub federation or Microsoft Entra application authorization immediately; the Artifact Signing certificate itself remains non-exportable and managed by Microsoft.
 
-The workflow runs only through `workflow_dispatch`. Select **Run workflow** and provide an existing release tag only when the candidate is ready to package and publish. The manual run executes the complete verifier, builds and signs every Windows artifact, inspects the package privacy boundary, verifies the publisher and timestamp, generates the exact source and checksums, creates a draft release, verifies its remote asset set, and then publishes it. Tag creation and tag pushes never start this workflow.
+The workflow runs only through `workflow_dispatch`. Select **Run workflow** and provide an existing release tag and its successfully preflighted commit SHA only when the candidate is ready to package and publish. The manual run builds once, smoke-tests the desktop runtime, signs every Windows artifact, inspects the package privacy boundary, verifies the publisher and timestamp, generates the exact source and checksums, creates a draft release, verifies its remote asset set, and then publishes it. Tag creation and tag pushes never start this workflow.
 
 ## Release contents and integrity
 

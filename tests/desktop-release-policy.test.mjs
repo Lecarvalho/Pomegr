@@ -15,6 +15,7 @@ import {
   POMEGR_WINDOWS_PUBLISHER,
   assertReleaseArtifactNames,
   assertReleaseTag,
+  assertVerifiedReleaseCommit,
   assertUpdateMetadata,
   parseReleaseVersion,
   releaseArtifactNames,
@@ -23,6 +24,18 @@ import {
 } from "../desktop/release-policy.mjs";
 
 const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
+
+test("local preflight requires the complete verified commit to match the checkout", () => {
+  const commit = "a".repeat(40);
+  assert.doesNotThrow(() => assertVerifiedReleaseCommit({ verifiedSha: commit, commit }));
+  assert.doesNotThrow(() => assertVerifiedReleaseCommit({ verifiedSha: commit.toUpperCase(), commit }));
+  for (const verifiedSha of [undefined, null, "", "a".repeat(7), "z".repeat(40), 123]) {
+    assert.throws(() => assertVerifiedReleaseCommit({ verifiedSha, commit }), /PREFLIGHT_SHA_REQUIRED/);
+  }
+  for (const actual of [undefined, "", "b".repeat(40)]) {
+    assert.throws(() => assertVerifiedReleaseCommit({ verifiedSha: commit, commit: actual }), /PREFLIGHT_SHA_MISMATCH/);
+  }
+});
 
 async function updateSignatureFixture(contents = "synthetic executable fixture") {
   const root = await mkdtemp(path.join(tmpdir(), "pomegr-update-acceptance-"));
@@ -267,13 +280,21 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(releaseBuilderConfig, /signtoolOptions: null/);
   assert.match(releaseBuilderConfig, /azureSignOptions:/);
   assert.match(releaseBuilderConfig, /timestampRfc3161: "http:\/\/timestamp\.acs\.microsoft\.com"/);
-  const qualityStep = workflow.match(/- name: Run canonical verifier and desktop extension[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm run desktop:runtime", "npm run verify", "npm run verify:desktop:ci"]) {
+  assert.match(workflow, /verified_sha:\s*\n\s*description:[^\n]+\n\s*required: true\n\s*type: string/);
+  assert.match(workflow, /LOCAL_VERIFIED_SHA:\s*\$\{\{ inputs\.verified_sha \}\}/);
+  const refStep = workflow.match(/- name: Verify release ref and clean checkout[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  assert.match(refStep, /verify-preflight --sha \$env:LOCAL_VERIFIED_SHA/);
+  assert.match(refStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
+  assert.ok(workflow.indexOf("verify-preflight") < workflow.indexOf("run: npm ci"));
+  const qualityStep = workflow.match(/- name: Build once and smoke-test the desktop runtime[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  for (const command of ["npm run build", "npm run check:generated", "npm run desktop:runtime", "npm run desktop:smoke:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
   assert.match(qualityStep, /\$ErrorActionPreference = 'Stop'/);
   assert.match(qualityStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
-  assert.ok(qualityStep.indexOf("npm run desktop:runtime") < qualityStep.indexOf("npm run verify"));
+  assert.ok(qualityStep.indexOf("npm run build") < qualityStep.indexOf("npm run desktop:smoke:ci"));
+  assert.doesNotMatch(workflow, /npm ci --prefix landing|npm run verify(?:[:\s]|$)/);
+  assert.equal(workflow.match(/npm run build(?:\n|$)/g)?.length, 1);
   assert.match(workflow, /verify-signature\.ps1/);
   assert.match(workflow, /gh release create[^\n]+--draft/);
   assert.match(workflow, /verify-assets/);
@@ -281,8 +302,9 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   const buildStep = workflow.match(/- name: Build and sign Windows artifacts[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   assert.doesNotMatch(buildStep, /GH_TOKEN|GITHUB_TOKEN/);
   assert.match(buildStep, /WINDOWS_PUBLISHER_SUBJECT:\s*\$\{\{ vars\.WINDOWS_PUBLISHER_SUBJECT \}\}/);
-  assert.match(buildStep, /npm run desktop:prepare(?:\r?\n|$)/);
-  assert.doesNotMatch(buildStep, /desktop:prepare:from-build/);
+  assert.match(buildStep, /npm run desktop:prepare:from-build(?:\r?\n|$)/);
+  assert.doesNotMatch(buildStep, /npm run desktop:prepare(?:\r?\n|$)/);
+  assert.match(buildStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
   assert.match(buildStep, /electron-builder --config desktop\/electron-builder\.release\.cjs/);
   for (const stepName of ["Generate release notes", "Create draft release", "Verify draft assets and publish"]) {
     const step = workflow.match(new RegExp(`- name: ${stepName}[\\s\\S]*?(?=\\n\\s+- name:|$)`))?.[0] || "";
