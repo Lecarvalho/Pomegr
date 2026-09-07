@@ -35,7 +35,9 @@ also rebuilds generated plugin artifacts, runs the root and landing suites, and 
 that generated files are in sync. Desktop packaging uses
 `npm run desktop:prepare:from-build` after a verifier/build has already produced the
 web output; `npm run desktop:prepare` remains the compatibility wrapper that builds
-from scratch.
+from scratch. The web build generates legal notices before copying public assets.
+Preparation from an existing build checks that the built legal copies still match
+exactly before bundling services; it never regenerates legal files after the web build.
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
 `BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so the
