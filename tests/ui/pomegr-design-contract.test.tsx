@@ -13,6 +13,7 @@ const shellSource = readFileSync(join(process.cwd(), "app", "components", "comma
 const brandSource = readFileSync(join(process.cwd(), "app", "components", "PomegrBrand.tsx"), "utf8");
 const sessionProgressSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionProgressPanel.tsx"), "utf8");
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
+const commandPageSource = readFileSync(join(process.cwd(), "app", "components", "command-center", "CommandPage.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("reuses settings row geometry and standard chips for repository setup", () => {
@@ -140,5 +141,11 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.agentSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
     expect(styles).not.toMatch(/\.executionTaskSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
     expect(styles).not.toMatch(/\.sessionSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
+  });
+
+  it("uses the shared chip contract for coming-soon panels with a readable title gap", () => {
+    expect(commandPageSource).toMatch(/<span className="commandChip">Coming soon<\/span>/);
+    expect(commandPageSource).not.toMatch(/commandBadge/);
+    expect(styles).toMatch(/\.commandSettingsPane \.commandComingSoon h2\s*\{\s*margin-top:\s*8px/);
   });
 });

@@ -2,7 +2,7 @@ export const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 
 export const repositoryTabs = [
   ["overview", "Overview"],
-  ["setup", "Setup"],
+  ["plugin", "Plugin"],
   ["inventory", "Context inventory"],
   ["reporting", "Reporting"],
   ["git", "Git"],
@@ -16,6 +16,7 @@ export function repositoryRouteId(value: unknown) {
 }
 
 export function repositoryTab(value: unknown): RepositoryTab | undefined {
+  if (value === "setup") return "plugin";
   return repositoryTabs.find(([id]) => id === value)?.[0];
 }
 

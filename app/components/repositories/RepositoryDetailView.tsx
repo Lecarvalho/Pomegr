@@ -6,14 +6,11 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 import type { ProviderId, RepositoryProviderInventory } from "../../../shared/monitor-contract";
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
-import { relativeTime } from "../../dashboard-utils";
 import { ProviderBadge } from "../ProviderBadge";
 import { CommandComingSoon, CommandEmpty, CommandIcon, CommandPage } from "../command-center/CommandPage";
 import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
-import { repositorySetupSummary } from "./repository-setup";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
-import { InventorySetupRow } from "./InventorySetupRow";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
 import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
 import { RepositoryOverviewTab } from "./RepositoryOverviewTab";
@@ -139,7 +136,6 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     </CommandPage>;
   }
 
-  const setup = repositorySetupSummary(repository);
   return <section className="commandView repositoryDetail" aria-labelledby="repository-title">
     <header className="commandViewIntro repositoryDetailHeader">
       <div className="repositoryDetailIdentity">
@@ -164,23 +160,19 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
-        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "setup" ? <>
-          <div className="repositoryPaneHead"><div><h2>Setup</h2><p>What each observed provider needs so its sessions report signals and progress to Pomegr. Actions run natively on this machine after a confirmation.</p></div><span className={`commandChip ${setup.tone}`}>{setup.label}</span></div>
+        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "plugin" ? <>
+          <div className="repositoryPaneHead"><div><h2>Plugin</h2><p>Install and manage the Pomegr plugin for each provider. Installation and updates run natively on this machine after a confirmation.</p></div></div>
           {repository.providers.map((provider) => {
             const key = `${repositoryId}:${provider.provider}`;
-            const checkedAt = provider.pluginSetup?.checkedAt || provider.pluginSetup?.update.checkedAt;
             return <section key={key} aria-label={`${provider.source} setup`}>
-              <header className="repositorySectionHead"><div><ProviderBadge source={provider.source} /><span>{provider.sessionCount ? `${provider.sessionCount} observed session${provider.sessionCount === 1 ? "" : "s"}` : "No observed sessions yet"}</span></div>{checkedAt && <span className="repositoryChecked">Checked {relativeTime(checkedAt)}</span>}</header>
+              <header className="repositorySectionHead"><div><ProviderBadge source={provider.source} /></div></header>
               <PluginSetupRow provider={provider} desktop={desktopPlugin} actionRunning={Boolean(pluginActionKey || captureKey)} feedback={feedback?.key === `${key}:plugin` ? feedback : null} onAction={(action) => void runPluginAction(provider, action)} />
-              <InventorySetupRow repository={repository} provider={provider} desktop={desktopCapture} confirming={confirming === provider.provider} capturing={captureKey === `${key}:inventory`} feedback={feedback?.key === `${key}:inventory` ? feedback : null} onConfirm={() => setConfirming(provider.provider)} onCancel={cancelCapture} onCapture={() => void capture(provider)} onOpen={() => switchTab("inventory", provider.provider)} />
             </section>;
           })}
-          <header className="repositorySectionHead"><strong>Shared by both providers</strong></header>
-          <RepositoryReportingRow repositoryId={repositoryId} reporting={repository.reporting} />
-          <p className="repositorySetupFootnote">Plugin and reporting state are local observations, rechecked on demand. Raw configuration never leaves this machine.</p>
+          <p className="repositorySetupFootnote">Plugin state is a local observation, rechecked on demand. Raw configuration never leaves this machine.</p>
         </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={cancelCapture} onCapture={(provider) => void capture(provider)} /> : tab === "reporting" ? <>
           <header className="repositoryPaneHead"><div><h2>Repository reporting</h2><p>One policy, shared by Claude Code and Codex, that chooses what agents report about this repository.</p></div></header>
-          <RepositoryReportingRow repositoryId={repositoryId} reporting={repository.reporting} context="reporting" />
+          <RepositoryReportingRow reporting={repository.reporting} />
         </> : <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" />}
       </div>
     </div>

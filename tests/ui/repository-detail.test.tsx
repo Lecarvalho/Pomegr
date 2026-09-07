@@ -124,8 +124,8 @@ describe("repository detail shell", () => {
     await screen.findByRole("heading", { name: "Example project" });
     screen.getByRole("tab", { name: "Overview" }).focus();
     await userEvent.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus();
-    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=setup`, { scroll: false });
+    expect(screen.getByRole("tab", { name: "Plugin" })).toHaveFocus();
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=plugin`, { scroll: false });
     await userEvent.keyboard("{End}");
     expect(screen.getByRole("tab", { name: "Git Soon" })).toHaveFocus();
     await userEvent.keyboard("{Home}");
@@ -169,7 +169,8 @@ describe("repository detail overview", () => {
     expect(pane.getByText("Not configured")).toHaveClass("neutral");
     expect(pane.getByText("ctx-001 saved")).toBeInTheDocument();
     expect(pane.getByText(/estimated tokens/)).toHaveTextContent("1,200 estimated tokens");
-    expect(pane.getByRole("link", { name: "Open Setup" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=setup`);
+    expect(pane.getByRole("link", { name: "Open plugin" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=plugin`);
+    expect(pane.queryByRole("link", { name: "Open Setup" })).not.toBeInTheDocument();
     expect(pane.getByRole("link", { name: "Open reporting" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=reporting`);
     expect(pane.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude`);
     expect(pane.queryByText(/987654|987.7k|tokens\/|throughput/i)).not.toBeInTheDocument();
@@ -189,8 +190,8 @@ describe("repository detail overview", () => {
   });
 
   it.each([
-    ["loading", "Checking setup"], ["missing", "Plugin not installed"], ["disabled", "Plugin disabled"], ["unavailable", "Setup unverified"],
-  ])("keeps %s plugin summary consistent with the Setup tab", async (kind, label) => {
+    ["loading", "Checking setup", "Checking plugin setup"], ["missing", "Plugin not installed", "Not installed"], ["disabled", "Plugin disabled", "Disabled"], ["unavailable", "Setup unverified", "Unable to verify"],
+  ])("keeps %s plugin summary consistent with the Plugin tab", async (kind, overviewLabel, pluginLabel) => {
     const body = structuredClone(setupSnapshot);
     const provider = body.repositories[0].providers[0];
     provider.pluginSetup!.canUpdate = false;
@@ -202,10 +203,10 @@ describe("repository detail overview", () => {
     serve(body);
     const view = renderOverview();
     await screen.findByRole("heading", { name: "Overview" });
-    expect(overview().getByText(label)).toBeInTheDocument();
-    navigation.search = "tab=setup";
+    expect(overview().getByText(overviewLabel)).toBeInTheDocument();
+    navigation.search = "tab=plugin";
     view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
-    expect(within(await screen.findByRole("tabpanel", { name: "Setup" })).getByText(label)).toBeInTheDocument();
+    expect(within(await screen.findByRole("tabpanel", { name: "Plugin" })).getByText(pluginLabel)).toBeInTheDocument();
   });
 
   it("keeps missing observations unavailable and failed capture status visible with retained evidence", async () => {
@@ -264,22 +265,20 @@ describe("repository detail overview", () => {
 
 describe("repository detail reporting", () => {
   it.each([
-    { status: "configured", version: 7, label: "Configured", detail: "Shared repository policy · Version 7", action: "Review policy" },
-    { status: "configured", version: null, label: "Configured", detail: "Shared repository reporting policy", action: "Review policy" },
-    { status: "missing", version: null, label: "Not configured", detail: "Choose what agents report · Shared by Claude Code and Codex", action: "Configure reporting" },
-    { status: "invalid", version: null, label: "Invalid", detail: "Review the repository reporting policy with your coding agent.", action: "Configure reporting" },
-    { status: "unknown", version: null, label: "Unavailable", detail: "Reporting setup could not be verified.", action: "Configure reporting" },
-    { status: undefined, version: null, label: "Unavailable", detail: "Reporting setup could not be verified.", action: "Configure reporting" },
-  ] as const)("shares $status reporting status and version $version between tabs", async ({ status, version, label, detail, action }) => {
+    { status: "configured", version: 7, label: "Configured", detail: "Shared repository policy · Version 7" },
+    { status: "configured", version: null, label: "Configured", detail: "Shared repository reporting policy" },
+    { status: "missing", version: null, label: "Not configured", detail: "Choose what agents report · Shared by Claude Code and Codex" },
+    { status: "invalid", version: null, label: "Invalid", detail: "Review the repository reporting policy with your coding agent." },
+    { status: "unknown", version: null, label: "Unavailable", detail: "Reporting setup could not be verified." },
+    { status: undefined, version: null, label: "Unavailable", detail: "Reporting setup could not be verified." },
+  ] as const)("shares $status reporting status and version $version between tabs", async ({ status, version, label, detail }) => {
     const body = structuredClone(setupSnapshot);
     body.repositories[0].reporting = status ? { status, version, checkedAt: null } : undefined;
     serve(body);
-    navigation.search = "tab=setup";
+    navigation.search = "tab=plugin";
     const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
-    const setupRow = await screen.findByRole("region", { name: "Shared repository reporting" });
-    expect(within(setupRow).getByText(label)).toBeInTheDocument();
-    expect(within(setupRow).getByText(detail)).toBeInTheDocument();
-    expect(within(setupRow).queryByText("Set up reporting in your coding agent")).not.toBeInTheDocument();
+    const pluginPane = await screen.findByRole("tabpanel", { name: "Plugin" });
+    expect(within(pluginPane).queryByRole("region", { name: "Shared repository reporting" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("tab", { name: "Reporting" }));
     expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=reporting`, { scroll: false });
@@ -290,35 +289,26 @@ describe("repository detail reporting", () => {
     expect(within(reportingRow).getByText(label)).toBeInTheDocument();
     expect(within(reportingRow).getByText(detail)).toBeInTheDocument();
     expect(within(reportingRow).queryByRole("button", { name: "How reporting works" })).not.toBeInTheDocument();
+    expect(within(reportingRow).queryByRole("button", { name: /Review policy|Configure reporting/ })).not.toBeInTheDocument();
     const help = within(reportingRow).getByText("Set up reporting in your coding agent").parentElement!;
     expect(help).toHaveTextContent("/pomegr:init");
     expect(help).toHaveTextContent("$pomegr:init");
     expect(within(help).getByRole("link", { name: "Read the plugin instructions" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/PLUGINS.md");
-    await userEvent.click(within(reportingRow).getByRole("button", { name: action }));
-    expect(help).toHaveFocus();
     expect(help).toBeVisible();
-
-    navigation.search = "tab=setup";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
-    const returnedRow = screen.getByRole("region", { name: "Shared repository reporting" });
-    expect(within(returnedRow).getByText(label)).toBeInTheDocument();
-    await userEvent.click(within(returnedRow).getByRole("button", { name: "How reporting works" }));
-    expect(within(returnedRow).getByText("Set up reporting in your coding agent")).toBeVisible();
   });
 });
 
-describe("repository detail setup", () => {
-  it("renders each provider's plugin and inventory rows and one shared reporting row", async () => {
+describe("repository detail plugin", () => {
+  it("renders each provider's plugin row without inventory or reporting rows", async () => {
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    expect(await screen.findByRole("heading", { name: "Setup" })).toBeInTheDocument();
-    const pane = screen.getByRole("tabpanel", { name: "Setup" });
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    expect(await screen.findByRole("heading", { name: "Plugin" })).toBeInTheDocument();
+    const pane = screen.getByRole("tabpanel", { name: "Plugin" });
     expect(within(pane).getByText("Claude Code")).toBeInTheDocument();
     expect(within(pane).getByText("Codex")).toBeInTheDocument();
     expect(within(pane).getAllByText("Pomegr plugin")).toHaveLength(2);
-    expect(within(pane).getAllByText("Context inventory")).toHaveLength(2);
-    expect(within(pane).getByText("Shared by both providers")).toBeInTheDocument();
-    expect(within(pane).getAllByText("Repository reporting")).toHaveLength(1);
+    expect(within(pane).queryByText("Context inventory")).not.toBeInTheDocument();
+    expect(within(pane).queryByText("Repository reporting")).not.toBeInTheDocument();
     expect(within(pane).getByText(/Raw configuration never leaves this machine/i)).toBeInTheDocument();
   });
 
@@ -326,12 +316,12 @@ describe("repository detail setup", () => {
     const pluginAction = vi.fn().mockResolvedValue("completed");
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
     await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
     await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "claude", "update"));
     expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Plugin" })).toHaveFocus());
     pluginAction.mockResolvedValueOnce("timed_out");
     await userEvent.click(screen.getByRole("button", { name: "Install plugin" }));
     await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "codex", "install"));
@@ -344,18 +334,18 @@ describe("repository detail setup", () => {
     const capture = vi.fn().mockResolvedValue("completed");
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
+    await screen.findByRole("heading", { name: "Context inventory" });
     await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
     const confirmation = screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i });
     await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("group", { name: /Confirm Claude Code inventory capture/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveFocus();
     await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
     await userEvent.click(within(screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i })).getByRole("button", { name: "Run diagnostic" }));
     await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
     expect(await screen.findByText("Claude Code inventory captured.")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveFocus());
   });
 
   it("preserves focus moved elsewhere while a native action is pending", async () => {
@@ -363,8 +353,8 @@ describe("repository detail setup", () => {
     const pluginAction = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
     await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
     screen.getByRole("link", { name: "View sessions" }).focus();
     await act(async () => { finish("completed"); });
@@ -372,25 +362,23 @@ describe("repository detail setup", () => {
     expect(screen.getByRole("link", { name: "View sessions" })).toHaveFocus();
   });
 
-  it("restores focus to the destination tab after Open inventory removes its action", async () => {
+  it("keeps the Plugin pane limited to plugin actions", async () => {
     serve(setupSnapshot);
-    navigation.search = "tab=setup";
+    navigation.search = "tab=plugin";
     const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
-    await screen.findByRole("heading", { name: "Setup" });
-    await userEvent.click(screen.getByRole("button", { name: "Open inventory" }));
-    navigation.search = "tab=inventory&provider=claude";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
-    expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveFocus();
-    await userEvent.tab();
-    expect(screen.getByRole("tabpanel", { name: "Context inventory" })).toHaveFocus();
+    await screen.findByRole("heading", { name: "Plugin" });
+    expect(screen.queryByRole("button", { name: "Open inventory" })).not.toBeInTheDocument();
+    const pane = screen.getByRole("tabpanel", { name: "Plugin" });
+    expect(within(pane).queryByText("Context inventory")).not.toBeInTheDocument();
+    expect(within(pane).queryByText("Repository reporting")).not.toBeInTheDocument();
+    view.unmount();
   });
 
   it("offers instructions and no primary plugin or capture actions away from desktop", async () => {
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
     expect(screen.getAllByText("View setup instructions")).toHaveLength(2);
-    expect(screen.getAllByText("Capture available in Pomegr desktop")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /Install plugin|Update plugin|Capture inventory|Capture again|Retry diagnostic/i })).not.toBeInTheDocument();
   });
 
@@ -398,17 +386,13 @@ describe("repository detail setup", () => {
     const pluginAction = vi.fn().mockResolvedValue("completed");
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
     serve(setupSnapshot);
-    navigation.search = "tab=setup&provider=codex&revision=ctx-999";
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
-    await userEvent.click(screen.getByRole("button", { name: "Open inventory" }));
-    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude`, { scroll: false });
+    navigation.search = "tab=plugin&provider=codex&revision=ctx-999";
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
     await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
     expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
-    navigation.search = "tab=inventory&provider=claude";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
-    navigation.search = "tab=setup";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    navigation.search = "tab=plugin";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
     expect(screen.getByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
   });
 
@@ -422,8 +406,8 @@ describe("repository detail setup", () => {
     const pluginAction = vi.fn().mockResolvedValue(status);
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
     await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
     await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "claude", "update"));
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -433,8 +417,8 @@ describe("repository detail setup", () => {
     const capture = vi.fn().mockRejectedValue(new Error("private provider output"));
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    await screen.findByRole("heading", { name: "Context inventory" });
     await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
     await userEvent.click(within(screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i })).getByRole("button", { name: "Run diagnostic" }));
     await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
@@ -447,8 +431,8 @@ describe("repository detail setup", () => {
     capturing.repositories[0].providers[0].status = "capturing";
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: vi.fn() } });
     serve(capturing);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    await screen.findByRole("heading", { name: "Context inventory" });
     expect(screen.getByText("Capturing")).toBeInTheDocument();
     expect(screen.getByText("Previous revision remains available until commit")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Capture again" })).toBeDisabled();
@@ -459,22 +443,24 @@ describe("repository detail setup", () => {
     failed.repositories[0].providers[0].status = "failed";
     failed.repositories[0].providers[0].failureKind = "timed_out";
     serve(failed);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    await screen.findByRole("heading", { name: "Context inventory" });
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("The diagnostic timed out · no data saved")).toBeInTheDocument();
   });
 
-  it("toggles the local reporting setup help", async () => {
+  it("keeps reporting setup guidance visible in the Reporting pane", async () => {
     serve(setupSnapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
-    await screen.findByRole("heading", { name: "Setup" });
-    const help = screen.getByRole("button", { name: "How reporting works" });
-    expect(help).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(help);
-    expect(help).toHaveAttribute("aria-expanded", "true");
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
+    await screen.findByRole("heading", { name: "Plugin" });
+    expect(screen.queryByRole("button", { name: "How reporting works" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Review policy|Configure reporting/ })).not.toBeInTheDocument();
+    navigation.search = "tab=reporting";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="reporting" />);
+    await screen.findByRole("heading", { name: "Repository reporting" });
     expect(screen.getByText("/pomegr:init", { selector: "code" })).toBeInTheDocument();
     expect(screen.getByText("$pomegr:init", { selector: "code" })).toBeInTheDocument();
+    view.unmount();
   });
 });
 
@@ -527,7 +513,7 @@ describe("repository context inventory", () => {
   it.each([
     ["not_captured", "Not captured", "Native provider diagnostic"],
     ["capturing", "Capturing", "Previous revision remains available until commit"],
-    ["unavailable", "Unavailable", "Pomegr will not combine or approximate Claude Code evidence."],
+    ["unavailable", "Unavailable", "Context inventory is unavailable."],
     ["failed", "Failed", "The diagnostic timed out · no data saved"],
   ] as const)("renders sanitized %s state", async (status, label, detail) => {
     const value = structuredClone(setupSnapshot);
@@ -616,11 +602,11 @@ describe("repository context inventory", () => {
     expect(screen.getByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
   });
 
-  it("filters unsupported providers from the inventory tab", async () => {
+  it("renders an explicit unsupported section for Codex in the inventory tab", async () => {
     serve(snapshot);
     render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
-    expect(await screen.findByText("Context inventory is unavailable for the observed providers.")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Codex context inventory" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Codex context inventory" })).toBeInTheDocument();
+    expect(screen.getByText("Context inventory is not available for Codex yet.")).toBeInTheDocument();
   });
 });
 
@@ -631,6 +617,8 @@ describe("repository routes", () => {
   it("passes validated detail selections and discards invalid or repeated parameters", async () => {
     const page = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "inventory", provider: "claude", revision: "ctx-001" }) });
     expect(page.props).toMatchObject({ repositoryId, initialTab: "inventory", initialProvider: "claude", initialRevisionId: "ctx-001" });
+    const legacy = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "setup" }) });
+    expect(legacy.props).toMatchObject({ repositoryId, initialTab: "plugin" });
     const invalid = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: ["git"], provider: "other", revision: "ctx-12" }) });
     expect(invalid.props).toMatchObject({ initialTab: "overview", initialProvider: undefined, initialRevisionId: undefined });
   });

@@ -28,16 +28,15 @@ function ProviderInventoryEvidence({ repository, provider, initialRevisionId, sc
   }, [scrollOnMount]);
   const select = (revisionId: string) => { setSelection({ initial: initialRevisionId, requested: revisionId }); onSelect(revisionId); };
   const capturedAt = provider.revisions.find((revision) => revision.id === selectedRevisionId)?.capturedAt;
-  const checkedAt = provider.pluginSetup?.checkedAt;
   const ready = provider.status === "current" && selectedRevisionId;
   return <section ref={section} className="repositoryInventoryProvider" aria-label={`${provider.source} context inventory`}>
     <header className="repositorySectionHead">
-      <div><ProviderBadge source={provider.source} /><span>{provider.sessionCount ? `${provider.sessionCount} observed session${provider.sessionCount === 1 ? "" : "s"}` : "No observed sessions yet"}</span></div>
-      {provider.revisions.length > 1 ? <label className="repositoryRevisionSelect">Revision<CommandSelect value={selectedRevisionId} onChange={(event) => select(event.currentTarget.value)}>{provider.revisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id} · {compactNumber(revision.machineryTokens)}</option>)}</CommandSelect></label> : (capturedAt || checkedAt) && <span className="repositoryChecked">{capturedAt ? "Captured" : "Checked"} {relativeTime((capturedAt || checkedAt)!)}</span>}
+      <div><ProviderBadge source={provider.source} /></div>
+      {provider.revisions.length > 1 ? <label className="repositoryRevisionSelect">Revision<CommandSelect value={selectedRevisionId} onChange={(event) => select(event.currentTarget.value)}>{provider.revisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id} · {compactNumber(revision.machineryTokens)}</option>)}</CommandSelect></label> : capturedAt && <span className="repositoryChecked">Captured {relativeTime(capturedAt)}</span>}
     </header>
     {ready ? <RevisionEvidence repository={repository} provider={provider} selectedRevisionId={selectedRevisionId} onSelect={select} /> : <div className="repositoryInventoryState">
       <span className={`commandChip ${provider.status === "failed" ? "negative" : provider.status === "capturing" ? "warning" : ""}`}>{provider.status === "not_captured" ? "Not captured" : provider.status === "capturing" ? "Capturing" : provider.status === "failed" ? "Failed" : "Unavailable"}</span>
-      <span className={provider.status === "failed" ? "repositoryInventoryError" : undefined}>{provider.status === "failed" ? `${failureMessage(provider.failureKind)} · no data saved` : provider.status === "capturing" ? "Previous revision remains available until commit" : provider.status === "unavailable" ? "Pomegr will not combine or approximate Claude Code evidence." : "Native provider diagnostic"}</span>
+      <span className={provider.status === "failed" ? "repositoryInventoryError" : undefined}>{provider.status === "failed" ? `${failureMessage(provider.failureKind)} · no data saved` : provider.status === "capturing" ? "Previous revision remains available until commit" : !provider.supported ? `Context inventory is not available for ${provider.source} yet.` : provider.status === "unavailable" ? "Context inventory is unavailable." : "Native provider diagnostic"}</span>
     </div>}
   </section>;
 }
@@ -70,7 +69,7 @@ export function RepositoryInventoryTab({ repository, initialProvider, initialRev
     </div>
     {confirmation && <InventoryCaptureConfirmation repository={repository} provider={confirmation} busy={Boolean(captureKey)} onCancel={onCancel} onCapture={() => onCapture(confirmation)} />}
     {captureFeedback && <p className={`repositorySetupFeedback ${captureFeedback.tone}`} role="status">{captureFeedback.message}</p>}
-    {providers.map((provider) => <ProviderInventoryEvidence key={provider.provider} repository={repository} provider={provider} initialRevisionId={initialProvider === provider.provider ? initialRevisionId : undefined} scrollOnMount={initialProvider === provider.provider && Boolean(initialRevisionId)} onSelect={(revisionId) => onRevision(provider.provider, revisionId)} />)}
-    {!providers.length && <p className="repositoryInventoryUnavailable">Context inventory is unavailable for the observed providers.</p>}
+    {repository.providers.map((provider) => <ProviderInventoryEvidence key={provider.provider} repository={repository} provider={provider} initialRevisionId={initialProvider === provider.provider ? initialRevisionId : undefined} scrollOnMount={initialProvider === provider.provider && Boolean(initialRevisionId)} onSelect={(revisionId) => onRevision(provider.provider, revisionId)} />)}
+    {!repository.providers.length && <p className="repositoryInventoryUnavailable">Context inventory is unavailable for the observed providers.</p>}
   </>;
 }

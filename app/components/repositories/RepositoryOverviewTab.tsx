@@ -51,10 +51,10 @@ export function RepositoryOverviewTab({ repository }: { repository: RepositorySu
       <div><dt>Providers</dt><dd className="repositoryOverviewProviders">{observedProviders.length ? observedProviders.map((provider) => <ProviderBadge key={provider.provider} source={provider.source} />) : "None observed"}</dd></div>
     </dl>
     <section aria-labelledby="repository-overview-setup">
-      <header className="repositorySectionHead repositoryOverviewHead"><h3 id="repository-overview-setup">Setup</h3><Link className="commandTextLink" href={`${base}?tab=setup`}>Open Setup</Link></header>
+      <header className="repositorySectionHead repositoryOverviewHead"><h3 id="repository-overview-setup">Setup</h3></header>
       <div className="repositoryOverviewCards">
         <SetupCard title="Pomegr plugin" label={attention?.label ?? (unverifiedPlugin ? "Setup unverified" : <>{plugin.label}{version && <> · <span className="repositoryOverviewData">{version}</span></>}</>)} tone={attention?.tone ?? (unverifiedPlugin ? "neutral" : plugin.tone === "ready" ? "positive" : plugin.tone === "warning" ? "warning" : "neutral")}
-          detail={repository.providers.length ? repository.providers.map((provider) => `${provider.source}: ${pluginStatus(provider.pluginSetup).label.toLowerCase()}`).join(" · ") : "No provider setup observed."} href={`${base}?tab=setup`} linkLabel="Open setup" />
+          detail={repository.providers.length ? repository.providers.map((provider) => `${provider.source}: ${pluginStatus(provider.pluginSetup).label.toLowerCase()}`).join(" · ") : "No provider setup observed."} href={`${base}?tab=plugin`} linkLabel="Open plugin" />
         <SetupCard title="Reporting policy" label={<>{reporting.label}{repository.reporting?.status === "configured" && repository.reporting.version !== null && <> · <span className="repositoryOverviewData">v{repository.reporting.version}</span></>}</>} tone={reporting.tone === "ready" ? "positive" : reporting.tone === "warning" ? "warning" : "neutral"}
           detail={repository.reporting?.status === "configured" ? "Shared by both providers" : reporting.detail} href={`${base}?tab=reporting`} linkLabel="Open reporting" />
         <SetupCard title="Context inventory" label={inventory.label} tone={inventory.tone}

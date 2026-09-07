@@ -266,11 +266,12 @@ sessions. The shell uses the shared session breadcrumb for
 `Repositories › {displayName}`. Detail navigation uses the existing Settings
 layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
 the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
-linked setup summaries, and the five most recent associated sessions. Setup
-groups plugin and inventory rows by provider, followed by the shared reporting
-row. Reporting repeats that policy state with always-visible setup guidance;
-Git keeps the existing coming-soon placeholder. The Context
-inventory tab uses one section per supported provider, a revision select when
+linked setup summaries, and the five most recent associated sessions. Plugin
+groups plugin installation instructions and native actions by provider.
+Reporting shows the shared policy state with always-visible setup guidance.
+Git uses the shared neutral chip with an 8px gap before its placeholder title. The Context
+inventory tab uses one section per provider, including an explicit not-yet-available
+state for Codex, a revision select when
 multiple saved revisions exist, four bounded evidence facts, a category grid,
 expandable listed items and revision comparison, plus explicit loading,
 unavailable, and sanitized failure states. Its capture action and inline
@@ -278,7 +279,7 @@ confirmation reuse the existing button roles and native confirmation boundary.
 Repository-local classes compose the existing Settings geometry, `CommandSelect`,
 chips, and button roles through `RepositoryRow`. On phones, row actions share
 equal-width columns with 44px targets, and capture confirmation buttons stack.
-Provider check times stay right-aligned. Tabs support arrow keys and Home/End;
+Inventory capture times stay right-aligned; provider check times are omitted. Tabs support arrow keys and Home/End;
 pane changes restore focus to the selected tab. Native action completion also
 restores tab focus unless the user has moved to another control. Row links name
 the repository and setup state, and the breadcrumb marks the current page.
