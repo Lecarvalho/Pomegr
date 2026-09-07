@@ -65,6 +65,15 @@ function Get-DevStopPlan {
   foreach ($rootId in @($roots | Sort-Object { $table[$_].CreationDate })) { Add-DevTree $rootId 0 }
   foreach ($listener in $Listeners) {
     if ($listener.LocalPort -in @(3003, 4317) -and -not $targets.ContainsKey([int]$listener.OwningProcess)) {
+      $diagnosticOwner = $table[[int]$listener.OwningProcess]
+      $diagnosticCommand = ([string]$diagnosticOwner.CommandLine).Replace('/', '\')
+      $diagnosticExecutable = [regex]::Escape(([string]$diagnosticOwner.ExecutablePath).Replace('/', '\'))
+      $diagnosticNode = $diagnosticOwner.Name -eq 'node.exe'
+      $diagnosticExecutableMatch = [regex]::IsMatch($diagnosticCommand, ('^(?:"' + $diagnosticExecutable + '"|' + $diagnosticExecutable + '|node(?:\.exe)?)\s+'), 'IgnoreCase')
+      $diagnosticMonitor = $diagnosticCommand.Contains((Join-Path $RepositoryRoot 'monitor\cli.mjs'))
+      $diagnosticWeb = $diagnosticCommand.Contains((Join-Path $RepositoryRoot 'scripts\run-vinext.mjs'))
+      $diagnosticProtected = $protected.Contains([int]$listener.OwningProcess)
+      [Console]::Error.WriteLine(('DIAGNOSTIC_OWNER_FLAGS {0},{1},{2},{3},{4}' -f [int]$diagnosticNode, [int]$diagnosticExecutableMatch, [int]$diagnosticMonitor, [int]$diagnosticWeb, [int]$diagnosticProtected))
       throw ('POMEGR_DEV_PORT_' + $listener.LocalPort)
     }
   }

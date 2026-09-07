@@ -39,6 +39,8 @@ export async function replaceDevelopmentServices({
     const type = /DIAGNOSTIC_HELPER_TYPE (RuntimeException|ParameterBindingException|ParameterBindingValidationException|MethodInvocationException|PSInvalidCastException|ArgumentException|ArgumentNullException|InvalidOperationException|other)\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
     const line = /DIAGNOSTIC_HELPER_LINE ([0-9]{1,4})\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
     console.error("DIAGNOSTIC_HELPER_DETAIL", type, line);
+    const flags = /DIAGNOSTIC_OWNER_FLAGS ([01],[01],[01],[01],[01])\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
+    console.error("DIAGNOSTIC_OWNER_FLAGS", flags);
     const messages = {
       10: "Port 3003 is already in use by an unrecognized process. Close that app and retry.",
       11: "Port 4317 is already in use by an unrecognized process. Close that app and retry.",
