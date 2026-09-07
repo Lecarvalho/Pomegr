@@ -17,9 +17,9 @@ describe("public landing surfaces", () => {
     expect(source).toContain('<SiteFooter current="home" />');
     expect(source).toContain('id="waitlist"');
     expect(source).toContain("Coming next · iOS and Android");
-    expect(source).toContain("Windows x64 · available");
+    expect(source).toContain("Windows x64 · installer or portable");
     expect(source).toContain('href={DOWNLOAD_URL}>Download for Windows');
-    expect(source).toContain('`${GITHUB_URL}/releases/latest`');
+    expect(source).toContain('const DOWNLOAD_URL = "/download"');
     expect(source).not.toContain("Field release · desktop, iOS, Android");
     expect(source).not.toMatch(/from\s+["'](?:\.\.\/){3,}/);
     expect(source).not.toContain("issues/new");

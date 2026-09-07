@@ -42,6 +42,8 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     vinext(),
     cloudflare({
+      // Local development must not open OAuth or connect to the production D1 database.
+      remoteBindings: false,
       viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
     }),
   ],

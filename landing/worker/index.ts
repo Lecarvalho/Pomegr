@@ -14,6 +14,7 @@ interface WorkerExecutionContext {
 const PUBLIC_PATHS = new Set([
   "/",
   "/about",
+  "/download",
   "/api/waitlist",
   "/api/waitlist/status",
   "/pomegr-logo.png",

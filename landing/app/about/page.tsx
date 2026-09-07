@@ -115,7 +115,7 @@ export default function AboutPage() {
           <div className={styles.ticket}>
             <div><span>Windows x64 · available</span><code>PMGR / ABOUT</code></div>
             <strong>Your observer is ready.</strong>
-            <a className={styles.ticketAction} href={`${REPOSITORY}/releases/latest`}>Download for Windows <ArrowIcon /></a>
+            <a className={styles.ticketAction} href="/download">Download for Windows <ArrowIcon /></a>
             <WaitlistStatusLink className={styles.ticketSecondary} />
           </div>
         </section>

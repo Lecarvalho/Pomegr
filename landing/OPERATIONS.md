@@ -1,6 +1,49 @@
 # Landing operations
 
-These steps publish only the public landing Worker. Provisioning commands in sections 1-4 run from `landing/`. The release commands in section 5 run from the repository root and explicitly select the landing package with `--prefix landing`.
+This guide covers local development and publishing the public landing Worker. Provisioning commands in sections 1-4 run from `landing/`. Local startup and the release commands in section 5 run from the repository root and explicitly select the landing package with `--prefix landing`.
+
+## Run the landing locally
+
+Use Node.js 22.13 or newer. From the repository root, install the landing's separate dependencies once (and again when its lockfile changes):
+
+```powershell
+Set-Location C:\Workspace\repos\Pomegr
+npm --prefix landing ci
+```
+
+Start the development server in PowerShell:
+
+```powershell
+npm --prefix landing run dev
+```
+
+Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), or [Downloads](http://127.0.0.1:8788/download). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
+
+`landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and the waitlist widget uses Turnstile. Downloads still target real GitHub release files.
+
+The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
+
+### Local waitlist configuration
+
+Page previews do not require waitlist secrets. To configure the local widget and database, first copy the example only if a local configuration does not already exist:
+
+```powershell
+if (-not (Test-Path -LiteralPath landing/.dev.vars)) {
+  Copy-Item -LiteralPath landing/.env.example -Destination landing/.dev.vars
+}
+npm --prefix landing run db:migrate:local
+```
+
+Edit `landing/.dev.vars`, keeping `ENVIRONMENT=development`, `WAITLIST_ALLOW_LOCAL_DEV=true`, and the supplied `127.0.0.1:8788` origin and host. Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` using [Cloudflare's published test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/), and replace `WAITLIST_COOKIE_SECRET` with a locally generated secret containing at least 32 random bytes. Restart the dev server after changing this file. Never commit `.dev.vars` or put its development settings into production configuration.
+
+Current limitation: the backend checks Turnstile's hostname against `pomegr.com` and its action against `waitlist_signup`, even in development. Dummy keys can exercise the local widget but do not provide a complete successful signup flow through that validation. Use `npm --prefix landing test` for the signup handler's automated success/failure cases; a production signup smoke test is a separate step. Do not use `db:migrate:remote` for local setup.
+
+### Startup troubleshooting
+
+- **Cloudflare sign-in tab / remote proxy session / missing `CLOUDFLARE_API_TOKEN`:** cancel the login and stop the old process with Ctrl+C. Confirm `remoteBindings: false` is present in `landing/vite.config.ts`, then restart with `npm --prefix landing run dev`. The local preview does not need authorization. Do not use `wrangler login`, `deploy`, or `release` to start it.
+- **Port 8788 is occupied:** stop the existing landing server with Ctrl+C before starting another copy. Keep the documented port so local waitlist origin checks agree.
+- **Missing dependencies or CLI:** run `npm --prefix landing ci`; installing only the root package is insufficient.
+- **Old compiled preview:** use the development command above for source edits. A Wrangler preview of `dist/server/wrangler.json` serves the last build and requires rebuilding after changes.
 
 ## 1. Provision D1 and Turnstile
 
@@ -35,7 +78,7 @@ Cloudflare Universal SSL supplies and renews the public TLS certificate without 
 
 `wrangler.jsonc` attaches the Worker to both `pomegr.com` and `www.pomegr.com`. The Worker redirects `www` to the HTTPS apex with status 308. Its final configuration has `workers_dev` and preview URLs disabled.
 
-For first validation, use `node scripts/run-wrangler.mjs dev` or a temporary reviewed staging configuration. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, the two waitlist endpoints, and the landing's explicit static asset paths. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
+For local validation, use the development instructions above; use a temporary reviewed staging configuration for deployment validation. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, `/download`, the two waitlist endpoints, and the landing's explicit static asset paths. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
 
 ## 4. Edge and application rate limits
 
@@ -69,7 +112,8 @@ Do not edit `dist` between the audit and deployment. `npm run deploy` re-runs th
 
 After deployment, smoke-test:
 
-- HTTPS `/` and `/about` return 200 and `www` redirects to the apex.
+- HTTPS `/`, `/about`, and `/download` return 200 and `www` redirects to the apex.
+- The download page shows version and file sizes, and its installer/portable buttons point directly to the corresponding official GitHub `.exe` assets.
 - `/dashboard`, `/api/state`, `/api/sessions`, and random paths return 404.
 - Signup, a duplicate signup, the signed status cookie, Turnstile failure, and throttling behave as expected.
 - The D1 row contains only the expected normalized fields and duplicates do not overwrite the first row.

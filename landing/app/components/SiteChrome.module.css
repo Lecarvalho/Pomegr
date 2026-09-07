@@ -84,6 +84,11 @@
   text-decoration: none;
 }
 
+.header nav > a[aria-current="page"] {
+  text-decoration-line: underline;
+  text-decoration-color: #a63c32;
+}
+
 .headerAction svg {
   width: 19px;
   height: 19px;

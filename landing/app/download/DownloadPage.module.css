@@ -1,0 +1,93 @@
+/* Download extends the landing's printed-paper world and shared ticket/action styles. */
+.page {
+  --download-muted: #4e4b47;
+  --download-faint: #706a62;
+  --download-rule: rgba(23, 23, 21, .4);
+  --download-icon: #71911e;
+}
+
+.printMarks i:nth-child(3),
+.printMarks i:nth-child(4) { top: auto; bottom: 23px; }
+
+.download {
+  position: relative;
+  z-index: 10;
+  width: min(1280px, calc(100% - 80px));
+  margin: 0 auto;
+  padding: 96px 0 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+}
+
+.intro { display: flex; flex-direction: column; gap: 22px; }
+.intro h1 {
+  max-width: 14ch;
+  margin: 0;
+  font: 700 clamp(52px, 6vw, 88px)/.84 var(--landing-display);
+  letter-spacing: -.04em;
+  text-shadow: .55px .25px 0 rgba(23, 23, 21, .2);
+}
+.intro h1 em { position: relative; color: var(--landing-red); font-style: normal; }
+.intro h1 em::after {
+  content: "";
+  position: absolute;
+  right: -3%; bottom: -4px; left: -1%;
+  height: 5px;
+  background: var(--landing-red);
+  clip-path: polygon(0 20%, 100% 0, 98% 100%, 2% 70%);
+}
+.intro p { max-width: 54ch; margin: 6px 0 0; color: var(--download-muted); font: 500 13px/1.55 var(--font-geist-mono), monospace; }
+
+.options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+.ticket { min-width: 0; display: flex; flex-direction: column; }
+.topline { gap: 12px; flex-wrap: wrap; }
+.ticketHeading { margin-top: 30px; display: flex; align-items: flex-start; gap: 20px; }
+.ticketHeading svg {
+  width: 44px; height: 44px; flex: 0 0 auto; padding: 8px;
+  background: var(--landing-ink); fill: none; stroke: var(--landing-green);
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+  transform: rotate(-2deg);
+}
+.ticket:nth-child(2) .ticketHeading svg { transform: rotate(2deg); }
+.ticketHeading h2 { margin: 0; font: 680 clamp(28px, 3vw, 43px)/.92 var(--landing-display); letter-spacing: -.03em; }
+.ticketFacts {
+  margin: 26px 0 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 10px;
+  color: var(--download-muted); font: 500 12px/1.5 var(--font-geist-mono), monospace;
+}
+.ticketFacts li { display: flex; gap: 10px; align-items: baseline; }
+.ticketFacts li::before { content: "+"; color: var(--download-icon); }
+.ticketAction { margin-top: auto; padding-top: 30px; display: flex; flex-direction: column; gap: 14px; }
+.ticketAction a:focus-visible { clip-path: none; }
+.fileMeta { margin: 0; overflow-wrap: anywhere; color: var(--download-faint); font: 500 11px/1.5 var(--font-geist-mono), monospace; }
+
+.assurance {
+  display: flex; align-items: center; justify-content: space-between; gap: 40px;
+  padding-top: 34px; border-top: 1px solid var(--download-rule);
+}
+.assurance p { margin: 0; display: flex; align-items: center; gap: 12px; color: var(--download-muted); font: 500 11px/1.5 var(--font-geist-mono), monospace; }
+.assurance svg { width: 19px; height: 19px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.assurance p svg { width: 18px; height: 18px; stroke: var(--download-icon); stroke-width: 1.6; }
+.assurance a {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 8px;
+  color: var(--landing-red); font: 700 11px/1.3 var(--font-geist-mono), monospace;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .download { padding: 64px 0 80px; gap: 44px; }
+  .options { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .assurance { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .assurance a { white-space: normal; }
+}
+@media (max-width: 720px) {
+  .download { width: calc(100% - 48px); padding: 44px 0 56px; gap: 36px; }
+  .intro h1 { letter-spacing: -.035em; }
+  .ticket { padding: 24px; }
+  .ticketHeading { margin-top: 20px; gap: 14px; }
+  .ticketHeading svg { width: 40px; height: 40px; padding: 7px; }
+  .ticketFacts { margin-top: 18px; gap: 8px; }
+  .ticketAction { padding-top: 22px; gap: 12px; }
+  .printMarks { display: none; }
+}

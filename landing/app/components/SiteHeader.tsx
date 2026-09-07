@@ -4,14 +4,15 @@ import styles from "./SiteChrome.module.css";
 
 const REPOSITORY = "https://github.com/Lecarvalho/pomegr";
 
-export function SiteHeader({ current }: { current: "home" | "about" }) {
+export function SiteHeader({ current }: { current: "home" | "about" | "download" }) {
   return (
     <header className={styles.header}>
       <PomegrBrand />
       <nav aria-label="Main navigation">
-        {current === "home" ? <Link href="/about">About</Link> : <Link href="/">Home</Link>}
+        <Link href="/" aria-current={current === "home" ? "page" : undefined}>Home</Link>
+        <Link href="/about" aria-current={current === "about" ? "page" : undefined}>About</Link>
         <a href={REPOSITORY} target="_blank" rel="noreferrer">Source</a>
-        <a className={styles.headerAction} href={`${REPOSITORY}/releases/latest`}>Download for Windows</a>
+        <Link className={styles.headerAction} href="/download" aria-current={current === "download" ? "page" : undefined}>Download for Windows</Link>
       </nav>
     </header>
   );

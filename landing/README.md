@@ -14,6 +14,22 @@ npm run dev
 
 Use Cloudflare's published Turnstile test keys in `.dev.vars`. `WAITLIST_ALLOW_LOCAL_DEV=true` is a local-only exception and must never be added to `wrangler.jsonc` or production secrets.
 
+The dev server opens at `http://127.0.0.1:8788/`. Vite disables remote bindings,
+so local startup does not require Cloudflare login. See [local startup and troubleshooting](./OPERATIONS.md#run-the-landing-locally).
+
+## Desktop downloads
+
+`/download` offers the Windows x64 installer and portable executable, linking directly
+to official GitHub release assets. The server reads the latest stable release metadata
+with a three-second timeout and a 15-minute Cloudflare fetch cache. Both expected assets
+must validate together; URLs are constructed only for this repository. If GitHub is
+unavailable or returns incomplete metadata, the page uses the verified v0.3.3 release
+in `server/download-release.ts`, including its actual version and file sizes. Update
+that fallback when retiring an older release. No GitHub token or browser API call is needed.
+
+Page visits can be measured by separately configured Web Analytics. This page adds
+no click tracking and does not claim to measure completed downloads or unique users.
+
 ## Audited deployment
 
 ```powershell

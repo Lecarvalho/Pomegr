@@ -4,7 +4,7 @@ import { WaitlistActions } from "./WaitlistActions";
 import styles from "./LandingPage.module.css";
 
 const GITHUB_URL = "https://github.com/Lecarvalho/pomegr";
-const DOWNLOAD_URL = `${GITHUB_URL}/releases/latest`;
+const DOWNLOAD_URL = "/download";
 
 export function LandingPage() {
   return (
@@ -67,7 +67,7 @@ export function LandingPage() {
                 <a className={styles.repoAction} href={GITHUB_URL} target="_blank" rel="noreferrer">View public repo</a>
               </div>
               <p className={styles.platformLine}>
-                <span><LaptopIcon />Windows x64 · available</span><span><PhoneIcon />iOS &amp; Android · planned</span>
+                <span><LaptopIcon />Windows x64 · installer or portable</span><span><PhoneIcon />iOS &amp; Android · planned</span>
               </p>
               <span className={styles.localStamp}>Local<br />first<br /><small>by design</small></span>
             </div>
