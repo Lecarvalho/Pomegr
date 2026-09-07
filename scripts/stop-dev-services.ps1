@@ -118,6 +118,10 @@ if ($MyInvocation.InvocationName -ne '.') {
   } catch {
     # Only fixed diagnostics cross the launcher boundary; never raw command lines/errors.
     [Console]::Error.WriteLine(('DIAGNOSTIC_HELPER_STAGE ' + $diagnosticStage))
+    $diagnosticType = $_.Exception.GetType().Name
+    if ($diagnosticType -notin @('RuntimeException', 'ParameterBindingException', 'ParameterBindingValidationException', 'MethodInvocationException', 'PSInvalidCastException', 'ArgumentException', 'ArgumentNullException', 'InvalidOperationException')) { $diagnosticType = 'other' }
+    [Console]::Error.WriteLine(('DIAGNOSTIC_HELPER_TYPE ' + $diagnosticType))
+    [Console]::Error.WriteLine(('DIAGNOSTIC_HELPER_LINE ' + [Math]::Min(2000, [Math]::Max(0, [int]$_.InvocationInfo.ScriptLineNumber))))
     switch -Exact ($_.Exception.Message) {
       'POMEGR_DEV_PORT_3003' { exit 10 }
       'POMEGR_DEV_PORT_4317' { exit 11 }

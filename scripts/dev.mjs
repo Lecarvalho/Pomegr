@@ -36,6 +36,9 @@ export async function replaceDevelopmentServices({
     console.error("DIAGNOSTIC_HELPER_FAILURE", code);
     const stage = /DIAGNOSTIC_HELPER_STAGE (resolve_root|inspect_processes|inspect_listeners|plan|stop)\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
     console.error("DIAGNOSTIC_HELPER_STAGE", stage);
+    const type = /DIAGNOSTIC_HELPER_TYPE (RuntimeException|ParameterBindingException|ParameterBindingValidationException|MethodInvocationException|PSInvalidCastException|ArgumentException|ArgumentNullException|InvalidOperationException|other)\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
+    const line = /DIAGNOSTIC_HELPER_LINE ([0-9]{1,4})\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
+    console.error("DIAGNOSTIC_HELPER_DETAIL", type, line);
     const messages = {
       10: "Port 3003 is already in use by an unrecognized process. Close that app and retry.",
       11: "Port 4317 is already in use by an unrecognized process. Close that app and retry.",
