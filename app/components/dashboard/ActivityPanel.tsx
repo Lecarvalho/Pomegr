@@ -7,7 +7,7 @@ import { WorkKindIcon } from "../WorkKindIcon";
 export function ActivityPanel({ activity, historical, loading, onRefresh }: { activity: Activity[]; historical: boolean; loading: boolean; onRefresh: () => void }) {
   return (
     <section className="panel activityPanel">
-      <PanelHeader title={historical ? "Recorded activity" : "Recent activity"} trailing={<button className="textButton" onClick={onRefresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>} />
+      <PanelHeader title={historical ? "Recorded activity" : "Recent activity"} trailing={<button className="commandQuietAction" type="button" onClick={onRefresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>} />
       <div className="activityTable">
         <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span></div>
         {activity.length === 0 && <EmptyState text={historical ? "No activity was recorded for this session." : "Tool use and user input will appear here as they happen."} />}

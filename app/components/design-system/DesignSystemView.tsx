@@ -296,6 +296,7 @@ const TYPE_SCALE = [
   { name: "Body", tokens: "--text-base · 400 · --font-ui", style: { font: "400 var(--text-base)/1.5 var(--font-ui)" } },
   { name: "Control", tokens: "--text-sm · 500 · --font-ui", style: { font: "500 var(--text-sm)/1.4 var(--font-ui)" } },
   { name: "Metadata", tokens: "--text-xs · 400 · --font-ui · --command-muted", style: { font: "400 var(--text-xs)/1.4 var(--font-ui)", color: "var(--command-muted)" } },
+  { name: "Caption", tokens: "--text-caption · 500 · --font-ui · --command-faint · uppercase", style: { font: "500 var(--text-caption)/1.4 var(--font-ui)", color: "var(--command-faint)", letterSpacing: ".06em", textTransform: "uppercase" } },
   { name: "Data", tokens: "--text-xs · 400 · --font-data · tabular-nums", style: { font: "400 var(--text-xs)/1.4 var(--font-data)", fontVariantNumeric: "tabular-nums" } },
 ] as const;
 

@@ -6,7 +6,6 @@
 .agentTreeHeading svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .agentTreeModes { flex: 0 0 auto; }
 .agentTreeView-focused .agentTreeCameraControls { padding-left: 12px; border-left: 1px solid var(--command-line); }
-.agentTreeView-focused .agentTreeCameraControls button { min-width: 34px; min-height: 32px; border-radius: var(--control-radius); font-family: var(--font-ui); }
 .agentTreeFocusSummary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 20px; border-bottom: 1px solid var(--command-line); color: var(--command-muted); font: 400 12px/1.5 var(--font-ui); }
 .agentTreeFocusSummary b { font: 500 12px var(--font-data); color: var(--command-ink); }
 .agentTreeFocusKey { display: flex; align-items: center; gap: 6px; margin-left: auto; }

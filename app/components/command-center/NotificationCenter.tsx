@@ -63,7 +63,7 @@ export function NotificationCenter({ entries, isUnread, unreadCount, markAllRead
     <header>
       <div><h2>Notifications</h2><p>Events that may need your attention</p></div>
       <div className="commandNotificationActions">
-        <button type="button" onClick={markAllRead} disabled={!unreadCount}>{unreadCount ? "Mark all read" : "All read"}</button>
+        <button className="commandQuietAction" type="button" onClick={markAllRead} disabled={!unreadCount}>{unreadCount ? "Mark all read" : "All read"}</button>
         <button className="commandIconButton" type="button" onClick={() => onClose()} aria-label="Close notifications"><CommandIcon name="close" /></button>
       </div>
     </header>

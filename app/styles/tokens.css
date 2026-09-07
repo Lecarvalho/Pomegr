@@ -3,6 +3,7 @@
   color-scheme: light;
   --font-ui: var(--font-inter), sans-serif;
   --font-data: var(--font-geist-mono), Consolas, monospace;
+  --text-caption: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 14px;

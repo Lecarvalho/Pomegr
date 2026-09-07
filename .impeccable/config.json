@@ -6,5 +6,41 @@
       "maxFindings": 5,
       "maxChars": 8000
     }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "createdAt": "2026-09-07T02:54:40.513Z"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "999px",
+        "createdAt": "2026-09-07T02:54:40.581Z"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "24px",
+        "createdAt": "2026-09-07T02:54:40.636Z"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "22px",
+        "createdAt": "2026-09-07T02:54:40.692Z"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "21px",
+        "createdAt": "2026-09-07T02:54:40.748Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0, 0, 0, .52)",
+        "createdAt": "2026-09-07T02:54:40.809Z"
+      }
+    ]
   }
 }

@@ -46,6 +46,11 @@ typography:
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.4
+  caption:
+    fontFamily: "Inter, sans-serif"
+    fontSize: "11px"
+    fontWeight: 500
+    lineHeight: 1.4
   data:
     fontFamily: "Geist Mono, Consolas, monospace"
     fontSize: "12px"
@@ -167,6 +172,7 @@ Inter keeps the dense monitoring workspace readable and direct. Geist Mono is re
 - **Body** (400, 14px, line-height 1.5): explanations and ordinary UI text.
 - **Control** (500, 13px, line-height 1.4): buttons, filters, navigation, and compact labels.
 - **Metadata** (400, 12px, line-height 1.4, Inter): quiet labels and supporting status details.
+- **Caption** (500, 11px, line-height 1.4, Inter, `--text-caption`): the smallest step, reserved for uppercase eyebrows, evidence chips, chart axis ticks, and tiny counts; never running text.
 - **Data** (400, 12px, line-height 1.4, Geist Mono): timestamps, counts, IDs, and execution values.
 
 **The Two Voice Rule.** Use Inter for interface language and Geist Mono for data. Landing typography is a separate surface decision.
@@ -207,6 +213,8 @@ Every button in the application belongs to one of six roles, implemented as shar
 - **Icon** (`.commandIconAction`): 32px square quiet button with a 16px stroke icon. Requires a `title` or `aria-label`. Same hover as quiet.
 
 On phone widths and coarse pointers the roles do not change, only their size: every target reaches 44px, primary and segmented stretch to the full row width (segments flex evenly), secondary pairs split the row, quiet actions become full-width rows, icon buttons become 44px squares, and text links keep a 44px tap box. Local layouts may reset a full-width role back to `auto` where a header keeps two controls on one line.
+
+Shell chrome and stateful controls keep their own contracts on purpose and are not counted among the six roles: the 36px header icon and profile buttons (`.commandIconButton`, `.commandProfileButton`, borderless until hover), the 36px toolbar filter chips (`.commandFilterChip`, `aria-pressed` toggles), the Settings tab list (`.commandSettingsNav`, `role="tab"`), the theme toggle, and the copy-transcript button whose copied/error states carry meaning. Everything else that was still bespoke has been folded into the roles: table pagination (Previous, page numbers with `aria-current="page"`, Next) and the agent tree camera controls (Fit, Zoom in, Zoom out) are secondary actions; panel-header Refresh and the notification tray's Mark all read are quiet actions.
 
 A live reference of all six roles and their states, plus selects, chips and pills, panels, and the token scale, renders at `/design-system` on the web development server (`app/design-system/page.tsx`, `app/components/design-system/DesignSystemView.tsx`). It uses the real shared classes with static sample data only, is absent from every navigation menu and the LAN allowlist, renders the not-found view inside the desktop app, and the desktop shell refuses to navigate to it (`desktop/security-policy.mjs`).
 

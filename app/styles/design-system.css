@@ -8,8 +8,10 @@
 .designSystemRole > p { max-width: 84ch; margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .designSystemStates { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: var(--space-3); }
 .designSystemSample { min-width: 0; display: grid; align-content: start; gap: var(--space-2); padding: var(--space-3); border: 1px dashed var(--command-line); border-radius: var(--control-radius); }
-.designSystemSample > span:first-child { color: var(--command-faint); font: 500 11px/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.designSystemSample > span:first-child { color: var(--command-faint); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
 .designSystemSampleBody { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.designSystemSampleBody > span { min-width: 0; max-width: 100%; }
+.designSystemSampleBody .agentChip { max-width: 100%; }
 .designSystemSample > small { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
 .designSystemNote { margin: var(--space-4) 0 0; padding: var(--space-2) var(--space-3); border-left: 2px solid var(--command-line-strong); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .designSystemGrid { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); align-items: start; }
