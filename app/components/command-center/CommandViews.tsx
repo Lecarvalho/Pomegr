@@ -186,7 +186,7 @@ export function DashboardsView() {
   </CommandPage>;
 }
 
-export function SessionsView({ initialProject = "" }: { initialProject?: string } = {}) {
+export function SessionsView({ initialProject = "", initialRepositoryId }: { initialProject?: string; initialRepositoryId?: string } = {}) {
   const [project, setProject] = useState(initialProject);
   const { providers } = useProviderStatus();
   const columns = useMemo(() => sessionColumns(providers), [providers]);
@@ -197,6 +197,7 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const filter = selectedFilter ?? (liveSessionCount > 0 ? "live" : "all");
   const filteredSessions = useMemo(() => newestSessionsFirst(sessions.filter((session) => {
+    if (initialRepositoryId && session.repositoryId !== initialRepositoryId) return false;
     if (project && session.project !== project) return false;
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
     if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
@@ -204,7 +205,7 @@ export function SessionsView({ initialProject = "" }: { initialProject?: string 
     if (filter === "history" && session.isLive) return false;
     if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
     return true;
-  })), [filter, project, query, sessions]);
+  })), [filter, project, initialRepositoryId, query, sessions]);
   const updateQuery = (value: string) => { setQuery(value); setPage(1); };
   const updateFilter = (value: typeof filter) => { setFilter(value); setPage(1); };
   const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;

@@ -39,98 +39,97 @@ afterEach(() => {
   Reflect.deleteProperty(window, "pomegrDesktop");
 });
 
-describe("repository context inventory", () => {
-  it("keeps capture under provider rows and uses the repository row as the only top-level disclosure", async () => {
-    const capture = vi.fn().mockResolvedValue("completed");
-    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.startsWith("/api/repositories")) return new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (url.startsWith("/api/repository-inventory")) return new Response(JSON.stringify({ repositoryId, provider: "claude", ...snapshot.repositories[0].providers[0].currentRevision,
-        categories: [{ name: "System prompt", tokens: "1.2k", percentage: 12 }], groups: [{ id: "inventory-0", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "200" }] }] }), { status: 200 });
-      return new Response(null, { status: 404 });
-    });
-    render(<RepositoriesView />);
-    const row = await screen.findByRole("button", { name: /^Pomegr/i });
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: "Capture again" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Git details coming soon")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Detailed repository evidence is coming soon" })).toBeInTheDocument();
-    expect(screen.getByText(/Branch, working-tree, commit, and pull-request aggregation/i)).toBeInTheDocument();
-    await userEvent.click(row);
-    expect(row).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByText("CURRENT")).toBeInTheDocument();
-    expect(screen.getByText("UNAVAILABLE")).toBeInTheDocument();
-    expect(screen.getByText("Git details coming soon")).toBeInTheDocument();
-    expect(screen.getByText(/will not combine or approximate Claude Code evidence/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Hide evidence/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getAllByText("Context inventory", { selector: "summary" })[0]);
-    await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
-    const confirmation = screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i });
-    expect(within(confirmation).getByText(/Run a Claude Code diagnostic for Pomegr/i)).toBeInTheDocument();
-    await userEvent.click(within(confirmation).getByRole("button", { name: "Run diagnostic" }));
-    await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
-  });
-
-  it("presents desktop-only capture as quiet guidance on other clients", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.startsWith("/api/repositories")) return new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (url.startsWith("/api/repository-inventory")) return new Response(null, { status: 404 });
-      return new Response(null, { status: 404 });
-    });
-    render(<RepositoriesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Pomegr/i }));
-    await userEvent.click(screen.getAllByText("Context inventory", { selector: "summary" })[0]);
-    expect(screen.getByText("Capture available in Pomegr desktop")).toHaveClass("repositoryProviderRemoteHint");
-    expect(screen.getAllByText("View setup instructions")).toHaveLength(2);
-    await userEvent.click(screen.getAllByText("View setup instructions")[0]);
-    expect(screen.getByText(/Add the Pomegr marketplace and plugin in Claude Code/i)).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Read the plugin instructions" })[0]).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/PLUGINS.md");
-    expect(screen.queryByRole("button", { name: /Pomegr desktop/i })).not.toBeInTheDocument();
-  });
-
-  it("runs native plugin actions without an optimistic installation result and keeps reporting guidance local", async () => {
-    const capture = vi.fn().mockResolvedValue("completed");
-    const pluginAction = vi.fn().mockResolvedValue("completed");
-    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture, repositoryPluginAction: pluginAction } });
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.startsWith("/api/repositories")) return new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } });
-      return new Response(null, { status: 404 });
-    });
-    render(<RepositoriesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Pomegr/i }));
-    expect(screen.getByText("v0.5.0")).toBeInTheDocument();
-    expect(screen.getByText(/Update v0\.6\.0/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Install plugin" }));
-    await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "codex", "install"));
-    expect(await screen.findByText(/Restart Codex, review hook trust/i)).toHaveClass("repositorySetupFeedback");
-    expect(screen.queryByText("v0.6.0", { selector: ".repositorySetupTitle code" })).not.toBeInTheDocument();
-    pluginAction.mockResolvedValueOnce("timed_out");
-    await userEvent.click(screen.getAllByRole("button", { name: "Recheck" })[1]);
-    expect(await screen.findByText(/timed out. Recheck the local setup/i)).toHaveClass("repositorySetupFeedback");
-    expect(screen.queryByText(/Restart Codex, review hook trust/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Configure reporting" }));
-    expect(screen.getByText("/pomegr:init", { selector: "code" })).toBeInTheDocument();
-    expect(screen.getByText("$pomegr:init", { selector: "code" })).toBeInTheDocument();
-  });
-
-  it("shows an in-progress setup check while retaining its last checked version", async () => {
-    const checking = structuredClone(snapshot);
-    const pluginSetup = checking.repositories[0].providers[0].pluginSetup!;
-    pluginSetup.readiness = "loading";
-    pluginSetup.installation = "unknown";
+describe("repository index", () => {
+  function serve(repositories = snapshot.repositories) {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/repositories")
-      ? new Response(JSON.stringify(checking), { status: 200, headers: { "Content-Type": "application/json" } })
+      ? new Response(JSON.stringify({ ...snapshot, repositories }), { status: 200, headers: { "Content-Type": "application/json" } })
       : new Response(null, { status: 404 }));
+  }
+
+  function readyRepository() {
+    const repository = structuredClone(snapshot.repositories[0]);
+    repository.id = "repo-aaaaaaaaaaaaaaaaaaaaaaaa";
+    repository.name = repository.displayName = "Example library";
+    repository.liveCount = 0;
+    repository.historyCount = repository.sessionCount;
+    repository.reporting = { status: "configured", version: 1, checkedAt: null };
+    for (const provider of repository.providers) {
+      provider.pluginSetup = { ...provider.pluginSetup!, installation: "installed", enabled: true, canUpdate: false };
+    }
+    return repository;
+  }
+
+  it("renders named repository links, observed providers, counts and setup chips without disclosures or native actions", async () => {
+    serve([snapshot.repositories[0], readyRepository()]);
     const { container } = render(<RepositoriesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Pomegr/i }));
-    expect(screen.getByText("Checking plugin setup")).toBeInTheDocument();
-    expect(screen.getByText("v0.5.0")).toBeInTheDocument();
-    expect(container.querySelector(".repositorySetupChecked")).toHaveTextContent("Checked");
+    const row = await screen.findByRole("link", { name: "Pomegr, Plugin update available" });
+    expect(row).toHaveAttribute("href", `/repositories/${repositoryId}`);
+    expect(row).not.toHaveAttribute("aria-expanded");
+    expect(container.querySelector("[aria-expanded]")).toBeNull();
+    expect(within(row).getByText("Plugin update available")).toHaveClass("commandChip", "warning");
+    expect(within(row).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(row).getByText("Codex")).toBeInTheDocument();
+    expect(row.querySelector(".commandRepositorySessions")).toHaveTextContent("1 live·2 history");
+    expect(within(screen.getByRole("link", { name: "Example library, Ready" })).getByText("Ready")).toHaveClass("positive");
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByText("2 repositories · 1 needs attention")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Capture|Install|Update plugin/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Rows reflect session associations only/)).toHaveClass("commandRepositoryFootnote");
+    expect(screen.queryByRole("heading", { name: /coming soon/i })).not.toBeInTheDocument();
   });
 
+  it("composes search with attention and live filters and restores All", async () => {
+    const live = readyRepository();
+    live.id = "repo-bbbbbbbbbbbbbbbbbbbbbbbb";
+    live.name = live.displayName = "Example live";
+    live.liveCount = 1;
+    serve([snapshot.repositories[0], readyRepository(), live]);
+    render(<RepositoriesView />);
+    await screen.findByRole("link", { name: "Pomegr, Plugin update available" });
+    await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Needs attention" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Live now" }));
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter repositories" }), " example ");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Example live, Ready" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    await userEvent.clear(screen.getByRole("searchbox"));
+    expect(screen.getAllByRole("link")).toHaveLength(3);
+  });
+
+  it("explains empty filters and a search with no matches", async () => {
+    serve([readyRepository()]);
+    render(<RepositoriesView />);
+    await screen.findByRole("link", { name: "Example library, Ready" });
+    await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
+    expect(screen.getByRole("heading", { name: "No repositories need attention" })).toBeInTheDocument();
+    expect(screen.getByText("Clear the filter to see all 1 repositories.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Live now" }));
+    expect(screen.getByRole("heading", { name: "No repositories are live now" })).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("searchbox"), "absent");
+    expect(screen.getByRole("heading", { name: "No repositories match" })).toBeInTheDocument();
+  });
+
+  it("preserves the empty observed state", async () => {
+    serve([]);
+    render(<RepositoriesView />);
+    expect(await screen.findByRole("heading", { name: "No repositories observed" })).toBeInTheDocument();
+  });
+
+  it("preserves the monitor unavailable state", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+    render(<RepositoriesView />);
+    expect(await screen.findByRole("heading", { name: "Repository inventory unavailable" })).toBeInTheDocument();
+  });
+
+  it("shows loading before data arrives", () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
+    render(<RepositoriesView />);
+    expect(screen.getByRole("region", { name: "Repositories" })).toHaveAttribute("aria-busy", "true");
+  });
   it("serializes a forced refresh behind an in-flight poll", async () => {
     const replies: Array<(response: Response) => void> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>((resolve) => replies.push(resolve)));
@@ -149,7 +148,7 @@ describe("repository context inventory", () => {
     render(<MachineryPanel machinery={null} supported historical={false} inventoryRef={{ repositoryId, provider: "claude", revisionId: "ctx-001",
       capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, detailRetained: true }} />);
     expect(screen.getByText(/available when this session started/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", expect.stringContaining("/repositories?"));
+    expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`);
     expect(screen.queryByText(/Run \/context/i)).not.toBeInTheDocument();
   });
 });

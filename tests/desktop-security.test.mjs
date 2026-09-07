@@ -12,7 +12,7 @@ import {
   inspectAsarPrivacyEntry,
 } from "../desktop/artifact-privacy.mjs";
 import { createNeedsInputNotificationController, createSessionNotificationPoller } from "../desktop/notifications.mjs";
-import { secureBrowserWindowOptions } from "../desktop/security-policy.mjs";
+import { installWebContentsSecurity, secureBrowserWindowOptions } from "../desktop/security-policy.mjs";
 import { DESKTOP_BEHAVIOR_CHANNELS } from "../desktop/desktop-behavior.mjs";
 import {
   installDesktopBehaviorIpcHandlers,
@@ -31,6 +31,17 @@ const productionBuild = await createProductionBuildFixture();
 after(() => productionBuild.close());
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
+
+test("desktop navigation permits repository detail routes and inventory deep links", () => {
+  const contents = new EventEmitter();
+  contents.setWindowOpenHandler = () => {};
+  installWebContentsSecurity(contents, { webOrigin: "http://127.0.0.1:4444", openExternal: async () => {} });
+  for (const eventName of ["will-navigate", "will-redirect"]) {
+    let prevented = false;
+    contents.emit(eventName, { preventDefault() { prevented = true; } }, "http://127.0.0.1:4444/repositories/repo-0123456789abcdef01234567?tab=inventory&provider=claude&revision=ctx-001");
+    assert.equal(prevented, false);
+  }
+});
 
 async function listen(server) {
   server.listen(0, "127.0.0.1");

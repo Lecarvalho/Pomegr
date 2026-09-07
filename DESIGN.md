@@ -228,6 +228,8 @@ Native single-select dropdowns use `CommandSelect` from `app/components/command-
 
 ### Inline Explanations
 
+Repository detail setup rows use `RepositoryRow` with `.commandSettingRow.repositoryRow`: the existing settings grid and divider spacing, a 13px/600 title beside a standard `.commandChip`, a muted 12px detail, and actions on the right. Versions and checked times use the data font. On phone, actions stack below the detail and split the available width with 44px targets. Each independent row has at most one primary commitment (Install plugin, Update plugin, or the inline confirmation's Run diagnostic). The web design-system reference includes a static row sample.
+
 Explanatory inline text may use a quiet dotted underline to disclose a tooltip or popover. The underline follows the text color and is reserved for text only; icons, buttons, and chips retain their own established interaction affordances.
 
 ### Cards / Containers
@@ -252,14 +254,38 @@ Session headers show recorded or live lifecycle state in the status card without
 
 ### Session Evidence
 
-Repositories place current Pomegr plugin setup inside each expanded repository's
-provider section: installed version and enablement, quiet Recheck, and a contextual
-Install plugin or Update plugin action. Update availability and failed verification
-remain distinct from installed state. Context inventory is a secondary disclosure
-under that provider and opens for a revision deep link. One shared Repository
-reporting row follows the providers. Native confirmation owns mutation scope and
-version review; browser clients receive setup instructions. Action results remain
-visible beside their provider, and phone controls have at least 44px targets.
+Repositories use a flat, linked index of observed projects. Each row shows the
+repository name, observed provider badges, live and history session counts, last
+activity, and one bounded Pomegr setup summary. The toolbar combines repository
+search with All, Needs attention, and Live now filters; on phones the rows reflow
+into a compact layout while search and filters retain at least 44px targets.
+Repository detail is a linked `/repositories/<repositoryId>` route. Its header
+uses a 42px outlined repository icon, the repository's live and history counts,
+observed provider badges, and the existing secondary-button role for View
+sessions. The shell uses the shared session breadcrumb for
+`Repositories › {displayName}`. Detail navigation uses the existing Settings
+layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
+the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
+linked setup summaries, and the five most recent associated sessions. Plugin
+groups plugin installation instructions and native actions by provider.
+Reporting shows the shared policy state with always-visible setup guidance.
+Git uses the shared neutral chip with an 8px gap before its placeholder title. The Context
+inventory tab uses one section per provider, including an explicit not-yet-available
+state for Codex, a revision select when
+multiple saved revisions exist, four bounded evidence facts, a category grid,
+expandable listed items and revision comparison, plus explicit loading,
+unavailable, and sanitized failure states. Its capture action and inline
+confirmation reuse the existing button roles and native confirmation boundary.
+Repository-local classes compose the existing Settings geometry, `CommandSelect`,
+chips, and button roles through `RepositoryRow`. On phones, row actions share
+equal-width columns with 44px targets, and capture confirmation buttons stack.
+Inventory capture times stay right-aligned; provider check times are omitted. Tabs support arrow keys and Home/End;
+pane changes restore focus to the selected tab. Native action completion also
+restores tab focus unless the user has moved to another control. Row links name
+the repository and setup state, and the breadcrumb marks the current page.
+Legacy repository query links redirect to the Context inventory tab. Setup
+mutations require native confirmation, with browser clients receiving setup
+instructions.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary
