@@ -265,18 +265,26 @@ observed provider badges, and the existing secondary-button role for View
 sessions. The shell uses the shared session breadcrumb for
 `Repositories › {displayName}`. Detail navigation uses the existing Settings
 layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
-the active tab backed by `?tab=` in the URL. Setup and Context inventory now
-have their tab content; Overview and Reporting remain deferred to RP-05 and
-RP-06, while Git keeps the existing coming-soon placeholder. The Context
+the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
+linked setup summaries, and the five most recent associated sessions. Setup
+groups plugin and inventory rows by provider, followed by the shared reporting
+row. Reporting repeats that policy state with always-visible setup guidance;
+Git keeps the existing coming-soon placeholder. The Context
 inventory tab uses one section per supported provider, a revision select when
 multiple saved revisions exist, four bounded evidence facts, a category grid,
 expandable listed items and revision comparison, plus explicit loading,
 unavailable, and sanitized failure states. Its capture action and inline
 confirmation reuse the existing button roles and native confirmation boundary.
-The implementation adds no shared styles or tokens; repository-local classes
-compose the existing Settings geometry, `CommandSelect`, chips, and button
-roles. Setup mutations require native confirmation, with browser clients
-receiving setup instructions.
+Repository-local classes compose the existing Settings geometry, `CommandSelect`,
+chips, and button roles through `RepositoryRow`. On phones, row actions share
+equal-width columns with 44px targets, and capture confirmation buttons stack.
+Provider check times stay right-aligned. Tabs support arrow keys and Home/End;
+pane changes restore focus to the selected tab. Native action completion also
+restores tab focus unless the user has moved to another control. Row links name
+the repository and setup state, and the breadcrumb marks the current page.
+Legacy repository query links redirect to the Context inventory tab. Setup
+mutations require native confirmation, with browser clients receiving setup
+instructions.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary

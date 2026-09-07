@@ -56,6 +56,11 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 ## Coding-agent plugins
 
+Open **Repositories**, select a repository, and use **Setup** to check its plugins.
+The detail page also includes **Overview**, **Context inventory**, and **Reporting**;
+**Git** is a coming-soon placeholder. Plugin changes and inventory captures require
+confirmation in Pomegr desktop; browser and phone clients show setup guidance.
+
 - [Install the Pomegr reporting plugin for Codex or Claude Code](docs/PLUGINS.md)
 
 ## Publish procedures

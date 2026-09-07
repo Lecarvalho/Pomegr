@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot, SessionSummary } from "../../shared/monitor-contract";
@@ -331,6 +331,7 @@ describe("repository detail setup", () => {
     await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
     await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "claude", "update"));
     expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus());
     pluginAction.mockResolvedValueOnce("timed_out");
     await userEvent.click(screen.getByRole("button", { name: "Install plugin" }));
     await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "codex", "install"));
@@ -349,10 +350,39 @@ describe("repository detail setup", () => {
     const confirmation = screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i });
     await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("group", { name: /Confirm Claude Code inventory capture/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus();
     await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
     await userEvent.click(within(screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i })).getByRole("button", { name: "Run diagnostic" }));
     await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
     expect(await screen.findByText("Claude Code inventory captured.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Setup" })).toHaveFocus());
+  });
+
+  it("preserves focus moved elsewhere while a native action is pending", async () => {
+    let finish!: (status: string) => void;
+    const pluginAction = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
+    screen.getByRole("link", { name: "View sessions" }).focus();
+    await act(async () => { finish("completed"); });
+    expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View sessions" })).toHaveFocus();
+  });
+
+  it("restores focus to the destination tab after Open inventory removes its action", async () => {
+    serve(setupSnapshot);
+    navigation.search = "tab=setup";
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Open inventory" }));
+    navigation.search = "tab=inventory&provider=claude";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
+    expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole("tabpanel", { name: "Context inventory" })).toHaveFocus();
   });
 
   it("offers instructions and no primary plugin or capture actions away from desktop", async () => {

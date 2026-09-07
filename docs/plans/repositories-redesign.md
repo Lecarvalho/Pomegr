@@ -1,7 +1,7 @@
 # Repositories page redesign plan
 
-> Status: ready for implementation — 2026-09-06. Option A (index + detail page) was chosen
-> by the product owner. POMEGR-RP-01 through POMEGR-RP-06 are complete. POMEGR-RP-07 is open.
+> Status: complete — 2026-09-07. Option A (index + detail page) was chosen
+> by the product owner. POMEGR-RP-01 through POMEGR-RP-07 are complete.
 
 ## Objective
 
@@ -546,10 +546,10 @@ Finish per `mockup-mobile-index.html`, `mockup-mobile-detail.html`, and `DESIGN.
 
 ### Acceptance criteria
 
-- [ ] No horizontal overflow at 360 px on either view; all controls 44 px on phone.
-- [ ] Keyboard-only navigation reaches every tab, row link, and action.
-- [ ] No selector left in `workspace.css` that nothing renders.
-- [ ] `DESIGN.md` describes the shipped structure.
+- [x] No horizontal overflow at 360 px on either view; all controls 44 px on phone.
+- [x] Keyboard-only navigation reaches every tab, row link, and action.
+- [x] No selector left in `workspace.css` that nothing renders.
+- [x] `DESIGN.md` describes the shipped structure.
 
 ### Verification
 
@@ -581,3 +581,4 @@ npm test
 | 2026-09-07 | POMEGR-RP-04 | Complete | Context inventory tab with supported-provider sections, URL-backed revision selectors, initial deep-link scroll, saved facts, category/item evidence, comparison, and sanitized loading/failure/retention states. Capture action and inline native confirmation shared with Setup; existing API and observation semantics preserved. Full npm test passed (578 UI tests; node/plugin suites), verify:fast passed, 43 focused detail checks passed. Production browser review at 1440/900/390/360 px in both themes: no page overflow, 44 px phone controls, revision URL update verified. Independent finish review shipped using fallback reviewer instructions. |
 | 2026-09-07 | POMEGR-RP-05 | Complete | Default Overview with four snapshot facts, three linked setup cards sharing plugin attention and inventory status rules, and five recent sessions strictly filtered by repository ID using shared sorting, activity labels, and route encoding. Inventory estimates remain tied to one saved provider revision; missing/loading/unavailable catalog states are explicit. Current shared activity label Closed is preserved in place of mockup Ended. Full npm test passed (591 UI tests; node/plugin suites and build), verify:fast passed, 86 focused checks passed. Synthetic production browser review at 1440/900/390/360 px in both themes: no page overflow, 44 px phone controls, Setup and filtered Sessions links verified, no browser errors. Independent finish review returned ship using fallback reviewer instructions. RP-06 Reporting content and RP-07 final cleanup/docs remain next. |
 | 2026-09-07 | POMEGR-RP-06 | Complete | Reporting pane reuses the Setup reporting row and normalized policy state, with always-visible agent setup help and the plugin documentation link. Review/Configure focuses the visible help in Reporting; Setup retains its disclosure. Git keeps the existing coming-soon title, detail, and icon. Full npm test passed (597 UI tests; node/plugin suites and build); final build, 70 focused checks, and final verify:fast passed. Synthetic production browser review of Reporting and Git at 1440/390 px in both themes: no page overflow, 44 px phone controls, help focus verified, no browser errors. Independent finish review returned ship using fallback reviewer instructions. RP-07 owns final responsive/accessibility cleanup, dead CSS, docs, and full viewport verification. |
+| 2026-09-07 | POMEGR-RP-07 | Complete | Finished focus restoration for pane changes, native action completion, and capture cancellation while preserving focus moved elsewhere. Phone capture buttons stack; existing equal-width row actions, provider check times, 44 px controls, row names, breadcrumb, and arrow-key tabs verified. Removed obsolete accordion/provider/setup CSS and the unused metrics wrapper; remaining dynamic agent-tree classes verified in use. DESIGN.md, plugin instructions, README, and workflow routing describe the shipped index and all tabs. Final verify:fast and full npm test passed (599 UI tests; node/plugin suites and production build). Synthetic production browser matrix passed 88 checks at 1440/1100/900/760/390/360 px in both themes across the index, all tabs, legacy redirect, expanded inventory, and browser instructions: no page overflow, 44 px phone controls, keyboard and redirect behavior, no browser errors. Final production capture-cancel focus check passed after the last edit. Observation, API, and native confirmation boundaries unchanged. |

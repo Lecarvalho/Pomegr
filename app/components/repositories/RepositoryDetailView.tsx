@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { ProviderId, RepositoryProviderInventory } from "../../../shared/monitor-contract";
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
@@ -38,6 +38,23 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
   const searchParams = useSearchParams();
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const tab = repositoryTab(searchParams.get("tab")) ?? initialTab;
+  const previousTab = useRef(tab);
+  useEffect(() => {
+    if (previousTab.current !== tab) {
+      tabsRef.current[repositoryTabs.findIndex(([id]) => id === tab)]?.focus();
+      previousTab.current = tab;
+    }
+  }, [tab]);
+  const restoreActionFocus = (opener: Element | null) => {
+    // Do not interrupt someone who moved to another control while the native action ran.
+    if (document.activeElement === document.body || document.activeElement === opener) {
+      tabsRef.current.find((button) => button?.getAttribute("aria-selected") === "true")?.focus();
+    }
+  };
+  const cancelCapture = () => {
+    setConfirming(null);
+    restoreActionFocus(document.activeElement);
+  };
   const repository = snapshot.repositories.find((entry) => entry.id === repositoryId);
   const inventorySelection = repositoryRouteOptions({
     provider: searchParams.get("provider") ?? initialProvider,
@@ -62,6 +79,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
   };
   const capture = async (provider: RepositoryProviderInventory) => {
     if (actionInFlight.current || !repository) return;
+    const opener = document.activeElement;
     actionInFlight.current = true;
     const key = `${repositoryId}:${provider.provider}:inventory`;
     setCaptureKey(key);
@@ -76,10 +94,12 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
       setCaptureKey(null);
       actionInFlight.current = false;
       await refresh(true);
+      restoreActionFocus(opener);
     }
   };
   const runPluginAction = async (provider: RepositoryProviderInventory, action: RepositoryPluginAction) => {
     if (actionInFlight.current) return;
+    const opener = document.activeElement;
     actionInFlight.current = true;
     const key = `${repositoryId}:${provider.provider}:plugin`;
     setPluginActionKey(key);
@@ -93,6 +113,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
       setPluginActionKey(null);
       actionInFlight.current = false;
       await refresh(true);
+      restoreActionFocus(opener);
     }
   };
   const handleTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -151,13 +172,13 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
             return <section key={key} aria-label={`${provider.source} setup`}>
               <header className="repositorySectionHead"><div><ProviderBadge source={provider.source} /><span>{provider.sessionCount ? `${provider.sessionCount} observed session${provider.sessionCount === 1 ? "" : "s"}` : "No observed sessions yet"}</span></div>{checkedAt && <span className="repositoryChecked">Checked {relativeTime(checkedAt)}</span>}</header>
               <PluginSetupRow provider={provider} desktop={desktopPlugin} actionRunning={Boolean(pluginActionKey || captureKey)} feedback={feedback?.key === `${key}:plugin` ? feedback : null} onAction={(action) => void runPluginAction(provider, action)} />
-              <InventorySetupRow repository={repository} provider={provider} desktop={desktopCapture} confirming={confirming === provider.provider} capturing={captureKey === `${key}:inventory`} feedback={feedback?.key === `${key}:inventory` ? feedback : null} onConfirm={() => setConfirming(provider.provider)} onCancel={() => setConfirming(null)} onCapture={() => void capture(provider)} onOpen={() => switchTab("inventory", provider.provider)} />
+              <InventorySetupRow repository={repository} provider={provider} desktop={desktopCapture} confirming={confirming === provider.provider} capturing={captureKey === `${key}:inventory`} feedback={feedback?.key === `${key}:inventory` ? feedback : null} onConfirm={() => setConfirming(provider.provider)} onCancel={cancelCapture} onCapture={() => void capture(provider)} onOpen={() => switchTab("inventory", provider.provider)} />
             </section>;
           })}
           <header className="repositorySectionHead"><strong>Shared by both providers</strong></header>
           <RepositoryReportingRow repositoryId={repositoryId} reporting={repository.reporting} />
           <p className="repositorySetupFootnote">Plugin and reporting state are local observations, rechecked on demand. Raw configuration never leaves this machine.</p>
-        </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={() => setConfirming(null)} onCapture={(provider) => void capture(provider)} /> : tab === "reporting" ? <>
+        </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={cancelCapture} onCapture={(provider) => void capture(provider)} /> : tab === "reporting" ? <>
           <header className="repositoryPaneHead"><div><h2>Repository reporting</h2><p>One policy, shared by Claude Code and Codex, that chooses what agents report about this repository.</p></div></header>
           <RepositoryReportingRow repositoryId={repositoryId} reporting={repository.reporting} context="reporting" />
         </> : <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" />}
