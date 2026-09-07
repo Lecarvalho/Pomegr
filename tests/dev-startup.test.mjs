@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, writeFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -327,7 +327,9 @@ test("Windows cleanup can stop an owned native process with CIM identity checks"
 });
 
 test("a second Windows dev launch replaces the first and reaches readiness", { skip: process.platform !== "win32", timeout: 45_000 }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-dev-replacement-"));
+  // Windows runners can expose TEMP through an 8.3 alias. Use one canonical
+  // root for the fixture and the helper's exact script-ownership comparisons.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "pomegr-dev-replacement-")));
   const children = [];
   const reservations = [createServer(), createServer()];
   try {
@@ -340,7 +342,10 @@ test("a second Windows dev launch replaces the first and reaches readiness", { s
     await mkdir(path.join(root, "monitor"));
     const devSource = await readFile(new URL("../scripts/dev.mjs", import.meta.url), "utf8");
     const helperSource = await readFile(stopHelper, "utf8");
-    const isolatedPorts = (source) => source.replace(/\b4317\b/g, String(ports[0])).replace(/\b3003\b/g, String(ports[1]));
+    // Replace the fixed ports in both numeric literals and POMEGR_DEV_PORT_*
+    // error IDs, without rewriting digits inside a newly substituted port.
+    const isolatedPorts = (source) => source.replace(/(?<!\d)(4317|3003)(?!\d)/g,
+      (_match, port) => String(ports[port === "4317" ? 0 : 1]));
     await writeFile(path.join(root, "scripts", "dev.mjs"), isolatedPorts(devSource));
     await writeFile(path.join(root, "scripts", "stop-dev-services.ps1"), isolatedPorts(helperSource));
     for (const [entry, port] of [["monitor/cli.mjs", ports[0]], ["scripts/run-vinext.mjs", ports[1]]]) {
