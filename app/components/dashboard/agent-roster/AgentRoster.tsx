@@ -7,7 +7,7 @@ import { liveWallTimeMs } from "../../../formatting.mjs";
 import { useLiveNow } from "../../../hooks/LiveClockContext";
 import { EmptyState } from "../../EmptyState";
 import { phaseProgress } from "./workflow-phase-progress";
-import { buildRosterGroups, roleTally, statusTally, type RosterGroup } from "./groups";
+import { buildRosterGroups, roleTally, sortRosterAgentsByCreationHierarchy, statusTally, type RosterGroup } from "./groups";
 import { DEFAULT_FILTERS, RosterFilterBar, type RosterFilters } from "./RosterFilters";
 import { RosterCaret, RosterRow } from "./RosterRow";
 import { AgentInspector } from "./AgentInspector";
@@ -161,8 +161,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const visibleIds = new Set(visible.map((agent) => agent.id));
   const treeRows = agentTreeRows(agents);
   const depthById = new Map(treeRows.map(({ agent, depth }) => [agent.id, depth]));
-  const sort = (members: Agent[]) => [...members].sort((a, b) => {
-    if (filters.sort === "created") return (Date.parse(b.startedAt || "") || 0) - (Date.parse(a.startedAt || "") || 0);
+  const sort = (members: Agent[]) => filters.sort === "created" ? sortRosterAgentsByCreationHierarchy(members) : [...members].sort((a, b) => {
     if (filters.sort === "context") return b.tokens.total - a.tokens.total;
     if (filters.sort === "calls") return b.toolCalls - a.toolCalls;
     if (filters.sort === "wall") return liveWallTimeMs(b.durationMs, b.startedAt, !historical && ["active", "waiting"].includes(b.status), now) - liveWallTimeMs(a.durationMs, a.startedAt, !historical && ["active", "waiting"].includes(a.status), now);

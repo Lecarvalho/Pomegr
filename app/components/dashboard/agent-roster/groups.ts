@@ -57,6 +57,42 @@ function compareAgentOrder(left: { agent: Agent; index: number }, right: { agent
     || left.index - right.index;
 }
 
+/** Sort sibling branches newest-first while keeping every descendant below its parent. */
+export function sortRosterAgentsByCreationHierarchy(agents: Agent[]): Agent[] {
+  const members = agents.map((agent, index) => ({ agent, index }));
+  const memberIds = new Set(agents.map((agent) => agent.id));
+  const children = new Map<string, typeof members>();
+  const roots: typeof members = [];
+  const compareCreated = (left: (typeof members)[number], right: (typeof members)[number]) =>
+    (Date.parse(right.agent.startedAt || "") || 0) - (Date.parse(left.agent.startedAt || "") || 0)
+    || left.index - right.index;
+
+  for (const member of members) {
+    const parentId = member.agent.parentId;
+    if (!parentId || parentId === member.agent.id || !memberIds.has(parentId)) {
+      roots.push(member);
+      continue;
+    }
+    const siblings = children.get(parentId) || [];
+    siblings.push(member);
+    children.set(parentId, siblings);
+  }
+
+  const ordered: Agent[] = [];
+  const visited = new Set<string>();
+  const visit = (member: (typeof members)[number]) => {
+    if (visited.has(member.agent.id)) return;
+    visited.add(member.agent.id);
+    ordered.push(member.agent);
+    for (const child of (children.get(member.agent.id) || []).sort(compareCreated)) visit(child);
+  };
+
+  for (const root of roots.sort(compareCreated)) visit(root);
+  // Malformed cycles have no root. Retain every bounded row without breaking the sort.
+  for (const member of members.sort(compareCreated)) visit(member);
+  return ordered;
+}
+
 function directDescendant(agent: Agent, byId: Map<string, Agent>) {
   const visited = new Set<string>();
   let current: Agent | undefined = agent;

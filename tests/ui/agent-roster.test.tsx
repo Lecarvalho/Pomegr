@@ -132,6 +132,25 @@ describe("grouped agent roster", () => {
     expect(container.querySelector("button button")).toBeNull();
   });
 
+  it("keeps newer descendants below their parent when sorting by creation date", async () => {
+    const user = userEvent.setup();
+    const agents = [
+      agent,
+      child("Codex relay review PR #729", { startedAt: "2026-08-01T00:00:00Z" }),
+      child("Codex review iteration 1", { parentId: "Codex relay review PR #729", startedAt: "2026-08-01T00:01:00Z" }),
+      child("Codex review iteration 2", { parentId: "Codex relay review PR #729", startedAt: "2026-08-01T00:02:00Z" }),
+    ];
+    render(panel(agents));
+    await user.click(screen.getByRole("button", { name: /Direct subagents/ }));
+
+    expect(rows().map((row) => row.getAttribute("aria-label"))).toEqual([
+      expect.stringContaining("Primary"),
+      expect.stringContaining("Codex relay review PR #729"),
+      expect.stringContaining("Codex review iteration 2"),
+      expect.stringContaining("Codex review iteration 1"),
+    ]);
+  });
+
   it("opens the selected or requested workflow beyond the initial eight and supports Grid handoff", async () => {
     const user = userEvent.setup();
     const agents = [agent, ...Array.from({ length: 12 }, (_, index) => child(`worker ${index}`, { workflowId: "run" }))];
