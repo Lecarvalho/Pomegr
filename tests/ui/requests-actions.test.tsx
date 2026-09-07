@@ -80,6 +80,48 @@ afterEach(() => {
 });
 
 describe("RequestsActionsPanel", () => {
+  it.each([
+    { phone: false, count: 33, ordinals: [1, 17, 33] },
+    { phone: false, count: 5, ordinals: [1, 5] },
+    { phone: false, count: 1, ordinals: [1] },
+    { phone: false, count: 2, ordinals: [2] },
+    { phone: false, count: 1_000, ordinals: [941, 971, 1000] },
+    { phone: true, count: 10, ordinals: [1, 10] },
+    { phone: true, count: 1, ordinals: [1] },
+    { phone: true, count: 2, ordinals: [2] },
+    { phone: true, count: 100, ordinals: [81, 100] },
+  ])("anchors readable axis labels to bars for $count requests (phone: $phone)", ({ phone, count, ordinals }) => {
+    setPhone(phone);
+    const { container } = renderPanel(Array.from({ length: count }, (_, index) => snapshot(index + 1)));
+    const svg = chart(container);
+    const labels = Array.from(svg.querySelectorAll(".requestsActionsAxis:last-child text"));
+    expect(labels.map((label) => Number(label.textContent?.match(/^#(\d+)/)?.[1]))).toEqual(ordinals);
+    labels.forEach((label, index) => {
+      const bar = within(container).getByRole("button", { name: new RegExp(`^Request #${ordinals[index]},`) });
+      const segment = bar.querySelector(".requestsActionsSegment")!;
+      const center = Number(segment.getAttribute("x")) + Number(segment.getAttribute("width")) / 2;
+      expect(Number(label.getAttribute("x"))).toBeCloseTo(center);
+    });
+    if (count === 33) {
+      expect(labels[1]).toHaveTextContent(/^#17 · /);
+      expect(Number(labels.at(-1)!.getAttribute("x"))).toBeLessThan(700);
+    }
+  });
+
+  it("advances the last axis label with an appended request while keeping existing bars stationary", () => {
+    const items = Array.from({ length: 33 }, (_, index) => snapshot(index + 1));
+    const { container, rerender } = renderPanel(items);
+    const positions = Array.from(container.querySelectorAll(".requestsActionsSegment.uncached"), (bar) => bar.getAttribute("x"));
+    const previousLastX = Number(chart(container).querySelector(".requestsActionsAxis:last-child text:last-child")!.getAttribute("x"));
+    rerender(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([...items, snapshot(34)])} contextBoundaries={[]} cacheWriteAvailable historical={false} />);
+    expect(Array.from(container.querySelectorAll(".requestsActionsSegment.uncached"), (bar) => bar.getAttribute("x")).slice(0, 33)).toEqual(positions);
+    const lastLabel = chart(container).querySelector(".requestsActionsAxis:last-child text:last-child")!;
+    const lastBar = container.querySelectorAll(".requestsActionsSegment.uncached")[33];
+    expect(lastLabel).toHaveTextContent("#34");
+    expect(Number(lastLabel.getAttribute("x"))).toBeGreaterThan(previousLastX);
+    expect(Number(lastLabel.getAttribute("x"))).toBeCloseTo(Number(lastBar.getAttribute("x")) + Number(lastBar.getAttribute("width")) / 2);
+  });
+
   it("renders a 60-request desktop window from a 1,000-row retained feed", () => {
     const { container } = renderPanel(Array.from({ length: 1_000 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(60);

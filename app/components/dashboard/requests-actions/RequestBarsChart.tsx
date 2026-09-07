@@ -27,6 +27,24 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   const width = step - gap;
   const height = (value: number) => value / maximum * (bottom - top);
   const visible = rows.slice(start - 1, end);
+  const barCenter = (index: number) => left + step * index + width / 2;
+  const axisLabels: { index: number; text: string; x: number; anchor: "middle" | "end"; left: number; right: number }[] = [];
+  // Reserve endpoints first, then fit the timestamp between them. Use a
+  // conservative width for the caption-size monospace text in SVG coordinates.
+  const middleIndex = Math.floor(visible.length / 2);
+  for (const index of [visible.length - 1, 0, ...(!phone && visible.length > 2 ? [middleIndex] : [])]) {
+    const row = visible[index];
+    if (!row || axisLabels.some((label) => label.index === index)) continue;
+    const text = `#${row.ordinal}${index === middleIndex && index > 0 && index < visible.length - 1 ? ` · ${shortTime(row.observedAt)}` : ""}`;
+    const labelWidth = text.length * 8;
+    const x = barCenter(index);
+    const anchor = x + labelWidth / 2 > (phone ? 334 : 1112) ? "end" : "middle";
+    const labelLeft = x - (anchor === "end" ? labelWidth : labelWidth / 2);
+    const labelRight = labelLeft + labelWidth;
+    if (axisLabels.some((label) => labelLeft < label.right + 8 && labelRight + 8 > label.left)) continue;
+    axisLabels.push({ index, text, x, anchor, left: labelLeft, right: labelRight });
+  }
+  axisLabels.sort((a, b) => a.index - b.index);
   const labeledRow = [hoveredId, focusedId, selectedId]
     .map((id) => visible.find((row) => row.id === id && row.cacheEvidence))
     .find((row) => row !== undefined);
@@ -78,9 +96,7 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
     })}
     {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelX < right - 115 ? labelX + 12 : labelX - 12} y={top - 43} textAnchor={labelX < right - 115 ? "start" : "end"}>{cacheEvidenceLabel(labeledRow.cacheEvidence)}</text>}
     <g className="requestsActionsAxis">
-      <text x={left} y={phone ? 192 : 266}>#{start}</text>
-      {!phone && visible.length > 2 && <text x={(left + right) / 2} y={266} textAnchor="middle">#{visible[Math.floor(visible.length / 2)].ordinal} · {shortTime(visible[Math.floor(visible.length / 2)].observedAt)}</text>}
-      <text x={right} y={phone ? 192 : 266} textAnchor="end">#{end}</text>
+      {axisLabels.map((label) => <text key={label.index} x={label.x} y={phone ? 192 : 266} textAnchor={label.anchor}>{label.text}</text>)}
     </g>
   </svg>;
 }
