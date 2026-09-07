@@ -53,7 +53,7 @@ describe("sessions table", () => {
     expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
   });
 
-  it.each(["working", "needs_input", "idle", "open", "stopped", "unknown"] as const)("shows an em dash for a legacy retained heading in %s rows", (activityStatus) => {
+  it.each(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"] as const)("shows an em dash for a legacy retained heading in %s rows", (activityStatus) => {
     const session: SessionSummary = JSON.parse(JSON.stringify({ ...sessions[0], activityStatus, currentActivity: { ...activity, state: "last_observed" } }));
     const view = render(<SessionCatalogProvider sessions={[session]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.queryByText(/Previous activity/)).not.toBeInTheDocument();

@@ -991,7 +991,16 @@ recency-only fallback rows cannot acquire Open merely from being Live. Owner los
 removes confirmed presence through the existing catalog reconciliation; no new
 recent-idle grace period is added.
 
-Non-live Claude catalog rows use `idle` as a no-live-session fallback, not
+Confirmed Claude runtime departure maps to the bounded catalog `closed` status
+only when the existing private registry observer excludes that session from Live.
+It reports runtime closure, never an exit reason or successful task completion.
+Missing registration or uncertain process inspection alone cannot supply Closed.
+Validated resumption replaces it; explicit-file compatibility selection retains
+its Live override. Owner/closure memory remains bounded, private, and unpersisted;
+restart uncertainty retains the existing fallback. Only the normalized enum crosses
+the catalog boundary, through existing structural revisions and cache-only GETs.
+
+Other non-live Claude catalog rows use `idle` as a no-live-session fallback, not
 provider-confirmed completion; live rows with unavailable lifecycle evidence remain
 `unknown`. This changes only the normalized catalog enum. Structural catalog
 projection publishes it through the existing committed revision and notification

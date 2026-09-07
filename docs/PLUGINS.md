@@ -20,8 +20,10 @@ Neither plugin sends transcript contents or provider credentials to Pomegr. Obse
 
 ### From Pomegr desktop
 
-Open **Repositories**, expand a repository, and find **Pomegr plugin** under its
-provider. Pomegr automatically checks local installation records and configuration.
+Open **Repositories**, select a repository row, then open **Setup** and find
+**Pomegr plugin** under its provider. The index summarizes setup and offers
+**Needs attention** and **Live now** filters. Pomegr automatically checks local
+installation records and configuration.
 The row shows the installed version, enablement, scope, and last check. **Recheck**
 refreshes local evidence; it respects the separate marketplace request cooldown.
 **Install plugin** and **Update plugin** appear only when the official source and
@@ -36,8 +38,9 @@ update check retains the installed version. Unknown local formats, conflicting
 sources, or ambiguous cache versions show **Unable to verify**. Disabled Codex
 installations require manual updating because its add command may enable a plugin.
 
-**Repository reporting** is shared by both providers. **Configure reporting** opens
-the existing init guidance below; it does not silently create or replace a policy.
+**Repository reporting** is shared by both providers and appears in **Setup** and
+the **Reporting** tab. **Configure reporting** opens the init guidance in Setup;
+Reporting always shows that guidance. It does not silently create or replace a policy.
 Browser and phone clients show setup instructions, while changes run through the
 local desktop. Reload Claude Code plugins or restart Codex and review its hooks as
 described below. Running and historical sessions continue to show the version they

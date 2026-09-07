@@ -85,6 +85,7 @@ export function sessionState(session: Pick<SessionSummary, "activityStatus">) {
     case "idle": return { label: "Idle", state: "idle" as const };
     case "open": return { label: "Open", state: "unknown" as const };
     case "stopped": return { label: "Stopped", state: "unknown" as const };
+    case "closed": return { label: "Closed", state: "idle" as const };
     case "unknown": return { label: "Unknown", state: "unknown" as const };
   }
   return { label: "Unknown", state: "unknown" as const };

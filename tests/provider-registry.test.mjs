@@ -393,17 +393,18 @@ test("registry read failures retain safe details separately for each provider", 
   assert.doesNotMatch(JSON.stringify(diagnostics), /PRIVATE|message|stack|path/);
 });
 
-test("catalog preserves explicit open and stopped states without inventing historical activity", async () => {
+test("catalog preserves explicit open, stopped, and closed states without inventing historical activity", async () => {
   const at = "2026-08-10T12:00:00.000Z";
   const registry = createProviderRegistry([provider("codex", [
     session("open", at, { activityStatus: "open" }),
     session("idle", at, { isLive: false, activityStatus: "idle" }),
     session("stopped", at, { isLive: false, activityStatus: "stopped" }),
+    session("closed", at, { isLive: false, activityStatus: "closed" }),
     session("unknown", at, { isLive: false, activityStatus: "unknown" }),
     session("old-active", at, { isLive: false, activityStatus: "working" }),
   ])]);
   const rows = new Map((await registry.listSessions()).map((entry) => [entry.id, entry]));
-  for (const status of ["open", "idle", "stopped", "unknown"]) {
+  for (const status of ["open", "idle", "stopped", "closed", "unknown"]) {
     assert.equal(rows.get('codex:' + status).activityStatus, status);
   }
   assert.equal(rows.get("codex:old-active").activityStatus, "unknown");

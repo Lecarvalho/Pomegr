@@ -392,11 +392,11 @@ export function createClaudeProvider(options = {}) {
       registryAvailable: fs.existsSync(registryRoot),
       closedSessionIds, nowMs: now(),
     });
-    return { files, liveFile, liveFiles, registry };
+    return { files, liveFile, liveFiles, registry, closedSessionIds };
   }
 
   async function listSessions() {
-    const { files, liveFiles, registry } = discoveredSessions();
+    const { files, liveFiles, registry, closedSessionIds } = discoveredSessions();
     backgroundLifecycle.prune(registry);
     const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));
     nativeStatus.apply(registry, transcriptStatusIds);
@@ -417,7 +417,8 @@ export function createClaudeProvider(options = {}) {
       const liveState = {
         isLive,
         needsInput: Boolean(registryEntry?.needsInput),
-        activityStatus: sessionActivityStatus(isLive, registryEntry, backgroundRunning),
+        activityStatus: !isLive && closedSessionIds.has(path.basename(file, ".jsonl"))
+          ? "closed" : sessionActivityStatus(isLive, registryEntry, backgroundRunning),
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
       if (cached?.key === cacheKey) {

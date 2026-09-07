@@ -139,8 +139,11 @@ test("recent Claude exit bypasses grace and publishes historical detail without 
   await values.writeRegistry("idle");
   await utimes(values.mainFile, new Date(), new Date());
   let alive = true;
+  let processStart = "owner-start";
   const watchers = new Map();
-  const provider = watchedProvider(values, watchers, { processExists: () => alive });
+  const provider = watchedProvider(values, watchers, {
+    processExists: () => alive, processIdentities: () => new Map([[42, processStart]]),
+  });
   const observer = provider.createObserver();
   const controller = new AbortController();
   context.after(() => controller.abort());
@@ -159,7 +162,18 @@ test("recent Claude exit bypasses grace and publishes historical detail without 
   alive = false; // No further filesystem event: registry deletion precedes process exit.
   await waitFor(() => catalogs.at(-1)?.[0]?.isLive === false && details.at(-1)?.historical === true,
     "actual exit must bypass both 15-second grace and 60-second reconciliation");
-  assert.equal(catalogs.at(-1)[0].activityStatus, "idle");
+  assert.equal(catalogs.at(-1)[0].activityStatus, "closed");
+  assert.doesNotMatch(JSON.stringify(catalogs.at(-1)), /resourceOwner|procStart|owner-start|"pid"|closedSessionIds/);
+  const restarted = watchedProvider(values, new Map());
+  assert.equal((await restarted.listSessions())[0].activityStatus, "unknown",
+    "a fresh monitor cannot invent closure from recent transcript activity");
+
+  alive = true;
+  processStart = "resumed-start";
+  await writeFile(values.registryFile, JSON.stringify({ sessionId: values.localId, status: "active", pid: 42, procStart: processStart }));
+  watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
+  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === true && catalogs.at(-1)?.[0]?.activityStatus === "working",
+    "resuming a validated runtime must replace Closed");
 });
 
 test("Claude retains startup grace, but a stale current owner cannot revive it", async (context) => {

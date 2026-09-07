@@ -68,6 +68,18 @@ test("session, provider-health, and usage-limit projections expose only V1 field
   assert.doesNotMatch(JSON.stringify(usage), /retainedLimits|supplemental/u);
 });
 
+test("agent session queries retain confirmed closure without exposing native ownership", () => {
+  const value = buildAgentQueryProjection({ now: () => NOW, catalog: [{
+    id: "claude:closed", provider: "claude", title: "Closed session", project: "Pomegr",
+    isLive: false, activityStatus: "closed", resourceOwner: { pid: 42, processStartIdentity: "PRIVATE_OWNER" },
+  }] });
+  const history = value.listSessions({ scope: "all" });
+  assert.equal(history.sessions[0].state, "history");
+  assert.equal(history.sessions[0].activityStatus, "closed");
+  assert.equal(value.listSessions({ scope: "live" }).sessions.length, 0);
+  assert.doesNotMatch(JSON.stringify(history), /resourceOwner|pid|PRIVATE_OWNER/);
+});
+
 test("usage local activity counts the complete committed catalog before listing caps", () => {
   const sessions = [
     ...Array.from({ length: 101 }, (_, index) => ({ id: `codex:live-${index}`, provider: "codex", isLive: true, activityStatus: "working", project: `Project ${index}` })),

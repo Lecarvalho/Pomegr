@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { AgentChip } from "../AgentChip";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
+import { RepositoryRow } from "../repositories/RepositoryRow";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
 import {
   CommandEmpty,
@@ -38,6 +39,9 @@ export function DesignSystemView() {
     <ButtonsSection />
     <FormFieldsSection />
     <ChipsSection />
+    <Section id="repository-row" title="Repository setup row" lede="Shared settings geometry, standard chips, and independent row actions.">
+      <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
+    </Section>
     <PanelsSection />
     <TypographySection />
   </CommandPage>;

@@ -25,7 +25,7 @@ async function close(server) {
 function requestStatus(origin, { path = "/", headers = {} } = {}) {
   const url = new URL(origin);
   return new Promise((resolve, reject) => {
-    const request = http.request({ hostname: url.hostname, port: url.port, path, headers }, (response) => {
+    const request = http.request({ hostname: url.hostname, port: url.port, path, headers, agent: false }, (response) => {
       response.resume();
       response.once("end", () => resolve(response.statusCode));
     });
@@ -145,7 +145,16 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal(observed.at(-1).headers["x-vinext-mounted-slots"], "main");
     assert.equal((await fetch(`${gateway.origin}/api/transcript-path.rsc`, { headers: { Cookie: cookie } })).status, 404);
 
+    for (const route of ["/repositories/repo-0123456789abcdef01234567", "/repositories/repo-0123456789abcdef01234567.rsc?tab=inventory&provider=claude&revision=ctx-001"]) {
+      assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);
+      assert.equal(observed.at(-1).url, route);
+    }
     const beforeDenied = observed.length;
+    assert.equal(await requestStatus(gateway.origin, { path: "/repositories/../settings", headers: { Cookie: cookie } }), 400);
+    assert.equal(await requestStatus(gateway.origin, { path: "/repositories/%2e%2e/settings", headers: { Cookie: cookie } }), 400);
+    for (const route of ["/repositories/x", "/repositories/repo-0123456789abcdef0123456", "/repositories/repo-0123456789abcdef0123456g", "/repositories/repo-0123456789abcdef01234567/extra", "/repositories/x.rsc"]) {
+      assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 404);
+    }
     assert.equal((await fetch(`${gateway.origin}/api/transcript-path`, { headers: { Cookie: cookie } })).status, 404);
     assert.equal((await fetch(`${gateway.origin}/api%2fstate`, { headers: { Cookie: cookie } })).status, 400);
     assert.equal((await fetch(`${gateway.origin}/unknown`, { headers: { Cookie: cookie } })).status, 404);
@@ -165,7 +174,8 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     ]);
     assert.equal(streamEnded, true, "revocation closes active event streams");
     assert.equal(gateway.snapshot().pairedClients, 0);
-    assert.equal((await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie } })).status, 403);
+    // Revocation destroys pooled sockets. Verify access with a fresh connection.
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/state", headers: { Cookie: cookie } }), 403);
   } finally {
     await gateway.close();
     await close(upstream);

@@ -395,7 +395,7 @@ export type Insight = { id: string; level: "info" | "warning"; title: string; de
 export type LoopPattern = { id: string; agent: string; agentId?: string | null; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
 /** Bounded observed work/presence state. Provider-native lifecycle values stay monitor-private. */
-export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "unknown";
+export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "closed" | "unknown";
 /** Catalog qualification derived monitor-side from the primary agent's lifecycle. */
 export type SessionCurrentActivity = AgentCurrentActivity & {
   state: "current";

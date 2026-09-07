@@ -75,7 +75,7 @@ const responseSchema = z.object({
   ])).max(2).optional(),
   sessions: z.array(z.object({
     sessionRef: sessionRefSchema, provider: providerNameSchema, title: z.string().max(256), project: z.string().max(256),
-    state: z.enum(["live", "history"]), activityStatus: z.enum(["working", "needs_input", "idle", "unknown"]),
+    state: z.enum(["live", "history"]), activityStatus: z.enum(["working", "needs_input", "idle", "closed", "unknown"]),
     createdAt: timestampSchema, updatedAt: timestampSchema,
   }).strict()).max(50).optional(),
   truncated: z.boolean().optional(),

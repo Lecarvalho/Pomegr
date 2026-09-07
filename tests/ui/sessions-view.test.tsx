@@ -35,6 +35,39 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it("composes repository and project filters without matching older unassociated rows", async () => {
+    const repositoryId = "repo-0123456789abcdef01234567";
+    const sessions = [
+      { ...session(1), repositoryId },
+      { ...session(2), repositoryId, project: "Other project" },
+      { ...session(3), repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa" },
+      session(4),
+    ];
+    render(<SessionCatalogProvider sessions={sessions}><SessionsView initialRepositoryId={repositoryId} initialProject="Pomegr" /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    await userEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
+    expect(visibleSessionTitles()).toEqual(["Session 2", "Session 1"]);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 2");
+    expect(visibleSessionTitles()).toEqual(["Session 2"]);
+  });
+
+  it("shows the normal no-match state when catalog rows have no repository association", () => {
+    render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView initialRepositoryId="repo-0123456789abcdef01234567" /></SessionCatalogProvider>);
+    expect(screen.getByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
+  });
+  it("moves a confirmed closed Claude session from Live to History without claiming completion", async () => {
+    const user = userEvent.setup();
+    const open: SessionSummary = { ...session(1), id: "claude:session-1", provider: "claude", source: "Claude Code", isLive: true, activityStatus: "open", progress: null };
+    const view = render(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "closed" }]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^History/ }));
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown|Complete|Stopped/)).not.toBeInTheDocument();
+  });
+
   it.each(["claude", "codex"] as const)("keeps a confirmed open %s session in Live between turns", async (provider) => {
     const user = userEvent.setup();
     const running: SessionSummary = { ...session(1), id: provider + ":session-1", provider, isLive: true, activityStatus: "working" };

@@ -166,7 +166,7 @@ test("provider catalog is working while native primary is idle, then returns ope
   await utimes(f.file, new Date(0), new Date(0));
   const history = await provider.listSessions();
   assert.equal(history[0].isLive, false);
-  assert.equal(history[0].activityStatus, "idle");
+  assert.equal(history[0].activityStatus, "closed");
 });
 
 test("a temporarily missing source does not wedge subsequent acquisition", async (t) => {
@@ -372,7 +372,7 @@ test("native idle catalog stays working for a background Agent and its nested ch
   for (const file of [f.file, parentFile, childFile]) await utimes(file, new Date(0), new Date(0));
   const history = await provider.listSessions();
   assert.equal(history[0].isLive, false);
-  assert.equal(history[0].activityStatus, "idle", "history cannot inherit current background work");
+  assert.equal(history[0].activityStatus, "closed", "runtime closure cannot inherit current background work");
 });
 
 
