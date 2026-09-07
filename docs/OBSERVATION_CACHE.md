@@ -333,7 +333,22 @@ desktop renderer; each phone retains the existing independent focus/visibility p
 Gateway pairing and native sharing state are outside normalized monitor API state and
 outside L1/L2 checkpoints. Only the startup preference persists in desktop settings.
 The gateway blocks transcript-path reads and never forwards native desktop actions.
-Unknown or changed network eligibility revokes access, independently of monitor readiness.
+Network verification controls forwarding independently of monitor readiness. A failed
+probe or temporary absence of an eligible adapter suspends access: the native state is
+`recovering`, the existing listener/address and bounded paired-client credentials remain
+in memory, and the five-second watcher keeps checking. All upstream reads and streams
+are cancelled; requests receive a fixed no-store `503` with `Retry-After: 5`, and new
+pairing is blocked. Pending pairing codes are discarded without extending their lifetime.
+No last-known network observation authorizes forwarding while verification is unavailable.
+The same in-flight observation is shared by native state reads, requests, and the watcher.
+Only a successful observation of the original private adapter/profile identity, address,
+and subnet resumes forwarding and permits existing phone credentials to work again.
+Repeated temporary failures keep access suspended without expiring the existing pairing;
+retained sessions and retry cadence remain bounded. Public networks, confirmed identity
+changes, malformed/unsupported normalized observations, Stop, disposal, and listener
+failure still revoke access. Newer observations and explicit revocation win over pending
+request checks; recovery does not reopen a stopped gateway. This changes native phone
+state only, not normalized session APIs, cache ownership, revisions, or checkpoints.
 
 ## Provider observer contract
 

@@ -1,6 +1,6 @@
 /** Native desktop management only; never part of normalized monitor state. */
 export type PhoneAccessState = {
-  status: "off" | "starting" | "sharing" | "unavailable";
+  status: "off" | "starting" | "sharing" | "recovering" | "unavailable";
   reason: null | "network_unavailable" | "public_network" | "choose_network" | "network_changed" | "start_failed" | "settings_unavailable";
   autoStart: boolean;
   candidates: Array<{ id: string; label: string; address: string }>;

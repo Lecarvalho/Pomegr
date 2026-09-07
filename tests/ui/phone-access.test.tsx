@@ -145,6 +145,31 @@ describe("phone access", () => {
     await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenLastCalledWith(true, undefined));
   });
 
+  it("keeps Stop available during network recovery and restores pairing controls on recovery", async () => {
+    let changed: ((next: PhoneAccessState) => void) | undefined;
+    const recovering: PhoneAccessState = {
+      ...offState, status: "recovering", reason: "network_unavailable", candidates: [],
+      selectedNetworkId: "home", address: "http://192.168.1.20:3003", pairedClients: 1,
+    };
+    const bridge = installDesktopBridge({
+      getPhoneAccessState: vi.fn(async () => recovering),
+      onPhoneAccessChanged: vi.fn((callback: (next: PhoneAccessState) => void) => { changed = callback; return () => {}; }),
+    });
+    renderSettings();
+    const user = await openPhoneAccess();
+    expect(await screen.findByText("Reconnecting phone access")).toBeInTheDocument();
+    expect(screen.getByText(/Paired phones will reconnect automatically/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop sharing" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Create pairing code" })).not.toBeInTheDocument();
+    await act(async () => changed?.({ ...recovering, status: "sharing", reason: null, candidates: [offState.candidates[0]] }));
+    expect(screen.getByText("Sharing started")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create pairing code" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: recovering.address! })).toHaveAttribute("href", recovering.address);
+    await act(async () => changed?.(recovering));
+    await user.click(screen.getByRole("button", { name: "Stop sharing" }));
+    await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenLastCalledWith(false, undefined));
+  });
+
   it("does not restore a pairing code when sharing stops while its QR image is rendering", async () => {
     let phoneAccessChanged: ((next: PhoneAccessState | null) => void) | undefined;
     let resolveQr: ((image: string) => void) | undefined;
