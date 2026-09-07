@@ -12,6 +12,13 @@ export function versionLabel(version: string | null) {
   return version ? (version.startsWith("v") ? version : `v${version}`) : null;
 }
 
+export function inventoryState(provider: RepositoryProviderInventory, capturing = false) {
+  if (capturing || provider.status === "capturing") return { label: "Capturing", tone: "warning" };
+  if (provider.status === "failed") return { label: "Failed", tone: "negative" };
+  if (provider.status === "unavailable") return { label: "Unavailable", tone: "neutral" };
+  return provider.currentRevision ? { label: `${provider.currentRevision.id} saved`, tone: "info" } : { label: "Not captured", tone: "neutral" };
+}
+
 export function pluginStatus(setup: RepositoryPluginSetup | undefined) {
   if (setup?.readiness === "loading") return { label: "Checking plugin setup", tone: "checking" };
   if (!setup || setup.readiness === "unavailable" || setup.installation === "unknown") return { label: "Unable to verify", tone: "unknown" };

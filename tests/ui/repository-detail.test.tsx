@@ -1,7 +1,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot } from "../../shared/monitor-contract";
+import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot, SessionSummary } from "../../shared/monitor-contract";
+import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
+import { encodeSessionRoute } from "../../shared/session-route.mjs";
 
 const navigation = vi.hoisted(() => ({ search: "", replace: vi.fn(), push: vi.fn(), notFound: vi.fn(() => { throw new Error("NOT_FOUND"); }), redirect: vi.fn((url: string) => { throw new Error(`REDIRECT:${url}`); }) }));
 vi.mock("next/navigation", () => ({
@@ -68,7 +70,7 @@ describe("repository detail shell", () => {
     serve();
     render(<RepositoryDetailView repositoryId={repositoryId} />);
     expect(await screen.findByRole("heading", { name: "Example project" })).toBeInTheDocument();
-    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(within(screen.getByRole("heading", { name: "Example project" }).closest("header")!).getByText("Codex")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View sessions" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
     expect(screen.getAllByRole("tab")).toHaveLength(5);
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
@@ -139,6 +141,123 @@ describe("repository detail shell", () => {
     expect(within(breadcrumb).getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repositories");
     expect(container.querySelector(".commandHeader")).toHaveClass("hasBreadcrumb");
     expect(container.querySelector('.commandNavItem[href="/repositories"]')).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("repository detail overview", () => {
+  const session = (index: number, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+    id: `codex:overview-${index}`, provider: "codex", source: "Codex", title: `Synthetic session ${index}`, project: "Example project", repositoryId,
+    createdAt: `2026-09-0${index}T10:00:00.000Z`, updatedAt: `2026-09-0${index}T10:00:00.000Z`, isLive: false, needsInput: false, activityStatus: "closed", summaryReadiness: "ready",
+    agentCount: index, activeAgentCount: 0, latestContextTotal: 987654, progress: null, currentActivity: null, ...overrides,
+  });
+  const overview = () => within(screen.getByRole("tabpanel", { name: "Overview" }));
+  function renderOverview(sessions: SessionSummary[] = [], options: { loading?: boolean; connected?: boolean } = {}) {
+    return render(<SessionCatalogProvider sessions={sessions} {...options}><RepositoryDetailView repositoryId={repositoryId} /></SessionCatalogProvider>);
+  }
+
+  it("shows snapshot facts and linked setup summaries without session token aggregation", async () => {
+    serve(setupSnapshot);
+    renderOverview([session(1)]);
+    await screen.findByRole("heading", { name: "Overview" });
+    const pane = overview();
+    const facts = pane.getByLabelText("Repository facts");
+    expect(within(facts).getByText("Live sessions").nextElementSibling).toHaveTextContent("1");
+    expect(within(facts).getByText("History").nextElementSibling).toHaveTextContent("2");
+    expect(within(facts).getByText("Providers").nextElementSibling).toHaveTextContent("Claude CodeCodex");
+    expect(pane.getByText("Plugin update available")).toHaveClass("warning");
+    expect(pane.getByText("Not configured")).toHaveClass("neutral");
+    expect(pane.getByText("ctx-001 saved")).toBeInTheDocument();
+    expect(pane.getByText(/estimated tokens/)).toHaveTextContent("1,200 estimated tokens");
+    expect(pane.getByRole("link", { name: "Open Setup" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=setup`);
+    expect(pane.getByRole("link", { name: "Open reporting" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=reporting`);
+    expect(pane.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude`);
+    expect(pane.queryByText(/987654|987.7k|tokens\/|throughput/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the best installed plugin and configured policy versions while naming unobserved provider setup", async () => {
+    const body = structuredClone(setupSnapshot);
+    body.repositories[0].providers[0].pluginSetup!.canUpdate = false;
+    body.repositories[0].providers[1].sessionCount = 0;
+    body.repositories[0].reporting = { status: "configured", version: 7, checkedAt: null };
+    serve(body);
+    renderOverview();
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText("v0.5.0").parentElement).toHaveTextContent("Enabled · v0.5.0");
+    expect(overview().getByText("v7").parentElement).toHaveTextContent("Configured · v7");
+    expect(overview().getByText("Claude Code: enabled · Codex: not installed")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["loading", "Checking setup"], ["missing", "Plugin not installed"], ["disabled", "Plugin disabled"], ["unavailable", "Setup unverified"],
+  ])("keeps %s plugin summary consistent with the Setup tab", async (kind, label) => {
+    const body = structuredClone(setupSnapshot);
+    const provider = body.repositories[0].providers[0];
+    provider.pluginSetup!.canUpdate = false;
+    body.repositories[0].providers = [provider];
+    if (kind === "loading") provider.pluginSetup!.readiness = "loading";
+    if (kind === "missing") { provider.pluginSetup!.installation = "not_installed"; provider.pluginSetup!.enabled = null; }
+    if (kind === "disabled") provider.pluginSetup!.enabled = false;
+    if (kind === "unavailable") { provider.pluginSetup!.readiness = "unavailable"; body.repositories[0].reporting = { status: "configured", version: 7, checkedAt: null }; }
+    serve(body);
+    const view = renderOverview();
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText(label)).toBeInTheDocument();
+    navigation.search = "tab=setup";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
+    expect(within(await screen.findByRole("tabpanel", { name: "Setup" })).getByText(label)).toBeInTheDocument();
+  });
+
+  it("keeps missing observations unavailable and failed capture status visible with retained evidence", async () => {
+    const body = structuredClone(snapshot);
+    body.repositories[0].providers[0].sessionCount = 0;
+    serve(body);
+    const view = renderOverview();
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText("None observed")).toBeInTheDocument();
+    expect(overview().getByText("Last activity").nextElementSibling).toHaveTextContent("—");
+    view.unmount();
+    const retained = structuredClone(setupSnapshot);
+    retained.repositories[0].providers[0].status = "failed";
+    serve(retained);
+    renderOverview();
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText("Failed")).toHaveClass("negative");
+    expect(overview().getByText(/estimated tokens/)).toHaveTextContent("1,200 estimated tokens");
+  });
+
+  it("filters strictly by repository ID, sorts newest first, limits to five, and encodes session routes", async () => {
+    serve();
+    renderOverview([session(2), session(4), session(1), session(6), session(5), session(3), session(7, { repositoryId: "repo-ffffffffffffffffffffffff" }), session(8, { repositoryId: undefined })]);
+    await screen.findByRole("heading", { name: "Overview" });
+    const rows = overview().getAllByRole("link", { name: /Synthetic session/ });
+    expect(rows).toHaveLength(5);
+    expect(rows.map((row) => row.textContent?.match(/Synthetic session \d/)?.[0])).toEqual([6, 5, 4, 3, 2].map((index) => `Synthetic session ${index}`));
+    expect(rows[0]).toHaveAttribute("href", `/sessions/${encodeSessionRoute("codex:overview-6")}`);
+    expect(overview().getByRole("link", { name: "View all 3" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
+  });
+
+  it("uses shared activity labels and treats a missing agent count as unavailable", async () => {
+    serve();
+    renderOverview([session(1, { activityStatus: "working", isLive: true, agentCount: null }), session(2, { activityStatus: "needs_input", isLive: true }), session(3, { activityStatus: "idle", isLive: true }), session(4)]);
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText("In progress")).toHaveClass("positive");
+    expect(overview().getByText("Needs input")).toHaveClass("warning");
+    expect(overview().getByText("Idle")).toHaveClass("neutral");
+    expect(overview().getByText("Closed")).toHaveClass("neutral");
+    expect(overview().getByText("Agent count unavailable · Codex")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["legacy", "Sessions for this repository are listed once the monitor reports repository associations."],
+    ["other", "No sessions for this repository in the current catalog."],
+    ["loading", "Loading recent sessions…"],
+    ["unavailable", "Session catalog unavailable. Pomegr will retry the local monitor automatically."],
+  ])("explains the %s catalog state without guessing a repository association", async (kind, message) => {
+    serve();
+    renderOverview([session(1, { repositoryId: kind === "other" ? "repo-ffffffffffffffffffffffff" : undefined })], { loading: kind === "loading", connected: kind !== "unavailable" });
+    await screen.findByRole("heading", { name: "Overview" });
+    expect(overview().getByText(message)).toBeInTheDocument();
+    expect(overview().queryByRole("link", { name: /Synthetic session/ })).not.toBeInTheDocument();
   });
 });
 

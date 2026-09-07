@@ -16,6 +16,7 @@ import { PluginSetupRow } from "./PluginSetupRow";
 import { InventorySetupRow } from "./InventorySetupRow";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
 import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
+import { RepositoryOverviewTab } from "./RepositoryOverviewTab";
 
 const subscribeDesktopBridge = () => () => {};
 
@@ -142,7 +143,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
-        {tab === "setup" ? <>
+        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "setup" ? <>
           <div className="repositoryPaneHead"><div><h2>Setup</h2><p>What each observed provider needs so its sessions report signals and progress to Pomegr. Actions run natively on this machine after a confirmation.</p></div><span className={`commandChip ${setup.tone}`}>{setup.label}</span></div>
           {repository.providers.map((provider) => {
             const key = `${repositoryId}:${provider.provider}`;

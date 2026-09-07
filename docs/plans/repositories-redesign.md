@@ -1,7 +1,7 @@
 # Repositories page redesign plan
 
 > Status: ready for implementation — 2026-09-06. Option A (index + detail page) was chosen
-> by the product owner. POMEGR-RP-01 through POMEGR-RP-04 are complete. Tasks POMEGR-RP-05 through POMEGR-RP-07 are open.
+> by the product owner. POMEGR-RP-01 through POMEGR-RP-05 are complete. Tasks POMEGR-RP-06 and POMEGR-RP-07 are open.
 
 ## Objective
 
@@ -467,10 +467,10 @@ Build the default tab per `mockup-detail-overview.html` from data already in the
 
 ### Acceptance criteria
 
-- [ ] Overview shows no number that is a sum across sessions or a rate; only counts and
+- [x] Overview shows no number that is a sum across sessions or a rate; only counts and
       timestamps already in the snapshot.
-- [ ] Cards agree with the Setup tab chip for the same fixture.
-- [ ] Recent sessions come only from the catalog filtered by repository id.
+- [x] Cards agree with the Setup tab chip for the same fixture.
+- [x] Recent sessions come only from the catalog filtered by repository id.
 
 ### Verification
 
@@ -579,3 +579,4 @@ npm test
 | 2026-09-07 | POMEGR-RP-02 | Complete | Validated detail route, header, shared breadcrumb, five URL-backed tabs, Git placeholder, Sessions repository filter, legacy redirect, and LAN/desktop routing. Full npm test passed (549 UI tests; node/plugin suites), final build and verify:fast passed. Synthetic browser checks at 1440/390 px in both themes: no overflow, 44 px phone tabs, preserved query selection, redirect and 404 verified. Finish review shipped. Tab content remains deferred to RP-03 through RP-06. |
 | 2026-09-07 | POMEGR-RP-03 | Complete | Setup tab with per-provider plugin and inventory rows, inline native capture confirmation, shared reporting help, and page-owned action feedback. Reused settings geometry and standard chips; static design-system row sample added. Full npm test passed (564 UI tests; node/plugin suites), verify:fast and final build passed; 45 focused checks passed. Synthetic browser review at 1440/900/390/360 px in both themes: no page overflow, 44 px phone actions, finish review shipped. Context inventory evidence tab remains RP-04. |
 | 2026-09-07 | POMEGR-RP-04 | Complete | Context inventory tab with supported-provider sections, URL-backed revision selectors, initial deep-link scroll, saved facts, category/item evidence, comparison, and sanitized loading/failure/retention states. Capture action and inline native confirmation shared with Setup; existing API and observation semantics preserved. Full npm test passed (578 UI tests; node/plugin suites), verify:fast passed, 43 focused detail checks passed. Production browser review at 1440/900/390/360 px in both themes: no page overflow, 44 px phone controls, revision URL update verified. Independent finish review shipped using fallback reviewer instructions. |
+| 2026-09-07 | POMEGR-RP-05 | Complete | Default Overview with four snapshot facts, three linked setup cards sharing plugin attention and inventory status rules, and five recent sessions strictly filtered by repository ID using shared sorting, activity labels, and route encoding. Inventory estimates remain tied to one saved provider revision; missing/loading/unavailable catalog states are explicit. Current shared activity label Closed is preserved in place of mockup Ended. Full npm test passed (591 UI tests; node/plugin suites and build), verify:fast passed, 86 focused checks passed. Synthetic production browser review at 1440/900/390/360 px in both themes: no page overflow, 44 px phone controls, Setup and filtered Sessions links verified, no browser errors. Independent finish review returned ship using fallback reviewer instructions. RP-06 Reporting content and RP-07 final cleanup/docs remain next. |
