@@ -84,7 +84,7 @@ test("successful preflight dispatches the tag-bound release workflow exactly onc
   assert.deepEqual(await result, { tag: TAG, version: "1.2.3", dispatched: true });
   assert.deepEqual(dispatches(source.calls), [{
     command: "gh",
-    args: ["workflow", "run", "release.yml", "--repo", "https://github.com/Lecarvalho/Pomegr", "--ref", TAG, "-f", `tag=${TAG}`],
+    args: ["workflow", "run", "release.yml", "--repo", "https://github.com/Lecarvalho/Pomegr", "--ref", TAG, "-f", `tag=${TAG}`, "-f", `verified_sha=${SHA}`],
   }]);
   const npmCalls = source.calls.filter(({ command }) => command === process.execPath);
   assert.deepEqual(npmCalls.map(({ args }) => args.slice(1)), [

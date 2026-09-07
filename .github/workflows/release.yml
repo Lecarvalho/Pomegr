@@ -7,6 +7,10 @@ on:
         description: "Existing release tag to build and publish (for example, v0.2.2)"
         required: true
         type: string
+      verified_sha:
+        description: "Full commit SHA that passed local release preflight"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -23,6 +27,7 @@ jobs:
     timeout-minutes: 45
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      LOCAL_VERIFIED_SHA: ${{ inputs.verified_sha }}
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v4
@@ -41,7 +46,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           node desktop/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
+          node desktop/release-policy.mjs verify-preflight --sha $env:LOCAL_VERIFIED_SHA
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
 
       - name: Require Artifact Signing configuration
@@ -69,17 +76,15 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Install locked landing dependencies
-        run: npm ci --prefix landing
-
-      - name: Run canonical verifier and desktop extension
+      - name: Build once and smoke-test the desktop runtime
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
+          npm run build
+          npm run check:generated
           npm run desktop:runtime
-          npm run verify
-          npm run verify:desktop:ci
+          npm run desktop:smoke:ci
 
       - name: Sign in to Azure with GitHub OIDC
         uses: azure/login@v2
@@ -97,7 +102,8 @@ jobs:
           WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run desktop:prepare
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm run desktop:prepare:from-build
           npx electron-builder --config desktop/electron-builder.release.cjs --win nsis portable --x64 --publish never
           node desktop/finalize-package.mjs
 

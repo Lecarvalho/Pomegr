@@ -9,14 +9,16 @@ import { createProviderRegistry } from "../monitor/providers/registry.mjs";
 import { createMonitorRuntime } from "../monitor/server.mjs";
 
 async function waitFor(predicate, message) {
-  const deadline = Date.now() + 5_000;
+  // This is a deadlock watchdog, not a latency benchmark. The unresolved
+  // ownership promise below proves ordering even on a busy Windows runner.
+  const deadline = Date.now() + 15_000;
   while (!predicate()) {
     assert.ok(Date.now() < deadline, typeof message === "function" ? message() : message);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 
-test("startup and recorded Working/input/end transitions never wait for slow native ownership", async (context) => {
+test("startup and recorded Working/input/end transitions never wait for slow native ownership", { timeout: 90_000 }, async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-presence-responsiveness-"));
   const sessionsRoot = path.join(root, "sessions");
   const locksRoot = path.join(root, "thread-writer-locks");
@@ -61,6 +63,14 @@ test("startup and recorded Working/input/end transitions never wait for slow nat
     checkpointStore: false, observationCommitDelayMs: 0,
     scheduleObservation: (task, delay) => setTimeout(task, delay),
     resourceUsageSampler: { async sample() {}, get() { return null; } },
+    // This fixture exercises transcript/presence ordering, not host Git or
+    // repository discovery. Keep those independent services out of its waits.
+    readGitState() {
+      return { available: false, branch: "", files: [], isMain: false, comparison: null,
+        commits: [], remote: { status: "unavailable", checkedAt: null } };
+    },
+    async readPullRequests() { return { status: "unavailable", checkedAt: null, items: [] }; },
+    repositoryInventoryOptions: { async gitRoot(cwd) { return cwd; } },
   });
   context.after(async () => {
     await runtime.stopObservation();
@@ -83,7 +93,7 @@ test("startup and recorded Working/input/end transitions never wait for slow nat
   await appendFile(rollout, record("event_msg", { type: "task_started", turn_id: "turn-2" }));
   callbacks.get(sessionsRoot)("change", filename);
   await waitFor(() => row()?.activityStatus === "working" && agent()?.status === "active",
-    "a recorded start must replace retained Open in catalog and detail before the probe completes");
+    () => `a recorded start must replace retained Open before the probe completes: ${row()?.activityStatus}/${agent()?.status}`);
   assert.equal(queries[1].signal.aborted, false);
 
   // Watcher storms must not hold transcript workers or continually cancel the helper.

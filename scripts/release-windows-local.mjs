@@ -197,9 +197,10 @@ export async function validateThenDispatchRelease({
   await assertReleasePoint(runCommand, { tag, head }, cwd);
   if (!checkOnly) {
     await execute(runCommand, "gh", [
-      "workflow", "run", WORKFLOW, "--repo", REPOSITORY_URL, "--ref", tag, "-f", `tag=${tag}`,
+      "workflow", "run", WORKFLOW, "--repo", REPOSITORY_URL, "--ref", tag, "-f", `tag=${tag}`, "-f", `verified_sha=${head}`,
     ], cwd, { stdin: "ignore" });
   }
+  report(`Local release verification passed for commit ${head}.`);
   return { tag, version: packageVersion, dispatched: !checkOnly };
 }
 

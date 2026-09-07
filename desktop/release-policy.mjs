@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 
 export const POMEGR_WINDOWS_PUBLISHER = "DSNK Technologie Inc";
 export const RELEASE_LEGAL_FILES = Object.freeze([
@@ -30,6 +31,15 @@ export function assertReleaseTag({ tag, version }) {
 
 export function updateMetadataName(version) {
   return parseReleaseVersion(version).channel === "beta" ? "beta.yml" : "latest.yml";
+}
+
+export function assertVerifiedReleaseCommit({ verifiedSha, commit }) {
+  if (typeof verifiedSha !== "string" || !/^[a-f0-9]{40}$/i.test(verifiedSha)) {
+    throw new Error("DESKTOP_RELEASE_PREFLIGHT_SHA_REQUIRED");
+  }
+  if (typeof commit !== "string" || verifiedSha.toLowerCase() !== commit.toLowerCase()) {
+    throw new Error("DESKTOP_RELEASE_PREFLIGHT_SHA_MISMATCH");
+  }
 }
 
 export function releaseArtifactNames(version, { includeChecksums = true } = {}) {
@@ -95,6 +105,15 @@ async function runCli() {
     const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     const release = assertReleaseTag({ tag: option("--tag"), version: packageJson.version });
     process.stdout.write(`${release.channel}\n`);
+    return;
+  }
+  if (command === "verify-preflight") {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: new URL("../", import.meta.url), encoding: "utf8", windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    assertVerifiedReleaseCommit({ verifiedSha: option("--sha"), commit });
+    process.stdout.write("local preflight commit matches checkout\n");
     return;
   }
   if (command === "verify-assets") {
