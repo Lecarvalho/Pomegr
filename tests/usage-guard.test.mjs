@@ -293,7 +293,10 @@ test("packaged hooks read the authenticated local cache without model calls and 
     const provider = url.searchParams.get("provider");
     assert.ok(["claude", "codex"].includes(provider));
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(snapshot(percent, { provider, at: Date.now() })));
+    // A committed monitor observation predates the hook GET. Keep the fixture
+    // safely behind the child process's receipt time so cross-process Windows
+    // clock sampling cannot make the observation appear a millisecond future.
+    response.end(JSON.stringify(snapshot(percent, { provider, at: Date.now() - 1_000 })));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
