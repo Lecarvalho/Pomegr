@@ -24,7 +24,7 @@ export function ContextAllocationBreakdown({ allocation, categoryTotal, categori
       {SECTIONS.map((section) => allocation[section.field] > 0 && <span className={section.kind} style={{ flexGrow: allocation[section.field] }} key={section.kind} />)}
     </div>
     <div className="repositoryAllocationLabels" aria-hidden="true">
-      {SECTIONS.map((section) => <span key={section.kind}><b>{compactNumber(allocation[section.field])}</b>{section.title}</span>)}
+      {SECTIONS.map((section) => allocation[section.field] > 0 && <span style={{ flexGrow: allocation[section.field] }} key={section.kind}><b>{compactNumber(allocation[section.field])}</b>{section.title}</span>)}
     </div>
     <div className="repositoryAllocationSections">
       {SECTIONS.map((section) => <section className={`repositoryAllocationSection ${section.kind}`} key={section.kind}>
