@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsPage } from "../../app/settings/SettingsPage";
+import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
@@ -14,6 +15,13 @@ const sessionProgressSource = readFileSync(join(process.cwd(), "app", "component
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
+  it("reuses settings row geometry and standard chips for repository setup", () => {
+    const { container } = render(<RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail="Project installation" actions={<button className="commandQuietAction">Recheck</button>} />);
+    expect(container.firstChild).toHaveClass("commandSettingRow", "repositoryRow");
+    expect(screen.getByText("Enabled")).toHaveClass("commandChip", "positive");
+    expect(screen.getByRole("button", { name: "Recheck" })).toHaveClass("commandQuietAction");
+    expect(styles).toMatch(/\.repositoryRow \.repositoryRowTitle strong\s*\{[^}]*font-size:\s*var\(--text-sm\)/);
+  });
   it("keeps session loading titles on the shared desktop and mobile header scale", () => {
     expect(styles).not.toMatch(/\.sessionLoadingHero|\.sessionLoadingProvider/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);

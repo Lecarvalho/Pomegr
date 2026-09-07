@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
@@ -26,8 +26,25 @@ const snapshot: RepositoryInventorySnapshot = { revision: 1, readiness: "ready",
   providers: [{ provider: "codex", source: "Codex", sessionCount: 3, supported: false, status: "unavailable", failureKind: null, currentRevision: null, revisions: [] }],
 }] };
 
+const setupSnapshot: RepositoryInventorySnapshot = { revision: 2, readiness: "ready", repositories: [{
+  id: repositoryId, name: "Example project", displayName: "Example project", sessionCount: 3, liveCount: 1, historyCount: 2, providerCount: 2, updatedAt: "2026-09-04T10:00:00.000Z",
+  reporting: { status: "missing", version: null, checkedAt: "2026-09-04T10:00:00.000Z" },
+  providers: [
+    { provider: "claude", source: "Claude Code", sessionCount: 2, supported: true, status: "current", failureKind: null,
+      pluginSetup: { readiness: "ready", installation: "installed", version: "0.5.0", enabled: true, scope: "project", checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "available", version: "0.6.0", checkedAt: "2026-09-04T10:00:00.000Z" }, canInstall: false, canUpdate: true },
+      currentRevision: { id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } },
+      revisions: [{ id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } }] },
+    { provider: "codex", source: "Codex", sessionCount: 1, supported: true, status: "not_captured", failureKind: null,
+      pluginSetup: { readiness: "ready", installation: "not_installed", version: null, enabled: null, scope: null, checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "unknown", version: null, checkedAt: null }, canInstall: true, canUpdate: false },
+      currentRevision: null, revisions: [] },
+  ],
+}] };
+
 beforeEach(() => { navigation.search = ""; vi.clearAllMocks(); });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  Reflect.deleteProperty(window, "pomegrDesktop");
+});
 function serve(body = snapshot) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } }));
 }
@@ -108,6 +125,147 @@ describe("repository detail shell", () => {
     expect(within(breadcrumb).getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repositories");
     expect(container.querySelector(".commandHeader")).toHaveClass("hasBreadcrumb");
     expect(container.querySelector('.commandNavItem[href="/repositories"]')).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("repository detail setup", () => {
+  it("renders each provider's plugin and inventory rows and one shared reporting row", async () => {
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    expect(await screen.findByRole("heading", { name: "Setup" })).toBeInTheDocument();
+    const pane = screen.getByRole("tabpanel", { name: "Setup" });
+    expect(within(pane).getByText("Claude Code")).toBeInTheDocument();
+    expect(within(pane).getByText("Codex")).toBeInTheDocument();
+    expect(within(pane).getAllByText("Pomegr plugin")).toHaveLength(2);
+    expect(within(pane).getAllByText("Context inventory")).toHaveLength(2);
+    expect(within(pane).getByText("Shared by both providers")).toBeInTheDocument();
+    expect(within(pane).getAllByText("Repository reporting")).toHaveLength(1);
+    expect(within(pane).getByText(/Raw configuration never leaves this machine/i)).toBeInTheDocument();
+  });
+
+  it("uses desktop plugin actions through the bridge and keeps outcomes sanitized", async () => {
+    const pluginAction = vi.fn().mockResolvedValue("completed");
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
+    await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "claude", "update"));
+    expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
+    pluginAction.mockResolvedValueOnce("timed_out");
+    await userEvent.click(screen.getByRole("button", { name: "Install plugin" }));
+    await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "codex", "install"));
+    expect(await screen.findByText(/timed out. Recheck the local setup/i)).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Recheck" })[1]);
+    await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "codex", "recheck"));
+  });
+
+  it("confirms, cancels, and runs a desktop inventory capture inline", async () => {
+    const capture = vi.fn().mockResolvedValue("completed");
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
+    const confirmation = screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i });
+    await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: /Confirm Claude Code inventory capture/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
+    await userEvent.click(within(screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i })).getByRole("button", { name: "Run diagnostic" }));
+    await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
+    expect(await screen.findByText("Claude Code inventory captured.")).toBeInTheDocument();
+  });
+
+  it("offers instructions and no primary plugin or capture actions away from desktop", async () => {
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    expect(screen.getAllByText("View setup instructions")).toHaveLength(2);
+    expect(screen.getAllByText("Capture available in Pomegr desktop")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Install plugin|Update plugin|Capture inventory|Capture again|Retry diagnostic/i })).not.toBeInTheDocument();
+  });
+
+  it("opens a provider inventory without retaining a stale revision and keeps feedback across tab switches", async () => {
+    const pluginAction = vi.fn().mockResolvedValue("completed");
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
+    serve(setupSnapshot);
+    navigation.search = "tab=setup&provider=codex&revision=ctx-999";
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Open inventory" }));
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude`, { scroll: false });
+    await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
+    expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
+    navigation.search = "tab=inventory&provider=claude";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
+    navigation.search = "tab=setup";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    expect(screen.getByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["cancelled", "No plugin changes were made."],
+    ["busy", "A plugin action is already running."],
+    ["timed_out", "The plugin action timed out. Recheck the local setup before trying again."],
+    ["failed", "The plugin action could not finish. Recheck the local setup before trying again."],
+    ["unavailable", "This plugin action is unavailable in the current Pomegr desktop version."],
+  ] as const)("keeps the %s plugin outcome bounded", async (status, message) => {
+    const pluginAction = vi.fn().mockResolvedValue(status);
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Update plugin" }));
+    await waitFor(() => expect(pluginAction).toHaveBeenCalledWith(repositoryId, "claude", "update"));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+
+  it("sanitizes a rejected inventory capture", async () => {
+    const capture = vi.fn().mockRejectedValue(new Error("private provider output"));
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
+    await userEvent.click(within(screen.getByRole("group", { name: /Confirm Claude Code inventory capture/i })).getByRole("button", { name: "Run diagnostic" }));
+    await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
+    expect(await screen.findByText("Claude Code inventory capture failed.")).toBeInTheDocument();
+    expect(screen.queryByText(/private provider output/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a retained revision while capture is in progress", async () => {
+    const capturing = structuredClone(setupSnapshot);
+    capturing.repositories[0].providers[0].status = "capturing";
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: vi.fn() } });
+    serve(capturing);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    expect(screen.getByText("Capturing")).toBeInTheDocument();
+    expect(screen.getByText("Previous revision remains available until commit")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Capture again" })).toBeDisabled();
+  });
+
+  it("shows a sanitized failed inventory state even when the previous revision remains retained", async () => {
+    const failed = structuredClone(setupSnapshot);
+    failed.repositories[0].providers[0].status = "failed";
+    failed.repositories[0].providers[0].failureKind = "timed_out";
+    serve(failed);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("The diagnostic timed out · no data saved")).toBeInTheDocument();
+  });
+
+  it("toggles the local reporting setup help", async () => {
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="setup" />);
+    await screen.findByRole("heading", { name: "Setup" });
+    const help = screen.getByRole("button", { name: "How reporting works" });
+    expect(help).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(help);
+    expect(help).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("/pomegr:init", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("$pomegr:init", { selector: "code" })).toBeInTheDocument();
   });
 });
 

@@ -228,6 +228,8 @@ Native single-select dropdowns use `CommandSelect` from `app/components/command-
 
 ### Inline Explanations
 
+Repository detail setup rows use `RepositoryRow` with `.commandSettingRow.repositoryRow`: the existing settings grid and divider spacing, a 13px/600 title beside a standard `.commandChip`, a muted 12px detail, and actions on the right. Versions and checked times use the data font. On phone, actions stack below the detail and split the available width with 44px targets. Each independent row has at most one primary commitment (Install plugin, Update plugin, or the inline confirmation's Run diagnostic). The web design-system reference includes a static row sample.
+
 Explanatory inline text may use a quiet dotted underline to disclose a tooltip or popover. The underline follows the text color and is reserved for text only; icons, buttons, and chips retain their own established interaction affordances.
 
 ### Cards / Containers
