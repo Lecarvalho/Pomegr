@@ -111,6 +111,7 @@ describe("repository detail shell", () => {
     navigation.search = "tab=git&provider=claude&revision=ctx-001&logo=outline";
     view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="git" />);
     expect(screen.getByRole("heading", { name: "Detailed repository evidence is coming soon" })).toBeInTheDocument();
+    expect(screen.getByText("Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only.")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Git Soon" })).toHaveAttribute("aria-selected", "true");
     navigation.search = "";
     view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="overview" />);
@@ -258,6 +259,51 @@ describe("repository detail overview", () => {
     await screen.findByRole("heading", { name: "Overview" });
     expect(overview().getByText(message)).toBeInTheDocument();
     expect(overview().queryByRole("link", { name: /Synthetic session/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("repository detail reporting", () => {
+  it.each([
+    { status: "configured", version: 7, label: "Configured", detail: "Shared repository policy · Version 7", action: "Review policy" },
+    { status: "configured", version: null, label: "Configured", detail: "Shared repository reporting policy", action: "Review policy" },
+    { status: "missing", version: null, label: "Not configured", detail: "Choose what agents report · Shared by Claude Code and Codex", action: "Configure reporting" },
+    { status: "invalid", version: null, label: "Invalid", detail: "Review the repository reporting policy with your coding agent.", action: "Configure reporting" },
+    { status: "unknown", version: null, label: "Unavailable", detail: "Reporting setup could not be verified.", action: "Configure reporting" },
+    { status: undefined, version: null, label: "Unavailable", detail: "Reporting setup could not be verified.", action: "Configure reporting" },
+  ] as const)("shares $status reporting status and version $version between tabs", async ({ status, version, label, detail, action }) => {
+    const body = structuredClone(setupSnapshot);
+    body.repositories[0].reporting = status ? { status, version, checkedAt: null } : undefined;
+    serve(body);
+    navigation.search = "tab=setup";
+    const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
+    const setupRow = await screen.findByRole("region", { name: "Shared repository reporting" });
+    expect(within(setupRow).getByText(label)).toBeInTheDocument();
+    expect(within(setupRow).getByText(detail)).toBeInTheDocument();
+    expect(within(setupRow).queryByText("Set up reporting in your coding agent")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Reporting" }));
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=reporting`, { scroll: false });
+    navigation.search = "tab=reporting";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
+    const reportingRow = screen.getByRole("region", { name: "Shared repository reporting" });
+    expect(screen.getByRole("heading", { name: "Repository reporting" })).toBeInTheDocument();
+    expect(within(reportingRow).getByText(label)).toBeInTheDocument();
+    expect(within(reportingRow).getByText(detail)).toBeInTheDocument();
+    expect(within(reportingRow).queryByRole("button", { name: "How reporting works" })).not.toBeInTheDocument();
+    const help = within(reportingRow).getByText("Set up reporting in your coding agent").parentElement!;
+    expect(help).toHaveTextContent("/pomegr:init");
+    expect(help).toHaveTextContent("$pomegr:init");
+    expect(within(help).getByRole("link", { name: "Read the plugin instructions" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/PLUGINS.md");
+    await userEvent.click(within(reportingRow).getByRole("button", { name: action }));
+    expect(help).toHaveFocus();
+    expect(help).toBeVisible();
+
+    navigation.search = "tab=setup";
+    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
+    const returnedRow = screen.getByRole("region", { name: "Shared repository reporting" });
+    expect(within(returnedRow).getByText(label)).toBeInTheDocument();
+    await userEvent.click(within(returnedRow).getByRole("button", { name: "How reporting works" }));
+    expect(within(returnedRow).getByText("Set up reporting in your coding agent")).toBeVisible();
   });
 });
 
