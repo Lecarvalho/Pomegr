@@ -34,6 +34,8 @@ export async function replaceDevelopmentServices({
   } catch (error) {
     const code = [10, 11, 12, 13, "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "ENOENT", "EACCES"].includes(error.code) ? error.code : "other";
     console.error("DIAGNOSTIC_HELPER_FAILURE", code);
+    const stage = /DIAGNOSTIC_HELPER_STAGE (resolve_root|inspect_processes|inspect_listeners|plan|stop)\r?\n/.exec(String(error.stderr || ""))?.[1] || "unavailable";
+    console.error("DIAGNOSTIC_HELPER_STAGE", stage);
     const messages = {
       10: "Port 3003 is already in use by an unrecognized process. Close that app and retry.",
       11: "Port 4317 is already in use by an unrecognized process. Close that app and retry.",
