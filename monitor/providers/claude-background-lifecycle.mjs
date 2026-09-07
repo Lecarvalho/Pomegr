@@ -25,7 +25,7 @@ export function claudeTerminalTaskNotification(record) {
   return { taskId, status, callId: callId || null };
 }
 
-function launchedTaskId(tool, result) {
+export function claudeLaunchedTaskId(tool, result) {
   if (tool === "Workflow" && result?.status === "async_launched" && result.taskType === "local_workflow") return safeId(result.taskId);
   if (tool === "Bash") return safeId(result?.backgroundTaskId);
   // Native background agents report their task identity as agentId, not taskId.
@@ -52,7 +52,7 @@ function reduceLifecycle(state, record, ownerStartedAt) {
     state.calls.delete(part.tool_use_id);
     if (!call || part.is_error === true) continue;
     const result = record.toolUseResult;
-    const id = launchedTaskId(call, result);
+    const id = claudeLaunchedTaskId(call, result);
     if (!id) continue;
     if (state.running.size >= MAX_OPEN_TASKS) { state.complete = false; continue; }
     const runId = call === "Workflow" && /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(result?.runId || "") ? result.runId : null;

@@ -488,6 +488,18 @@ Agent activity. Signal generation rules are unchanged.
 
 Recent activity includes tool invocations, failed shell completions, and timestamps for direct user messages or answers to an agent's structured question. A failed shell event is timestamped when execution finishes and exposes only the sanitized Bash description plus its exit code when available; commands, stdout, stderr, and tool-result content remain excluded. A user-input event's target lists only its content categories (`Text`, `Document`, and `Image`, including combinations); prompt text, answers, filenames, tool results, and synthetic subagent prompts are never returned to the browser. Outcome and user-input events do not contribute to `toolCalls`, repetition signals, or the flow score.
 
+Claude provider-owned system task deliveries appear as `System` with `Task completed`,
+`Task failed`, or `Task stopped`, using the recorded delivery time. A matching prior
+structured background launch supplies only `Background agent`, `Background command`,
+or `Background workflow`; otherwise the detail is `Background task`. These are recorded
+notifications, not human messages or Pomegr judgments. Native `failed`/`error` maps to
+failed; `stopped`/`killed`/`cancelled`/`canceled`/`interrupted` maps to stopped. Unsupported
+or malformed notifications are omitted, never relabeled as human input. Recognition
+requires provider-owned origin metadata: pasted notification text remains user input.
+Queue operations do not create delivery activity, and replayed delivery IDs are deduplicated.
+Notification contents and native task/call identities remain private. These events also
+do not contribute to tool counts, repetition, or the flow score.
+
 ## Agent overlap
 
 An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.

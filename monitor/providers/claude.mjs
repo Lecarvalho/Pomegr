@@ -12,7 +12,7 @@ import {
   pendingUserInputAt,
   resolveAgentMetadata,
 } from "../agent-metadata.mjs";
-import { userInputContentType } from "../activity-events.mjs";
+import { createClaudeTaskNotificationReader, userInputContentType } from "./claude-activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
@@ -305,6 +305,7 @@ export function createClaudeProvider(options = {}) {
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
+  const readTaskNotifications = createClaudeTaskNotificationReader();
   const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });
 
   async function cachedSessionTitle(file, stat) {
@@ -524,7 +525,7 @@ export function createClaudeProvider(options = {}) {
         if (!previous || new Date(stoppedAt) > new Date(previous)) stoppedAtByAgent.set(agentId, stoppedAt);
       }
     }
-    const activity = [];
+    const activity = [...await readTaskNotifications(mainFile)];
     const agents = [];
     const toolCalls = [];
     const usageSnapshots = [];
@@ -725,7 +726,9 @@ export function createClaudeProvider(options = {}) {
     const workflowFiles = discoverClaudeWorkflowAgents(agentDir).files.map((item) => item.file);
     const historical = !discovered.liveFiles.has(file);
     if (!historical) await nativeStatus.refresh(discovered.registry, [localSessionId]);
-    return claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
+    const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
+    // Rebuild pre-fix checkpoints even when the native transcript is unchanged.
+    return source ? { ...source, identity: `${source.identity}:system-task-notifications-v1` } : null;
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {
