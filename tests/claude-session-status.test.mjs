@@ -354,7 +354,7 @@ test("retains an old idle registered session as open until its owner terminates"
   await rm(f.ownerFile);
   const historical = (await f.provider.listSessions())[0];
   assert.equal(historical.isLive, false);
-  assert.equal(historical.activityStatus, "idle");
+  assert.equal(historical.activityStatus, "closed");
 });
 
 test("observer commits native transitions without transcript growth and retains incomplete replacements", async (t) => {

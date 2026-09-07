@@ -35,6 +35,19 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it("moves a confirmed closed Claude session from Live to History without claiming completion", async () => {
+    const user = userEvent.setup();
+    const open: SessionSummary = { ...session(1), id: "claude:session-1", provider: "claude", source: "Claude Code", isLive: true, activityStatus: "open", progress: null };
+    const view = render(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "closed" }]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^History/ }));
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown|Complete|Stopped/)).not.toBeInTheDocument();
+  });
+
   it.each(["claude", "codex"] as const)("keeps a confirmed open %s session in Live between turns", async (provider) => {
     const user = userEvent.setup();
     const running: SessionSummary = { ...session(1), id: provider + ":session-1", provider, isLive: true, activityStatus: "working" };

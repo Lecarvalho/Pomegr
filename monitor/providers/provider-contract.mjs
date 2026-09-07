@@ -431,7 +431,7 @@ export const providerSessionReferenceSchema = z.object({
   updatedAt: evidenceTimestamp,
   isLive: z.boolean(),
   needsInput: z.boolean(),
-  activityStatus: z.enum(["working", "needs_input", "idle", "open", "stopped", "unknown"]),
+  activityStatus: z.enum(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]),
   // A native identity may exist before any detail source. Monitor-private:
   // project through existing summary/readiness fields, never as evidence.
   detailReadiness: z.literal("unavailable").optional(),

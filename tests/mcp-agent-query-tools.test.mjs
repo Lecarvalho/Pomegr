@@ -58,6 +58,19 @@ test("agent queries pass exact selectors and return structured content plus boun
   assert.equal(calls.at(-1).path, "/api/agent/v1/sessions/claude%3Aone/agents");
 });
 
+test("both MCP entrypoints preserve confirmed closed session observations", async () => {
+  for (const build of [buildPomegrMcpServer, buildClaudePomegrMcpServer]) {
+    const server = build({ query: async () => ({
+      schemaVersion: 1, readiness: "ready", observedAt: null, generatedAt: null, revision: 1, truncated: false,
+      sessions: [{ sessionRef: "claude:closed", provider: "claude", title: "Closed session", project: "Pomegr",
+        state: "history", activityStatus: "closed", createdAt: null, updatedAt: null }],
+    }) });
+    const response = await server._registeredTools.list_sessions.handler({ scope: "all" });
+    assert.equal(response.isError, undefined);
+    assert.equal(response.structuredContent.sessions[0].activityStatus, "closed");
+  }
+});
+
 test("transport failures become an unavailable observation and do not become MCP errors", async () => {
   const server = buildClaudePomegrMcpServer({ query: async () => { throw new Error("private transport detail"); } });
   const response = await server._registeredTools.get_usage_limits.handler({ provider: "claude" });

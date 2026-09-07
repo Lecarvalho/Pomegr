@@ -77,7 +77,15 @@ A validated registered runtime keeps the session in **Live** between turns, with
 primary agent still shows **idle**. Registration without validated process ownership
 does not establish Open; neither do transcript recency or a fresh browser poll.
 
-A non-live Claude catalog row uses **Idle** as a fallback meaning no live session
+A non-live Claude catalog row uses **Closed** when the native registry observer has
+confirmed that its registered runtime owner ended or no longer matches the recorded
+process identity. It describes runtime closure only, never successful work, an exit
+reason, or task completion. Registry removal alone and failed process inspection do
+not establish Closed. A new validated registration replaces that closure observation.
+The bounded ownership and closure evidence remains monitor-private and memory-only;
+after monitor restart, sessions without fresh closure evidence use the normal fallback.
+
+Other non-live Claude catalog rows use **Idle** as a fallback meaning no live session
 is detected. With the registry available, this applies after the session has no
 validated registration and its primary/subagent activity is outside the existing
 fifteen-second registration grace period. Without a registry, the existing

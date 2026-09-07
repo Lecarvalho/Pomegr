@@ -6,6 +6,14 @@ Metric evidence retention and request-independent serving follow the canonical
 [observation cache contract](OBSERVATION_CACHE.md). A provider acquisition bound is never
 a metric history bound.
 
+## Session closure
+
+Session **Closed** reports confirmed native runtime departure from Claude's private
+registry ownership observation. It does not imply successful completion or identify
+why the runtime ended. Registry removal alone is insufficient; sessions without
+closure evidence retain their normal Idle/Unknown fallback. This bounded catalog
+classification is separate from agent/task status and agent-reported progress.
+
 ## Agent identity and assignment
 
 `Agent.label` is the stable display identity, such as a provider codename. `Agent.assignment` is an optional bounded work title from a recognized provider delegation record or explicitly named child thread. Pomegr shows the assignment first when available and keeps the label as secondary identity; it does not infer an assignment from conversation content, automatic catalog titles, session-index fallbacks, or activity.
