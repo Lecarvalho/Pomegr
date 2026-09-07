@@ -32,6 +32,7 @@ export function createLanSharingController(options = {}) {
   let disposed = false;
   let queue = Promise.resolve();
   let disposing;
+  let pendingNetworkRead;
 
   const snapshot = () => Object.freeze({
     status, reason, autoStart,
@@ -43,8 +44,12 @@ export function createLanSharingController(options = {}) {
   const broadcast = () => { try { options.onChange?.(snapshot()); } catch { /* UI lifetime is independent. */ } };
   const enqueue = (operation) => { const result = queue.catch(() => {}).then(operation); queue = result; return result; };
   const clearTimer = () => { if (timer !== null) cancel(timer); timer = null; };
-  const networkRead = async (force = false) => {
-    try { return await reader.read({ force }); } catch { return { status: "unavailable", candidates: [] }; }
+  const networkRead = (force = false) => {
+    // Requests and the watcher must consume the same in-flight observation.
+    pendingNetworkRead ??= Promise.resolve().then(() => reader.read({ force }))
+      .catch(() => ({ status: "unavailable", reason: "probe_failed", candidates: [] }))
+      .finally(() => { pendingNetworkRead = null; });
+    return pendingNetworkRead;
   };
   const replaceCandidates = (network) => { candidates = network.status === "unavailable" ? [] : network.candidates.slice(0, 8); };
 
@@ -67,16 +72,34 @@ export function createLanSharingController(options = {}) {
     await closeGateway(handle);
   }
 
+  function applyNetwork(handle, network, current) {
+    const allowed = current.candidates.some((entry) => sameNetworkIdentity(entry, network));
+    const recovering = current.status === "unavailable"
+      && ["probe_failed", "no_eligible_network"].includes(current.reason);
+    if (!allowed && !recovering) {
+      void invalidate(handle, current.reason === "public_network" ? "public_network" : "network_changed");
+      return false;
+    }
+    const nextStatus = allowed ? "sharing" : "recovering";
+    const changed = status !== nextStatus;
+    status = nextStatus;
+    reason = allowed ? null : "network_unavailable";
+    handle.updateNetworkState(allowed ? true : null);
+    if (changed) broadcast();
+    return allowed ? true : null;
+  }
+
   function watchNetwork(handle, network) {
     clearTimer();
+    const revision = generation;
     timer = schedule(async () => {
       timer = null;
-      if (disposed || gateway !== handle) return;
+      if (disposed || revision !== generation || gateway !== handle) return;
       const current = await networkRead(true);
-      if (disposed || gateway !== handle) return;
+      if (disposed || revision !== generation || gateway !== handle) return;
       replaceCandidates(current);
-      if (!current.candidates.some((entry) => sameNetworkIdentity(entry, network))) await invalidate(handle);
-      else watchNetwork(handle, network);
+      applyNetwork(handle, network, current);
+      if (gateway === handle) watchNetwork(handle, network);
     });
   }
 
@@ -86,7 +109,7 @@ export function createLanSharingController(options = {}) {
     const network = await networkRead();
     if (revision !== generation || disposed) return snapshot();
     replaceCandidates(network);
-    if (gateway && !network.candidates.some((entry) => sameNetworkIdentity(entry, selected))) await invalidate(gateway);
+    if (gateway) applyNetwork(gateway, selected, network);
     return snapshot();
   }
 
@@ -122,10 +145,10 @@ export function createLanSharingController(options = {}) {
       const isNetworkAllowed = async () => {
         if (disposed || revision !== generation) return false;
         const latest = await networkRead();
-        const allowed = !disposed && revision === generation && latest.candidates.some((entry) => sameNetworkIdentity(entry, chosen));
-        if (!allowed) replaceCandidates(latest);
-        if (!allowed && handle) void invalidate(handle);
-        return allowed;
+        if (disposed || revision !== generation) return false;
+        replaceCandidates(latest);
+        if (handle && gateway === handle) return applyNetwork(handle, chosen, latest);
+        return latest.candidates.some((entry) => sameNetworkIdentity(entry, chosen));
       };
       try {
         handle = await startGateway({

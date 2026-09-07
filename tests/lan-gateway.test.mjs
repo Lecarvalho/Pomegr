@@ -5,6 +5,7 @@ import net from "node:net";
 import test from "node:test";
 
 import { startLanGateway } from "../desktop/lan-gateway.mjs";
+import { createLanSharingController } from "../desktop/lan-sharing.mjs";
 
 const AUTHORIZATION = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 const loopbackTestNetwork = Object.freeze({
@@ -290,5 +291,118 @@ test("LAN gateway rejects malformed network inputs and closes access when identi
   } finally {
     await gateway.close();
     await close(upstream);
+  }
+});
+
+test("controller recovery closes streams, blocks reads and pairing, and restores the same cookie and URL", async () => {
+  let reads = 0;
+  const upstream = http.createServer((request, response) => {
+    reads++;
+    if (request.url === "/api/events") {
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.write("data: ready\n\n");
+    } else response.end("safe state");
+  });
+  const upstreamOrigin = await listen(upstream);
+  const home = { id: "test-home", label: "Test", address: "127.0.0.1", subnetMask: "255.255.255.0" };
+  let network = { status: "available", candidates: [home] };
+  const timers = new Set();
+  let gateway;
+  const controller = createLanSharingController({
+    upstreamOrigin, authorizationToken: AUTHORIZATION,
+    networkReader: { read: async () => network },
+    schedule(fn) { timers.add(fn); return fn; }, cancel(fn) { timers.delete(fn); },
+    startGateway: async (options) => {
+      gateway = await startLanGateway({ ...options, networkPolicy: loopbackTestNetwork });
+      return gateway;
+    },
+  });
+  try {
+    await controller.setSharing(true);
+    const origin = gateway.origin;
+    const cookie = await pair(gateway);
+    const events = await fetch(`${origin}/api/events`, { headers: { Cookie: cookie } });
+    const stream = events.body.getReader();
+    await stream.read();
+    const streamEnded = stream.read().then((result) => result.done, () => true);
+    network = { status: "unavailable", candidates: [], reason: "probe_failed" };
+    const tick = [...timers][0]; timers.delete(tick); await tick();
+    assert.equal(await streamEnded, true);
+    assert.equal(controller.snapshot().status, "recovering");
+    assert.equal(controller.snapshot().address, origin);
+    assert.equal(await controller.createPairing(), null);
+    assert.throws(() => gateway.createPairing());
+    for (const route of ["/api/state", "/api/client-access", "/__pomegr/pair"]) {
+      const blocked = await fetch(`${origin}${route}`, { headers: { Cookie: cookie } });
+      assert.equal(blocked.status, 503);
+      assert.equal(blocked.headers.get("Cache-Control"), "no-store");
+      assert.equal(blocked.headers.get("Retry-After"), "5");
+      assert.equal(blocked.headers.get("Set-Cookie"), null);
+      assert.equal(await blocked.text(), "Network verification unavailable; retry shortly");
+    }
+    assert.equal(reads, 1);
+    assert.equal(gateway.snapshot().pairedClients, 1);
+    network = { status: "available", candidates: [home] };
+    const restored = await fetch(`${origin}/api/state`, { headers: { Cookie: cookie } });
+    assert.equal(restored.status, 200);
+    assert.equal(await restored.text(), "safe state");
+    assert.equal(controller.snapshot().status, "sharing");
+    assert.equal(reads, 2);
+  } finally { await controller.dispose(); await close(upstream); }
+});
+
+test("gateway timeout and rejected verification preserve pairing without serving upstream data", async () => {
+  let reads = 0;
+  const upstream = http.createServer((_request, response) => { reads++; response.end("safe state"); });
+  const upstreamOrigin = await listen(upstream);
+  let policy = () => true;
+  const gateway = await startLanGateway({
+    host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+    authorizationToken: AUTHORIZATION, isNetworkAllowed: () => policy(), networkPolicy: loopbackTestNetwork,
+  });
+  try {
+    const cookie = await pair(gateway);
+    for (const next of [() => Promise.reject(new Error("PRIVATE_PROBE_ERROR")), () => new Promise(() => {})]) {
+      policy = next;
+      const response = await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie } });
+      assert.equal(response.status, 503);
+      assert.doesNotMatch(await response.text(), /PRIVATE_PROBE_ERROR/);
+      assert.equal(gateway.snapshot().pairedClients, 1);
+      assert.equal(reads, 0);
+    }
+    policy = () => true;
+    const recovered = await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie } });
+    assert.equal(recovered.status, 200);
+    await recovered.text();
+  } finally { await gateway.close(); await close(upstream); }
+});
+
+test("new suspension or revocation wins over a pending successful request check", async () => {
+  for (const revoke of [false, true]) {
+    let reads = 0;
+    const upstream = http.createServer((_request, response) => { reads++; response.end("safe state"); });
+    const upstreamOrigin = await listen(upstream);
+    let policy = () => true;
+    const gateway = await startLanGateway({
+      host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+      authorizationToken: AUTHORIZATION, isNetworkAllowed: () => policy(), networkPolicy: loopbackTestNetwork,
+    });
+    try {
+      const cookie = await pair(gateway);
+      let started;
+      const checking = new Promise((resolve) => { started = resolve; });
+      let finish;
+      policy = () => { started(); return new Promise((resolve) => { finish = resolve; }); };
+      const request = fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie } })
+        .then(async (response) => { await response.text(); return response.status; }, () => "closed");
+      await checking;
+      if (revoke) gateway.revoke();
+      else gateway.updateNetworkState(null);
+      finish(true);
+      const status = await request;
+      assert.ok(revoke ? status === "closed" || status === 403 : status === 503);
+      assert.equal(reads, 0);
+      assert.equal(gateway.snapshot().pairedClients, revoke ? 0 : 1);
+    } finally { await gateway.close(); await close(upstream); }
   }
 });

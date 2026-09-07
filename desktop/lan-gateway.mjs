@@ -180,7 +180,7 @@ export async function startLanGateway(options = {}) {
     throw new LanGatewayError("LAN_GATEWAY_INVALID_AUTHORIZATION");
   }
   if (typeof options.isNetworkAllowed !== "function") throw new LanGatewayError("LAN_GATEWAY_INVALID_NETWORK_POLICY");
-  try { if (!await options.isNetworkAllowed({ host, subnetMask: options.subnetMask })) throw new LanGatewayError("LAN_GATEWAY_NETWORK_UNAVAILABLE"); }
+  try { if (await options.isNetworkAllowed({ host, subnetMask: options.subnetMask }) !== true) throw new LanGatewayError("LAN_GATEWAY_NETWORK_UNAVAILABLE"); }
   catch (error) { throw error instanceof LanGatewayError ? error : new LanGatewayError("LAN_GATEWAY_NETWORK_UNAVAILABLE"); }
 
   const sessions = new Map();
@@ -191,6 +191,8 @@ export async function startLanGateway(options = {}) {
   const cookieName = `pomegr_lan_${randomToken(12)}`;
   let pairing = null;
   let active = true;
+  let suspended = false;
+  let networkRevision = 0;
   let closePromise;
   let resolveExit;
   const exit = new Promise((resolve) => { resolveExit = resolve; });
@@ -209,6 +211,20 @@ export async function startLanGateway(options = {}) {
     for (const pending of upstreamRequests) pending.destroy();
     for (const stream of upstreamStreams) stream.destroy();
     for (const socket of sockets) socket.destroy();
+  };
+  // null means verification is temporarily unavailable, never permission to serve.
+  // Retain only the listener and bounded existing sessions while access is blocked.
+  const updateNetworkState = (allowed) => {
+    if (!active) return;
+    if (allowed !== true && allowed !== null) { revoke(); return; }
+    if (suspended === (allowed === null)) return;
+    networkRevision += 1;
+    suspended = allowed === null;
+    if (suspended) {
+      pairing = null;
+      for (const pending of upstreamRequests) pending.destroy();
+      for (const stream of upstreamStreams) stream.destroy();
+    }
   };
   const clientAllowed = (request) => {
     const remote = request.socket.remoteAddress || "";
@@ -242,16 +258,25 @@ export async function startLanGateway(options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      resolve(value === true);
+      resolve(value === null ? null : value === true);
     };
-    const timeout = setTimeout(() => finish(false), NETWORK_CHECK_TIMEOUT_MS);
-    Promise.resolve().then(() => options.isNetworkAllowed({ host, subnetMask: options.subnetMask })).then(finish, () => finish(false));
+    const timeout = setTimeout(() => finish(null), NETWORK_CHECK_TIMEOUT_MS);
+    Promise.resolve().then(() => options.isNetworkAllowed({ host, subnetMask: options.subnetMask })).then(finish, () => finish(null));
   });
   const networkAllowed = async () => {
-    try {
-      if (active && await checkNetworkIdentity()) return true;
-    } catch { /* A failed revalidation closes LAN access. */ }
-    revoke();
+    if (!active) return false;
+    const revision = networkRevision;
+    const allowed = await checkNetworkIdentity();
+    // A watcher observation or explicit revocation wins over an older request.
+    if (revision === networkRevision) updateNetworkState(allowed);
+    return active ? suspended ? null : true : false;
+  };
+  const requireNetwork = (response) => {
+    if (active && !suspended) return true;
+    if (active && suspended) {
+      response.setHeader("Retry-After", "5");
+      fixed(response, 503, "Network verification unavailable; retry shortly");
+    } else fixed(response, 403);
     return false;
   };
   const authenticated = (request) => {
@@ -260,10 +285,12 @@ export async function startLanGateway(options = {}) {
   };
   const server = http.createServer({ maxHeaderSize: MAX_HEADER_BYTES }, async (request, response) => {
     const port = server.address()?.port;
-    if (!Number.isInteger(port) || !active || !clientAllowed(request) || !(await networkAllowed())) { fixed(response, 403); return; }
+    if (!Number.isInteger(port) || !active || !clientAllowed(request)) { fixed(response, 403); return; }
     const requestHost = request.headers.host;
     if (requestHost !== expectedHost(port) || !requestPathIsSafe(request.url)) { fixed(response, 400); return; }
     if (request.headers.origin && request.headers.origin !== origin) { fixed(response, 403); return; }
+    await networkAllowed();
+    if (!requireNetwork(response)) return;
     let url;
     try { url = new URL(request.url, origin); } catch { fixed(response, 400); return; }
     const pathname = url.pathname;
@@ -278,7 +305,8 @@ export async function startLanGateway(options = {}) {
       if (!pairingAttemptAllowed(request)) { fixed(response, 429, "Try again later"); return; }
       let secret;
       try { secret = await readPairingBody(request); } catch { fixed(response, 400); return; }
-      if (!active || !(await networkAllowed())) { fixed(response, 403); return; }
+      await networkAllowed();
+      if (!requireNetwork(response)) return;
       const current = pairing;
       if (!current || current.expiresAt <= Date.now()) { pairing = null; fixed(response, 410, "Pairing link expired"); return; }
       if (!tokenMatches(secret, current.secret)) { fixed(response, 403, "Pairing code invalid"); return; }
@@ -308,12 +336,15 @@ export async function startLanGateway(options = {}) {
       if (!REQUEST_HEADERS.has(name) || typeof value !== "string" || value.length > 4096 || /[\r\n]/.test(value)) continue;
       headers[name] = value;
     }
+    const forwardingRevision = networkRevision;
     const upstreamRequest = http.request({
       protocol: upstream.protocol, hostname: upstream.hostname.replace(/^\[|\]$/g, ""), port: upstream.port,
       method, path: `${pathname}${url.search}`, headers, timeout: 15_000,
     }, (upstreamResponse) => {
       upstreamRequests.delete(upstreamRequest);
-      if (response.destroyed) { upstreamResponse.destroy(); return; }
+      if (response.destroyed || !active || suspended || forwardingRevision !== networkRevision) {
+        upstreamResponse.destroy(); response.destroy(); return;
+      }
       upstreamStreams.add(upstreamResponse);
       const clearStream = () => {
         upstreamStreams.delete(upstreamResponse);
@@ -374,7 +405,7 @@ export async function startLanGateway(options = {}) {
   return Object.freeze({
     origin,
     createPairing() {
-      if (!active) throw new LanGatewayError("LAN_GATEWAY_REVOKED");
+      if (!active || suspended) throw new LanGatewayError("LAN_GATEWAY_REVOKED");
       const secret = randomToken();
       const expiresAt = Date.now() + PAIRING_TTL_MS;
       pairing = { secret, expiresAt };
@@ -382,6 +413,7 @@ export async function startLanGateway(options = {}) {
     },
     snapshot: () => Object.freeze({ pairedClients: sessions.size }),
     revoke,
+    updateNetworkState,
     close() {
       if (closePromise) return closePromise;
       closeRequested = true; revoke(); closePromise = closeSoon(server, sockets, upstreamRequests, upstreamStreams); return closePromise;

@@ -22,6 +22,7 @@ function harness(overrides = {}) {
         options, origin: "http://192.168.1.20:5678", revoked: 0, closed: 0,
         revoke() { this.revoked++; }, async close() { this.closed++; },
         snapshot: () => ({ pairedClients: 1 }),
+        updateNetworkState(value) { this.networkState = value; },
         createPairing: () => ({ url: "http://192.168.1.20:5678/__pomegr/pair#private-pairing", expiresAt: "2026-09-03T15:00:00.000Z" }),
         exit: new Promise(() => {}),
       };
@@ -94,6 +95,85 @@ test("sharing closes on an adapter, profile, or address change even within the s
       candidates: [{ id: replacement.id, label: replacement.label, address: replacement.address }],
       selectedNetworkId: null, address: null, pairedClients: 0,
     });
+    assert.ok(h.handles[0].revoked > 0);
+    await h.controller.dispose();
+  }
+});
+
+test("temporary network failures retain the URL and pairing across watcher, request, and native reads", async () => {
+  for (const reason of ["probe_failed", "no_eligible_network"]) {
+    for (const via of ["watcher", "request", "native"]) {
+      const h = harness();
+      const original = await h.controller.setSharing(true);
+      const handle = h.handles[0];
+      h.network({ status: "unavailable", candidates: [], reason });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (via === "request") assert.equal(await handle.options.isNetworkAllowed(), null);
+        else if (via === "native") await h.controller.getState();
+        else { const tick = [...h.timers][0]; h.timers.delete(tick); await tick(); }
+        assert.equal(h.controller.snapshot().status, "recovering");
+        assert.equal(h.controller.snapshot().address, original.address);
+        assert.equal(h.controller.snapshot().pairedClients, 1);
+        assert.equal(handle.networkState, null);
+        assert.equal(handle.revoked, 0);
+        assert.equal(handle.closed, 0);
+        assert.equal(h.timers.size, 1);
+        assert.equal(await h.controller.createPairing(), null);
+      }
+      h.network({ status: "available", candidates: [home] });
+      assert.equal(await handle.options.isNetworkAllowed(), true);
+      assert.equal(h.controller.snapshot().status, "sharing");
+      assert.equal(h.controller.snapshot().reason, null);
+      assert.equal(h.controller.snapshot().address, original.address);
+      assert.equal(h.handles.length, 1);
+      await h.controller.dispose();
+    }
+  }
+});
+
+test("confirmed unsafe observations still revoke a recovering gateway", async () => {
+  for (const network of [
+    { status: "unavailable", candidates: [], reason: "public_network" },
+    { status: "unavailable", candidates: [], reason: "invalid_result" },
+    { status: "unavailable", candidates: [], reason: "unsupported_platform" },
+    { status: "available", candidates: [other] },
+  ]) {
+    const h = harness();
+    await h.controller.setSharing(true);
+    h.network({ status: "unavailable", candidates: [], reason: "probe_failed" });
+    await h.controller.getState();
+    h.network(network);
+    await h.controller.getState();
+    assert.equal(h.controller.snapshot().status, "unavailable");
+    assert.equal(h.controller.snapshot().address, null);
+    assert.ok(h.handles[0].revoked > 0);
+    assert.equal(h.timers.size, 0);
+    await h.controller.dispose();
+  }
+});
+
+test("a late successful observation cannot recover sharing after Stop or disposal", async () => {
+  for (const dispose of [false, true]) {
+    let pending;
+    let observed;
+    const reading = new Promise((resolve) => { observed = resolve; });
+    const h = harness({ networkReader: { read: async () => {
+      if (!pending) return { status: "available", candidates: [home] };
+      observed();
+      return pending;
+    } } });
+    await h.controller.setSharing(true);
+    let finish;
+    pending = new Promise((resolve) => { finish = resolve; });
+    const tick = [...h.timers][0]; h.timers.delete(tick);
+    const checking = tick();
+    await reading;
+    if (dispose) await h.controller.dispose();
+    else await h.controller.setSharing(false);
+    finish({ status: "available", candidates: [home] });
+    await checking;
+    assert.equal(h.controller.snapshot().status, "off");
+    assert.equal(h.timers.size, 0);
     assert.ok(h.handles[0].revoked > 0);
     await h.controller.dispose();
   }
