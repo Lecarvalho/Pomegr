@@ -4,6 +4,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const documents = [
+  ["LICENSE", "LICENSE.txt"],
+  ["NOTICE", "NOTICE.txt"],
+  ["SOURCE.md", "SOURCE.txt"],
+  ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.txt"],
+  ["TRADEMARKS.md", "TRADEMARKS.txt"],
+];
+
+export async function assertBuiltLegalNotices(root = repositoryRoot) {
+  for (const [, destination] of documents) {
+    const [source, built] = await Promise.all([
+      readFile(path.join(root, "public", "legal", destination)),
+      readFile(path.join(root, "dist", "client", "legal", destination)),
+    ]);
+    if (!source.length || !source.equals(built)) {
+      throw new Error("DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH");
+    }
+  }
+}
 
 function packageNameFromLocation(location) {
   const marker = "node_modules/";
@@ -112,13 +131,6 @@ export async function generateLegalNotices(root = repositoryRoot) {
 
   const publicLegalRoot = path.join(root, "public", "legal");
   await mkdir(publicLegalRoot, { recursive: true });
-  const documents = [
-    ["LICENSE", "LICENSE.txt"],
-    ["NOTICE", "NOTICE.txt"],
-    ["SOURCE.md", "SOURCE.txt"],
-    ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.txt"],
-    ["TRADEMARKS.md", "TRADEMARKS.txt"],
-  ];
   for (const [source, destination] of documents) {
     const content = source === "THIRD_PARTY_NOTICES.md"
       ? thirdPartyNotices

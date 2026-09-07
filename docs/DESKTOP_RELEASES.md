@@ -161,8 +161,12 @@ which supplies it only after every gate and the final clean-tag check succeed.
 Both normal and `--check-only` runs print the verified SHA.
 
 CI packaging uses `npm run desktop:prepare:from-build` to reuse the production
-web output already built and smoke-tested in CI. It still regenerates the
-desktop service bundles and legal notices, but does not run a second web build.
+web output already built and smoke-tested in CI. `npm run build` generates legal
+notices before copying public assets, including on a fresh Windows checkout with
+CRLF line endings. Preparation checks the built legal copies byte-for-byte before
+signing and regenerates only desktop service bundles. It does not regenerate legal
+files or run a second web build. A stale build fails with
+`DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH`; rebuild before packaging.
 
 ## Release checklist
 

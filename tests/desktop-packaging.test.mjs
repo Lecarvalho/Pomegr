@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import {
@@ -17,7 +18,7 @@ import {
   isAllowedApplicationPath,
   isDependencyPackageManifest,
 } from "../desktop/artifact-policy.mjs";
-import { productionDependencyNotices, renderThirdPartyNotices } from "../desktop/legal-notices.mjs";
+import { assertBuiltLegalNotices, generateLegalNotices, productionDependencyNotices, renderThirdPartyNotices } from "../desktop/legal-notices.mjs";
 import { SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "../desktop/asar-policy.mjs";
 import {
   ACCEPTANCE_PRIOR_ARTIFACT,
@@ -34,6 +35,38 @@ const REQUIRED_FILES = [
   "dist/server/index.js",
   "package.json",
 ];
+
+test("desktop preparation rejects legal files regenerated after a Windows web build", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "pomegr-legal-order-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, "package-lock.json"), JSON.stringify({ packages: { "": {} } }));
+  for (const name of ["LICENSE", "NOTICE", "SOURCE.md", "TRADEMARKS.md"]) {
+    await writeFile(path.join(root, name), `${name}\r\nfixture text\r\n`);
+  }
+  await generateLegalNotices(root);
+  const publicRoot = path.join(root, "public", "legal");
+  const builtRoot = path.join(root, "dist", "client", "legal");
+  await mkdir(builtRoot, { recursive: true });
+  await cp(publicRoot, builtRoot, { recursive: true });
+  const builtLicense = path.join(builtRoot, "LICENSE.txt");
+  const license = await readFile(builtLicense, "utf8");
+  // A fresh Windows checkout was copied to dist before legal generation normalized it.
+  await writeFile(builtLicense, license.replaceAll("\n", "\r\n"));
+  await assert.rejects(assertBuiltLegalNotices(root), /DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH/);
+  await cp(publicRoot, builtRoot, { recursive: true });
+  await assert.doesNotReject(assertBuiltLegalNotices(root));
+  await writeFile(builtLicense, license.replace("fixture", "changed"));
+  await assert.rejects(assertBuiltLegalNotices(root), /DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH/);
+});
+
+test("the web build generates legal notices before copying public assets and packaging reuses them", async () => {
+  const { scripts } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const commands = scripts.build.split(" && ");
+  assert.ok(commands.indexOf("npm run desktop:legal") >= 0);
+  assert.ok(commands.indexOf("npm run desktop:legal") < commands.indexOf("node scripts/run-vinext.mjs build"));
+  assert.equal(scripts["desktop:prepare:from-build"], "node desktop/build.mjs");
+  assert.equal(scripts["desktop:prepare"], "npm run build && npm run desktop:prepare:from-build");
+});
 
 test("desktop builder produces per-user NSIS and portable artifacts from an explicit allowlist", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
