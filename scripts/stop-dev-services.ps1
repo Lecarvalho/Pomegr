@@ -102,16 +102,22 @@ function Stop-DevPlan {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
+  $diagnosticStage = 'resolve_root'
   try {
     $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $diagnosticStage = 'inspect_processes'
     $processes = @(Get-CimInstance Win32_Process)
     # Enumerate all TCP endpoints so an empty listener set is a normal result.
+    $diagnosticStage = 'inspect_listeners'
     $listeners = @(Get-NetTCPConnection | Where-Object { $_.State -eq 'Listen' -and $_.LocalPort -in @(3003, 4317) })
+    $diagnosticStage = 'plan'
     $plan = @(Get-DevStopPlan $processes $listeners $repositoryRoot ([int]$env:POMEGR_DEV_LAUNCHER_PID))
+    $diagnosticStage = 'stop'
     Stop-DevPlan $plan
     Write-Output $plan.Count
   } catch {
     # Only fixed diagnostics cross the launcher boundary; never raw command lines/errors.
+    [Console]::Error.WriteLine(('DIAGNOSTIC_HELPER_STAGE ' + $diagnosticStage))
     switch -Exact ($_.Exception.Message) {
       'POMEGR_DEV_PORT_3003' { exit 10 }
       'POMEGR_DEV_PORT_4317' { exit 11 }
