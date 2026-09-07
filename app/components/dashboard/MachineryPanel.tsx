@@ -15,9 +15,9 @@ export function MachineryPanel({ machinery, supported, inventoryRef }: { machine
   if (!supported && !inventoryRef) return null;
   if (!machinery) {
     if (!inventoryRef) return null;
-    const params = new URLSearchParams({ repository: inventoryRef.repositoryId, provider: inventoryRef.provider, revision: inventoryRef.revisionId });
+    const params = new URLSearchParams({ tab: "inventory", provider: inventoryRef.provider, revision: inventoryRef.revisionId });
     const source = inventoryRef.provider === "claude" ? "Claude Code" : "Codex";
-    return <section className="panel sessionInventoryReference" aria-label="Repository context inventory reference"><div><strong>{source} inventory · {compactNumber(inventoryRef.machineryTokens)} estimated setup tokens</strong><span>Immutable revision {inventoryRef.revisionId} · available when this session started · {inventoryRef.categoryCount} categories</span>{!inventoryRef.detailRetained && <small>Detailed evidence is no longer retained.</small>}</div><Link href={`/repositories?${params}`}>Open {inventoryRef.revisionId}</Link></section>;
+    return <section className="panel sessionInventoryReference" aria-label="Repository context inventory reference"><div><strong>{source} inventory · {compactNumber(inventoryRef.machineryTokens)} estimated setup tokens</strong><span>Immutable revision {inventoryRef.revisionId} · available when this session started · {inventoryRef.categoryCount} categories</span>{!inventoryRef.detailRetained && <small>Detailed evidence is no longer retained.</small>}</div><Link href={`/repositories/${inventoryRef.repositoryId}?${params}`}>Open {inventoryRef.revisionId}</Link></section>;
   }
   return (
     <section className={`panel cachePanel ${open ? "machineryPopoverOpen" : ""}`} aria-label="Loaded context inventory">

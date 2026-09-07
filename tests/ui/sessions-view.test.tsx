@@ -35,6 +35,26 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it("composes repository and project filters without matching older unassociated rows", async () => {
+    const repositoryId = "repo-0123456789abcdef01234567";
+    const sessions = [
+      { ...session(1), repositoryId },
+      { ...session(2), repositoryId, project: "Other project" },
+      { ...session(3), repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa" },
+      session(4),
+    ];
+    render(<SessionCatalogProvider sessions={sessions}><SessionsView initialRepositoryId={repositoryId} initialProject="Pomegr" /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    await userEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
+    expect(visibleSessionTitles()).toEqual(["Session 2", "Session 1"]);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 2");
+    expect(visibleSessionTitles()).toEqual(["Session 2"]);
+  });
+
+  it("shows the normal no-match state when catalog rows have no repository association", () => {
+    render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView initialRepositoryId="repo-0123456789abcdef01234567" /></SessionCatalogProvider>);
+    expect(screen.getByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
+  });
   it("moves a confirmed closed Claude session from Live to History without claiming completion", async () => {
     const user = userEvent.setup();
     const open: SessionSummary = { ...session(1), id: "claude:session-1", provider: "claude", source: "Claude Code", isLive: true, activityStatus: "open", progress: null };

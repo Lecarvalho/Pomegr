@@ -148,7 +148,7 @@ describe("repository index", () => {
     render(<MachineryPanel machinery={null} supported historical={false} inventoryRef={{ repositoryId, provider: "claude", revisionId: "ctx-001",
       capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, detailRetained: true }} />);
     expect(screen.getByText(/available when this session started/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", expect.stringContaining("/repositories?"));
+    expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`);
     expect(screen.queryByText(/Run \/context/i)).not.toBeInTheDocument();
   });
 });

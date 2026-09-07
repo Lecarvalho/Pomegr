@@ -1,7 +1,7 @@
 # Repositories page redesign plan
 
 > Status: ready for implementation — 2026-09-06. Option A (index + detail page) was chosen
-> by the product owner. POMEGR-RP-01 is complete. Tasks POMEGR-RP-02 through POMEGR-RP-07 are open.
+> by the product owner. POMEGR-RP-01 and POMEGR-RP-02 are complete. Tasks POMEGR-RP-03 through POMEGR-RP-07 are open.
 
 ## Objective
 
@@ -311,12 +311,12 @@ Create `/repositories/<repositoryId>` with the header, tab rail, and empty tab p
 
 ### Acceptance criteria
 
-- [ ] `/repositories/repo-<24 hex>` renders header, breadcrumb, five tabs; invalid ids 404.
-- [ ] `?tab=` drives the active tab; the Git tab shows coming-soon content.
-- [ ] Legacy `?repository=…` links redirect and land on the Context inventory tab.
-- [ ] LAN gateway allows the new route shape and rejects traversal; desktop navigation
+- [x] `/repositories/repo-<24 hex>` renders header, breadcrumb, five tabs; invalid ids 404.
+- [x] `?tab=` drives the active tab; the Git tab shows coming-soon content.
+- [x] Legacy `?repository=…` links redirect and land on the Context inventory tab.
+- [x] LAN gateway allows the new route shape and rejects traversal; desktop navigation
       policy allows it.
-- [ ] Breadcrumb shows the display name on desktop and phone exactly like the session
+- [x] Breadcrumb shows the display name on desktop and phone exactly like the session
       breadcrumb.
 
 ### Verification
@@ -576,3 +576,4 @@ npm test
 | --- | --- | --- | --- |
 | 2026-09-06 | Plan | Written | Option A chosen. Mockups copied to `docs/plans/repositories-redesign/`. Canvas: https://claude.ai/code/artifact/89105ade-65d0-451b-9f4a-f240a6b1b4d4 |
 | 2026-09-07 | POMEGR-RP-01 | Complete | Linked index rows, shared setup summary, composed search/filters, phone layout. Full npm test and verify:fast passed; final build and 37 focused checks passed. Both themes measured at 1440/1100/900/760/390/360 px with no overflow and 44 px phone controls; finish review shipped. API reporting `missing` maps to Not configured. RP-02 route is intentionally pending; removed detail components/tests can be recovered from parent `91954d9ddf636e6b3d7d84dd5b828233a485d5a2` for RP-03/RP-04 (RP-01 step 7). |
+| 2026-09-07 | POMEGR-RP-02 | Complete | Validated detail route, header, shared breadcrumb, five URL-backed tabs, Git placeholder, Sessions repository filter, legacy redirect, and LAN/desktop routing. Full npm test passed (549 UI tests; node/plugin suites), final build and verify:fast passed. Synthetic browser checks at 1440/390 px in both themes: no overflow, 44 px phone tabs, preserved query selection, redirect and 404 verified. Finish review shipped. Tab content remains deferred to RP-03 through RP-06. |

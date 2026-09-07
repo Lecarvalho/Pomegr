@@ -257,9 +257,18 @@ repository name, observed provider badges, live and history session counts, last
 activity, and one bounded Pomegr setup summary. The toolbar combines repository
 search with All, Needs attention, and Live now filters; on phones the rows reflow
 into a compact layout while search and filters retain at least 44px targets.
-Repository detail content follows in subsequent redesign phases; Git evidence
-remains a coming-soon placeholder. Setup mutations require native confirmation,
-with browser clients receiving setup instructions.
+Repository detail is a linked `/repositories/<repositoryId>` route. Its header
+uses a 42px outlined repository icon, the repository's live and history counts,
+observed provider badges, and the existing secondary-button role for View
+sessions. The shell uses the shared session breadcrumb for
+`Repositories › {displayName}`. Detail navigation uses the existing Settings
+layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
+the active tab backed by `?tab=` in the URL. RP-02 ships the shell and empty
+content only; tab content is deferred to RP-03 through RP-06, while Git keeps
+the existing coming-soon placeholder. The implementation adds no shared styles
+or tokens; repository-local classes compose the existing Settings and button
+roles. Setup mutations require native confirmation, with browser clients
+receiving setup instructions.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary

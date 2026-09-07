@@ -16,6 +16,21 @@ import type { DesktopState } from "../DesktopControls";
 import { PomegrBrand, type PomegrMarkVariant } from "../PomegrBrand";
 import { ThemeToggle } from "../ThemeToggle";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
+import { useRepositoryInventory } from "../../repository-inventory-client";
+import { repositoryRouteId } from "../repositories/repository-route";
+
+function Breadcrumb({ href, label, current }: { href: string; label: string; current: string }) {
+  return <nav className="sessionBreadcrumb" aria-label="Breadcrumb"><ol>
+    <li><Link href={href}>{label}</Link></li>
+    <li><svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg><span aria-current="page" title={current}>{current}</span></li>
+  </ol></nav>;
+}
+
+function RepositoryBreadcrumb({ repositoryId }: { repositoryId: string }) {
+  const { snapshot } = useRepositoryInventory();
+  const name = snapshot.repositories.find((repository) => repository.id === repositoryId)?.displayName;
+  return <Breadcrumb href="/repositories" label="Repositories" current={name || "Repository"} />;
+}
 
 export function shortcutHintForPlatform(platform?: string) {
   const value = platform ?? (typeof navigator === "undefined" ? "" : `${navigator.platform} ${navigator.userAgent}`);
@@ -53,7 +68,7 @@ const primaryNavigation: NavigationItem[] = [
 
 const systemNavigation: NavigationItem[] = [
   { href: "/usage-limits", label: "Usage limits", icon: "chart" },
-  { href: "/repositories", label: "Repositories", icon: "git" },
+  { href: "/repositories", label: "Repositories", icon: "git", match: (pathname) => pathname === "/repositories" || pathname.startsWith("/repositories/") },
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 
@@ -109,6 +124,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const hasAttention = notifications.hasUnreadAttention;
   const sessionRouteId = pathname.startsWith("/sessions/") ? decodeSessionRoute(pathname.slice("/sessions/".length)) : null;
   const breadcrumbProject = sessions.find((session) => session.id === sessionRouteId)?.project;
+  const currentRepositoryId = pathname.startsWith("/repositories/") ? repositoryRouteId(pathname.slice("/repositories/".length)) : undefined;
 
   const closeNotifications = useCallback((returnFocus = true) => {
     setNotificationsOpen(false);
@@ -168,7 +184,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
 
   return (
     <div className="commandShell">
-      <header className={`commandHeader${sessionRouteId ? " hasBreadcrumb" : ""}${mobileSearchOpen ? " isSearchOpen" : ""}`}>
+      <header className={`commandHeader${sessionRouteId || currentRepositoryId ? " hasBreadcrumb" : ""}${mobileSearchOpen ? " isSearchOpen" : ""}`}>
         <button ref={mobileNavigationButtonRef} className="commandIconButton commandMenuButton" type="button" aria-label={mobileNavigationOpen ? "Close primary menu" : "Open primary menu"} aria-controls="command-primary-navigation" aria-expanded={mobileNavigationOpen} onClick={() => {
           setNotificationsOpen(false);
           setProfileOpen(false);
@@ -176,15 +192,8 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
           setMobileNavigationOpen((open) => !open);
         }}><CommandIcon name={mobileNavigationOpen ? "close" : "menu"} /></button>
         <PomegrBrand href="/" label="Pomegr home" markVariant={markVariant} />
-        {sessionRouteId && <nav className="sessionBreadcrumb" aria-label="Breadcrumb">
-          <ol>
-            <li><Link href="/sessions">Sessions</Link></li>
-            <li>
-              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5" /></svg>
-              <span aria-current="page" title={breadcrumbProject || "Session"}>{breadcrumbProject || "Session"}</span>
-            </li>
-          </ol>
-        </nav>}
+        {sessionRouteId && <Breadcrumb href="/sessions" label="Sessions" current={breadcrumbProject || "Session"} />}
+        {currentRepositoryId && <RepositoryBreadcrumb repositoryId={currentRepositoryId} />}
         <button className="commandIconButton commandMobileSearchClose" type="button" aria-label="Close search" onClick={() => closeMobileSearch()}><CommandIcon name="close" /></button>
         <form className="commandSearch" id="command-global-search" role="search" onSubmit={search}>
           <CommandIcon name="search" />

@@ -102,7 +102,7 @@ function requestPathIsSafe(requestUrl) {
 }
 
 function pageRouteIsAllowed(pathname) {
-  return APP_PATHS.has(pathname) || /^\/sessions\/[^/]+$/.test(pathname);
+  return APP_PATHS.has(pathname) || /^\/sessions\/[^/]+$/.test(pathname) || /^\/repositories\/repo-[a-f0-9]{24}$/.test(pathname);
 }
 
 function routeIsAllowed(pathname) {
