@@ -34,8 +34,8 @@ const setupSnapshot: RepositoryInventorySnapshot = { revision: 2, readiness: "re
   providers: [
     { provider: "claude", source: "Claude Code", sessionCount: 2, supported: true, status: "current", failureKind: null,
       pluginSetup: { readiness: "ready", installation: "installed", version: "0.5.0", enabled: true, scope: "project", checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "available", version: "0.6.0", checkedAt: "2026-09-04T10:00:00.000Z" }, canInstall: false, canUpdate: true },
-      currentRevision: { id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } },
-      revisions: [{ id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } }] },
+      currentRevision: { id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 }, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } },
+      revisions: [{ id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 }, categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } }] },
     { provider: "codex", source: "Codex", sessionCount: 1, supported: true, status: "not_captured", failureKind: null,
       pluginSetup: { readiness: "ready", installation: "not_installed", version: null, enabled: null, scope: null, checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "unknown", version: null, checkedAt: null }, canInstall: true, canUpdate: false },
       currentRevision: null, revisions: [] },
@@ -61,8 +61,8 @@ function serve(body = snapshot) {
 }
 
 const inventoryDetails: Record<string, ContextInventoryRevisionDetail> = {
-  "ctx-001": { repositoryId, provider: "claude", id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 2, itemCount: 2, change: { state: "changed", previousRevisionId: "ctx-000" }, categories: [{ name: "System prompt", tokens: "900", percentage: 75 }, { name: "Tools", tokens: "300", percentage: 25 }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }] }] },
-  "ctx-002": { repositoryId, provider: "claude", id: "ctx-002", capturedAt: "2026-09-05T09:00:00.000Z", model: "claude-test", machineryTokens: 1500, categoryCount: 3, itemCount: 4, change: { state: "changed", previousRevisionId: "ctx-001" }, categories: [{ name: "System prompt", tokens: "1.1k", percentage: 73 }, { name: "Tools", tokens: "300", percentage: 20 }, { name: "Hooks", tokens: "100", percentage: 7 }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }, { name: "Write", detail: "provider tool", tokens: "200" }] }] },
+  "ctx-001": { repositoryId, provider: "claude", id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 900, deferredTokens: 300, reservedTokens: 0 }, categoryCount: 2, itemCount: 2, change: { state: "changed", previousRevisionId: "ctx-000" }, categories: [{ name: "System prompt", tokens: "900", percentage: 75, kind: "initial" }, { name: "Tools (deferred)", tokens: "300", percentage: 25, kind: "deferred" }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }] }] },
+  "ctx-002": { repositoryId, provider: "claude", id: "ctx-002", capturedAt: "2026-09-05T09:00:00.000Z", model: "claude-test", machineryTokens: 1500, contextAllocation: { initialTokens: 1100, deferredTokens: 300, reservedTokens: 100 }, categoryCount: 3, itemCount: 4, change: { state: "changed", previousRevisionId: "ctx-001" }, categories: [{ name: "System prompt", tokens: "1.1k", percentage: 73, kind: "initial" }, { name: "Tools (deferred)", tokens: "300", percentage: 20, kind: "deferred" }, { name: "Autocompact buffer", tokens: "100", percentage: 7, kind: "reserved" }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }, { name: "Write", detail: "provider tool", tokens: "200" }] }] },
 };
 
 describe("repository detail shell", () => {
@@ -168,7 +168,7 @@ describe("repository detail overview", () => {
     expect(pane.getByText("Plugin update available")).toHaveClass("warning");
     expect(pane.getByText("Not configured")).toHaveClass("neutral");
     expect(pane.getByText("ctx-001 saved")).toBeInTheDocument();
-    expect(pane.getByText(/estimated tokens/)).toHaveTextContent("1,200 estimated tokens");
+    expect(pane.getByText(/estimated initial tokens/)).toHaveTextContent("1,200 estimated initial tokens");
     expect(pane.getByRole("link", { name: "Open plugin" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=plugin`);
     expect(pane.queryByRole("link", { name: "Open Setup" })).not.toBeInTheDocument();
     expect(pane.getByRole("link", { name: "Open reporting" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=reporting`);
@@ -224,7 +224,7 @@ describe("repository detail overview", () => {
     renderOverview();
     await screen.findByRole("heading", { name: "Overview" });
     expect(overview().getByText("Failed")).toHaveClass("negative");
-    expect(overview().getByText(/estimated tokens/)).toHaveTextContent("1,200 estimated tokens");
+    expect(overview().getByText(/estimated initial tokens/)).toHaveTextContent("1,200 estimated initial tokens");
   });
 
   it("filters strictly by repository ID, sorts newest first, limits to five, and encodes session routes", async () => {
@@ -485,7 +485,8 @@ describe("repository context inventory", () => {
     expect(await screen.findByText("Revision", { selector: ".repositoryInventorySummary span" })).toBeInTheDocument();
     expect(screen.getByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
     expect(screen.getByText("System prompt")).toBeInTheDocument();
-    expect(screen.getByText("Inspect 2 listed items")).toBeInTheDocument();
+    expect(screen.getByText("Inspect 2 provider-listed items")).toBeInTheDocument();
+    expect(screen.getByText("Partial detail, not a sum of the categorized total")).toBeInTheDocument();
     expect(screen.getByText("Read")).toBeInTheDocument();
     expect(scroll).toHaveBeenCalled();
   });

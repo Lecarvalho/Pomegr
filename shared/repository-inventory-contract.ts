@@ -1,5 +1,13 @@
 import type { RepositoryPluginSetup, RepositoryReportingSetup } from "./repository-plugin-contract";
 
+export type ContextAllocationKind = "initial" | "deferred" | "reserved";
+
+export type ContextAllocation = {
+  initialTokens: number;
+  deferredTokens: number;
+  reservedTokens: number;
+};
+
 export type ContextInventoryReference = {
   repositoryId: string;
   provider: "claude" | "codex";
@@ -7,6 +15,7 @@ export type ContextInventoryReference = {
   capturedAt: string;
   model: string;
   machineryTokens: number;
+  contextAllocation: ContextAllocation | null;
   categoryCount: number;
   itemCount: number;
   detailRetained: boolean;
@@ -20,7 +29,7 @@ export type ContextInventoryRevisionSummary = Omit<ContextInventoryReference, "r
 export type ContextInventoryRevisionDetail = ContextInventoryRevisionSummary & {
   repositoryId: string;
   provider: "claude" | "codex";
-  categories: Array<{ name: string; tokens: string; percentage: number }>;
+  categories: Array<{ name: string; tokens: string; percentage: number; kind: ContextAllocationKind }>;
   groups: Array<{
     id: string;
     label: string;

@@ -32,6 +32,7 @@ test("repository inventories use opaque identities, immutable revisions, and fut
   const future = await runtime.associateSession({ sessionId: "claude:future", provider: "claude",
     cwd: "C:\\private\\Pomegr", startedAt: "2026-09-04T10:06:00.000Z" });
   assert.equal(future.contextInventoryRef.revisionId, "ctx-001");
+  assert.deepEqual(future.contextInventoryRef.contextAllocation, { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 });
   assert.equal((await runtime.associateSession({ sessionId: "claude:existing", provider: "claude",
     cwd: "C:\\private\\Pomegr", startedAt: "2026-09-04T10:06:00.000Z" })).contextInventoryRef, null);
 
@@ -41,6 +42,8 @@ test("repository inventories use opaque identities, immutable revisions, and fut
   assert.equal(snapshot.repositories[0].providers[0].currentRevision.id, "ctx-001");
   assert.equal(JSON.stringify(snapshot).includes("C:\\private"), false);
   const detail = await runtime.readRevision(future.repositoryId, "claude", "ctx-001");
+  assert.deepEqual(detail.contextAllocation, { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 });
+  assert.equal(detail.categories[0].kind, "initial");
   assert.equal(detail.groups[0].items[0].name, "Read");
   assert.equal(Object.hasOwn(detail, "fingerprint"), false);
 

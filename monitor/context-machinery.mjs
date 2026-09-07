@@ -6,6 +6,7 @@ const MAX_CONTEXT_OUTPUT_CHARS = 100_000;
 const MAX_GROUPS = 12;
 const MAX_ITEMS_PER_GROUP = 250;
 const NON_MACHINERY_CATEGORIES = new Set(["messages", "free space"]);
+const RESERVED_CATEGORY_NAMES = new Set(["autocompact buffer"]);
 const ANSI_ESCAPE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))/g;
 
 function safeLabel(value, fallback = "Unknown") {
@@ -26,6 +27,24 @@ function tokenCount(value) {
   if (!match) return 0;
   const multiplier = match[2].toLowerCase() === "m" ? 1_000_000 : match[2].toLowerCase() === "k" ? 1_000 : 1;
   return Math.round(Number(match[1]) * multiplier);
+}
+
+export function contextCategoryKind(value) {
+  const name = typeof value === "string" ? value.toLowerCase().replace(/\s+/gu, " ").trim() : "";
+  if (RESERVED_CATEGORY_NAMES.has(name)) return "reserved";
+  if (/\bdeferred\b/u.test(name)) return "deferred";
+  return "initial";
+}
+
+export function contextAllocationFromCategories(categories = []) {
+  const allocation = { initialTokens: 0, deferredTokens: 0, reservedTokens: 0 };
+  for (const category of categories) {
+    const count = tokenCount(category?.tokens || "");
+    if (category?.kind === "deferred") allocation.deferredTokens += count;
+    else if (category?.kind === "reserved") allocation.reservedTokens += count;
+    else allocation.initialTokens += count;
+  }
+  return allocation;
 }
 
 function safePercentage(value) {
@@ -110,7 +129,7 @@ function normalizedCategories(table) {
     const tokens = safeTokenLabel(cells[tokenIndex]);
     const percentage = safePercentage(cells[percentageIndex]);
     if (!name || !tokens || percentage === null || NON_MACHINERY_CATEGORIES.has(name.toLowerCase())) return [];
-    return [{ name, tokens, percentage }];
+    return [{ name, tokens, percentage, kind: contextCategoryKind(name) }];
   });
 }
 
@@ -123,7 +142,7 @@ function terminalCategories(lines) {
     const tokens = safeTokenLabel(match[2]);
     const percentage = safePercentage(`${match[3]}%`);
     if (!name || !tokens || percentage === null || NON_MACHINERY_CATEGORIES.has(name.toLowerCase())) return [];
-    return [{ name, tokens, percentage }];
+    return [{ name, tokens, percentage, kind: contextCategoryKind(name) }];
   });
 }
 
@@ -165,6 +184,7 @@ export function contextMachineryFromOutput(output, observedAt = null) {
     model,
     total: totalMatch ? { used: totalMatch[1], limit: totalMatch[2], percentage: Number(totalMatch[3]) } : null,
     machineryTokens: categories.reduce((sum, category) => sum + tokenCount(category.tokens), 0),
+    contextAllocation: contextAllocationFromCategories(categories),
     categories,
     groups,
   };

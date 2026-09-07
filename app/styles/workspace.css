@@ -289,8 +289,36 @@
 .repositoryInventorySummary span, .repositoryInventorySummary strong { overflow-wrap: anywhere; }
 .repositoryInventorySummary span { color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryInventorySummary strong { font: 600 var(--text-sm)/1.35 var(--font-data); }
+.repositoryInventorySummary .repositoryInventoryInitial { background: var(--command-hover); }
 .repositoryInventoryChange { margin: 12px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
 .repositoryInventoryChange.changed { color: var(--command-amber); }
+.repositoryAllocation { margin-block: 24px 12px; }
+.repositoryAllocationHead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.repositoryAllocationHead h3 { margin: 0; font-size: var(--text-sm); }
+.repositoryAllocationHead span { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryAllocationHead strong { color: var(--command-ink); font-family: var(--font-data); }
+.repositoryAllocationBar { height: 8px; margin-top: 14px; display: flex; overflow: hidden; border: 1px solid var(--command-line); }
+.repositoryAllocationBar span { min-width: 2px; flex-basis: 0; }
+.repositoryAllocationBar .initial { background: var(--command-brand-text); }
+.repositoryAllocationBar .deferred { background: var(--command-amber); }
+.repositoryAllocationBar .reserved { background: var(--command-faint); }
+.repositoryAllocationLabels { margin-top: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryAllocationLabels span { display: flex; gap: 6px; }
+.repositoryAllocationLabels b { color: var(--command-ink); font-family: var(--font-data); }
+.repositoryAllocationSections { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--command-line); }
+.repositoryAllocationSection { min-width: 0; }
+.repositoryAllocationSection + .repositoryAllocationSection { border-inline-start: 1px solid var(--command-line); }
+.repositoryAllocationSection header { min-height: 112px; padding: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: 6px 10px; border-bottom: 1px solid var(--command-line); }
+.repositoryAllocationSection h3, .repositoryAllocationSection p { margin: 0; }
+.repositoryAllocationSection h3 { font-size: var(--text-xs); }
+.repositoryAllocationSection header strong { font: 600 var(--text-sm)/1 var(--font-data); }
+.repositoryAllocationSection p { grid-column: 1 / -1; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.repositoryAllocationCategory { min-height: 58px; padding: 10px 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; gap: 5px 10px; border-top: 1px solid var(--command-line); }
+.repositoryAllocationSection header + .repositoryAllocationCategory { border-top: 0; }
+.repositoryAllocationCategory span { overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.repositoryAllocationCategory b { font: 600 var(--text-xs)/1 var(--font-data); }
+.repositoryAllocationCategory small { grid-column: 1 / -1; color: var(--command-faint); font: var(--text-xs)/1 var(--font-data); }
+.repositoryInventoryLegacy { margin-block: 18px; padding: 14px; border: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .repositoryInventoryBreakdown { margin-block: 24px 12px; }
 .repositoryInventoryHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .repositoryInventoryHeading h3 { margin: 0; font-size: var(--text-sm); }
@@ -303,7 +331,8 @@
 .repositoryCategory strong { font: 600 var(--text-sm)/1 var(--font-data); }
 .repositoryCategory small { grid-column: 1 / -1; color: var(--command-muted); font: var(--text-xs)/1 var(--font-data); }
 .repositoryInventoryDetails { border-top: 1px solid var(--command-line); }
-.repositoryInventoryDetails > summary { min-height: 44px; display: flex; align-items: center; color: var(--command-brand-text); font-size: var(--text-xs); cursor: pointer; }
+.repositoryInventoryDetails > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--command-brand-text); font-size: var(--text-xs); cursor: pointer; }
+.repositoryInventoryDetails > summary small { color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryInventoryDetails > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .repositoryInventoryGroups { max-height: 430px; padding: 0 16px 16px; overflow: auto; }
 .repositoryInventoryGroups section + section { margin-top: 18px; }
@@ -328,6 +357,11 @@
   .repositoryInventoryProvider .repositorySectionHead { flex-wrap: wrap; }
   .repositoryRevisionSelect { width: 100%; justify-content: space-between; }
   .repositoryInventoryHeading { flex-wrap: wrap; gap: 6px; }
+  .repositoryAllocationHead { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .repositoryAllocationLabels, .repositoryAllocationSections { grid-template-columns: 1fr; }
+  .repositoryAllocationLabels { gap: 5px; }
+  .repositoryAllocationSection + .repositoryAllocationSection { border-top: 1px solid var(--command-line); border-inline-start: 0; }
+  .repositoryInventoryDetails > summary { align-items: flex-start; flex-direction: column; justify-content: center; gap: 3px; }
 }
 .repositoryReportingHelp { margin: 0 16px 16px 52px; padding: 13px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .repositoryReportingHelp strong { font-size: var(--text-sm); }

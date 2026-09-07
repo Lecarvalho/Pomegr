@@ -1304,8 +1304,13 @@ Persistence contains only a version, installation salt, feature-introduction tim
 bounded revision counters, immutable normalized inventory revisions, and bounded session
 binding decisions. Each repository/provider retains at most ten detailed revisions; the
 domain retains at most 100 revisions and 16 MiB. The latest normalized model label,
-categories, groups, counts, capture time, and a private normalized-content fingerprint
-are saved atomically. No provider output, error text, command, executable, credential,
+categorized total, monitor-derived initial/deferred/reserved allocation, categories with
+their bounded allocation kind, groups, counts, capture time, and a private
+normalized-content fingerprint are saved atomically. Old retained revisions without
+allocation kinds are classified from their already-normalized category labels during
+checkpoint restoration; an old compact binding without retained categories keeps a null
+allocation and must not be presented as an initial-context estimate. No provider output,
+error text, command, executable, credential,
 or path is persisted. Fingerprints support only comparison to a previous saved capture;
 they are neither exposed nor treated as continuous configuration-drift observation.
 

@@ -18,9 +18,9 @@ const snapshot: RepositoryInventorySnapshot = {
     reporting: { status: "missing", version: null, checkedAt: "2026-09-04T10:00:00.000Z" },
     providers: [{ provider: "claude", source: "Claude Code", sessionCount: 2, supported: true, status: "current", failureKind: null,
       pluginSetup: { readiness: "ready", installation: "installed", version: "0.5.0", enabled: true, scope: "user", checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "available", version: "0.6.0", checkedAt: "2026-09-04T10:00:00.000Z" }, canInstall: false, canUpdate: true },
-      currentRevision: { id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200,
+      currentRevision: { id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 },
         categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } },
-      revisions: [{ id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200,
+      revisions: [{ id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 },
         categoryCount: 1, itemCount: 1, change: { state: "first_capture", previousRevisionId: null } }] },
     { provider: "codex", source: "Codex", sessionCount: 1, supported: false, status: "unavailable", failureKind: null,
       pluginSetup: { readiness: "ready", installation: "not_installed", version: null, enabled: null, scope: null, checkedAt: "2026-09-04T10:00:00.000Z", update: { status: "unknown", version: null, checkedAt: null }, canInstall: true, canUpdate: false },
@@ -146,7 +146,7 @@ describe("repository index", () => {
 
   it("renders a compact immutable session reference and never asks for /context", () => {
     render(<MachineryPanel machinery={null} supported historical={false} inventoryRef={{ repositoryId, provider: "claude", revisionId: "ctx-001",
-      capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 1, itemCount: 1, detailRetained: true }} />);
+      capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 }, categoryCount: 1, itemCount: 1, detailRetained: true }} />);
     expect(screen.getByText(/available when this session started/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`);
     expect(screen.queryByText(/Run \/context/i)).not.toBeInTheDocument();

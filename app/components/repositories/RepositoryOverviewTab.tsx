@@ -6,6 +6,7 @@ import { compactNumber, newestSessionsFirst, relativeTime, sessionState } from "
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { ProviderBadge } from "../ProviderBadge";
 import { CommandIcon } from "../command-center/CommandPage";
+import { inventoryDisplayTokens } from "../context-inventory/ContextAllocationBreakdown";
 import { repositoryLastActivity, repositoryPluginAttention } from "./repository-setup";
 import { inventoryState, pluginStatus, reportingState, versionLabel } from "./repository-setup-details";
 
@@ -58,7 +59,7 @@ export function RepositoryOverviewTab({ repository }: { repository: RepositorySu
         <SetupCard title="Reporting policy" label={<>{reporting.label}{repository.reporting?.status === "configured" && repository.reporting.version !== null && <> · <span className="repositoryOverviewData">v{repository.reporting.version}</span></>}</>} tone={reporting.tone === "ready" ? "positive" : reporting.tone === "warning" ? "warning" : "neutral"}
           detail={repository.reporting?.status === "configured" ? "Shared by both providers" : reporting.detail} href={`${base}?tab=reporting`} linkLabel="Open reporting" />
         <SetupCard title="Context inventory" label={inventory.label} tone={inventory.tone}
-          detail={revision ? <>{inventoryProvider.source} · Captured {relativeTime(revision.capturedAt)} · <span className="repositoryInventoryTokens">{compactNumber(revision.machineryTokens)}</span> estimated tokens</> : inventoryProvider ? "No saved inventory for this repository." : "No supported provider inventory observed."}
+          detail={revision ? <>{inventoryProvider.source} · Captured {relativeTime(revision.capturedAt)} · <span className="repositoryInventoryTokens">{compactNumber(inventoryDisplayTokens(revision))}</span> {revision.contextAllocation ? "estimated initial tokens" : "categorized tokens"}</> : inventoryProvider ? "No saved inventory for this repository." : "No supported provider inventory observed."}
           href={`${base}?tab=inventory${inventoryProvider ? `&provider=${inventoryProvider.provider}` : ""}`} linkLabel="Open inventory" />
       </div>
     </section>

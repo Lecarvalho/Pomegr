@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
+import { contextAllocationFromCategories, contextCategoryKind } from "./context-machinery.mjs";
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -38,7 +39,8 @@ function normalizedInventory(value) {
     const percentage = Number(entry?.percentage);
     return name && /^(?:~|< )?\d+(?:\.\d+)?[kKmM]?$/u.test(tokens)
       && Number.isFinite(percentage) && percentage >= 0 && percentage <= 100
-      ? [{ name, tokens, percentage }] : [];
+      ? [{ name, tokens, percentage, kind: ["initial", "deferred", "reserved"].includes(entry?.kind)
+        ? entry.kind : contextCategoryKind(name) }] : [];
   }) : [];
   const groups = Array.isArray(value.groups) ? value.groups.slice(0, 12).flatMap((group, index) => {
     const label = safeText(group?.label, 128);
@@ -53,7 +55,7 @@ function normalizedInventory(value) {
   }) : [];
   const machineryTokens = Number(value.machineryTokens);
   return categories.length && Number.isSafeInteger(machineryTokens) && machineryTokens >= 0
-    ? { model, machineryTokens, categories, groups } : null;
+    ? { model, machineryTokens, contextAllocation: contextAllocationFromCategories(categories), categories, groups } : null;
 }
 
 function itemCount(revision) {
@@ -66,6 +68,7 @@ function summary(revision, previous = null) {
     capturedAt: revision.capturedAt,
     model: revision.model,
     machineryTokens: revision.machineryTokens,
+    contextAllocation: revision.contextAllocation,
     categoryCount: revision.categories.length,
     itemCount: itemCount(revision),
     change: previous ? {
@@ -100,6 +103,9 @@ function safePersistedState(value, fallbackNow) {
         ? { repositoryId: entry.repositoryId, provider: entry.provider, revisionId: value.revisionId,
           capturedAt: safeTimestamp(value.capturedAt), model: safeText(value.model, 256, "Unknown model"),
           machineryTokens: Number.isSafeInteger(value.machineryTokens) ? value.machineryTokens : 0,
+          contextAllocation: value.contextAllocation && Number.isSafeInteger(value.contextAllocation.initialTokens)
+            && Number.isSafeInteger(value.contextAllocation.deferredTokens) && Number.isSafeInteger(value.contextAllocation.reservedTokens)
+            ? value.contextAllocation : null,
           categoryCount: Number.isSafeInteger(value.categoryCount) ? value.categoryCount : 0,
           itemCount: Number.isSafeInteger(value.itemCount) ? value.itemCount : 0, detailRetained: Boolean(value.detailRetained) }
         : undefined;
@@ -214,6 +220,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
       capturedAt: revision.capturedAt,
       model: revision.model,
       machineryTokens: revision.machineryTokens,
+      contextAllocation: revision.contextAllocation,
       categoryCount: revision.categories.length,
       itemCount: itemCount(revision),
       detailRetained: state.revisions.some((entry) => entry.repositoryId === revision.repositoryId
@@ -228,6 +235,9 @@ export function createRepositoryInventoryRuntime(options = {}) {
       repositoryId, provider, revisionId: value.revisionId,
       capturedAt: safeTimestamp(value.capturedAt), model: safeText(value.model, 256, "Unknown model"),
       machineryTokens: Number.isSafeInteger(value.machineryTokens) ? value.machineryTokens : 0,
+      contextAllocation: value.contextAllocation && Number.isSafeInteger(value.contextAllocation.initialTokens)
+        && Number.isSafeInteger(value.contextAllocation.deferredTokens) && Number.isSafeInteger(value.contextAllocation.reservedTokens)
+        ? value.contextAllocation : null,
       categoryCount: Number.isSafeInteger(value.categoryCount) ? value.categoryCount : 0,
       itemCount: Number.isSafeInteger(value.itemCount) ? value.itemCount : 0,
       detailRetained: false,

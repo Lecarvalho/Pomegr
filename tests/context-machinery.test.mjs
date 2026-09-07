@@ -57,11 +57,12 @@ ${chart}  claude-opus-5
 ${chart}  45.4k/1m tokens (5%)
 ${chart}  Estimated usage by category
 ${chart}  ⛁ System prompt: 4.9k tokens (0.5%)
-${chart}  ⛁ System tools: 19.8k tokens (2.0%)
-${chart}  ⛁ MCP tools: 942 tokens (0.1%)
+${chart}  ⛁ System tools (deferred): 13.3k tokens (1.3%)
+${chart}  ⛁ MCP tools (deferred): 25.4k tokens (2.5%)
 ${chart}  ⛁ Custom agents: 511 tokens (0.1%)
 ${chart}  ⛁ Memory files: 13.1k tokens (1.3%)
                                           ⛁ Skills: 6.1k tokens (0.6%)
+                                          ⛁ Autocompact buffer: 33k tokens (3.3%)
                                           ⛁ Messages: 8 tokens (0.0%)
                                           ⛶ Free space: 954.6k (95.5%)
 
@@ -78,6 +79,8 @@ test("parses context tables dynamically and sanitizes memory paths", () => {
   assert.equal(snapshot.model, "claude-test-1");
   assert.deepEqual(snapshot.total, { used: "12.5k", limit: "200k", percentage: 6 });
   assert.equal(snapshot.machineryTokens, 3250);
+  assert.deepEqual(snapshot.contextAllocation, { initialTokens: 3250, deferredTokens: 0, reservedTokens: 0 });
+  assert.deepEqual(snapshot.categories.map(({ kind }) => kind), ["initial", "initial"]);
   assert.deepEqual(snapshot.categories.map(({ name }) => name), ["System prompt", "Repository rules"]);
   assert.doesNotMatch(JSON.stringify(snapshot.categories), /Messages|Free space/);
   assert.deepEqual(snapshot.groups.map(({ label }) => label), ["Skills", "Memory Files", "Output Styles"]);
@@ -104,15 +107,18 @@ test("parses the ANSI terminal summary emitted by current Claude Code", () => {
 
   assert.equal(snapshot.model, "claude-opus-5");
   assert.deepEqual(snapshot.total, { used: "45.4k", limit: "1m", percentage: 5 });
-  assert.equal(snapshot.machineryTokens, 45_353);
+  assert.equal(snapshot.machineryTokens, 96_311);
+  assert.deepEqual(snapshot.contextAllocation, { initialTokens: 24_611, deferredTokens: 38_700, reservedTokens: 33_000 });
   assert.deepEqual(snapshot.categories.map(({ name }) => name), [
     "System prompt",
-    "System tools",
-    "MCP tools",
+    "System tools (deferred)",
+    "MCP tools (deferred)",
     "Custom agents",
     "Memory files",
     "Skills",
+    "Autocompact buffer",
   ]);
+  assert.deepEqual(snapshot.categories.map(({ kind }) => kind), ["initial", "deferred", "deferred", "initial", "initial", "initial", "reserved"]);
   assert.deepEqual(snapshot.groups, []);
   assert.doesNotMatch(JSON.stringify(snapshot.categories), /Messages|Free space/);
 });

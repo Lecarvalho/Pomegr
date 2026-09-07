@@ -10,7 +10,7 @@
     "recordedGitBranch": "codex/synthetic-fixture",
     "cost": { "amount": 0.1234, "currency": "USD", "type": "estimated", "observedAt": "2026-08-10T12:00:08.000Z" },
     "approvalMode": { "id": "accept_edits", "label": "Accept edits", "observedAt": "2026-08-10T12:00:01.000Z", "source": "provider" },
-    "contextMachinery": { "observedAt": "2026-08-10T12:00:06.000Z", "model": "claude-synthetic", "total": { "used": "1.6k", "limit": "200k", "percentage": 1 }, "machineryTokens": 1600, "categories": [{ "name": "System prompt", "tokens": "1.2k", "percentage": 0.6 }, { "name": "Memory", "tokens": "400", "percentage": 0.2 }], "groups": [{ "id": "memory-files-0", "label": "Memory files", "items": [{ "name": "AGENTS.md", "detail": "Unknown", "tokens": "400" }] }] },
+    "contextMachinery": { "observedAt": "2026-08-10T12:00:06.000Z", "model": "claude-synthetic", "total": { "used": "1.6k", "limit": "200k", "percentage": 1 }, "machineryTokens": 1600, "contextAllocation": { "initialTokens": 1600, "deferredTokens": 0, "reservedTokens": 0 }, "categories": [{ "name": "System prompt", "tokens": "1.2k", "percentage": 0.6, "kind": "initial" }, { "name": "Memory", "tokens": "400", "percentage": 0.2, "kind": "initial" }], "groups": [{ "id": "memory-files-0", "label": "Memory files", "items": [{ "name": "AGENTS.md", "detail": "Unknown", "tokens": "400" }] }] },
     "summary": { "text": "Synthetic fixture is awaiting review.", "observedAt": "2026-08-10T12:00:05.000Z", "source": "provider" },
     "signal": { "label": "Fixture ready", "tone": "positive", "reportedAt": "2026-08-10T12:00:02.000Z" },
     "progress": null,

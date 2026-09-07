@@ -1,6 +1,6 @@
-import type { ContextInventoryReference } from "./repository-inventory-contract";
+import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
 import type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
-export type { ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
+export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
 export type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type ReportedSignal = {
   label: string;
@@ -330,7 +330,8 @@ export type ContextMachinery = {
   model: string;
   total: { used: string; limit: string; percentage: number } | null;
   machineryTokens: number;
-  categories: Array<{ name: string; tokens: string; percentage: number }>;
+  contextAllocation: ContextAllocation;
+  categories: Array<{ name: string; tokens: string; percentage: number; kind: ContextAllocationKind }>;
   groups: Array<{
     id: string;
     label: string;
