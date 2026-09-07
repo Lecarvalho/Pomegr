@@ -9,12 +9,13 @@ import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../
 import { relativeTime } from "../../dashboard-utils";
 import { ProviderBadge } from "../ProviderBadge";
 import { CommandComingSoon, CommandEmpty, CommandIcon, CommandPage } from "../command-center/CommandPage";
-import { repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
+import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { repositorySetupSummary } from "./repository-setup";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
 import { InventorySetupRow } from "./InventorySetupRow";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
+import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
 
 const subscribeDesktopBridge = () => () => {};
 
@@ -37,6 +38,17 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const tab = repositoryTab(searchParams.get("tab")) ?? initialTab;
   const repository = snapshot.repositories.find((entry) => entry.id === repositoryId);
+  const inventorySelection = repositoryRouteOptions({
+    provider: searchParams.get("provider") ?? initialProvider,
+    revision: searchParams.has("tab") ? searchParams.get("revision") ?? undefined : initialRevisionId,
+  });
+  const selectRevision = (provider: ProviderId, revisionId: string) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("tab", "inventory");
+    query.set("provider", provider);
+    query.set("revision", revisionId);
+    router.replace(`/repositories/${repositoryId}?${query}`, { scroll: false });
+  };
 
   const switchTab = (next: RepositoryTab, provider?: ProviderId) => {
     const query = new URLSearchParams(searchParams.toString());
@@ -144,7 +156,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
           <header className="repositorySectionHead"><strong>Shared by both providers</strong></header>
           <RepositoryReportingRow repositoryId={repositoryId} reporting={repository.reporting} />
           <p className="repositorySetupFootnote">Plugin and reporting state are local observations, rechecked on demand. Raw configuration never leaves this machine.</p>
-        </> : tab === "git" ? <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" /> : <h2>{repositoryTabs.find(([id]) => id === tab)?.[1]}</h2>}
+        </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={() => setConfirming(null)} onCapture={(provider) => void capture(provider)} /> : tab === "git" ? <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" /> : <h2>{repositoryTabs.find(([id]) => id === tab)?.[1]}</h2>}
       </div>
     </div>
   </section>;

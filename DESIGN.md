@@ -265,10 +265,16 @@ observed provider badges, and the existing secondary-button role for View
 sessions. The shell uses the shared session breadcrumb for
 `Repositories › {displayName}`. Detail navigation uses the existing Settings
 layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
-the active tab backed by `?tab=` in the URL. RP-02 ships the shell and empty
-content only; tab content is deferred to RP-03 through RP-06, while Git keeps
-the existing coming-soon placeholder. The implementation adds no shared styles
-or tokens; repository-local classes compose the existing Settings and button
+the active tab backed by `?tab=` in the URL. Setup and Context inventory now
+have their tab content; Overview and Reporting remain deferred to RP-05 and
+RP-06, while Git keeps the existing coming-soon placeholder. The Context
+inventory tab uses one section per supported provider, a revision select when
+multiple saved revisions exist, four bounded evidence facts, a category grid,
+expandable listed items and revision comparison, plus explicit loading,
+unavailable, and sanitized failure states. Its capture action and inline
+confirmation reuse the existing button roles and native confirmation boundary.
+The implementation adds no shared styles or tokens; repository-local classes
+compose the existing Settings geometry, `CommandSelect`, chips, and button
 roles. Setup mutations require native confirmation, with browser clients
 receiving setup instructions.
 

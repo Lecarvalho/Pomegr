@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
+import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 
 const navigation = vi.hoisted(() => ({ search: "", replace: vi.fn(), push: vi.fn(), notFound: vi.fn(() => { throw new Error("NOT_FOUND"); }), redirect: vi.fn((url: string) => { throw new Error(`REDIRECT:${url}`); }) }));
 vi.mock("next/navigation", () => ({
@@ -46,8 +46,22 @@ afterEach(() => {
   Reflect.deleteProperty(window, "pomegrDesktop");
 });
 function serve(body = snapshot) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.startsWith("/api/repository-inventory")) {
+      const params = new URL(url, "http://localhost").searchParams;
+      const revisionId = params.get("revisionId") || "ctx-001";
+      const detail = inventoryDetails[revisionId] || inventoryDetails["ctx-001"];
+      return new Response(JSON.stringify(detail), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  });
 }
+
+const inventoryDetails: Record<string, ContextInventoryRevisionDetail> = {
+  "ctx-001": { repositoryId, provider: "claude", id: "ctx-001", capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, categoryCount: 2, itemCount: 2, change: { state: "changed", previousRevisionId: "ctx-000" }, categories: [{ name: "System prompt", tokens: "900", percentage: 75 }, { name: "Tools", tokens: "300", percentage: 25 }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }] }] },
+  "ctx-002": { repositoryId, provider: "claude", id: "ctx-002", capturedAt: "2026-09-05T09:00:00.000Z", model: "claude-test", machineryTokens: 1500, categoryCount: 3, itemCount: 4, change: { state: "changed", previousRevisionId: "ctx-001" }, categories: [{ name: "System prompt", tokens: "1.1k", percentage: 73 }, { name: "Tools", tokens: "300", percentage: 20 }, { name: "Hooks", tokens: "100", percentage: 7 }], groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "300" }, { name: "Write", detail: "provider tool", tokens: "200" }] }] },
+};
 
 describe("repository detail shell", () => {
   it("renders the header, observed providers, five tabs, and View sessions link", async () => {
@@ -266,6 +280,152 @@ describe("repository detail setup", () => {
     expect(help).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("/pomegr:init", { selector: "code" })).toBeInTheDocument();
     expect(screen.getByText("$pomegr:init", { selector: "code" })).toBeInTheDocument();
+  });
+});
+
+describe("repository context inventory", () => {
+  function withRevisions() {
+    const value = structuredClone(setupSnapshot);
+    const provider = value.repositories[0].providers[0];
+    provider.currentRevision = { ...provider.currentRevision!, id: "ctx-002", machineryTokens: 1500, categoryCount: 3, itemCount: 4, change: { state: "changed", previousRevisionId: "ctx-001" } };
+    provider.revisions = [
+      { ...provider.currentRevision, id: "ctx-002" },
+      { ...provider.currentRevision, id: "ctx-001", machineryTokens: 1200, categoryCount: 2, itemCount: 2, change: { state: "changed", previousRevisionId: "ctx-000" } },
+    ];
+    return value;
+  }
+
+  it("opens a deep-linked provider and revision, scrolls it into view, and renders normalized evidence", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    const scroll = vi.mocked(HTMLElement.prototype.scrollIntoView);
+    navigation.search = "tab=inventory&provider=claude&revision=ctx-001";
+    serve(withRevisions());
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" initialRevisionId="ctx-001" />);
+    expect(await screen.findByText("Revision", { selector: ".repositoryInventorySummary span" })).toBeInTheDocument();
+    expect(screen.getByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
+    expect(screen.getByText("System prompt")).toBeInTheDocument();
+    expect(screen.getByText("Inspect 2 listed items")).toBeInTheDocument();
+    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(scroll).toHaveBeenCalled();
+  });
+
+  it("compares revisions, changes both revision selects, and preserves the selected URL state", async () => {
+    navigation.search = "tab=inventory&provider=claude&revision=ctx-002";
+    serve(withRevisions());
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" initialRevisionId="ctx-002" />);
+    await screen.findByText("Revision", { selector: ".repositoryInventorySummary span" });
+    const selects = screen.getAllByLabelText("Revision");
+    expect(selects).toHaveLength(2);
+    await userEvent.selectOptions(selects[0], "ctx-001");
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`, { scroll: false });
+    expect(await screen.findByText("-300 vs current")).toBeInTheDocument();
+    expect(screen.getByText("-1 vs current")).toBeInTheDocument();
+    expect(screen.getByText("-2 vs current")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Compare revisions", { selector: "summary" }));
+    const comparisonSelects = screen.getAllByLabelText("Revision");
+    expect(comparisonSelects).toHaveLength(2);
+    await userEvent.selectOptions(comparisonSelects[1], "ctx-002");
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-002`, { scroll: false });
+    expect(await screen.findByText("ctx-002", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["not_captured", "Not captured", "Native provider diagnostic"],
+    ["capturing", "Capturing", "Previous revision remains available until commit"],
+    ["unavailable", "Unavailable", "Pomegr will not combine or approximate Claude Code evidence."],
+    ["failed", "Failed", "The diagnostic timed out · no data saved"],
+  ] as const)("renders sanitized %s state", async (status, label, detail) => {
+    const value = structuredClone(setupSnapshot);
+    const provider = value.repositories[0].providers[0];
+    provider.status = status;
+    if (status === "failed") provider.failureKind = "timed_out";
+    if (status !== "failed") provider.failureKind = null;
+    serve(value);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    expect(await screen.findAllByText(label)).not.toHaveLength(0);
+    expect(screen.getAllByText(detail)).not.toHaveLength(0);
+    expect(screen.queryByText(/private|stdout|stderr/i)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["executable_unavailable", "Claude Code executable unavailable"],
+    ["timed_out", "The diagnostic timed out"],
+    ["invalid_output", "Claude Code returned an unsupported diagnostic format"],
+    ["runtime_unavailable", "The local diagnostic could not run"],
+  ] as const)("maps %s to bounded failure text", async (kind, message) => {
+    const value = structuredClone(setupSnapshot);
+    value.repositories[0].providers[0].status = "failed";
+    value.repositories[0].providers[0].failureKind = kind;
+    serve(value);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    expect(await screen.findByText(`${message} · no data saved`)).toBeInTheDocument();
+  });
+
+  it("handles pending, retained-missing, and rejected detail fetches without leaking errors", async () => {
+    let resolve!: (response: Response) => void;
+    const pending = new Promise<Response>((done) => { resolve = done; });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/repository-inventory") ? pending : new Response(JSON.stringify(setupSnapshot)));
+    const { unmount } = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    expect(await screen.findByText("Loading saved inventory…")).toBeInTheDocument();
+    resolve(new Response(null, { status: 404 }));
+    expect(await screen.findByText("Detailed evidence is no longer retained for this revision.")).toBeInTheDocument();
+    unmount();
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/repository-inventory") ? Promise.reject(new Error("private provider output")) : new Response(JSON.stringify(setupSnapshot)));
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    expect(await screen.findByText("Detailed evidence is no longer retained for this revision.")).toBeInTheDocument();
+    expect(screen.queryByText(/private provider output/)).not.toBeInTheDocument();
+  });
+
+  it("captures the selected provider inline on desktop and gives browser clients a hint", async () => {
+    const capture = vi.fn().mockResolvedValue("completed");
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: capture } });
+    serve(setupSnapshot);
+    const desktopView = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    await screen.findByText("Context inventory", { selector: "h2" });
+    await userEvent.click(screen.getByRole("button", { name: "Capture again" }));
+    await userEvent.click(screen.getByRole("button", { name: "Run diagnostic" }));
+    await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
+    expect(await screen.findByText("Claude Code inventory captured.")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Capture provider"), "codex");
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=codex`, { scroll: false });
+    navigation.search = "tab=inventory&provider=codex";
+    desktopView.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="codex" />);
+    await userEvent.click(screen.getByRole("button", { name: "Capture inventory" }));
+    await userEvent.click(screen.getByRole("button", { name: "Run diagnostic" }));
+    await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "codex"));
+    desktopView.unmount();
+    Reflect.deleteProperty(window, "pomegrDesktop");
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
+    expect(await screen.findByText("Capture available in Pomegr desktop")).toBeInTheDocument();
+  });
+
+  it("falls back an unretained deep-link revision to current and ignores an aborted old detail response", async () => {
+    const value = withRevisions();
+    let firstResolve!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => { firstResolve = resolve; });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("/api/repository-inventory")) return url.includes("ctx-002") ? first : new Response(JSON.stringify(inventoryDetails["ctx-001"]));
+      return new Response(JSON.stringify(value));
+    });
+    navigation.search = "tab=inventory&provider=claude&revision=ctx-999";
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" initialRevisionId="ctx-999" />);
+    expect(await screen.findByText("Loading saved inventory…")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Revision")[0]).toHaveValue("ctx-002");
+    await userEvent.selectOptions(screen.getAllByLabelText("Revision")[0], "ctx-001");
+    expect(await screen.findByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
+    firstResolve(new Response(JSON.stringify(inventoryDetails["ctx-002"])));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
+  });
+
+  it("filters unsupported providers from the inventory tab", async () => {
+    serve(snapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
+    expect(await screen.findByText("Context inventory is unavailable for the observed providers.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Codex context inventory" })).not.toBeInTheDocument();
   });
 });
 
