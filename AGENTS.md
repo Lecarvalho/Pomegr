@@ -65,6 +65,13 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Observation checkpoints may persist only contract-valid normalized evidence, bounded source fingerprints and complete-record offsets, readiness, revision, and observation timestamps. Never persist raw provider records, incomplete fragments, transcript paths, or other browser-forbidden content.
 - Repository context inventories are repository/provider-scoped diagnostics captured only through an explicit trusted desktop action. Browser and LAN GETs serve committed normalized revisions only; no browser route may trigger capture. Repository roots, commands, executables, raw output, stderr, errors, credentials, and private fingerprints remain monitor-private and must not enter renderer IPC, browser state, logs, or persistence. Session references bind once only for future sessions to a revision already committed when the session started; in-session provider evidence takes precedence and absent evidence renders no `/context` instruction.
 
+## UI conventions
+
+- `DESIGN.md` is the design contract. Read it before adding or styling any control: tokens live in `app/styles/tokens.css`, the six button roles (`.commandPrimaryAction`, `.commandSecondaryAction`, `.commandSegmented`, `.commandQuietAction`, `.commandTextLink`, `.commandIconAction`) and their phone sizing in `app/styles/shell.css`, and the one chip contract in `.commandChip` / `.agentChip`.
+- Every new button uses one of the six roles. Use the documented tokens for color, radius, and type; `--text-caption` (11px) is the smallest step and is reserved for eyebrows, chips, axis ticks, and tiny counts. Shell chrome exceptions are listed in `DESIGN.md`.
+- No literal colors, off-scale radii, or off-ramp font sizes in `app/styles/`. An intentional exception is added to `DESIGN.md` first and then persisted with `.agents/skills/impeccable/scripts/hook-admin.mjs ignore-value`; the Impeccable hook and `tests/ui/pomegr-design-contract.test.tsx` enforce the rest.
+- `/design-system` on the web dev server renders every role, state, chip, field, and token with static data only. Add a sample there for any new shared control, and change `DESIGN.md`, the contract test, and `app/components/design-system/DesignSystemView.tsx` together.
+
 ## Metric conventions
 
 - “Context” means the latest non-zero usage snapshot, not historical throughput.
