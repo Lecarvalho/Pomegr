@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { userInputContentType } from "../activity-events.mjs";
+import { isClaudeSystemTaskNotification, userInputContentType } from "./claude-activity-events.mjs";
 import { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
 import { registryTimestamp } from "./claude-session-status.mjs";
@@ -36,7 +36,7 @@ function boundaryId(value, observedAt) {
 }
 
 function startsUserTurn(record) {
-  return Boolean(userInputContentType(record));
+  return Boolean(userInputContentType(record)) || isClaudeSystemTaskNotification(record);
 }
 
 function turnBoundary(record, observedAt) {

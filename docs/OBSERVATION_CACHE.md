@@ -71,6 +71,31 @@ U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream cons
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
 
+### System task notifications in Recent activity
+
+Claude U2 distinguishes provider-owned delivered task notifications from human input
+using the native system-origin metadata. It emits only the provider-neutral `System`
+actor, fixed `Task completed`, `Task failed`, or `Task stopped` label, original delivery
+timestamp, opaque event ID, existing work kind, and fixed background-task detail.
+A matching prior structured async launch resolves `Background agent`, `Background command`,
+or `Background workflow`; unavailable or mismatched launch evidence leaves `Background task`.
+Unknown or malformed outcomes are omitted and never fall back to human input. A user
+pasting notification-shaped text remains human input. Queue operations alone are not
+deliveries. System deliveries can resume a turn independently of human-input classification.
+
+The adapter reuses bounded, yielding U1 JSONL acquisition for complete replay and
+incremental U2 reduction, retaining at most 256 calls, launches, and normalized deliveries
+per source across at most 50 sources in memory. Acquisition tails do not expire normalized
+deliveries. Partial, malformed, or unavailable replacements retain the last complete result;
+a complete valid replacement replaces it atomically. Native task/call identities and
+notification content remain adapter-private. An adapter normalization revision in the opaque
+source fingerprint rebuilds pre-fix checkpoints even for unchanged transcripts; subsequent
+unchanged observations do not publish new revisions. C and P use the existing activity schema;
+D selects recent activity without adding notifications to tool counts or efficiency rules;
+S remains cache-only, and F renders the supplied labels without provider recognition or
+polling changes. Codex collaboration actions retain their existing normalization; they
+do not establish a delivered completion notification.
+
 ## Agents analytics
 
 Agents is an independent D Derivation and S Serving domain. Its background job reads

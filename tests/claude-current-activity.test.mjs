@@ -91,6 +91,19 @@ test("Claude activity follows matching tool results, parallel calls, and turn bo
   assert.equal(nextTurn.currentActivity.label, "Inspect the next request");
 });
 
+test("Claude system task delivery resumes a turn without being classified as human input", () => {
+  const state = parseClaudeCurrentActivityStateRecords([
+    { type: "system", subtype: "turn_duration", timestamp: "2026-09-07T18:22:59.723Z" },
+    { type: "user", uuid: "notification", timestamp: "2026-09-07T18:47:42.302Z",
+      origin: { kind: "task-notification" }, promptSource: "system",
+      message: { content: "PRIVATE_NOTIFICATION_MUST_NOT_LEAK" } },
+    bashCall("resumed", "2026-09-07T18:47:43.000Z", "Inspect the completed work"),
+  ]);
+  assert.equal(state.turnOpen, true);
+  assert.equal(state.currentActivity.label, "Inspect the completed work");
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE_NOTIFICATION/);
+});
+
 test("Claude activity rejects malformed sources, bounds Unicode, and omits historical state", () => {
   const long = "計画🔍".repeat(100);
   const activity = parseClaudeCurrentActivityRecords([
