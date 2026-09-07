@@ -352,13 +352,18 @@ test("a second Windows dev launch replaces the first and reaches readiness", { s
       children.push(child);
       await new Promise((resolve, reject) => {
         let output = "";
+        let errorOutput = "";
         const timer = setTimeout(() => reject(new Error("Isolated launcher did not become ready")), 15_000);
         child.once("error", reject);
-        child.once("exit", () => { clearTimeout(timer); reject(new Error("Isolated launcher exited before readiness")); });
+        child.once("exit", (code, signal) => {
+          clearTimeout(timer);
+          reject(new Error(`Isolated launcher exited before readiness (code ${code}, signal ${signal}, stderr ${JSON.stringify(errorOutput)})`));
+        });
         child.stdout.on("data", (chunk) => {
           output += chunk;
           if (output.includes("Development services ready; API prewarmed.")) { clearTimeout(timer); resolve(); }
         });
+        child.stderr.on("data", (chunk) => { errorOutput = `${errorOutput}${chunk}`.slice(-4096); });
       });
       return child;
     }
