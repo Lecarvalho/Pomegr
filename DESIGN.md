@@ -252,14 +252,14 @@ Session headers show recorded or live lifecycle state in the status card without
 
 ### Session Evidence
 
-Repositories place current Pomegr plugin setup inside each expanded repository's
-provider section: installed version and enablement, quiet Recheck, and a contextual
-Install plugin or Update plugin action. Update availability and failed verification
-remain distinct from installed state. Context inventory is a secondary disclosure
-under that provider and opens for a revision deep link. One shared Repository
-reporting row follows the providers. Native confirmation owns mutation scope and
-version review; browser clients receive setup instructions. Action results remain
-visible beside their provider, and phone controls have at least 44px targets.
+Repositories use a flat, linked index of observed projects. Each row shows the
+repository name, observed provider badges, live and history session counts, last
+activity, and one bounded Pomegr setup summary. The toolbar combines repository
+search with All, Needs attention, and Live now filters; on phones the rows reflow
+into a compact layout while search and filters retain at least 44px targets.
+Repository detail content follows in subsequent redesign phases; Git evidence
+remains a coming-soon placeholder. Setup mutations require native confirmation,
+with browser clients receiving setup instructions.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary

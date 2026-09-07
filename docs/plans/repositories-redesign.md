@@ -1,7 +1,7 @@
 # Repositories page redesign plan
 
 > Status: ready for implementation — 2026-09-06. Option A (index + detail page) was chosen
-> by the product owner. Tasks POMEGR-RP-01 through POMEGR-RP-07 are open.
+> by the product owner. POMEGR-RP-01 is complete. Tasks POMEGR-RP-02 through POMEGR-RP-07 are open.
 
 ## Objective
 
@@ -226,13 +226,13 @@ Turn the index into the list in `mockup-index.html` and `mockup-mobile-index.htm
 
 ### Acceptance criteria
 
-- [ ] No `aria-expanded` disclosure on the index; every repository row is an `<a>` to
+- [x] No `aria-expanded` disclosure on the index; every repository row is an `<a>` to
       `/repositories/{id}`.
-- [ ] Setup chip label and tone match decision 4 for fixtures covering each row of the
+- [x] Setup chip label and tone match decision 4 for fixtures covering each row of the
       table.
-- [ ] "Needs attention" shows only warning-tone rows; "Live now" only `liveCount > 0`.
-- [ ] Light theme renders with the same structure (no hard-coded hex).
-- [ ] 390 px: no horizontal overflow; chips and search are 44 px.
+- [x] "Needs attention" shows only warning-tone rows; "Live now" only `liveCount > 0`.
+- [x] Light theme renders with the same structure (no hard-coded hex).
+- [x] 390 px: no horizontal overflow; chips and search are 44 px.
 
 ### Verification
 
@@ -575,3 +575,4 @@ npm test
 | Date | Task | Result | Notes |
 | --- | --- | --- | --- |
 | 2026-09-06 | Plan | Written | Option A chosen. Mockups copied to `docs/plans/repositories-redesign/`. Canvas: https://claude.ai/code/artifact/89105ade-65d0-451b-9f4a-f240a6b1b4d4 |
+| 2026-09-07 | POMEGR-RP-01 | Complete | Linked index rows, shared setup summary, composed search/filters, phone layout. Full npm test and verify:fast passed; final build and 37 focused checks passed. Both themes measured at 1440/1100/900/760/390/360 px with no overflow and 44 px phone controls; finish review shipped. API reporting `missing` maps to Not configured. RP-02 route is intentionally pending; removed detail components/tests can be recovered from parent `91954d9ddf636e6b3d7d84dd5b828233a485d5a2` for RP-03/RP-04 (RP-01 step 7). |

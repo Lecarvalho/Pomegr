@@ -146,20 +146,31 @@
 .commandUsageRefreshNote { margin: 0; padding: 9px 12px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); background: color-mix(in srgb, var(--command-amber) 8%, transparent); font-size: var(--text-xs); line-height: 1.5; }
 .commandUsageCaution { padding: 12px 14px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandRepositoryList { margin-top: 12px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandRepositoryDisclosure + .commandRepositoryDisclosure { border-top: 1px solid var(--command-line); }
-.commandRepositoryRow { width: 100%; min-height: 56px; padding: 8px 14px; display: grid; grid-template-columns: 20px minmax(220px, 1fr) 64px 64px 148px; align-items: center; gap: 10px; border: 0; color: var(--command-ink); background: transparent; font: inherit; text-align: start; cursor: pointer; }
+.commandRepositoryHead, .commandRepositoryRow { display: grid; grid-template-columns: 20px minmax(240px, 1.4fr) 200px 190px minmax(200px, 1fr) 24px; align-items: center; gap: 14px; padding: 10px 16px; }
+.commandRepositoryHead { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); text-transform: uppercase; letter-spacing: .02em; }
+.commandRepositoryRow { min-width: 0; min-height: 60px; border-top: 1px solid var(--command-line); color: var(--command-ink); text-decoration: none; }
 .commandRepositoryRow:hover { background: var(--command-panel-2); }
 .commandRepositoryRow:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--focus-ring); outline-offset: -2px; }
-.commandRepositoryChevron { display: grid; place-items: center; color: var(--command-muted); transition: transform 160ms ease-out; }
-.commandRepositoryDisclosure.expanded .commandRepositoryChevron { transform: rotate(90deg); }
-.commandRepositoryIdentity { min-width: 0; display: flex; align-items: center; gap: 9px; }
-.commandRepositoryIdentity span, .commandRepositoryIdentity strong, .commandRepositoryIdentity small { min-width: 0; display: block; }
-.commandRepositoryIdentity strong { overflow: hidden; font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
-.commandRepositoryIdentity small { margin-top: 2px; color: var(--command-muted); font-size: var(--text-xs); }
-.commandRepositoryStat, .commandRepositoryProviders { color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
-.commandRepositoryStat strong { margin-inline-end: 4px; color: var(--command-ink); font-size: var(--text-xs); }
-.commandRepositoryProviders { text-align: end; }
-.commandRepositoryProviders strong { color: var(--command-ink); }
+.commandRepositoryBody, .commandRepositoryNameAndSetup, .commandRepositoryMeta { display: contents; }
+.commandRepositoryIcon { grid-column: 1; grid-row: 1; color: var(--command-muted); }
+.commandRepositoryIdentity { min-width: 0; grid-column: 2; grid-row: 1; }
+.commandRepositoryIdentity strong, .commandRepositoryIdentity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commandRepositoryIdentity strong { font-size: var(--text-sm); font-weight: 600; }
+.commandRepositoryIdentity small { margin-top: 3px; color: var(--command-muted); font-size: var(--text-xs); }
+.commandRepositoryProviders { min-width: 0; grid-column: 3; grid-row: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.commandRepositoryProviders .providerBadge { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); letter-spacing: 0; }
+.commandRepositorySessions { grid-column: 4; grid-row: 1; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
+.commandRepositorySessions > span { white-space: nowrap; }
+.commandRepositorySessions strong { color: var(--command-ink); font-weight: 500; }
+.commandRepositorySessions strong.live { color: var(--command-green); }
+.commandRepositorySetup { grid-column: 5; grid-row: 1; justify-self: start; }
+.commandRepositoryArrow { grid-column: 6; grid-row: 1; display: flex; justify-content: flex-end; color: var(--command-faint); }
+.commandRepositoryFilters { min-width: 0; display: flex; gap: 8px; }
+.commandRepositoryListCount, .commandRepositoryMobileDot { display: none; }
+.commandRepositoryFootnote { margin: 16px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+@media (min-width: 761px) and (max-width: 1200px) {
+  .commandRepositoryHead, .commandRepositoryRow { grid-template-columns: 20px minmax(120px, 1fr) minmax(100px, .8fr) minmax(110px, .8fr) minmax(140px, 1fr) 16px; gap: 10px; }
+}
 .commandRepositoryProvidersPanel { border-top: 1px solid var(--command-line); background: color-mix(in srgb, var(--command-panel-2) 35%, var(--command-panel)); }
 .repositoryProvider + .repositoryProvider { border-top: 1px solid var(--command-line); }
 .repositoryProviderHead { min-height: 52px; padding: 16px 16px 4px 52px; display: flex; align-items: center; }
@@ -262,8 +273,6 @@
   .commandDashboardPreview { border-top: 1px solid var(--command-line); border-left: 0; }
   .commandUsageRows { grid-template-columns: 1fr; }
   .commandUsageWindow + .commandUsageWindow { border-top: 1px solid var(--command-line); border-left: 0; }
-  .commandRepositoryRow { grid-template-columns: 24px minmax(0, 1fr) 64px 120px; }
-  .commandRepositoryStat + .commandRepositoryStat { display: none; }
   .repositoryProviderHead { padding-inline-start: 34px; }
   .repositorySetupRow { padding-inline-start: 34px; }
   .repositoryContextDisclosure > summary { padding-inline-start: 34px; }
@@ -313,8 +322,22 @@
   .commandDashboardColUpdated, .commandDashboardUpdated { display: none; }
   .commandMetricsRow { grid-template-columns: 1fr; }
   .commandMetric { min-height: 92px; }
-  .commandRepositoryRow { min-height: 64px; grid-template-columns: 20px minmax(0, 1fr) 100px; }
-  .commandRepositoryStat { display: none; }
+  .commandRepositoryHead, .commandRepositoryIcon, .commandRepositoryIdentity small, .commandRepositoryToolbar .commandToolbarCount { display: none; }
+  .commandRepositoryRow { min-height: 76px; grid-template-columns: minmax(0, 1fr) 24px; gap: 10px; padding: 12px 14px; }
+  .commandRepositoryBody { min-width: 0; display: grid; gap: 6px; }
+  .commandRepositoryNameAndSetup { min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .commandRepositoryIdentity { flex: 1; }
+  .commandRepositorySetup { flex: 0 1 auto; max-width: 75%; }
+  .commandRepositoryMeta { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+  .commandRepositorySessions { gap: 4px; }
+  .commandRepositoryProviders { gap: 8px 10px; }
+  .commandRepositoryProviders .providerBadge svg { width: 12px; height: 12px; }
+  .commandRepositoryMobileDot { display: inline; color: var(--command-faint); }
+  .commandRepositoryArrow { grid-column: 2; }
+  .commandRepositoryFilters { width: 100%; overflow-x: auto; padding: 2px; }
+  .commandRepositoryFilters .commandFilterChip { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+  .commandRepositoryToolbar .commandSearch { min-height: 44px; }
+  .commandRepositoryListCount { display: block; padding: 12px 14px; color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); }
   .repositoryProviderHead { min-height: 48px; padding: 14px 16px 2px; }
   .repositorySetupRow { padding: 8px 16px 14px; align-items: flex-start; flex-direction: column; gap: 10px; }
   .repositorySetupActions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
