@@ -217,9 +217,12 @@ the Codex or Claude Code host to the stdio MCP subprocess. `get_agent_context` a
 defaults to the main agent, `primary`. Optional exact references from `list_sessions`
 and `list_session_agents` remain available for historical or delegated inspection.
 `get_session_report` takes no arguments and returns the same bounded Markdown as the
-dashboard download. No tool infers the current session from the working directory or
-recency. If Pomegr is not running or the host identity is unavailable, queries return
-unavailable without launching it or affecting the existing reporting tools.
+dashboard download, including every normalized agent's latest bounded provider-reported
+model and reasoning effort when available. These fields are not complete model history,
+service-tier evidence, routing evidence, or performance measurements. No tool infers the
+current session from the working directory or recency. If Pomegr is not running or the
+host identity is unavailable, queries return unavailable without launching it or affecting
+the existing reporting tools.
 
 The complete contracts, evidence qualifications, and local transport boundary are
 documented in [MCP observation queries](MCP_QUERIES.md).

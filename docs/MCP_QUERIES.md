@@ -70,7 +70,10 @@ MCP execution errors.
 download, plus its sanitized filename and format. The text content is the report itself
 so ordinary MCP clients and harnesses can consume it without interpreting the structured
 envelope. The report is precomputed from one committed public session revision during D
-Derivation; the GET does not build it or read provider data.
+Derivation; the GET does not build it or read provider data. Its agent runtime table lists
+the latest bounded provider-reported model and reasoning effort for every normalized agent.
+Missing values remain unavailable; they are not inferred, and the table does not claim
+complete model history, service tier, routing, performance, or cost.
 
 ## Local transport and privacy
 

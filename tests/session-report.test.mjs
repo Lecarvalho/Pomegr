@@ -44,8 +44,8 @@ function state(overrides = {}) {
     session: { id: "session-1234", title: "Repair the parser", project: "pomegr", startedAt: "2026-08-27T22:57:09.818Z", updatedAt: "2026-08-28T03:27:45.709Z", durationMs: 16_235_891 },
     metrics: { agents: 2, tokens: { reportEvidence: structuredClone(baseEvidence) } },
     agents: [
-      { id: "primary", parentId: null, role: "orchestrator", cacheLifetime: "1h", executionTasks: [{ id: "private-failed-task", status: "failed", workKind: "shell", startedAt: "2026-08-28T00:55:16.189Z", finishedAt: "2026-08-28T00:55:16.353Z", exitCode: null, failureCause: "not_found", label: "PRIVATE LABEL", command: "PRIVATE COMMAND" }] },
-      { id: "agent-z", parentId: "primary", role: "general-purpose", cacheLifetime: "5m", executionTasks: [] },
+      { id: "primary", parentId: null, role: "orchestrator", model: "claude-opus-4-1", effort: "high", cacheLifetime: "1h", executionTasks: [{ id: "private-failed-task", status: "failed", workKind: "shell", startedAt: "2026-08-28T00:55:16.189Z", finishedAt: "2026-08-28T00:55:16.353Z", exitCode: null, failureCause: "not_found", label: "PRIVATE LABEL", command: "PRIVATE COMMAND" }] },
+      { id: "agent-z", parentId: "primary", role: "general-purpose", model: "unknown", effort: "unspecified", cacheLifetime: "5m", executionTasks: [] },
     ], executionTasks: [], ...overrides,
   };
 }
@@ -54,6 +54,8 @@ test("renders the approved focused evidence sections and report-local aliases", 
   const report = buildSessionReport(state(), generatedAt);
   assert.match(report, /^# Pomegr Session Observation Report/);
   assert.match(report, /## Coverage and counts/); assert.match(report, /827/); assert.match(report, /57 \/ 51/);
+  assert.match(report, /## Agent runtime/); assert.match(report, /\| Primary \| — \| claude-opus-4-1 \| high \| orchestrator \|/);
+  assert.match(report, /\| Agent 01 \| Primary \| Unavailable \| Unavailable \| general-purpose \|/);
   assert.match(report, /## Agents referenced by the detailed events/); assert.match(report, /\| Primary \|/);
   assert.match(report, /## Cache refill transitions/); assert.match(report, /F01/); assert.match(report, /2026-08-28T00:17:12\.681Z/);
   assert.match(report, /## Compactions and context drops/); assert.match(report, /Automatic compaction/); assert.match(report, /Manual compaction/); assert.match(report, /Context drop without a recorded compaction/);
@@ -124,7 +126,8 @@ test("hostile free text and raw fields never enter the focused report", () => {
   const input = state();
   input.session.id = "<script>PRIVATE</script>";
   input.session.summary = { text: "PRIVATE" };
-  input.agents[0].model = "PRIVATE";
+  input.agents[0].model = "<script>PRIVATE</script>";
+  input.agents[0].effort = "high\nPRIVATE";
   input.agents[0].signal = { label: "PRIVATE" };
   input.metrics.tokens.reportEvidence.cache.transitions[0].reason = "<script>PRIVATE</script>";
   input.metrics.tokens.reportEvidence.cache.transitions[0].requests.current.raw = "PRIVATE";

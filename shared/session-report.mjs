@@ -8,8 +8,15 @@ const MESSAGE_SEQUENCES = new Set(["post_tool_task_notification_resume"]);
 const ROLES = new Set(["orchestrator", "explore", "plan", "builder", "reviewer", "tester", "researcher", "general-purpose", "workflow-worker", "fork", "compaction", "unknown"]);
 const WORK_KINDS = new Set(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
 const FAILURE_CATEGORIES = new Set(["command_not_found", "invalid_path", "network_error", "not_found", "non_zero_exit", "permission_denied", "provider_error", "syntax_error", "tests_failed", "timed_out"]);
+const UNAVAILABLE_MODELS = new Set(["unknown", "unspecified"]);
+const UNAVAILABLE_EFFORTS = new Set(["unknown", "unspecified"]);
+const RUNTIME_FIELD_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/+ -]*$/;
 
 function safeString(value, max = 300) { return typeof value === "string" && value.trim() && value.length <= max ? value.trim() : null; }
+function runtimeField(value, max, unavailable) {
+  const text = safeString(value, max);
+  return text && RUNTIME_FIELD_PATTERN.test(text) && !unavailable.has(text.toLowerCase()) ? text : null;
+}
 function safeCount(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
 function safePercent(value) { return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null; }
 function utc(value) { if (typeof value !== "string") return null; const milliseconds = Date.parse(value); return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null; }
@@ -38,7 +45,15 @@ function agentRecords(state) {
     const id = safeString(agent?.id, 240);
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    records.push({ id, parentId: safeString(agent?.parentId, 240), role: localEnum(agent?.role, ROLES), cacheLifetime: localEnum(agent?.cacheLifetime, CACHE_LIFETIMES), tasks: Array.isArray(agent?.executionTasks) ? agent.executionTasks : null });
+    records.push({
+      id,
+      parentId: safeString(agent?.parentId, 240),
+      role: localEnum(agent?.role, ROLES),
+      model: runtimeField(agent?.model, 256, UNAVAILABLE_MODELS),
+      effort: runtimeField(agent?.effort, 128, UNAVAILABLE_EFFORTS),
+      cacheLifetime: localEnum(agent?.cacheLifetime, CACHE_LIFETIMES),
+      tasks: Array.isArray(agent?.executionTasks) ? agent.executionTasks : null,
+    });
   }
   records.sort((left, right) => left.id === "primary" ? -1 : right.id === "primary" ? 1 : left.id.localeCompare(right.id));
   const aliases = new Map();
@@ -162,6 +177,10 @@ export function buildSessionReport(state, generatedAt = new Date()) {
     `- Supporting measurements: ${number(supportingRequests)} distinct requests reproduced; ${number(evidence.requestCount === null ? null : Math.max(0, evidence.requestCount - supportingRequests))} other retained requests omitted.`,
     `- Detail selection: ${number(transitionCount)} refill transitions shown, ${number(omittedTransitions)} retained transitions omitted; ${number(boundaryCount)} context boundaries shown, ${number(boundaryTotal === null ? null : Math.max(0, boundaryTotal - boundaryCount))} retained boundaries omitted.`,
   );
+  lines.push("", "## Agent runtime", "", "| Agent | Parent | Model | Reasoning effort | Normalized role |", "| --- | --- | --- | --- | --- |");
+  if (!records.length) lines.push("| Agent runtime unavailable | — | Unavailable | Unavailable | Unavailable |");
+  else for (const agent of records) lines.push(`| ${cell(aliases.get(agent.id))} | ${cell(agent.parentId && aliases.has(agent.parentId) ? aliases.get(agent.parentId) : "—")} | ${cell(agent.model || "Unavailable")} | ${cell(agent.effort || "Unavailable")} | ${cell(agent.role || "Unavailable")} |`);
+  lines.push("", "Model and reasoning effort are the latest bounded provider-reported values retained for each agent. They are not complete model history, service-tier evidence, routing evidence, or performance measurements.");
   if (!referenced.length) lines.push("", "## Agents referenced by the detailed events", "", "No agent-specific events were retained for the detailed sections below.");
   else {
     lines.push("", "## Agents referenced by the detailed events", "", "| Agent | Parent | Normalized role | Cache lifetime | Refill transitions | Retained failures |", "| --- | --- | --- | --- | ---: | ---: |");
@@ -194,7 +213,7 @@ export function buildSessionReport(state, generatedAt = new Date()) {
   lines.push("", `| ${headers.join(" | ")} |`, `| ${headers.map(() => "---").join(" | ")} |`);
   if (cache?.status !== "ready" || !cache.transitions.length) lines.push(`| Unavailable | — | Unavailable | — | ${includeCacheWrite ? "Unavailable | Unavailable | Unavailable | Unavailable | Unavailable" : "Unavailable | Unavailable | Unavailable | Unavailable"} |`);
   else cache.transitions.forEach((item, index) => { for (const [key, position] of [["previous", "Preceding"], ["current", "Affected"], ["next", "Next"]]) { const snapshot = item.requests[key]; const request = snapshot ? requestAliases.get(snapshot.key) : "Unavailable"; const values = snapshot ? [request, snapshot.observedAt, number(snapshot.uncachedInputTokens), number(snapshot.cacheReadTokens), ...(includeCacheWrite ? [number(snapshot.cacheWriteTokens)] : []), number(snapshot.outputTokens), number(snapshot.totalTokens)] : ["Unavailable", "Unavailable", "Unavailable", "Unavailable", ...(includeCacheWrite ? ["Unavailable"] : []), "Unavailable", "Unavailable"]; lines.push(`| F${String(index + 1).padStart(2, "0")} | ${position} | ${values.join(" | ")} |`); } });
-  lines.push("", "## Definitions and limits", "", "- Prompt input = uncached input + cache read + cache write where cache-write evidence is supported. Cache-read share = cache read ÷ prompt input.", "- Request total adds output to that request's prompt input. Request observations are independent and are never summed into throughput, spend, or savings.", "- A large write is ≥8,000 cache-write tokens and can include initial creation. Tracked reuse is the first comparable request following a refill with prompt input ≥8,000 and read share ≥80%; it does not count every cache-reading request.", "- Comparability is provider-normalized within an agent, without an intervening recognized compaction. Missing or unsupported cache classification is unavailable, not zero.", "- Recorded diagnostic categories do not identify exact changed content. A gap exceeding a recorded lifetime, or previous_cache_entry_unavailable, does not establish expiration. Causal inferences are omitted.", "- Context boundaries are fixed automatic-compaction, manual-compaction, or snapshot-drop records. Snapshot drops are not labeled compactions.", `- Backend retention limits: at most ${number(MAX_REFILL_TRANSITIONS)} refill transitions and ${number(MAX_CONTEXT_BOUNDARIES)} context boundaries; failures shown here are capped at ${number(MAX_TASK_FAILURES)} newest retained failures.`, "- Prompts, responses, reasoning, commands, output text, credentials, provider-native IDs, transcript paths, model identifiers, and agent-reported free text are excluded.", "- No full evidence ledger was generated; routine observations omitted from this focused report are not declared issue-free.", "");
+  lines.push("", "## Definitions and limits", "", "- Prompt input = uncached input + cache read + cache write where cache-write evidence is supported. Cache-read share = cache read ÷ prompt input.", "- Request total adds output to that request's prompt input. Request observations are independent and are never summed into throughput, spend, or savings.", "- A large write is ≥8,000 cache-write tokens and can include initial creation. Tracked reuse is the first comparable request following a refill with prompt input ≥8,000 and read share ≥80%; it does not count every cache-reading request.", "- Comparability is provider-normalized within an agent, without an intervening recognized compaction. Missing or unsupported cache classification is unavailable, not zero.", "- Recorded diagnostic categories do not identify exact changed content. A gap exceeding a recorded lifetime, or previous_cache_entry_unavailable, does not establish expiration. Causal inferences are omitted.", "- Context boundaries are fixed automatic-compaction, manual-compaction, or snapshot-drop records. Snapshot drops are not labeled compactions.", `- Backend retention limits: at most ${number(MAX_REFILL_TRANSITIONS)} refill transitions and ${number(MAX_CONTEXT_BOUNDARIES)} context boundaries; failures shown here are capped at ${number(MAX_TASK_FAILURES)} newest retained failures.`, "- The agent runtime table includes only bounded latest model and reasoning-effort labels from normalized agent state. Request-level model history, service tier, routing, and comparison identities remain excluded.", "- Prompts, responses, reasoning content, commands, output text, credentials, provider-native IDs, transcript paths, and agent-reported free text are excluded.", "- No full evidence ledger was generated; routine observations omitted from this focused report are not declared issue-free.", "");
   return lines.join("\n");
 }
 

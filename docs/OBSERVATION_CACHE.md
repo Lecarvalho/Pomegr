@@ -290,9 +290,12 @@ The request serializer is shared with the existing independent request feed. Onl
 opaque report/request IDs, normalized agent IDs/timestamps, request-local token counts,
 resolved lifetime enums, fixed cache classification/diagnostic/status/sequence fields,
 and normalized context boundaries enter this surface. Private classifier request
-references, model/comparison identities, diagnostics, paths, prompts, summaries,
-commands, and output never enter response or checkpoint data. Report-local task
-selection consumes already normalized per-agent task feeds.
+references, request-level model/comparison identities, diagnostics, paths, prompts,
+summaries, commands, and output never enter response or checkpoint data. The report
+renderer may additionally include only the bounded latest `model` and `effort` already
+present in committed normalized agent state. Missing values remain unavailable; service
+tier, routing, model history, and provider-native runtime payloads remain excluded.
+Report-local task selection consumes already normalized per-agent task feeds.
 
 ## Cache-lifetime policy normalization
 

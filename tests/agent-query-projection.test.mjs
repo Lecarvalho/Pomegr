@@ -18,10 +18,10 @@ function retained() {
       readiness: { agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" },
       session: { id: "codex:session-1", title: "Safe title", project: "Pomegr", startedAt: at(-1000), updatedAt: at(-10), durationMs: 990 },
       agents: [
-      { id: "primary", parentId: null, label: "Primary", role: "orchestrator", status: "active", assignment: null, startedAt: at(-1000), updatedAt: at(-10), lastSeen: at(-10), cacheLifetime: "1h", tokens: { total: 80, input: 20, output: 10, cacheRead: 40, cacheWrite: 10 }, executionTasks: [
+      { id: "primary", parentId: null, label: "Primary", role: "orchestrator", model: "gpt-6-astra", effort: "xhigh", status: "active", assignment: null, startedAt: at(-1000), updatedAt: at(-10), lastSeen: at(-10), cacheLifetime: "1h", tokens: { total: 80, input: 20, output: 10, cacheRead: 40, cacheWrite: 10 }, executionTasks: [
         { id: "task-1", workKind: "test", status: "failed", startedAt: at(-200), finishedAt: at(-100), failureCause: "tests_failed" },
       ] },
-      { id: "child", parentId: "primary", label: "Builder", role: "builder", status: "finished", assignment: "bounded task", startedAt: at(-900), updatedAt: at(-20), lastSeen: at(-20), cacheLifetime: "5m", tokens: { total: 0 }, executionTasks: [] },
+      { id: "child", parentId: "primary", label: "Builder", role: "builder", model: "gpt-5.6-luna", effort: "medium", status: "finished", assignment: "bounded task", startedAt: at(-900), updatedAt: at(-20), lastSeen: at(-20), cacheLifetime: "5m", tokens: { total: 0 }, executionTasks: [] },
       ],
     },
     evidence: {
@@ -85,6 +85,8 @@ test("current session report reuses the dashboard report renderer over one commi
   assert.equal(result.filename, "pomegr-safe-title-2026-09-03.md");
   assert.equal(result.report, buildSessionReport({ ...entry.publicState, revision: entry.revision }, new Date(NOW)));
   assert.match(result.report, /Committed revision:\*\* 3/u);
+  assert.match(result.report, /\| Primary \| — \| gpt-6-astra \| xhigh \| orchestrator \|/u);
+  assert.match(result.report, /\| Agent 01 \| Primary \| gpt-5\.6-luna \| medium \| builder \|/u);
   assert.equal(result.observedAt, null);
 });
 
@@ -204,7 +206,8 @@ test("agent-query serialization excludes private evidence and out-of-contract se
   entry.evidence.toolCalls[0].arguments = "MCP_ARGUMENT_SENTINEL";
   entry.evidence.toolCalls[0].result = "MCP_RESULT_SENTINEL";
   entry.publicState.agents[0].kind = "PROVIDER_KIND_SENTINEL";
-  entry.publicState.agents[0].model = "MODEL_SENTINEL";
+  entry.publicState.agents[0].model = "<MODEL_SENTINEL>";
+  entry.publicState.agents[0].effort = "EFFORT_SENTINEL\nPRIVATE";
   entry.publicState.agents[0].executionTasks[0].description = "TASK_DESCRIPTION_SENTINEL";
   entry.publicState.agents[0].executionTasks[0].command = "TASK_COMMAND_SENTINEL";
   entry.publicState.agents[0].executionTasks[0].stdout = "TASK_OUTPUT_SENTINEL";
@@ -219,7 +222,7 @@ test("agent-query serialization excludes private evidence and out-of-contract se
     value.getAgentContext("codex:session-1", "primary"), value.getRecentFailures("codex:session-1", null, 1440, 25),
     value.getSessionReport("codex:session-1"), value.usageLimits(), value.providerHealth(),
   ]);
-  for (const sentinel of ["PROMPT_SENTINEL", "RESPONSE_SENTINEL", "CREDENTIAL_SENTINEL", "PATH_SENTINEL", "COMMAND_SENTINEL", "STDOUT_SENTINEL", "STDERR_SENTINEL", "MCP_ARGUMENT_SENTINEL", "MCP_RESULT_SENTINEL", "PROVIDER_KIND_SENTINEL", "MODEL_SENTINEL", "TASK_DESCRIPTION_SENTINEL", "TASK_COMMAND_SENTINEL", "TASK_OUTPUT_SENTINEL", "RAW_ERROR_SENTINEL"]) {
+  for (const sentinel of ["PROMPT_SENTINEL", "RESPONSE_SENTINEL", "CREDENTIAL_SENTINEL", "PATH_SENTINEL", "COMMAND_SENTINEL", "STDOUT_SENTINEL", "STDERR_SENTINEL", "MCP_ARGUMENT_SENTINEL", "MCP_RESULT_SENTINEL", "PROVIDER_KIND_SENTINEL", "MODEL_SENTINEL", "EFFORT_SENTINEL", "TASK_DESCRIPTION_SENTINEL", "TASK_COMMAND_SENTINEL", "TASK_OUTPUT_SENTINEL", "RAW_ERROR_SENTINEL"]) {
     assert.doesNotMatch(serialized, new RegExp(sentinel, "u"));
   }
 });
