@@ -689,6 +689,17 @@ test("plugin namespace rejects every legacy Threadlight identifier", async () =>
   await assert.rejects(access(path.join(restartSkillRoot, "scripts", "restart-threadlight.ps1")), { code: "ENOENT" });
 });
 
+test("restart skill delegates guarded process replacement to npm run dev", async () => {
+  const [skill, script] = await Promise.all([
+    readFile(path.join(restartSkillRoot, "SKILL.md"), "utf8"),
+    readFile(path.join(restartSkillRoot, "scripts", "restart-pomegr.ps1"), "utf8"),
+  ]);
+  assert.match(skill, /npm run dev/u);
+  assert.match(script, /Start-Process/u);
+  assert.match(script, /'npm run dev'/u);
+  assert.doesNotMatch(script, /Get-NetTCPConnection|Stop-Process|Invoke-WebRequest/u);
+});
+
 test("plugin MCP inventory contains bounded reporting, clearing, and native title tools", () => {
   const server = buildPomegrMcpServer();
   const tools = Object.keys(server._registeredTools).sort();
