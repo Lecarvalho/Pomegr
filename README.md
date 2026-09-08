@@ -47,8 +47,11 @@ contract, available stages, and the separately planned browser-render timing mil
 
 ## Documentation
 
-Start with the [Pomegr user guide](docs/user-guide/README.md) to understand the app,
-including [input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
+Start with the [documentation index](docs/README.md) for user guides,
+configuration, and troubleshooting, including
+[input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
+The [maintainer index](docs/internal/README.md) maps technical contracts,
+development workflows, and release procedures.
 
 ## How to contribute
 

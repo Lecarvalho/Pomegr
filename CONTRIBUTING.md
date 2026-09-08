@@ -12,6 +12,11 @@ This temporary restriction does not affect anyone's rights to use, modify, or re
 
 ## Engineering expectations
 
+Use the [maintainer documentation](docs/internal/README.md) to find the current
+contracts and the [agent workflow](docs/AGENT-WORKFLOW.md) for behavior owners,
+focused checks, and canonical verification. User-facing guides are listed in the
+[documentation index](docs/README.md).
+
 Contributions considered in the future must:
 
 - preserve the normalized browser API and keep provider transcript schemas out of React components;
