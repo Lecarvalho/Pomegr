@@ -156,6 +156,15 @@ After deployment, smoke-test:
 - The D1 row contains only the expected normalized fields and duplicates do not overwrite the first row.
 - Email forwarding still works and the public Worker has no `workers.dev` route.
 
+### Download release lookup
+
+The download page queries GitHub's latest stable release and allows a 15-minute
+Cloudflare response cache. Requests use `redirect: "manual"` because workerd
+rejects `"error"`; non-OK responses, including redirects, use the verified fallback
+in `server/download-release.ts`. Keep that fallback's version and asset sizes in
+sync with a verified published release when updating it. The landing test suite
+includes a workerd regression test for successful lookup and rejected redirects.
+
 ## 6. Rollback
 
 Use Cloudflare Worker Versions & Deployments (or authenticated Wrangler rollback) to promote the previously known-good Worker version. D1 is independent: never delete, recreate, or reverse waitlist rows during an application rollback. Apply future schema migrations forward and separately from Worker version rollback.

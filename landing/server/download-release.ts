@@ -36,10 +36,10 @@ export function parseDownloadRelease(value: unknown) {
 
 // Verified published assets, retained so a GitHub outage never leaves empty links.
 const fallbackRelease = parseDownloadRelease({
-  tag_name: "v0.3.3", draft: false, prerelease: false,
+  tag_name: "v0.3.6", draft: false, prerelease: false,
   assets: [
-    { name: "Pomegr-Setup-0.3.3-x64.exe", size: 220502968, state: "uploaded" },
-    { name: "Pomegr-Portable-0.3.3-x64.exe", size: 220282744, state: "uploaded" },
+    { name: "Pomegr-Setup-0.3.6-x64.exe", size: 220523016, state: "uploaded" },
+    { name: "Pomegr-Portable-0.3.6-x64.exe", size: 220302776, state: "uploaded" },
   ],
 });
 
@@ -48,7 +48,9 @@ export async function getDownloadRelease() {
     const options: RequestInit & { cf: { cacheTtl: number; cacheEverything: boolean } } = {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "pomegr-landing" },
       signal: AbortSignal.timeout(3000),
-      redirect: "error",
+      // workerd rejects "error" before fetching. Manual mode leaves redirects
+      // unfollowed; the non-OK check below rejects their 3xx responses.
+      redirect: "manual",
       cf: { cacheTtl: 900, cacheEverything: true },
     };
     const response = await fetch(RELEASE_API, options);

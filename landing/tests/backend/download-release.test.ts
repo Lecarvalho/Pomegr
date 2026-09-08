@@ -40,9 +40,9 @@ describe("public desktop downloads", () => {
   it("keeps verified download links when GitHub fails or returns an incomplete release", async () => {
     for (const response of [new Response(null, { status: 403 }), Response.json({}), new Response("invalid JSON")]) {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-      expect((await getDownloadRelease()).installer.name).toBe("Pomegr-Setup-0.3.3-x64.exe");
+      expect((await getDownloadRelease()).installer.name).toBe("Pomegr-Setup-0.3.6-x64.exe");
     }
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
-    expect((await getDownloadRelease()).portable.name).toBe("Pomegr-Portable-0.3.3-x64.exe");
+    expect((await getDownloadRelease()).portable.name).toBe("Pomegr-Portable-0.3.6-x64.exe");
   });
 });
