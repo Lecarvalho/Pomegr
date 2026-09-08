@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, Insight, LoopPattern, PlanTask, RequestSnapshotFeed, Workflow } from "../../../../shared/monitor-contract";
 import { agentAssignment, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, compactNumber, formatDuration } from "../../../dashboard-utils";
-import { liveWallTimeMs } from "../../../formatting.mjs";
+import { isAgentWallTimeAdvancing, liveWallTimeMs } from "../../../formatting.mjs";
 import { useLiveNow } from "../../../hooks/LiveClockContext";
 import { EmptyState } from "../../EmptyState";
 import { phaseProgress } from "./workflow-phase-progress";
@@ -164,7 +164,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const sort = (members: Agent[]) => filters.sort === "created" ? sortRosterAgentsByCreationHierarchy(members) : [...members].sort((a, b) => {
     if (filters.sort === "context") return b.tokens.total - a.tokens.total;
     if (filters.sort === "calls") return b.toolCalls - a.toolCalls;
-    if (filters.sort === "wall") return liveWallTimeMs(b.durationMs, b.startedAt, !historical && ["active", "waiting"].includes(b.status), now) - liveWallTimeMs(a.durationMs, a.startedAt, !historical && ["active", "waiting"].includes(a.status), now);
+    if (filters.sort === "wall") return liveWallTimeMs(b.durationMs, b.startedAt, !historical && isAgentWallTimeAdvancing(b), now) - liveWallTimeMs(a.durationMs, a.startedAt, !historical && isAgentWallTimeAdvancing(a), now);
     return 0;
   });
   const filteredGroups = groups.map((group) => ({ ...group, agents: sort(group.agents.filter((agent) => visibleIds.has(agent.id))) })).filter((group) => group.agents.length > 0);

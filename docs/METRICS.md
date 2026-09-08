@@ -360,7 +360,7 @@ The dashboard's running-agent count includes both `active` agents and parents ma
 
 Workflow workers are ordinary normalized agents for metrics. They contribute exactly once to agent counts, tool-call counts, and all-agent context. A workflow's displayed context is the sum of its linked agents' latest non-zero context snapshots; Pomegr never uses workflow-manifest token totals, tool totals, transcript throughput, or inferred spend. Workflow phase groupings are presentation metadata and do not add another metric contribution.
 
-Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents and parents waiting on active descendants continue counting from their recorded start time; finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
+Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents, parents waiting on active descendants, and non-terminal agents with an exact still-running foreground execution task continue counting from their recorded start time. The pending-task rule prevents transcript silence during a long foreground command from freezing the live counter; detached background work does not keep the launching agent's counter advancing. Finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
 
 ## Session state
 

@@ -17,14 +17,19 @@ export function liveWallTimeMs(recordedDurationMs, startedAt, running, now = Dat
   return Math.max(recordedDuration, frontendDuration);
 }
 
+export function isAgentWallTimeAdvancing(agent) {
+  if (agent.status === "finished" || agent.status === "stopped") return false;
+  if (agent.status === "active" || agent.status === "waiting") return true;
+  return Array.isArray(agent.executionTasks)
+    && agent.executionTasks.some((task) => task.status === "running" && task.background !== true);
+}
+
 export function formatAgentWallTime(agent, now = Date.now()) {
-  const running = agent.status === "active" || agent.status === "waiting";
-  return formatWallTime(liveWallTimeMs(agent.durationMs, agent.startedAt, running, now));
+  return formatWallTime(liveWallTimeMs(agent.durationMs, agent.startedAt, isAgentWallTimeAdvancing(agent), now));
 }
 
 export function formatAgentRowWallTime(agent, now = Date.now()) {
-  const running = agent.status === "active" || agent.status === "waiting";
-  const durationMs = liveWallTimeMs(agent.durationMs, agent.startedAt, running, now);
+  const durationMs = liveWallTimeMs(agent.durationMs, agent.startedAt, isAgentWallTimeAdvancing(agent), now);
   if (durationMs < 60_000) return "<1m";
   const totalMinutes = Math.floor(durationMs / 60_000);
   const hours = Math.floor(totalMinutes / 60);

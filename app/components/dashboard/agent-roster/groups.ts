@@ -1,5 +1,5 @@
 import type { Agent, AgentRole, Workflow } from "../../../../shared/monitor-contract";
-import { liveWallTimeMs } from "../../../formatting.mjs";
+import { isAgentWallTimeAdvancing, liveWallTimeMs } from "../../../formatting.mjs";
 
 export type RosterGroup = {
   id: string;
@@ -41,10 +41,6 @@ function emptyStatuses(): Record<Agent["status"], number> {
 
 function contextOf(agent: Agent) {
   return Number.isFinite(agent.tokens?.total) && agent.tokens.total > 0 ? agent.tokens.total : 0;
-}
-
-function isLive(agent: Agent) {
-  return agent.status === "active" || agent.status === "waiting";
 }
 
 function compareAgentOrder(left: { agent: Agent; index: number }, right: { agent: Agent; index: number }) {
@@ -130,7 +126,7 @@ function rollup(agents: Agent[], options: RosterGroupingOptions): RosterGroup["r
   for (const agent of agents) {
     statuses[agent.status] += 1;
     context += contextOf(agent);
-    wallMs += liveWallTimeMs(agent.durationMs, agent.startedAt, !options.historical && isLive(agent), options.now ?? Date.now());
+    wallMs += liveWallTimeMs(agent.durationMs, agent.startedAt, !options.historical && isAgentWallTimeAdvancing(agent), options.now ?? Date.now());
     toolCalls += Number.isFinite(agent.toolCalls) && agent.toolCalls > 0 ? agent.toolCalls : 0;
   }
   return { agents: agents.length, context, wallMs, toolCalls, statuses };

@@ -1,6 +1,6 @@
 import type { Agent, Insight } from "../../../../shared/monitor-contract";
 import { agentDisplayName, compactNumber, formatDuration } from "../../../dashboard-utils";
-import { liveWallTimeMs } from "../../../formatting.mjs";
+import { isAgentWallTimeAdvancing, liveWallTimeMs } from "../../../formatting.mjs";
 import { EmptyState } from "../../EmptyState";
 import type { RosterGroup } from "./groups";
 
@@ -24,7 +24,7 @@ export function AgentGridToolbar({ metric, onChange, historical }: { metric: Age
 
 function metricValue(agent: Agent, metric: AgentGridMetric, historical: boolean, now: number) {
   const value = metric === "context" ? agent.tokens.total : metric === "toolCalls" ? agent.toolCalls
-    : liveWallTimeMs(agent.durationMs, agent.startedAt, !historical && ["active", "waiting"].includes(agent.status), now);
+    : liveWallTimeMs(agent.durationMs, agent.startedAt, !historical && isAgentWallTimeAdvancing(agent), now);
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 

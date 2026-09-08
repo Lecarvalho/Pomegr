@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, liveWallTimeMs } from "../../app/formatting.mjs";
+import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, isAgentWallTimeAdvancing, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorEventStream, proxyMonitorJson } from "../../app/api/monitor-proxy";
 import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, retryCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
@@ -24,6 +24,16 @@ describe("wall-time formatting", () => {
     expect(formatAgentWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:00:05.000Z"))).toBe("5s");
     expect(formatAgentRowWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:00:05.000Z"))).toBe("<1m");
     expect(formatAgentRowWallTime({ startedAt: "2026-08-08T12:00:00.000Z", status: "active", durationMs: 1_000 }, Date.parse("2026-08-08T12:01:05.000Z"))).toBe("1m");
+    const pendingForeground = {
+      startedAt: "2026-08-08T12:00:00.000Z",
+      status: "warm",
+      durationMs: 8_000,
+      executionTasks: [{ status: "running", background: false }],
+    };
+    expect(isAgentWallTimeAdvancing(pendingForeground)).toBe(true);
+    expect(formatAgentRowWallTime(pendingForeground, Date.parse("2026-08-08T12:03:05.000Z"))).toBe("3m");
+    expect(isAgentWallTimeAdvancing({ ...pendingForeground, executionTasks: [{ status: "running", background: true }] })).toBe(false);
+    expect(isAgentWallTimeAdvancing({ ...pendingForeground, status: "finished" })).toBe(false);
     expect(formatExecutionTaskWallTime({ startedAt: "2026-08-08T12:00:00.000Z", finishedAt: "2026-08-08T12:00:07.000Z" })).toBe("7s");
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", true, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(5_000);
     expect(liveWallTimeMs(1_000, "2026-08-08T12:00:00.000Z", false, Date.parse("2026-08-08T12:00:05.000Z"))).toBe(1_000);

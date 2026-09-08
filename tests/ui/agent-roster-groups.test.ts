@@ -101,4 +101,28 @@ describe("agent roster grouping model", () => {
       { role: "reviewer", count: 2 },
     ].sort((left, right) => left.role.localeCompare(right.role)));
   });
+
+  it("keeps live wall time advancing through transcript silence for a pending foreground task", () => {
+    const groups = buildRosterGroups([agent("warm-worker", {
+      status: "warm",
+      startedAt: "2026-09-05T11:58:00.000Z",
+      durationMs: 8_000,
+      executionTasks: [{
+        id: "shell-1",
+        label: "Run verification",
+        kind: "shell",
+        workKind: "test",
+        status: "running",
+        background: false,
+        backgroundId: null,
+        startedAt: "2026-09-05T11:58:08.000Z",
+        finishedAt: null,
+        exitCode: null,
+        failureCause: null,
+        signal: null,
+      }],
+    })], [], { historical: false, now: Date.parse("2026-09-05T12:01:00.000Z") });
+
+    expect(groups[0].rollup.wallMs).toBe(180_000);
+  });
 });
