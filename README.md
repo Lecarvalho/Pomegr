@@ -47,7 +47,9 @@ contract, available stages, and the separately planned browser-render timing mil
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md) for user guides,
+Read the [introduction to Pomegr](docs/public/get-started/introduction.md) to
+understand what the dashboard observes and how to interpret its evidence.
+Use the [documentation index](docs/README.md) for user guides,
 configuration, and troubleshooting, including
 [input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
 The [maintainer index](docs/internal/README.md) maps technical contracts,

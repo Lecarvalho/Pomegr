@@ -8,7 +8,7 @@ source.
 
 | I want to… | Read |
 | --- | --- |
-| Understand what the dashboard observes | [User guide](user-guide/README.md) |
+| Understand what the dashboard observes | [Introduction to Pomegr](public/get-started/introduction.md) |
 | Read context, input, output, and cache numbers | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
@@ -35,9 +35,10 @@ migration, publication, checks, and closure.
 
 ## Find pages during the migration
 
-Existing pages keep their current paths and authority until their individual
-migration task completes. Follow the working links above; these planned homes are
-not yet published pages:
+The [introduction](public/get-started/introduction.md) is the first migrated public
+page. Remaining sources keep their current paths and authority until their
+individual migration tasks complete. Follow the working links above; this table
+maps the remaining work:
 
 | Current location | Planned home |
 | --- | --- |
@@ -48,7 +49,7 @@ not yet published pages:
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean
 confidential in Git. The [publication manifest](site.json) defines ordered public
-navigation groups and currently selects no pages. Its
+navigation groups and selects the introduction as its first public page. Its
 [contract](internal/development/documentation-manifest.md) defines page membership,
 routes, and local links/images; website publication tooling is still pending.
 This index does not publish content.

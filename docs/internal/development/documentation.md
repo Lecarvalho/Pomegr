@@ -31,6 +31,24 @@ it. Follow the [style guide's asset and lifecycle rules](../../STYLE_GUIDE.md#ma
 for images, scratch work, reports, and retained release evidence. Internal means
 excluded from website publication, not confidential in Git.
 
+### Introduction screenshot ownership
+
+The [introduction](../../public/get-started/introduction.md) owns the four JPEGs in
+`docs/public/images/introduction/`. Captured on 2026-09-08 from the Pomegr 0.3.6
+interface, they show real Catalogus development work with the project owner's
+explicit permission. The session is titled “Phase 4 backend: Supabase schema,
+RLS, views, seed on local Postgres.” Dark mode leads the overview, agent grid,
+and requests chart; the light overview demonstrates the alternative theme.
+Captures came directly from the running local dashboard's recorded session view,
+without changing its data. Only displayed dashboard content was captured; no raw
+session files were read or copied. These images replace the earlier synthetic set.
+
+When the pictured UI changes, recapture the actual session dashboard using
+owner-authorized project data or synthetic data, check legibility and privacy,
+and update the guide and images together. Keep the caption accurate about which
+kind of data is shown. These are maintained explanatory screenshots;
+they do not replace the design-system page or preserve a temporary mockup.
+
 ## Migrate one page at a time
 
 1. Read the source and its governing contract. Identify consumers, inbound
@@ -55,7 +73,8 @@ navigation order. Follow its [format and content contract](documentation-manifes
 for source membership, unique routes, and local link/image handling. Keep drafts
 in active plans; add ready public pages as their migrations finish.
 
-**Migration status:** the manifest exists with empty page lists. The build-time
+**Migration status:** the manifest selects the
+[introduction to Pomegr](../../public/get-started/introduction.md). The build-time
 content loader, `/docs` renderer, search, and `check:docs` command are not
 implemented yet. Adding a Markdown file or manifest entry does not deploy it.
 Validate selected links, routes, and images before publication. Repair repository

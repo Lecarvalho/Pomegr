@@ -63,8 +63,9 @@ the migration checklist records only the remaining task sequence and progress.
 
 The [publication manifest contract](development/documentation-manifest.md) defines
 the format of [docs/site.json](../site.json), page membership, navigation order,
-unique routes, and local link/image handling. The manifest currently selects no
-pages; build-time publication and validation tooling remain pending.
+unique routes, and local link/image handling. The manifest selects the
+[introduction to Pomegr](../public/get-started/introduction.md) as its first public
+page; build-time publication and validation tooling remain pending.
 
 ## Operations and decisions
 

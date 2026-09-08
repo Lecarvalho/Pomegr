@@ -7,8 +7,9 @@
 > and [landing package](../../../landing/package.json).
 
 Only explicitly selected public pages and their referenced images may enter the
-documentation website. The manifest currently selects no pages: public migration
-has not begun. The build-time content loader, renderer, search, and `check:docs`
+documentation website. The manifest selects the
+[introduction to Pomegr](../../public/get-started/introduction.md) as its first
+public page. The build-time content loader, renderer, search, and `check:docs`
 command remain unimplemented; this contract defines their required behavior.
 
 ## Select pages and order navigation
