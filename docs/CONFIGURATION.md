@@ -7,9 +7,11 @@ are defined canonically in [Observation cache and progressive readiness](OBSERVA
 
 ## Supported desktop modes
 
-Pomegr desktop supports Windows x64 only. The per-user installer is the normal user path and requires neither administrator credentials, Node.js, Git, nor a repository checkout. Git and GitHub metadata degrade independently when their optional command-line tools are unavailable. macOS, Linux, Windows ARM64, and app-store builds are not supported. Optional phone access shares the dashboard with paired browsers on a trusted local network; see the phone-access instructions below.
-
-The portable beta runs without installation from a writable directory. It stores Pomegr-owned state in `PomegrData` beside its executable. Portable mode does not register launch at login and automatic updates are disabled; download and verify a newer portable artifact manually.
+See [Install Pomegr](public/get-started/install.md) for supported downloads,
+prerequisites, installed and portable modes, and launch instructions. Optional
+phone access shares the dashboard with paired
+browsers on a trusted local network; see the
+[phone-access instructions](#another-device-cannot-open-the-dashboard).
 
 ## Desktop settings and behavior
 

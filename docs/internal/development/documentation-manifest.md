@@ -8,9 +8,10 @@
 
 Only explicitly selected public pages and their referenced images may enter the
 documentation website. The manifest selects the
-[introduction to Pomegr](../../public/get-started/introduction.md) as its first
-public page. The build-time content loader, renderer, search, and `check:docs`
-command remain unimplemented; this contract defines their required behavior.
+[introduction to Pomegr](../../public/get-started/introduction.md), followed by
+[Install Pomegr](../../public/get-started/install.md). The build-time content loader,
+renderer, search, and `check:docs` command remain unimplemented; this contract
+defines their required behavior.
 
 ## Select pages and order navigation
 

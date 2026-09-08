@@ -4,7 +4,7 @@
     {
       "id": "get-started",
       "title": "Get started",
-      "pages": ["get-started/introduction.md"]
+      "pages": ["get-started/introduction.md", "get-started/install.md"]
     },
     {
       "id": "using-pomegr",

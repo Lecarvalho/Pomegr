@@ -4,12 +4,9 @@ Pomegr is a local-first, read-only observer that makes coding-agent activity and
 
 ## Windows desktop app
 
-The Windows x64 desktop app is available now. [Download the latest release](https://github.com/Lecarvalho/Pomegr/releases/latest) and choose:
-
-- **Installer:** `Pomegr-Setup-<version>-x64.exe` for an installed app with automatic update checks and downloads. Restart to install an update when you're ready.
-- **Portable:** `Pomegr-Portable-<version>-x64.exe` to run without installing. Portable mode does not support automatic updates or launch at login.
-
-No Node.js setup is required for either download.
+The Windows x64 desktop app is available now. [Download the latest release](https://github.com/Lecarvalho/Pomegr/releases/latest)
+and follow [Install Pomegr](docs/public/get-started/install.md) to choose the
+installer or portable app and get started. Neither download needs Node.js setup.
 
 The desktop app includes opt-in phone access under **Settings → Phone access**. Pair a
 phone browser by QR code on the same trusted private network. Sharing is off by default

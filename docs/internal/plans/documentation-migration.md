@@ -1,6 +1,6 @@
 # Documentation migration
 
-> Status: in progress; DOC-00 through DOC-04 and PUB-01 complete. Next: PUB-02.
+> Status: in progress; DOC-00 through DOC-04 and PUB-01 through PUB-02 complete. Next: PUB-08 pilot.
 > Created: 2026-09-07.
 > Audience and owner: Pomegr maintainers; each executing maintainer owns their selected task.
 > Lifetime: ephemeral. Delete this plan in the change that completes the migration.
@@ -186,7 +186,7 @@ Review their writing and reading experience before migrating the rest.
 Every path in this section is relative to `docs/public/`.
 
 - [x] **PUB-01** `get-started/introduction.md` — extract root README and `docs/user-guide/README.md`; keep root README as the entrypoint. 2026-09-08; verified 113 local links/anchors across eight Markdown pages, heading hierarchy, manifest selection/metadata/route/public boundary, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website rendering remains pending; legacy user-guide index retained for existing navigation until PUB-19.
-- [ ] **PUB-02** `get-started/install.md` — extract supported download/desktop modes from README, CONFIGURATION, and DESKTOP_RELEASES; leave maintainer packaging internal.
+- [x] **PUB-02** `get-started/install.md` — extract supported download/desktop modes from README, CONFIGURATION, and DESKTOP_RELEASES; leave maintainer packaging internal. 2026-09-08; verified official stable-release asset names, desktop implementation facts, 131 local links/images and anchors across ten Markdown pages, public metadata/heading hierarchy/manifest routes and boundaries, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website rendering remains pending.
 - [ ] **PUB-03** `get-started/first-session.md` — first launch, discovery, session selection, expected empty/unavailable states.
 - [ ] **PUB-04** `using-pomegr/sessions-and-agents.md` — shipped UI, lifecycle labels, and bounded evidence; use SESSION_STATUS/METRICS as inputs.
 - [ ] **PUB-05** `using-pomegr/repositories.md` — current index/detail experience; distinguish working features from placeholders.
@@ -297,19 +297,28 @@ permanent mockup home in the final structure.
 
 ## Continuation checkpoint
 
-DOC-00 through DOC-04 and PUB-01 are complete. Next: PUB-02, then the PUB-08 pilot.
+DOC-00 through DOC-04 and PUB-01 through PUB-02 are complete. Next: the PUB-08
+explanation pilot, followed by review of the three pilots before continuing the
+remaining public pages.
 DOC-01 is committed
 as `031d51c`. The documentation and maintainer indexes link current authorities,
 planned homes, and the maintained style guide and maintenance workflow. Root
 README, CONTRIBUTING, and AGENTS link to the indexes. AGENTS and the agent workflow
 route documentation changes to the new homes and the temporary-plan closure rule.
 The publication manifest has four ordered groups and selects
-`get-started/introduction.md` as its first public page; add only ready public pages
+`get-started/introduction.md`, then `get-started/install.md`; add only ready public pages
 as their migrations finish. Root README and both documentation indexes route to
-the introduction. The legacy user-guide index links to it and retains the
+the introduction and installation guide. The legacy user-guide index links to the
+introduction and retains the
 tokens/cache guide link for existing consumers, including the app's Documentation
-link; remove that bridge and repair the app link under PUB-19. Installation and
-other source sections remain for their assigned migration tasks.
+link; remove that bridge and repair the app link under PUB-19.
+PUB-02's installation guide owns supported downloads, prerequisites, desktop mode
+selection, launch steps, and a brief update procedure. README, CONFIGURATION, and
+DESKTOP_RELEASES link to it; the latter two keep their original paths and retain
+settings, technical configuration, and maintainer packaging/release procedures for
+their remaining migration tasks. Official stable release v0.3.6 and both executable
+asset names were checked through GitHub on 2026-09-08. Website publication remains
+pending the WEB tasks.
 PUB-01's visual revision adds four maintained screenshots of real Catalogus
 development work, authorized by the project owner. Dark mode leads the overview,
 agent grid, and requests chart; a light-mode overview shows the alternative.

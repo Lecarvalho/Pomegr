@@ -9,6 +9,7 @@ source.
 | I want to… | Read |
 | --- | --- |
 | Understand what the dashboard observes | [Introduction to Pomegr](public/get-started/introduction.md) |
+| Download and launch the Windows app | [Install Pomegr](public/get-started/install.md) |
 | Read context, input, output, and cache numbers | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
@@ -35,8 +36,9 @@ migration, publication, checks, and closure.
 
 ## Find pages during the migration
 
-The [introduction](public/get-started/introduction.md) is the first migrated public
-page. Remaining sources keep their current paths and authority until their
+The [introduction](public/get-started/introduction.md) and
+[installation guide](public/get-started/install.md) are migrated public pages.
+Remaining sources keep their current paths and authority until their
 individual migration tasks complete. Follow the working links above; this table
 maps the remaining work:
 
@@ -49,7 +51,7 @@ maps the remaining work:
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean
 confidential in Git. The [publication manifest](site.json) defines ordered public
-navigation groups and selects the introduction as its first public page. Its
+navigation groups and selects the introduction and installation guide. Its
 [contract](internal/development/documentation-manifest.md) defines page membership,
 routes, and local links/images; website publication tooling is still pending.
 This index does not publish content.

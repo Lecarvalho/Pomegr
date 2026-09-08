@@ -74,7 +74,8 @@ for source membership, unique routes, and local link/image handling. Keep drafts
 in active plans; add ready public pages as their migrations finish.
 
 **Migration status:** the manifest selects the
-[introduction to Pomegr](../../public/get-started/introduction.md). The build-time
+[introduction to Pomegr](../../public/get-started/introduction.md) and
+[installation guide](../../public/get-started/install.md). The build-time
 content loader, `/docs` renderer, search, and `check:docs` command are not
 implemented yet. Adding a Markdown file or manifest entry does not deploy it.
 Validate selected links, routes, and images before publication. Repair repository

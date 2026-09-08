@@ -2,11 +2,9 @@
 
 ## Download the desktop app
 
-Pomegr desktop is available now for Windows x64. The
-[latest stable release](https://github.com/Lecarvalho/Pomegr/releases/latest)
-includes `Pomegr-Setup-<version>-x64.exe` and `Pomegr-Portable-<version>-x64.exe`.
-Use the release page for downloads and checksums; the procedures below describe
-how maintainers package and publish future releases.
+Follow [Install Pomegr](public/get-started/install.md) to choose a download and
+launch the Windows app. The procedures below are for maintainers packaging and
+publishing releases.
 
 Official Pomegr Windows releases are built only by a manually dispatched GitHub Actions workflow from a clean checkout of an existing tagged commit. Creating or pushing a tag does not start packaging or publication. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
 
