@@ -20,11 +20,6 @@ export function SessionHero({ session, source, capabilities, historical, activit
   const summaryTitle = providerSummary
     ? "Provider-generated session summary"
     : reportedSummary ? "Agent-reported session summary from the Pomegr MCP tool" : undefined;
-  const emptySummary = capabilities.sessionSummary
-    ? historical ? "No provider summary was recorded for this session." : "Waiting for the provider to record a session summary."
-    : capabilities.signals
-      ? historical ? "No agent-reported summary was recorded for this session." : "Waiting for an agent to report a session summary through Pomegr."
-      : "Session summaries are not available for this provider.";
   const sessionDisplayId = session?.id.includes(":") ? session.id.slice(session.id.indexOf(":") + 1) : session?.id;
   const statusLabel = historical ? "Recorded session · ended" : `Live session · ${sessionState({ activityStatus }).label}`;
   const statusTone = historical ? "idle" : activityStatus === "working" ? "active" : activityStatus === "needs_input" ? "attention" : "idle";
@@ -33,15 +28,16 @@ export function SessionHero({ session, source, capabilities, historical, activit
     ? historical ? "Last provider-reported mode recorded for this session." : "Latest recognized provider-reported mode."
     : historical ? "The provider did not record an approval mode for this session." : "Waiting for the provider to report an approval mode for this session.";
   const updatedTime = session?.updatedAt && Number.isFinite(Date.parse(session.updatedAt)) ? shortTime(session.updatedAt) : "Time unavailable";
-  const summary = <>
-    {session && <p title={summaryTitle}>{summaryText || emptySummary}</p>}
+  const signal = session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
+    <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
+  </div>;
+  const summary = summaryText ? <>
+    <p title={summaryTitle}>{summaryText}</p>
     {((!phone && summarySource) || session?.signal) && <div className="heroSummaryRow">
       {!phone && summarySource && <small className="heroSummarySource">{summarySource}</small>}
-      {session?.signal && <div className="heroSignalRow" aria-label="Agent-reported session signal">
-        <AgentChip className={`sessionSignal ${session.signal.tone}`} title={session.signal.description || "Reported for this session through the Pomegr MCP tool"}>{session.signal.label}</AgentChip>
-      </div>}
+      {signal}
     </div>}
-  </>;
+  </> : null;
   return (
     <section className="hero">
       <div>
@@ -50,7 +46,7 @@ export function SessionHero({ session, source, capabilities, historical, activit
           <ProviderBadge source={source} />
           <span className="sessionIdentityPart sessionIdentityId"><span aria-hidden="true">·</span><code>{sessionDisplayId}</code></span>
         </div>}
-        {!phone && summary}
+        {!phone && (summary || (signal && <div className="heroSummaryRow">{signal}</div>))}
       </div>
       {session && <div className="sessionHeroActions">
         <div className={`sessionStatusCard ${statusTone}`} aria-label="Session status">
@@ -64,10 +60,11 @@ export function SessionHero({ session, source, capabilities, historical, activit
         {!phone && onGenerateReport && <SessionReportButton generating={reportGenerating} onGenerate={onGenerateReport} />}
       </div>}
       {phone && <>
-        <details className="sessionHeroSummary" open={Boolean(summaryText || session?.signal)}>
-          <summary><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>{summarySource || "Session summary"}</summary>
+        {summary && <details className="sessionHeroSummary" open>
+          <summary><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>{summarySource}</summary>
           {summary}
-        </details>
+        </details>}
+        {!summary && signal && <div className="heroSummaryRow">{signal}</div>}
         {session && onGenerateReport && <SessionReportButton generating={reportGenerating} onGenerate={onGenerateReport} />}
       </>}
     </section>

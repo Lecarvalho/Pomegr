@@ -42,18 +42,18 @@ describe("provider capability gates", () => {
     expect(screen.queryByText(/Waiting for the provider/)).not.toBeInTheDocument();
   });
 
-  it("asks Codex agents for a report instead of claiming summaries are unsupported", () => {
+  it("omits empty summary copy when no Codex summary was reported", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       updatedAt: "2026-08-24T12:00:00.000Z",
     };
 
     const { rerender } = render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
-    expect(screen.getByText("Waiting for an agent to report a session summary through Pomegr.")).toBeInTheDocument();
+    expect(screen.queryByText(/session summary/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/not available for this provider/i)).not.toBeInTheDocument();
 
     rerender(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical /></LiveClockProvider>);
-    expect(screen.getByText("No agent-reported summary was recorded for this session.")).toBeInTheDocument();
+    expect(screen.queryByText(/session summary/i)).not.toBeInTheDocument();
   });
 
   it("uses the Claude mark for Claude Code sessions", () => {

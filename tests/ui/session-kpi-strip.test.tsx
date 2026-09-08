@@ -76,35 +76,44 @@ describe("session hero status", () => {
     return (phone: boolean) => act(() => { matches = phone; listeners.forEach((listener) => listener()); });
   }
 
-  it("discloses a long-title session summary on phone and restores desktop content on resize", () => {
+  it("omits the summary control and empty copy when no summary was reported", () => {
     const resize = phoneViewport();
     const session = { ...state().session!, title: "A long session title with an_unbroken_identifier_that_must_wrap_across_a_narrow_phone_viewport", summary: null, signal: null };
-    render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
+    const { container } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(session.title);
-    const summary = screen.getByText("Session summary");
-    expect(summary.tagName).toBe("SUMMARY");
-    expect(summary.closest("details")).not.toHaveAttribute("open");
-    fireEvent.click(summary);
-    expect(summary.closest("details")).toHaveAttribute("open");
+    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
+    expect(screen.queryByText("No provider summary was recorded for this session.")).not.toBeInTheDocument();
     resize(false);
-    expect(screen.queryByText("Session summary")).not.toBeInTheDocument();
-    expect(screen.getByText("No provider summary was recorded for this session.")).toBeInTheDocument();
+    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
+    expect(screen.queryByText("No provider summary was recorded for this session.")).not.toBeInTheDocument();
   });
 
-  it.each(["summary", "signal"] as const)("opens the phone disclosure when a %s exists and keeps report behavior", (kind) => {
+  it("opens the phone disclosure when a summary exists and keeps report behavior", () => {
     phoneViewport();
     const session: NonNullable<MonitorState["session"]> = { ...state().session!, summary: null, signal: null };
-    if (kind === "summary") session.summary = { text: "Recorded provider summary", observedAt: "2026-09-05T12:00:00Z", source: "provider" };
-    else session.signal = { label: "Privacy verified", tone: "positive", reportedAt: "2026-09-05T12:00:00Z" };
+    session.summary = { text: "Recorded provider summary", observedAt: "2026-09-05T12:00:00Z", source: "provider" };
     const generate = vi.fn();
     const { rerender } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
-    expect(screen.getByText(kind === "summary" ? "Provider summary" : "Session summary").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Provider summary").closest("details")).toHaveAttribute("open");
     fireEvent.click(screen.getByRole("button", { name: "Download report" }));
     expect(generate).toHaveBeenCalledOnce();
     rerender(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} reportGenerating />);
     expect(screen.getByRole("button", { name: "Preparing report…" })).toBeDisabled();
     const heroActions = screen.getByLabelText("Session status").closest(".sessionHeroActions");
     expect(heroActions).not.toContainElement(screen.getByRole("button", { name: "Preparing report…" }));
+  });
+
+  it("keeps a session signal visible without rendering an empty summary control", () => {
+    phoneViewport();
+    const session: NonNullable<MonitorState["session"]> = {
+      ...state().session!,
+      summary: null,
+      signal: { label: "Privacy verified", tone: "positive", reportedAt: "2026-09-05T12:00:00Z" },
+    };
+    const { container } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
+
+    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Privacy verified" })).toBeInTheDocument();
   });
 
   it("renders the quiet download-report action under the status card on desktop", () => {
