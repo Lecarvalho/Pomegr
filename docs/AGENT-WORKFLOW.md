@@ -5,6 +5,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
+| Documentation, migration, and temporary artifacts | [Maintenance workflow](internal/development/documentation.md), [style guide](STYLE_GUIDE.md), and [maintainer index](internal/README.md); use the workflow's documentation checks and `npm run verify:fast` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
 | Provider discovery, parsing, normalization | `monitor/providers/` and `monitor/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
 | Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `monitor/observation-runtime.mjs`, and `monitor/session-observation-*.mjs` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Monitor indexing, projection, enrichment | `monitor/server.mjs`, `monitor/` utilities | Browser credentials, prompts, responses, and provider-native payloads |

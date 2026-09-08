@@ -1,6 +1,6 @@
 # Documentation migration
 
-> Status: in progress; DOC-00 through DOC-02 complete. Next: DOC-03.
+> Status: in progress; DOC-00 through DOC-04 complete. Next: PUB-01.
 > Created: 2026-09-07.
 > Audience and owner: Pomegr maintainers; each executing maintainer owns their selected task.
 > Lifetime: ephemeral. Delete this plan in the change that completes the migration.
@@ -15,8 +15,11 @@ The initial change created only this plan. Progress is recorded in the task list
 and continuation checkpoint below.
 
 The permanent writing and artifact-lifecycle rules now live in the
-[style guide](../../STYLE_GUIDE.md). The maintenance workflow will live in
-`docs/internal/development/documentation.md`. Both must outlive this plan.
+[style guide](../../STYLE_GUIDE.md). Placement, migration, publication, checks, and
+closure follow the [maintenance workflow](../development/documentation.md).
+The [publication manifest contract](../development/documentation-manifest.md)
+defines selection, routes, and local links/images. These authorities must outlive
+this plan.
 
 ## Agreed decisions
 
@@ -173,8 +176,8 @@ A partially completed split stays unchecked.
 - [x] **DOC-00** Create this plan in `docs/internal/plans/` and inventory current documentation. 2026-09-07; existing docs unchanged.
 - [x] **DOC-01** Create `docs/README.md` and `docs/internal/README.md`: audiences, navigation, authority map, old/new transitional paths, and links from root entrypoints. 2026-09-08; verified 74 local navigation links/anchors, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings).
 - [x] **DOC-02** Write `docs/STYLE_GUIDE.md`: shared rules, both profiles, templates, supported formatting, visual ownership, permanent/ephemeral lifecycle. 2026-09-08; verified 66 local guide/index links and anchors, Markdown structure/whitespace, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings).
-- [ ] **DOC-03** Create `docs/internal/development/documentation.md`: placement, migration, publication, checks, and closure. Update agent routing for the new homes and ephemeral-plan rule.
-- [ ] **DOC-04** Define `docs/site.json`: ordered groups, explicit page membership, unique routes, and local image/link handling. Keep drafts in plans; no automatic publication of all repository Markdown.
+- [x] **DOC-03** Create `docs/internal/development/documentation.md`: placement, migration, publication, checks, and closure. Update agent routing for the new homes and ephemeral-plan rule. 2026-09-08; verified 94 local links/anchors across seven changed pages, Markdown structure/whitespace, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website preview remains unavailable until the renderer is implemented.
+- [x] **DOC-04** Define `docs/site.json`: ordered groups, explicit page membership, unique routes, and local image/link handling. Keep drafts in plans; no automatic publication of all repository Markdown. 2026-09-08; verified JSON format, four ordered groups with no selected pages, 108 local links/anchors across eight changed pages, Markdown structure/whitespace, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Content loading, rendering, and automated docs validation remain WEB tasks.
 
 ## Phase 2 — Public pages
 
@@ -294,13 +297,18 @@ permanent mockup home in the final structure.
 
 ## Continuation checkpoint
 
-DOC-00 through DOC-02 are complete. Next: DOC-03, then DOC-04. DOC-01 is committed
+DOC-00 through DOC-04 are complete. Next: PUB-01, then the PUB-02 and PUB-08 pilots.
+DOC-01 is committed
 as `031d51c`. The documentation and maintainer indexes link current authorities,
-planned homes, and the maintained style guide. Root README, CONTRIBUTING, and
-AGENTS link to the indexes. DOC-03 should use the style guide's writing and
-lifecycle rules while defining the maintenance workflow and updating agent
-routing. Existing source documents remain at their original paths. Recheck the
-inventory before each migration because other work can add documents. Scope each
+planned homes, and the maintained style guide and maintenance workflow. Root
+README, CONTRIBUTING, and AGENTS link to the indexes. AGENTS and the agent workflow
+route documentation changes to the new homes and the temporary-plan closure rule.
+The publication manifest has four ordered groups and empty page lists; add only
+ready public pages as their migrations finish. Its maintained contract defines
+membership, derived unique routes, and local link/image handling. Build-time
+content loading, the website renderer, search, and the documentation checker
+remain pending. Existing source documents remain at their original paths.
+Recheck the inventory before each migration because other work can add documents. Scope each
 change to its selected task; do not reorganize application code or delete
 unrelated local artifacts.
 

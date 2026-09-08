@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "get-started",
+      "title": "Get started",
+      "pages": []
+    },
+    {
+      "id": "using-pomegr",
+      "title": "Using Pomegr",
+      "pages": []
+    },
+    {
+      "id": "concepts",
+      "title": "Concepts",
+      "pages": []
+    },
+    {
+      "id": "help",
+      "title": "Help",
+      "pages": []
+    }
+  ]
+}

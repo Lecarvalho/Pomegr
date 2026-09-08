@@ -78,8 +78,9 @@ a table cell as `\|`.
 Links use descriptive labels and repository-relative Markdown paths. Link to an
 existing heading when it narrows the reader's destination. Show proposed paths
 as code spans, not broken links. Public-to-public links should remain within the
-selected public content; website route and asset validation belong to the
-publication contract once implemented.
+selected public content; follow the
+[publication manifest contract](internal/development/documentation-manifest.md)
+for route and asset rules. Automated publication validation is still pending.
 
 Code fences name their language, such as `powershell`, `json`, or `text`. State
 the working directory and prerequisites before commands. Keep commands separate
@@ -269,8 +270,10 @@ guide; a screenshot recording a finished exploration is temporary.
 New topic names use lowercase kebab-case. Create a directory only when its first
 page or asset needs it. Retain conventional entrypoint and tool-required names
 such as `README.md`, `STYLE_GUIDE.md`, `AGENTS.md`, and `SKILL.md`. Preserve root
-legal and package/tool ownership; placement details follow the
-[maintainer index](internal/README.md) during migration.
+legal and package/tool ownership; follow the
+[maintenance workflow](internal/development/documentation.md) for placement,
+migration, publication, and checks, and the [maintainer index](internal/README.md)
+for current authorities during migration.
 
 Close temporary work in the same change that fulfills or retires it:
 

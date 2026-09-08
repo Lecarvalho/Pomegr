@@ -57,9 +57,14 @@ its canonical verification requirements before handing off a change.
 
 The shared [style guide](../STYLE_GUIDE.md) owns writing rules, audience profiles,
 templates, supported formatting, visual ownership, and artifact lifecycle. The
-documentation maintenance workflow (`docs/internal/development/documentation.md`)
-is pending DOC-03; the migration checklist still records the placement and
-execution sequence.
+[documentation maintenance workflow](development/documentation.md) owns placement,
+migration, publication, checks, and closure. Both are maintained authorities;
+the migration checklist records only the remaining task sequence and progress.
+
+The [publication manifest contract](development/documentation-manifest.md) defines
+the format of [docs/site.json](../site.json), page membership, navigation order,
+unique routes, and local link/image handling. The manifest currently selects no
+pages; build-time publication and validation tooling remain pending.
 
 ## Operations and decisions
 

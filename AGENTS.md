@@ -18,8 +18,10 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 ## Change routing
 
 - Use the [documentation index](docs/README.md) for audience navigation and the [maintainer index](docs/internal/README.md) for current authorities and transitional documentation paths.
+- For documentation work, follow the [maintenance workflow](docs/internal/development/documentation.md) and [style guide](docs/STYLE_GUIDE.md). Put new public guides in `docs/public/`, technical documentation in `docs/internal/`, and active temporary plans in `docs/internal/plans/`; existing sources keep their current homes until individually migrated.
+- Delete plans and unneeded attachments in the change that completes, cancels, or supersedes them, after transferring enduring findings, assigning unfinished work, and repairing references under the maintenance workflow. Do not create an archive copy.
 - Use `docs/AGENT-WORKFLOW.md` to locate the behavior owner, focused test command, and forbidden dependency direction for monitor, provider, UI, desktop, landing, or generated-plugin work.
-- Treat `docs/OBSERVATION_CACHE.md` as the canonical operational contract for provider observation phases, cache ownership and bounds, checkpoint cadence, endpoint serving, revision semantics, readiness, UI polling, and skeleton behavior. Plans under `docs/plans/` are historical records, not runtime authority.
+- Treat `docs/OBSERVATION_CACHE.md` as the canonical operational contract for provider observation phases, cache ownership and bounds, checkpoint cadence, endpoint serving, revision semantics, readiness, UI polling, and skeleton behavior. Plans in `docs/internal/plans/` or legacy `docs/plans/` describe work or historical reasoning, not runtime authority.
 - Provider adapters must satisfy the executable catalog, manifest, readiness, evidence, and conformance rules in `monitor/providers/provider-contract.mjs`; provider-specific transcript schemas stay inside their adapter modules.
 
 ## Architecture

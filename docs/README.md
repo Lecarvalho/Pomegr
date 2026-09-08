@@ -29,7 +29,9 @@ agents follow [AGENTS.md](../AGENTS.md) and the
 [agent workflow](AGENT-WORKFLOW.md) for change routing and verification.
 
 For documentation changes, follow the shared [style guide](STYLE_GUIDE.md) for
-writing, page templates, visuals, and artifact lifecycle.
+writing, page templates, visuals, and artifact lifecycle, and the
+[maintenance workflow](internal/development/documentation.md) for placement,
+migration, publication, checks, and closure.
 
 ## Find pages during the migration
 
@@ -45,8 +47,11 @@ not yet published pages:
 
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean
-confidential in Git. The planned `docs/site.json` manifest will explicitly select
-public pages. This index does not publish content.
+confidential in Git. The [publication manifest](site.json) defines ordered public
+navigation groups and currently selects no pages. Its
+[contract](internal/development/documentation-manifest.md) defines page membership,
+routes, and local links/images; website publication tooling is still pending.
+This index does not publish content.
 
 The [documentation migration checklist](internal/plans/documentation-migration.md)
 tracks individual tasks. The maintainer index lists current technical paths and
