@@ -56,6 +56,11 @@ applicable desktop command locally before pushing. Creating or pushing a tag doe
 the Windows release workflow; dispatch it manually with the existing release tag only after
 the candidate is ready to package and publish.
 
+The independent public landing deployment is also manual: dispatch
+`.github/workflows/deploy-landing.yml` with the branch to deploy. It runs the landing
+tests, typecheck, build, and artifact audit before deploying to Cloudflare. See
+`landing/OPERATIONS.md` for GitHub secrets and production setup.
+
 `npm run release:windows -- --tag vX.Y.Z` installs locked dependencies, runs the
 canonical verifier and CI desktop extension locally, rechecks the clean local and
 remote tagged commit, and dispatches the Windows workflow only on success with the

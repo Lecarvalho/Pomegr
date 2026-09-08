@@ -96,6 +96,43 @@ The WAF rule is a coarse outer shield. Same-origin browser headers, the honeypot
 
 ## 5. Release the exact audited artifact
 
+### Manual GitHub deployment
+
+The [Deploy landing workflow](../.github/workflows/deploy-landing.yml) runs only
+through `workflow_dispatch`; pushes, pull requests, and tags do not deploy the site.
+It installs the landing lockfile, runs landing tests and typechecking, builds and
+audits once, then deploys that exact artifact with the existing `deploy` script.
+Production deployments are serialized without cancelling an active deployment.
+
+Before the first run:
+
+1. Merge the workflow onto the default branch (`main`) so GitHub displays its
+   **Run workflow** button.
+2. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions secrets,
+   either in the `landing-production` environment or at repository scope. Use a
+   token scoped to the production Cloudflare account and zone with the permissions
+   required to deploy this Worker and its configured bindings/custom domains;
+   follow [Cloudflare's GitHub Actions setup](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/).
+3. Complete the production provisioning in sections 1-4. The workflow uses existing
+   D1 bindings and Worker secrets; schema migrations and secret provisioning remain
+   separate operator actions.
+
+In GitHub, open **Actions → Deploy landing → Run workflow**, select the branch to
+deploy (normally `main`), and run it. The workflow deploys the selected ref's commit
+to `https://pomegr.com`. Environment protection rules, if configured for
+`landing-production`, apply before the job starts. See
+[GitHub's manual workflow instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+
+From the repository checkout, the equivalent dispatch is:
+
+```powershell
+gh workflow run deploy-landing.yml --ref main
+```
+
+After a successful run, perform the smoke checks below.
+
+### Local deployment
+
 Run this block from the repository root (`C:\Workspace\repos\Pomegr` for the local checkout):
 
 ```powershell
