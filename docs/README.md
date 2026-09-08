@@ -28,6 +28,9 @@ Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Codi
 agents follow [AGENTS.md](../AGENTS.md) and the
 [agent workflow](AGENT-WORKFLOW.md) for change routing and verification.
 
+For documentation changes, follow the shared [style guide](STYLE_GUIDE.md) for
+writing, page templates, visuals, and artifact lifecycle.
+
 ## Find pages during the migration
 
 Existing pages keep their current paths and authority until their individual

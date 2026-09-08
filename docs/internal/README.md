@@ -55,10 +55,11 @@ its canonical verification requirements before handing off a change.
 | [Pomegr plugins](../PLUGINS.md) | Canonical sources, generation, versioning, and release | `development/plugins.md`, after public guidance is extracted |
 | [Command table](../COMMAND_TABLE.md) | Component integration; visual authority remains the design system | `development/command-table.md` |
 
-The shared writing guide (`docs/STYLE_GUIDE.md`) and documentation maintenance
-workflow (`docs/internal/development/documentation.md`) are pending DOC-02 and
-DOC-03. Until then, the migration checklist records the agreed writing, placement,
-and artifact-lifecycle decisions.
+The shared [style guide](../STYLE_GUIDE.md) owns writing rules, audience profiles,
+templates, supported formatting, visual ownership, and artifact lifecycle. The
+documentation maintenance workflow (`docs/internal/development/documentation.md`)
+is pending DOC-03; the migration checklist still records the placement and
+execution sequence.
 
 ## Operations and decisions
 
