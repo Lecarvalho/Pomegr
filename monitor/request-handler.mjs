@@ -66,6 +66,9 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
           name = "getRecentFailures";
           allowedQueryKeys = new Set(["agent_id", "within_minutes", "limit", "revision"]);
           args = { sessionRef: segments[1], agentId: query.get("agent_id") || null, withinMinutes: Number(query.get("within_minutes") || 15), limit: Number(query.get("limit") || 10) };
+        } else if (segments[2] === "report" && segments.length === 3) {
+          name = "getSessionReport";
+          args = { sessionRef: segments[1] };
         } else name = "";
       } else name = "";
       if (name === "providerHealth" && query.get("provider")) args = { provider: query.get("provider") };

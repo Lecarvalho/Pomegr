@@ -206,17 +206,20 @@ The MCP server is stateless. Pomegr reconstructs reports and clears chronologica
 ## Observation query tools
 
 Both plugins also provide `get_provider_health`, `get_usage_limits`,
-`list_sessions`, `list_session_agents`, `get_agent_context`, and
-`get_recent_failures`. These tools read only committed monitor projections. They
+`list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`,
+and `get_session_report`. These tools read only committed monitor projections. They
 are intended for decisions whose outcome may change based on current provider
 health, account limits, retained agent context, or normalized failures; they are
 not a polling interface or a required session-start checklist.
 
-Session-specific queries begin with `list_sessions`, then use its exact
-`session_ref`. `list_session_agents` identifies the main agent as `primary` and
-returns exact delegated agent IDs. No tool infers the current session or caller
-from the working directory. If Pomegr is not running, queries return unavailable
-without launching it or affecting the existing reporting tools.
+Session-specific queries default to the validated current-session identity supplied by
+the Codex or Claude Code host to the stdio MCP subprocess. `get_agent_context` also
+defaults to the main agent, `primary`. Optional exact references from `list_sessions`
+and `list_session_agents` remain available for historical or delegated inspection.
+`get_session_report` takes no arguments and returns the same bounded Markdown as the
+dashboard download. No tool infers the current session from the working directory or
+recency. If Pomegr is not running or the host identity is unavailable, queries return
+unavailable without launching it or affecting the existing reporting tools.
 
 The complete contracts, evidence qualifications, and local transport boundary are
 documented in [MCP observation queries](MCP_QUERIES.md).

@@ -6,13 +6,13 @@ import path from "node:path";
 import test from "node:test";
 
 import { buildPomegrMcpServer } from "../mcp/server.mjs";
-import { AGENT_QUERY_TOOLS } from "../mcp/agent-query-tools.mjs";
+import { AGENT_QUERY_TOOLS, resolveCurrentSessionRef } from "../mcp/agent-query-tools.mjs";
 import { buildPomegrMcpServer as buildClaudePomegrMcpServer } from "../plugins/claude-code/mcp/server.mjs";
 import { AGENT_QUERY_AUTH_HEADER, publishAgentQueryDescriptor } from "../shared/agent-query-transport.mjs";
 
 const readNames = Object.keys(AGENT_QUERY_TOOLS).sort();
 
-test("both MCP entrypoints register the six read tools with read-only metadata and guidance", () => {
+test("both MCP entrypoints register the seven read tools with read-only metadata and guidance", () => {
   for (const build of [buildPomegrMcpServer, buildClaudePomegrMcpServer]) {
     const server = build();
     assert.match(server.server._instructions, /only when their result could materially change the next decision/i);
@@ -28,6 +28,51 @@ test("both MCP entrypoints register the six read tools with read-only metadata a
       assert.ok(tool.outputSchema);
     }
   }
+});
+
+test("current session references come only from one valid host identity", () => {
+  assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CODEX_SESSION_ID: "thread-1" }), "codex:thread-1");
+  assert.equal(resolveCurrentSessionRef({ CLAUDE_CODE_SESSION_ID: "session-1" }), "claude:session-1");
+  assert.equal(resolveCurrentSessionRef({}), null);
+  assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CODEX_SESSION_ID: "thread-2" }), null);
+  assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CLAUDE_CODE_SESSION_ID: "session-1" }), null);
+  assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "../private" }), null);
+});
+
+test("session-scoped tools default to the host session and primary agent without client IDs", async () => {
+  const calls = [];
+  const server = buildPomegrMcpServer({
+    currentSessionRef: "codex:current-1",
+    query: async (path, params) => {
+      calls.push({ path, params });
+      const base = { schemaVersion: 1, readiness: "ready", observedAt: "2026-09-03T12:00:00.000Z", generatedAt: "2026-09-03T12:00:00.000Z", revision: 4, sessionRef: "codex:current-1" };
+      if (path.endsWith("/report")) return { ...base, format: "markdown", filename: "pomegr-current-2026-09-03.md", report: "# Pomegr Session Observation Report\n\nCurrent." };
+      if (path.endsWith("/context")) return { ...base, agentId: "primary", context: null, readiness: "unavailable", reason: "context_unavailable" };
+      if (path.endsWith("/failures")) return { ...base, agentId: null, withinMinutes: 15, failures: [], retainedCoverage: { maximumWindowMinutes: 1440, maximumRetained: 256, oldestObservedAt: null, newestObservedAt: null, truncated: false } };
+      return { ...base, agents: [] };
+    },
+  });
+  const report = await server._registeredTools.get_session_report.handler({});
+  assert.match(report.content[0].text, /^# Pomegr Session Observation Report/u);
+  assert.equal(report.structuredContent.sessionRef, "codex:current-1");
+  await server._registeredTools.get_agent_context.handler({});
+  await server._registeredTools.get_recent_failures.handler({});
+  await server._registeredTools.list_session_agents.handler({});
+  assert.deepEqual(calls, [
+    { path: "/api/agent/v1/sessions/codex%3Acurrent-1/report", params: {} },
+    { path: "/api/agent/v1/sessions/codex%3Acurrent-1/agents/primary/context", params: {} },
+    { path: "/api/agent/v1/sessions/codex%3Acurrent-1/failures", params: { agent_id: undefined, within_minutes: 15, limit: 10 } },
+    { path: "/api/agent/v1/sessions/codex%3Acurrent-1/agents", params: {} },
+  ]);
+});
+
+test("session-scoped tools fail closed when the host supplies no current identity", async () => {
+  let called = false;
+  const server = buildPomegrMcpServer({ currentSessionRef: null, query: async () => { called = true; return {}; } });
+  const response = await server._registeredTools.get_session_report.handler({});
+  assert.equal(response.isError, undefined);
+  assert.equal(response.structuredContent.reason, "current_session_unavailable");
+  assert.equal(called, false);
 });
 
 test("agent queries pass exact selectors and return structured content plus bounded text", async () => {

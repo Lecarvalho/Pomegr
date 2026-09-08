@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
+import { buildSessionReport, sessionReportFilename } from "../shared/session-report.mjs";
 import { AGENT_ROLES } from "./agent-roles.mjs";
 import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 
@@ -9,6 +10,7 @@ const MAX_LOCAL_ACTIVITY_SESSIONS = 10_000;
 const MAX_AGENTS = 128;
 const MAX_FAILURES = 256;
 const MAX_FAILURE_WINDOW_MINUTES = 1_440;
+const MAX_REPORT_LENGTH = 200_000;
 const AGENT_ROLE_SET = new Set(AGENT_ROLES);
 const AGENT_STATUS_SET = new Set(["active", "waiting", "needs_input", "warm", "finished", "stopped", "idle", "unknown"]);
 const ACTIVITY_STATUS_SET = new Set(["working", "needs_input", "idle", "closed", "unknown"]);
@@ -344,6 +346,18 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
       return context ? [[agent.id, context]] : [];
     }));
     const failureProjection = recentFailures(entry, projectionTime);
+    let report = null;
+    try {
+      const reportState = { ...entry.publicState, revision: entry.revision };
+      const content = buildSessionReport(reportState, new Date(projectionTime));
+      if (content.length <= MAX_REPORT_LENGTH) {
+        report = Object.freeze({
+          format: "markdown",
+          filename: sessionReportFilename(reportState, new Date(projectionTime)),
+          content,
+        });
+      }
+    } catch { /* Invalid or incomplete committed state leaves the report unavailable. */ }
     sessionDetails.set(entry.qualifiedId, Object.freeze({
       agentReadiness: readiness(entry.readiness?.agentEvidence, "ready"),
       contextReadiness: readiness(entry.readiness?.contextEvidence, "ready"),
@@ -353,6 +367,8 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
       contexts,
       failures: failureProjection.items,
       failuresTruncated: failureProjection.truncated,
+      report,
+      observedAt: iso(entry.observedAt),
     }));
   }
   const normalizedHealth = normalizeProviderHealth(providerStatus);
@@ -412,6 +428,21 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
       return details ? response(details.activityReadiness, {
         sessionRef, agentId, withinMinutes, failures, retainedCoverage: coverage,
       }, revision, generatedAt) : response("unavailable", { sessionRef, agentId, withinMinutes, failures: [], retainedCoverage: coverage }, revision, generatedAt, knownSessionRefs.has(sessionRef) ? "session_unavailable" : "session_not_found");
+    },
+    getSessionReport(input) {
+      const sessionRef = typeof input === "string" ? input : input?.sessionRef;
+      const details = sessionDetails.get(sessionRef) || null;
+      if (!details) {
+        return response("unavailable", { sessionRef }, revision, generatedAt, knownSessionRefs.has(sessionRef) ? "session_unavailable" : "session_not_found");
+      }
+      if (!details.report) return response("unavailable", { sessionRef }, revision, generatedAt, "report_unavailable");
+      return {
+        ...response("ready", { sessionRef }, revision, generatedAt),
+        observedAt: details.observedAt,
+        format: details.report.format,
+        filename: details.report.filename,
+        report: details.report.content,
+      };
     },
   });
 }

@@ -15,7 +15,7 @@ import {
   SESSION_PROGRESS_CONFIDENCES,
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
-import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools } from "../../../mcp/agent-query-tools.mjs";
+import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "../../../mcp/agent-query-tools.mjs";
 import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
 
 const reportingAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -59,7 +59,7 @@ function rejected(text) {
 
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
-    { name: "pomegr", version: "0.6.0" },
+    { name: "pomegr", version: "0.7.0" },
     { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
   );
 
@@ -134,7 +134,10 @@ export function buildPomegrMcpServer(options = {}) {
   const query = options.query ?? options.agentQuery ?? createAgentQueryReader({
     dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot(),
   });
-  registerAgentQueryTools(server, { query });
+  const currentSessionRef = Object.hasOwn(options, "currentSessionRef")
+    ? options.currentSessionRef
+    : resolveCurrentSessionRef(options.environment ?? process.env);
+  registerAgentQueryTools(server, { query, currentSessionRef });
 
   return server;
 }

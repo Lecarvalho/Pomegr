@@ -29,7 +29,7 @@ Report `.pomegr/usage-guard.json` as off when it is missing. If present, inspect
 
 ## MCP inventory
 
-Check the resolved Pomegr namespace for `rename_session`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, `clear_session_progress`, `get_provider_health`, `get_usage_limits`, `list_sessions`, `list_session_agents`, `get_agent_context`, and `get_recent_failures`. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to `/mcp` and `/reload-plugins`. Do not read credential files or expose MCP configuration values. Read tools are decision-triggered observations; do not poll routinely or infer causation from coincident observations.
+Check the resolved Pomegr namespace for `rename_session`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, `report_session_progress`, `clear_session_progress`, `get_provider_health`, `get_usage_limits`, `list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`, and `get_session_report`. Display only short names. Do not invoke them as a connection test. If any are missing, direct the user to `/mcp` and `/reload-plugins`. Do not read credential files or expose MCP configuration values. Read tools are decision-triggered observations; do not poll routinely or infer causation from coincident observations.
 
 ## Package structure
 

@@ -3,6 +3,7 @@ import http from "node:http";
 import test from "node:test";
 import { buildAgentQueryProjection, createAgentQueryProjectionCache } from "../monitor/agent-query-projection.mjs";
 import { createRequestHandler } from "../monitor/request-handler.mjs";
+import { buildSessionReport } from "../shared/session-report.mjs";
 
 const NOW = Date.parse("2026-09-03T12:00:00.000Z");
 const at = (offset = 0) => new Date(NOW + offset).toISOString();
@@ -11,12 +12,18 @@ function retained() {
   return {
     qualifiedId: "codex:session-1", revision: 3,
     readiness: { agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" },
-    publicState: { agents: [
+    publicState: {
+      source: "Codex",
+      capabilities: { cacheWriteUsage: false, cacheUsageClassification: false },
+      readiness: { agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" },
+      session: { id: "codex:session-1", title: "Safe title", project: "Pomegr", startedAt: at(-1000), updatedAt: at(-10), durationMs: 990 },
+      agents: [
       { id: "primary", parentId: null, label: "Primary", role: "orchestrator", status: "active", assignment: null, startedAt: at(-1000), updatedAt: at(-10), lastSeen: at(-10), cacheLifetime: "1h", tokens: { total: 80, input: 20, output: 10, cacheRead: 40, cacheWrite: 10 }, executionTasks: [
         { id: "task-1", workKind: "test", status: "failed", startedAt: at(-200), finishedAt: at(-100), failureCause: "tests_failed" },
       ] },
       { id: "child", parentId: "primary", label: "Builder", role: "builder", status: "finished", assignment: "bounded task", startedAt: at(-900), updatedAt: at(-20), lastSeen: at(-20), cacheLifetime: "5m", tokens: { total: 0 }, executionTasks: [] },
-    ] },
+      ],
+    },
     evidence: {
       usageSnapshots: [
         { dedupeId: "older", actorId: "primary", timestamp: at(-500), input: 10, output: 5, cacheRead: 20, cacheWrite: 0 },
@@ -66,6 +73,25 @@ test("session, provider-health, and usage-limit projections expose only V1 field
   assert.equal(usage.freshness, "fresh");
   assert.deepEqual(usage.windows.map(({ id, usedPercent }) => [id, usedPercent]), [["all", 12], ["inactive", 1]]);
   assert.doesNotMatch(JSON.stringify(usage), /retainedLimits|supplemental/u);
+});
+
+test("current session report reuses the dashboard report renderer over one committed revision", () => {
+  const entry = retained();
+  const value = buildAgentQueryProjection({ now: () => NOW, catalog: [{ id: entry.qualifiedId, provider: "codex", isLive: true }], entries: [entry] });
+  const result = value.getSessionReport(entry.qualifiedId);
+  assert.equal(result.readiness, "ready");
+  assert.equal(result.sessionRef, entry.qualifiedId);
+  assert.equal(result.format, "markdown");
+  assert.equal(result.filename, "pomegr-safe-title-2026-09-03.md");
+  assert.equal(result.report, buildSessionReport({ ...entry.publicState, revision: entry.revision }, new Date(NOW)));
+  assert.match(result.report, /Committed revision:\*\* 3/u);
+  assert.equal(result.observedAt, null);
+});
+
+test("session report is unavailable for an unknown or incomplete committed session", () => {
+  const value = buildAgentQueryProjection({ now: () => NOW, catalog: [{ id: "codex:known", provider: "codex", isLive: true }], entries: [] });
+  assert.equal(value.getSessionReport("codex:known").reason, "session_unavailable");
+  assert.equal(value.getSessionReport("codex:missing").reason, "session_not_found");
 });
 
 test("agent session queries retain confirmed closure without exposing native ownership", () => {
@@ -191,7 +217,7 @@ test("agent-query serialization excludes private evidence and out-of-contract se
   const serialized = JSON.stringify([
     value.listSessions({ scope: "all" }), value.listSessionAgents("codex:session-1"),
     value.getAgentContext("codex:session-1", "primary"), value.getRecentFailures("codex:session-1", null, 1440, 25),
-    value.usageLimits(), value.providerHealth(),
+    value.getSessionReport("codex:session-1"), value.usageLimits(), value.providerHealth(),
   ]);
   for (const sentinel of ["PROMPT_SENTINEL", "RESPONSE_SENTINEL", "CREDENTIAL_SENTINEL", "PATH_SENTINEL", "COMMAND_SENTINEL", "STDOUT_SENTINEL", "STDERR_SENTINEL", "MCP_ARGUMENT_SENTINEL", "MCP_RESULT_SENTINEL", "PROVIDER_KIND_SENTINEL", "MODEL_SENTINEL", "TASK_DESCRIPTION_SENTINEL", "TASK_COMMAND_SENTINEL", "TASK_OUTPUT_SENTINEL", "RAW_ERROR_SENTINEL"]) {
     assert.doesNotMatch(serialized, new RegExp(sentinel, "u"));
@@ -222,7 +248,7 @@ test("agent routes require their separate authorization header", async (t) => {
   assert.equal((await fetch(`${origin}/api/transcript-path`, { headers: { "x-pomegr-agent-authorization": token } })).status, 401);
 });
 
-test("all six GET routes parse exact selectors without starting other runtime work", async (t) => {
+test("all seven GET routes parse exact selectors without starting other runtime work", async (t) => {
   const calls = [];
   const server = http.createServer(createRequestHandler({ runtime: {
     serveAgentQuery: (name, args) => {
@@ -240,13 +266,15 @@ test("all six GET routes parse exact selectors without starting other runtime wo
     "/api/agent/v1/sessions/codex%3Asession-1/agents",
     "/api/agent/v1/sessions/codex%3Asession-1/agents/primary/context",
     "/api/agent/v1/sessions/codex%3Asession-1/failures?agent_id=primary&within_minutes=30&limit=3",
+    "/api/agent/v1/sessions/codex%3Asession-1/report",
   ];
   for (const pathname of paths) assert.equal((await fetch(origin + pathname)).status, 200);
-  assert.deepEqual(calls.map(({ name }) => name), ["providerHealth", "usageLimits", "listSessions", "listSessionAgents", "getAgentContext", "getRecentFailures"]);
-  assert.deepEqual(calls.at(-1).args, { sessionRef: "codex:session-1", agentId: "primary", withinMinutes: 30, limit: 3 });
+  assert.deepEqual(calls.map(({ name }) => name), ["providerHealth", "usageLimits", "listSessions", "listSessionAgents", "getAgentContext", "getRecentFailures", "getSessionReport"]);
+  assert.deepEqual(calls.at(-2).args, { sessionRef: "codex:session-1", agentId: "primary", withinMinutes: 30, limit: 3 });
+  assert.deepEqual(calls.at(-1).args, { sessionRef: "codex:session-1" });
   assert.equal((await fetch(`${origin}/api/agent/v1/provider-health/extra`)).status, 404);
   assert.equal((await fetch(`${origin}/api/agent/v1/provider-health?unknown=value`)).status, 400);
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
 });
 
 test("query cache reuses exact serialized response until a D refresh", () => {

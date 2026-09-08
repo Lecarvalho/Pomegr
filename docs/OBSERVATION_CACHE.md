@@ -212,7 +212,7 @@ The official source and component-filter details are documented in `docs/PROVIDE
 
 ## MCP agent-query projections
 
-The six MCP observation queries form an independent D Derivation and S Serving domain.
+The seven MCP observation queries form an independent D Derivation and S Serving domain.
 Background derivation captures committed catalog, session, public-provider-status, and
 account-usage revisions, removes browser-forbidden fields, and atomically publishes a
 bounded projection. A failed refresh retains the last known-good projection. Serving
@@ -245,7 +245,8 @@ internal responses remain protocol errors.
 
 Session projections contain exact qualified session references, bounded agent identity
 and relationship fields, latest non-zero context snapshots, and normalized retained
-failures. Context is one request-local snapshot, never cumulative token consumption,
+failures. They also contain one bounded Markdown report produced by the shared dashboard
+report renderer from the committed public state and its session revision. Context is one request-local snapshot, never cumulative token consumption,
 throughput, billing, or session spend. Failure selection prefers a matching execution
 task over its tool-call record and excludes commands, arguments, descriptions, output,
 raw provider errors, and tool results. Public provider health does not establish impact or
@@ -256,13 +257,24 @@ Clients use these queries only when an observation can change the next decision.
 not poll or call every query at session start. The tool-specific triggers and caveats are
 documented in [MCP observation queries](MCP_QUERIES.md).
 
+The stdio MCP process resolves a default qualified session reference only from one valid
+host-supplied launch identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID` or
+`CLAUDE_CODE_SESSION_ID`). Conflicting providers, conflicting IDs, malformed IDs, and
+missing identity fail unavailable. The private GET still receives an exact qualified
+reference and never infers one from repository roots, timestamps, catalog ordering, or
+process activity. `get_session_report` accepts no client selector; other session reads
+retain optional exact overrides for historical and delegated inspection.
+
 ## Focused report evidence
 
 `metrics.tokens.reportEvidence` belongs to D Derivation and is serialized in the same
 committed public session response as the rest of `/api/state`. It does not introduce
-an export acquisition path, endpoint, polling lane, or checkpoint schema. Export may
+an export acquisition path, polling lane, or checkpoint schema. Dashboard export may
 refresh the existing cache-only state endpoint; rendering consumes one returned
-revision or the last visible snapshot. A loading/unavailable region cannot be
+revision or the last visible snapshot. The MCP agent-query D projection runs the same
+report renderer over that committed public state and stores the bounded Markdown for
+cache-only S Serving. The private report GET selects the precomputed value and never
+renders, hydrates, or reads a transcript. A loading/unavailable region cannot be
 reported as an observed zero. Failed refreshes retain the last-known-good response.
 
 Report selection uses retained normalized evidence before display caps, with at most

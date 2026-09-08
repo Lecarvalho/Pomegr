@@ -634,7 +634,7 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     assert.equal(guard.stdout, "");
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["clear_agent_signal", "clear_session_progress", "clear_session_signal", "get_agent_context", "get_provider_health", "get_recent_failures", "get_usage_limits", "list_session_agents", "list_sessions", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["clear_agent_signal", "clear_session_progress", "clear_session_signal", "get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);
 
     const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
       cwd: clientRepository,
@@ -692,7 +692,7 @@ test("plugin namespace rejects every legacy Threadlight identifier", async () =>
 test("plugin MCP inventory contains bounded reporting, clearing, and native title tools", () => {
   const server = buildPomegrMcpServer();
   const tools = Object.keys(server._registeredTools).sort();
-  const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_usage_limits", "list_session_agents", "list_sessions"];
+  const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions"];
 
   assert.deepEqual(tools, ["clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
   assert.equal(tools.includes("report_session_title"), false);
