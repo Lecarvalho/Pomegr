@@ -4,7 +4,7 @@ Pomegr is a local-first, read-only observer that makes coding-agent activity and
 
 ## Windows desktop app
 
-The Windows x64 desktop app is available now. [Download the latest release](https://github.com/Lecarvalho/Pomegr/releases/latest)
+The Windows x64 desktop app is available now. [Download Pomegr](https://pomegr.com/download)
 and follow [Install Pomegr](docs/public/get-started/install.md) to choose the
 installer or portable app and get started. Neither download needs Node.js setup.
 

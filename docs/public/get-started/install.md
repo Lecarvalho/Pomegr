@@ -22,23 +22,19 @@ them or create session history.
 
 ## Choose your download
 
-Open the [latest stable release](https://github.com/Lecarvalho/Pomegr/releases/latest)
-and expand **Assets** if the downloads are collapsed. The version number in each
-filename changes with the release.
+Open the [Pomegr download page](https://pomegr.com/download) and choose one of
+the two options:
 
 | Download | Choose it when… | Updates and login |
 | --- | --- | --- |
-| `Pomegr-Setup-<version>-x64.exe` | You want an app installed for your Windows user. | Automatic update checks and downloads; optional launch at login. |
-| `Pomegr-Portable-<version>-x64.exe` | You want to run from a writable folder without installing. | Manual updates; no launch at login. |
-
-Choose one of these executables. The source ZIP is for working with the source
-code and is not needed to run the desktop app.
+| **Installer** | You want an app installed for your Windows user. | Automatic update checks and downloads; optional launch at login. |
+| **Portable** | You want to run from a writable folder without installing. | Manual updates; no launch at login. |
 
 ## Install and open the app
 
 ### Installed app
 
-1. Download `Pomegr-Setup-<version>-x64.exe` from the release's **Assets**.
+1. Select **Download installer** on the download page.
 2. Open it and follow the installer. It installs for your Windows user without
    requiring administrator credentials.
 3. Open **Pomegr** from the Windows Start menu. The dashboard opens and begins
@@ -46,7 +42,7 @@ code and is not needed to run the desktop app.
 
 ### Portable app
 
-1. Download `Pomegr-Portable-<version>-x64.exe` from the release's **Assets**.
+1. Select **Download portable** on the download page.
 2. Put it in a folder where your Windows user can write files, then open it.
 3. Keep the `PomegrData` folder created beside the executable. It holds Pomegr's
    settings and saved observation state. Move it with the executable if you move
@@ -66,6 +62,7 @@ Open **Settings → About** to check manually. When a verified update is ready,
 select **Restart and install**, or **Restart to update** at the bottom left, when
 you are ready to restart. A failed check or download leaves the current app usable.
 
-For portable mode, quit Pomegr, download the newer portable executable, and open
-it from the folder containing your existing `PomegrData` to retain Pomegr state.
+For portable mode, quit Pomegr and select **Download portable** on the
+[download page](https://pomegr.com/download). Open the downloaded app from the
+folder containing your existing `PomegrData` to retain Pomegr state.
 Portable mode never checks for updates automatically.

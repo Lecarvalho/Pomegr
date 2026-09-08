@@ -318,7 +318,9 @@ DESKTOP_RELEASES link to it; the latter two keep their original paths and retain
 settings, technical configuration, and maintainer packaging/release procedures for
 their remaining migration tasks. Official stable release v0.3.6 and both executable
 asset names were checked through GitHub on 2026-09-08. Website publication remains
-pending the WEB tasks.
+pending the WEB tasks. User download instructions point to `pomegr.com/download`
+and its **Download installer** and **Download portable** options; GitHub asset
+navigation and filename selection are not required.
 PUB-01's visual revision adds four maintained screenshots of real Catalogus
 development work, authorized by the project owner. Dark mode leads the overview,
 agent grid, and requests chart; a light-mode overview shows the alternative.
