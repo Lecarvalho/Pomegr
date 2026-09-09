@@ -7,6 +7,7 @@ import { DEFAULT_DISPLAY_PREFERENCES, useDisplayPreferences, type DisplayPrefere
 import { PhoneAccessControls, usePhoneAccessDesktopAvailable } from "../components/PhoneAccessControls";
 import { DesktopUpdateSettings, useDesktopUpdates } from "./DesktopUpdateSettings";
 import { AboutDetails } from "./AboutDetails";
+import { ProviderSettings, useProviderSettingsAvailable } from "./ProviderSettings";
 
 function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
   label: string;
@@ -40,14 +41,22 @@ function PreferenceRow({ id, label, description, checked, onChange }: {
   );
 }
 
-export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "about" }) {
+export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "providers" | "about" }) {
   const updates = useDesktopUpdates();
   const phoneAccessAvailable = usePhoneAccessDesktopAvailable();
-  const sections = phoneAccessAvailable
-    ? [["appearance", "Appearance"], ["notifications", "Notifications"], ["phone", "Phone access"], ["data", "Data display"], ["about", "About"]] as const
-    : [["appearance", "Appearance"], ["notifications", "Notifications"], ["data", "Data display"], ["about", "About"]] as const;
+  const providerSettingsAvailable = useProviderSettingsAvailable();
+  const sections = [
+    ["appearance", "Appearance"],
+    ["notifications", "Notifications"],
+    ...(phoneAccessAvailable ? [["phone", "Phone access"]] as const : []),
+    ...(providerSettingsAvailable ? [["providers", "Providers"]] as const : []),
+    ["data", "Data display"],
+    ["about", "About"],
+  ] as const;
   type SectionId = typeof sections[number][0];
-  const [section, setSection] = useState<SectionId>(initialSection);
+  const [selectedSection, setSelectedSection] = useState<SectionId | null>(null);
+  const defaultSection: SectionId = sections.some(([id]) => id === initialSection) ? initialSection : "appearance";
+  const section = selectedSection && sections.some(([id]) => id === selectedSection) ? selectedSection : defaultSection;
   const tabsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const { preferences, setPreference, resetPreferences } = useDisplayPreferences();
   const defaultsActive = (Object.keys(DEFAULT_DISPLAY_PREFERENCES) as Array<keyof DisplayPreferences>)
@@ -60,7 +69,7 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
     else if (event.key === "End") nextIndex = sections.length - 1;
     else return;
     event.preventDefault();
-    setSection(sections[nextIndex][0]);
+    setSelectedSection(sections[nextIndex][0]);
     tabsRef.current[nextIndex]?.focus();
   };
 
@@ -69,11 +78,12 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
       <header className="commandPageHeader"><div><h1 id="settings-title">Settings</h1><p>Local display and notification preferences. Monitoring remains read-only.</p></div><button className="commandSecondaryAction" type="button" onClick={resetPreferences} disabled={defaultsActive}>Restore defaults</button></header>
       <div className="commandSettingsLayout">
         <nav className="commandSettingsNav" aria-label="Settings sections" role="tablist">
-          {sections.map(([id, label], index) => <button ref={(node) => { tabsRef.current[index] = node; }} id={`settings-tab-${id}`} aria-controls={`settings-panel-${id}`} tabIndex={section === id ? 0 : -1} key={id} type="button" role="tab" aria-selected={section === id} className={section === id ? "active" : ""} onClick={() => setSection(id)} onKeyDown={(event) => handleTabKey(event, index)}>{label}{id === "about" && updates.state?.update?.status === "ready" && <span className="commandUpdateDot" role="img" aria-label="Update ready to install" />}</button>)}
+          {sections.map(([id, label], index) => <button ref={(node) => { tabsRef.current[index] = node; }} id={`settings-tab-${id}`} aria-controls={`settings-panel-${id}`} tabIndex={section === id ? 0 : -1} key={id} type="button" role="tab" aria-selected={section === id} className={section === id ? "active" : ""} onClick={() => setSelectedSection(id)} onKeyDown={(event) => handleTabKey(event, index)}>{label}{id === "about" && updates.state?.update?.status === "ready" && <span className="commandUpdateDot" role="img" aria-label="Update ready to install" />}</button>)}
         </nav>
         {section === "appearance" && <section id="settings-panel-appearance" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-appearance"><h2>Workspace appearance</h2><p>These controls affect only this local Pomegr interface.</p><SettingRow label="Color theme" description="Switch between the Command Center's dark and light operating surfaces."><ThemeToggle /></SettingRow><SettingRow label="Compact density" description="A denser evidence layout will arrive in a future release."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
         {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>Notification controls are available in the desktop runtime and will move here in a future release.</p><SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow><SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
         {section === "phone" && <section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
+        {section === "providers" && <section id="settings-panel-providers" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-providers"><ProviderSettings /></section>}
         {section === "data" && <section id="settings-panel-data" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-data"><h2>Data display</h2><p>These preferences apply to every live and historical session.</p><div className="displayPreferenceList"><PreferenceRow id="estimated-cost-visible" label="API list-rate estimate" description="Show the provider-reported reference estimate when available. This is not a bill or subscription spend." checked={preferences.estimatedCost} onChange={(checked) => setPreference("estimatedCost", checked)} /></div></section>}
         {section === "about" && <section id="settings-panel-about" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-about"><div className="commandAboutIdentity"><PomegrMark className="commandAboutIdentityMark" /><div className="commandAboutIdentityText"><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p></div></div>{updates.available && <><SettingRow label="Application version" description="Pomegr desktop"><span className="commandMonoValue">{updates.state?.applicationVersion ? `v${updates.state.applicationVersion}` : "Version unavailable"}</span></SettingRow><DesktopUpdateSettings updates={updates} /></>}<SettingRow label="Monitor boundary" description="Normalized metadata is served from the loopback monitor. Conversation content remains private."><span className="commandReadyState">Read-only</span></SettingRow><AboutDetails /></section>}
       </div>

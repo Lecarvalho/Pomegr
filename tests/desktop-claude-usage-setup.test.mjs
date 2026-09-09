@@ -19,11 +19,15 @@ async function fixture(t, options = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-usage-setup-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const configRoot = path.join(root, "Claude settings");
+  const dataRoot = options.dataRoot || "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr";
+  const feedRoot = options.feedRoot || "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\usage-snapshots";
+  const costRoot = options.costRoot || "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\cost-snapshots";
   await mkdir(configRoot);
   const integration = createClaudeUsageIntegration({
     configRoot,
-    dataRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr",
-    feedRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\usage-snapshots",
+    dataRoot,
+    feedRoot,
+    costRoot,
     appExecutable: "C:\\Program Files\\Pomegr\\Pomegr.exe",
     bridgePath: "C:\\Program Files\\Pomegr\\resources\\app.asar.unpacked\\desktop\\workers\\claude-statusline-bridge.cjs",
     powershellExecutable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
@@ -31,7 +35,7 @@ async function fixture(t, options = {}) {
     confirm: options.confirm || (async () => true),
     beforeCommit: options.beforeCommit,
   });
-  return { configRoot, settingsFile: path.join(configRoot, "settings.json"), integration };
+  return { configRoot, dataRoot, feedRoot, costRoot, settingsFile: path.join(configRoot, "settings.json"), integration };
 }
 
 function decodeCommand(command) {
@@ -103,6 +107,78 @@ test("enables a new local feed with the packaged Electron runtime and no system 
   assert.match(script, /Pomegr\.exe/);
   assert.match(script, /claude-statusline-bridge\.cjs/);
   assert.doesNotMatch(script, /\bnode(?:\.exe)?\b/i);
+});
+
+test("uses an explicit profile-scoped cost root in the generated bridge command", async (t) => {
+  const costRoot = "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\claude-profiles\\opaque-profile\\cost-snapshots";
+  const { settingsFile, integration } = await fixture(t, { costRoot });
+  assert.deepEqual(await integration.enable(), { status: "enabled" });
+  const expectedLiteral = costRoot.replaceAll("'", "''").replace(/\\/gu, "\\\\");
+  assert.match(decodeCommand(JSON.parse(await readFile(settingsFile, "utf8")).statusLine.command), new RegExp(`POMEGR_COST_SNAPSHOTS_DIR='${expectedLiteral}'`));
+});
+
+test("reports a managed command with stale profile roots as disabled, then explicitly rebinds only its generated roots", async (t) => {
+  const oldRoots = {
+    feedRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\usage-snapshots",
+    costRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\cost-snapshots",
+  };
+  const previous = await fixture(t, oldRoots);
+  const delegate = "Write-Output 'keep this delegate exactly'; $env:PRIVATE_PROFILE_MARKER";
+  await writeFile(previous.settingsFile, JSON.stringify({
+    preserved: { value: true },
+    statusLine: { type: "command", command: delegate, alignment: "right" },
+  }), "utf8");
+  assert.deepEqual(await previous.integration.enable(), { status: "enabled" });
+  const before = JSON.parse(await readFile(previous.settingsFile, "utf8"));
+  const beforeScript = decodeCommand(before.statusLine.command);
+
+  let confirmations = 0;
+  const nextRoots = {
+    feedRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\claude-profiles\\opaque-profile\\usage-snapshots",
+    costRoot: "C:\\Users\\Ana O'Hare\\AppData\\Roaming\\pomegr\\claude-profiles\\opaque-profile\\cost-snapshots",
+    confirm: async () => { confirmations += 1; return true; },
+  };
+  const rebound = createClaudeUsageIntegration({
+    configRoot: previous.configRoot,
+    dataRoot: previous.dataRoot,
+    feedRoot: nextRoots.feedRoot,
+    costRoot: nextRoots.costRoot,
+    appExecutable: "C:\\Program Files\\Pomegr\\Pomegr.exe",
+    bridgePath: "C:\\Program Files\\Pomegr\\resources\\app.asar.unpacked\\desktop\\workers\\claude-statusline-bridge.cjs",
+    powershellExecutable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    confirm: nextRoots.confirm,
+  });
+  assert.deepEqual(await rebound.getStatus(), { status: "disabled" });
+  assert.deepEqual(await rebound.enable(), { status: "enabled" });
+  assert.equal(confirmations, 1);
+  assert.deepEqual(await rebound.getStatus(), { status: "enabled" });
+
+  const after = JSON.parse(await readFile(previous.settingsFile, "utf8"));
+  const afterScript = decodeCommand(after.statusLine.command);
+  assert.deepEqual(after.preserved, before.preserved);
+  assert.equal(after.statusLine.alignment, "right");
+  assert.match(afterScript, /POMEGR_USAGE_SNAPSHOTS_DIR='C:\\Users\\Ana O''Hare\\AppData\\Roaming\\pomegr\\claude-profiles\\opaque-profile\\usage-snapshots'/);
+  assert.match(afterScript, /POMEGR_COST_SNAPSHOTS_DIR='C:\\Users\\Ana O''Hare\\AppData\\Roaming\\pomegr\\claude-profiles\\opaque-profile\\cost-snapshots'/);
+  const preservedTail = "$utf8=New-Object System.Text.UTF8Encoding($false)";
+  assert.equal(afterScript.slice(afterScript.indexOf(preservedTail)), beforeScript.slice(beforeScript.indexOf(preservedTail)));
+  assert.match(afterScript, /keep this delegate exactly/);
+  assert.match(afterScript, /PRIVATE_PROFILE_MARKER/);
+});
+
+test("refuses ambiguous managed lookalikes without replacing their status line", async (t) => {
+  const { settingsFile, integration } = await fixture(t);
+  assert.deepEqual(await integration.enable(), { status: "enabled" });
+  const settings = JSON.parse(await readFile(settingsFile, "utf8"));
+  const ambiguous = decodeCommand(settings.statusLine.command).replace(
+    "$env:POMEGR_DATA_DIR=",
+    "$env:POMEGR_USAGE_SNAPSHOTS_DIR='C:\\duplicate';$env:POMEGR_DATA_DIR=",
+  );
+  settings.statusLine.command = `${POWERSHELL_PREFIX}${Buffer.from(ambiguous, "utf16le").toString("base64")}`;
+  const original = JSON.stringify(settings);
+  await writeFile(settingsFile, original, "utf8");
+  assert.deepEqual(await integration.getStatus(), { status: "unavailable" });
+  assert.deepEqual(await integration.enable(), { status: "unavailable" });
+  assert.equal(await readFile(settingsFile, "utf8"), original);
 });
 
 test("preserves a configured status line exactly through fixed PowerShell argv", async (t) => {

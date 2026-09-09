@@ -8,6 +8,6 @@ export const metadata: Metadata = {
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ section?: string | string[] }> }) {
   const { section } = await searchParams;
-  const initialSection = section === "about" ? "about" : "appearance";
+  const initialSection = section === "providers" ? "providers" : section === "about" ? "about" : "appearance";
   return <SettingsPage key={initialSection} initialSection={initialSection} />;
 }

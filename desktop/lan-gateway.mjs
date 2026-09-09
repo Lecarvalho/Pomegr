@@ -5,7 +5,7 @@ import { lanPairingPage } from "./lan-pairing-page.mjs";
 const PRIVATE_RANGES = Object.freeze([
   [10, 0, 0, 0, 8], [172, 16, 0, 0, 12], [192, 168, 0, 0, 16],
 ]);
-const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/events"]);
+const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/provider-folders", "/api/events"]);
 const APP_PATHS = new Set(["/", "/sessions", "/agents", "/usage-limits", "/repositories", "/dashboards", "/settings"]);
 const REQUEST_HEADERS = new Set([
   "accept", "accept-language", "content-type", "if-none-match", "if-modified-since",
@@ -329,6 +329,13 @@ export async function startLanGateway(options = {}) {
       noStore(response); response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       if (method === "GET") response.end('{"mode":"lan","canCopyTranscriptPath":false}'); else response.end();
       return;
+    }
+    if (pathname === "/api/provider-folders") {
+      const contentLength = request.headers["content-length"];
+      const hasBody = request.headers["transfer-encoding"] !== undefined
+        || (contentLength !== undefined && (!/^\d+$/.test(String(contentLength)) || Number(contentLength) !== 0));
+      if (method !== "GET") { fixed(response, 405); return; }
+      if (url.search || hasBody) { fixed(response, 403); return; }
     }
     if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
     const headers = { host: upstream.host, "x-pomegr-desktop-authorization": options.authorizationToken };

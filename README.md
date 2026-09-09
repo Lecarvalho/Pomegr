@@ -46,6 +46,8 @@ contract, available stages, and the separately planned browser-render timing mil
 
 Read the [introduction to Pomegr](docs/public/get-started/introduction.md) to
 understand what the dashboard observes and how to interpret its evidence.
+Then [follow your first session](docs/public/get-started/first-session.md) to find
+local work and open its dashboard.
 Use the [documentation index](docs/README.md) for user guides,
 configuration, and troubleshooting, including
 [input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).

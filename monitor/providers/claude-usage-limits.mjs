@@ -5,6 +5,7 @@ import { createClaudeUsageApiCache } from "./claude-usage-api-cache.mjs";
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { claudeUsageLimitsFromSnapshot, claudeUsageSnapshotsRoot, readClaudeUsageSnapshot } from "./claude-usage-feed.mjs";
+import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 
 function usageRequest(configDir, fetchImpl) {
   return async () => {
@@ -29,7 +30,7 @@ export function createClaudeUsageLimitsReader(options = {}) {
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
   const now = options.now || (() => Date.now());
-  const configDir = options.claudeConfigDir || environment.CLAUDE_CONFIG_DIR || path.join(homeDir, ".claude");
+  const { configRoot: configDir } = resolveClaudeProfileRoots({ ...options, env: environment, homeDir });
   const snapshotsRoot = options.usageSnapshotsRoot || claudeUsageSnapshotsRoot({ environment, homeDir, platform: options.platform });
   const apiCache = createClaudeUsageApiCache({ root: snapshotsRoot, configDir, now });
   let remote = null;

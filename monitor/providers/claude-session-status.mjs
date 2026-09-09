@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeSessionRegistryEntry } from "../session-registry.mjs";
+import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 
 const STATUS_INTERVAL_MS = 10_000;
 const FAILURE_RETRY_MS = 60_000;
@@ -54,9 +55,9 @@ export function claudeLifecycleSource(source, entry) {
     .digest("hex") };
 }
 
-function accessToken(homeDir) {
+function accessToken(configDir) {
   try {
-    const file = path.join(homeDir, ".claude", ".credentials.json");
+    const file = path.join(configDir, ".credentials.json");
     if (fs.statSync(file).size > 64 * 1024) return null;
     const token = JSON.parse(fs.readFileSync(file, "utf8"))?.claudeAiOauth?.accessToken;
     return typeof token === "string" && token.length > 0 && token.length <= 16_384 ? token : null;
@@ -100,7 +101,9 @@ function statusFromResponse(body, remoteId) {
  * Never list remote sessions, attach to a worker, refresh credentials, or read events.
  * Cache only normalized lifecycle; raw response bodies die with each bounded request.
  */
-export function createClaudeSessionStatusReader({ homeDir, fetch: fetchImpl = globalThis.fetch, now = Date.now }) {
+export function createClaudeSessionStatusReader(options = {}) {
+  const { configRoot } = resolveClaudeProfileRoots(options);
+  const { fetch: fetchImpl = globalThis.fetch, now = Date.now } = options;
   const cache = new Map();
   const listeners = new Set();
   let credentialIdentity = null;
@@ -160,7 +163,7 @@ export function createClaudeSessionStatusReader({ homeDir, fetch: fetchImpl = gl
     for (const [id, item] of cache) if (current.get(id) !== item.key) cache.delete(id);
     const eligible = [...new Set(localIds)].filter((id) => current.has(id)).slice(0, MAX_STATUS_ENTRIES);
     if (!eligible.length) return;
-    const token = accessToken(homeDir);
+    const token = accessToken(configRoot);
     const identity = token ? crypto.createHash("sha256").update(token).digest("hex") : null;
     if (identity !== credentialIdentity) { cache.clear(); credentialIdentity = identity; }
     if (!token) return;

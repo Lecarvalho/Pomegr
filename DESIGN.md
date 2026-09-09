@@ -118,6 +118,26 @@ components:
 
 ## Overview
 
+Settings includes a **Providers** section before **Data display** in the desktop
+app and browser.
+Compose the existing settings rows, button roles, and native Advanced disclosure:
+Claude configuration first, its optional session override inside Advanced, then
+Codex home. Show only bounded source selection and folder availability in the
+renderer; native folder and confirmation dialogs display the paths. The sole
+primary commitment is **Save and restart Pomegr**; choosing, resetting, and
+discarding remain secondary/quiet actions. Folder settings are independent of the
+header's display-preference reset. This is a feature composition of existing
+controls, not a new shared control or visual authority.
+
+The browser view shows effective provider folder roots in read-only text fields
+with no choose, default, discard, or save actions. Fields support selection and
+copying. Explain that changes require the desktop app. Missing roots show
+**Path unavailable**; temporary read failures offer **Retry**. Denied browser reads
+show **Use paired LAN access to view provider folders.** without a retry action.
+Local browsers and authenticated,
+paired LAN browsers may view these paths. This replaces the temporary synthetic web preview. Desktop path
+display remains in native dialogs.
+
 **Creative North Star: "The Measured Command Center"**
 
 Pomegr is a local-first, read-only observer that makes coding-agent activity legible without exposing the underlying conversation. The application is a calm evidence workspace: a compact branded header, persistent route rail, flat panels, one-pixel rules, and restrained semantic color give the operator a reliable scan order. The approved HTML preview in `docs/design/pomegr-ui-preview.html` is the code-led authority for this application refresh; no generated component or seed is required.

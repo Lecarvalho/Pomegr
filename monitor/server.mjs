@@ -13,6 +13,7 @@ import { createObservationRuntime } from "./observation-runtime.mjs";
 import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./request-handler.mjs";
+import { EMPTY_PROVIDER_FOLDERS } from "./provider-folders.mjs";
 import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./session-current-activity.mjs";
 import {
   closeServer,
@@ -87,6 +88,7 @@ function safeTranscriptPath(value) {
 
 export function createMonitorRuntime(options = {}) {
   const registry = options.providerRegistry || providerRegistry;
+  const providerFolders = registry.providerFolders || EMPTY_PROVIDER_FOLDERS;
   const resourceUsageSampler = options.resourceUsageSampler || createResourceUsageSampler();
   const gitReader = options.readGitState || readGitStateAsync;
   const pullRequestReader = options.readPullRequests || readPullRequests;
@@ -627,6 +629,7 @@ export function createMonitorRuntime(options = {}) {
   });
 
   return Object.freeze({
+    providerFolders: () => providerFolders,
     analyze,
     analyzeEmpty,
     sessionCatalog,

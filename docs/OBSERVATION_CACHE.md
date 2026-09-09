@@ -403,6 +403,74 @@ failure still revoke access. Newer observations and explicit revocation win over
 request checks; recovery does not reopen a stopped gateway. This changes native phone
 state only, not normalized session APIs, cache ownership, revisions, or checkpoints.
 
+### Desktop provider-folder settings
+
+`desktop/provider-settings.mjs` owns the native **Settings → Providers** action.
+Version 5 desktop settings may persist only three additional bounded absolute
+directory overrides: `claudeConfigDir`, `claudeProjectsDir`, and `codexHome`.
+Versions 1–4 migrate in memory with null overrides; invalid/future settings remain
+protected from writes. These configured roots are a private native-settings
+exception, never transcript-file paths or observation checkpoint fields.
+
+Only the trusted main desktop frame may request a fixed-key folder picker, clear
+an override, discard a draft, or request save/restart. Native dialogs own the full
+paths. IPC returns only selection (`default`, `environment`, `custom`), directory
+availability (`available`, `unavailable`), persistence/pending booleans, and fixed
+action statuses. Availability checks only directory readability; it does not
+assert that sessions exist. No HTTP or LAN action configures sources or triggers
+provider acquisition. The renderer never submits a path.
+
+The local or authenticated paired LAN browser's read-only `GET /api/provider-folders` returns only
+the three effective startup folder roots (`claudeConfigDir`, `claudeProjectsDir`,
+`codexHome`). Each value is a bounded absolute path of at most 4096 characters
+without control characters, or `null` when unavailable. This endpoint serves a
+prepared startup configuration, never acquisition, file contents, transcript-file
+paths, native drafts, or credentials. It has no mutation methods or path inputs.
+The web route requires a loopback host and same-origin request; the monitor boundary
+does not permit cross-origin browser access. The LAN gateway forwards only GETs
+without query strings or bodies after its pairing, origin, and current-network
+checks, using the trusted upstream host and authorization. The LAN-bound development
+server validates the actual peer against local interfaces and the requested host
+against the machine name, its `.local` name, or local interface addresses. It validates
+the original origin before canonicalizing a trusted request to loopback for the web
+route; forwarded headers cannot authorize remote clients. Unpaired remote development
+clients are denied. Responses are no-store, and these roots never enter ordinary normalized
+state, reports, logs, checkpoints, or browser persistence. The browser shows
+selectable read-only fields and directs folder changes to the desktop app.
+
+Selections remain native drafts until a native save/restart confirmation. Validate
+newly selected directories again after confirmation and persist through the shared
+serialized settings writer before restarting only Pomegr. Defaults remove saved
+overrides and use the launch environment or standard provider home. The restart
+passes inherited private configuration only to the new native process, never back
+into the old in-process web host's environment. Other desktop settings writes must
+preserve committed provider overrides. Choosing a folder never changes provider
+files, credentials, or running coding tools.
+
+Saved choices override matching launch environment values. Claude's effective
+configuration root supplies default projects, native registry, tasks, usage
+credentials, and plugin/native setup; a separate explicit projects root affects
+only transcript discovery. A saved Claude configuration/projects override disables
+an inherited single-file pin. Codex's home applies to history, native presence,
+plugin setup, and the account-only usage reader together. Profile changes start a
+new monitor; checkpoint source compatibility and atomic commit rules still apply.
+GETs remain cache-only, and existing committed regions retain their last known
+good revisions during reconciliation.
+
+For desktop custom Claude configuration roots, default local usage and cost
+destinations are isolated beneath their existing storage roots by an opaque digest
+of the normalized profile root. The standard profile retains its existing paths.
+Do not import an unscoped local reading into a custom profile. Explicit snapshot
+root environment overrides remain operator-owned destinations; separate profiles
+require separate overrides. The local bridge writer and monitor must use identical
+destinations. Existing recognized generated bridge commands targeting older roots
+require a separate native **Enable local usage** confirmation to rebind those
+assignments while preserving the delegate. Malformed or ambiguous bridges remain
+unavailable. Snapshot payload allowlists, observation ages, account-cache source
+fingerprints, and retry deadlines are unchanged. Snapshot destination paths and
+profile digests never enter browser state or reports; the separate settings view
+exposes only the three configured provider roots described above.
+
 ## Provider observer contract
 
 Every provider adapter must expose the observation lifecycle required by

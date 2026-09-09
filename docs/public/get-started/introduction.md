@@ -9,7 +9,8 @@ Pomegr helps you follow your coding agents at work. Open it alongside Claude Cod
 or Codex to see which sessions need attention, what each agent is doing, and how
 much context it is using.
 
-To get started, [install Pomegr](install.md) on your Windows computer.
+To get started, [install Pomegr](install.md) on your Windows computer, then
+[follow your first session](first-session.md).
 
 ## A session at a glance
 

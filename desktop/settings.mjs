@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { normalizeProviderFolders, validPersistedProviderFolders } from "./provider-settings.mjs";
 
-export const DESKTOP_SETTINGS_VERSION = 4;
+export const DESKTOP_SETTINGS_VERSION = 5;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   version: DESKTOP_SETTINGS_VERSION,
   window: Object.freeze({ width: 1280, height: 800, x: null, y: null, maximized: false }),
@@ -12,6 +13,7 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   updates: true,
   lanSharingAutoStart: false,
   displayPreferences: Object.freeze({ estimatedCost: true }),
+  providerFolders: Object.freeze({ claudeConfigDir: null, claudeProjectsDir: null, codexHome: null }),
 });
 
 function boundedInteger(value, minimum, maximum, fallback) {
@@ -37,6 +39,7 @@ function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
     && typeof value.notifications === "boolean"
     && typeof value.updates === "boolean"
     && (version < 4 || typeof value.lanSharingAutoStart === "boolean")
+    && (version < 5 || validPersistedProviderFolders(value.providerFolders))
     && (version < 3 || (displayPreferences && typeof displayPreferences === "object" && !Array.isArray(displayPreferences)
       && typeof displayPreferences.estimatedCost === "boolean")));
 }
@@ -67,6 +70,7 @@ export function normalizeDesktopSettings(input) {
     displayPreferences: {
       estimatedCost: typeof source.displayPreferences?.estimatedCost === "boolean" ? source.displayPreferences.estimatedCost : true,
     },
+    providerFolders: normalizeProviderFolders(source.providerFolders),
   };
 }
 
@@ -115,9 +119,9 @@ export function createDesktopSettingsStore(settingsFile, io = {}) {
           state = "future-version";
           return loadResult(normalizeDesktopSettings(), state, false);
         }
-        if ([1, 2, 3].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
+        if ([1, 2, 3, 4].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
           state = "loaded";
-          return loadResult(normalizeDesktopSettings({ ...parsed, lanSharingAutoStart: false }), "migrated", true);
+          return loadResult(normalizeDesktopSettings({ ...parsed, lanSharingAutoStart: parsed.version < 4 ? false : parsed.lanSharingAutoStart, providerFolders: null }), "migrated", true);
         }
         if (!isPersistedSettings(parsed)) {
           state = "invalid";

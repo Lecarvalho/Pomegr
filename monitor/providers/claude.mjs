@@ -47,6 +47,7 @@ import {
 } from "./claude-session-status.mjs";
 import { claudeRepositoryInventoryCaptureFromProviderOptions } from "./claude-repository-inventory.mjs";
 import { createClaudePluginSetupReader } from "./claude-plugin-setup.mjs";
+import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
@@ -266,11 +267,9 @@ export function createClaudeProvider(options = {}) {
   const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
-  const readRepositoryPluginSetup = createClaudePluginSetupReader({ env: environment, homeDir });
-  const projectsRoot = options.projectsRoot || environment.CLAUDE_PROJECTS_DIR || path.join(homeDir, ".claude", "projects");
+  const { configRoot, projectsRoot, registryRoot, tasksRoot } = resolveClaudeProfileRoots({ ...options, env: environment, homeDir });
+  const readRepositoryPluginSetup = createClaudePluginSetupReader({ env: environment, homeDir, configRoot });
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
-  const tasksRoot = options.tasksRoot || path.join(homeDir, ".claude", "tasks");
-  const registryRoot = options.registryRoot || path.join(homeDir, ".claude", "sessions");
   const now = options.now || (() => Date.now());
   const sessionSummaryCache = new Map();
   const sessionTitleCache = new Map();
@@ -294,7 +293,7 @@ export function createClaudeProvider(options = {}) {
     now,
     fetch: options.fetch,
     usageRequest: options.usageRequest,
-    claudeConfigDir: options.claudeConfigDir,
+    claudeConfigDir: configRoot,
     usageSnapshotsRoot: options.usageSnapshotsRoot,
     usageFeedFreshMs: options.usageFeedFreshMs,
   });
@@ -306,7 +305,7 @@ export function createClaudeProvider(options = {}) {
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
   const readTaskNotifications = createClaudeTaskNotificationReader();
-  const nativeStatus = createClaudeSessionStatusReader({ homeDir, fetch: options.fetch || globalThis.fetch, now });
+  const nativeStatus = createClaudeSessionStatusReader({ configDir: configRoot, fetch: options.fetch || globalThis.fetch, now });
 
   async function cachedSessionTitle(file, stat) {
     const identity = fileIdentity(stat);
@@ -766,6 +765,7 @@ export function createClaudeProvider(options = {}) {
         selection: { mode: "all" },
       },
     },
+    providerFolders: { claudeConfigDir: configRoot, claudeProjectsDir: projectsRoot },
     listSessions,
     readSession,
     captureRepositoryContextInventory,

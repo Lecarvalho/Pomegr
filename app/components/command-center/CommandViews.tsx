@@ -17,6 +17,7 @@ import { ProviderBadge } from "../ProviderBadge";
 import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
+import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
 export { AgentsView } from "../agents/AgentsView";
 export { RepositoryInventoryView as RepositoriesView } from "../repositories/RepositoryInventoryView";
 
@@ -210,6 +211,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const updateFilter = (value: typeof filter) => { setFilter(value); setPage(1); };
   const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;
   const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
+  const providerSettingsAvailable = useProviderSettingsAvailable();
   return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={loading && !sessions.length}>
     <div className="commandSessionsDirectory">
       <CommandToolbar>
@@ -230,6 +232,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         pagination={{ page, pageSize: SESSION_PAGE_SIZE, onPageChange: setPage, label: "Session pages" }}
         emptyState={catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
+      {!sessions.length && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
       {catalogUnavailable && sessions.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;

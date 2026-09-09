@@ -9,7 +9,8 @@
 Only explicitly selected public pages and their referenced images may enter the
 documentation website. The manifest selects the
 [introduction to Pomegr](../../public/get-started/introduction.md), followed by
-[Install Pomegr](../../public/get-started/install.md). The build-time content loader,
+[Install Pomegr](../../public/get-started/install.md) and
+[Follow your first session](../../public/get-started/first-session.md). The build-time content loader,
 renderer, search, and `check:docs` command remain unimplemented; this contract
 defines their required behavior.
 

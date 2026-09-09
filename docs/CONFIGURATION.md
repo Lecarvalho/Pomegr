@@ -29,11 +29,61 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, and launch-at-login, notification, update, and phone-sharing startup booleans. Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, launch-at-login, notification, update, and phone-sharing startup booleans, plus the three private provider-folder overrides described below. Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
 
 ## Provider setup
+
+For the first-use walkthrough, see [Follow your first session](public/get-started/first-session.md).
+The sections below cover provider-specific configuration and optional evidence.
+
+### Choose provider folders in the desktop app
+
+Open **Settings → Providers** in the installed or portable app. Under **Claude
+Code**, choose a **Configuration folder** to select the existing profile Pomegr
+observes. Default session discovery, live presence, task data, account usage,
+reconnection, and plugin setup follow that profile. Open **Advanced** only when
+you need a separate **Session folder override**. Under **Codex**, choose its
+**Home folder** for session discovery and account usage.
+
+1. Select **Choose folder…** and choose an existing readable folder in the native
+   dialog. Pomegr shows whether the folder is available; an available folder may
+   contain no sessions.
+2. Use **Use default** to remove a saved override, or **Discard changes** to undo
+   pending choices. Defaults use the launch environment, then standard locations.
+3. Select **Save and restart Pomegr**, review the actual folders in the native
+   confirmation, and confirm. Changes apply after Pomegr restarts. Running coding
+   tools keep their existing profiles; no provider files are moved or modified.
+
+Saved choices take precedence over matching environment variables. A saved Claude
+configuration or session-folder choice also disables an inherited
+`CLAUDE_SESSION_FILE` pin. Without a session-folder override, Claude sessions come
+from `projects` beneath the effective configuration folder. An explicit
+`CLAUDE_PROJECTS_DIR` environment setting remains an override until changed outside
+Pomegr or replaced by a saved session-folder choice.
+
+Folder-change controls are desktop-only. Paths appear in native dialogs and private
+desktop settings. **Restore defaults** in the Settings header resets display
+preferences only. Source-development launches
+continue to use the environment variables below.
+
+In a browser on the same computer or through paired LAN access, **Settings → Providers** shows the monitor's
+effective configuration folder, session folder, and home folder as read-only text
+fields. You can select and copy these paths, but cannot change folders or restart
+Pomegr from the browser. On the same computer, development access supports
+`localhost`, the machine name (including `.local`), and its local interface IPs.
+Other computers require the desktop app's paired LAN access; direct unpaired
+access to the development server cannot read folders. This replaces the temporary simulated preview.
+Unavailable roots remain blank with **Path unavailable**. Folder paths are not
+saved in browser storage or included in ordinary session responses or reports.
+
+Custom Claude profiles use separate default local usage and cost snapshot folders.
+Pomegr does not import older unscoped readings into a custom profile. Explicit
+`POMEGR_USAGE_SNAPSHOTS_DIR` and `POMEGR_COST_SNAPSHOTS_DIR` overrides remain
+operator-owned; use separate destinations for different profiles. The native
+**Enable local usage** action configures the selected profile's bridge to write
+to the matching destinations after confirmation.
 
 ### Claude Code
 
@@ -188,9 +238,9 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 
 | Variable | Used by | Purpose | Default |
 | --- | --- | --- | --- |
-| `CLAUDE_PROJECTS_DIR` | Monitor | Claude project/session root | `%USERPROFILE%\.claude\projects` |
+| `CLAUDE_PROJECTS_DIR` | Monitor | Claude project/session root override | `projects` beneath the effective Claude configuration folder |
 | `CLAUDE_SESSION_FILE` | Monitor | Pin one Claude primary JSONL session | Automatic selection |
-| `CLAUDE_CONFIG_DIR` | Claude usage reader and desktop integration | Claude profile for usage authentication and status-line setup | `%USERPROFILE%\.claude` |
+| `CLAUDE_CONFIG_DIR` | Claude adapter and desktop integration | Claude profile for discovery, presence, tasks, usage, sign-in, and setup | `%USERPROFILE%\.claude` |
 | `POMEGR_CLAUDE_EXECUTABLE` | Desktop sign-in action | Absolute path to the native `claude.exe` | Standard native installation, then PATH |
 | `CODEX_HOME` | Monitor | Codex sessions, archive, and index root | `%USERPROFILE%\.codex` |
 | `POMEGR_CODEX_EXECUTABLE` | Monitor | Absolute path to a supported native Codex CLI for account-only limit reads | Native CLI discovered on `PATH` or the official npm installation |

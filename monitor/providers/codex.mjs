@@ -733,6 +733,7 @@ export function createCodexProvider(options = {}) {
         },
       },
     },
+    providerFolders: { codexHome },
     readinessCapabilities: ["usageLimits"],
     async resolveReadiness() {
       let usageLimitsAvailable = Boolean(appServer);

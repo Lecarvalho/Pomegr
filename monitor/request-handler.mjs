@@ -1,4 +1,5 @@
 import { createHomeReadiness } from "./observation-readiness.mjs";
+import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 
@@ -18,6 +19,37 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
+    if (requestUrl.pathname === "/api/provider-folders") {
+      const authorized = request.headers.host === expectedHost
+        && request.headers.origin === undefined
+        && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+      response.setHeader("Cache-Control", "no-store");
+      if (!authorized) {
+        response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Unauthorized");
+        return;
+      }
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      if (requestUrl.search || Number(request.headers["content-length"] || 0) > 0 || request.headers["transfer-encoding"] !== undefined) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid provider folder request" }));
+        return;
+      }
+      let snapshot;
+      try { snapshot = runtime.providerFolders?.(); } catch { snapshot = null; }
+      const folders = snapshot?.folders || {};
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ folders: {
+        claudeConfigDir: safeProviderFolder(folders.claudeConfigDir),
+        claudeProjectsDir: safeProviderFolder(folders.claudeProjectsDir),
+        codexHome: safeProviderFolder(folders.codexHome),
+      } }));
+      return;
+    }
     const agentRequestAllowed = isAgentQuery
       && request.headers.host === expectedHost
       && request.headers.origin === undefined

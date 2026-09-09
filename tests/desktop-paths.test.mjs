@@ -100,13 +100,14 @@ test("desktop settings persist only the bounded allowlist", async () => {
   const file = path.join(root, "Data With Spaces", "settings.json");
   try {
     const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, displayPreferences: { contextHistory: false, estimatedCost: true, arbitraryPanel: false, sessionId: "PRIVATE" }, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
-    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences"]);
+    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences", "providerFolders"]);
     assert.deepEqual(normalized.displayPreferences, { estimatedCost: true });
     const store = createDesktopSettingsStore(file);
     assert.deepEqual(await store.load(), { settings: normalizeDesktopSettings(), status: "missing", canPersist: true });
     await store.save(normalized);
     const serialized = await readFile(file, "utf8");
-    assert.doesNotMatch(serialized, /SECRET|PRIVATE|oauth|provider|prompt|response|command|transcript/i);
+    assert.deepEqual(normalized.providerFolders, { claudeConfigDir: null, claudeProjectsDir: null, codexHome: null });
+    assert.doesNotMatch(serialized, /SECRET|PRIVATE|oauth|providerPath|prompt|response|command|transcript/i);
     assert.deepEqual(await store.load(), { settings: normalized, status: "loaded", canPersist: true });
   } finally {
     await rm(root, { recursive: true, force: true });

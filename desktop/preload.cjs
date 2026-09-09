@@ -16,6 +16,11 @@ window.addEventListener("DOMContentLoaded", () => {
 }, { once: true });
 
 contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
+  getProviderSettings() { return ipcRenderer.invoke("pomegr:provider-settings"); },
+  chooseProviderFolder(key) { return ipcRenderer.invoke("pomegr:choose-provider-folder", key); },
+  resetProviderFolder(key) { return ipcRenderer.invoke("pomegr:reset-provider-folder", key); },
+  discardProviderSettings() { return ipcRenderer.invoke("pomegr:discard-provider-settings"); },
+  saveProviderSettings() { return ipcRenderer.invoke("pomegr:save-provider-settings"); },
   getPhoneAccessState() { return ipcRenderer.invoke("pomegr:phone-access-state"); },
   setPhoneSharing(enabled, networkId) { return ipcRenderer.invoke("pomegr:set-phone-sharing", enabled, networkId); },
   setPhoneAutoStart(enabled) { return ipcRenderer.invoke("pomegr:set-phone-auto-start", enabled); },

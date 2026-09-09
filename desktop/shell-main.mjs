@@ -41,6 +41,7 @@ import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
   createNeedsInputNotificationController,
@@ -109,6 +110,8 @@ let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
 let removePhoneAccessIpc;
+let providerSettingsController;
+let removeProviderSettingsIpc;
 const nativeNotifications = new Set();
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
@@ -410,6 +413,9 @@ async function stopRuntime() {
   runtimeState = "stopping";
   recordStage("SHELL_CLEANUP_STARTED");
   stopPromise = (async () => {
+    removeProviderSettingsIpc?.();
+    removeProviderSettingsIpc = undefined;
+    providerSettingsController?.dispose();
     removePhoneAccessIpc?.();
     removePhoneAccessIpc = undefined;
     try { await withDeadline(phoneAccess?.dispose(), STOP_TIMEOUT_MS, "DESKTOP_PHONE_STOP_TIMEOUT"); } catch { /* Other services still stop. */ }
@@ -462,35 +468,64 @@ async function handleRuntimeFailure() {
 }
 
 async function startDesktop() {
-  claudeSignIn = createClaudeSignInAction({
-    environment: process.env,
-    nativeEnvironment: nativeClaudeEnvironment(process.env),
-    confirm: confirmClaudeSignIn,
-  });
-  repositoryPluginCli = createRepositoryPluginCli({ environment: process.env });
   desktopPaths = resolveDesktopPaths({
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
     userDataPath: app.getPath("userData"),
     environment: process.env,
   });
-  const bridgePath = path.join(desktopPaths.unpackedRoot, "desktop", "workers", "claude-statusline-bridge.cjs");
-  const usageShells = process.platform === "win32" ? resolveClaudeUsageShells(process.env) : null;
-  claudeUsageIntegration = createClaudeUsageIntegration(desktopPaths.mode === "installed" && usageShells && existsSync(bridgePath) ? {
-    configRoot: environmentValue(process.env, "CLAUDE_CONFIG_DIR") || path.join(app.getPath("home"), ".claude"),
-    appExecutable: process.execPath,
-    bridgePath,
-    dataRoot: desktopPaths.dataRoot,
-    feedRoot: environmentValue(process.env, "POMEGR_USAGE_SNAPSHOTS_DIR") || path.join(desktopPaths.dataRoot, "usage-snapshots"),
-    ...usageShells,
-    confirm: confirmClaudeUsageSetup,
-  } : {});
   recordStage("SHELL_PATHS_READY");
   settingsStore = createDesktopSettingsStore(desktopPaths.settingsFile);
   settingsLoad = await settingsStore.load();
   desktopSettings = settingsLoad.settings;
   settingsWriter = createSerializedSettingsWriter(desktopSettings, (next) => settingsStore.save(next));
   recordStage("SHELL_SETTINGS_READY");
+  // Keep the launch configuration private so Use default and a native restart
+  // retain inherited overrides after the web runtime strips process.env.
+  const launchEnvironment = { ...monitorPrivateEnvironment(process.env), PATH: environmentValue(process.env, "PATH") || "" };
+  for (const key of ["PORTABLE_EXECUTABLE_DIR", "PORTABLE_EXECUTABLE_FILE"]) {
+    const value = environmentValue(process.env, key);
+    if (value) launchEnvironment[key] = value;
+  }
+  const providerEnvironment = providerSettingsEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
+  claudeSignIn = createClaudeSignInAction({
+    environment: providerEnvironment,
+    nativeEnvironment: nativeClaudeEnvironment(providerEnvironment),
+    confirm: confirmClaudeSignIn,
+  });
+  repositoryPluginCli = createRepositoryPluginCli({ environment: providerEnvironment });
+  providerSettingsController = createProviderSettingsController({
+    folders: desktopSettings.providerFolders,
+    environment: launchEnvironment,
+    homeDir: app.getPath("home"),
+    canPersist: settingsLoad.canPersist,
+    chooseDirectory: (options) => dialog.showOpenDialog(mainWindow, options),
+    confirm: async (options) => (await dialog.showMessageBox(mainWindow, options)).response === 1,
+    persist: (providerFolders) => queueSettingsUpdate((current) => ({ ...current, providerFolders })),
+    restart: async () => {
+      persistCurrentWindowState();
+      try {
+        await restartProviderSettingsApp({ application: app, stopRuntime,
+          environment: { ...minimalRuntimeEnvironment(process.env), ...launchEnvironment },
+          executable: launchEnvironment.PORTABLE_EXECUTABLE_FILE || process.execPath });
+      } catch {
+        await showStartupError();
+        throw new Error("DESKTOP_RESTART_FAILED");
+      }
+    },
+  });
+  const bridgePath = path.join(desktopPaths.unpackedRoot, "desktop", "workers", "claude-statusline-bridge.cjs");
+  const usageShells = process.platform === "win32" ? resolveClaudeUsageShells(process.env) : null;
+  claudeUsageIntegration = createClaudeUsageIntegration(desktopPaths.mode === "installed" && usageShells && existsSync(bridgePath) ? {
+    configRoot: providerEnvironment.CLAUDE_CONFIG_DIR,
+    appExecutable: process.execPath,
+    bridgePath,
+    dataRoot: desktopPaths.dataRoot,
+    feedRoot: environmentValue(providerEnvironment, "POMEGR_USAGE_SNAPSHOTS_DIR") || path.join(desktopPaths.dataRoot, "usage-snapshots"),
+    costRoot: environmentValue(providerEnvironment, "POMEGR_COST_SNAPSHOTS_DIR") || path.join(desktopPaths.dataRoot, "cost-snapshots"),
+    ...usageShells,
+    confirm: confirmClaudeUsageSetup,
+  } : {});
   ipcMain.removeHandler(DESKTOP_REPORT_CHANNEL);
   ipcMain.handle(DESKTOP_REPORT_CHANNEL, createReportSaveHandler({
     defaultDirectory: app.getPath("documents"),
@@ -498,7 +533,7 @@ async function startDesktop() {
     showSaveDialog: (options) => dialog.showSaveDialog(mainWindow, options),
     writeFile,
   }));
-  let privateEnvironment = monitorPrivateEnvironment(process.env, {
+  let privateEnvironment = monitorPrivateEnvironment(providerEnvironment, {
     pomegrDataRoot: desktopPaths.dataRoot,
   });
   runtimeState = "starting";
@@ -580,7 +615,7 @@ async function startDesktop() {
           settings: desktopSettings,
           canPersist: settingsLoad.canPersist,
           launchAtLoginAvailable: desktopPaths.mode === "installed",
-          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window, lanSharingAutoStart: current.lanSharingAutoStart })),
+          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window, lanSharingAutoStart: current.lanSharingAutoStart, providerFolders: current.providerFolders })),
           setLoginItem: async (openAtLogin) => app.setLoginItemSettings({ openAtLogin, path: process.execPath, args: [] }),
           hideWindow: () => mainWindow?.hide(),
           showWindow: showShellWindow,
@@ -620,6 +655,7 @@ async function startDesktop() {
         removePhoneAccessIpc = installPhoneAccessIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, controller: phoneAccess });
         startOptionalTray();
         installDesktopBehaviorIpc();
+        removeProviderSettingsIpc = installProviderSettingsIpc({ ipcMain, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame, controller: providerSettingsController });
         installClaudeSignInIpc();
         removeClaudeUsageIpc = installClaudeUsageIntegrationIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, integration: claudeUsageIntegration });
         removeRepositoryInventoryIpc = installRepositoryInventoryCaptureIpc({

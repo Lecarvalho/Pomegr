@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "../desktop/lan-sharing.mjs";
-import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/settings.mjs";
+import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings } from "../desktop/settings.mjs";
 
 const home = { id: "lan-home", address: "192.168.1.20", subnetMask: "255.255.255.0", label: "Wi-Fi" };
 const other = { id: "lan-other", address: "192.168.2.20", subnetMask: "255.255.255.0", label: "Ethernet" };
@@ -247,7 +247,7 @@ test("version-three migration cannot activate LAN sharing from an unknown legacy
   const store = createDesktopSettingsStore("C:\\Pomegr\\settings.json", { readFile: async () => JSON.stringify(legacy) });
   const loaded = await store.load();
   assert.equal(loaded.status, "migrated");
-  assert.equal(loaded.settings.version, 4);
+  assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.equal(loaded.settings.lanSharingAutoStart, false);
   assert.doesNotMatch(JSON.stringify(loaded), /PRIVATE|pairingToken/);
 });

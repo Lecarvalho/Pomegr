@@ -23,15 +23,15 @@ async function close(server) {
   if (server.listening) await new Promise((resolve) => server.close(resolve));
 }
 
-function requestStatus(origin, { path = "/", headers = {} } = {}) {
+function requestStatus(origin, { path = "/", method = "GET", headers = {}, body } = {}) {
   const url = new URL(origin);
   return new Promise((resolve, reject) => {
-    const request = http.request({ hostname: url.hostname, port: url.port, path, headers, agent: false }, (response) => {
+    const request = http.request({ hostname: url.hostname, port: url.port, path, method, headers, agent: false }, (response) => {
       response.resume();
       response.once("end", () => resolve(response.statusCode));
     });
     request.once("error", reject);
-    request.end();
+    request.end(body);
   });
 }
 
@@ -97,6 +97,7 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     const cookie = redeemed.headers.get("set-cookie").split(";", 1)[0];
 
     assert.equal((await fetch(`${gateway.origin}/api/state`)).status, 401);
+    assert.equal((await fetch(`${gateway.origin}/api/provider-folders`)).status, 401);
     const redirect = await fetch(gateway.origin, { redirect: "manual" });
     assert.equal(redirect.status, 302);
     assert.equal(redirect.headers.get("location"), "/__pomegr/pair");
@@ -106,6 +107,22 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     const access = await fetch(`${gateway.origin}/api/client-access`, { headers: { Cookie: cookie } });
     assert.deepEqual(await access.json(), { mode: "lan", canCopyTranscriptPath: false });
     assert.equal(access.headers.get("cache-control"), "no-store");
+    const providerFolders = await fetch(`${gateway.origin}/api/provider-folders`, {
+      headers: { Cookie: cookie, "x-pomegr-desktop-authorization": "client-value" },
+    });
+    assert.equal(providerFolders.status, 200);
+    assert.deepEqual(await providerFolders.json(), { local: true });
+    assert.equal(observed.at(-1).url, "/api/provider-folders");
+    assert.equal(observed.at(-1).headers.host, new URL(upstreamOrigin).host);
+    assert.equal(observed.at(-1).headers["x-pomegr-desktop-authorization"], AUTHORIZATION);
+    assert.equal(observed.at(-1).headers.cookie, undefined);
+    assert.equal((await fetch(`${gateway.origin}/api/provider-folders?source=client`, { headers: { Cookie: cookie } })).status, 403);
+    assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { method: "POST", headers: { Cookie: cookie } })).status, 405);
+    assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { method: "HEAD", headers: { Cookie: cookie } })).status, 405);
+    assert.equal(await requestStatus(gateway.origin, {
+      path: "/api/provider-folders", headers: { Cookie: cookie, "Content-Length": "1" }, body: "x",
+    }), 403);
+    assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { headers: { Origin: "http://127.0.0.1:1", Cookie: cookie } })).status, 403);
     assert.equal((await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie, Origin: "http://127.0.0.1:1" } })).status, 403);
 
     await pair(gateway);
@@ -177,6 +194,7 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal(gateway.snapshot().pairedClients, 0);
     // Revocation destroys pooled sockets. Verify access with a fresh connection.
     assert.equal(await requestStatus(gateway.origin, { path: "/api/state", headers: { Cookie: cookie } }), 403);
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/provider-folders", headers: { Cookie: cookie } }), 403);
   } finally {
     await gateway.close();
     await close(upstream);

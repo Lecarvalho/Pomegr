@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 /** @typedef {import("../../shared/monitor-contract").ProviderId} ProviderId */
 /** @typedef {import("../../shared/monitor-contract").ProviderSource} ProviderSource */
@@ -69,6 +70,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "unavailableMessage",
   "qaStats",
   "watchTargets",
+  "providerFolders",
   "createObserver",
 ]);
 
@@ -90,6 +92,33 @@ const limitationCodeSet = new Set(PROVIDER_LIMITATION_CODES);
 const providerObservationApiKeySet = new Set(PROVIDER_OBSERVATION_API_KEYS);
 const providerObservationInvalidationReasonSet = new Set(PROVIDER_OBSERVATION_INVALIDATION_REASONS);
 const SAFE_LOCAL_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const PROVIDER_FOLDER_KEYS = Object.freeze({
+  claude: Object.freeze(["claudeConfigDir", "claudeProjectsDir"]),
+  codex: Object.freeze(["codexHome"]),
+});
+
+/** @param {unknown} value */
+function normalizedProviderFolder(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 4_096
+    || /[\u0000-\u001f\u007f]/u.test(value) || !path.isAbsolute(value)) return null;
+  return path.normalize(value);
+}
+
+/** @param {ProviderId} providerId @param {unknown} value */
+function createProviderFolders(providerId, value) {
+  const expected = /** @type {readonly string[]} */ (PROVIDER_FOLDER_KEYS[providerId]);
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== expected.length || expected.some((key) => !Object.hasOwn(value, key))) {
+    throw new TypeError(`Provider ${providerId} folders must contain only its configured roots`);
+  }
+  const folders = /** @type {Record<string, unknown>} */ (value);
+  const entries = expected.map((key) => {
+    const folder = normalizedProviderFolder(folders[key]);
+    return [key, folder];
+  });
+  return Object.freeze(Object.fromEntries(entries));
+}
 
 /** @param {unknown} value @returns {value is ProviderId} */
 export function isProviderId(value) {
@@ -690,6 +719,7 @@ export function defineProvider(adapter) {
     })
     : createProviderHomePolicy(adapter.homePolicy);
   const watchTargets = adapter.watchTargets ? Object.freeze([...adapter.watchTargets]) : undefined;
+  const providerFolders = createProviderFolders(adapter.id, adapter.providerFolders);
   return Object.freeze({
     ...adapter,
     capabilityManifest,
@@ -697,5 +727,6 @@ export function defineProvider(adapter) {
     homePolicy,
     capabilities: capabilitiesFromManifest(capabilityManifest),
     ...(watchTargets ? { watchTargets } : {}),
+    ...(providerFolders ? { providerFolders } : {}),
   });
 }

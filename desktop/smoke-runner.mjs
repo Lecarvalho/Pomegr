@@ -37,6 +37,7 @@ const desktopFiles = [
   "runtime-proof.mjs",
   "security-policy.mjs",
   "settings.mjs",
+  "provider-settings.mjs",
   "shell-orchestrator.mjs",
   "shell-main.mjs",
   "smoke-main.mjs",

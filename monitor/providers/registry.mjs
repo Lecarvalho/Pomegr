@@ -1,4 +1,5 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
+import { createProviderFoldersSnapshot } from "../provider-folders.mjs";
 import { createPipelineFailureRecorder } from "../pipeline-operations-failures.mjs";
 import {
   assertProviderConformance,
@@ -108,6 +109,7 @@ export function createProviderRegistry(adapters, options = {}) {
     throw new TypeError("Provider registry requires at least one adapter");
   }
   const providers = Object.freeze([...adapters]);
+  const providerFolders = createProviderFoldersSnapshot(providers);
   const providersById = new Map();
   const diagnosticCategories = Object.freeze([
     "catalogReadFailures",
@@ -330,6 +332,7 @@ export function createProviderRegistry(adapters, options = {}) {
 
   return Object.freeze({
     providers,
+    providerFolders,
     defaultProvider: providers[0],
 
     // Public service observation is independent of account authentication and discovery.

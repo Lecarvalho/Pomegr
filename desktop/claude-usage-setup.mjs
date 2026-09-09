@@ -28,6 +28,8 @@ const MAX_SETTINGS_BYTES = 256 * 1024;
 const MAX_COMMAND_BYTES = 32 * 1024;
 const MANAGED_MARKER = "POMEGR_CLAUDE_USAGE_BRIDGE='v1'";
 const POWERSHELL_PREFIX = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ";
+const MANAGED_SCRIPT_PREFIX = `$env:ELECTRON_RUN_AS_NODE='1';$env:${MANAGED_MARKER};`;
+const POWERSHELL_LITERAL_PATTERN = "'(?:[^']|'')*'";
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -102,14 +104,78 @@ function decodeManagedCommand(command) {
   const encoded = command.slice(POWERSHELL_PREFIX.length);
   if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || encoded.length > MAX_COMMAND_BYTES * 4) return null;
   try {
-    const script = Buffer.from(encoded, "base64").toString("utf16le");
-    return script.includes(MANAGED_MARKER) ? script : null;
+    const bytes = Buffer.from(encoded, "base64");
+    if (bytes.length === 0 || bytes.length > MAX_COMMAND_BYTES || bytes.length % 2 !== 0) return null;
+    return bytes.toString("utf16le");
   } catch {
     return null;
   }
 }
 
-function inspectSettings(bytes) {
+function escapePattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+const MANAGED_SCRIPT_PATTERN = new RegExp(
+  `^${escapePattern(MANAGED_SCRIPT_PREFIX)}`
+  + `\\$env:POMEGR_USAGE_SNAPSHOTS_DIR=(${POWERSHELL_LITERAL_PATTERN});`
+  + `\\$env:POMEGR_COST_SNAPSHOTS_DIR=(${POWERSHELL_LITERAL_PATTERN});`
+  + `\\$env:POMEGR_DATA_DIR=(${POWERSHELL_LITERAL_PATTERN});`
+  + `${escapePattern("$utf8=New-Object System.Text.UTF8Encoding($false);[Console]::OutputEncoding=$utf8;$OutputEncoding=$utf8;$inputStream=[Console]::OpenStandardInput();$child=New-Object System.Diagnostics.Process;$child.StartInfo.FileName=")}`
+  + `(${POWERSHELL_LITERAL_PATTERN});`
+  + `${escapePattern("$child.StartInfo.Arguments=")}`
+  + `(${POWERSHELL_LITERAL_PATTERN});`
+  + `${escapePattern("$child.StartInfo.UseShellExecute=$false;$child.StartInfo.RedirectStandardInput=$true;$child.StartInfo.RedirectStandardOutput=$true;$child.StartInfo.RedirectStandardError=$true;if(-not $child.Start()){exit 1};$stdoutTask=$child.StandardOutput.BaseStream.CopyToAsync([Console]::OpenStandardOutput());$stderrTask=$child.StandardError.BaseStream.CopyToAsync([Console]::OpenStandardError());$inputStream.CopyTo($child.StandardInput.BaseStream);$child.StandardInput.Close();$child.WaitForExit();[void]$stdoutTask.GetAwaiter().GetResult();[void]$stderrTask.GetAwaiter().GetResult();exit $child.ExitCode")}$`,
+  "u",
+);
+
+function powerShellLiteralValue(value) {
+  if (typeof value !== "string" || !new RegExp(`^${POWERSHELL_LITERAL_PATTERN}$`, "u").test(value)) return null;
+  return value.slice(1, -1).replaceAll("''", "'");
+}
+
+function managedRootsPrefix({ feedRoot, costRoot, dataRoot }) {
+  return `${MANAGED_SCRIPT_PREFIX}$env:POMEGR_USAGE_SNAPSHOTS_DIR=${powershellLiteral(feedRoot)};`
+    + `$env:POMEGR_COST_SNAPSHOTS_DIR=${powershellLiteral(costRoot)};`
+    + `$env:POMEGR_DATA_DIR=${powershellLiteral(dataRoot)};`;
+}
+
+function sameManagedPath(left, right) {
+  if (!safeAbsolutePath(left) || !safeAbsolutePath(right)) return false;
+  if (path.win32.isAbsolute(left) || path.win32.isAbsolute(right)) {
+    return path.win32.normalize(left).toLowerCase() === path.win32.normalize(right).toLowerCase();
+  }
+  return path.resolve(left) === path.resolve(right);
+}
+
+// The status-line command is never run while inspecting it. A managed command is
+// recognized only when its complete decoded bridge skeleton has one bounded set of
+// generated root assignments. A marker alone is deliberately insufficient.
+function inspectManagedCommand(command, configured) {
+  const script = decodeManagedCommand(command);
+  if (!script || !script.includes(MANAGED_MARKER)) return null;
+  const match = MANAGED_SCRIPT_PATTERN.exec(script);
+  if (!match) return { state: "unavailable" };
+  const [feedRoot, costRoot, dataRoot] = match.slice(1, 4).map(powerShellLiteralValue);
+  const appExecutable = powerShellLiteralValue(match[4]);
+  const argumentsLine = powerShellLiteralValue(match[5]);
+  const bridgeArgument = configured && windowsArgument(configured.bridgePath);
+  if (!feedRoot || !costRoot || !dataRoot || !appExecutable || !argumentsLine
+    || !sameManagedPath(appExecutable, configured?.appExecutable)
+    || !bridgeArgument || (argumentsLine !== bridgeArgument && !argumentsLine.startsWith(`${bridgeArgument} `))) {
+    return { state: "unavailable" };
+  }
+  const prefix = managedRootsPrefix({ feedRoot, costRoot, dataRoot });
+  if (!script.startsWith(prefix)) return { state: "unavailable" };
+  return { state: "managed", script, prefix, feedRoot, costRoot, dataRoot };
+}
+
+function rebindManagedCommand(managed, configured) {
+  if (managed?.state !== "managed") return null;
+  return `${POWERSHELL_PREFIX}${encodePowerShell(`${managedRootsPrefix(configured)}${managed.script.slice(managed.prefix.length)}`)}`;
+}
+
+function inspectSettings(bytes, configured) {
   if (!Buffer.isBuffer(bytes) || bytes.length > MAX_SETTINGS_BYTES) return { state: "unavailable" };
   let settings;
   try { settings = JSON.parse(bytes.toString("utf8")); } catch { return { state: "unavailable" }; }
@@ -119,11 +185,16 @@ function inspectSettings(bytes) {
   if (!isRecord(statusLine) || statusLine.type !== "command" || !isSafeValue(statusLine.command)) {
     return { state: "unavailable" };
   }
-  return {
-    state: decodeManagedCommand(statusLine.command) ? "enabled" : "disabled",
-    settings,
-    command: statusLine.command,
-  };
+  const managed = inspectManagedCommand(statusLine.command, configured);
+  if (managed?.state === "unavailable") return { state: "unavailable" };
+  if (managed?.state === "managed") {
+    const rootsMatch = configured
+      && sameManagedPath(managed.feedRoot, configured.feedRoot)
+      && sameManagedPath(managed.costRoot, configured.costRoot)
+      && sameManagedPath(managed.dataRoot, configured.dataRoot);
+    return { state: rootsMatch ? "enabled" : "disabled", settings, command: statusLine.command, managed };
+  }
+  return { state: "disabled", settings, command: statusLine.command, managed: null };
 }
 
 async function regularDirectory(directory) {
@@ -152,13 +223,13 @@ function sameSnapshot(before, after) {
   return before.kind === after.kind && (before.kind !== "present" || before.bytes.equals(after.bytes));
 }
 
-function managedCommand({ appExecutable, bridgePath, dataRoot, feedRoot, delegate }) {
+function managedCommand({ appExecutable, bridgePath, dataRoot, feedRoot, costRoot = path.join(dataRoot, "cost-snapshots"), delegate }) {
   const argumentsLine = [bridgePath, ...delegate].map(windowsArgument).join(" ");
   const script = [
     "$env:ELECTRON_RUN_AS_NODE='1'",
     `$env:${MANAGED_MARKER}`,
     `$env:POMEGR_USAGE_SNAPSHOTS_DIR=${powershellLiteral(feedRoot)}`,
-    `$env:POMEGR_COST_SNAPSHOTS_DIR=${powershellLiteral(path.join(dataRoot, "cost-snapshots"))}`,
+    `$env:POMEGR_COST_SNAPSHOTS_DIR=${powershellLiteral(costRoot)}`,
     `$env:POMEGR_DATA_DIR=${powershellLiteral(dataRoot)}`,
     "$utf8=New-Object System.Text.UTF8Encoding($false)",
     "[Console]::OutputEncoding=$utf8",
@@ -190,11 +261,12 @@ function validOptions(options) {
   const bridgePath = safeAbsolutePath(options.bridgePath);
   const dataRoot = safeAbsolutePath(options.dataRoot);
   const feedRoot = safeAbsolutePath(options.feedRoot || (dataRoot && path.join(dataRoot, "usage-snapshots")));
+  const costRoot = safeAbsolutePath(options.costRoot || (dataRoot && path.join(dataRoot, "cost-snapshots")));
   const powershellExecutable = safeAbsolutePath(options.powershellExecutable);
   const gitBashExecutable = options.gitBashExecutable == null ? null : safeAbsolutePath(options.gitBashExecutable);
-  if (!configRoot || !appExecutable || !bridgePath || !dataRoot || !feedRoot || !powershellExecutable
+  if (!configRoot || !appExecutable || !bridgePath || !dataRoot || !feedRoot || !costRoot || !powershellExecutable
     || (options.gitBashExecutable != null && !gitBashExecutable)) return null;
-  return { configRoot, appExecutable, bridgePath, dataRoot, feedRoot, powershellExecutable, gitBashExecutable };
+  return { configRoot, appExecutable, bridgePath, dataRoot, feedRoot, costRoot, powershellExecutable, gitBashExecutable };
 }
 
 function delegateArguments(configured, command) {
@@ -215,7 +287,7 @@ export function createClaudeUsageIntegration(options = {}) {
     const snapshot = await readSettingsFile(path.join(configured.configRoot, "settings.json"));
     if (snapshot.kind === "unavailable") return { status: "unavailable" };
     if (snapshot.kind === "missing") return { status: "disabled" };
-    return { status: inspectSettings(snapshot.bytes).state };
+    return { status: inspectSettings(snapshot.bytes, configured).state };
   }
 
   async function enable() {
@@ -230,7 +302,7 @@ export function createClaudeUsageIntegration(options = {}) {
       if (before.kind === "unavailable") return { status: "unavailable" };
       const inspected = before.kind === "missing"
         ? { state: "disabled", settings: {}, command: null }
-        : inspectSettings(before.bytes);
+        : inspectSettings(before.bytes, configured);
       if (inspected.state === "unavailable") return { status: "unavailable" };
       if (inspected.state === "enabled") return { status: "enabled" };
       const next = {
@@ -238,7 +310,9 @@ export function createClaudeUsageIntegration(options = {}) {
         statusLine: {
           ...inspected.settings.statusLine,
           type: "command",
-          command: managedCommand({ ...configured, delegate: delegateArguments(configured, inspected.command) }),
+          command: inspected.managed
+            ? rebindManagedCommand(inspected.managed, configured)
+            : managedCommand({ ...configured, delegate: delegateArguments(configured, inspected.command) }),
         },
       };
       if (!isSafeValue(next.statusLine.command)) return { status: "unavailable" };

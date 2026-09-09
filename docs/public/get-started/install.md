@@ -51,8 +51,8 @@ the two options:
 The portable dashboard observes the same local session sources as the installed
 app. Provider session files stay in their original locations.
 
-Read the [introduction to Pomegr](introduction.md) for a tour of the dashboard and
-the evidence it displays.
+Next, [follow your first session](first-session.md) to find local work and open
+its dashboard.
 
 ## Keep Pomegr up to date
 
