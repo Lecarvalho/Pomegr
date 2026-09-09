@@ -22,6 +22,14 @@ document and `AGENTS.md` govern repository changes.
   known-good revision.
 - Raw provider records and provider-native schemas remain adapter-private. Shared monitor
   state, checkpoints, APIs, and React components remain provider-neutral.
+- Session projection may derive the bounded `Agent.customType` display label from
+  already-committed type evidence when the resolved role is `unknown`, under the
+  [agent role rules](METRICS.md#agent-roles). Individual agent-query and analytics
+  rows may carry the same validated label; aggregation remains keyed by role.
+  Checkpoints retain the existing evidence schema and rederive the label after
+  restore. This adds no acquisition to GETs and does not alter revision, readiness,
+  or last-known-good retention semantics. Full provider kinds and mapping contents
+  remain private.
 - UI regions become ready independently. A skeleton represents only a region that has no
   committed value and is still loading; it never replaces already-rendered data.
 - Provider/account usage limits and local session/request correlation are separate cached
@@ -70,6 +78,44 @@ Use these names in code, tests, diagnostics, and architecture discussions:
 U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream consumers of
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
+
+### Messages and summaries in Recent activity
+
+U2 emits **Assistant replied** only for recognized assistant text records and
+**Summary updated** for Claude Code's native `system/away_summary` records.
+Reasoning, tool calls/results, synthetic messages, compaction summaries, and
+user-authored lookalikes do not establish these events. An assistant reply does
+not require usage data; a summary update never becomes a request snapshot.
+
+Events carry only a bounded opaque ID, original provider timestamp, normalized
+actor label (`System` for a summary), fixed event label, existing `report` work
+kind, empty detail, and null failure status. No message/summary text or native
+request/record identity enters the activity feed or its checkpoint. Provider
+summary text remains governed by the separate session-summary contract.
+Repeated fragments of the same assistant message collapse to one event at the
+latest recorded text timestamp; distinct message identities remain separate.
+
+Claude retains these normalized events in the same incremental per-source reader
+as system task deliveries below, independently of raw acquisition tails, and
+bounds the merged session activity to the newest 256 entries. Complete replay
+recovers retained events after restart. Partial, malformed, or unavailable
+replacement sources preserve the last complete observation. The normalization
+revision invalidates older checkpoints without requiring transcript growth.
+C/P use the existing activity schema; D includes these events in recent activity
+without adding tool calls, token usage, efficiency signals, or request timestamps.
+GETs remain cache-only and UI polling is unchanged.
+
+Codex recognizes assistant message items and delivered rollout message events.
+Native message identity joins streamed and canonical copies; rollout timestamps
+take precedence. Without identity, only an immediately adjacent event/response
+pair with matching text and phase qualifies as a mirror. Intervening records
+break that comparison. Fallback event IDs include the original timestamp so
+separate identical replies survive incremental reads. The existing 24-record
+lookbehind preserves an adjacent pair split across observations. Canonical final
+replies may use their native turn-completion time; filesystem and observation
+times never substitute for missing delivery evidence. At most 256 replies per
+parsed source and 4,096 merged activity events survive the existing Codex
+observation/checkpoint pipeline. Codex has no equivalent away-summary event.
 
 ### System task notifications in Recent activity
 
@@ -309,6 +355,22 @@ renderer may additionally include only the bounded latest `model` and `effort` a
 present in committed normalized agent state. Missing values remain unavailable; service
 tier, routing, model history, and provider-native runtime payloads remain excluded.
 Report-local task selection consumes already normalized per-agent task feeds.
+
+## Synthetic records and cache comparison
+
+Claude U2 distinguishes recognized synthetic assistant records from requests with
+invalid usage. Synthetic records create no usage snapshot and preserve the previous
+comparable request; real missing or malformed usage remains a comparison boundary.
+Compactions and model changes still prevent attribution. The exact recognition and
+metric semantics are defined in [Metrics](METRICS.md#context-usage).
+
+The Claude source fingerprint includes normalization revision `conversation-activity-v3`.
+Background hydration replays unchanged sources whose checkpoints predate this revision,
+then C replaces the evidence atomically after complete validation. Last-known-good
+evidence remains available while replay is pending or fails; subsequent unchanged
+observations do not churn revisions. Checkpoint schema version 1, original observation
+timestamps, cache-only GETs, readiness, UI polling, and privacy filtering are unchanged.
+Synthetic markers and raw usage never enter browser state or checkpoint fields.
 
 ## Cache-lifetime policy normalization
 

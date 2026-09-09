@@ -8,7 +8,7 @@ import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
-import { mergeCodexToolCalls, parseCodexCanonicalTurns, parseCodexActivityRecords } from "./codex-activity-events.mjs";
+import { mergeCodexActivityEvents, mergeCodexToolCalls, parseCodexAssistantReplyRecords, parseCodexCanonicalActivityEvents, parseCodexCanonicalTurns, parseCodexActivityRecords } from "./codex-activity-events.mjs";
 import {
   mergeCodexExecutionTasks,
   parseCodexCanonicalExecutionTasks,
@@ -298,13 +298,7 @@ export function createCodexProvider(options = {}) {
   }
 
   async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
-    const unavailable = {
-      available: false,
-      toolCalls: [],
-      executionTasks: [],
-      skills: [],
-      pullRequestCreations: [],
-    };
+    const unavailable = { available: false, toolCalls: [], activity: [], executionTasks: [], skills: [], pullRequestCreations: [] };
     if (!appServer) return unavailable;
     try {
       const response = await appServerCall("thread/read", { threadId, includeTurns: true });
@@ -313,6 +307,7 @@ export function createCodexProvider(options = {}) {
       return {
         available: true,
         toolCalls: parseCodexCanonicalTurns(thread.turns, { actor, fallbackTimestamp }),
+        activity: parseCodexCanonicalActivityEvents(thread.turns, { actor }),
         executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
         skills: parseCodexCanonicalSkillUsage(thread.turns),
         pullRequestCreations: parseCodexCanonicalPullRequests(thread.turns, {
@@ -478,6 +473,7 @@ export function createCodexProvider(options = {}) {
     ]));
     const rolloutTasksByActor = new Map();
     const rolloutActivityByActor = new Map();
+    const rolloutReplies = [];
     const rolloutSignalsByActor = new Map();
     const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
@@ -566,6 +562,7 @@ export function createCodexProvider(options = {}) {
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
+      rolloutReplies.push(...parseCodexAssistantReplyRecords(records, { actor, sourceKey: thread.localId }));
       if (!historical && generation) {
         liveCurrentActivityCache.delete(thread.rolloutFile);
         liveCurrentActivityCache.set(thread.rolloutFile, {
@@ -606,6 +603,7 @@ export function createCodexProvider(options = {}) {
       readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
     )));
     const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies]);
     const callsByActor = new Map();
     for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
     const canonicalTasksByActor = new Map(
@@ -672,7 +670,7 @@ export function createCodexProvider(options = {}) {
       workflows: [],
       usageSnapshots,
       toolCalls,
-      activity: [],
+      activity,
       planTasks: approvalPlan.planTasks,
       compactions,
       efficiencyRuleEvidence: {
@@ -778,7 +776,7 @@ export function createCodexProvider(options = {}) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
           thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
-        return createHash("sha256").update(JSON.stringify([catalogEntry?.isLive, states])).digest("hex");
+        return createHash("sha256").update(JSON.stringify(["codex-activity-v1", catalogEntry?.isLive, states])).digest("hex");
       },
     }),
     readTranscriptPath,

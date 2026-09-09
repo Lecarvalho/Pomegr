@@ -20,7 +20,20 @@ classification is separate from agent/task status and agent-reported progress.
 
 ## Agent roles
 
-`Agent.role` is a bounded display enum: `orchestrator`, `explore`, `plan`, `builder`, `reviewer`, `tester`, `researcher`, `general-purpose`, `workflow-worker`, `fork`, `compaction`, or `unknown`. The monitor resolves it from primary-agent identity, a valid repository mapping, built-in exact types, ordered keyword matches, and finally verified workflow association. Keyword matches use this deterministic order: review/audit/critic/judge/lint; test/qa/spec/verify; explore/search/locate/investigate/discover/scan/map; plan/design/architect; research/docs/guide/study; then build/implement/edit/fix/migrate/refactor/apply/transform/synthesize/writer. Provider-native kinds and mapping contents remain monitor-private; the browser and reports never reinterpret them.
+`Agent.role` is a bounded display enum: `orchestrator`, `explore`, `plan`, `builder`, `reviewer`, `tester`, `researcher`, `general-purpose`, `workflow-worker`, `fork`, `compaction`, or `unknown`. The monitor resolves it from primary-agent identity, a valid repository mapping, built-in exact types, ordered keyword matches, and finally verified workflow association. Keyword matches use this deterministic order: review/audit/critic/judge/lint; test/qa/spec/verify; explore/search/locate/investigate/discover/scan/map; plan/design/architect; research/docs/guide/study; then build/implement/edit/fix/migrate/refactor/apply/transform/synthesize/writer. Full provider-native kinds and mapping contents remain monitor-private; the browser and reports never reinterpret them.
+
+When the resolved role is `unknown`, the monitor may expose `Agent.customType`
+for display as `custom: <type>`. This value comes from the recorded type, never
+the assignment, prompt, or observed work. The entire source must be at most 64
+ASCII characters, with letter-led identifier segments containing only letters,
+digits, `_`, or `-`, optionally separated by `:` namespaces. The displayed value
+is the terminal segment, lowercased with underscores and repeated hyphens folded
+to `-` and trailing hyphens removed. Paths, prose, markup, controls, and oversized
+inputs are rejected rather than truncated. Empty values and the placeholders
+`unknown`, `unavailable`, `none`, and `null` remain unavailable. Known roles have
+no custom label. Role filters, aggregate statistics, glyphs, and generated reports
+continue to use the bounded role enum; a custom label is identity metadata, not a
+new role or an assessment of the agent's work.
 
 ## Context usage
 
@@ -33,9 +46,16 @@ input_tokens
 + output_tokens
 ```
 
-Zero-valued synthetic messages are ignored.
+All-zero usage does not produce a context snapshot.
 
 Claude usage is normalized by a dedicated strict parser. It accepts only non-negative safe-integer request counts, retains at most the latest 1,000 valid observations per agent for context-history coverage, and requires an explicitly valid cache-read field before an observation can classify cache behavior. Missing or malformed cache evidence breaks adjacent comparison without exposing the raw usage object or making the rest of the session unavailable.
+
+Recognized Claude synthetic assistant records (`model: "<synthetic>"` or a boolean
+`usage.synthetic: true`) are non-request records: they produce no usage snapshot
+and do not break cache comparison. Zero usage alone and lookalike markers do not
+qualify. Actual requests with unusable usage still break comparison, and intervening
+compactions and model changes still prevent refill attribution. Tool correlation
+and structural processing remain independent of this usage distinction.
 
 For Codex, Pomegr reads only each token-count event's `last_token_usage`; it never uses `total_token_usage`. Codex input includes both cache reads and cache writes, so the adapter maps uncached input as `input_tokens - cached_input_tokens - cache_write_input_tokens`, bounds the two cache categories to the recorded input, and never adds either category twice. Codex `output_tokens` already includes `reasoning_output_tokens`; reasoning is retained as bounded snapshot metadata but is not added to output a second time. The per-snapshot provider total and model context window are retained only as bounded latest-snapshot metadata. They are not accumulated, converted to spend, or used to derive a recent rate. Missing, invalid, and all-zero snapshots remain unavailable.
 
@@ -124,7 +144,7 @@ breaking ties. Ordinals are positions in the retained feed, not provider identif
 Automatic and manual compaction ticks compare successive requests for the same agent;
 snapshot drops are not drawn. No request amounts are summed across observations.
 
-The Agent activity presentation derives **Last model turn** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
+The Agent activity presentation derives **Last request** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
 
 ## Context history
 
@@ -464,7 +484,7 @@ Codex compaction records follow the same bounded evidence contract. Provider-rep
 
 Codex repetition, concurrent-mutation, unshared-context, and healthy-fallback rules run only when recognized rollout or canonical tool evidence is available. Missing app-server turns or rollout history disables the affected rule; Pomegr does not silently substitute timestamps, prose, file modification times, or cumulative token totals. Provider-generated summaries, estimated cost, and context machinery are unavailable for Codex and therefore contribute no metrics or efficiency evidence.
 
-Claude cache classification uses per-assistant-message usage with explicit cache-read and cache-write evidence. Missing, malformed, synthetic, cumulative-only, duplicate-only, or unsupported usage disables comparison. Codex cache classification is disabled while subscription-backed session records do not provide reliable cache-write counts; Pomegr never fabricates the missing evidence from later reads.
+Claude cache classification uses per-assistant-message usage with explicit cache-read and cache-write evidence. Missing, malformed, cumulative-only, duplicate-only, or unsupported usage disables comparison. Recognized synthetic assistant records contribute no usage and preserve comparison as described under [Context usage](#context-usage). Codex cache classification is disabled while subscription-backed session records do not provide reliable cache-write counts; Pomegr never fabricates the missing evidence from later reads.
 
 OpenAI's current [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching) defines `prompt_cache_options.ttl = "30m"` for GPT-5.6-family and later models as a minimum cache lifetime, not an exact expiration time or maximum retention period; a prefix may remain eligible longer. Cache misses can also follow a changed exact prefix, breakpoint or key behavior, routing, eviction, model changes, or a prefix that was never written. Pomegr therefore keeps the same cautious cache-miss wording even beyond 24 hours for GPT-5.6-family evidence. Older model families have different in-memory and extended-retention policies, so elapsed time alone never proves expiration. Codex subscription usage is not translated into API list-price billing.
 

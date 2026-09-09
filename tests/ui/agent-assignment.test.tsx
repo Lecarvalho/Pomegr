@@ -7,6 +7,13 @@ import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { agent } from "./dashboard-test-fixtures";
 
 describe("agent assignment hierarchy", () => {
+  it("shows custom type metadata in desktop and phone roster rows", () => {
+    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[{ ...agent, role: "unknown", customType: "queue-runner" }]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
+    const row = screen.getByRole("row", { name: "Primary agent agent, cache TTL 1h" });
+    expect(row.querySelector(".rosterDesktop.rosterMeta")).toHaveTextContent("custom: queue-runner");
+    expect(row.querySelector(".rosterPhone.rosterMeta")).toHaveTextContent("custom: queue-runner");
+  });
+
   it("shows the assignment first and preserves the codename as secondary identity", async () => {
     const user = userEvent.setup();
     const assignedAgent: Agent = {

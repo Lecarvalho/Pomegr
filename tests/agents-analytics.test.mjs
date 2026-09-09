@@ -45,7 +45,7 @@ test("agents analytics uses retained normalized public snapshots for filter aggr
     live: true,
     agents: [
       agent("primary"),
-      agent("child", { parentId: "primary", model: "unknown", startedAt: iso(40), executionTasks: [{ workKind: "write" }] }),
+      agent("child", { parentId: "primary", model: "unknown", role: "unknown", customType: "codex-waiter", startedAt: iso(40), executionTasks: [{ workKind: "write" }] }),
     ],
   })];
   const result = buildAgentsAnalytics({
@@ -65,6 +65,7 @@ test("agents analytics uses retained normalized public snapshots for filter aggr
   assert.equal(child.depth, 1);
   assert.equal(child.model, null);
   assert.equal(child.modelEvidence, "unavailable");
+  assert.equal(child.customType, "codex-waiter");
   assert.doesNotMatch(JSON.stringify(result), /cwd|tokens|prompt|provider kind/i);
 });
 

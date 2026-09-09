@@ -50,6 +50,38 @@ function retain(map, key, value) {
   if (map.size > MAX_ENTRIES) map.delete(map.keys().next().value);
 }
 
+function hasReplyText(content) {
+  if (typeof content === "string") return Boolean(content.trim());
+  return Array.isArray(content) && content.some((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
+}
+
+/** Presence metadata only: never retain message or summary content. */
+export function claudeConversationActivity(records, actor = { id: "primary", label: "Primary agent" }, events = new Map()) {
+  for (const record of records) {
+    if (!record || record.isMeta || record.isCompactSummary || record.isApiErrorMessage) continue;
+    const summary = record.type === "system" && record.subtype === "away_summary"
+      && typeof record.content === "string" && Boolean(record.content.trim());
+    const reply = record.type === "assistant" && record.message?.model !== "<synthetic>"
+      && record.message?.usage?.synthetic !== true && hasReplyText(record.message?.content);
+    if (!summary && !reply) continue;
+    const rawTime = record.timestamp ?? record.message?.timestamp;
+    const time = typeof rawTime === "string" ? Date.parse(rawTime) : NaN;
+    if (!Number.isFinite(time)) continue;
+    const timestamp = new Date(time).toISOString();
+    const identity = summary ? record.uuid || timestamp : record.message?.id || record.requestId || record.uuid;
+    if (typeof identity !== "string" || !identity.trim() || identity.length > 512) continue;
+    const kind = summary ? "summary" : "reply";
+    const id = `claude-${kind}-${crypto.createHash("sha256").update(`${actor.id}:${identity}`).digest("hex").slice(0, 20)}`;
+    const previous = events.get(id);
+    if (previous && Date.parse(previous.timestamp) >= time) continue;
+    retain(events, id, {
+      id, timestamp, actor: summary ? "System" : actor.label,
+      tool: summary ? "Summary updated" : "Assistant replied", workKind: "report", detail: "", status: null,
+    });
+  }
+  return [...events.values()];
+}
+
 /** U2: delivery is activity; queue operations alone are not a delivered notification. */
 function emptyActivityState() {
   return { calls: new Map(), launches: new Map(), events: new Map() };
@@ -98,10 +130,12 @@ function priorSuffixMatches(file, source) {
 }
 
 /** Complete, yielding replay retains normalized deliveries independently of acquisition tails. */
-export function createClaudeTaskNotificationReader() {
+export function createClaudeActivityReader() {
   const files = new Map();
-  return async function read(file) {
-    let item = files.get(file);
+  return async function read(file, actor = { id: "primary", label: "Primary agent" }) {
+    const key = `${file}\0${actor.id}`;
+    const labelEvents = (events) => events.map((event) => event.tool === "Assistant replied" ? { ...event, actor: actor.label } : event);
+    let item = files.get(key);
     if (!item) {
       if (files.size >= 50) {
         const victim = [...files].find(([, value]) => !value.pending);
@@ -119,13 +153,17 @@ export function createClaudeTaskNotificationReader() {
         },
         parseRecord: (line) => JSON.parse(line.toString("utf8")),
         initialState: emptyActivityState,
-        reduce(state, record) { claudeTaskNotificationActivity([record], state); return state; },
+        reduce(state, record) {
+          if (actor.id === "primary") claudeTaskNotificationActivity([record], state);
+          claudeConversationActivity([record], actor, state.events);
+          return state;
+        },
       });
-      files.set(file, item);
+      files.set(key, item);
     }
-    if (item.pending) return item.pending;
-    files.delete(file);
-    files.set(file, item);
+    if (item.pending) return item.pending.then(labelEvents);
+    files.delete(key);
+    files.set(key, item);
     const current = item;
     current.pending = Promise.resolve().then(async () => {
       try {
@@ -143,6 +181,6 @@ export function createClaudeTaskNotificationReader() {
       } catch { /* Preserve the last complete normalized observation. */ }
       return current.known;
     }).finally(() => { current.pending = null; });
-    return current.pending;
+    return current.pending.then(labelEvents);
   };
 }

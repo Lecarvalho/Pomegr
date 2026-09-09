@@ -209,6 +209,10 @@ export function agentAssignment(agent: Pick<Agent, "assignment" | "label">) {
   return assignment;
 }
 
+export function agentRoleLabel(agent: Pick<Agent, "role" | "customType">, fallback = (agent.role || "unknown").replaceAll("-", " ")) {
+  return agent.role === "unknown" && agent.customType ? `custom: ${agent.customType}` : fallback;
+}
+
 export function agentDisplayName(agent: Pick<Agent, "assignment" | "label">) {
   return agentAssignment(agent) || agent.label;
 }

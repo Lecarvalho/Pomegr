@@ -52,7 +52,13 @@ function usageRecord(record) {
 }
 
 function normalizedUsage(record) {
-  if (!usageRecord(record) || record.message.model === "<synthetic>" || record.message.usage.synthetic === true) return null;
+  // Known non-request records are different from requests with broken evidence.
+  // Only the latter interrupt cache comparability; zero usage alone is not synthetic.
+  if (plainObject(record?.message) && (record.message.model === "<synthetic>"
+    || (plainObject(record.message.usage) && record.message.usage.synthetic === true))) {
+    return { kind: "synthetic" };
+  }
+  if (!usageRecord(record)) return { kind: "invalid" };
   const usage = record.message.usage;
   const input = nonNegativeInteger(usage.input_tokens);
   const output = nonNegativeInteger(usage.output_tokens);
@@ -60,10 +66,10 @@ function normalizedUsage(record) {
   const writePresent = Object.hasOwn(usage, "cache_creation_input_tokens");
   const cacheRead = readPresent ? nonNegativeInteger(usage.cache_read_input_tokens) : 0;
   const cacheWrite = writePresent ? nonNegativeInteger(usage.cache_creation_input_tokens) : 0;
-  if (input === null || output === null || cacheRead === null || cacheWrite === null) return null;
+  if (input === null || output === null || cacheRead === null || cacheWrite === null) return { kind: "invalid" };
   const total = input + output + cacheRead + cacheWrite;
-  if (!Number.isSafeInteger(total) || total <= 0) return null;
-  return { input, output, cacheRead, cacheWrite, cacheComparable: readPresent };
+  if (!Number.isSafeInteger(total) || total <= 0) return { kind: "invalid" };
+  return { kind: "request", input, output, cacheRead, cacheWrite, cacheComparable: readPresent };
 }
 
 function normalizedCacheLifetime(record, cacheWrite) {
@@ -369,7 +375,8 @@ export function parseClaudeContextRecords(records, options = {}) {
     }
     // Advance only with observed time; fallback filesystem times cannot establish adjacency.
     if (Number.isFinite(assistantTime)) previousAssistantTime = assistantTime;
-    if (!usage || !timestamp) {
+    if (usage.kind === "synthetic") continue;
+    if (usage.kind === "invalid" || !timestamp) {
       comparisonGroup += 1;
       continue;
     }

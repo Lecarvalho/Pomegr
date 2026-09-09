@@ -12,7 +12,8 @@ import {
   pendingUserInputAt,
   resolveAgentMetadata,
 } from "../agent-metadata.mjs";
-import { createClaudeTaskNotificationReader, userInputContentType } from "./claude-activity-events.mjs";
+import { createClaudeActivityReader, userInputContentType } from "./claude-activity-events.mjs";
+import { recentActivityEvents } from "../activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
@@ -304,7 +305,7 @@ export function createClaudeProvider(options = {}) {
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
-  const readTaskNotifications = createClaudeTaskNotificationReader();
+  const readActivity = createClaudeActivityReader();
   const nativeStatus = createClaudeSessionStatusReader({ configDir: configRoot, fetch: options.fetch || globalThis.fetch, now });
 
   async function cachedSessionTitle(file, stat) {
@@ -524,7 +525,7 @@ export function createClaudeProvider(options = {}) {
         if (!previous || new Date(stoppedAt) > new Date(previous)) stoppedAtByAgent.set(agentId, stoppedAt);
       }
     }
-    const activity = [...await readTaskNotifications(mainFile)];
+    const activity = [];
     const agents = [];
     const toolCalls = [];
     const usageSnapshots = [];
@@ -537,6 +538,7 @@ export function createClaudeProvider(options = {}) {
       const stat = statSafe(file);
       if (!stat) continue;
       const actor = actorFor(file, mainFile, agentMetadata, workflowFiles);
+      activity.push(...await readActivity(file, actor));
       if (file !== mainFile) transcriptPaths.set(actor.id, file);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
@@ -694,7 +696,7 @@ export function createClaudeProvider(options = {}) {
       usageSnapshots,
       usageLimitRejections,
       toolCalls,
-      activity,
+      activity: recentActivityEvents(activity, 256),
       planTasks,
       compactions,
       efficiencyRuleEvidence: {
@@ -727,7 +729,7 @@ export function createClaudeProvider(options = {}) {
     if (!historical) await nativeStatus.refresh(discovered.registry, [localSessionId]);
     const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
     // Rebuild pre-fix checkpoints even when the native transcript is unchanged.
-    return source ? { ...source, identity: `${source.identity}:system-task-notifications-v1` } : null;
+    return source ? { ...source, identity: `${source.identity}:conversation-activity-v3` } : null;
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {

@@ -11,6 +11,27 @@ import {
 import { SessionObservationStore } from "../monitor/session-observation-store.mjs";
 import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
 import { buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
+import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
+
+test("restored evidence reprojects the bounded custom type without changing its committed revision", async (t) => {
+  const checkpoints = new SessionObservationCheckpointStore({ directory: await temporaryCheckpointDirectory(t) });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  const child = { ...evidence.agents[0], id: "custom-child", parentId: "primary" };
+  evidence.agents.push(child);
+  child.kind = "local:queue-runner";
+  child.workflowId = null;
+  await checkpoints.write({ ...snapshot("claude", evidence.localId, 7), evidence });
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.records[0].revision, 7);
+  const restored = parseProviderSessionEvidence(loaded.records[0].evidence);
+  assert.equal(Object.hasOwn(restored.agents.find((agent) => agent.id === child.id), "customType"), false);
+  const projected = monitorStateFromProviderEvidence("claude", restored).agents.find((agent) => agent.id === child.id);
+  assert.equal(projected.role, "unknown");
+  assert.equal(projected.customType, "queue-runner");
+  assert.equal(Object.hasOwn(projected, "kind"), false);
+});
 
 test("checkpoint restart preserves only bounded request action evidence and its committed revision", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);

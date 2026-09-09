@@ -21,18 +21,23 @@ const text = z.string().max(512).regex(/^[^\u0000-\u001f\u007f]*$/u);
 const id = text.min(1).max(256);
 const timestamp = z.string().max(64).refine((value) => Number.isFinite(Date.parse(value))).nullable();
 const role = z.enum(["orchestrator", "explore", "plan", "builder", "reviewer", "tester", "researcher", "general-purpose", "workflow-worker", "fork", "compaction", "unknown"]);
+const customType = z.string().max(64).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u).refine((value) => !["unknown", "unavailable", "none", "null"].includes(value), "Invalid custom agent type").nullable().optional();
 const workKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
 const scope = z.enum(["all", "main", "delegated"]);
 const work = z.array(z.object({ workKind, count }).strict()).max(32);
 const run = z.object({
   id, agentId: id, sessionId: id, source: z.enum(["Claude Code", "Codex"]),
-  project: text, sessionTitle: text, label: text, assignment: text.nullable(), role,
+  project: text, sessionTitle: text, label: text, assignment: text.nullable(), role, customType,
   model: text.max(256).nullable(), modelEvidence: z.enum(["latest_reported", "unavailable"]),
   scope: z.enum(["main", "delegated"]), parentId: id.nullable(), depth: count.max(64),
   status: z.enum(["active", "waiting", "needs_input", "warm", "finished", "stopped", "idle", "unknown"]),
   startedAt: timestamp, lastSeen: timestamp, latestContextTotal: count.nullable(),
   toolCalls: count.nullable(), executionTaskCount: count.nullable(), work,
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.role !== "unknown" && value.customType !== undefined && value.customType !== null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["customType"], message: "customType requires unknown role" });
+  }
+});
 const snapshotSchema: z.ZodType<AgentsAnalyticsSnapshot> = z.object({
   revision: count, readiness: z.enum(["loading", "ready", "unavailable"]), refreshReadiness: z.enum(["ready", "unavailable"]).optional(), generatedAt: timestamp,
   coverage: z.object({

@@ -7,6 +7,9 @@ import { toolWorkKind } from "../work-kind.mjs";
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
 const MAX_CALL_ID_LENGTH = 160;
+const MAX_ASSISTANT_REPLIES = 256;
+const ASSISTANT_REPLY_TOOL = "Assistant replied";
+const ASSISTANT_REPLY_WORK_KIND = "report";
 
 function boundedText(value, maximum) {
   if (typeof value !== "string") return "";
@@ -44,6 +47,91 @@ function rawCallId(value) {
 export function stableCodexCallId(actorId, providerCallId, fallbackIdentity = "") {
   const identity = rawCallId(providerCallId) || boundedText(fallbackIdentity, 512);
   return `codex-${digest(`${actorId}|${identity}`)}`;
+}
+
+export function stableCodexActivityId(actorId, identity) {
+  return `codex-activity-${digest(`${actorId}|${boundedText(identity, 1024)}`)}`;
+}
+
+function replyText(value) {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter((item) => item && typeof item === "object"
+      && ["output_text", "text"].includes(String(item.type || "").toLowerCase()))
+    .map((item) => typeof item.text === "string" ? item.text : "")
+    .join("")
+    .trim();
+}
+
+function assistantReplyPayload(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const channel = String(value.channel ?? value.message_channel ?? value.messageChannel ?? "").toLowerCase();
+  const synthetic = value.synthetic === true || value.is_synthetic === true || value.isSynthetic === true
+    || value.metadata?.synthetic === true || value.metadata?.isSynthetic === true;
+  if (synthetic || ["analysis", "reasoning", "thinking"].includes(channel)) return null;
+  const type = String(value.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (type === "agentmessage") {
+    const text = replyText(value.text ?? value.message ?? value.content);
+    return text ? { text, id: value.id ?? value.item_id ?? value.itemId, phase: value.phase } : null;
+  }
+  if (type !== "message" || value.role !== "assistant") return null;
+  const text = replyText(value.content ?? value.text);
+  return text ? { text, id: value.id ?? value.item_id ?? value.itemId, phase: value.phase } : null;
+}
+
+function replyNativeId(value) {
+  const id = value?.id ?? value?.item_id ?? value?.itemId ?? value?.message_id ?? value?.messageId;
+  return rawCallId(id);
+}
+
+function replyTextDigest(text) {
+  // The source record is acquisition-bounded; retain only its private digest.
+  return digest(text);
+}
+
+function makeAssistantReply({ actor, identity, timestamp }) {
+  if (!timestamp || !identity) return null;
+  return {
+    id: stableCodexActivityId(actor.id, identity),
+    timestamp,
+    actor: actor.label,
+    tool: ASSISTANT_REPLY_TOOL,
+    workKind: ASSISTANT_REPLY_WORK_KIND,
+    detail: "",
+    status: null,
+  };
+}
+
+function replyOccurrenceKey(info, sourceKey = "") {
+  return `${sourceKey}|${String(info.phase || "")}|${replyTextDigest(info.text)}`;
+}
+
+function boundedReplyEvents(events) {
+  return [...events]
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id))
+    .slice(-MAX_ASSISTANT_REPLIES);
+}
+
+/** Normalize canonical app-server agent-message thread items without retaining text. */
+export function parseCodexCanonicalActivityEvents(turns, options = {}) {
+  const actor = options.actor || { id: "primary", label: "Primary agent" };
+  const events = new Map();
+  for (const turn of (Array.isArray(turns) ? turns : [])) {
+    for (const item of (Array.isArray(turn?.items) ? turn.items : [])) {
+      const info = assistantReplyPayload(item);
+      const nativeId = replyNativeId(item);
+      if (!info || !nativeId) continue;
+      const timestamp = codexTimestamp(item.timestamp ?? item.completedAt ?? item.createdAt)
+        || (info.phase === "final_answer" ? codexTimestamp(turn.completedAt) : null);
+      const event = makeAssistantReply({ actor, identity: `message:${nativeId}`, timestamp });
+      if (!event) continue;
+      const previous = events.get(event.id);
+      if (!previous || Date.parse(event.timestamp) > Date.parse(previous.timestamp)) events.set(event.id, event);
+    }
+  }
+  return boundedReplyEvents(events.values());
 }
 
 function normalizedStatus(value, fallback = "running") {
@@ -332,6 +420,54 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
     }
   }
   return mergeCodexToolCalls([calls]);
+}
+
+/** Normalize delivered assistant text from legacy and streamed rollout records. */
+export function parseCodexAssistantReplyRecords(records, options = {}) {
+  const actor = options.actor || { id: "primary", label: "Primary agent" };
+  const sourceKey = boundedText(options.sourceKey, 160) || actor.id;
+  const events = new Map();
+  let precedingEvent = null;
+  for (const record of (Array.isArray(records) ? records : [])) {
+    const payload = record?.payload;
+    let candidate = null;
+    let candidateSource = payload;
+    if (record?.synthetic !== true && payload && typeof payload === "object" && !Array.isArray(payload)) {
+      if (record.type === "event_msg" && payload.type === "agent_message") candidate = assistantReplyPayload(payload);
+      else if (record.type === "event_msg" && ["item_completed", "item_done"].includes(payload.type)) {
+        candidateSource = payload.item;
+        candidate = assistantReplyPayload(candidateSource);
+      }
+      else if (record.type === "response_item") candidate = assistantReplyPayload(payload);
+    }
+    const timestamp = codexTimestamp(record?.timestamp ?? payload?.timestamp ?? candidateSource?.timestamp);
+    if (!candidate || !timestamp) { precedingEvent = null; continue; }
+    const nativeId = replyNativeId(candidateSource);
+    const signature = replyOccurrenceKey(candidate, sourceKey);
+    // Legacy rollouts emit an event immediately followed by its response item.
+    // Text/phase equality establishes a mirror only within this adjacent pair.
+    const paired = !nativeId && record.type === "response_item" && precedingEvent
+      && precedingEvent.signature === signature;
+    const identity = nativeId ? `message:${nativeId}` : paired ? precedingEvent.identity : `observed:${timestamp}:${signature}`;
+    const event = makeAssistantReply({ actor, identity, timestamp });
+    const previous = events.get(event.id);
+    if (!previous || Date.parse(timestamp) > Date.parse(previous.timestamp)) events.set(event.id, event);
+    precedingEvent = !nativeId && record.type === "event_msg" && payload.type === "agent_message"
+      ? { signature, identity } : null;
+  }
+  return boundedReplyEvents(events.values());
+}
+
+/** Later groups have stronger source timestamps (rollout follows canonical). */
+export function mergeCodexActivityEvents(eventGroups, maximum = 4_096) {
+  const merged = new Map();
+  for (const group of eventGroups || []) {
+    for (const event of group || []) if (event?.id) merged.set(event.id, event);
+  }
+  const limit = Number.isInteger(maximum) ? Math.max(0, Math.min(4_096, maximum)) : 4_096;
+  return limit === 0 ? [] : [...merged.values()]
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id))
+    .slice(-limit);
 }
 
 function responseCallId(payload) {

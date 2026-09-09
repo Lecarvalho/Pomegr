@@ -8,6 +8,7 @@ import { relativeTime, sessionListTime } from "../../dashboard-utils";
 import { CommandIcon } from "../command-center/CommandPage";
 import { DottedInfoPopover } from "../DottedInfoPopover";
 import styles from "./AgentsView.module.css";
+import { agentRunRoleLabel } from "./agent-presentation";
 
 function sessionHref(run: AgentsRun) {
   try {
@@ -74,7 +75,7 @@ export function AgentEvidencePanel({ selection, onClose }: { selection: { title:
       {displayedSelection.runs.map((run) => <article className={styles.evidenceRun} key={run.id}>
         <h3>{run.assignment || run.label}</h3>
         <p>{run.project} / {run.sessionTitle}</p>
-        <p>{run.model || "Model unavailable"} · {run.role.replace(/-/g, " ")} · {run.scope === "main" ? "Main agent" : "Delegated agent"}</p>
+        <p>{run.model || "Model unavailable"} · {agentRunRoleLabel(run.role, run.customType)} · {run.scope === "main" ? "Main agent" : "Delegated agent"}</p>
         <dl className={styles.evidenceMeta}>
           <div><dt>Recorded state</dt><dd>{statusLabel(run.status)}</dd></div>
           <div><dt>Latest context</dt><dd className={styles.dataValue}>{contextLabel(run.latestContextTotal)}</dd></div>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, Insight, PlanTask, RequestSnapshotFeed, Workflow } from "../../../../shared/monitor-contract";
-import { agentDisplayLabel, agentDisplayName, cacheLifetimeLabel, compactNumber, formatDuration } from "../../../dashboard-utils";
+import { agentDisplayLabel, agentDisplayName, agentRoleLabel, cacheLifetimeLabel, compactNumber, formatDuration } from "../../../dashboard-utils";
 import { CopyTranscriptButton } from "../../CopyTranscriptButton";
 import { EmptyState } from "../../EmptyState";
 import { AgentWallTimeText, RelativeTimeText } from "../../LiveTime";
@@ -33,7 +33,7 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
     <header className="inspectorHeader">
       {presentation === "inline" && <><span className="sessionEyebrow">Selected agent</span><h3 dir="auto">{agentDisplayName(agent)}</h3></>}
       <div className="inspectorStatus"><span className={`statusPill ${agent.status}`}>{agent.status === "needs_input" ? "needs input" : agent.status === "unknown" ? "status uncertain" : agent.status}</span>{agent.signal && <span className={`agentSignal ${agent.signal.tone}`}>{agent.signal.label}</span>}</div>
-      <p>{[agent.role.replaceAll("-", " "), workflow?.name, phase ? `phase ${phase.label}` : null].filter(Boolean).join(" · ")} · <code>{agent.id.slice(-6)}</code></p>
+      <p>{[agentRoleLabel(agent), workflow?.name, phase ? `phase ${phase.label}` : null].filter(Boolean).join(" · ")} · <code>{agent.id === "primary" ? agent.id : agent.id.slice(-6)}</code></p>
       {agent.assignment && agent.assignment !== agent.label && <p>{agent.label}</p>}
     </header>
     <section className="inspectorSection"><div className="inspectorSectionHeading"><h4 className="sessionEyebrow">Lineage</h4>{presentation === "inline" && <button type="button" onClick={openTree}><InspectorTreeGlyph />Open in tree</button>}</div><AgentLineage agent={agent} agents={agents} workflows={workflows} /></section>
@@ -43,7 +43,7 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
       <dt>Wall time</dt><dd>{historical ? formatDuration(agent.durationMs) : <AgentWallTimeText agent={agent} />}</dd>
       <dt>Tool calls</dt><dd>{agent.toolCalls.toLocaleString()}</dd><dt>Shell tasks</dt><dd>{agent.executionTasks?.length || 0}</dd>
       <dt>Cache lifetime</dt><dd>{cacheLifetimeLabel(agent.cacheLifetime).replace("cache TTL ", "")}</dd>
-      <dt>Last turn</dt><dd><AgentTurnCacheTiming agentId={agent.id} historical={historical} requestSnapshots={requestSnapshots} status={agent.status} plain /></dd>
+      <dt>Last request</dt><dd><AgentTurnCacheTiming agentId={agent.id} historical={historical} requestSnapshots={requestSnapshots} status={agent.status} plain /></dd>
       <dt>Skills</dt><dd>{agent.skills.length}</dd>
     </dl></section>
     <AgentInspectorDetails key={`skills:${agent.id}`} agent={agent} presentation={presentation} section="skills" />

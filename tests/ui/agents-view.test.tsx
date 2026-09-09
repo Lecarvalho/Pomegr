@@ -93,6 +93,18 @@ describe("Agents view", () => {
     expect(within(table).queryByText("Coordinate work")).not.toBeInTheDocument();
   });
 
+  it("renders a bounded custom type on an individual unknown agent row", async () => {
+    const user = userEvent.setup();
+    const value = snapshot();
+    value.roster = [run({ id: "run-custom", agentId: "waiter", role: "unknown", customType: "codex-waiter", label: "Waiting worker" })];
+    value.runs = value.roster;
+    value.models = [{ model: "GPT-5.6 Terra", runCount: 1, mainRunCount: 1, delegatedRunCount: 0, roles: [{ role: "unknown", runCount: 1 }] }];
+    useAgents.mockReturnValue({ data: value, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
+    render(<AgentsView />);
+    await user.click(screen.getByRole("tab", { name: /Live agents/ }));
+    expect(within(screen.getByRole("table", { name: "Observed live agents" })).getByText("custom: codex-waiter")).toBeInTheDocument();
+  });
+
   it("requests an independent selected filter and preserves an honest unavailable state", async () => {
     const user = userEvent.setup();
     const view = render(<AgentsView />);

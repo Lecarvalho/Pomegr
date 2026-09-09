@@ -3,7 +3,20 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { normalizeAgentType, resolveAgentRole, roleConfigRoot, validateRoleConfig } from "../monitor/agent-roles.mjs";
+import { customAgentType, normalizeAgentType, resolveAgentRole, roleConfigRoot, validateRoleConfig } from "../monitor/agent-roles.mjs";
+
+test("custom display types come from bounded identifiers only when the role is unmapped", () => {
+  const repositoryRoles = new Map();
+  for (const [kind, expected] of [["codex-waiter", "codex-waiter"], ["queue-runner", "queue-runner"], ["local:Custom_Helper", "custom-helper"], ["a".repeat(64), "a".repeat(64)]]) {
+    assert.equal(customAgentType(kind, resolveAgentRole({ kind, repositoryRoles })), expected);
+  }
+  for (const kind of [null, undefined, 42, "", "unknown", "UNAVAILABLE", "none", "null", "a".repeat(65), "helper\nsecret", "helper\u202E", "<script>", "C:\\private\\agent", "/private/agent", "private.txt", "https://host/helper", "agent with prose", "namespace:/private:helper"]) {
+    assert.equal(customAgentType(kind, "unknown"), null);
+  }
+  for (const input of [{ id: "primary", kind: "queue-runner" }, { kind: "code-reviewer" }, { kind: "queue-runner", workflowId: "wf-1" }, { kind: "queue-runner", repositoryRoles: new Map([["queue-runner", "workflow-worker"]]) }]) {
+    assert.equal(customAgentType(input.kind, resolveAgentRole({ repositoryRoles, ...input })), null);
+  }
+});
 
 test("normalizes only the terminal provider namespace and resolves documented precedence", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-agent-roles-"));

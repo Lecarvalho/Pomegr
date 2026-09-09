@@ -387,7 +387,7 @@ timing evidence. It cannot directly inspect the provider's cache. An elapsed
 threshold is not proof of expiration, and an agent's execution status does not
 tell you whether its cache is available.
 
-**Last model turn** is the time of the latest recorded request.
+**Last request** is the time of the latest recorded request with valid usage data.
 **Last cache touch** is the time of the latest recorded request with a positive
 cache-read or cache-write count. See the
 [cache timing reference](../CACHE_TIMING.md) for how warnings are determined.

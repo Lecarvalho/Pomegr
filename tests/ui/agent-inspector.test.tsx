@@ -18,6 +18,22 @@ function shellTask(id: string, status: ExecutionTask["status"], startedAt: strin
 }
 
 describe("agent inspector", () => {
+  it.each(["codex-waiter", "queue-runner"])("shows the recorded custom type %s in both inspector presentations", (customType) => {
+    const child: Agent = { ...agent, id: "custom-child", role: "unknown", customType };
+    const { rerender } = renderInspector({ agent: child });
+    expect(screen.getByRole("region", { name: /Agent inspector/ })).toHaveTextContent(`custom: ${customType}`);
+    rerender(<LiveClockProvider running={false}><AgentInspector agent={child} agents={[child]} onOpenTree={vi.fn()} presentation="sheet" /></LiveClockProvider>);
+    expect(screen.getByRole("region", { name: /Agent inspector/ })).toHaveTextContent(`custom: ${customType}`);
+  });
+
+  it("keeps missing types unknown and mapped roles unchanged", () => {
+    const { rerender } = renderInspector({ agent: { ...agent, role: "unknown" } });
+    expect(screen.getByRole("region", { name: /Agent inspector/ })).toHaveTextContent("unknown · primary");
+    rerender(<LiveClockProvider running={false}><AgentInspector agent={{ ...agent, role: "reviewer", customType: "queue-runner" }} onOpenTree={vi.fn()} /></LiveClockProvider>);
+    expect(screen.getByRole("region", { name: /Agent inspector/ })).toHaveTextContent("reviewer · primary");
+    expect(screen.getByRole("region", { name: /Agent inspector/ })).not.toHaveTextContent("custom:");
+  });
+
   it("copies a subagent transcript path only after an explicit action, without rendering it", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

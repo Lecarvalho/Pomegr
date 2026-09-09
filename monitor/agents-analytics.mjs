@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { validatedCustomAgentType } from "./agent-roles.mjs";
 
 const DAY_WINDOWS = Object.freeze([7, 30, 90]);
 const SCOPES = Object.freeze(["all", "main", "delegated"]);
@@ -83,6 +84,7 @@ function sessionRuns(snapshot) {
     const model = acceptedModel(agent.model);
     const hasExecutionTaskEvidence = Array.isArray(agent.executionTasks);
     const tasks = hasExecutionTaskEvidence ? agent.executionTasks : [];
+    const role = VALID_ROLES.has(agent.role) ? agent.role : "unknown";
     runs.push(Object.freeze({
       id: runKey(sessionId, agentId),
       agentId,
@@ -92,7 +94,8 @@ function sessionRuns(snapshot) {
       sessionTitle,
       label: safeText(agent.label, "Agent"),
       assignment: safeText(agent.assignment, "") || null,
-      role: VALID_ROLES.has(agent.role) ? agent.role : "unknown",
+      role,
+      customType: validatedCustomAgentType(agent.customType, role),
       model,
       modelEvidence: model ? "latest_reported" : "unavailable",
       scope: agentId === "primary" ? "main" : "delegated",

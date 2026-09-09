@@ -63,6 +63,17 @@ test("agent query projection distinguishes primary/delegated and selects latest 
   assert.equal(value.getAgentContext("codex:session-1", "missing").reason, "agent_not_found");
 });
 
+test("agent query projection preserves only bounded custom type labels for unknown roles", () => {
+  const entry = retained();
+  entry.publicState.agents[1].role = "unknown";
+  entry.publicState.agents[1].customType = "codex-waiter";
+  entry.publicState.agents[0].customType = "provider-secret";
+  const agents = buildAgentQueryProjection({ entries: [entry], now: () => NOW }).listSessionAgents("codex:session-1").agents;
+  assert.equal(agents.find((agent) => agent.id === "child").customType, "codex-waiter");
+  assert.equal(Object.hasOwn(agents.find((agent) => agent.id === "primary"), "customType"), true);
+  assert.equal(agents.find((agent) => agent.id === "primary").customType, null);
+});
+
 test("session, provider-health, and usage-limit projections expose only V1 fields and provenance", () => {
   const value = projection();
   const session = value.listSessions({ scope: "all" }).sessions[0];

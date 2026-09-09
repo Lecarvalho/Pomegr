@@ -36,8 +36,8 @@ export type AgentCurrentActivity = {
 };
 
 /**
- * Bounded, provider-neutral display role. Provider-specific agent types stay
- * inside the monitor and are resolved before state reaches the browser.
+ * Bounded, provider-neutral display role. Full provider-specific types stay
+ * inside the monitor; unknown roles may carry a validated customType label.
  */
 export type AgentRole =
   | "orchestrator"
@@ -126,6 +126,8 @@ export type Agent = {
   assignment?: string | null;
   label: string;
   role: AgentRole;
+  /** Monitor-validated terminal type name for an unmapped role; display only. */
+  customType?: string | null;
   model: string;
   effort: string;
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle" | "unknown";

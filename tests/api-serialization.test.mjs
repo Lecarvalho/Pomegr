@@ -550,12 +550,13 @@ test("the transcript path endpoint is one-shot, agent-scoped, and rejects browse
   assert.doesNotMatch(await deniedPath.text(), /agent-child-fixture|\.jsonl|PRIVATE/i);
 });
 
-test("normalizes hostile provider agent kinds before browser state is built", async () => {
-  const provider = {
-    id: "claude",
-    source: "Claude Code",
-    capabilities: {},
-  };
+for (const [kind, customType] of [
+  ["HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/<script>", null],
+  ["local:queue-runner", "queue-runner"],
+  ["codex-waiter", "codex-waiter"],
+  ["unknown", null],
+]) test(`projects only a validated custom type in browser state (${customType || "unavailable"})`, async () => {
+  const provider = { id: "claude", source: "Claude Code", capabilities: {} };
   const runtime = createMonitorRuntime({
     providerRegistry: {
       defaultProvider: provider,
@@ -569,20 +570,15 @@ test("normalizes hostile provider agent kinds before browser state is built", as
               title: "Role fixture",
               project: "pomegr",
               cwd: SAFE_CWD,
-              startedAt: null,
-              updatedAt: null,
+              startedAt: null, updatedAt: null,
               recordedGitBranch: "",
-              cost: null,
-              approvalMode: null,
-              contextMachinery: null,
-              summary: null,
-              signal: null,
+              cost: null, approvalMode: null, contextMachinery: null, summary: null, signal: null,
             },
             agents: [{
               id: "agent-hostile",
               parentId: null,
               label: "Agent",
-              kind: "HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK",
+              kind,
               workflowId: null,
               workflowPhaseId: null,
               workflowOrder: null,
@@ -610,8 +606,10 @@ test("normalizes hostile provider agent kinds before browser state is built", as
   const state = await runtime.analyze();
   assert.equal(state.agents[0].assignment, null);
   assert.equal(state.agents[0].role, "unknown");
+  assert.equal(state.agents[0].customType, customType);
   assert.equal(Object.hasOwn(state.agents[0], "kind"), false);
   assert.doesNotMatch(JSON.stringify(state), /HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/);
+  assert.doesNotMatch(JSON.stringify(state), /local:queue-runner/);
 });
 
 test("preserves busy full-session context history while keeping request snapshots bounded", async () => {

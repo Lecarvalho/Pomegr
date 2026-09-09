@@ -89,6 +89,21 @@ export function normalizeAgentType(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+// Validate the entire source before taking its terminal name. Never turn paths,
+// prose, markup, or truncated provider text into a public type label.
+export function customAgentType(kind, role) {
+  if (role !== "unknown" || typeof kind !== "string" || kind.length > MAX_KEY_LENGTH
+    || !/^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$/i.test(kind)) return null;
+  const normalized = normalizeAgentType(kind);
+  return ["unknown", "unavailable", "none", "null"].includes(normalized) ? null : normalized;
+}
+
+/** Revalidate an already-normalized label without repairing or truncating it. */
+export function validatedCustomAgentType(value, role) {
+  const normalized = customAgentType(value, role);
+  return normalized === value ? normalized : null;
+}
+
 export function roleConfigRoot(cwd) {
   if (typeof cwd !== "string" || !cwd) return "";
   let candidate = path.resolve(cwd);

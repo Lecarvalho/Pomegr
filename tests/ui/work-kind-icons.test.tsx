@@ -6,6 +6,19 @@ import { ActivityPanel } from "../../app/components/dashboard/ActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 
 describe("work-kind icons", () => {
+  it.each([false, true])("renders reply and summary metadata in activity (historical: %s)", (historical) => {
+    const activity: Activity[] = [
+      { id: "summary", timestamp: "2026-08-28T12:04:00.000Z", actor: "System", tool: "Summary updated", workKind: "report", detail: "", status: null },
+      { id: "reply", timestamp: "2026-08-28T12:00:00.000Z", actor: "Primary agent", tool: "Assistant replied", workKind: "report", detail: "", status: null },
+    ];
+    const { container, getByText } = render(<ActivityPanel activity={activity} historical={historical} loading={false} onRefresh={() => {}} />);
+    expect(getByText(historical ? "Recorded activity" : "Recent activity")).toBeInTheDocument();
+    expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Summary updated", "Assistant replied"]);
+    expect([...container.querySelectorAll(".target")].map((node) => node.textContent)).toEqual(["—", "—"]);
+    expect(getByText("System")).toBeInTheDocument();
+    expect(getByText("Primary agent")).toBeInTheDocument();
+  });
+
   it("renders the normalized purpose in recorded activity without replacing the label", () => {
     const activity: Activity[] = [{
       id: "push-1",

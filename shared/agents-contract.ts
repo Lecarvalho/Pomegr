@@ -13,6 +13,8 @@ export type AgentsRun = {
   label: string;
   assignment: string | null;
   role: AgentRole;
+  /** Bounded provider type label retained only for an otherwise unknown role. */
+  customType?: string | null;
   /** Latest retained agent-level model report; it is not a whole-run history. */
   model: string | null;
   modelEvidence: "latest_reported" | "unavailable";

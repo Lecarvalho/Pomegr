@@ -91,17 +91,18 @@ export function AgentTurnCacheTiming({ agentId, className = "", historical, requ
   if (plain || !stateLabel) return <time
     className={`agentTurnCacheTiming agentTurnCacheTimingPlain ${className}`.trim()}
     dateTime={lastRequestAt || undefined}
-  >{plain ? "" : "last turn "}{triggerTime}</time>;
+    title="Latest recorded request with valid usage data. Summary and lifecycle updates do not advance this time."
+  >{plain ? "" : "last request "}{triggerTime}</time>;
 
   const content = <span className="cacheTimingPopoverContent">
-    <span className="cacheTimingRow"><span>Last model turn</span><time dateTime={lastRequestAt || undefined}>{triggerTime}</time></span>
+    <span className="cacheTimingRow"><span>Last request</span><time dateTime={lastRequestAt || undefined}>{triggerTime}</time></span>
     <span className="cacheTimingRow"><span>Last cache touch</span><time dateTime={lastCacheTouchAt || undefined}>{relativeTimestamp(lastCacheTouchAt, now)}</time></span>
     <span className="cacheTimingRow"><span>Observed lifetime</span><strong>{lifetimeLabel(evidence.lastCacheTouch?.cacheLifetime)}</strong></span>
     <strong className={`cacheTimingState ${evidence.state}`}>{stateLabel}</strong>
   </span>;
 
   return <DottedInfoPopover
-    ariaLabel={`Last model turn ${triggerTime}; show turn and cache timing`}
+    ariaLabel={`Last request ${triggerTime}; show request and cache timing`}
     className={`agentTurnCacheTiming ${toneClass} ${className}`.trim()}
     content={content}
     link={{
@@ -110,6 +111,6 @@ export function AgentTurnCacheTiming({ agentId, className = "", historical, requ
       ariaLabel: "How cache timing works",
     }}
   >
-    <time dateTime={lastRequestAt || undefined}>last turn {triggerTime}</time>
+    <time dateTime={lastRequestAt || undefined}>last request {triggerTime}</time>
   </DottedInfoPopover>;
 }

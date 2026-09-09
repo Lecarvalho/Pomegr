@@ -67,6 +67,11 @@ afterEach(() => {
 });
 
 describe("focused agent tree view", () => {
+  it("shows custom types in tree cards and their accessible labels", () => {
+    renderTree({ agents: [agent("custom-child", null, "2026-08-08T12:00:00.000Z", { role: "unknown", customType: "queue-runner" })], focusId: "custom-child" });
+    expect(screen.getByRole("treeitem", { name: /custom: queue-runner/ })).toHaveTextContent("custom: queue-runner");
+  });
+
   it("starts focused clusters closed and the canonical focus path open, ignoring historical and stored session folds", async () => {
     const agents = focusFixture();
     window.localStorage.setItem("pomegr-agent-tree-folds-focus-history", JSON.stringify(["primary", "branch"]));

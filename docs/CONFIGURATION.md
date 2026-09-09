@@ -253,7 +253,13 @@ Do not point provider roots at a browser-served directory. Do not place OAuth to
 
 ## Agent display roles
 
-Pomegr exposes a bounded display `role` for each agent, not a provider-native agent type. The primary agent is always `orchestrator`; other roles resolve in this order: repository mapping, built-in exact type, documented keyword rule, verified workflow association, then `unknown`. This is display normalization applied whenever a session is read, including history; it is not recorded session state or an authoritative assessment of an agent.
+Pomegr exposes a bounded display `role` for each agent. The primary agent is always `orchestrator`; other roles resolve in this order: repository mapping, built-in exact type, documented keyword rule, verified workflow association, then `unknown`. This is display normalization applied when a session response is projected, including history; it is not recorded session state or an authoritative assessment of an agent.
+
+Unmapped agents with a valid recorded type display `custom: <type>` in their
+individual details. The label uses the recorded terminal type name, normalized
+and validated under the [agent role rules](METRICS.md#agent-roles). Missing or
+invalid types still display `unknown`. No mapping file is needed for this label;
+add a mapping only to assign one of Pomegr's built-in roles.
 
 To customize recognized local agent types, optionally commit `.pomegr/roles.json`:
 

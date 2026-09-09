@@ -5,6 +5,7 @@ import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, RequestSnaps
 import { RequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
 import { agent } from "./dashboard-test-fixtures";
+import { claudeCacheRefillFeeds } from "../helpers/claude-cache-refill.mjs";
 
 const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder" };
 const baseTime = Date.parse("2026-08-09T12:00:00.000Z");
@@ -80,6 +81,24 @@ afterEach(() => {
 });
 
 describe("RequestsActionsPanel", () => {
+  it("retains request 44's refill marker through parsing and detail-feed trimming after a synthetic message", () => {
+    const feeds = claudeCacheRefillFeeds();
+    const requests = feeds.requestSnapshots as RequestSnapshotFeed;
+    const events = feeds.cacheEvents as CacheEventFeed;
+    expect(requests.items).toHaveLength(66);
+    expect(events.items).toHaveLength(20);
+    expect(events.items.some((event) => event.observedAt === requests.items[43].observedAt)).toBe(false);
+    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requests}
+      contextBoundaries={[]} cacheWriteAvailable historical cacheEvents={events} />);
+    const marker = container.querySelector(".requestsActionsRefill")!;
+    expect(marker).toBeInTheDocument();
+    expect(marker.querySelector("title")).toHaveTextContent("Possible full refill · request #44");
+    expect(container.querySelectorAll(".requestsActionsMiniRefill")).toHaveLength(1);
+    fireEvent.click(marker.closest(".requestsActionsBar")!);
+    expect(screen.getByRole("heading", { name: "Request #44" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
+  });
+
   it.each([
     { phone: false, count: 33, ordinals: [1, 17, 33] },
     { phone: false, count: 5, ordinals: [1, 5] },

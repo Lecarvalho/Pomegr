@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { buildSessionReport, sessionReportFilename } from "../shared/session-report.mjs";
-import { AGENT_ROLES } from "./agent-roles.mjs";
+import { AGENT_ROLES, validatedCustomAgentType } from "./agent-roles.mjs";
 import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 
 const SCHEMA_VERSION = 1;
@@ -61,12 +61,15 @@ function providerFromRef(ref) {
 function normalizeAgent(agent) {
   if (!agent || typeof agent !== "object" || typeof agent.id !== "string" || !SAFE_AGENT_ID.test(agent.id)) return null;
   const id = agent.id;
+  const role = AGENT_ROLE_SET.has(agent.role) ? agent.role : "unknown";
+  const customType = validatedCustomAgentType(agent.customType, role);
   return {
     id,
     scope: id === "primary" ? "main" : "delegated",
     parentId: id === "primary" ? null : (typeof agent.parentId === "string" && SAFE_AGENT_ID.test(agent.parentId) ? agent.parentId : null),
     label: boundedText(agent.label, id === "primary" ? "Primary agent" : "Subagent", 256),
-    role: AGENT_ROLE_SET.has(agent.role) ? agent.role : "unknown",
+    role,
+    customType,
     status: AGENT_STATUS_SET.has(agent.status) ? agent.status : "unknown",
     assignment: agent.assignment == null ? null : boundedText(agent.assignment, "", 512),
     currentActivity: agent.currentActivity && typeof agent.currentActivity === "object"

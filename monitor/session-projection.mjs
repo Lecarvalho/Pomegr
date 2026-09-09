@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
-import { resolveAgentRole } from "./agent-roles.mjs";
+import { customAgentType, resolveAgentRole } from "./agent-roles.mjs";
 import { buildCacheEvidence } from "./cache-events.mjs";
 import { buildCacheReadDrops } from "./cache-read-drops.mjs";
 import { buildSessionReportEvidence } from "./session-report-evidence.mjs";
@@ -145,18 +145,20 @@ export function projectProviderSessionEvidence({
       assignment: null,
       ...agent,
     };
+    const role = resolveAgentRole({
+      id: normalized.id,
+      kind,
+      workflowId: normalized.workflowId,
+      repositoryRoles,
+    });
     return {
       ...normalized,
       executionTasks: (normalized.executionTasks || []).map((task) => ({
         ...task,
         workKind: normalizedWorkKind(task.workKind),
       })),
-      role: resolveAgentRole({
-        id: normalized.id,
-        kind,
-        workflowId: normalized.workflowId,
-        repositoryRoles,
-      }),
+      role,
+      customType: customAgentType(kind, role),
     };
   });
   const compactions = evidence.compactions.map((compaction) => ({

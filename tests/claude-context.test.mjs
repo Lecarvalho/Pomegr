@@ -1,12 +1,17 @@
 import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCacheEvents } from "../monitor/cache-events.mjs";
 import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
 import { contextCompactions } from "../monitor/context-compactions.mjs";
+import { claudeCacheRefillRecords } from "./helpers/claude-cache-refill.mjs";
+import { claudeLifecycleSource } from "../monitor/providers/claude-session-status.mjs";
+import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
+import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
 
 function assistant(id, timestamp, usage, model = "claude-test", diagnostics = undefined) {
   return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics !== undefined ? { diagnostics } : {}) } };
@@ -384,11 +389,100 @@ test("fallback Claude usage identities remain stable when a moving tail drops pr
   assert.equal(earlierFallback[0].dedupeId, laterFallback[0].dedupeId);
 });
 
+test("synthetic assistant records preserve refill comparison and retention beyond the event cap", () => {
+  for (const marker of ["model", "usage"]) {
+    const records = claudeCacheRefillRecords();
+    if (marker === "usage") {
+      records[43].message.model = "claude-test";
+      records[43].message.usage.synthetic = true;
+    }
+    const snapshots = parseClaudeContextRecords(records);
+    assert.equal(snapshots.length, 66);
+    assert.equal(snapshots[42].comparisonGroup, snapshots[43].comparisonGroup);
+    const feed = buildCacheEvents({ agents: [{ id: "primary" }], usageSnapshots: snapshots, enabled: true });
+    assert.equal(feed.items.length, 20);
+    assert.equal(feed.items.some((event) => event.observedAt === snapshots[43].timestamp), false);
+    assert.equal(feed.possibleFullRefills.length, 1);
+    assert.equal(feed.possibleFullRefills[0].count, 1);
+    assert.equal(feed.possibleFullRefills[0].occurrences[0].observedAt, snapshots[43].timestamp);
+    assert.equal(feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference?.cacheLifetime, "1h");
+  }
+});
+
+test("Claude rebuilds unchanged pre-fix checkpoint evidence and publishes the retained refill once", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-synthetic-refill-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, ".claude", "projects", "fixture", "local.jsonl");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, claudeCacheRefillRecords().map((record) => JSON.stringify(record)).join("\n") + "\n");
+  const provider = createClaudeProvider({ homeDir: root, env: {}, explicitSession: file });
+  const historical = !(await provider.listSessions())[0].isLive;
+  const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file], file, historical), null);
+  const legacyFingerprint = crypto.createHash("sha256")
+    .update(`claude\0local\0${source.identity}:conversation-activity-v2`).digest("hex");
+  let checkpoint = { fingerprint: legacyFingerprint, completeOffset: source.size };
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const observer = provider.createObserver();
+  const published = [];
+  await observer.start({
+    publishCatalog() {}, invalidateSession() {},
+    checkpointFor() { return checkpoint; },
+    publishSession(_id, candidate) {
+      published.push(candidate);
+      checkpoint = candidate.observationSource;
+    },
+  }, controller.signal);
+  await observer.hydrate("local");
+  assert.equal(published.length, 1, "a legacy checkpoint must replay even without new bytes");
+  assert.notEqual(checkpoint.fingerprint, legacyFingerprint);
+  const state = monitorStateFromProviderEvidence("claude", published[0]);
+  const { cacheEvents, requestSnapshots } = state.metrics.tokens;
+  assert.equal(requestSnapshots.items.length, 66);
+  assert.equal(cacheEvents.possibleFullRefills[0].count, 1);
+  assert.equal(cacheEvents.possibleFullRefills[0].occurrences[0].observedAt, requestSnapshots.items[43].observedAt);
+  assert.doesNotMatch(JSON.stringify(state), /fixture-request|<synthetic>|cache_miss_reason|comparisonGroup|conversation-activity/);
+  await observer.hydrate("local");
+  assert.equal(published.length, 1, "unchanged corrected evidence must not churn revisions");
+});
+
+test("synthetic records do not bypass real invalid usage, model changes, or compactions", () => {
+  for (const boundary of ["invalid", "model", "compaction"]) {
+    const records = claudeCacheRefillRecords().slice(42, 45);
+    if (boundary === "invalid") records.splice(2, 0, assistant("invalid", "2026-08-10T15:30:00.000Z", {}));
+    if (boundary === "model") records.at(-1).message.model = "claude-other";
+    const compactions = boundary === "compaction"
+      ? [{ actorId: "primary", timestamp: "2026-08-10T14:00:00.000Z" }] : [];
+    const snapshots = parseClaudeContextRecords(records, { compactionTimestamps: compactions.map((item) => item.timestamp) });
+    const feed = buildCacheEvents({ agents: [{ id: "primary" }], usageSnapshots: snapshots, compactions, enabled: true });
+    assert.deepEqual(feed.possibleFullRefills, [], boundary);
+  }
+});
+
+test("synthetic records still process tool identities and compaction boundaries for work correlation", () => {
+  const synthetic = actionRequest("synthetic", 2, [{ type: "tool_use", id: "read", name: "Read" }]);
+  synthetic.message.model = "<synthetic>";
+  const snapshots = parseClaudeContextRecords([
+    actionRequest("before", 1), synthetic, actionResults("read"), actionRequest("after", 3),
+  ]);
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(snapshots[1].precedingWork, [{ kind: "read", count: 1 }]);
+  const compacted = parseClaudeContextRecords([
+    actionRequest("before", 0, [{ type: "tool_use", id: "read", name: "Read" }]),
+    actionResults("read"), synthetic, actionRequest("after", 3),
+  ], { compactionTimestamps: ["2026-08-10T10:00:01.000Z"] });
+  assert.deepEqual(compacted[1].precedingWork, []);
+});
+
 test("an assistant record without a usable usage object breaks cache comparison fail-closed", () => {
+  const zeroUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const unusableMessages = [
     { id: "missing", model: "claude-test" },
     { id: "non-object", model: "claude-test", usage: "invalid" },
     { id: "invalid", model: "claude-test", usage: { input_tokens: "invalid", output_tokens: 10 } },
+    { id: "zero", model: "claude-test", usage: zeroUsage },
+    { id: "model-lookalike", model: "synthetic", usage: zeroUsage },
+    { id: "usage-lookalike", model: "claude-test", usage: { ...zeroUsage, synthetic: "true" } },
   ];
   for (const [index, message] of unusableMessages.entries()) {
     const snapshots = parseClaudeContextRecords([

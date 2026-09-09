@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -9,7 +9,56 @@ import { claudeLifecycleSource } from "../monitor/providers/claude-session-statu
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
 import { recentActivityEvents, shellFailureActivityEvents } from "../monitor/activity-events.mjs";
-import { claudeTaskNotificationActivity, createClaudeTaskNotificationReader, userInputContentType } from "../monitor/providers/claude-activity-events.mjs";
+import { SessionObservationCheckpointStore } from "../monitor/session-observation-checkpoints.mjs";
+import { claudeConversationActivity, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "../monitor/providers/claude-activity-events.mjs";
+
+function assistantReply(id, timestamp = "2026-09-07T18:47:00.000Z") {
+  return { type: "assistant", uuid: `PRIVATE_RECORD_${id}`, timestamp, message: {
+    id, model: "claude-test", content: [{ type: "text", text: "PRIVATE_REPLY" }],
+    usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 20, cache_creation_input_tokens: 0 },
+  } };
+}
+
+function awaySummary(timestamp = "2026-09-07T18:48:00.000Z") {
+  return { type: "system", subtype: "away_summary", uuid: "PRIVATE_SUMMARY_ID", timestamp, content: "PRIVATE_SUMMARY" };
+}
+
+test("Claude conversation events deduplicate reply fragments and keep summary updates separate", () => {
+  const reply = assistantReply("PRIVATE_MESSAGE_ID");
+  const later = { ...reply, uuid: "PRIVATE_FRAGMENT_ID", timestamp: "2026-09-07T18:47:02.000Z" };
+  const summary = awaySummary();
+  const events = claudeConversationActivity([reply, later, reply, summary, summary]);
+  assert.deepEqual(events.map(({ id, ...event }) => event), [
+    { timestamp: later.timestamp, actor: "Primary agent", tool: "Assistant replied", workKind: "report", detail: "", status: null },
+    { timestamp: summary.timestamp, actor: "System", tool: "Summary updated", workKind: "report", detail: "", status: null },
+  ]);
+  assert.doesNotMatch(JSON.stringify(events), /PRIVATE|content|usage|claude-test/);
+  const distinct = claudeConversationActivity([reply, assistantReply("PRIVATE_OTHER_ID")]);
+  assert.equal(distinct.length, 2, "identical reply text from separate requests remains separate");
+  const child = claudeConversationActivity([reply], { id: "child", label: "Builder" });
+  assert.equal(child[0].actor, "Builder");
+  assert.notEqual(child[0].id, events[0].id);
+  assert.equal(claudeConversationActivity([{ ...reply, message: { ...reply.message, usage: undefined } }]).length, 1,
+    "delivered text does not require token usage to be an activity event");
+  assert.equal(claudeConversationActivity(Array.from({ length: 300 }, (_, i) => assistantReply(`reply-${i}`))).length, 256);
+});
+
+test("Claude conversation events reject synthetic, private, malformed, and lookalike records", () => {
+  const reply = assistantReply("reply");
+  for (const record of [
+    { ...reply, timestamp: "invalid" }, { ...reply, timestamp: null },
+    { ...reply, type: "user" }, { ...reply, isMeta: true }, { ...reply, isCompactSummary: true },
+    { ...reply, isApiErrorMessage: true },
+    { ...reply, message: { ...reply.message, model: "<synthetic>" } },
+    { ...reply, message: { ...reply.message, usage: { synthetic: true } } },
+    { ...reply, message: { ...reply.message, content: [{ type: "thinking", thinking: "PRIVATE_THINKING" }] } },
+    { ...reply, message: { ...reply.message, content: [{ type: "tool_use", text: "PRIVATE_TOOL" }] } },
+    { ...reply, message: { ...reply.message, content: [{ type: "text", text: " " }] } },
+    { ...reply, uuid: null, message: { ...reply.message, id: null } },
+    { ...awaySummary(), type: "user" }, { ...awaySummary(), subtype: "compact_boundary" },
+    { ...awaySummary(), content: " " }, { ...awaySummary(), timestamp: "invalid" },
+  ]) assert.deepEqual(claudeConversationActivity([record]), []);
+});
 
 test("classifies direct user input without exposing its content", () => {
   assert.equal(userInputContentType({ type: "user", message: { content: "PRIVATE PROMPT" } }), "Text");
@@ -168,15 +217,18 @@ test("Claude notifications survive acquisition-tail growth, cold replay, and inc
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "session.jsonl");
   const jsonl = (records) => records.map((record) => JSON.stringify(record)).join("\n") + "\n";
-  const reader = createClaudeTaskNotificationReader();
+  const reader = createClaudeActivityReader();
   const notification = deliveredNotification();
-  await writeFile(file, jsonl([notification]));
+  await writeFile(file, jsonl([notification, assistantReply("reply"), awaySummary()]));
   const original = await reader(file);
-  assert.equal(original.length, 1);
+  assert.equal(original.length, 3);
+  const renamed = await reader(file, { id: "primary", label: "Renamed agent" });
+  assert.equal(renamed.find((event) => event.tool === "Assistant replied").actor, "Renamed agent");
+  assert.equal(renamed.find((event) => event.tool === "Summary updated").actor, "System");
   const filler = { type: "system", content: "PRIVATE_FILLER".repeat(5000) };
   await appendFile(file, jsonl(Array.from({ length: 40 }, () => filler)));
   assert.deepEqual(await reader(file), original, "more than 2 MiB of non-activity cannot expire evidence");
-  assert.deepEqual(await createClaudeTaskNotificationReader()(file), original, "cold replay reads beyond the tail");
+  assert.deepEqual(await createClaudeActivityReader()(file), original, "cold replay reads beyond the tail");
 
   const replacement = jsonl([deliveredNotification("failed", { uuid: "replacement", timestamp: "2026-09-07T18:48:42.302Z" })]);
   await writeFile(file, replacement.slice(0, -3));
@@ -192,6 +244,40 @@ test("Claude notifications survive acquisition-tail growth, cold replay, and inc
   assert.deepEqual(await reader(file), replaced);
   await writeFile(file, jsonl([{ type: "system" }]));
   assert.deepEqual(await reader(file), [], "a complete valid replacement can remove obsolete evidence");
+});
+
+test("Claude replies and summaries reach live, historical, and checkpoint evidence without changing request metrics", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-conversation-events-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, ".claude", "projects", "fixture", "local.jsonl");
+  const reply = assistantReply("PRIVATE_REQUEST_ID");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(reply)}\n`);
+  const provider = createClaudeProvider({ homeDir: root, env: {}, explicitSession: file });
+  const before = monitorStateFromProviderEvidence("claude", await provider.readSession("local"));
+  await appendFile(file, `${JSON.stringify(awaySummary())}\n`);
+  for (const historical of [false, true]) {
+    const evidence = await provider.readSession("local", { historical });
+    const state = monitorStateFromProviderEvidence("claude", evidence);
+    assert.deepEqual(state.activity.map((event) => event.tool), ["Summary updated", "Assistant replied"]);
+    assert.equal(state.activity[0].timestamp, awaySummary().timestamp);
+    assert.equal(state.metrics.toolCalls, 0);
+    assert.deepEqual(state.metrics.tokens.requestSnapshots, before.metrics.tokens.requestSnapshots,
+      "a summary cannot create a request or advance Last request");
+    assert.doesNotMatch(JSON.stringify(state.activity), /PRIVATE|content|usage|model/);
+    const checkpoints = new SessionObservationCheckpointStore({ directory: path.join(root, "checkpoints") });
+    const written = await checkpoints.write({
+      providerId: "claude", localSessionId: "local", evidence: { activity: evidence.activity },
+      revision: 1, readiness: { core: "ready", activityEvidence: "ready" },
+      observedAt: awaySummary().timestamp, source: { fingerprint: "safe-fingerprint", completeOffset: 42 },
+    });
+    const persisted = JSON.parse(await readFile(path.join(root, "checkpoints", written.filename), "utf8"));
+    assert.doesNotMatch(JSON.stringify(persisted.evidence.activity), /PRIVATE|content|usage|model/);
+    const loaded = await checkpoints.load();
+    const restored = monitorStateFromProviderEvidence("claude", { ...evidence, activity: loaded.records[0].evidence.activity });
+    assert.deepEqual(restored.activity, state.activity);
+    assert.deepEqual(restored.metrics.tokens.requestSnapshots, state.metrics.tokens.requestSnapshots);
+  }
 });
 
 test("Claude U2 distinguishes delivered system outcomes from human input in live and historical API projections", async (context) => {
@@ -230,7 +316,7 @@ test("Claude U2 distinguishes delivered system outcomes from human input in live
 
   const historical = !(await provider.listSessions())[0].isLive;
   const legacySource = claudeLifecycleSource(incrementalSourceSetDescriptor([mainFile], mainFile, historical), null);
-  const legacyFingerprint = crypto.createHash("sha256").update(`claude\0local\0${legacySource.identity}`).digest("hex");
+  const legacyFingerprint = crypto.createHash("sha256").update(`claude\0local\0${legacySource.identity}:system-task-notifications-v1`).digest("hex");
   let checkpoint = { fingerprint: legacyFingerprint, completeOffset: legacySource.size };
   const observer = provider.createObserver();
   const controller = new AbortController();

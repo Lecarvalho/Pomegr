@@ -6,7 +6,7 @@ liveness evidence; they do not describe prompt-cache availability.
 
 ## Times shown for an agent
 
-- **Last model turn** is the newest retained valid request snapshot for that
+- **Last request** is the newest retained valid request snapshot for that
   normalized agent.
 - **Last cache touch** is the newest retained valid request snapshot for the
   same agent with a positive cache-read or cache-write token count.
@@ -18,6 +18,15 @@ need for a cache-timing estimate.
 Both values come from the bounded request-snapshot feed. They are not derived
 from `Agent.lastSeen`, provider lifecycle updates, filesystem observation time,
 or cumulative token totals.
+
+A plain assistant reply counts when it carries valid request usage. A provider
+summary or lifecycle event without that usage does not advance this timestamp.
+For example, Claude Code records an away summary separately from an assistant
+request. Recent activity is a separate feed of tool use, user input, and selected
+session events. It labels recorded assistant text as **Assistant replied** and
+provider away summaries as **Summary updated**, without exposing their content.
+A reply can appear there even when request usage is unavailable; neither activity
+label supplies missing usage or changes **Last request**.
 
 ## Lifetime indication
 
@@ -31,7 +40,7 @@ itself carries a resolved `5m` or `1h` lifetime:
 - After the recorded lifetime passes, Pomegr reports **lifetime threshold
   elapsed**.
 
-Outside the nearing and elapsed states, **Last model turn** remains ordinary
+Outside the nearing and elapsed states, **Last request** remains ordinary
 text without an underline or popover. Pomegr adds the disclosure affordance only
 when it has cache timing that needs attention.
 
@@ -42,7 +51,7 @@ Historical sessions show recorded request and cache-touch
 times without a live warning state.
 
 Live agents with a normalized **finished** or **stopped** status also show the
-recorded last-turn age as plain text without a live warning. If the same agent
+recorded last-request age as plain text without a live warning. If the same agent
 returns to an active, warm, waiting, needs-input, or idle status, the live warning
 is evaluated again from the retained cache-touch evidence.
 

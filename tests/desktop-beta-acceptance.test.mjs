@@ -193,22 +193,24 @@ test("beta acceptance template exposes only the exact operator fields", () => {
 });
 
 test("desktop user, contributor, architecture, and release documentation stays explicit", async () => {
-  const [readme, configuration, architecture, releases, checklist] = await Promise.all([
+  const [readme, configuration, architecture, releases, checklist, installation] = await Promise.all([
     readFile(new URL("../README.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/CONFIGURATION.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/ARCHITECTURE.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_BETA_ACCEPTANCE.md", import.meta.url), "utf8"),
+    readFile(new URL("../docs/public/get-started/install.md", import.meta.url), "utf8"),
   ]);
   assert.match(readme, /Windows x64 desktop app is available now/i);
-  assert.match(readme, /Pomegr-Setup-<version>-x64\.exe/);
-  assert.match(readme, /Pomegr-Portable-<version>-x64\.exe/);
+  assert.match(readme, /docs\/public\/get-started\/install\.md/);
+  assert.match(installation, /Download installer/);
+  assert.match(installation, /Download portable/);
   assert.match(readme, /opt-in phone access/i);
   assert.match(readme, /Sharing is off by default/);
   assert.match(readme, /unencrypted HTTP/);
-  assert.match(readme, /https:\/\/github\.com\/Lecarvalho\/Pomegr\/releases\/latest/);
-  assert.match(configuration, /Windows x64 only/);
-  assert.match(configuration, /dynamic `127\.0\.0\.1` ports/);
+  assert.match(readme, /https:\/\/pomegr\.com\/download/);
+  assert.match(installation, /Windows x64/);
+  assert.match(configuration, /public\/get-started\/install\.md/);
   assert.match(configuration, /Quiet for one hour.*temporary/i);
   assert.match(configuration, /only the fixed generic Pomegr title and body/);
   assert.doesNotMatch(configuration, /optional bounded session title/);
