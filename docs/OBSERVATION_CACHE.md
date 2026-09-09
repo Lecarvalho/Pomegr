@@ -257,13 +257,26 @@ Clients use these queries only when an observation can change the next decision.
 not poll or call every query at session start. The tool-specific triggers and caveats are
 documented in [MCP observation queries](MCP_QUERIES.md).
 
-The stdio MCP process resolves a default qualified session reference only from one valid
-host-supplied launch identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID` or
-`CLAUDE_CODE_SESSION_ID`). Conflicting providers, conflicting IDs, malformed IDs, and
-missing identity fail unavailable. The private GET still receives an exact qualified
-reference and never infers one from repository roots, timestamps, catalog ordering, or
-process activity. `get_session_report` accepts no client selector; other session reads
-retain optional exact overrides for historical and delegated inspection.
+The Codex stdio MCP process resolves a default qualified session reference only from
+one valid host-supplied thread identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID`).
+Conflicting providers, conflicting IDs, malformed IDs, and missing identity fail
+unavailable. Claude's `CLAUDE_CODE_SESSION_ID` is never a default: the subprocess can
+retain its launch ID after `/clear` or a session switch. Instead, the plugin's
+`PreToolUse` hook fills an omitted `session_ref` on each recognized session query from
+the host-owned current `transcript_path` filename. A UUID-named main transcript maps
+directly; a recognized `subagents/agent-*.jsonl` locator maps to its UUID-named owning
+session directory. The hook ignores stale `session_id` metadata, reads no transcript,
+persists nothing, and emits only the qualified reference and existing tool selectors.
+The path never enters MCP arguments, results, monitor state, or errors. The hook does
+not grant permission. An invalid locator or missing hook leaves the MCP default
+unavailable, never bound to the previous Claude session.
+
+The private GET still receives an exact qualified reference and never infers one from
+repository roots, timestamps, catalog ordering, or process activity. All session reads,
+including `get_session_report`, retain optional exact `session_ref` overrides for
+historical and delegated inspection. The hook preserves explicit selectors. The MCP
+reader rejects responses identifying a session other than the requested reference.
+Selection changes no cache-only GET, readiness, retention, checkpoint, or revision rules.
 
 ## Focused report evidence
 

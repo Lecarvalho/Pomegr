@@ -28,7 +28,7 @@ const reportFilenameSchema = z.string().regex(/^pomegr-[a-z0-9](?:[a-z0-9-]{0,11
 
 const safeLocalSessionId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
-/** Resolve only a session identity supplied by the coding-agent host to this MCP subprocess. */
+/** Codex supplies a thread identity; Claude's per-call hook supplies its current reference. */
 export function resolveCurrentSessionRef(environment = process.env) {
   const value = environment && typeof environment === "object" ? environment : {};
   const codexValues = [value.CODEX_THREAD_ID, value.CODEX_SESSION_ID]
@@ -41,7 +41,9 @@ export function resolveCurrentSessionRef(environment = process.env) {
   const codexIds = [...new Set(codexValues)];
   const claudeIds = [...new Set(claudeValues)];
   if (codexIds.length > 1 || claudeIds.length > 1 || codexIds.length + claudeIds.length !== 1) return null;
-  return codexIds.length ? `codex:${codexIds[0]}` : `claude:${claudeIds[0]}`;
+  // Claude keeps the subprocess launch ID after /clear or an interactive session
+  // switch. Without the per-call hook reference, returning that ID is unsafe.
+  return codexIds.length ? `codex:${codexIds[0]}` : null;
 }
 
 const responseSchema = z.object({
@@ -182,11 +184,12 @@ function responseMatchesTool(toolName, data) {
   return false;
 }
 
-async function readObservation(toolName, query, path, params) {
+async function readObservation(toolName, query, path, params, expectedSessionRef = null) {
   try {
     const response = await query(path, params);
     const parsed = responseSchema.safeParse(response);
     if (!parsed.success || !responseMatchesTool(toolName, parsed.data)) return invalidInternalResult(toolName);
+    if (expectedSessionRef && parsed.data.sessionRef !== undefined && parsed.data.sessionRef !== expectedSessionRef) return invalidInternalResult(toolName);
     return result(toolName, parsed.data);
   } catch {
     return result(toolName, unavailableResponse());
@@ -257,9 +260,9 @@ export const AGENT_QUERY_TOOLS = Object.freeze({
     params: (input) => ({ agent_id: input.agent_id, within_minutes: input.within_minutes ?? 15, limit: input.limit ?? 10 }),
   },
   get_session_report: {
-    title: "Get Pomegr current session report",
-    description: "Decision-triggered read of the same bounded Markdown observation report available from the dashboard download for the current host session. The report is generated from one committed, privacy-filtered session revision and never reads transcripts or starts hydration. Call it when the report can improve a harness decision, handoff, or diagnosis; do not poll routinely.",
-    inputSchema: z.object({}).strict(),
+    title: "Get Pomegr session report",
+    description: "Decision-triggered read of the current session's bounded Markdown observation report, also available from the dashboard download. Omit session_ref for the actual calling session; Claude's host hook resolves it on every call, including after /clear. An optional exact session_ref selects a historical or delegated session. Missing current identity returns unavailable rather than a previous session's report. The report is generated from one committed, privacy-filtered session revision and never reads transcripts or starts hydration. Call it when the report can improve a harness decision, handoff, or diagnosis; do not poll routinely.",
+    inputSchema: currentSession,
     sessionScoped: true,
     path: (input) => `/api/agent/v1/sessions/${encodeURIComponent(input.session_ref)}/report`,
     params: () => ({}),
@@ -292,6 +295,7 @@ export function registerAgentQueryTools(server, { query, currentSessionRef = nul
         read,
         typeof definition.path === "function" ? definition.path(resolved) : definition.path,
         definition.params(resolved),
+        definition.sessionScoped ? resolved.session_ref : null,
       );
     });
   }
@@ -307,6 +311,7 @@ export function createAgentQueryHandler(query) {
       query,
       typeof definition.path === "function" ? definition.path(input) : definition.path,
       definition.params(input),
+      definition.sessionScoped ? input.session_ref : null,
     );
   };
 }

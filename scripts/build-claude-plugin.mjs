@@ -12,6 +12,10 @@ const hooksSourceFile = path.join(repositoryRoot, "plugin-src", "claude-hooks.js
 const hooksOutputFile = path.join(pluginRoot, "hooks", "hooks.json");
 const bundles = [
   {
+    entryPoint: path.join(repositoryRoot, "plugin-src", "claude-query-session.mjs"),
+    outputFile: path.join(pluginRoot, "scripts", "query-session.bundle.mjs"),
+  },
+  {
     entryPoint: path.join(pluginRoot, "mcp", "server.mjs"),
     outputFile: path.join(pluginRoot, "mcp", "server.bundle.mjs"),
   },

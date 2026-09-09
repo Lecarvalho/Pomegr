@@ -213,10 +213,13 @@ health, account limits, retained agent context, or normalized failures; they are
 not a polling interface or a required session-start checklist.
 
 Session-specific queries default to the validated current-session identity supplied by
-the Codex or Claude Code host to the stdio MCP subprocess. `get_agent_context` also
+the Codex host or Claude's per-call hook. `get_agent_context` also
 defaults to the main agent, `primary`. Optional exact references from `list_sessions`
 and `list_session_agents` remain available for historical or delegated inspection.
-`get_session_report` takes no arguments and returns the same bounded Markdown as the
+`get_session_report` needs no arguments for the actual calling session. Claude's
+per-call hook resolves the current identity after `/clear` or a session switch;
+it never falls back to the previous session's launch ID. An optional `session_ref`
+selects another exact session. The tool returns the same bounded Markdown as the
 dashboard download, including every normalized agent's latest bounded provider-reported
 model and reasoning effort when available. These fields are not complete model history,
 service-tier evidence, routing evidence, or performance measurements. No tool infers the

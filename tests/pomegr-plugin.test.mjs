@@ -582,6 +582,12 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
   assert.match(hooks.hooks.PreToolUse[0].hooks[0].command, /policy\.mjs" delegate/);
   assert.match(hooks.hooks.PreToolUse[1].hooks[0].command, /rename-session\.bundle\.mjs/);
+  const queryHook = hooks.hooks.PreToolUse[2];
+  assert.match(queryHook.hooks[0].command, /query-session\.bundle\.mjs/);
+  const queryMatcher = new RegExp(queryHook.matcher);
+  assert.ok(queryMatcher.test("mcp__plugin_pomegr_pomegr__get_session_report"));
+  assert.ok(queryMatcher.test("mcp__pomegr__get_agent_context"));
+  assert.equal(queryMatcher.test("mcp__pomegr__get_session_report_lookalike"), false);
   assert.match(hooks.hooks.SubagentStop[0].hooks[0].command, /policy\.mjs" subagent-stop/);
   for (const event of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
     assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
@@ -632,6 +638,19 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     const guard = spawnSync(process.execPath, [guardPath, "--provider", "claude"], { cwd: clientRepository, encoding: "utf8", input: "{}" });
     assert.equal(guard.status, 0);
     assert.equal(guard.stdout, "");
+
+    const sessionId = "22222222-2222-4222-8222-222222222222";
+    const queryHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "query-session.bundle.mjs")], {
+      cwd: clientRepository, encoding: "utf8", env: { ...process.env, NODE_PATH: "" },
+      input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__get_session_report",
+        tool_input: {}, session_id: "11111111-1111-4111-8111-111111111111",
+        transcript_path: path.join(clientRepository, `${sessionId}.jsonl`) }),
+    });
+    assert.equal(queryHook.status, 0);
+    assert.equal(queryHook.stderr, "");
+    assert.deepEqual(JSON.parse(queryHook.stdout), { hookSpecificOutput: {
+      hookEventName: "PreToolUse", updatedInput: { session_ref: `claude:${sessionId}` },
+    } });
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), ["clear_agent_signal", "clear_session_progress", "clear_session_signal", "get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);

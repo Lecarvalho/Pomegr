@@ -16,19 +16,27 @@ tools or call all of them at session start.
 | `list_session_agents` | Main or delegated agent identity is needed for context or failure inspection; no argument uses the current host session. |
 | `get_agent_context` | The latest context level would change whether to continue, compact, split, or stop work; no argument uses the current host session's primary agent. |
 | `get_recent_failures` | Retained normalized failures can help diagnose a problem already observed; no session argument uses the current host session. |
-| `get_session_report` | The current session's bounded Markdown observation report can improve a harness decision, handoff, or diagnosis. |
+| `get_session_report` | A session's bounded Markdown observation report can improve a harness decision, handoff, or diagnosis. |
 
-Session-specific MCP tools bind to the validated session identity supplied by the
-coding-agent host to the stdio MCP subprocess. Codex supplies its thread/session ID;
-Claude Code supplies `CLAUDE_CODE_SESSION_ID`. Missing, malformed, conflicting, or
-cross-provider identities fail with `current_session_unavailable`. Pomegr never guesses
-a current session from the repository directory, recency, or process activity.
+Session-specific MCP tools automatically select the calling session. Codex supplies
+its validated thread/session ID to the MCP subprocess. Claude's `PreToolUse` hook
+supplies the current session on every call, including after `/clear` or a session
+switch. It extracts the bounded session ID from the host-provided current transcript
+locator without opening the transcript or emitting its path. A delegated transcript
+resolves to its owning session. Pomegr never guesses a current session from the
+repository directory, recency, or process activity.
 
-`list_session_agents`, `get_agent_context`, and `get_recent_failures` retain optional
+`list_session_agents`, `get_agent_context`, `get_recent_failures`, and `get_session_report` accept optional
 `session_ref` selectors for delegated or historical inspection. `get_agent_context`
 also accepts an optional `agent_id` and otherwise selects `primary`.
-`get_session_report` deliberately accepts no arguments and always targets the
-host-bound current session. Delegated agents use the exact IDs returned by
+Omit `session_ref` for the current session; no discovery call or manual ID is required.
+Claude's subprocess launch ID is never used as a fallback because it can remain tied
+to the previous session. See the
+[Claude Code environment reference](https://code.claude.com/docs/en/env-vars).
+If the hook cannot resolve the current identity, or is missing or disabled, the MCP
+tool returns `current_session_unavailable`. It never selects the preceding session.
+Responses identifying a different session from the requested reference are rejected.
+Delegated agents use the exact IDs returned by
 `list_session_agents` when the primary default is not appropriate.
 
 ## Evidence semantics

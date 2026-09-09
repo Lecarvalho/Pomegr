@@ -6,9 +6,11 @@ import path from "node:path";
 import test from "node:test";
 
 import { buildPomegrMcpServer } from "../mcp/server.mjs";
-import { AGENT_QUERY_TOOLS, resolveCurrentSessionRef } from "../mcp/agent-query-tools.mjs";
+import { AGENT_QUERY_TOOLS, createAgentQueryHandler, resolveCurrentSessionRef } from "../mcp/agent-query-tools.mjs";
 import { buildPomegrMcpServer as buildClaudePomegrMcpServer } from "../plugins/claude-code/mcp/server.mjs";
 import { AGENT_QUERY_AUTH_HEADER, publishAgentQueryDescriptor } from "../shared/agent-query-transport.mjs";
+import { bindClaudeQuerySession, runClaudeQuerySessionHook } from "../plugin-src/claude-query-session.mjs";
+import { Readable } from "node:stream";
 
 const readNames = Object.keys(AGENT_QUERY_TOOLS).sort();
 
@@ -32,7 +34,7 @@ test("both MCP entrypoints register the seven read tools with read-only metadata
 
 test("current session references come only from one valid host identity", () => {
   assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CODEX_SESSION_ID: "thread-1" }), "codex:thread-1");
-  assert.equal(resolveCurrentSessionRef({ CLAUDE_CODE_SESSION_ID: "session-1" }), "claude:session-1");
+  assert.equal(resolveCurrentSessionRef({ CLAUDE_CODE_SESSION_ID: "session-1" }), null);
   assert.equal(resolveCurrentSessionRef({}), null);
   assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CODEX_SESSION_ID: "thread-2" }), null);
   assert.equal(resolveCurrentSessionRef({ CODEX_THREAD_ID: "thread-1", CLAUDE_CODE_SESSION_ID: "session-1" }), null);
@@ -73,6 +75,109 @@ test("session-scoped tools fail closed when the host supplies no current identit
   assert.equal(response.isError, undefined);
   assert.equal(response.structuredContent.reason, "current_session_unavailable");
   assert.equal(called, false);
+});
+
+test("Claude default reports follow the current host transcript across /clear in one MCP process", async () => {
+  const before = "11111111-1111-4111-8111-111111111111";
+  const after = "22222222-2222-4222-8222-222222222222";
+  const calls = [];
+  const server = buildClaudePomegrMcpServer({
+    environment: { CLAUDE_CODE_SESSION_ID: before },
+    query: async (url) => {
+      const sessionRef = decodeURIComponent(url.split("/").at(-2));
+      calls.push(sessionRef);
+      return {
+        schemaVersion: 1, readiness: "ready", observedAt: null, generatedAt: null, revision: 1,
+        sessionRef, format: "markdown", filename: "pomegr-session-2026-09-09.md", report: "# Current session report",
+      };
+    },
+  });
+  const report = server._registeredTools.get_session_report;
+  for (const id of [before, after, before]) {
+    const hook = bindClaudeQuerySession({
+      hook_event_name: "PreToolUse", tool_name: "mcp__plugin_pomegr_pomegr__get_session_report",
+      tool_input: {}, session_id: before, transcript_path: path.resolve("private", `${id}.jsonl`),
+    });
+    assert.equal(hook.hookSpecificOutput.permissionDecision, undefined);
+    assert.deepEqual(hook.hookSpecificOutput.updatedInput, { session_ref: `claude:${id}` });
+    const response = await report.handler(hook.hookSpecificOutput.updatedInput);
+    assert.equal(response.structuredContent.sessionRef, `claude:${id}`);
+  }
+  assert.deepEqual(calls, [before, after, before].map((id) => `claude:${id}`));
+  const missingHook = await report.handler({});
+  assert.equal(missingHook.structuredContent.reason, "current_session_unavailable");
+  assert.equal(calls.length, 3);
+});
+
+test("Claude query hook binds only recognized defaults and keeps explicit selectors and authorization intact", () => {
+  const id = "22222222-2222-4222-8222-222222222222";
+  for (const prefix of ["mcp__pomegr__", "mcp__plugin_pomegr_pomegr__"]) {
+    for (const tool of ["get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures"]) {
+      const payload = { hook_event_name: "PreToolUse", tool_name: prefix + tool, tool_input: {},
+        transcript_path: path.resolve("private", id, "subagents", "agent-child.jsonl") };
+      assert.deepEqual(bindClaudeQuerySession(payload).hookSpecificOutput.updatedInput, { session_ref: `claude:${id}` });
+      assert.equal(bindClaudeQuerySession({ ...payload, tool_input: { session_ref: "claude:explicit" } }), null);
+      assert.equal(bindClaudeQuerySession({ ...payload, transcript_path: "private-path-sentinel" }), null);
+      assert.equal(bindClaudeQuerySession({ ...payload, tool_name: prefix + tool + "_lookalike" }), null);
+    }
+  }
+  const payload = { hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__get_recent_failures",
+    tool_input: { agent_id: "primary", within_minutes: 10, limit: 2 }, transcript_path: path.resolve("private", `${id}.jsonl`) };
+  assert.deepEqual(bindClaudeQuerySession(payload).hookSpecificOutput.updatedInput,
+    { ...payload.tool_input, session_ref: `claude:${id}` });
+  const rejected = bindClaudeQuerySession({ ...payload, tool_input: { privateValue: "PRIVATE_SENTINEL" } });
+  assert.equal(rejected, null);
+  assert.doesNotMatch(JSON.stringify(rejected), /PRIVATE_SENTINEL|privateValue|private-path/u);
+});
+
+test("Claude query hook bounds malformed input and never echoes hook contents", async () => {
+  for (const input of ["not-json PRIVATE_SENTINEL", "x".repeat(1024 * 1024 + 1)]) {
+    let output = "";
+    await runClaudeQuerySessionHook(Readable.from([input]), { write: (value) => { output += value; } });
+    assert.equal(output, "");
+    assert.doesNotMatch(output, /PRIVATE_SENTINEL|not-json/u);
+  }
+});
+
+test("both MCP entrypoints can select the actual session when the launch identity is outdated or missing", async () => {
+  for (const build of [buildPomegrMcpServer, buildClaudePomegrMcpServer]) {
+    for (const currentSessionRef of ["claude:earlier-session", null]) {
+      const calls = [];
+      const server = build({ currentSessionRef, query: async (path) => {
+        calls.push(path);
+        return {
+          schemaVersion: 1, readiness: "ready", observedAt: "2026-09-09T04:25:00.000Z",
+          generatedAt: "2026-09-09T04:26:00.000Z", revision: 2,
+          sessionRef: "claude:actual-session", format: "markdown",
+          filename: "pomegr-actual-session-2026-09-09.md", report: "# Actual session report",
+        };
+      } });
+      const tool = server._registeredTools.get_session_report;
+      const input = AGENT_QUERY_TOOLS.get_session_report.inputSchema.parse({ session_ref: "claude:actual-session" });
+      const response = await tool.handler(input);
+      assert.equal(response.isError, undefined);
+      assert.equal(response.structuredContent.sessionRef, "claude:actual-session");
+      assert.deepEqual(calls, ["/api/agent/v1/sessions/claude%3Aactual-session/report"]);
+      assert.equal(AGENT_QUERY_TOOLS.get_session_report.inputSchema.safeParse({ session_ref: "../private" }).success, false);
+    }
+  }
+});
+
+test("session queries reject another session's response without exposing its content", async () => {
+  const query = async () => ({
+    schemaVersion: 1, readiness: "ready", observedAt: null, generatedAt: null, revision: 1,
+    sessionRef: "claude:wrong-session", format: "markdown",
+    filename: "pomegr-wrong-session-2026-09-09.md", report: "WRONG_SESSION_CONTENT",
+  });
+  for (const build of [buildPomegrMcpServer, buildClaudePomegrMcpServer]) {
+    const server = build({ currentSessionRef: "claude:actual-session", query });
+    const response = await server._registeredTools.get_session_report.handler({});
+    assert.equal(response.isError, true);
+    assert.doesNotMatch(JSON.stringify(response), /WRONG_SESSION_CONTENT|wrong-session/u);
+  }
+  const direct = await createAgentQueryHandler(query)("get_session_report", { session_ref: "claude:actual-session" });
+  assert.equal(direct.isError, true);
+  assert.doesNotMatch(JSON.stringify(direct), /WRONG_SESSION_CONTENT|wrong-session/u);
 });
 
 test("agent queries pass exact selectors and return structured content plus bounded text", async () => {

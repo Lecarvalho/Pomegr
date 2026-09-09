@@ -8,6 +8,7 @@ import { readPluginSkillArtifacts } from "./build-plugin-skills.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bundleDefinitions = [
+  ["plugins/claude-code/scripts/query-session.bundle.mjs", "plugin-src/claude-query-session.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/claude-code/mcp/server.bundle.mjs", "plugins/claude-code/mcp/server.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/claude-code/scripts/progress-reminder.bundle.mjs", "scripts/progress-reminder.mjs", "scripts/build-claude-plugin.mjs"],
   ["plugins/claude-code/scripts/rename-session.bundle.mjs", "plugins/claude-code/scripts/rename-session.mjs", "scripts/build-claude-plugin.mjs"],
