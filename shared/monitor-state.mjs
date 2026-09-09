@@ -81,7 +81,7 @@ export function createEmptyMonitorState(options = {}) {
     workflows: [],
     toolPatterns: [],
     loops: [],
-    activity: [],
+    activity: { items: [], total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 },
     executionTasks: [],
     planTasks: [],
     insights: [],

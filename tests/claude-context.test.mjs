@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCacheEvents } from "../monitor/cache-events.mjs";
 import { parseClaudeContextRecords } from "../monitor/providers/claude-context.mjs";
+import { mergeClaudeRequestFragments, splitClaudeRequestCorrelationEvidence } from "../monitor/providers/claude-activity-correlation.mjs";
 import { contextCompactions } from "../monitor/context-compactions.mjs";
 import { claudeCacheRefillRecords } from "./helpers/claude-cache-refill.mjs";
 import { claudeLifecycleSource } from "../monitor/providers/claude-session-status.mjs";
@@ -34,6 +35,26 @@ function actionResults(...ids) {
     type: "tool_result", tool_use_id: id, content: "PRIVATE_RESULT_MUST_NOT_LEAK",
   })) } };
 }
+
+test("streamed request fragments retain all issued calls without summing usage or duplicating calls", () => {
+  const read = (id) => ({ type: "tool_use", id, name: "Read", input: { file_path: "PRIVATE_PATH" } });
+  const fragments = [actionRequest("streamed", 1, [read("PRIVATE_A")]), actionRequest("streamed", 2, [read("PRIVATE_B")]),
+    actionRequest("streamed", 3, [read("PRIVATE_A")]), actionRequest("streamed", 4, [{ type: "text", text: "PRIVATE_REPLY" }])];
+  fragments[3].message.usage.output_tokens = 40;
+  const [snapshot] = parseClaudeContextRecords(fragments);
+  assert.deepEqual(snapshot.issuedWork, [{ kind: "read", count: 2 }]);
+  assert.equal(snapshot.output, 40, "usage remains the latest observation");
+  assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE|issuedToolUse|replyActivityId/);
+  const privateSnapshots = parseClaudeContextRecords(fragments, { includeToolUseIds: true });
+  assert.deepEqual(privateSnapshots[0].issuedToolUseIds.sort(), ["PRIVATE_A", "PRIVATE_B"]);
+  const { normalizedSnapshots } = splitClaudeRequestCorrelationEvidence(privateSnapshots);
+  assert.doesNotMatch(JSON.stringify(normalizedSnapshots), /PRIVATE|issuedToolUse|replyActivityId/);
+  const incremental = fragments.map((fragment) => parseClaudeContextRecords([fragment], { includeToolUseIds: true })[0])
+    .reduce((previous, next) => mergeClaudeRequestFragments(previous, next), undefined);
+  assert.deepEqual(incremental.issuedWork, snapshot.issuedWork);
+  assert.equal(incremental.output, 40);
+  assert.deepEqual(incremental.issuedToolUseIds.sort(), ["PRIVATE_A", "PRIVATE_B"]);
+});
 
 test("correlates only bounded work kinds from issued calls and preceding results", () => {
   const records = [

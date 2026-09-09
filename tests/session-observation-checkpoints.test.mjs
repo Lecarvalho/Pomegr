@@ -53,6 +53,20 @@ test("checkpoint restart preserves only bounded request action evidence and its 
   assert.equal(feed.items[0].issuedAssociation, "recorded_link");
 });
 
+test("checkpoint round-trips normalized activity duration and opaque request correlation", async (t) => {
+  const checkpoints = new SessionObservationCheckpointStore({ directory: await temporaryCheckpointDirectory(t) });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  evidence.toolCalls[0].durationMs = 2_500;
+  evidence.toolCalls[0].requestId = "request-0123456789abcdef";
+  await checkpoints.write({ ...snapshot("claude", evidence.localId, 8), evidence });
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  assert.equal(loaded.records[0].evidence.toolCalls[0].durationMs, 2_500);
+  assert.equal(loaded.records[0].evidence.toolCalls[0].requestId, "request-0123456789abcdef");
+});
+
 async function temporaryCheckpointDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-observation-checkpoints-"));
   t.after(async () => rm(directory, { recursive: true, force: true }));

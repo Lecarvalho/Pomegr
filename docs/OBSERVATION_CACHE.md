@@ -79,7 +79,102 @@ U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream cons
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
 
-### Messages and summaries in Recent activity
+### Activity feed
+
+D derives `ActivityFeed` from the full retained normalized event set: total,
+tool-call count, message/input count, failed-shell count, and bounded WorkKind
+counts with median resolved wall durations. S serves only its newest 200 items;
+The small state feed remains a summary projection. The session Activity panel
+uses the separate paged history contract below. Totals can exceed the state
+window. No page or agent-scope action acquires provider evidence.
+Explicit request selection navigates F to a linked row's page using only that
+committed window, revealing All agents if the current Activity scope hides it.
+Background revisions preserve later-page anchors and do not trigger navigation.
+
+Activity items add only nullable `durationMs` (0–86,400,000 ms) and `requestId`
+(the opaque ID of a served request snapshot). U2 pairs recorded call/result
+timestamps privately; D validates request membership before stamping links.
+Unmatched or unavailable durations and links stay null. Provider call IDs and
+request-mapping keys never cross the browser or persistence boundary. C/P retain
+only validated normalized evidence. These fields round-trip through observation
+checkpoints; aggregate feeds are derived from retained evidence after restore.
+Readiness stays `activityEvidence`; Requests & actions retains its separate
+`contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
+checkpoint cadence, and browser polling remain unchanged.
+Claude's `conversation-activity-v6` and Codex's `codex-activity-v2` source
+fingerprints trigger rehydration of checkpoints produced before duration and
+request-link normalization was added.
+Claude merges recorded tool IDs across fragments sharing one request identity,
+including live snapshot merges after a read window advances. The private
+ID-to-kind map is stripped before normalized evidence and checkpoints. Usage
+remains the latest request snapshot; fragments never add token totals. Revision
+v5 also rebuilds the incomplete links produced by the earlier fragment handling.
+Revision v6 links assistant replies, including reply-only requests, through an
+exact actor-scoped recorded request identity. U2 retains only an opaque reply ID
+in its private correlation index; the index is stripped before evidence and
+checkpoints. D serves only links to retained request snapshots. Missing usage,
+altered identities, and requests outside the served window leave links null;
+timestamp proximity cannot establish a link. Replies remain message events.
+
+### Paged session evidence history
+
+`GET /api/session-history` serves committed normalized history independently of
+the bounded `/api/state` summary. Query kinds are `activity` and `requests`;
+responses carry readiness, revision, total row count, offset, a bounded page,
+and the selected request's linked-event count. Activity pages contain at most
+eight rows; request windows contain at most 60 (20 on phones). Agent scope,
+request lookup, request-only filtering, and an opaque event anchor operate on
+committed indexes. GETs never acquire or normalize provider records.
+
+Provider-owned `readSessionHistory` replays available session sources in the
+background. Complete normalized history has no 100-request or 200-event lifetime
+cutoff. Ordinary context, cache-event, report, and state-feed budgets remain
+independent. Complete candidates validate before replacement; incomplete or
+failed reads preserve the last committed history. History persistence contains
+only normalized request snapshots, sanitized activity metadata, stable request
+numbers, and indexes. It excludes raw content, native identities, transcript
+paths, and private correlation keys. Generation files and a committed manifest
+allow bounded page reads without reparsing complete histories in GETs.
+
+Opaque request identity does not include a streamed fragment's changing
+timestamp. A session-scoped number is assigned on first history publication and
+preserved across filtering, paging, appends, and restart. Activity stores its
+normalized agent identity and request reference; display labels never establish
+ownership. A linked request need not occur in the current state summary or
+loaded chart window. User inputs and system events without an established
+request relationship remain unlinked; timing alone never establishes one.
+
+F keeps at most the current activity page and its adjacent pages, invalidating
+neighbors when history revision or scope changes. It renders eight rows, keeps
+existing content during a same-scope load, ignores stale session responses, and
+anchors older live pages to their first visible event. New events offer View
+latest. Explicit request selection reveals linked rows, and an activity-row
+selection loads an absent request window. History readiness is separate from
+the summary's activity/context evidence readiness.
+Polling never cancels an in-flight navigation. A loading or unavailable response
+retries the same request lookup, scope, offset, and anchor instead of substituting
+the latest page. Background cleanup retains the current and previous immutable
+page generations after the new manifest commits.
+
+Codex U2 correlates rollout activity before global sorting, within each normalized
+actor's source sequence. Private parser callbacks identify normalized calls,
+replies, and usage observations by record position; no callback index or request
+mapping enters evidence or persistence. A native `token_usage_record` seals an
+output group, and its request-local components must match the next `token_count`.
+Legacy streams can close a contiguous output group at token count directly.
+Turn/user/lifecycle boundaries, compaction, unusable usage, conflicting repeated
+identities, and a new response after tool results without closing usage break
+association. Pending output has no link until usage arrives. Canonical rows can
+inherit a link only through an identical normalized rollout event ID, after
+source merging. Snapshot fallback identity is the same for live and historical
+reads. Only opaque request IDs and normalized issued-work counts leave U2.
+Adjacent completed-message/response-item mirrors with matching text and phase
+share one normalized reply identity when the response item omits its native ID.
+The text digest is private and never establishes a cross-request association.
+Full observation hydration uses the strict ordinary evidence shape; history-only
+ownership markers are present solely during the separate history normalization.
+
+### Messages and summaries in Activity
 
 U2 emits **Assistant replied** only for recognized assistant text records and
 **Summary updated** for Claude Code's native `system/away_summary` records.
@@ -117,7 +212,7 @@ times never substitute for missing delivery evidence. At most 256 replies per
 parsed source and 4,096 merged activity events survive the existing Codex
 observation/checkpoint pipeline. Codex has no equivalent away-summary event.
 
-### System task notifications in Recent activity
+### System task notifications in Activity
 
 Claude U2 distinguishes provider-owned delivered task notifications from human input
 using the native system-origin metadata. It emits only the provider-neutral `System`
@@ -364,7 +459,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](METRICS.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v3`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v6`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged

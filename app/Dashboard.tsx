@@ -7,6 +7,8 @@ import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../sha
 import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
 import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
 import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
+import { ActivityPanel } from "./components/dashboard/ActivityPanel";
+import { useSessionRequestSelection } from "./components/dashboard/requests-actions/useSessionRequestSelection";
 import { RequestsActionsPanel } from "./components/dashboard/RequestsActionsPanel";
 import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
 import { RepositoryDisclosurePanel } from "./components/dashboard/RepositoryDisclosurePanel";
@@ -180,6 +182,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   }, [activeSessionId]);
 
   const viewingHistory = data.view === "history";
+  const requestSelection = useSessionRequestSelection({ historyEnabled: true, sessionId: data.session?.id, agents: data.agents, requestSnapshots: data.metrics.tokens.requestSnapshots, contextBoundaries: data.metrics.tokens.contextHistory.boundaries, historical: viewingHistory, cacheEvents: data.metrics.tokens.cacheEvents, cacheReadDrops: data.metrics.tokens.cacheReadDrops });
   const sessionMatchesSelection = Boolean(data.session && (!selectedSessionId || selectedSessionId === data.session.id));
   const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
   const visibleProviderStatus = providerStatusFor(providerStatus.providers, data.source === "Codex" ? "codex" : "claude");
@@ -243,7 +246,8 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <SessionKpiStrip state={data} historical={viewingHistory} />
-          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <RequestsActionsPanel key={`${data.session.id}-requests-actions`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} cacheEvents={data.metrics.tokens.cacheEvents} cacheReadDrops={data.metrics.tokens.cacheReadDrops} />}
+          {data.readiness?.contextEvidence === "loading" ? <ReadinessSkeleton label="context evidence" /> : <RequestsActionsPanel selection={requestSelection} key={`${data.session.id}-requests-actions`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} cacheEvents={data.metrics.tokens.cacheEvents} cacheReadDrops={data.metrics.tokens.cacheReadDrops} />}
+          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="activity feed" /> : <ActivityPanel historyEnabled key={`${data.session.id}-activity`} activity={data.activity} sessionId={data.session.id} selection={requestSelection} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />}
           {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} onOpenWorkflow={(id) => { changeAgentActivityView("list"); setWorkflowNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} onShowAgent={(id) => { changeAgentActivityView("list"); setAgentNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} />}
           {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className="contentGrid" id="agent-activity">
             <AgentActivityPanel agentNavigation={agentNavigation?.sessionId === data.session.id ? agentNavigation : null} workflowNavigation={workflowNavigation?.sessionId === data.session.id ? workflowNavigation : null} key={data.session.id} insights={data.insights} loops={data.loops} agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
@@ -251,7 +255,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
           {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
 
           <RepositoryDisclosurePanel session={displayData.session!} historical={viewingHistory} />
-          <SessionDetailsPanel state={displayData} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} showEstimatedCost={displayPreferences.estimatedCost} />
+          <SessionDetailsPanel state={displayData} historical={viewingHistory} showEstimatedCost={displayPreferences.estimatedCost} />
         </div> : <>
           {data.error && <div className="notice"><span>!</span>{data.error}</div>}
           <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} session={selectedSession} readiness={data.readiness} />

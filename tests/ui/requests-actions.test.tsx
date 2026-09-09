@@ -1,14 +1,22 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
-import { RequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
+import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import type { ComponentProps } from "react";
+import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
+import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
 import { agent } from "./dashboard-test-fixtures";
 import { claudeCacheRefillFeeds } from "../helpers/claude-cache-refill.mjs";
 
+function RequestsActionsPanel(props: Omit<ComponentProps<typeof ControlledRequestsActionsPanel>, "selection">) {
+  const selection = useSessionRequestSelection(props);
+  return <ControlledRequestsActionsPanel {...props} selection={selection} />;
+}
+
 const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder" };
 const baseTime = Date.parse("2026-08-09T12:00:00.000Z");
+const EMPTY_BOUNDARIES: ContextHistoryBoundary[] = [];
 
 function snapshot(index: number, agentId = "primary", overrides: Partial<RequestSnapshot> = {}): RequestSnapshot {
   const uncachedInputTokens = overrides.uncachedInputTokens ?? 2_000_000 - index * 1_000;
@@ -52,6 +60,11 @@ function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cach
   />);
 }
 
+function HistoryLocateHarness({ sessionId, requests }: { sessionId: string; requests: RequestSnapshot[] }) {
+  const selection = useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed(requests), contextBoundaries: EMPTY_BOUNDARIES, historical: false, sessionId, historyEnabled: true });
+  return <><button type="button" onClick={() => selection.locate("request-10")}>Locate absent request</button><ControlledRequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed(requests)} contextBoundaries={EMPTY_BOUNDARIES} cacheWriteAvailable historical={false} selection={selection} /></>;
+}
+
 function chart(container: HTMLElement): SVGSVGElement {
   return container.querySelector("svg.requestsActionsChart") as SVGSVGElement;
 }
@@ -76,11 +89,83 @@ function setPhone(matches: boolean) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   window.localStorage.removeItem("pomegr-disclosure-cache-evidence");
 });
 
 describe("RequestsActionsPanel", () => {
+  it("waits for slow navigation and retries the same request while history hydrates", async () => {
+    vi.useFakeTimers();
+    let resolveNavigation!: (value: unknown) => void;
+    const response = (items: RequestSnapshot[], status = "ready") => ({ ok: true, json: async () => ({ status, kind: "requests", revision: "r1", total: 100, offset: 0, linkedCount: 0, items }) });
+    const fetchPage = vi.fn().mockResolvedValueOnce(response([{ ...snapshot(100), number: 100 } as RequestSnapshot]))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNavigation = resolve; }))
+      .mockResolvedValueOnce(response([{ ...snapshot(10), number: 10 } as RequestSnapshot]));
+    vi.stubGlobal("fetch", fetchPage);
+    await act(async () => { render(<HistoryLocateHarness sessionId="slow-history" requests={[]} />); });
+    fireEvent.click(screen.getByRole("button", { name: "Locate absent request" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    await act(async () => { resolveNavigation(response([], "loading")); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(750); });
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+    expect(fetchPage.mock.calls[2][0]).toContain("requestId=request-10");
+    expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument();
+  });
+
+  it("keeps persistent request labels across pages and loads an absent selection around its stable id", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      calls.push(url);
+      const query = new URL(url, "http://localhost").searchParams;
+      const selected = query.get("requestId");
+      const items = selected
+        ? Array.from({ length: 20 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }))
+        : Array.from({ length: 20 }, (_, index) => ({ ...snapshot(index + 81), number: index + 81 }));
+      return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "history-r1", total: 100, offset: selected ? 0 : 80, linkedCount: 0, items }) };
+    }));
+    const { container } = render(<HistoryLocateHarness sessionId="history-one" requests={Array.from({ length: 100 }, (_, index) => snapshot(index + 1))} />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument());
+    expect(axisLabels(container)).toEqual(["#81", "#100"]);
+    await user.click(screen.getByRole("button", { name: "Locate absent request" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument());
+    expect(axisLabels(container)).toEqual(["#1", "#20"]);
+    expect(calls.at(-1)).toContain("requestId=request-10");
+    expect(screen.getByText("Request numbers are stable labels within this session, not provider ids.", { exact: false })).toBeInTheDocument();
+  });
+
+  it("discards an earlier session-history response after the viewed session changes", async () => {
+    const deferred: Array<(value: { ok: boolean; json: () => Promise<unknown> }) => void> = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise((resolve) => deferred.push(resolve))));
+    const requests = Array.from({ length: 100 }, (_, index) => snapshot(index + 1));
+    const { rerender } = render(<HistoryLocateHarness sessionId="history-one" requests={requests} />);
+    await waitFor(() => expect(deferred).toHaveLength(1));
+    rerender(<HistoryLocateHarness sessionId="history-two" requests={requests} />);
+    await waitFor(() => expect(deferred).toHaveLength(2));
+    deferred[1]({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "two", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(200), number: 200 }] }) });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+    deferred[0]({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "one", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+  });
+
+  it("uses detail Prev and Next across pages even when stable labels have gaps", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const offset = new URL(url, "http://localhost").searchParams.get("offset");
+      const start = offset === "0" ? 1 : 41;
+      return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "history-r1", total: 100, offset: start - 1, linkedCount: 0, items: Array.from({ length: 60 }, (_, index) => ({ ...snapshot(start + index), number: (start + index) * 2 })) }) };
+    }));
+    const { container } = render(<HistoryLocateHarness sessionId="history-steps" requests={Array.from({ length: 100 }, (_, index) => snapshot(index + 1))} />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+    await user.click(within(container).getByRole("button", { name: /^Request #82,/ }));
+    await user.click(screen.getByRole("button", { name: "Prev" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #80" })).toBeInTheDocument());
+    await user.click(within(container).getByRole("button", { name: /^Request #120,/ }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #122" })).toBeInTheDocument());
+  });
   it("retains request 44's refill marker through parsing and detail-feed trimming after a synthetic message", () => {
     const feeds = claudeCacheRefillFeeds();
     const requests = feeds.requestSnapshots as RequestSnapshotFeed;
@@ -146,7 +231,7 @@ describe("RequestsActionsPanel", () => {
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(60);
     expect(axisLabels(container)).toEqual(["#941", "#1000"]);
     expect(screen.getByRole("heading", { name: "Request #1000" })).toBeInTheDocument();
-    expect(screen.getByText("Numbers are positions in the retained feed (latest 100 per agent), not provider ids.")).toBeInTheDocument();
+    expect(screen.getByText("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids. Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.")).toBeInTheDocument();
   });
 
   it("changes scope to the newest row and keeps a chart click in the current window", async () => {
@@ -222,7 +307,12 @@ describe("RequestsActionsPanel", () => {
     expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
     const freshHeight = Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"));
     expect(freshHeight).toBeCloseTo(171.5);
-    expect(Number(container.querySelector(".requestsActionsSelectedLabel")!.getAttribute("y"))).toBeCloseTo(73.5);
+    const selectedBar = container.querySelector(".requestsActionsBar.isSelected .requestsActionsSegment")!;
+    const selectedLabel = container.querySelector(".requestsActionsSelectedLabel")!;
+    expect(Number(selectedLabel.getAttribute("x"))).toBeCloseTo(
+      Number(selectedBar.getAttribute("x")) + Number(selectedBar.getAttribute("width")) / 2,
+    );
+    expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(70.5);
 
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
@@ -287,8 +377,9 @@ describe("RequestsActionsPanel", () => {
       issuedAssociation: "recorded_link",
     });
     const { rerender } = renderPanel([actionRow]);
-    expect(screen.getByText("Results available before").parentElement).toHaveTextContent("transcript adjacency");
-    expect(screen.getByText("Actions issued by request").parentElement).toHaveTextContent("recorded link");
+    const detail = screen.getByRole("region", { name: "Selected request" });
+    expect(within(detail).getByText("Before")).toBeInTheDocument();
+    expect(within(detail).getByText("Issued")).toBeInTheDocument();
     expect(screen.getByText("Reading ×2")).toBeInTheDocument();
     expect(screen.getByText("Running tests")).toBeInTheDocument();
     expect(screen.getByText("Editing")).toBeInTheDocument();

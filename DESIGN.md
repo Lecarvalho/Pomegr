@@ -201,7 +201,7 @@ Inter keeps the dense monitoring workspace readable and direct. Geist Mono is re
 
 The app shell uses a 60px global header, a 220px desktop route rail, and a flexible evidence workspace. It does not reserve a persistent footer row, and session pages end with their final evidence panel rather than repeating observer, update, source, license, or version metadata. That supporting information belongs in Settings or About. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the compact pomegranate product mark, destination search, monitor state, notifications, and local profile control. Session routes place the Sessions › project breadcrumb in this header; on phones, the mark retains its accessible Pomegr home name while the visible wordmark gives that space to the breadcrumb. Long project names truncate within the header. The brand mark keeps the same position on routes with and without breadcrumbs. On phones, the breadcrumb and Pomegr wordmark share the same text origin, baseline, typography, and muted color. The Settings About pane presents the painted mark beside the product name and purpose before operational metadata.
 
-At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Requests & actions presents session evidence with one bar per request and numeric Full prompt in the selected-request details. The retained evidence meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
+At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Requests & actions presents session evidence with one bar per request and numeric Full prompt in the selected-request details; Activity is a separate evidence panel rather than content inside Session details. The retained evidence meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
 
 Home remains a personal starting point for last-viewed and pinned destinations. Its sections collapse to one column while preserving reading order, bounded identity-only local preferences, and honest unavailable/coming-soon content.
 
@@ -279,6 +279,29 @@ At intermediate widths, the roster omits the Calls and Cache TTL columns from 76
 Session headers show recorded or live lifecycle state in the status card without a duplicate identity badge. The provider row omits the repository name already shown in the breadcrumb, including while session evidence loads. Live and historical views omit the redundant status row; connection failures remain visible. The live status card uses the shared activity labels, including In progress for working sessions. Phone summary disclosures identify the summary source once in their toggle, with agent-reported signals retained below. Session toolbars offer report download without a pause action.
 
 ### Session Evidence
+
+Activity follows Requests & actions and Cache evidence, before session summary
+cards and the agent roster. A 360px by-kind rail precedes the feed; compact
+desktop widths stack the rail above it. The six feed columns are Time, Agent,
+Action, Target, Duration, and Request. Linked rows use the quiet button role,
+raised tone for the selected request, and error-soft tone for failed rows.
+Request numbers use the text-link treatment; the selected request number is the
+only brand accent in the feed. Missing links and durations use an em dash.
+Eight-row paging uses secondary Previous, numbered, and Next controls. Only one
+activity page is displayed; the current page and its two neighbors are cached.
+Request numbers are stable session labels, independent of page and agent scope.
+Selecting a request reveals its activity page; selecting a linked activity row
+loads the corresponding request window. A text action filters to the selected
+request. Older live pages retain their first visible event and offer View latest
+when new events arrive. Loading preserves the last committed page.
+On phones, 64px two-line rows preserve target and duration, with 44px touch
+targets and a 48px per-session breakdown disclosure closed by default. Agent
+scope applies to the feed; by-kind totals and the other activity aggregates
+cover the full retained session feed. Activity rows and Requests & actions
+share request selection and links. Linked assistant replies show the same
+request number and selected state as linked tool calls. The request detail shows Before and Issued
+chips in one wrapping line separated by a vertical rule, with one shared
+evidence caveat below the panel. These compositions remain panel-local.
 
 Repositories use a flat, linked index of observed projects. Each row shows the
 repository name, observed provider badges, live and history session counts, last

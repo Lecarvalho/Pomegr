@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Agent } from "../../../../shared/monitor-contract";
 import { agentDisplayName, compactNumber } from "../../../dashboard-utils";
 import { WORK_LABELS } from "../../agents/agent-presentation";
-import { largestRequests, type LargestSort, type RequestRow } from "./model";
+import { largestRequests, requestNumber, type LargestSort, type RequestRow } from "./model";
 
 const SORTS: LargestSort[] = ["uncachedInput", "output", "cacheWrite", "total"];
 const SORT_LABELS = { uncachedInput: "uncached input", output: "output", cacheWrite: "cache write", total: "total" };
@@ -24,8 +24,8 @@ export function LargestRequestsList({ rows, agents, selectedId, phone, cacheWrit
     <div>{largest.map((row) => {
       const agent = byId.get(row.agentId);
       return <button type="button" key={row.id} className={`requestsActionsLargestRow${selectedId === row.id ? " isSelected" : ""}`} aria-pressed={selectedId === row.id}
-        aria-label={`Locate request #${row.ordinal}, ${agent ? agentDisplayName(agent) : "Unknown agent"}`} onClick={() => onSelect(row)}>
-        <span className="requestsActionsNumber">#{row.ordinal.toLocaleString()}</span>
+        aria-label={`Locate request #${requestNumber(row)}, ${agent ? agentDisplayName(agent) : "Unknown agent"}`} onClick={() => onSelect(row)}>
+        <span className="requestsActionsNumber">#{requestNumber(row).toLocaleString()}</span>
         <span className="requestsActionsLargestIdentity"><strong>{agent ? agentDisplayName(agent) : "Unknown agent"}</strong>
           <small>before: {row.precedingWork.length ? row.precedingWork.map(({ kind, count }) => `${WORK_LABELS[kind]}${count > 1 ? ` ×${count}` : ""}`).join(", ") : "none recorded"}</small>
           <i aria-hidden="true" style={{ width: `${row[valueKey] / maximum * 100}%` }} />

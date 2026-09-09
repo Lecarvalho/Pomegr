@@ -9,6 +9,8 @@ export type LargestSort = "uncachedInput" | "output" | "cacheWrite" | "total";
 export type RequestRow = RequestSnapshot & {
   /** 1-based position in the retained feed after applying the selected scope. */
   ordinal: number;
+  /** Stable, session-global request number supplied by paged history. */
+  number?: number;
   /** Full request-local input, displayed numerically in request details. */
   promptTokens: number;
   /** The stacked fresh-token segments in the default chart mode. */
@@ -72,6 +74,9 @@ export function scopedRows(
       issuedWork: snapshot.issuedWork ?? [],
       issuedAssociation: snapshot.issuedAssociation ?? null,
       ordinal: rows.length + 1,
+      number: typeof (snapshot as RequestSnapshot & { number?: unknown }).number === "number"
+        ? (snapshot as RequestSnapshot & { number: number }).number
+        : undefined,
       promptTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.cacheReadTokens,
       freshTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.outputTokens,
       compactionBefore: hasCompactionBetween(boundaries, snapshot.agentId, previous?.observedAt, snapshot.observedAt),
@@ -80,6 +85,11 @@ export function scopedRows(
     previousByAgent.set(snapshot.agentId, snapshot);
   }
   return rows;
+}
+
+/** The persistent history number when available, otherwise retained-feed position. */
+export function requestNumber(row: Pick<RequestRow, "number" | "ordinal">): number {
+  return row.number ?? row.ordinal;
 }
 
 /** Returns a 1-based inclusive window, with an empty range for no rows. */

@@ -386,6 +386,7 @@ export function parseCodexContextRecords(records, options = {}) {
       const duplicate = snapshots.get(dedupeId);
       if (duplicate && duplicate.timestamp === timestamp) snapshot.cacheReadPreviousAt = duplicate.cacheReadPreviousAt;
       snapshots.set(dedupeId, laterEvidence(duplicate, snapshot));
+      options.onUsageSnapshot?.(recordIndex, snapshot);
       if (!duplicate) cacheReadPreviousAt = cacheReadComparable ? timestamp : null;
     } else if (isTokenCountRecord(record)) {
       // A recognized but unusable observation means later valid snapshots are
@@ -422,8 +423,8 @@ export function parseCodexContextRecords(records, options = {}) {
   return {
     usageSnapshots: [...snapshots.values()]
       .sort((left, right) => chronological(left, right) || left.dedupeId.localeCompare(right.dedupeId))
-      .slice(-MAX_USAGE_SNAPSHOTS),
-    compactions: [...compactions.values()].sort(chronological).slice(-100),
+      .slice(options.unlimited === true ? 0 : -MAX_USAGE_SNAPSHOTS),
+    compactions: [...compactions.values()].sort(chronological).slice(options.unlimited === true ? 0 : -100),
   };
 }
 

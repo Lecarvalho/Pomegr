@@ -139,6 +139,15 @@ test("deduplicates internally and keeps the latest 100 valid snapshots per agent
   assert.equal(feed.items.at(-1)?.uncachedInputTokens, 777);
 });
 
+test("history request ids remain stable when a streamed fragment advances its timestamp", () => {
+  const agents = [{ id: "primary" }];
+  const base = { actorId: "primary", dedupeId: "recorded-request", input: 2, output: 3, cacheWrite: 0, cacheRead: 0 };
+  const before = buildRequestSnapshots({ sessionId: "claude:session", agents, usageSnapshots: [{ ...base, timestamp: "2026-01-01T00:00:00.000Z" }], unlimited: true }).items[0];
+  const after = buildRequestSnapshots({ sessionId: "claude:session", agents, usageSnapshots: [{ ...base, timestamp: "2026-01-01T00:00:01.000Z" }], unlimited: true }).items[0];
+  assert.equal(before.id, after.id);
+  assert.equal(after.observedAt, "2026-01-01T00:00:01.000Z");
+});
+
 test("rejects invalid, all-zero, unknown-agent, and provider-cumulative-only evidence", () => {
   const feed = buildRequestSnapshots({
     sessionId: "session",

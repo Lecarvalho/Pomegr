@@ -4,7 +4,6 @@ import type { MonitorState, PomegrPluginMetadata } from "../../../shared/monitor
 import { createEmptyProviderCapabilities } from "../../../shared/monitor-state.mjs";
 import { sessionListTime } from "../../dashboard-utils";
 import { RelativeTimeText } from "../LiveTime";
-import { ActivityPanel } from "./ActivityPanel";
 import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 import { MachineryPanel } from "./MachineryPanel";
 import { UsageLimitsPanel } from "./UsageLimitsPanel";
@@ -38,7 +37,7 @@ function SessionDetailsSummary({ state, showEstimatedCost }: { state: MonitorSta
   const plugin = state.session.pomegrPlugin;
   const pluginVersion = plugin?.version ? pluginVersionLabel(plugin.version) : null;
   const policyVersion = plugin?.policyVersion ?? null;
-  const fallback = "Approval mode, usage limits, machinery, activity";
+  const fallback = "Approval mode, usage limits, machinery";
 
   return (
     <span className="sessionEvidenceSummary sessionDetailsSummary">
@@ -59,14 +58,10 @@ function SessionDetailsSummary({ state, showEstimatedCost }: { state: MonitorSta
 
 export function SessionDetailsPanel({
   historical,
-  loading,
-  onRefresh,
   showEstimatedCost = true,
   state,
 }: {
   historical: boolean;
-  loading: boolean;
-  onRefresh: () => void;
   showEstimatedCost?: boolean;
   state: MonitorState;
 }) {
@@ -122,7 +117,6 @@ export function SessionDetailsPanel({
       )}
       {!historical && capabilities.usageLimits && <UsageLimitsPanel source={state.source} usageLimits={state.usageLimits} />}
       <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} inventoryRef={session.contextInventoryRef} />
-      <ActivityPanel activity={state.activity} historical={historical} loading={loading} onRefresh={onRefresh} />
     </DashboardDisclosurePanel>
   );
 }

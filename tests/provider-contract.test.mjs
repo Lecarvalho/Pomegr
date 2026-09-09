@@ -136,6 +136,18 @@ test("accepts bounded lifecycle uncertainty metadata and rejects unknown enum va
   }
 });
 
+test("activity evidence accepts only bounded wall time and opaque request ids", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8"));
+  fixture.toolCalls[0].durationMs = 86_400_000;
+  fixture.toolCalls[0].requestId = "request-0123456789abcdef";
+  assert.equal(parseProviderSessionEvidence(fixture).toolCalls[0].durationMs, 86_400_000);
+  for (const [field, value] of [["durationMs", 86_400_001], ["durationMs", -1], ["requestId", "provider-request-id"]]) {
+    const invalid = structuredClone(fixture);
+    invalid.toolCalls[0][field] = value;
+    assert.throws(() => parseProviderSessionEvidence(invalid), /Invalid|Too big|Too small|Unsafe|regex|less than or equal/i, field);
+  }
+});
+
 test("keeps static support distinct from runtime readiness and session evidence", async () => {
   const provider = defineProvider({
     id: "codex",

@@ -201,7 +201,8 @@ describe("dashboard session navigation", () => {
     const cacheDisclosure = actionsPanel.nextElementSibling;
     expect(cacheDisclosure).toHaveClass("cacheEvidenceDisclosure");
     expect(cacheDisclosure).not.toHaveAttribute("open");
-    expect(cacheDisclosure?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
+    expect(cacheDisclosure?.nextElementSibling).toBe(container.querySelector(".activityPanel"));
+    expect(container.querySelector(".activityPanel")?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
     expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Request snapshots" })).not.toBeInTheDocument();
     expect(container.querySelector(".sessionSummaryCards")?.nextElementSibling).toBe(container.querySelector(".contentGrid"));
@@ -327,7 +328,7 @@ describe("dashboard session navigation", () => {
     state.source = "Codex";
     state.usageLimits.error = "Codex usage limits are temporarily unavailable.";
     mockDashboardState(state);
-    const { container } = renderDashboard([catalogSession(state)]);
+    renderDashboard([catalogSession(state)]);
     await screen.findByText("Session details");
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
@@ -339,16 +340,12 @@ describe("dashboard session navigation", () => {
     const state = detailedState({ contextSupported: false });
     state.capabilities.usageLimits = false;
     mockDashboardState(state);
-    const { container } = renderDashboard([catalogSession(state)]);
-    const details = await waitFor(() => {
-      const element = container.querySelector("details.sessionDetails");
-      expect(element).toBeInTheDocument();
-      return element!;
-    });
+    renderDashboard([catalogSession(state)]);
+    await screen.findByText("Session details");
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity" })).toBeInTheDocument();
   });
 
   it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {
@@ -383,7 +380,7 @@ describe("dashboard session navigation", () => {
       expect(element).toBeInTheDocument();
       return element!;
     });
-    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery, activity");
+    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery");
   });
 
   it("uses the recorded state label for historical repository evidence", async () => {

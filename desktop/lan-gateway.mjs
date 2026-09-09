@@ -5,7 +5,7 @@ import { lanPairingPage } from "./lan-pairing-page.mjs";
 const PRIVATE_RANGES = Object.freeze([
   [10, 0, 0, 0, 8], [172, 16, 0, 0, 12], [192, 168, 0, 0, 16],
 ]);
-const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/provider-folders", "/api/events"]);
+const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-history", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/provider-folders", "/api/events"]);
 const APP_PATHS = new Set(["/", "/sessions", "/agents", "/usage-limits", "/repositories", "/dashboards", "/settings"]);
 const REQUEST_HEADERS = new Set([
   "accept", "accept-language", "content-type", "if-none-match", "if-modified-since",

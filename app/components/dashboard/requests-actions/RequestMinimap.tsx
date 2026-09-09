@@ -1,8 +1,8 @@
 import { useRef, type PointerEvent } from "react";
 import { plottedTotal, type ChartMode, type RequestRow } from "./model";
 
-export function RequestMinimap({ rows, start, end, mode, cacheWriteAvailable, onMove }: {
-  rows: RequestRow[]; start: number; end: number; mode: ChartMode; cacheWriteAvailable: boolean; onMove: (start: number) => void;
+export function RequestMinimap({ rows, start, end, mode, cacheWriteAvailable, onMove, total = rows.length }: {
+  rows: RequestRow[]; start: number; end: number; mode: ChartMode; cacheWriteAvailable: boolean; onMove: (start: number) => void; total?: number;
 }) {
   const drag = useRef<{ pointerId: number; offset: number } | null>(null);
   const maximum = Math.max(1, ...rows.map((row) => plottedTotal(row, mode, cacheWriteAvailable)));
@@ -18,7 +18,7 @@ export function RequestMinimap({ rows, start, end, mode, cacheWriteAvailable, on
     drag.current = null;
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  return <div className="requestsActionsMinimap"><span>All {rows.length.toLocaleString()}</span>
+  return <div className="requestsActionsMinimap"><span>{total === rows.length ? `All ${total.toLocaleString()}` : `Loaded ${rows.length.toLocaleString()}`}</span>
     <svg viewBox="0 0 1000 26" preserveAspectRatio="none" role="slider" aria-label="Request window" tabIndex={0}
       aria-valuemin={1} aria-valuemax={Math.max(1, rows.length - (end - start))} aria-valuenow={start} aria-valuetext={`Requests ${start} to ${end}`}
       onKeyDown={(event) => {

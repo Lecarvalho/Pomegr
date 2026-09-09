@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { compactNumber, shortTime } from "../../../dashboard-utils";
-import type { ChartMode, RequestRow } from "./model";
+import { requestNumber, type ChartMode, type RequestRow } from "./model";
 import { cacheEvidenceLabel } from "./cache-evidence";
 import { CacheRefillIcon } from "../CacheRefillIcon";
 
@@ -35,7 +35,7 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   for (const index of [visible.length - 1, 0, ...(!phone && visible.length > 2 ? [middleIndex] : [])]) {
     const row = visible[index];
     if (!row || axisLabels.some((label) => label.index === index)) continue;
-    const text = `#${row.ordinal}${index === middleIndex && index > 0 && index < visible.length - 1 ? ` · ${shortTime(row.observedAt)}` : ""}`;
+    const text = `#${requestNumber(row)}${index === middleIndex && index > 0 && index < visible.length - 1 ? ` · ${shortTime(row.observedAt)}` : ""}`;
     const labelWidth = text.length * 8;
     const x = barCenter(index);
     const anchor = x + labelWidth / 2 > (phone ? 334 : 1112) ? "end" : "middle";
@@ -75,8 +75,9 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
         stacked += value;
         return <rect key={kind} className={`requestsActionsSegment ${kind}`} x={x} y={bottom - height(stacked)} width={width} height={height(value)} />;
       });
+      const barTop = bottom - height(stacked);
       return <g key={row.id} className={`requestsActionsBar${selected ? " isSelected" : ""}`} role="button" tabIndex={0}
-        aria-pressed={selected} aria-label={`Request #${row.ordinal}, ${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceLabel(row.cacheEvidence)}` : ""}`}
+        aria-pressed={selected} aria-label={`Request #${requestNumber(row)}, ${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceLabel(row.cacheEvidence)}` : ""}`}
         onPointerEnter={() => setHoveredId(row.id)} onPointerLeave={() => setHoveredId(null)}
         onFocus={() => setFocusedId(row.id)} onBlur={() => setFocusedId(null)}
         onClick={() => onSelect(row)} onKeyDown={(event) => {
@@ -84,14 +85,14 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
         }}>
         <rect className="requestsActionsHit" x={x - gap / 2} y={row.cacheEvidence ? top - 44 : top} width={step} height={bottom - top + (row.cacheEvidence ? 44 : 0)} />
         {stack}
-        {selected && <rect className="requestsActionsSelection" x={x} y={bottom - height(stacked)} width={width} height={Math.max(1, height(stacked))} />}
+        {selected && <rect className="requestsActionsSelection" x={x} y={barTop} width={width} height={Math.max(1, height(stacked))} />}
         {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} /><text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text></g>}
         {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`}>
-          <title>{cacheEvidenceLabel(row.cacheEvidence)} · request #{row.ordinal}</title>
+          <title>{cacheEvidenceLabel(row.cacheEvidence)} · request #{requestNumber(row)}</title>
           <line x1={x + width / 2} x2={x + width / 2} y1={top - 18} y2={bottom} />
           <g transform={`translate(${x + width / 2 - 8} ${top - 42})`}><CacheRefillIcon size={16} inferred={row.cacheEvidence.kind === "possible_refill"} /></g>
         </g>}
-        {selected && <text className="requestsActionsSelectedLabel" x={Math.min(right - 16, Math.max(left + 16, x + width / 2))} y={Math.max(top + 10, bottom - height(stacked)) - 5} textAnchor="middle">#{row.ordinal}</text>}
+        {selected && <text className="requestsActionsSelectedLabel" x={barCenter(index)} y={Math.max(16, barTop - 8)} textAnchor="middle">#{requestNumber(row)}</text>}
       </g>;
     })}
     {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelX < right - 115 ? labelX + 12 : labelX - 12} y={top - 43} textAnchor={labelX < right - 115 ? "start" : "end"}>{cacheEvidenceLabel(labeledRow.cacheEvidence)}</text>}
