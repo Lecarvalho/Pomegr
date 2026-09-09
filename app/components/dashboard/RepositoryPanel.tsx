@@ -62,7 +62,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
         <div className="gitBadges">
           {pullRequests.length > 0 && (
             <div className="pullRequestAnchor" ref={pullRequestAnchorRef}>
-              <button className={`pullRequestBadge ${pullRequests.some((pullRequest) => pullRequest.state === "open") ? "open" : "settled"}`} type="button" onClick={() => setPullRequestsOpen((open) => !open)} aria-expanded={pullRequestsOpen} aria-controls="session-pull-requests">
+              <button className="commandSecondaryAction pullRequestAction" type="button" onClick={() => setPullRequestsOpen((open) => !open)} aria-expanded={pullRequestsOpen} aria-controls="session-pull-requests">
                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="3" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M4 5v8M6 4h3a3 3 0 0 1 3 3v3.5"/></svg>
                 {pullRequestBadge}
               </button>
@@ -124,7 +124,9 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
             <div className="gitFiles">
               {repository.files.length ? repository.files.map((file) => {
                 const pathParts = gitPathParts(file.path);
-                return <div className="gitFile" key={`${file.status}-${file.path}`}><span className={`gitStatus ${gitStatusLabel(file.status).toLowerCase()}`}>{gitStatusLabel(file.status)}</span><code title={file.path}><span className="gitPathDirectory">{pathParts.directory}</span><strong className="gitPathName">{pathParts.filename}</strong></code></div>;
+                const status = gitStatusLabel(file.status);
+                const tone = status === "NEW" || status === "ADD" ? "positive" : status === "DEL" || status === "CONFLICT" ? "negative" : "warning";
+                return <div className="gitFile" key={`${file.status}-${file.path}`}><span className={`commandChip gitStatus ${tone}`}>{status}</span><code title={file.path}><span className="gitPathDirectory">{pathParts.directory}</span><strong className="gitPathName">{pathParts.filename}</strong></code></div>;
               }) : <p className="gitEmpty">No local changes.</p>}
             </div>
           </div>

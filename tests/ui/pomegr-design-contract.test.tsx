@@ -77,7 +77,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-ui\)/);
-    expect(styles).toMatch(/\.pullRequestBadge, \.pullRequestTitle em, \.branchComparison, \.gitStatus\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
+    expect(styles).toMatch(/\.pullRequestTitle em, \.branchComparison\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
     expect(styles).toMatch(/html\[data-theme="dark"\][\s\S]*?--color-raised:\s*#23272d/);
