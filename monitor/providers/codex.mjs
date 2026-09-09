@@ -371,9 +371,10 @@ export function createCodexProvider(options = {}) {
         );
         recordsByThreadId.set(thread.localId, records);
         if (generation) generationsByThreadId.set(thread.localId, generation);
-        let summary = parseCodexAgentRecords(records, thread, incremental && !completeStory ? readOptions.previousReviewDecisionsByThreadId?.get(thread.localId) : null);
+        const previousRuntime = incremental && !completeStory ? readOptions.previousAgentRuntimeByThreadId?.get(thread.localId) : null;
+        let summary = parseCodexAgentRecords(records, { ...thread, ...previousRuntime }, incremental && !completeStory ? readOptions.previousReviewDecisionsByThreadId?.get(thread.localId) : null);
+        if (!historical && generation && !incremental && !completeStory) summary = { ...summary, runtime: resolveLiveAgentRuntime(thread.rolloutFile, thread.localId, generation, thread, summary.runtime) };
         if (!historical && generation) {
-          summary = { ...summary, runtime: resolveLiveAgentRuntime(thread.rolloutFile, thread.localId, generation, thread, summary.runtime) };
           const retained = reusableLiveAgentAssignments(thread.rolloutFile, thread.localId, generation)
             ?? hydrateLiveAgentAssignments(thread.rolloutFile, generation, thread);
           const collaborations = assignmentCollaborations([...retained, ...summary.collaborations]);

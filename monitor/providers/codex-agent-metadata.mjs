@@ -109,8 +109,10 @@ function runtimeRecord(record) {
   if (!payload || typeof payload !== "object") return null;
   return {
     timestamp: recordTimestamp(record),
-    model: normalizedModel(payload.model),
-    effort: normalizedEffort(payload.effort ?? payload.reasoning_effort ?? payload.reasoningEffort),
+    ...(Object.hasOwn(payload, "model") ? { model: normalizedModel(payload.model) } : {}),
+    ...(["effort", "reasoning_effort", "reasoningEffort"].some((key) => Object.hasOwn(payload, key))
+      ? { effort: normalizedEffort(payload.effort ?? payload.reasoning_effort ?? payload.reasoningEffort) }
+      : {}),
     approvalPolicy: boundedText(payload.approval_policy ?? payload.approvalPolicy, 40, "unspecified"),
     sandboxLabel: codexSandboxLabel(payload.sandbox_policy ?? payload.sandboxPolicy ?? payload.sandbox),
   };
@@ -258,6 +260,7 @@ function summaryFromRecords(records, fallback = {}, previousReviewDecisions = nu
     approvalPolicy: boundedText(fallback.approvalPolicy, 40, "unspecified"),
     sandboxLabel: codexSandboxLabel(fallback.sandboxLabel),
   };
+  const runtimeFields = { model: Object.hasOwn(fallback, "model"), effort: Object.hasOwn(fallback, "effort") };
   let terminal = null;
   let ownerThreadId = safeThreadId(fallback.localId);
   let sessionId = safeThreadId(fallback.sessionId);
@@ -292,7 +295,11 @@ function summaryFromRecords(records, fallback = {}, previousReviewDecisions = nu
       }
     }
     const observedRuntime = runtimeRecord(record);
-    if (observedRuntime) runtime = observedRuntime;
+    if (observedRuntime) {
+      runtime = { ...runtime, ...observedRuntime };
+      runtimeFields.model ||= Object.hasOwn(observedRuntime, "model");
+      runtimeFields.effort ||= Object.hasOwn(observedRuntime, "effort");
+    }
     const observedTerminal = terminalEvent(record);
     if (observedTerminal && timestamp) terminal = { status: observedTerminal, timestamp, order };
     if (isFinalAgentMessage(record) && timestamp) terminal = { status: "finished", timestamp, order };
@@ -387,6 +394,7 @@ function summaryFromRecords(records, fallback = {}, previousReviewDecisions = nu
     agentRole,
     sourceKind,
     runtime,
+    runtimeFields,
     startedAt,
     updatedAt,
     durationMs: Math.max(0, timestampValue(updatedAt) - timestampValue(startedAt)),
@@ -638,10 +646,10 @@ export function buildCodexAgentTree({ rootThreadId, threads = [], summaries = ne
       assignment,
       label,
       kind,
-      model: summary?.runtime?.model && summary.runtime.model !== "unknown"
+      model: summary?.runtimeFields?.model || (summary?.runtime?.model && summary.runtime.model !== "unknown")
         ? summary.runtime.model
         : primary ? "unknown" : collaboration?.model || "unknown",
-      effort: summary?.runtime?.effort && summary.runtime.effort !== "unspecified"
+      effort: summary?.runtimeFields?.effort || (summary?.runtime?.effort && summary.runtime.effort !== "unspecified")
         ? summary.runtime.effort
         : primary ? "unspecified" : collaboration?.effort || "unspecified",
       status,

@@ -72,6 +72,57 @@ test("uses the latest recognized turn context and keeps private settings fields 
   assertNoPrivateFixtureSentinels(summary, "Codex runtime metadata");
 });
 
+test("runtime deltas preserve absent fields and replace explicitly unavailable fields", () => {
+  const fallback = { localId: "runtime-thread", model: "gpt-recorded", effort: "high" };
+  for (const records of [[], [{ type: "event_msg", payload: { type: "task_complete" } }]]) {
+    const { runtime } = parseCodexAgentRecords(records, fallback);
+    assert.equal(runtime.model, "gpt-recorded");
+    assert.equal(runtime.effort, "high");
+  }
+  const { runtime } = parseCodexAgentRecords([
+    { type: "thread_settings_updated", payload: { settings: { model: "gpt-new" } } },
+    { type: "thread_settings", payload: { reasoning_effort: "low" } },
+    { type: "turn_context", payload: { approval_policy: "never" } },
+  ], fallback);
+  assert.equal(runtime.model, "gpt-new");
+  assert.equal(runtime.effort, "low");
+  for (const value of [null, "", {}, "unknown"]) {
+    const { runtime: unavailable } = parseCodexAgentRecords([
+      { type: "turn_context", payload: { model: value, effort: value } },
+    ], fallback);
+    assert.equal(unavailable.model, "unknown");
+    assert.equal(unavailable.effort, "unspecified");
+  }
+});
+
+test("explicit child runtime unavailability takes precedence over the requested spawn model", () => {
+  const root = parseCodexAgentRecords([{
+    type: "response_item", payload: {
+      type: "collab_agent_tool_call", tool: "spawn_agent", receiver_thread_ids: ["runtime-child"],
+      model: "gpt-requested", reasoning_effort: "high",
+    },
+  }], { localId: "runtime-root" });
+  for (const seed of [null, { model: "unknown", effort: "unspecified" }]) {
+    const child = parseCodexAgentRecords(seed ? [] : [
+      { type: "turn_context", payload: { model: null, effort: null } },
+    ], { localId: "runtime-child", ...seed });
+    const agents = buildCodexAgentTree({
+      rootThreadId: "runtime-root", historical: true,
+      threads: [{ localId: "runtime-root" }, { localId: "runtime-child", parentThreadId: "runtime-root" }],
+      summaries: new Map([["runtime-root", root], ["runtime-child", child]]),
+    });
+    assert.equal(agents[1].model, "unknown");
+    assert.equal(agents[1].effort, "unspecified");
+    assert.equal(Object.hasOwn(agents[1], "runtimeFields"), false);
+  }
+  const agents = buildCodexAgentTree({
+    rootThreadId: "runtime-root", historical: true,
+    threads: [{ localId: "runtime-root" }, { localId: "runtime-child", parentThreadId: "runtime-root" }],
+    summaries: new Map([["runtime-root", root]]),
+  });
+  assert.equal(agents[1].model, "gpt-requested", "spawn evidence still applies when no child runtime exists");
+});
+
 test("keeps a child rollout bound to its first thread metadata when it embeds parent session metadata", () => {
   const child = parseCodexAgentRecords([
     {

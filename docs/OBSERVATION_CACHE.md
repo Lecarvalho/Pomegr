@@ -856,6 +856,16 @@ React, persisted checkpoints, or browser API fields.
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
   transcript or the generic live tail for session-story normalization.
+- Codex U2 seeds model and reasoning effort from the same agent's prior normalized
+  evidence across continuous incremental updates, including empty lifecycle updates
+  and live-to-history transitions. A missing field retains its recorded value; an
+  explicitly present invalid or unavailable field normalizes to unavailable and
+  takes precedence over an older requested spawn value. Field-presence bookkeeping
+  remains private to the adapter. New
+  runtime fields replace prior values independently for each agent. Complete source
+  replacements rebuild without inherited runtime evidence; incomplete replacements
+  retain the committed revision. This adds no transcript rescans, browser or checkpoint
+  fields, GET acquisition, polling lane, or revision mechanism.
 - Completed approval-review decisions are retained per normalized agent across empty
   and partial Codex deltas. U2 seeds review normalization from the prior normalized
   feed, deduplicates all incoming decisions before applying the 100-row display cap,

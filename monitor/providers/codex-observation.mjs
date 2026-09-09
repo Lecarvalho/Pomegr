@@ -454,6 +454,12 @@ export function createCodexIncrementalObserver(options = {}) {
       completeStory,
       incrementalRecordsByFile,
       incrementalGenerationsByFile,
+      previousAgentRuntimeByThreadId: completeStory ? null : new Map(
+        session.evidence.agents.map((agent) => [
+          agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
+          { model: agent.model, effort: agent.effort },
+        ]),
+      ),
       previousReviewDecisionsByThreadId: completeStory ? null : new Map(
         session.evidence.agents.filter((agent) => agent.reviewDecisions).map((agent) => [
           agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length), agent.reviewDecisions,
