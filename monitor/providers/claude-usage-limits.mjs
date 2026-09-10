@@ -7,6 +7,14 @@ import { createUsageLimitsCoordinator } from "../usage-limits.mjs";
 import { claudeUsageLimitsFromSnapshot, claudeUsageSnapshotsRoot, readClaudeUsageSnapshot } from "./claude-usage-feed.mjs";
 import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 
+export function normalizedClaudeResetTimestamp(value) {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : null;
+  const milliseconds = numeric === null ? Date.parse(value) : numeric < 1_000_000_000_000 ? numeric * 1_000 : numeric;
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+}
+
 function usageRequest(configDir, fetchImpl) {
   return async () => {
     const credentials = JSON.parse(fs.readFileSync(path.join(configDir, ".credentials.json"), "utf8"));
