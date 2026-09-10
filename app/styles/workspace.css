@@ -455,12 +455,16 @@
   .repositoryRevisionCompare dl { grid-template-columns: 1fr; }
   .repositoryRevisionCompare dl div + div { border-top: 1px solid var(--command-line); border-inline-start: 0; }
 }
+@media (max-width: 760px) {
+  .commandPagination { align-items: stretch; flex-direction: column; padding: 12px; }
+  .commandPaginationSummary { display: none; }
+  .commandPaginationControls { width: 100%; gap: 8px; }
+  .commandPaginationControls > button { flex: 1; min-height: 44px; }
+  .commandPaginationControls > .commandPaginationPage { display: none; }
+  .commandPaginationPageStatus { display: block; text-align: center; line-height: 1.4; }
+}
 @media (max-width: 520px) {
   .commandSessionTable tbody tr { padding: 13px 12px; gap: 13px 10px; }
-  .commandPagination { align-items: flex-start; flex-direction: column; }
-  .commandPaginationControls { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-  .commandPaginationPage { display: none; }
-  .commandPaginationPageStatus { display: block; padding-inline: 8px; }
   .commandComingSoon { grid-template-columns: 1fr; }
 }
 
