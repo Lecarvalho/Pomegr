@@ -16,7 +16,7 @@ export type SessionRequestInputs = {
 type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean; requestedOffset?: number };
 type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string };
 type PendingLocate = { id: string; scope: string } | null;
-type PendingPageStep = { offset: number; index: number } | null;
+type PendingPageSelection = { key: string; offset: number; index: number | null } | null;
 
 function historyScope(scope: string, agents: Agent[]): string {
   if (scope === "all") return "all";
@@ -50,7 +50,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const requestedKey = useRef("");
   const lastQuery = useRef<{ key: string; options: HistoryQuery } | null>(null);
   const [pendingLocate, setPendingLocate] = useState<PendingLocate>(null);
-  const [pendingPageStep, setPendingPageStep] = useState<PendingPageStep>(null);
+  const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
   const [retry, setRetry] = useState(0);
 
   const loadHistory = (options: HistoryQuery = {}) => {
@@ -135,16 +135,15 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     return preview ? scoped.slice(-size).map((row, index) => ({ ...row, ordinal: index + 1, number: undefined, numberPending: true })) : scoped;
   }, [allRows, cacheEvents, cacheReadDrops, contextBoundaries, page, preview, requestSnapshots, resolvedScope, size]);
   const scopeKey = (value: string) => `${sessionId}:${value}`;
-  const pageStepTarget = pendingPageStep && page?.offset === pendingPageStep.offset
-    ? rows[pendingPageStep.index - page.offset]?.id ?? null
-    : null;
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate.id : null;
   const atLatest = !page || page.offset + page.items.length >= page.total;
   const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, locateTarget, atLatest);
   if (pendingLocate && locateTarget && rows.some((row) => row.id === locateTarget)) setPendingLocate(null);
-  if (pendingPageStep && pageStepTarget && page) {
-    selection.select(rows[pendingPageStep.index - page.offset], true);
-    setPendingPageStep(null);
+  if (pendingPageSelection?.key === key && page && page.offset === pendingPageSelection.offset) {
+    // Window navigation accepts the reconciled chart selection; keyboard stepping has an explicit target.
+    const target = pendingPageSelection.index === null ? selection.selected : rows[pendingPageSelection.index - page.offset];
+    if (target) selection.select(target, true);
+    setPendingPageSelection(null);
   }
 
   useEffect(() => {
@@ -180,19 +179,19 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const offset = Math.max(0, Math.min(Math.round(start) - 1, Math.max(0, page.total - size)));
     if (offset === (history.requestedOffset ?? page.offset)) return;
     setPendingLocate(null);
-    setPendingPageStep(null);
+    setPendingPageSelection({ key, offset, index: null });
     pageTo(offset);
   };
   const step = (delta: number) => {
     if (!historyEnabled || !page || !selection.selected) return selection.step(delta);
     if (delta < 0 && selection.selected.ordinal === 1 && page.offset > 0) {
       const offset = Math.max(0, page.offset - size);
-      setPendingPageStep({ offset, index: page.offset - 1 });
+      setPendingPageSelection({ key, offset, index: page.offset - 1 });
       return pageTo(offset);
     }
     if (delta > 0 && selection.selected.ordinal === rows.length && page.offset + page.items.length < page.total) {
       const offset = Math.min(page.offset + page.items.length, Math.max(0, page.total - size));
-      setPendingPageStep({ offset, index: page.offset + page.items.length });
+      setPendingPageSelection({ key, offset, index: page.offset + page.items.length });
       return pageTo(offset);
     }
     return selection.step(delta);

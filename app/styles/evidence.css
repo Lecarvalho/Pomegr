@@ -735,7 +735,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsMinimap svg:active { cursor: grabbing; }
 .requestsActionsMinimap svg:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 @media (max-width: 760px), (pointer: coarse) {
-  .requestsActionsMinimap svg { height: 44px; border: 1px solid var(--command-line); background: var(--command-panel-2); }
+  .requestsActionsMinimap svg { height: 26px; padding-block: 9px; box-sizing: content-box; background: var(--command-panel-2); background-clip: content-box; }
 }
 .requestsActionsMiniBar { fill: var(--command-line-strong); }
 .requestsActionsMiniWindow { fill: color-mix(in srgb, var(--command-brand-text) 13%, transparent); stroke: var(--command-brand-text); stroke-width: 1; }
@@ -801,10 +801,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsScope .commandSelect select { min-height: 44px; }
   .requestsActionsLargest > header .commandQuietAction { width: auto; }
   .requestsActionsPlot { padding: 10px 14px 12px; }
-  .requestsActionsChart { height: 196px; }
+  .requestsActionsChart { height: 196px; touch-action: pan-y pinch-zoom; user-select: none; }
   .requestsActionsCacheDetail a { min-height: 44px; }
   .requestsActionsAxis text { font-size: var(--text-caption); }
-  .requestsActionsPlot .requestsActionsNavigation { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; }
   .requestsActionsDetail { gap: 12px; padding: 14px; }
   .requestsActionsStats, .requestsActionsStats.withoutWrite { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .requestsActionsStat strong { font-size: var(--text-heading); }

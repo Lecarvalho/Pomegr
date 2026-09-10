@@ -3,13 +3,16 @@ import { compactNumber, shortTime } from "../../../dashboard-utils";
 import { requestMarker, type ChartMode, type RequestRow } from "./model";
 import { cacheEvidenceLabel } from "./cache-evidence";
 import { CacheRefillIcon } from "../CacheRefillIcon";
+import { useRequestChartDrag } from "./useRequestChartDrag";
 
-export function RequestBarsChart({ rows, start, end, size, maximum, mode, selectedId, phone, cacheWriteAvailable, onSelect, onStep }: {
+export function RequestBarsChart({ rows, start, end, size, maximum, mode, selectedId, phone, cacheWriteAvailable, onSelect, onStep, windowStart, total, onMove }: {
   rows: RequestRow[]; start: number; end: number; size: number; maximum: number; mode: ChartMode;
   selectedId: string | null; phone: boolean; cacheWriteAvailable: boolean;
   onSelect: (row: RequestRow) => void; onStep: (delta: number) => void;
+  windowStart: number; total: number; onMove: (start: number) => void;
 }) {
   const chartRef = useRef<SVGSVGElement>(null);
+  const drag = useRequestChartDrag(phone, windowStart, total, size, onMove);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusSelection = useRef(false);
@@ -56,7 +59,7 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
     onStep(event.key === "ArrowLeft" ? -1 : 1);
   };
   return <svg className="requestsActionsChart" viewBox={phone ? "0 0 334 196" : "0 0 1112 274"}
-    ref={chartRef} role="group" aria-label={`Model requests, positions ${start} to ${end}`} onKeyDown={keyboardStep}>
+    ref={chartRef} role="group" aria-label={`Model requests, positions ${windowStart} to ${Math.min(total, windowStart + size - 1)}`} onKeyDown={keyboardStep} {...drag}>
     {(phone ? [0, .5, 1] : [0, .25, .5, .75, 1]).map((fraction) => <g key={fraction} className="requestsActionsAxis">
       <line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} />
       <text x={left - 6} y={bottom - fraction * (bottom - top) + 4} textAnchor="end">{compactNumber(maximum * fraction)}</text>

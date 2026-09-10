@@ -1,4 +1,4 @@
-import { render, within } from "@testing-library/react";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMemo, type ComponentProps } from "react";
@@ -85,9 +85,10 @@ type HarnessProps = {
   agents?: Agent[];
   historical?: boolean;
   sessionId?: string;
+  historyEnabled?: boolean;
 };
 
-function ActivityHarness({ activity: feed, requests, agents = [agent], historical = false, sessionId = "activity-test" }: HarnessProps) {
+function ActivityHarness({ activity: feed, requests, agents = [agent], historical = false, sessionId = "activity-test", historyEnabled = false }: HarnessProps) {
   const snapshots = useMemo(() => requestFeed(requests), [requests]);
   const selection = useSessionRequestSelection({
     sessionId,
@@ -95,6 +96,7 @@ function ActivityHarness({ activity: feed, requests, agents = [agent], historica
     requestSnapshots: snapshots,
     contextBoundaries: noBoundaries,
     historical,
+    historyEnabled,
   });
   const requestProps: ComponentProps<typeof RequestsActionsPanel> = {
     agents,
@@ -106,7 +108,7 @@ function ActivityHarness({ activity: feed, requests, agents = [agent], historica
   };
   return <>
     <RequestsActionsPanel {...requestProps} />
-    <ActivityPanel activity={feed} sessionId={sessionId} selection={selection} historical={historical} loading={false} onRefresh={() => {}} />
+    <ActivityPanel activity={feed} sessionId={sessionId} selection={selection} historical={historical} loading={false} onRefresh={() => {}} historyEnabled={historyEnabled} />
   </>;
 }
 
@@ -304,6 +306,61 @@ describe("ActivityPanel", () => {
 
     expect(activityPanel).toHaveTextContent("Page 2 of 8");
     expect(within(activityPanel).getByRole("button", { name: /Tool 45, Primary agent, request #45/ })).toHaveClass("selected");
+  });
+
+  it.each([{ gesture: "swipe", resident: true }, { gesture: "minimap", resident: true }, { gesture: "swipe", resident: false }])("reveals activity after $gesture navigation (cached: $resident), then preserves manual paging", async ({ gesture, resident }) => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const requests = Array.from({ length: 100 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+    const events = activityItems(100).map((event) => ({ ...event, agentId: "primary", requestNumber: Number(event.requestId?.split("-")[1]) }));
+    let finishWindow: (() => void) | undefined;
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const kind = params.get("kind");
+      const limit = Number(params.get("limit"));
+      const target = Number(params.get("requestId")?.split("-")[1]);
+      const offset = kind === "activity" && target ? Math.floor((100 - target) / 8) * 8
+        : params.get("offset") === "latest" ? 100 - limit : Number(params.get("offset"));
+      const response = { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: 100, offset, linkedCount: target ? 1 : 0,
+        items: (kind === "requests" ? requests : events).slice(offset, offset + limit),
+        ...(kind === "requests" ? { overview: requests.map((row) => [row.uncachedInputTokens, row.cacheWriteTokens, row.cacheReadTokens, row.outputTokens]) } : {}),
+      }) };
+      if (!resident && kind === "requests") {
+        if (params.get("overview") === "0") return new Promise(() => {});
+        if (offset === 60) return new Promise((resolve) => { finishWindow = () => resolve(response); });
+      }
+      return response;
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const props = { activity: activityFeed(events), requests: [], historyEnabled: true };
+    const view = render(<ActivityHarness {...props} />);
+    const activityPanel = panel(view.container);
+    await waitFor(() => expect(view.container.querySelector('[aria-label^="Request #100,"]')).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(activityPanel).toHaveTextContent("Tool 100"));
+    const lookups = () => fetcher.mock.calls.filter(([url]) => url.includes("kind=activity") && url.includes("requestId="));
+    const control = gesture === "swipe" ? view.container.querySelector(".requestsActionsChart")!
+      : within(view.container).getByRole("slider", { name: "Request window" });
+    vi.spyOn(control, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(control, { button: 0, isPrimary: true, pointerId: 1, pointerType: "touch", clientX: gesture === "swipe" ? 34 : 334 * .7, clientY: 100 });
+    if (gesture === "swipe") fireEvent.pointerMove(control, { pointerId: 1, pointerType: "touch", clientX: 333, clientY: 100 });
+    fireEvent.pointerUp(control, { pointerId: 1 });
+    if (!resident) {
+      expect(finishWindow).toBeDefined();
+      expect(view.container.querySelector('[aria-label^="Request #100,"]')).toHaveAttribute("aria-pressed", "true");
+      expect(lookups()).toHaveLength(0);
+      finishWindow!();
+    }
+    await waitFor(() => expect(view.container.querySelector('[aria-label^="Request #80,"]')).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(within(activityPanel).getByRole("button", { name: /Tool 80, Primary agent, request #80/ })).toHaveClass("selected"));
+    expect(activityPanel).toHaveTextContent("1 linked event");
+    expect(lookups()).toHaveLength(1);
+    await user.click(within(activityPanel).getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(activityPanel).toHaveTextContent("Page 4 of 13"));
+    view.rerender(<ActivityHarness {...props} />);
+    await user.click(within(activityPanel).getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(within(activityPanel).getByRole("button", { name: "Refresh" })).not.toBeDisabled());
+    expect(activityPanel).toHaveTextContent("Page 4 of 13");
+    expect(lookups()).toHaveLength(1);
   });
 
   it("does not follow a newer request when viewing a historical session", () => {

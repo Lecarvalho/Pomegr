@@ -1,10 +1,9 @@
+import { RequestsActionsPanel, snapshot, requestFeed, overviewPoint, fullRefill, renderPanel, HistoryLocateHarness, chart, axisLabels, setPhone } from "./requests-actions-test-fixtures";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
-import { StrictMode, type ComponentProps } from "react";
-import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
-import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
+import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import { StrictMode } from "react";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
 import { RequestMinimap } from "../../app/components/dashboard/requests-actions/RequestMinimap";
 import { scopedRows } from "../../app/components/dashboard/requests-actions/model";
@@ -12,88 +11,7 @@ import type { RequestOverviewPoint } from "../../shared/session-history-contract
 import { agent } from "./dashboard-test-fixtures";
 import { claudeCacheRefillFeeds } from "../helpers/claude-cache-refill.mjs";
 
-function RequestsActionsPanel(props: Omit<ComponentProps<typeof ControlledRequestsActionsPanel>, "selection">) {
-  const selection = useSessionRequestSelection(props);
-  return <ControlledRequestsActionsPanel {...props} selection={selection} />;
-}
-
-const childAgent: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder" };
-const baseTime = Date.parse("2026-08-09T12:00:00.000Z");
-const EMPTY_BOUNDARIES: ContextHistoryBoundary[] = [];
-
-function snapshot(index: number, agentId = "primary", overrides: Partial<RequestSnapshot> = {}): RequestSnapshot {
-  const uncachedInputTokens = overrides.uncachedInputTokens ?? 2_000_000 - index * 1_000;
-  const cacheWriteTokens = overrides.cacheWriteTokens ?? 2_000;
-  const cacheReadTokens = overrides.cacheReadTokens ?? 3_000;
-  const outputTokens = overrides.outputTokens ?? 4_000;
-  return {
-    id: `request-${index}`,
-    agentId,
-    observedAt: new Date(baseTime + index * 60_000).toISOString(),
-    cacheLifetime: "1h",
-    uncachedInputTokens,
-    cacheWriteTokens,
-    cacheReadTokens,
-    outputTokens,
-    totalTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens + outputTokens,
-    precedingWork: [],
-    precedingAssociation: null,
-    issuedWork: [],
-    issuedAssociation: null,
-    ...overrides,
-  };
-}
-
-function requestFeed(items: RequestSnapshot[], status: RequestSnapshotFeed["status"] = "ready"): RequestSnapshotFeed {
-  return { status, items };
-}
-
-function overviewPoint(item: RequestSnapshot): RequestOverviewPoint {
-  return [item.uncachedInputTokens, item.cacheWriteTokens, item.cacheReadTokens, item.outputTokens];
-}
-
-function fullRefill(agentId: string, observedAt: string): CacheEventFeed["possibleFullRefills"] {
-  return [{ agentId, count: 1, occurrences: [{ observedAt, reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }];
-}
-
-function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
-  return render(<RequestsActionsPanel
-    agents={options.agents ?? [agent]}
-    requestSnapshots={requestFeed(items)}
-    contextBoundaries={[]}
-    cacheWriteAvailable={options.cacheWriteAvailable ?? true}
-    historical={options.historical ?? false}
-    cacheReadDrops={options.cacheReadDrops}
-  />);
-}
-
-function HistoryLocateHarness({ sessionId, requests }: { sessionId: string; requests: RequestSnapshot[] }) {
-  const selection = useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed(requests), contextBoundaries: EMPTY_BOUNDARIES, historical: false, sessionId, historyEnabled: true });
-  return <><button type="button" onClick={() => selection.locate("request-10")}>Locate absent request</button><ControlledRequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed(requests)} contextBoundaries={EMPTY_BOUNDARIES} cacheWriteAvailable historical={false} selection={selection} /></>;
-}
-
-function chart(container: HTMLElement): SVGSVGElement {
-  return container.querySelector("svg.requestsActionsChart") as SVGSVGElement;
-}
-
-function axisLabels(container: HTMLElement): string[] {
-  const svg = chart(container);
-  const labels = Array.from(svg.querySelectorAll(".requestsActionsAxis:last-child text")).map((node) => node.textContent || "");
-  return labels.length > 2 ? [labels[0], labels.at(-1) || ""] : labels;
-}
-
-function setPhone(matches: boolean) {
-  vi.stubGlobal("matchMedia", vi.fn().mockImplementation((query: string) => ({
-    matches,
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })));
-}
+const childAgent: Agent = { ...agent, id: 'child', parentId: 'primary', label: 'Builder' };
 
 afterEach(() => {
   vi.useRealTimers();
@@ -194,9 +112,25 @@ describe("RequestsActionsPanel", () => {
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(phone ? 4 : 3));
     const calls = fetchPage.mock.calls.length;
     expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+    if (phone) {
+      const svg = chart(container);
+      vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
+      fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 1, clientX: 0, clientY: 100 });
+      const slot = (330 - 34 + 2.8) / size;
+      fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size) * slot, clientY: 100 });
+      expect(axisLabels(container)).toEqual(["#10", "#200"]);
+      fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size - 10) * slot, clientY: 100 });
+      expect(axisLabels(container)).toEqual(["#110", "#300"]);
+      fireEvent.pointerMove(svg, { pointerId: 1, clientX: 0, clientY: 100 });
+      expect(axisLabels(container)).toEqual(["#1610", "#1800"]);
+      expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+      expect(fetchPage).toHaveBeenCalledTimes(calls);
+      fireEvent.pointerUp(svg, { pointerId: 1 });
+      return;
+    }
     const minimap = screen.getByRole("slider", { name: "Request window" });
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 180, top: 0, bottom: 44, width: 180, height: 44, x: 0, y: 0, toJSON: () => ({}) });
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, clientX: 179, clientY: 20 });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 179, clientY: 20 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 0, clientY: 20 });
     expect(axisLabels(container)).toEqual(["#10", `#${size * 10}`]);
     expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
@@ -341,12 +275,12 @@ describe("RequestsActionsPanel", () => {
     fireEvent.keyDown(minimap, { key: "PageDown" });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
 
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, clientX: 0, clientY: 10 });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 0, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 0, clientY: 10 });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 180"));
     expect(axisLabels(container)).toEqual(["#10", "#600"]);
     expect(Array.from(minimap.querySelectorAll(".requestsActionsMiniBar"), (bar) => bar.getAttribute("height"))).toEqual(heightsBefore);
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, clientX: 100, clientY: 10 });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 2, clientX: 100, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 2, clientX: 100, clientY: 10 });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
     expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
@@ -638,13 +572,13 @@ describe("RequestsActionsPanel", () => {
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     const minimap = screen.getByRole("slider", { name: "Request window" });
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 100, top: 0, bottom: 26, width: 100, height: 26, x: 0, y: 0, toJSON: () => ({}) });
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, clientX: 50, clientY: 10 });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 10 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
     expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument();
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 41 to 100 of 100");
 
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, clientX: 0, clientY: 10 });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 2, clientX: 0, clientY: 10 });
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 100");
     expect(container.querySelector(".requestsActionsDetail")).toHaveTextContent("Request #100");
   });
@@ -736,16 +670,23 @@ describe("RequestsActionsPanel", () => {
     expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
   });
 
-  it("uses a 20-bar phone window with a minimap and omits the ranking rail", () => {
+  it("keeps a tappable phone minimap without Prev/Next or the ranking rail", () => {
     setPhone(true);
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(20);
     expect(axisLabels(container)).toEqual(["#81", "#100"]);
-    expect(screen.getByRole("slider", { name: "Request window" })).toHaveAttribute("aria-valuetext", "Request positions 81 to 100 of 100");
+    const minimap = screen.getByRole("slider", { name: "Request window" });
+    expect(minimap.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(100);
+    vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 300, top: 0, bottom: 44, width: 300, height: 44, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, pointerType: "touch", clientX: 75, clientY: 22 });
+    fireEvent.pointerUp(minimap, { pointerId: 1, pointerType: "touch" });
+    expect(axisLabels(container)).toEqual(["#16", "#35"]);
+    expect(screen.queryByRole("button", { name: "Prev" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Largest requests" })).not.toBeInTheDocument();
   });
 
-  it("drags the phone minimap through full history with touch pointers and releases cancelled gestures", async () => {
+  it("drags the phone chart in both directions across history pages and releases cancelled gestures", async () => {
     setPhone(true);
     const fetchPage = vi.fn(async (url: string) => {
       const params = new URL(url, "http://localhost").searchParams;
@@ -759,23 +700,61 @@ describe("RequestsActionsPanel", () => {
     vi.stubGlobal("fetch", fetchPage);
     const { container } = render(<HistoryLocateHarness sessionId="phone-minimap" requests={[]} />);
     await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
-    expect(container.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(100);
-    const minimap = screen.getByRole("slider", { name: "Request window" });
-    vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 300, top: 0, bottom: 44, width: 300, height: 44, x: 0, y: 0, toJSON: () => ({}) });
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, pointerType: "touch", clientX: 270, clientY: 22 });
-    fireEvent.pointerMove(minimap, { pointerId: 1, pointerType: "touch", clientX: 0, clientY: 22 });
-    await waitFor(() => expect(axisLabels(container)).toEqual(["#1", "#20"]));
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, pointerType: "touch", clientX: 300, clientY: 22 });
-    expect(minimap).toHaveAttribute("aria-valuenow", "1");
-    fireEvent.pointerCancel(minimap, { pointerId: 1, pointerType: "touch" });
+    const svg = chart(container);
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 1, pointerType: "touch", clientX: 34, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, pointerType: "touch", clientX: 333, clientY: 100 });
+    await waitFor(() => expect(axisLabels(container)).toEqual(["#61", "#80"]));
+    expect(screen.getByRole("slider", { name: "Request window" })).toHaveAttribute("aria-valuetext", "Request positions 61 to 80 of 100");
+    fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 2, pointerType: "touch", clientX: 300, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 2, pointerType: "touch", clientX: 0, clientY: 100 });
+    expect(axisLabels(container)).toEqual(["#61", "#80"]);
+    fireEvent.pointerCancel(svg, { pointerId: 1, pointerType: "touch" });
     const calls = fetchPage.mock.calls.length;
-    fireEvent.pointerMove(minimap, { pointerId: 1, pointerType: "touch", clientX: 300, clientY: 22 });
+    fireEvent.pointerMove(svg, { pointerId: 1, pointerType: "touch", clientX: 0, clientY: 100 });
     expect(fetchPage).toHaveBeenCalledTimes(calls);
-    fireEvent.pointerDown(minimap, { button: 0, pointerId: 3, pointerType: "touch", clientX: 30, clientY: 22 });
-    fireEvent.pointerMove(minimap, { pointerId: 3, pointerType: "touch", clientX: 300, clientY: 22 });
-    fireEvent.pointerUp(minimap, { pointerId: 3, pointerType: "touch", clientX: 300, clientY: 22 });
+    fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 3, pointerType: "touch", clientX: 333, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 3, pointerType: "touch", clientX: 34, clientY: 100 });
+    fireEvent.pointerUp(svg, { pointerId: 3, pointerType: "touch", clientX: 34, clientY: 100 });
     await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
-    expect(screen.getByRole("button", { name: "Prev" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Prev" })).not.toBeInTheDocument();
+  });
+
+  it("keeps taps and keyboard selection while ignoring vertical gestures and drag clicks", () => {
+    setPhone(true);
+    const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
+    const svg = chart(container);
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
+    const bar = screen.getByRole("button", { name: /^Request #90,/ });
+    fireEvent.pointerDown(bar, { button: 0, isPrimary: true, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(bar, { pointerId: 1 });
+    fireEvent.click(bar, { detail: 1 });
+    expect(bar).toHaveAttribute("aria-pressed", "true");
+    fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 2, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 2, clientX: 102, clientY: 140 });
+    fireEvent.pointerMove(svg, { pointerId: 2, clientX: 300, clientY: 140 });
+    expect(axisLabels(container)).toEqual(["#81", "#100"]);
+    fireEvent.pointerDown(bar, { button: 0, isPrimary: true, pointerId: 3, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(bar, { pointerId: 3, clientX: 160, clientY: 100 });
+    fireEvent.lostPointerCapture(bar, { pointerId: 3 });
+    fireEvent.pointerMove(svg, { pointerId: 3, clientX: 175, clientY: 100 });
+    expect(axisLabels(container)).toEqual(["#76", "#95"]);
+    fireEvent.pointerUp(svg, { pointerId: 3 });
+    const otherBar = screen.getByRole("button", { name: /^Request #85,/ });
+    fireEvent.click(otherBar, { detail: 1 });
+    expect(bar).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(otherBar, { key: "Enter" });
+    expect(otherBar).toHaveAttribute("aria-pressed", "true");
+    // Large drags clamp to the available history, then a fresh tap works normally.
+    fireEvent.pointerDown(svg, { button: 0, isPrimary: true, pointerId: 4, clientX: 0, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 4, clientX: 2000, clientY: 100 });
+    fireEvent.pointerUp(svg, { pointerId: 4 });
+    expect(axisLabels(container)).toEqual(["#1", "#20"]);
+    const first = screen.getByRole("button", { name: /^Request #1,/ });
+    fireEvent.pointerDown(first, { button: 0, isPrimary: true, pointerId: 5, clientX: 40, clientY: 100 });
+    fireEvent.pointerUp(first, { pointerId: 5 });
+    fireEvent.click(first, { detail: 1 });
+    expect(first).toHaveAttribute("aria-pressed", "true");
   });
 });
 

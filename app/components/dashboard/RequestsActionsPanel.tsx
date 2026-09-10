@@ -7,7 +7,7 @@ import { EmptyState } from "../EmptyState";
 import { CommandSelect } from "../command-center/CommandPage";
 import { LargestRequestsList } from "./requests-actions/LargestRequestsList";
 import { RequestBarsChart } from "./requests-actions/RequestBarsChart";
-import { RequestDetail, RequestNavigation } from "./requests-actions/RequestDetail";
+import { RequestDetail } from "./requests-actions/RequestDetail";
 import { RequestMinimap } from "./requests-actions/RequestMinimap";
 import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
@@ -51,9 +51,8 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
     {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && requestHistory.status === "loading" ? "Loading request history…" : requestHistory.enabled && requestHistory.status === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
         <p className="requestsActionsScale" aria-live="polite"><strong>0–{compactNumber(maximum)} tokens</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
-        <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} />
+        <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={requestHistory.enabled && !requestHistory.preview ? requestHistory.offset + start : start} total={requestHistory.enabled ? requestHistory.total : rows.length} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
         {!requestHistory.preview && <RequestMinimap rows={rows} overview={requestHistory.enabled ? requestHistory.overview : null} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />}
-        {phone && <RequestNavigation ordinal={selected.ordinal} count={rows.length} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />}
       </div>
       <div className="requestsActionsDetails">
         <RequestDetail row={selected} agent={agents.find((agent) => agent.id === selected.agentId)} count={rows.length} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />

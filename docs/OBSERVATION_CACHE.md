@@ -1381,8 +1381,13 @@ context, activity, repository, resources, and usage as independently produced do
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
   already at the end. Scope, mode, and selection reset on session change. The session
-  orders Requests & actions, Activity, then Cache evidence. Request Prev/Next crosses
-  committed history pages. The desktop and phone minimap navigates the full scoped history
+  orders Requests & actions, Activity, then Cache evidence. Desktop request Prev/Next crosses
+  committed history pages. Phone omits Prev/Next and retains a slim tappable minimap; horizontal dragging
+  on the chart moves its 20-request window, with rightward drags revealing older
+  requests and leftward drags revealing newer requests. Taps select bars; vertical
+  pan and pinch zoom remain native. Pointer cancellation releases the gesture,
+  additional pointers cannot take over, and a drag does not select a bar on release.
+  The minimap and phone chart navigate the full scoped history
   using its committed total and zero-based page offset, independent of stable
   request numbers. Dragging or keyboard navigation uses the preloaded request
   cache immediately; a missing window requests only its bounded history page,
@@ -1398,6 +1403,10 @@ context, activity, repository, resources, and usage as independently produced do
   together, retaining the last committed revision during loading or failure.
   Older monitors without an overview show only loaded positions, which do not
   imply zero usage elsewhere. Scope/session changes discard the prior overview.
+  A committed window move publishes its resulting chart selection to Activity once,
+  for both chart swipes and minimap navigation. Pending windows retain the prior
+  chart and activity target; background refreshes do not repeat that navigation or
+  override manual Activity paging.
   Selection still reveals linked activity without a
   request-only presentation filter. Cache evidence is a saved, closed-by-default
   disclosure and matches requests only by normalized
