@@ -56,7 +56,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
       </div>
       <div className="requestsActionsDetails">
         <RequestDetail row={selected} agent={agents.find((agent) => agent.id === selected.agentId)} count={rows.length} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />
-        {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} onSelect={locate} />}
+        {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />}
       </div>
       <p className="requestsActionsRetention">{requestHistory.preview ? (requestHistory.status === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…") : requestHistory.enabled ? "Request numbers are stable labels within this session, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent), not provider ids."} Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.</p>
     </>}
