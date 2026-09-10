@@ -1,0 +1,3 @@
+interface:
+  display_name: "Git Sync Main"
+  short_description: "Safely synchronize main with its remote"
