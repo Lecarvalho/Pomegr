@@ -643,6 +643,7 @@ export function createMonitorRuntime(options = {}) {
     serveSession: observation.serveSession,
     serveHome: observation.serveHome,
     serveUsageLimits: observation.serveUsageLimits,
+    serveSessionHistory: observation.serveSessionHistory,
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
     serveRepositories: observation.serveRepositories,

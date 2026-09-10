@@ -85,7 +85,7 @@ export function SessionSummaryCards(props: SessionSummaryCardsProps) {
     <SessionProgressPanel
       progress={progress}
       agents={state.agents}
-      activity={state.activity}
+      activity={state.activity.items}
       connected={state.connected}
       paused={paused}
       historical={historical}

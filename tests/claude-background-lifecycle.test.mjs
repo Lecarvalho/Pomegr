@@ -28,6 +28,16 @@ function terminal(id = "task1", status = "completed", offset = 2000, callId = nu
   return { type: "queue-operation", operation: "enqueue", timestamp: timestamp(offset),
     content: "<task-notification><task-id>" + id + "</task-id>" + call + "<status>" + status + "</status><summary>" + PRIVATE + "</summary></task-notification>" };
 }
+function taskStop(id = "task1", offset = 2000) {
+  return [
+    { type: "assistant", timestamp: timestamp(offset), message: { content: [
+      { type: "tool_use", name: "TaskStop", id: "stop-" + id, input: { task_id: id } },
+    ] } },
+    { type: "user", timestamp: timestamp(offset + 1), message: { content: [
+      { type: "tool_result", tool_use_id: "stop-" + id, content: PRIVATE },
+    ] }, toolUseResult: { task_id: id, task_type: "local_bash", message: PRIVATE, command: PRIVATE } },
+  ];
+}
 const jsonl = (records) => records.map((record) => JSON.stringify(record)).join("\n") + "\n";
 async function readTerminals(read, file) {
   const observation = await read(file);
@@ -479,6 +489,85 @@ test("same-size prefix replacement invalidates completion even when the suffix i
   await writeFile(f.file, replacement);
   await utimes(f.file, new Date(START), new Date(START));
   assert.equal((await readTerminals(read, f.file)).get("child").status, "stopped");
+});
+
+test("successful TaskStop closes only the matched background task in incremental and cold reads", async (t) => {
+  const f = await fixture(t, [...launch("task1", "Bash"), ...launch("task2", "Bash")]);
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await appendFile(f.file, jsonl(taskStop("task1")));
+  assert.equal(await f.reader.observe(f.file, owner()), true, "other background work remains open");
+  const [call, result] = taskStop("task2", 3000);
+  await appendFile(f.file, jsonl([call]));
+  assert.equal(await f.reader.observe(f.file, owner()), true, "a stop request alone is not confirmation");
+  await appendFile(f.file, jsonl([result]));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+  assert.equal(await createClaudeBackgroundLifecycleReader().observe(f.file, owner()), false);
+});
+
+test("TaskStop rejects failed, unmatched, malformed, text-only, and out-of-order evidence", async (t) => {
+  const cases = [
+    ([, result]) => [result],
+    ([call, result]) => { result.message.content[0].is_error = true; return [call, result]; },
+    ...["true", 0, null, {}].map((value) => ([call, result]) => {
+      result.message.content[0].is_error = value; return [call, result];
+    }),
+    ([call, result]) => { result.message.content[0].tool_use_id = "other-call"; return [call, result]; },
+    ([call, result]) => { result.toolUseResult.task_id = "other-task"; return [call, result]; },
+    ([call, result]) => { call.message.content[0].input.task_id = "other-task"; return [call, result]; },
+    ([call, result]) => { call.message.content[0].input.task_id = "../task1"; return [call, result]; },
+    ([call, result]) => { result.toolUseResult.task_id = "../task1"; return [call, result]; },
+    ([call, result]) => { delete result.toolUseResult; return [call, result]; },
+    ([call, result]) => { call.type = "user"; return [call, result]; },
+    ([call, result]) => { result.timestamp = timestamp(1500); return [call, result]; },
+    () => taskStop("task1", 500),
+  ];
+  for (const [index, change] of cases.entries()) {
+    const f = await fixture(t, [...launch("task1", "Bash"), ...change(taskStop())]);
+    assert.equal(await f.reader.observe(f.file, owner()), true, "invalid stop case " + index);
+  }
+});
+
+test("a delayed TaskStop result cannot close a later launch reusing the task ID", async (t) => {
+  const [call, result] = taskStop();
+  const f = await fixture(t, [...launch("task1", "Bash"), call]);
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  result.timestamp = timestamp(4000);
+  await appendFile(f.file, jsonl([terminal("task1"), ...launch("task1", "Bash", 3000), result]));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  assert.equal(await createClaudeBackgroundLifecycleReader().observe(f.file, owner()), true);
+  await appendFile(f.file, jsonl(taskStop("task1", 5000)));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+});
+
+test("a partial TaskStop result retains working until the complete result is acquired", async (t) => {
+  const f = await fixture(t, launch("task1", "Bash"));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  const [call, result] = taskStop();
+  const encoded = jsonl([result]);
+  await appendFile(f.file, jsonl([call]) + encoded.slice(0, -3));
+  assert.equal(await f.reader.observe(f.file, owner()), true);
+  await appendFile(f.file, encoded.slice(-3));
+  assert.equal(await f.reader.observe(f.file, owner()), false);
+});
+
+test("an idle registered session returns Open after TaskStop without exposing private results", async (t) => {
+  const records = launch("task1", "Bash");
+  records[0].message.content[0].input.description = "Start background task";
+  const f = await fixture(t, records);
+  const registryRoot = path.join(f.homeDir, ".claude", "sessions");
+  await mkdir(registryRoot);
+  await writeFile(path.join(registryRoot, "123.json"), JSON.stringify({
+    sessionId: "local", status: "idle", pid: 123, procStart: "one", startedAt: START,
+  }));
+  const provider = createClaudeProvider({ homeDir: f.homeDir, env: {}, now: () => START + 5000,
+    registryProcessIdentities: () => new Map([[123, "one"]]) });
+  assert.equal((await provider.listSessions())[0].activityStatus, "working");
+  await appendFile(f.file, jsonl(taskStop()));
+  const rows = await provider.listSessions();
+  assert.equal(rows[0].activityStatus, "open");
+  const state = monitorStateFromProviderEvidence("claude", await provider.readSession("local"));
+  assert.equal(state.agents.find((agent) => agent.id === "primary").status, "idle");
+  assert.doesNotMatch(JSON.stringify({ rows, state }), /BACKGROUND_PRIVATE|toolUseResult|task_id|task_type|requestedAt/);
 });
 
 test("cross-file Agent completion matches the parent launch, freezes timing, and survives tail growth", async (t) => {

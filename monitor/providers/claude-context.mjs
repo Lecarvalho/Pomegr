@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { normalizedRequestWork } from "../request-work.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { safeDetail } from "./claude-tool-detail.mjs";
+import { mergeClaudeRequestFragments } from "./claude-activity-correlation.mjs";
+import { claudeReplyActivityId } from "./claude-activity-events.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 1_000;
 
@@ -324,13 +326,6 @@ function inferredToolChangeCauses(records, completeHistory, expectedSessionId) {
   return causes;
 }
 
-function laterEvidence(previous, next) {
-  if (!previous) return next;
-  const previousTime = Date.parse(previous.timestamp || "");
-  const nextTime = Date.parse(next.timestamp || "");
-  return Number.isFinite(nextTime) && (!Number.isFinite(previousTime) || nextTime >= previousTime) ? next : previous;
-}
-
 export function parseClaudeContextRecords(records, options = {}) {
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
@@ -358,6 +353,7 @@ export function parseClaudeContextRecords(records, options = {}) {
     }
     if (!assistantRecord(record)) continue;
     const issued = new Map();
+    const issuedTools = [];
     for (const block of structuredContent(record)) {
       if (!plainObject(block) || block.type !== "tool_use") continue;
       const tool = block.name || "Tool";
@@ -365,6 +361,7 @@ export function parseClaudeContextRecords(records, options = {}) {
       const kind = toolWorkKind(tool, { detail: safeDetail(tool, input), input });
       issued.set(kind, Math.min(999, (issued.get(kind) || 0) + 1));
       if (typeof block.id === "string" && block.id) issuedKinds.set(block.id, kind);
+      if (boundedIdentity(block.id)) issuedTools.push({ id: boundedIdentity(block.id), kind });
     }
     const usage = normalizedUsage(record);
     const observedTimestamp = validTimestamp(record.timestamp ?? record.message?.timestamp);
@@ -406,13 +403,26 @@ export function parseClaudeContextRecords(records, options = {}) {
       precedingWork: Array.isArray(record.message.content)
         ? normalizedRequestWork([...pendingResults].map(([kind, count]) => ({ kind, count }))) : [],
       issuedWork: normalizedRequestWork([...issued].map(([kind, count]) => ({ kind, count }))),
+      issuedToolUseIds: issuedTools.map(({ id }) => id),
+      issuedToolUseKinds: issuedTools,
+      // Only an exact identity can link a reply; normalization must not create a match.
+      replyActivityId: providerIdentity && providerIdentity === (record.message.id ?? record.requestId ?? record.uuid)
+        ? claudeReplyActivityId(actorId, providerIdentity) : null,
     };
     pendingResults.clear();
-    snapshots.set(dedupeId, laterEvidence(snapshots.get(dedupeId), snapshot));
+    snapshots.set(dedupeId, mergeClaudeRequestFragments(snapshots.get(dedupeId), snapshot));
     if (!snapshot.cacheComparable) comparisonGroup += 1;
   }
 
   return [...snapshots.values()]
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
-    .slice(-MAX_USAGE_SNAPSHOTS);
+    .slice(options.unlimited === true ? 0 : -MAX_USAGE_SNAPSHOTS)
+    .map((snapshot) => {
+      if (options.includeToolUseIds === true) return snapshot;
+      const normalized = { ...snapshot };
+      delete normalized.issuedToolUseIds;
+      delete normalized.issuedToolUseKinds;
+      delete normalized.replyActivityId;
+      return normalized;
+    });
 }

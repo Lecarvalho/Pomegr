@@ -89,6 +89,12 @@ current paths until their tasks finish; update this index when each move lands.
 Root entrypoints, legal files, package entrypoints, and tool-required files retain
 their existing homes.
 
+The [session Activity panel plan](plans/session-activity-panel.md) is under
+implementation review after a reported request/activity highlighting failure.
+Keep the plan until the user explicitly approves deletion. Runtime rules are
+recorded in [Activity events](../METRICS.md#activity-events) and the
+[Activity feed contract](../OBSERVATION_CACHE.md#activity-feed).
+
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not
 make them current authority or evidence of shipped features. Active plans will

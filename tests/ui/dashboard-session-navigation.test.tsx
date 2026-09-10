@@ -6,6 +6,8 @@ import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { DisplayPreferencesProvider, DISPLAY_PREFERENCES_STORAGE_KEY } from "../../app/hooks/DisplayPreferencesContext";
 import type { MonitorState, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
+import { agent } from "./dashboard-test-fixtures";
+import type { HistoryRequest } from "../../shared/session-history-contract";
 
 function jsonResponse(body: object) {
   return new Response(JSON.stringify(body), {
@@ -178,7 +180,7 @@ describe("dashboard session navigation", () => {
     view.unmount();
   });
 
-  it("orders KPIs, requests and cache evidence, summary cards, agents, resources, repository and details", async () => {
+  it("orders KPIs, requests, activity, cache evidence, summary cards, agents, resources, repository and details", async () => {
     const state = liveState("claude:live-1", "Live resource session");
     state.capabilities.cacheWriteUsage = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
@@ -196,9 +198,11 @@ describe("dashboard session navigation", () => {
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · In progress");
     expect(screen.queryByLabelText("Session state: In progress")).not.toBeInTheDocument();
-    const actionsPanel = screen.getByRole("region", { name: "Requests & actions" });
+    const actionsPanel = screen.getByRole("region", { name: "Requests" });
     expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(actionsPanel);
-    const cacheDisclosure = actionsPanel.nextElementSibling;
+    const activityPanel = container.querySelector(".activityPanel");
+    expect(actionsPanel.nextElementSibling).toBe(activityPanel);
+    const cacheDisclosure = activityPanel?.nextElementSibling;
     expect(cacheDisclosure).toHaveClass("cacheEvidenceDisclosure");
     expect(cacheDisclosure).not.toHaveAttribute("open");
     expect(cacheDisclosure?.nextElementSibling).toBe(container.querySelector(".sessionSummaryCards"));
@@ -217,6 +221,49 @@ describe("dashboard session navigation", () => {
     expect(repository).toHaveClass("dashboardDisclosurePanel", "panel", "sessionRepository", "sessionEvidenceDisclosure");
     expect(repository?.querySelector(":scope > summary .dashboardDisclosureIcon")).toBeInTheDocument();
     expect(sessionDetails?.querySelector(":scope > summary .dashboardDisclosureIcon")).toBeInTheDocument();
+  });
+
+  it("locates a request outside the current page from cache evidence after Activity", async () => {
+    const user = userEvent.setup();
+    const state = historicalState("claude:cache-link", "Cache request navigation");
+    state.capabilities.cacheWriteUsage = true;
+    state.agents = [agent];
+    const requests: HistoryRequest[] = [1, 2].map((number) => ({
+      id: `request-${number}`, number, agentId: "primary", observedAt: `2026-08-11T12:0${number}:00.000Z`,
+      cacheLifetime: "1h", uncachedInputTokens: 100, cacheWriteTokens: 1000, cacheReadTokens: 2000,
+      outputTokens: 50, totalTokens: 3150, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
+    }));
+    state.metrics.tokens.requestSnapshots = { status: "ready", items: requests };
+    state.metrics.tokens.cacheEvents = { status: "ready", possibleFullRefills: [], items: [{
+      id: "cache-first", agentId: "primary", kind: "refill", observedAt: requests[0].observedAt,
+      promptInputTokens: 3100, cacheReadPercent: 0, cacheWriteTokens: 1000,
+      previousCacheReadPercent: null, gapMs: null, relatedEventId: null,
+    }] };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/state")) return Promise.resolve(jsonResponse(state));
+      if (url.startsWith("/api/session-history")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        const requested = params.get("requestId") === "request-1";
+        const kind = params.get("kind");
+        return Promise.resolve(jsonResponse({ kind, status: "ready", revision: "one", total: kind === "requests" ? 2 : 0,
+          offset: kind === "requests" && !requested ? 1 : 0, linkedCount: 0,
+          items: kind === "requests" ? [requests[requested ? 0 : 1]] : [],
+        }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    const { container } = renderDashboard([catalogSession(state)]);
+    await screen.findByRole("heading", { name: "Request #2" });
+    const disclosure = container.querySelector(".cacheEvidenceDisclosure")!;
+    expect(disclosure.previousElementSibling).toHaveClass("activityPanel");
+    await user.click(disclosure.querySelector("summary")!);
+    await user.click(screen.getByRole("button", { name: /Locate Cache refill/ }));
+    await screen.findByRole("heading", { name: "Request #1" });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("requestId=request-1"))).toBe(true);
+    expect(disclosure).toHaveAttribute("open");
+    expect(window.localStorage.getItem("pomegr-disclosure-cache-evidence")).toBe("true");
+    window.localStorage.removeItem("pomegr-disclosure-cache-evidence");
   });
 
   it("omits resource use from historical sessions", async () => {
@@ -250,7 +297,7 @@ describe("dashboard session navigation", () => {
     renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Focused session" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Requests & actions" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Requests" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
     expect(screen.getByText("Resource use")).toBeInTheDocument();
     expect(screen.getByText("Session details")).toBeInTheDocument();
@@ -327,7 +374,7 @@ describe("dashboard session navigation", () => {
     state.source = "Codex";
     state.usageLimits.error = "Codex usage limits are temporarily unavailable.";
     mockDashboardState(state);
-    const { container } = renderDashboard([catalogSession(state)]);
+    renderDashboard([catalogSession(state)]);
     await screen.findByText("Session details");
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
@@ -339,16 +386,12 @@ describe("dashboard session navigation", () => {
     const state = detailedState({ contextSupported: false });
     state.capabilities.usageLimits = false;
     mockDashboardState(state);
-    const { container } = renderDashboard([catalogSession(state)]);
-    const details = await waitFor(() => {
-      const element = container.querySelector("details.sessionDetails");
-      expect(element).toBeInTheDocument();
-      return element!;
-    });
+    renderDashboard([catalogSession(state)]);
+    await screen.findByText("Session details");
     await userEvent.click(screen.getByText("Session details"));
     expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity" })).toBeInTheDocument();
   });
 
   it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {
@@ -383,7 +426,7 @@ describe("dashboard session navigation", () => {
       expect(element).toBeInTheDocument();
       return element!;
     });
-    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery, activity");
+    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery");
   });
 
   it("uses the recorded state label for historical repository evidence", async () => {
@@ -432,7 +475,7 @@ describe("dashboard session navigation", () => {
     });
 
     renderDashboard([catalogSession(notified)]);
-    expect(await screen.findByText("Notified session")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Notified session" })).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/state?sessionId=codex%3Anotified-1",
       expect.objectContaining({ cache: "no-store" }),

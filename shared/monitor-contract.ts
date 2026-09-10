@@ -170,6 +170,19 @@ export type Activity = {
   workKind: WorkKind;
   detail: string;
   status: "failed" | null;
+  /** Wall time from the tool call to its recorded result, in milliseconds. */
+  durationMs: number | null;
+  /** Opaque request-snapshot id linked to this tool call or assistant reply. */
+  requestId: string | null;
+};
+
+export type ActivityFeed = {
+  items: Activity[];
+  total: number;
+  toolCalls: number;
+  byKind: Array<{ kind: WorkKind; count: number; medianDurationMs: number | null }>;
+  messages: number;
+  failed: number;
 };
 
 export type PlanTask = {
@@ -774,7 +787,7 @@ export type MonitorState = {
   workflows: Workflow[];
   toolPatterns: ToolPattern[];
   loops: LoopPattern[];
-  activity: Activity[];
+  activity: ActivityFeed;
   executionTasks: ExecutionTask[];
   planTasks: PlanTask[];
   insights: Insight[];

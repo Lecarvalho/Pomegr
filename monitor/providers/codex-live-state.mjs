@@ -255,7 +255,7 @@ export function createCodexLiveState({
     return { snapshots: merged, compactions: mergedCompactions };
   }
 
-  function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes) {
+  function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes, strict = false) {
     let stat;
     try { stat = fs.statSync(file); } catch {
       invalidateRolloutFile(file, { clearContext: true });
@@ -269,7 +269,7 @@ export function createCodexLiveState({
     const identity = rolloutIdentity(stat);
     const key = `${historical ? "history" : "live"}:${identity}:${stat.size}:${stat.mtimeMs}:${bytes}`;
     const cached = rolloutCache.get(file);
-    if (cached?.key === key) {
+    if (cached?.key === key && (!strict || cached.complete === true)) {
       if (priorSourceSuffixMatches(file, cached.generation)) {
         rolloutStats.cacheHits += 1;
         return { records: cached.records, generation: cached.generation };
@@ -303,20 +303,21 @@ export function createCodexLiveState({
       const newline = text.indexOf("\n");
       text = newline >= 0 ? text.slice(newline + 1) : "";
     }
-    const records = [];
+    const records = []; let malformed = false;
     for (const line of text.split(/\r?\n/)) {
       if (!line.trim()) continue;
       try {
         const record = JSON.parse(line);
         if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch { /* malformed lines do not invalidate other records */ }
+      } catch { malformed = true; }
     }
+    if (strict && malformed) return { records: [], generation: null };
     rolloutStats.reads += 1;
     rolloutStats.bytes += bytes;
     const suffixBytes = Math.min(256, buffer.length);
     const generation = { identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixBytes, suffixDigest: digest(buffer.subarray(buffer.length - suffixBytes)) };
     rolloutCache.delete(file);
-    rolloutCache.set(file, { key, records, generation });
+    rolloutCache.set(file, { key, records, generation, complete: !malformed });
     while (rolloutCache.size > scanLimit) {
       const evictedFile = rolloutCache.keys().next().value;
       invalidateRolloutFile(evictedFile, { clearContext: true });

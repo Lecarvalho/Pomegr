@@ -233,7 +233,7 @@ test("provider normalization keeps live current activity on its owning agent and
   assert.equal(liveAgents.get("agent-activity-child").status, "unknown");
   assert.equal(liveState.metrics.activeAgents, 0);
   assert.equal(liveState.executionTasks.length, 0);
-  assert.deepEqual(liveState.activity.map(({ tool, actor, timestamp }) => ({ tool, actor, timestamp })), [
+  assert.deepEqual(liveState.activity.items.map(({ tool, actor, timestamp }) => ({ tool, actor, timestamp })), [
     { tool: "Assistant replied", actor: "Primary agent", timestamp: "2026-08-12T12:00:00.500Z" },
   ]);
   assert.doesNotMatch(JSON.stringify(liveState), /MUST_NOT_LEAK|encrypted_content|agent_reasoning|summary_text|instructions/iu);

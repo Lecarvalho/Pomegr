@@ -395,7 +395,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     for (const insight of state.insights) assert.equal(insight.agentId === undefined || insight.agentId === null || state.agents.some((agent) => agent.id === insight.agentId), true);
     for (const loop of state.loops) assert.deepEqual(Object.keys(loop).sort(), ["agent", "agentId", "calls", "detail", "id", "repeats"]);
     for (const loop of state.loops) assert.equal(loop.agentId === null || state.agents.some((agent) => agent.id === loop.agentId), true);
-    assert.equal(state.activity.every((event) => allowedWorkKinds.has(event.workKind)), true);
+    assert.deepEqual(Object.keys(state.activity).sort(), ["byKind", "failed", "items", "messages", "toolCalls", "total"]);
+    const requestIds = new Set(state.metrics.tokens.requestSnapshots.items.map((item) => item.id));
+    assert.equal(state.activity.items.length <= 200 && state.activity.items.every((event) => allowedWorkKinds.has(event.workKind) && (event.requestId === null || requestIds.has(event.requestId))), true);
     assert.equal(state.agents.flatMap((agent) => agent.executionTasks || []).every((task) => allowedWorkKinds.has(task.workKind)), true);
     for (const observedAgent of state.agents) {
       assert.equal(Object.hasOwn(observedAgent, "cacheLifetime"), true);

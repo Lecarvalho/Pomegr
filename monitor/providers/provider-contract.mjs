@@ -63,6 +63,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "resolveReadiness",
   "listSessions",
   "readSession",
+  "readSessionHistory",
   "readTranscriptPath",
   "readUsageLimits",
   "captureRepositoryContextInventory",
@@ -348,6 +349,8 @@ const evidenceTimestamp = evidenceText(64).refine((value) => Number.isFinite(Dat
 const evidenceNullableTimestamp = evidenceTimestamp.nullable();
 const evidenceCount = z.number().int().finite().min(0).max(Number.MAX_SAFE_INTEGER);
 const evidenceId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/, "Unsafe identifier");
+const evidenceActivityDuration = z.number().int().finite().min(0).max(86_400_000).nullable().optional();
+const evidenceRequestId = z.string().regex(/^request-[a-f0-9]{16}$/).nullable().optional();
 const evidenceNullableId = evidenceId.nullable();
 const evidenceSignal = z.object({
   label: evidenceOneLine(256),
@@ -410,10 +413,10 @@ const evidenceUsageSnapshot = z.object({
 const evidenceToolCall = z.object({
   id: evidenceId, timestamp: evidenceTimestamp, actor: z.object({ id: evidenceId, label: evidenceOneLine(512) }).strict(), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024),
   workKind: evidenceWorkKind.optional(),
-  status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512),
+  status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512), durationMs: evidenceActivityDuration, requestId: evidenceRequestId,
   mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)).max(64) }).strict().nullable(),
 }).strict();
-const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable() }).strict();
+const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable(), durationMs: evidenceActivityDuration, requestId: evidenceRequestId }).strict();
 const evidencePlanTask = z.object({ id: evidenceId, subject: evidenceOneLine(512), status: z.enum(["pending", "in_progress", "completed"]), blocks: z.array(evidenceId).max(128), blockedBy: z.array(evidenceId).max(128) }).strict();
 const evidenceWorkflow = z.object({
   id: evidenceId, name: evidenceText(256), summary: evidenceText(1_024).nullable(), status: z.enum(["running", "completed", "unknown"]), metadataStatus: z.enum(["pending", "ready", "unavailable"]),
@@ -676,6 +679,7 @@ export function defineProvider(adapter) {
   if (adapter.source !== expectedSource) throw new TypeError(`Provider ${adapter.id} source must be ${expectedSource}`);
   if (typeof adapter.listSessions !== "function") throw new TypeError("Provider adapter must implement listSessions");
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
+  if (adapter.readSessionHistory !== undefined && typeof adapter.readSessionHistory !== "function") throw new TypeError("Provider readSessionHistory must be a function");
   if (adapter.readTranscriptPath !== undefined && typeof adapter.readTranscriptPath !== "function") {
     throw new TypeError("Provider readTranscriptPath must be a function");
   }

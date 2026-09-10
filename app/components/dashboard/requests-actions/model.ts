@@ -1,14 +1,26 @@
 import type { CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import { requestCacheEvidence, type RequestCacheEvidence } from "./cache-evidence";
+import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
+import { shortTime } from "../../../dashboard-utils";
 export { snapshotEventKey } from "./cache-evidence";
 
 export type RequestScope = "all" | string;
 export type ChartMode = "fresh" | "full";
 export type LargestSort = "uncachedInput" | "output" | "cacheWrite" | "total";
 
+export function isCompleteRequestOverview(overview: unknown, total: number): overview is RequestOverviewPoint[] {
+  return Array.isArray(overview) && overview.length === total && overview.every((point) =>
+    Array.isArray(point) && point.length === 4 && point.every((value) => Number.isSafeInteger(value) && value >= 0)
+    && Number.isSafeInteger(point.reduce((sum, value) => sum + value, 0)));
+}
+
 export type RequestRow = RequestSnapshot & {
   /** 1-based position in the retained feed after applying the selected scope. */
   ordinal: number;
+  /** Stable, session-global request number supplied by paged history. */
+  number?: number;
+  /** Summary preview has no stable history number yet. Never label its ordinal as one. */
+  numberPending?: boolean;
   /** Full request-local input, displayed numerically in request details. */
   promptTokens: number;
   /** The stacked fresh-token segments in the default chart mode. */
@@ -72,6 +84,9 @@ export function scopedRows(
       issuedWork: snapshot.issuedWork ?? [],
       issuedAssociation: snapshot.issuedAssociation ?? null,
       ordinal: rows.length + 1,
+      number: typeof (snapshot as RequestSnapshot & { number?: unknown }).number === "number"
+        ? (snapshot as RequestSnapshot & { number: number }).number
+        : undefined,
       promptTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.cacheReadTokens,
       freshTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.outputTokens,
       compactionBefore: hasCompactionBetween(boundaries, snapshot.agentId, previous?.observedAt, snapshot.observedAt),
@@ -80,6 +95,15 @@ export function scopedRows(
     previousByAgent.set(snapshot.agentId, snapshot);
   }
   return rows;
+}
+
+/** The persistent history number when available, otherwise retained-feed position. */
+export function requestNumber(row: Pick<RequestRow, "number" | "ordinal">): number {
+  return row.number ?? row.ordinal;
+}
+
+export function requestMarker(row: RequestRow): string {
+  return row.numberPending ? shortTime(row.observedAt) : `#${requestNumber(row)}`;
 }
 
 /** Returns a 1-based inclusive window, with an empty range for no rows. */
@@ -104,7 +128,9 @@ function nonNegativeFinite(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export function plottedTotal(row: RequestRow, mode: ChartMode, cacheWriteAvailable = true): number {
+type RequestTokenCounts = Pick<RequestRow, "uncachedInputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens">;
+
+export function plottedTotal(row: RequestTokenCounts, mode: ChartMode, cacheWriteAvailable = true): number {
   const cacheWrite = cacheWriteAvailable ? row.cacheWriteTokens : 0;
   if (mode === "full") {
     return nonNegativeFinite(
@@ -115,7 +141,7 @@ export function plottedTotal(row: RequestRow, mode: ChartMode, cacheWriteAvailab
 }
 
 /** Computes a fixed, readable scale over the complete scoped feed. */
-export function scaleMax(rows: RequestRow[], mode: ChartMode, cacheWriteAvailable = true): number {
+export function scaleMax(rows: RequestTokenCounts[], mode: ChartMode, cacheWriteAvailable = true): number {
   const maximum = rows.reduce((current, row) => Math.max(current, plottedTotal(row, mode, cacheWriteAvailable)), 0);
   if (maximum === 0) return 0;
 

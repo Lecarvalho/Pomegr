@@ -45,9 +45,9 @@ export function userInputContentType(record, requestedInputIds = new Set()) {
   return labels.length ? labels.join(" + ") : null;
 }
 
-function retain(map, key, value) {
+function retain(map, key, value, maximum = MAX_ENTRIES) {
   map.set(key, value);
-  if (map.size > MAX_ENTRIES) map.delete(map.keys().next().value);
+  if (maximum !== Infinity && map.size > maximum) map.delete(map.keys().next().value);
 }
 
 function hasReplyText(content) {
@@ -55,8 +55,12 @@ function hasReplyText(content) {
   return Array.isArray(content) && content.some((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
 }
 
+export function claudeReplyActivityId(actorId, identity) {
+  return `claude-reply-${crypto.createHash("sha256").update(`${actorId}:${identity}`).digest("hex").slice(0, 20)}`;
+}
+
 /** Presence metadata only: never retain message or summary content. */
-export function claudeConversationActivity(records, actor = { id: "primary", label: "Primary agent" }, events = new Map()) {
+export function claudeConversationActivity(records, actor = { id: "primary", label: "Primary agent" }, events = new Map(), maximum = MAX_ENTRIES) {
   for (const record of records) {
     if (!record || record.isMeta || record.isCompactSummary || record.isApiErrorMessage) continue;
     const summary = record.type === "system" && record.subtype === "away_summary"
@@ -70,14 +74,15 @@ export function claudeConversationActivity(records, actor = { id: "primary", lab
     const timestamp = new Date(time).toISOString();
     const identity = summary ? record.uuid || timestamp : record.message?.id || record.requestId || record.uuid;
     if (typeof identity !== "string" || !identity.trim() || identity.length > 512) continue;
-    const kind = summary ? "summary" : "reply";
-    const id = `claude-${kind}-${crypto.createHash("sha256").update(`${actor.id}:${identity}`).digest("hex").slice(0, 20)}`;
+    const id = summary
+      ? `claude-summary-${crypto.createHash("sha256").update(`${actor.id}:${identity}`).digest("hex").slice(0, 20)}`
+      : claudeReplyActivityId(actor.id, identity);
     const previous = events.get(id);
     if (previous && Date.parse(previous.timestamp) >= time) continue;
     retain(events, id, {
       id, timestamp, actor: summary ? "System" : actor.label,
       tool: summary ? "Summary updated" : "Assistant replied", workKind: "report", detail: "", status: null,
-    });
+    }, maximum);
   }
   return [...events.values()];
 }
@@ -87,19 +92,19 @@ function emptyActivityState() {
   return { calls: new Map(), launches: new Map(), events: new Map() };
 }
 
-export function claudeTaskNotificationActivity(records, state = emptyActivityState()) {
+export function claudeTaskNotificationActivity(records, state = emptyActivityState(), maximum = MAX_ENTRIES) {
   const { calls, launches, events } = state;
   for (const record of records) {
     if (!record || typeof record !== "object") continue;
     for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
       if (record.type === "assistant" && part?.type === "tool_use" && TASK_KINDS.has(part.name) && typeof part.id === "string") {
-        retain(calls, part.id, part.name);
+        retain(calls, part.id, part.name, maximum);
       }
       if (record.type === "user" && part?.type === "tool_result") {
         const tool = calls.get(part.tool_use_id);
         calls.delete(part.tool_use_id);
         const taskId = part.is_error === true ? null : claudeLaunchedTaskId(tool, record.toolUseResult);
-        if (taskId) retain(launches, taskId, { tool, callId: part.tool_use_id });
+        if (taskId) retain(launches, taskId, { tool, callId: part.tool_use_id }, maximum);
       }
     }
     if (!isClaudeSystemTaskNotification(record) || record.isCompactSummary) continue;
@@ -115,7 +120,7 @@ export function claudeTaskNotificationActivity(records, state = emptyActivitySta
     retain(events, id, {
       id, timestamp, actor: "System", tool: `Task ${outcome}`, ...kind,
       status: outcome === "failed" ? "failed" : null,
-    });
+    }, maximum);
   }
   return [...events.values()];
 }

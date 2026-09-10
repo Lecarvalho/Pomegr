@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
+import { boundedActivityDuration } from "../activity-events.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -107,11 +108,11 @@ function replyOccurrenceKey(info, sourceKey = "") {
   return `${sourceKey}|${String(info.phase || "")}|${replyTextDigest(info.text)}`;
 }
 
-function boundedReplyEvents(events) {
+function boundedReplyEvents(events, maximum = MAX_ASSISTANT_REPLIES) {
   return [...events]
     .filter(Boolean)
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id))
-    .slice(-MAX_ASSISTANT_REPLIES);
+    .slice(maximum === Infinity ? 0 : -maximum);
 }
 
 /** Normalize canonical app-server agent-message thread items without retaining text. */
@@ -131,7 +132,7 @@ export function parseCodexCanonicalActivityEvents(turns, options = {}) {
       if (!previous || Date.parse(event.timestamp) > Date.parse(previous.timestamp)) events.set(event.id, event);
     }
   }
-  return boundedReplyEvents(events.values());
+  return boundedReplyEvents(events.values(), options.unlimited === true ? Infinity : MAX_ASSISTANT_REPLIES);
 }
 
 function normalizedStatus(value, fallback = "running") {
@@ -362,6 +363,8 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     workKind: toolWorkKind(descriptor.tool, { detail: descriptor.detail, input: descriptor.repetitionInput }),
     detail: boundedText(descriptor.detail, MAX_DETAIL_LENGTH),
     status,
+    durationMs: null,
+    requestId: null,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
     mutation: mutationEvidence(descriptor),
   };
@@ -391,6 +394,8 @@ export function mergeCodexToolCalls(callGroups) {
       mutation: call.mutation || previous.mutation,
       status: nextStatus,
       timestamp: nextTimestamp,
+      durationMs: call.durationMs ?? previous.durationMs ?? null,
+      requestId: null,
     });
   }
   return [...calls.values()].sort((left, right) => (
@@ -428,7 +433,7 @@ export function parseCodexAssistantReplyRecords(records, options = {}) {
   const sourceKey = boundedText(options.sourceKey, 160) || actor.id;
   const events = new Map();
   let precedingEvent = null;
-  for (const record of (Array.isArray(records) ? records : [])) {
+  for (const [recordIndex, record] of (Array.isArray(records) ? records : []).entries()) {
     const payload = record?.payload;
     let candidate = null;
     let candidateSource = payload;
@@ -444,18 +449,19 @@ export function parseCodexAssistantReplyRecords(records, options = {}) {
     if (!candidate || !timestamp) { precedingEvent = null; continue; }
     const nativeId = replyNativeId(candidateSource);
     const signature = replyOccurrenceKey(candidate, sourceKey);
-    // Legacy rollouts emit an event immediately followed by its response item.
+    // Rollouts emit a delivery/completion event followed by its response item.
     // Text/phase equality establishes a mirror only within this adjacent pair.
     const paired = !nativeId && record.type === "response_item" && precedingEvent
       && precedingEvent.signature === signature;
     const identity = nativeId ? `message:${nativeId}` : paired ? precedingEvent.identity : `observed:${timestamp}:${signature}`;
     const event = makeAssistantReply({ actor, identity, timestamp });
+    options.onReply?.(recordIndex, event);
     const previous = events.get(event.id);
     if (!previous || Date.parse(timestamp) > Date.parse(previous.timestamp)) events.set(event.id, event);
-    precedingEvent = !nativeId && record.type === "event_msg" && payload.type === "agent_message"
+    precedingEvent = record.type === "event_msg"
       ? { signature, identity } : null;
   }
-  return boundedReplyEvents(events.values());
+  return boundedReplyEvents(events.values(), options.unlimited === true ? Infinity : MAX_ASSISTANT_REPLIES);
 }
 
 /** Later groups have stronger source timestamps (rollout follows canonical). */
@@ -464,10 +470,10 @@ export function mergeCodexActivityEvents(eventGroups, maximum = 4_096) {
   for (const group of eventGroups || []) {
     for (const event of group || []) if (event?.id) merged.set(event.id, event);
   }
-  const limit = Number.isInteger(maximum) ? Math.max(0, Math.min(4_096, maximum)) : 4_096;
+  const limit = maximum === Infinity ? Infinity : Number.isInteger(maximum) ? Math.max(0, Math.min(4_096, maximum)) : 4_096;
   return limit === 0 ? [] : [...merged.values()]
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id))
-    .slice(-limit);
+    .slice(limit === Infinity ? 0 : -limit);
 }
 
 function responseCallId(payload) {
@@ -489,13 +495,14 @@ export function parseCodexActivityRecords(records, options = {}) {
   const calls = [];
   const updates = new Map();
   for (const [order, record] of (Array.isArray(records) ? records : []).entries()) {
-    const timestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp) || options.fallbackTimestamp;
+    const observedTimestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp);
+    const timestamp = observedTimestamp || options.fallbackTimestamp;
     const payload = record?.payload;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
     if (record.type === "response_item") {
       if (["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload.type)) {
         const id = responseCallId(payload);
-        if (id) updates.set(stableCodexCallId(actor.id, id), outputStatus(payload));
+        if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
         continue;
       }
       const descriptor = responseDescriptor(payload);
@@ -509,13 +516,14 @@ export function parseCodexActivityRecords(records, options = {}) {
         descriptor,
         status: normalizedStatus(payload.status, ["local_shell_call", "web_search_call", "image_generation_call"].includes(payload.type) ? "completed" : "running"),
       }));
+      if (providerCallId && observedTimestamp) options.onCall?.(order, calls.at(-1));
       continue;
     }
     if (record.type !== "event_msg") continue;
     const eventType = String(payload.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(eventType)) {
       const id = eventCallId(payload);
-      if (id) updates.set(stableCodexCallId(actor.id, id), outputStatus(payload));
+      if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
       continue;
     }
     const descriptor = eventDescriptor(payload);
@@ -528,10 +536,16 @@ export function parseCodexActivityRecords(records, options = {}) {
       descriptor,
       status: normalizedStatus(payload.status, eventType.endsWith("begin") ? "running" : "completed"),
     }));
+    if (eventCallId(payload) && observedTimestamp) options.onCall?.(order, calls.at(-1));
   }
-  return mergeCodexToolCalls([calls]).map((call) => (
-    updates.has(call.id) ? { ...call, status: updates.get(call.id) } : call
-  ));
+  return mergeCodexToolCalls([calls]).map((call) => {
+    const update = updates.get(call.id);
+    return update ? {
+      ...call,
+      status: update.status,
+      durationMs: boundedActivityDuration(call.timestamp, update.timestamp),
+    } : call;
+  });
 }
 
 export function readCodexActivityRollout(file, options = {}) {
