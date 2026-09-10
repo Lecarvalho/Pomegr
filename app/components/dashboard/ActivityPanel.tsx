@@ -40,13 +40,25 @@ function ActivityBreakdown({ activity }: { activity: ActivityFeed }) {
 }
 
 function ActivityRow({ event, ordinal, selected, phone, onSelect }: { event: Activity; ordinal?: number; selected: boolean; phone: boolean; onSelect: () => void }) {
-  const content = <>
+  const iconKind = event.tool === "Bash" ? "shell" : event.tool === "Assistant replied" ? "input" : event.workKind;
+  const action = <span className="activityAction"><WorkKindIcon kind={iconKind} /><strong>{event.tool}</strong></span>;
+  const actor = <span className="actor"><i aria-hidden="true" /><span>{event.actor}</span></span>;
+  const request = <span className={`activityRequest${ordinal ? " commandTextLink" : " unavailable"}`} title={ordinal ? `Related request #${ordinal}` : "No recorded request link"}>{ordinal ? `#${ordinal}` : "—"}</span>;
+  const content = phone ? <>
+    {action}
+    <span className="activityRowMetadata">
+      <time className="activityTime">{shortTime(event.timestamp)}</time>
+      {event.durationMs !== null && <><span aria-hidden="true">·</span><span className="activityDuration">{activityDuration(event.durationMs)}</span></>}
+      {ordinal ? request : null}
+    </span>
+    <span className="activityRowContext">{actor}{event.detail && <><span aria-hidden="true">·</span><span className="target" title={event.detail}>{event.detail}</span></>}</span>
+  </> : <>
     <time className="activityTime">{shortTime(event.timestamp)}</time>
-    <span className="actor"><i aria-hidden="true" /><span>{event.actor}</span></span>
-    <span className="activityAction"><WorkKindIcon kind={event.workKind} /><strong>{event.tool}</strong></span>
+    {actor}
+    {action}
     <span className="target" title={event.detail}>{event.detail || "—"}</span>
     <span className={`activityDuration${event.durationMs === null ? " unavailable" : ""}`}>{activityDuration(event.durationMs)}</span>
-    <span className={`activityRequest${ordinal ? " commandTextLink" : " unavailable"}`} title={ordinal ? `Related request #${ordinal}` : "No recorded request link"}>{ordinal ? `#${ordinal}` : "—"}</span>
+    {request}
   </>;
   const className = `activityRow${event.status === "failed" ? " failed" : ""}${selected ? " selected" : ""}${phone ? " activityRowPhone" : ""}`;
   return ordinal ? <button type="button" className={`commandQuietAction ${className}`} aria-pressed={selected} onClick={onSelect} aria-label={`${event.tool}, ${event.actor}, request #${ordinal}`}>{content}</button>

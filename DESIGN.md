@@ -286,7 +286,8 @@ desktop widths stack the rail above it. The six feed columns are Time, Agent,
 Action, Target, Duration, and Request. Linked rows use the quiet button role,
 raised tone for the selected request, and error-soft tone for failed rows.
 Request numbers use the text-link treatment; the selected request number is the
-only brand accent in the feed. Missing links and durations use an em dash.
+only brand accent in the feed. Missing links and durations use an em dash in
+desktop columns; phone rows omit absent metadata and its separators.
 Eight-row paging uses secondary Previous, numbered, and Next controls. Only one
 activity page is displayed; the current page and its two neighbors are cached.
 Request numbers are stable session labels, independent of page and agent scope.
@@ -295,8 +296,14 @@ loads the corresponding request window. Selection highlights linked rows without
 filtering away other events. Omit the explanatory request-link strip. Older live
 pages retain their first visible event and offer View latest
 when new events arrive. Loading preserves the last committed page.
-On phones, 64px two-line rows preserve target and duration, with 44px touch
-targets and a 48px per-session breakdown disclosure closed by default. Agent
+On phones, two-line rows are at least 73px high including padding and divider.
+The action icon and title lead the first line, with monospace time, optional
+duration, and request number aligned right. Muted, regular-weight agent labels
+and optional targets flow together beneath the title, with square status marks
+and ellipsis for long text. Bash actions use the terminal icon and assistant
+replies use the message icon; by-kind aggregates retain their normalized kinds.
+Keep 44px touch targets and a 48px per-session breakdown disclosure closed by
+default, with its title and percentages on one line and a trailing chevron. Agent
 scope applies to the feed; by-kind totals and the other activity aggregates
 cover the full retained session feed. Activity rows and Requests & actions
 share request selection and links. Linked assistant replies show the same

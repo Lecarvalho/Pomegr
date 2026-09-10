@@ -404,7 +404,7 @@ describe("ActivityPanel", () => {
     expect(activityPanel).toHaveTextContent("of 2 in this scope");
   });
 
-  it("uses the phone disclosure and renders null request and duration values as dashes", async () => {
+  it("uses the phone disclosure and omits absent metadata and separators", async () => {
     const user = userEvent.setup();
     const requests = [snapshot(1)];
     const items = [activity(1), activity(2, { actor: "System", tool: "Message", detail: "", durationMs: null, requestId: null })].reverse();
@@ -417,10 +417,13 @@ describe("ActivityPanel", () => {
     expect(disclosure).not.toHaveAttribute("open");
     expect(activityPanel.querySelector(".activityHead")).not.toBeInTheDocument();
     expect(unmatched).toHaveClass("activityRowPhone");
-    expect(unmatched.querySelector(".activityDuration")).toHaveTextContent("—");
-    expect(unmatched.querySelector(".activityRequest")).toHaveTextContent("—");
-    expect(unmatched.querySelector(".activityRequest")).toHaveAttribute("title", "No recorded request link");
-    expect(unmatched.querySelector(".activityRequest")).not.toHaveClass("commandTextLink");
+    expect(unmatched.querySelector(".activityDuration")).not.toBeInTheDocument();
+    expect(unmatched.querySelector(".activityRequest")).not.toBeInTheDocument();
+    expect(unmatched.querySelector(".target")).not.toBeInTheDocument();
+    expect(unmatched).not.toHaveTextContent(/[—·]/);
+    const linked = activityPanel.querySelectorAll(".activityRow")[1];
+    expect(linked.querySelector(".activityRowMetadata")).toHaveTextContent(/·1.2s#1/);
+    expect(linked.querySelector(".activityRowContext")).toHaveTextContent("Primary agent·target-1");
     expect(within(activityPanel).getByRole("button", { name: "Previous" })).toHaveClass("commandSecondaryAction");
     expect(within(activityPanel).getByRole("button", { name: "Next" })).toHaveClass("commandSecondaryAction");
 
