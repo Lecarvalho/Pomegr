@@ -1,5 +1,14 @@
 # Session Activity panel redesign
 
+> Layout follow-up (2026-09-09): the approved compact composition now keeps the
+> desktop request title inline, removes request-count/navigation clutter, uses
+> five simple ranking rows with exact values, and omits the ranking on phone.
+> Activity no longer shows the request-link explanation or request-only filter;
+> shared selection remains. Cache evidence now follows Activity. This supersedes
+> the filtering and placement references in earlier checkpoints below. Current
+> behavior is maintained in DESIGN.md and docs/OBSERVATION_CACHE.md. The restored
+> mockups remain available for the existing user review hold.
+>
 > Status: implemented and verified; awaiting user review before plan retirement.
 > Codex follow-up (2026-09-09): the adapter now correlates calls and replies for
 > the same history UI. Real rollout structure establishes a closing usage marker

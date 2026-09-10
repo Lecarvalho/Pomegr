@@ -133,6 +133,8 @@ describe("ActivityPanel", () => {
     const activityPanel = panel(view.container);
 
     expect(activityPanel.querySelectorAll(".activityRow")).toHaveLength(8);
+    expect(within(activityPanel).queryByRole("button", { name: "Show only this request" })).not.toBeInTheDocument();
+    expect(activityPanel.querySelector(".activityLinkNote")).not.toBeInTheDocument();
     expect(within(activityPanel).getByText("Showing 1–8 of 200")).toBeInTheDocument();
     const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
     await user.click(within(pages).getByRole("button", { name: "25" }));

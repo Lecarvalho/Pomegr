@@ -12,7 +12,7 @@ export type SessionRequestInputs = {
   historyEnabled?: boolean;
 };
 
-type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean };
+type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean; requestedOffset?: number };
 type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string };
 type PendingLocate = { id: string; scope: string } | null;
 type PendingPageStep = { offset: number; index: number } | null;
@@ -61,7 +61,8 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const controller = new AbortController();
     const requestSerial = ++serial.current;
     request.current = { controller, serial: requestSerial };
-    setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false }));
+    const requestedOffset = typeof options.offset === "number" ? options.offset : undefined;
+    setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false, requestedOffset }));
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
@@ -73,7 +74,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
           return null;
         }
         if (value.status === "ready") setHistory({ key: nextKey, page: value, loading: false, unavailable: false, retryable: false });
-        else if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true }));
+        else if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
         else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
         return value.status === "ready" ? value : null;
       })
@@ -152,6 +153,14 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     selection.selectScope(nextRows, scopeKey(nextScope), row);
   };
   const pageTo = (offset: number | "latest") => void loadHistory({ offset });
+  const moveHistoryWindow = (start: number) => {
+    if (!page || !Number.isFinite(start)) return;
+    const offset = Math.max(0, Math.min(Math.round(start) - 1, Math.max(0, page.total - size)));
+    if (offset === (history.requestedOffset ?? page.offset)) return;
+    setPendingLocate(null);
+    setPendingPageStep(null);
+    pageTo(offset);
+  };
   const step = (delta: number) => {
     if (!historyEnabled || !page || !selection.selected) return selection.step(delta);
     if (delta < 0 && selection.selected.ordinal === 1 && page.offset > 0) {
@@ -178,6 +187,8 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       revision: page?.revision ?? "",
       total: page?.total ?? rows.length,
       offset: page?.offset ?? 0,
+      windowStart: (history.key === key ? history.requestedOffset ?? page?.offset ?? 0 : 0) + 1,
+      moveWindow: moveHistoryWindow,
       linkedCount: page?.linkedCount ?? 0,
       first, latest, older, newer,
       hasOlder: Boolean(page && page.offset > 0),

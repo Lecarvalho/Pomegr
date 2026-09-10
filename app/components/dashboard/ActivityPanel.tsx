@@ -59,22 +59,20 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
 }) {
   const [scope, setScope] = useState<Scope>("all");
   const [paging, setPaging] = useState({ scope, offset: 0, anchor: null as string | null });
-  const [onlySelected, setOnlySelected] = useState(false);
   const { selected, phone, navigation } = selection;
   const [handledNavigation, setHandledNavigation] = useState(navigation);
   const navigating = navigation !== handledNavigation && navigation?.id === selected?.id;
   const scopedItems = useMemo(() => {
     const primary = selection.agents.find((agent) => agent.id === "primary")?.label ?? "Primary agent";
     const children = new Set(selection.agents.filter((agent) => agent.id !== "primary").map((agent) => agent.label));
-    return activity.items.filter((event) => (scope === "all" || (scope === "primary" ? event.actor === primary : children.has(event.actor)))
-      && (!onlySelected || event.requestId === selected?.id));
-  }, [activity.items, scope, selection.agents, onlySelected, selected?.id]);
+    return activity.items.filter((event) => scope === "all" || (scope === "primary" ? event.actor === primary : children.has(event.actor)));
+  }, [activity.items, scope, selection.agents]);
   const revealAll = navigating && (historyEnabled
     ? (scope === "primary" && selected?.agentId !== "primary") || (scope === "subagents" && selected?.agentId === "primary")
     : !scopedItems.some((event) => event.requestId === selected?.id) && activity.items.some((event) => event.requestId === selected?.id));
   const activeScope = revealAll ? "all" : scope;
   const items = revealAll ? activity.items : scopedItems;
-  const history = useActivityHistory({ enabled: historyEnabled, sessionId, scope: activeScope, filterRequestId: onlySelected ? selected?.id ?? null : null, navigation });
+  const history = useActivityHistory({ enabled: historyEnabled, sessionId, scope: activeScope, filterRequestId: null, navigation });
   const anchorIndex = !historical && paging.offset > 0 && paging.anchor ? items.findIndex((event) => event.id === paging.anchor) : -1;
   let offset = paging.scope !== activeScope ? 0 : Math.max(0, Math.min(anchorIndex >= 0 ? anchorIndex : paging.offset, Math.max(0, items.length - 1)));
   if (navigation !== handledNavigation) {
@@ -113,13 +111,13 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
       <div><h2>Activity</h2><p>{historyEnabled ? total.toLocaleString() : activity.total.toLocaleString()} {(historyEnabled ? total : activity.total) === 1 ? "event" : "events"}{!historyEnabled && <> · {activity.toolCalls.toLocaleString()} tool calls · {activity.byKind.length} kinds</>}{selected && <> · request <span className="activitySelectedNumber">#{selectedNumber}</span> {selectionStatus}{historyEnabled && history.linkedCount !== null && <> · {history.linkedCount} linked {history.linkedCount === 1 ? "event" : "events"}</>}{!historyEnabled && !highlightVisible && highlightedPage !== null && <> · on <button className="commandTextLink" type="button" onClick={() => goToPage(highlightedPage)}>page {highlightedPage}</button></>}</>}</p></div>
       <div className="activityControls"><div className="commandSegmented" role="group" aria-label="Activity agent scope">{([["all", "All agents"], ["primary", "Primary"], ["subagents", "Subagents"]] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setPaging({ scope: value, offset: 0, anchor: null }); }}>{label}</button>)}</div><button className="commandQuietAction" type="button" onClick={() => { onRefresh(); history.refresh(); }} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
     </header>
-    <div className="activityLinkNote"><span>Request numbers link tool calls and assistant replies to their recorded request. Events without a recorded link show —.</span>{selected && <button type="button" className="commandTextLink" aria-pressed={onlySelected} onClick={() => { setOnlySelected(!onlySelected); setPaging({ scope, offset: 0, anchor: null }); }}>{onlySelected ? "Show all activity" : "Show only this request"}</button>}{historyEnabled && history.newEvents > 0 && <button type="button" className="commandTextLink" onClick={history.latest}>{history.newEvents} new events · View latest</button>}</div>
+    {historyEnabled && history.newEvents > 0 && <div className="activityLinkNote"><button type="button" className="commandTextLink" onClick={history.latest}>{history.newEvents} new events · View latest</button></div>}
     <div className="activityLayout">
       {phone ? <DashboardDisclosurePanel className="activityBreakdownDisclosure" title="Actions by kind" summary={<span>{topKinds.map(({ kind, count }) => `${WORK_LABELS[kind]} ${activity.toolCalls ? Math.round(count / activity.toolCalls * 100) : 0}%`).join(" · ")}</span>} defaultOpen={false} icon="chevron" storageKey={`pomegr-activity-breakdown-${sessionId}`}><ActivityBreakdown activity={activity} /></DashboardDisclosurePanel> : <ActivityBreakdown activity={activity} />}
       <div className="activityFeed">
         <div className="activityTable" aria-busy={historyEnabled && history.loading}>
           {!phone && <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span><span>DURATION</span><span>REQUEST</span></div>}
-          {!visible.length && <EmptyState text={historyEnabled && history.loading ? "Loading session history…" : historyEnabled && history.failed ? "Session history is unavailable. Try Refresh." : onlySelected ? "No recorded activity links for this request." : scope !== "all" ? "No activity for these agents." : historical ? "No activity was recorded for this session." : "Tool use and messages will appear here as they happen."} />}
+          {!visible.length && <EmptyState text={historyEnabled && history.loading ? "Loading session history…" : historyEnabled && history.failed ? "Session history is unavailable. Try Refresh." : scope !== "all" ? "No activity for these agents." : historical ? "No activity was recorded for this session." : "Tool use and messages will appear here as they happen."} />}
           {visible.map((event) => <ActivityRow key={event.id} event={event} ordinal={"requestNumber" in event && typeof event.requestNumber === "number" ? event.requestNumber : event.requestId ? requestRows.get(event.requestId)?.ordinal : undefined} selected={Boolean(event.requestId && event.requestId === selected?.id)} phone={phone} onSelect={() => { if (event.requestId) selection.locate(event.requestId); }} />)}
         </div>
         <footer className="activityPagination">

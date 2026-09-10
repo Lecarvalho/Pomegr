@@ -1338,8 +1338,18 @@ context, activity, repository, resources, and usage as independently produced do
   Desktop retains a 60-request visible window and phone a 20-request window. Selection
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
-  already at the end. Scope, mode, and selection reset on session change. Cache evidence
-  is a saved, closed-by-default disclosure and matches requests only by normalized
+  already at the end. Scope, mode, and selection reset on session change. The session
+  orders Requests & actions, Activity, then Cache evidence. Request Prev/Next crosses
+  committed history pages. The desktop and phone minimap navigates the full scoped history
+  using its committed total and zero-based page offset, independent of stable
+  request numbers. Dragging or keyboard navigation requests only the bounded
+  history window; no overview acquisition or synthetic token history is added.
+  The thumb previews the requested position while the chart keeps its last
+  committed page; aborted or stale responses cannot replace a newer navigation.
+  Miniature bars occupy only loaded positions and do not imply zero usage elsewhere.
+  Selection still reveals linked activity without a
+  request-only presentation filter. Cache evidence is a saved, closed-by-default
+  disclosure and matches requests only by normalized
   agent and observation timestamp. These presentation changes leave cache-only GETs,
   last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
 - The session KPI strip renders once core evidence is ready. Agent counts and status

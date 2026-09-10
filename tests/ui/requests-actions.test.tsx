@@ -166,6 +166,66 @@ describe("RequestsActionsPanel", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Request #122" })).toBeInTheDocument());
   });
+
+  it("navigates the global history minimap across unloaded pages and keeps its last page while a newer move wins", async () => {
+    const total = 180;
+    let resolveFirstPageMove: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null;
+    let delayFirstPageMove = true;
+    const page = (offset: number) => ({
+      ok: true,
+      json: async () => ({
+        status: "ready", kind: "requests", revision: "global-history", total, offset, linkedCount: 0,
+        items: Array.from({ length: 60 }, (_, index) => {
+          const position = offset + index + 1;
+          return { ...snapshot(position), number: position * 10 };
+        }),
+      }),
+    });
+    const fetchPage = vi.fn((url: string) => {
+      const offsetValue = new URL(url, "http://localhost").searchParams.get("offset");
+      const offset = offsetValue === "latest" ? total - 60 : Number(offsetValue);
+      if (offset === 0 && delayFirstPageMove) {
+        delayFirstPageMove = false;
+        return new Promise((resolve) => { resolveFirstPageMove = resolve; });
+      }
+      return Promise.resolve(page(offset));
+    });
+    vi.stubGlobal("fetch", fetchPage);
+    const { container } = render(<HistoryLocateHarness sessionId="global-minimap" requests={[]} />);
+    await waitFor(() => expect(screen.getByRole("slider", { name: "Request window" })).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
+    const minimap = screen.getByRole("slider", { name: "Request window" });
+    vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 100, top: 0, bottom: 26, width: 100, height: 26, x: 0, y: 0, toJSON: () => ({}) });
+    expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
+    expect(container.querySelector(".requestsActionsMiniBar")?.getAttribute("x")).toBeCloseTo(667.64, 1);
+
+    fireEvent.keyDown(minimap, { key: "Home" });
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
+    expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 180");
+    expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
+    fireEvent.keyDown(minimap, { key: "End" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
+    resolveFirstPageMove!(page(0));
+    await waitFor(() => expect(axisLabels(container)).toEqual(["#1210", "#1800"]));
+
+    fireEvent.keyDown(minimap, { key: "ArrowLeft" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 120 to 179 of 180"));
+    expect(fetchPage.mock.calls.at(-1)?.[0]).toContain("offset=119");
+    fireEvent.keyDown(minimap, { key: "ArrowRight" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
+    fireEvent.keyDown(minimap, { key: "PageUp" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 61 to 120 of 180"));
+    fireEvent.keyDown(minimap, { key: "PageDown" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
+
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, clientX: 0, clientY: 10 });
+    fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 0, clientY: 10 });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 180"));
+    expect(axisLabels(container)).toEqual(["#10", "#600"]);
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, clientX: 100, clientY: 10 });
+    fireEvent.pointerUp(minimap, { pointerId: 2, clientX: 100, clientY: 10 });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
+    expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
+  });
   it("retains request 44's refill marker through parsing and detail-feed trimming after a synthetic message", () => {
     const feeds = claudeCacheRefillFeeds();
     const requests = feeds.requestSnapshots as RequestSnapshotFeed;
@@ -232,6 +292,9 @@ describe("RequestsActionsPanel", () => {
     expect(axisLabels(container)).toEqual(["#941", "#1000"]);
     expect(screen.getByRole("heading", { name: "Request #1000" })).toBeInTheDocument();
     expect(screen.getByText("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids. Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.")).toBeInTheDocument();
+    expect(screen.queryByText(/Showing \d/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Request history pages" })).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Request window" }).parentElement).not.toHaveTextContent(/Loaded|All \d/);
   });
 
   it("changes scope to the newest row and keeps a chart click in the current window", async () => {
@@ -258,6 +321,17 @@ describe("RequestsActionsPanel", () => {
     await user.keyboard("{Enter}");
     expect(screen.getByRole("heading", { name: "Request #1" })).toBeInTheDocument();
     expect(axisLabels(container)).toEqual(["#1", "#60"]);
+  });
+
+  it("keeps the largest-request rail compact and scoped", () => {
+    const { container } = renderPanel(Array.from({ length: 10 }, (_, index) => snapshot(index + 1)));
+    const largest = screen.getByRole("region", { name: "Largest requests" });
+    expect(largest).toHaveTextContent("Largest requests · All agents");
+    expect(largest).not.toHaveTextContent(/before:|Show 20|Individual request measurements/);
+    expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(5);
+    expect(largest.querySelector(".requestsActionsLargestIdentity")).toBeNull();
+    expect(largest.querySelectorAll(".requestsActionsLargestBar")).toHaveLength(5);
+    expect(container.querySelector(".requestsActionsLargest footer")).toBeNull();
   });
 
   it("moves selection and the window by one at the boundary with Prev and ArrowLeft", async () => {
@@ -394,7 +468,7 @@ describe("RequestsActionsPanel", () => {
     renderPanel([legacySnapshot]);
     expect(screen.getByRole("region", { name: "Selected request" })).toBeInTheDocument();
     expect(screen.getAllByText("None recorded")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Locate request #1, Primary agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Locate request #1, 1,999,000 uncached input" })).toBeInTheDocument();
   });
 
   it("shows the unavailable and ready-empty states without rendering a chart", () => {
@@ -443,10 +517,10 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
     expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument();
-    expect(minimap).toHaveAttribute("aria-valuetext", "Requests 41 to 100");
+    expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 41 to 100 of 100");
 
     fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, clientX: 0, clientY: 10 });
-    expect(minimap).toHaveAttribute("aria-valuetext", "Requests 1 to 60");
+    expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 100");
     expect(container.querySelector(".requestsActionsDetail")).toHaveTextContent("Request #100");
   });
 
@@ -505,7 +579,7 @@ describe("RequestsActionsPanel", () => {
     const marker = container.querySelector(".requestsActionsRefill.isInferred")!;
     expect(marker.querySelector("title")).toHaveTextContent("Possible refill · request #2");
     expect(marker.closest(".requestsActionsBar")).toHaveAttribute("aria-label", expect.stringContaining("Possible refill"));
-    expect(container.querySelector(".requestsActionsMiniRefill")).toBeNull();
+    expect(container.querySelector(".requestsActionsMiniRefill.isInferred")).toBeInTheDocument();
     fireEvent.click(marker);
     expect(screen.getByRole("heading", { name: "Request #2" })).toBeInTheDocument();
     const evidence = screen.getByRole("region", { name: "Request cache evidence" });
@@ -537,93 +611,43 @@ describe("RequestsActionsPanel", () => {
     expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
   });
 
-  it("keeps duplicate request timestamps visible in evidence without arbitrary interaction", () => {
-    const observedAt = "2026-08-09T12:00:00.000Z";
-    const event: CacheEvent = {
-      id: "refill-duplicate", agentId: "primary", kind: "refill", observedAt,
-      promptInputTokens: 5_000, cacheReadPercent: 5, cacheWriteTokens: 5_000,
-      previousCacheReadPercent: 90, gapMs: 1_000, relatedEventId: null,
-    };
-    const duplicate = snapshot(1, "primary", { observedAt });
-    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([duplicate, { ...duplicate, id: "request-duplicate" }])}
-      contextBoundaries={[]} cacheWriteAvailable historical={false} cacheEvents={{ status: "ready", items: [event], possibleFullRefills: [] }} />);
-    fireEvent.click(container.querySelector(".cacheEvidenceDisclosure summary")!);
-    const evidenceList = screen.getByRole("list");
-    const row = within(evidenceList).getByText("Cache refill").closest(".cacheEvidenceRow")!;
-    expect(row).toBeInTheDocument();
-    expect(row).not.toHaveClass("interactive");
-    expect(row).not.toHaveAttribute("role");
-    expect(row).not.toHaveAttribute("tabindex");
-    expect(row).toHaveTextContent("5% read");
-  });
-
-  it("matches cache evidence by normalized timestamp across scope and recenters the request", async () => {
-    const user = userEvent.setup();
-    const items: RequestSnapshot[] = [];
-    for (let index = 1; index <= 100; index += 1) {
-      items.push(snapshot(index * 2 - 1, "primary"));
-      items.push(snapshot(index * 2, "child"));
-    }
-    const target = items.find((item) => item.agentId === "child" && item.id === "request-100")!;
-    const shiftedTimestamp = new Date(Date.parse(target.observedAt) - 4 * 60 * 60_000).toISOString().replace("Z", "-04:00");
-    const event: CacheEvent = {
-      id: "cache-child-target",
-      agentId: "child",
-      kind: "refill",
-      observedAt: shiftedTimestamp,
-      promptInputTokens: 5_000,
-      cacheReadPercent: 5,
-      cacheWriteTokens: 5_000,
-      previousCacheReadPercent: null,
-      gapMs: null,
-      relatedEventId: null,
-    };
-    const { container } = render(<RequestsActionsPanel
-      agents={[agent, childAgent]}
-      requestSnapshots={requestFeed(items)}
-      contextBoundaries={[]}
-      cacheWriteAvailable
-      historical={false}
-      cacheEvents={{ status: "ready", items: [event], possibleFullRefills: [] }}
-    />);
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "primary");
-    const disclosure = container.querySelector("details.cacheEvidenceDisclosure")!;
-    expect(disclosure).not.toHaveAttribute("open");
-    fireEvent.click(disclosure.querySelector("summary")!);
-    const evidenceRow = screen.getByRole("button", { name: /Locate Cache refill/ });
-    evidenceRow.focus();
-    await user.keyboard("{Enter}");
-    expect(evidenceRow).toHaveAttribute("aria-pressed", "true");
-    expect(evidenceRow).toHaveClass("active");
-    const evidenceList = screen.getByRole("list");
-    expect(within(evidenceList).getByText("5%")).toBeInTheDocument();
-    expect(within(evidenceList).getByText("Builder")).toBeInTheDocument();
-    expect(evidenceList.querySelector("time")).not.toBeInTheDocument();
-    expect(within(evidenceList).queryByText(/Cache write|Prompt input|Pomegr/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Agent scope")).toHaveValue("child");
-    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Selected request" })).toHaveTextContent("Builder");
-    expect(axisLabels(container)).toEqual(["#20", "#79"]);
-    fireEvent.click(container.querySelectorAll(".requestsActionsBar")[0]);
-    expect(evidenceRow).toHaveAttribute("aria-pressed", "false");
-    fireEvent.blur(evidenceRow);
-    expect(evidenceRow).not.toHaveClass("active");
-  });
-
-  it("uses a 20-bar phone window, omits the minimap, shows three largest rows, and scrolls on locate", async () => {
+  it("uses a 20-bar phone window with a minimap and omits the ranking rail", () => {
     setPhone(true);
-    const user = userEvent.setup();
-    const scroll = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(20);
     expect(axisLabels(container)).toEqual(["#81", "#100"]);
-    expect(screen.queryByRole("slider", { name: "Request window" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Locate request #1, Primary agent" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Locate request/ })).toHaveLength(3);
-    await user.click(screen.getByRole("button", { name: /Locate request #1,/ }));
-    expect(screen.getByRole("heading", { name: "Request #1" })).toBeInTheDocument();
-    expect(axisLabels(container)).toEqual(["#1", "#20"]);
-    expect(scroll).toHaveBeenCalledWith({ block: "start" });
+    expect(screen.getByRole("slider", { name: "Request window" })).toHaveAttribute("aria-valuetext", "Request positions 81 to 100 of 100");
+    expect(screen.queryByRole("region", { name: "Largest requests" })).not.toBeInTheDocument();
+  });
+
+  it("drags the phone minimap through full history with touch pointers and releases cancelled gestures", async () => {
+    setPhone(true);
+    const fetchPage = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const offset = params.get("offset") === "latest" ? 80 : Number(params.get("offset"));
+      expect(params.get("limit")).toBe("20");
+      return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "phone", total: 100, offset, linkedCount: 0,
+        items: Array.from({ length: 20 }, (_, index) => ({ ...snapshot(offset + index + 1), number: offset + index + 1 })),
+      }) };
+    });
+    vi.stubGlobal("fetch", fetchPage);
+    const { container } = render(<HistoryLocateHarness sessionId="phone-minimap" requests={[]} />);
+    await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
+    const minimap = screen.getByRole("slider", { name: "Request window" });
+    vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 300, top: 0, bottom: 44, width: 300, height: 44, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, pointerType: "touch", clientX: 270, clientY: 22 });
+    fireEvent.pointerMove(minimap, { pointerId: 1, pointerType: "touch", clientX: 0, clientY: 22 });
+    await waitFor(() => expect(axisLabels(container)).toEqual(["#1", "#20"]));
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, pointerType: "touch", clientX: 300, clientY: 22 });
+    expect(minimap).toHaveAttribute("aria-valuenow", "1");
+    fireEvent.pointerCancel(minimap, { pointerId: 1, pointerType: "touch" });
+    const calls = fetchPage.mock.calls.length;
+    fireEvent.pointerMove(minimap, { pointerId: 1, pointerType: "touch", clientX: 300, clientY: 22 });
+    expect(fetchPage).toHaveBeenCalledTimes(calls);
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 3, pointerType: "touch", clientX: 30, clientY: 22 });
+    fireEvent.pointerMove(minimap, { pointerId: 3, pointerType: "touch", clientX: 300, clientY: 22 });
+    fireEvent.pointerUp(minimap, { pointerId: 3, pointerType: "touch", clientX: 300, clientY: 22 });
+    await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
+    expect(screen.getByRole("button", { name: "Prev" })).toBeInTheDocument();
   });
 });
