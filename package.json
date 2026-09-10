@@ -56,6 +56,7 @@
     "verify": "npm run verify:fast && npm run build && npm run check:generated && npm run test:plugin && npm run test:repository-inventory && npm run test:node && npm run test:ui && npm --prefix landing run test && npm --prefix landing run build:audit",
     "verify:desktop": "npm run desktop:runtime && npm run desktop:smoke && npm run desktop:security",
     "verify:desktop:ci": "npm run desktop:runtime && npm run desktop:smoke:ci && npm run desktop:security",
+    "verify:release:local": "node scripts/verify-windows-release-local.mjs",
     "release:windows": "node scripts/release-windows-local.mjs",
     "check:release-source": "node scripts/check-release-source.mjs",
     "test": "npm run build && npm run test:plugin && npm run test:ops && npm run test:repository-inventory && npm run test:node && npm run test:ui",

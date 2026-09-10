@@ -105,7 +105,21 @@ Do not publish locally built executables, rerun a published version, move a rele
 
 ### Dispatch the release workflow
 
-From a clean checkout of the committed and pushed release tag, run:
+Before creating the release tag, run the local preflight from the repository root:
+
+```powershell
+npm run verify:release:local
+```
+
+It installs the Electron runtime, runs the canonical verifier and CI renderer smoke,
+archives any previous local `release/` output, then builds and inspects unsigned NSIS
+and portable artifacts. Packaging explicitly disables publication, removes release
+credentials from the builder environment, and disables automatic certificate
+discovery. It does not run GitHub authentication, Azure signing, Authenticode, or
+GitHub release checks; the hosted workflow owns those external stages.
+
+After the preflight passes, create and push the tag. From a clean checkout of that
+committed and pushed release tag, run:
 
 ```powershell
 npm run release:windows -- --tag vX.Y.Z

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -7,6 +10,11 @@ import {
   spawnCommand,
   validateThenDispatchRelease,
 } from "../scripts/release-windows-local.mjs";
+import {
+  archiveExistingReleaseOutput,
+  unsignedPackagingEnvironment,
+  verifyWindowsReleaseLocally,
+} from "../scripts/verify-windows-release-local.mjs";
 
 const TAG = "v1.2.3";
 const SHA = "a".repeat(40);
@@ -146,4 +154,91 @@ test("release CLI delegates directly and preserves check-only", async () => {
   assert.equal(received.checkOnly, true);
   assert.equal(received.report instanceof Function, true);
   assert.deepEqual(reports, ["Windows release dispatch check passed."]);
+});
+
+test("local release verification mirrors preventable CI stages without signing or publishing", async () => {
+  const calls = [];
+  const reports = [];
+  const environment = {
+    LOCALAPPDATA: "C:\\Users\\fixture\\AppData\\Local",
+    npm_execpath: "C:\\node\\npm-cli.js",
+    CI: "true",
+    GITHUB_ACTIONS: "true",
+    GH_TOKEN: "private-token",
+    GITHUB_TOKEN: "private-token",
+    CSC_LINK: "private-certificate",
+    ARTIFACT_SIGNING_ENDPOINT: "https://example.invalid",
+    SAFE_VALUE: "preserved",
+  };
+  const result = await verifyWindowsReleaseLocally({
+    platform: "win32",
+    cwd: "C:\\pomegr",
+    environment,
+    nodeExecutable: "C:\\node\\node.exe",
+    npmCli: environment.npm_execpath,
+    archiveRelease: async () => "C:\\pomegr\\.electron-builder-cache\\local-package-backups\\fixture-release",
+    report: (message) => reports.push(message),
+    runCommand: async (command, args, options) => { calls.push({ command, args, options }); },
+  });
+
+  assert.deepEqual(result, { stageCount: 8, published: false, signed: false });
+  assert.deepEqual(calls.map(({ args }) => args.slice(-2)), [
+    ["run", "desktop:runtime"],
+    ["run", "verify"],
+    ["run", "desktop:smoke:ci"],
+    ["run", "desktop:prepare:from-build"],
+    ["--publish", "never"],
+    ["C:\\pomegr\\desktop\\finalize-package.mjs"],
+    ["run", "desktop:inspect"],
+  ]);
+  const packaging = calls[4];
+  assert.match(packaging.args[0], /electron-builder[\\/]cli\.js$/);
+  assert.equal(packaging.options.environment.SAFE_VALUE, "preserved");
+  assert.equal(packaging.options.environment.CSC_IDENTITY_AUTO_DISCOVERY, "false");
+  assert.equal(packaging.options.environment.ELECTRON_BUILDER_CACHE, "C:\\Users\\fixture\\AppData\\Local\\electron-builder\\Cache");
+  for (const name of ["CI", "GITHUB_ACTIONS", "GH_TOKEN", "GITHUB_TOKEN", "CSC_LINK", "ARTIFACT_SIGNING_ENDPOINT"]) {
+    assert.equal(Object.hasOwn(packaging.options.environment, name), false, name);
+  }
+  assert.equal(environment.GH_TOKEN, "private-token");
+  assert.match(reports.at(-1), /unsigned and were not published/);
+});
+
+test("local release verification fails closed before unsupported or incomplete runs", async () => {
+  await assert.rejects(verifyWindowsReleaseLocally({ platform: "linux" }), /POMEGR_LOCAL_RELEASE_WINDOWS_REQUIRED/);
+  await assert.rejects(verifyWindowsReleaseLocally({
+    platform: "win32",
+    environment: { LOCALAPPDATA: "C:\\Temp" },
+    npmCli: "",
+  }), /POMEGR_LOCAL_RELEASE_NPM_CLI_REQUIRED/);
+  assert.throws(() => unsignedPackagingEnvironment({ npm_execpath: "npm-cli.js" }), /POMEGR_LOCAL_RELEASE_LOCALAPPDATA_REQUIRED/);
+
+  const calls = [];
+  await assert.rejects(verifyWindowsReleaseLocally({
+    platform: "win32",
+    cwd: "C:\\pomegr",
+    environment: { LOCALAPPDATA: "C:\\Temp", npm_execpath: "npm-cli.js" },
+    archiveRelease: async () => null,
+    runCommand: async (_command, _args, options) => {
+      calls.push(options);
+      if (calls.length === 2) throw new Error("fixture failure");
+    },
+    report: () => {},
+  }), /POMEGR_LOCAL_RELEASE_VERIFICATION_FAILED \(Run the canonical verifier\)/);
+  assert.equal(calls.length, 2);
+});
+
+test("local release verification archives existing generated output instead of deleting it", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pomegr-local-release-"));
+  const releaseRoot = path.join(root, "release");
+  try {
+    await mkdir(releaseRoot);
+    await writeFile(path.join(releaseRoot, "previous-artifact.exe"), "fixture", "utf8");
+    const backupPath = await archiveExistingReleaseOutput({ cwd: root });
+    assert.match(backupPath, /\.electron-builder-cache[\\/]local-package-backups[\\/].+-release$/);
+    assert.equal(await readFile(path.join(backupPath, "previous-artifact.exe"), "utf8"), "fixture");
+    assert.deepEqual(await readdir(path.dirname(backupPath)), [path.basename(backupPath)]);
+    assert.equal(await archiveExistingReleaseOutput({ cwd: root }), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
