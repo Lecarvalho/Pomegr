@@ -7,8 +7,8 @@ on:
         description: "Existing release tag to build and publish (for example, v0.2.2)"
         required: true
         type: string
-      verified_sha:
-        description: "Full commit SHA that passed local release preflight"
+      release_sha:
+        description: "Exact commit SHA resolved from the release tag"
         required: true
         type: string
 
@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 45
     env:
       RELEASE_TAG: ${{ inputs.tag }}
-      LOCAL_VERIFIED_SHA: ${{ inputs.verified_sha }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v4
@@ -42,14 +42,15 @@ jobs:
           node-version: 22.13.0
           cache: npm
 
-      - name: Verify release ref and clean checkout
+      - name: Verify release source
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           node desktop/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
-          node desktop/release-policy.mjs verify-preflight --sha $env:LOCAL_VERIFIED_SHA
+          node desktop/release-policy.mjs verify-commit --sha $env:RELEASE_SHA
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
+          npm run check:release-source -- --tag $env:RELEASE_TAG
 
       - name: Require Artifact Signing configuration
         shell: pwsh
@@ -74,16 +75,20 @@ jobs:
           if ($env:WINDOWS_PUBLISHER_SUBJECT -notmatch '^CN=.+,\s*[A-Z][A-Z0-9.]*=.+$') { throw 'DESKTOP_RELEASE_PUBLISHER_SUBJECT_INCOMPLETE' }
 
       - name: Install locked dependencies
-        run: npm ci
-
-      - name: Build once and smoke-test the desktop runtime
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          npm run build
-          npm run check:generated
+          npm ci
           npm run desktop:runtime
+          npm ci --prefix landing
+
+      - name: Verify application and desktop runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm run verify
           npm run desktop:smoke:ci
 
       - name: Sign in to Azure with GitHub OIDC

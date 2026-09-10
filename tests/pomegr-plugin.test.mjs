@@ -21,7 +21,7 @@ const policyScript = path.join(pluginRoot, "scripts", "policy.mjs");
 const policyTemplatePath = path.join(pluginRoot, "skills", "init", "references", "policy-template.md");
 const releaseScriptPath = path.join(repositoryRoot, "scripts", "release-plugin.sh");
 const legacyReleaseScriptPath = path.join(repositoryRoot, "scripts", "release-claude-plugin.sh");
-const restartSkillRoot = path.join(repositoryRoot, ".codex", "skills", "restart-pomegr");
+const restartSkillRoot = path.join(repositoryRoot, ".agents", "skills", "restart-pomegr");
 
 async function withTemporaryDirectory(run) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-plugin-"));

@@ -13,9 +13,9 @@ import {
 import {
   RELEASE_LEGAL_FILES,
   POMEGR_WINDOWS_PUBLISHER,
+  assertExpectedReleaseCommit,
   assertReleaseArtifactNames,
   assertReleaseTag,
-  assertVerifiedReleaseCommit,
   assertUpdateMetadata,
   parseReleaseVersion,
   releaseArtifactNames,
@@ -25,15 +25,15 @@ import {
 
 const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
 
-test("local preflight requires the complete verified commit to match the checkout", () => {
+test("release workflow requires the complete selected commit to match the checkout", () => {
   const commit = "a".repeat(40);
-  assert.doesNotThrow(() => assertVerifiedReleaseCommit({ verifiedSha: commit, commit }));
-  assert.doesNotThrow(() => assertVerifiedReleaseCommit({ verifiedSha: commit.toUpperCase(), commit }));
-  for (const verifiedSha of [undefined, null, "", "a".repeat(7), "z".repeat(40), 123]) {
-    assert.throws(() => assertVerifiedReleaseCommit({ verifiedSha, commit }), /PREFLIGHT_SHA_REQUIRED/);
+  assert.doesNotThrow(() => assertExpectedReleaseCommit({ releaseSha: commit, commit }));
+  assert.doesNotThrow(() => assertExpectedReleaseCommit({ releaseSha: commit.toUpperCase(), commit }));
+  for (const releaseSha of [undefined, null, "", "a".repeat(7), "z".repeat(40), 123]) {
+    assert.throws(() => assertExpectedReleaseCommit({ releaseSha, commit }), /RELEASE_SHA_REQUIRED/);
   }
   for (const actual of [undefined, "", "b".repeat(40)]) {
-    assert.throws(() => assertVerifiedReleaseCommit({ verifiedSha: commit, commit: actual }), /PREFLIGHT_SHA_MISMATCH/);
+    assert.throws(() => assertExpectedReleaseCommit({ releaseSha: commit, commit: actual }), /RELEASE_SHA_MISMATCH/);
   }
 });
 
@@ -280,21 +280,24 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(releaseBuilderConfig, /signtoolOptions: null/);
   assert.match(releaseBuilderConfig, /azureSignOptions:/);
   assert.match(releaseBuilderConfig, /timestampRfc3161: "http:\/\/timestamp\.acs\.microsoft\.com"/);
-  assert.match(workflow, /verified_sha:\s*\n\s*description:[^\n]+\n\s*required: true\n\s*type: string/);
-  assert.match(workflow, /LOCAL_VERIFIED_SHA:\s*\$\{\{ inputs\.verified_sha \}\}/);
-  const refStep = workflow.match(/- name: Verify release ref and clean checkout[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  assert.match(refStep, /verify-preflight --sha \$env:LOCAL_VERIFIED_SHA/);
+  assert.match(workflow, /release_sha:\s*\n\s*description:[^\n]+\n\s*required: true\n\s*type: string/);
+  assert.match(workflow, /RELEASE_SHA:\s*\$\{\{ inputs\.release_sha \}\}/);
+  const refStep = workflow.match(/- name: Verify release source[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  assert.match(refStep, /verify-commit --sha \$env:RELEASE_SHA/);
+  assert.match(refStep, /npm run check:release-source -- --tag \$env:RELEASE_TAG/);
   assert.match(refStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
-  assert.ok(workflow.indexOf("verify-preflight") < workflow.indexOf("run: npm ci"));
-  const qualityStep = workflow.match(/- name: Build once and smoke-test the desktop runtime[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
-  for (const command of ["npm run build", "npm run check:generated", "npm run desktop:runtime", "npm run desktop:smoke:ci"]) {
+  assert.ok(workflow.indexOf("check:release-source") < workflow.indexOf("npm ci"));
+  const installStep = workflow.match(/- name: Install locked dependencies[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  assert.match(installStep, /npm ci\s+npm run desktop:runtime\s+npm ci --prefix landing/);
+  assert.match(installStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
+  const qualityStep = workflow.match(/- name: Verify application and desktop runtime[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  for (const command of ["npm run verify", "npm run desktop:smoke:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
   assert.match(qualityStep, /\$ErrorActionPreference = 'Stop'/);
   assert.match(qualityStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
-  assert.ok(qualityStep.indexOf("npm run build") < qualityStep.indexOf("npm run desktop:smoke:ci"));
-  assert.doesNotMatch(workflow, /npm ci --prefix landing|npm run verify(?:[:\s]|$)/);
-  assert.equal(workflow.match(/npm run build(?:\n|$)/g)?.length, 1);
+  assert.ok(qualityStep.indexOf("npm run verify") < qualityStep.indexOf("npm run desktop:smoke:ci"));
+  assert.doesNotMatch(qualityStep, /npm run (?:build|check:generated|desktop:runtime|verify:desktop:ci)(?:\r?\n|$)/);
   assert.match(workflow, /verify-signature\.ps1/);
   assert.match(workflow, /gh release create[^\n]+--draft/);
   assert.match(workflow, /verify-assets/);

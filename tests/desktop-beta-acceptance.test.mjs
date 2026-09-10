@@ -218,7 +218,7 @@ test("desktop user, contributor, architecture, and release documentation stays e
   assert.match(architecture, /renderer receives normalized API state/);
   assert.match(architecture, /fixed generic Pomegr copy/);
   assert.doesNotMatch(architecture, /fixed copy may add only a bounded title/);
-  for (const value of ["source.zip", "SHA256SUMS.txt", "TRADEMARKS.md", "desktop:security", "clean-VM"]) {
+  for (const value of ["source.zip", "SHA256SUMS.txt", "TRADEMARKS.md", "npm run verify", "clean-VM"]) {
     assert.match(releases, new RegExp(value.replaceAll(".", "\\."), "i"));
   }
   const checklistGates = [...checklist.matchAll(/^- \[ \] `([a-zA-Z]+)`:/gm)].map((match) => match[1]);

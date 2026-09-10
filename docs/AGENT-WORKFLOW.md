@@ -44,11 +44,12 @@ exactly before bundling services; it never regenerates legal files after the web
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
 `BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so the
-manually dispatched release workflow uses `npm run desktop:smoke:ci`: it exercises the packaged
-Electron main process, ASAR/native runtime, loopback services, provider discovery, APIs,
-privacy checks, and shutdown without constructing an Electron renderer. The canonical UI,
-landing, and desktop-security suites run in the mandatory local release preflight.
-`npm run verify:desktop:ci` remains the local runtime-smoke and desktop-security wrapper.
+manually dispatched release workflow runs the canonical `npm run verify` followed by
+`npm run desktop:smoke:ci`. The latter exercises the packaged Electron main process,
+ASAR/native runtime, loopback services, provider discovery, APIs, privacy checks, and
+shutdown without constructing an Electron renderer. The canonical verifier owns the UI,
+landing, repository-inventory, and desktop-security suites without repeating them in a
+second desktop wrapper. `npm run verify:desktop:ci` remains available for focused local use.
 The full sandboxed preload, renderer, and `BrowserWindow` smoke remains a local or
 interactive-VM release acceptance requirement.
 
@@ -62,15 +63,14 @@ The independent public landing deployment is also manual: dispatch
 tests, typecheck, build, and artifact audit before deploying to Cloudflare. See
 `landing/OPERATIONS.md` for GitHub secrets and production setup.
 
-`npm run release:windows -- --tag vX.Y.Z` installs locked dependencies, runs the
-canonical verifier and CI desktop extension locally, rechecks the clean local and
-remote tagged commit, and dispatches the Windows workflow only on success with the
-verified commit SHA. CI checks that SHA before installing dependencies, builds once,
-and retains runtime smoke, signing, artifact/privacy checks, and publication. The SHA
-is an operator assertion of local verification, not proof that tests ran. Use
-`--check-only` for validation without dispatch. Run in the Windows host environment
-with Git and GitHub CLI available. The helper obtains and caches the workflow's
-pinned Node.js executable automatically; see `docs/DESKTOP_RELEASES.md`.
+`npm run release:windows -- --tag vX.Y.Z` performs only release-point checks and
+dispatches the Windows workflow with the exact clean local and remote tagged commit.
+CI checks that SHA, installs both dependency trees and the Electron runtime, runs the
+canonical verifier and CI desktop smoke, then owns signing, artifact/privacy checks,
+and publication. The SHA
+selects the release commit; it is not proof that tests ran locally. Use `--check-only`
+to validate without dispatch. Run with Git and GitHub CLI available; see
+`docs/DESKTOP_RELEASES.md`.
 
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry

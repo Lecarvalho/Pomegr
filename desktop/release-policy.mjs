@@ -33,12 +33,12 @@ export function updateMetadataName(version) {
   return parseReleaseVersion(version).channel === "beta" ? "beta.yml" : "latest.yml";
 }
 
-export function assertVerifiedReleaseCommit({ verifiedSha, commit }) {
-  if (typeof verifiedSha !== "string" || !/^[a-f0-9]{40}$/i.test(verifiedSha)) {
-    throw new Error("DESKTOP_RELEASE_PREFLIGHT_SHA_REQUIRED");
+export function assertExpectedReleaseCommit({ releaseSha, commit }) {
+  if (typeof releaseSha !== "string" || !/^[a-f0-9]{40}$/i.test(releaseSha)) {
+    throw new Error("DESKTOP_RELEASE_SHA_REQUIRED");
   }
-  if (typeof commit !== "string" || verifiedSha.toLowerCase() !== commit.toLowerCase()) {
-    throw new Error("DESKTOP_RELEASE_PREFLIGHT_SHA_MISMATCH");
+  if (typeof commit !== "string" || releaseSha.toLowerCase() !== commit.toLowerCase()) {
+    throw new Error("DESKTOP_RELEASE_SHA_MISMATCH");
   }
 }
 
@@ -107,13 +107,13 @@ async function runCli() {
     process.stdout.write(`${release.channel}\n`);
     return;
   }
-  if (command === "verify-preflight") {
+  if (command === "verify-commit") {
     const commit = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: new URL("../", import.meta.url), encoding: "utf8", windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    assertVerifiedReleaseCommit({ verifiedSha: option("--sha"), commit });
-    process.stdout.write("local preflight commit matches checkout\n");
+    assertExpectedReleaseCommit({ releaseSha: option("--sha"), commit });
+    process.stdout.write("release commit matches checkout\n");
     return;
   }
   if (command === "verify-assets") {

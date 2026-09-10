@@ -98,65 +98,39 @@ The manual GitHub Actions workflow packages an existing tag. It does not choose 
    ```
 
    If this command returns no tag, do not run the workflow. Entering a nonexistent tag causes checkout to fail with `pathspec 'refs/tags/…' did not match any file(s) known to git`. If the tag exists but its `package.json` version differs, the release verification fails.
-8. Run the local validation and dispatch command below. It starts the workflow only after local checks pass. The manual alternative is to first run the helper with `--check-only`, then open **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source, enter that same tag in **tag**, and copy the successful preflight's full commit SHA into **verified_sha**. The workflow checks out that immutable tag, checks the SHA, builds and smoke-tests the desktop runtime, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
+8. Run the dispatch command below. It starts the workflow only after confirming that the clean local checkout, local tag, and GitHub tag identify the same commit. The manual alternative is to run the helper with `--check-only`, then open **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source, enter that tag in **tag**, and enter its full commit SHA in **release_sha**. The workflow checks out that immutable tag, validates and tests it on a clean runner, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
 9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
 
 Do not publish locally built executables, rerun a published version, move a release tag, or manually replace release assets. Correct a failed or broken published release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
 
-### Validate locally before dispatch
+### Dispatch the release workflow
 
-From a clean Windows x64 checkout of the committed and pushed release tag, run:
+From a clean checkout of the committed and pushed release tag, run:
 
 ```powershell
 npm run release:windows -- --tag vX.Y.Z
 ```
 
-Git and an authenticated GitHub CLI must be available on PATH. You can keep your
-normal Node.js installation: when it differs from `.github/workflows/release.yml`
-(currently 22.13.0), the helper downloads the official Windows x64 `node.exe` from
-nodejs.org, verifies its published SHA-256 checksum, and relaunches with it. The runtime
-is cached under the ignored `.electron-builder-cache/release-node/` directory and
-checked again before reuse; a valid cache works offline. Your default Node.js and
-system PATH remain unchanged. Child validation commands use the pinned runtime and
-the npm CLI that launched the command. The standalone executable avoids the npm
-`node` package's Git Bash placeholder problem on Windows.
+Git and an authenticated GitHub CLI must be available on `PATH`. The command performs
+no dependency installation, build, desktop launch, or process cleanup. It requires the
+tag to match `package.json` and the clean checkout, local tag, and GitHub tag to resolve
+to the same commit. It then dispatches `release.yml` with that tag and exact commit SHA.
+It never commits, pushes, creates tags, or moves them. Append `--check-only` to perform
+the same release-point checks without dispatching.
 
-Close this checkout's development server and local Electron app before running:
-the command first checks the exact tagged source ZIP with the release privacy rules,
-including extracted documentation and fixtures, using Windows' built-in `tar.exe`.
-This standalone check is also available as
-`npm run check:release-source -- --tag vX.Y.Z`. It then reinstalls locked root and
-landing dependencies and runs
-`npm run desktop:runtime`, `npm run verify`, and `npm run verify:desktop:ci`
-in sequence, stopping at the first failure. The full verifier includes lint,
-type checks, builds, generated-artifact checks, root tests, and landing tests/build.
-The desktop extension exercises the packaged runtime and desktop security suite.
+The GitHub-hosted Windows runner owns the mandatory validation. Before signing, it
+checks the tagged source archive, installs the locked root and landing dependencies and
+Electron's on-demand runtime, runs the canonical `npm run verify`, and runs
+`npm run desktop:smoke:ci`. The canonical
+verifier owns lint, type checks, builds, generated-artifact checks, plugin and Node
+tests, repository-inventory tests, UI tests, and landing tests/build. The workflow does
+not repeat those checks with separate build, generated-file, or desktop-security
+commands. The full renderer smoke (`npm run desktop:smoke`) and
+clean-VM acceptance remain separate release requirements.
 
-The command requires the tag to match `package.json` and both the local tag and
-GitHub tag to resolve to the current clean commit. It checks these again after
-validation, so edits, build-induced tracked changes, or a moved tag prevent dispatch.
-It dispatches `release.yml` from the validated tag with the same tag and the verified
-commit SHA as inputs. It never commits, pushes, creates tags, or moves them. Commit and push the
-complete fix before tagging; an older tag will still run the older code.
-
-Append `--check-only` to run the same checks without dispatching. Both modes require
-a clean, already-pushed release tag. Use `npm run verify` while developing uncommitted
-changes. Run this helper in the host terminal; Codex must use host permissions because
-it invokes Git/GitHub and rebuilds generated plugin bundles.
-
-The general application and landing suites run locally. CI installs only root
-dependencies, builds once, checks generated artifacts, and runs
-`npm run desktop:smoke:ci` before Azure authentication, signed packaging, artifact
-inspection, signature verification, and publication. It does not reinstall or test
-the landing site or repeat the general application and desktop-security suites.
-Local success cannot guarantee those remote steps will pass. The full renderer
-smoke (`npm run desktop:smoke`) and clean-VM acceptance remain separate release requirements.
-
-CI rejects a missing, malformed, or mismatched `verified_sha` before dependency
-installation or signing. This input is a trusted operator assertion that local
-preflight passed, not cryptographic proof that tests ran. Prefer the local helper,
-which supplies it only after every gate and the final clean-tag check succeed.
-Both normal and `--check-only` runs print the verified SHA.
+CI rejects a missing, malformed, or mismatched `release_sha` before dependency
+installation or signing. This value selects the exact release commit; it is not a claim
+that tests ran locally. Both normal and `--check-only` runs print the selected SHA.
 
 CI packaging uses `npm run desktop:prepare:from-build` to reuse the production
 web output already built and smoke-tested in CI. `npm run build` generates legal
@@ -169,7 +143,7 @@ files or run a second web build. A stale build fails with
 ## Release checklist
 
 - [ ] The exact tag matches `package.json`, is immutable, and points at the clean checkout used by CI.
-- [ ] `npm test`, `npm run lint`, `npm run desktop:smoke`, `npm run desktop:security`, and `npm run desktop:inspect` pass.
+- [ ] The workflow's source check, `npm run verify`, CI desktop smoke, and artifact inspection pass; complete the full renderer smoke separately on an interactive Windows system.
 - [ ] Both executables have valid Authenticode signatures, the exact complete publisher Subject, and trusted timestamps.
 - [ ] `SHA256SUMS.txt` matches every published artifact and update metadata names/version/checksum are internally consistent.
 - [ ] The exact tagged `Pomegr-X.Y.Z-source.zip` is published beside the binaries at no charge.

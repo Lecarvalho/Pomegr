@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { assertReleaseTag } from "../desktop/release-policy.mjs";
-import { ensureReleaseNodeRuntime } from "./release-node-runtime.mjs";
 
 const REPOSITORY = "Lecarvalho/Pomegr";
 const REPOSITORY_URL = "https://github.com/Lecarvalho/Pomegr";
@@ -36,21 +35,6 @@ export function parseReleaseArguments(argv) {
   return { tag, checkOnly, help: false };
 }
 
-export function releaseWorkflowNodeVersion(workflowSource) {
-  const match = /^\s*node-version:\s*["']?(\d+\.\d+\.\d+)["']?\s*$/m.exec(workflowSource);
-  if (!match) throw new Error("POMEGR_RELEASE_WORKFLOW_NODE_VERSION_MISSING");
-  return match[1];
-}
-
-export function resolveNpmCli(npmExecPath = process.env.npm_execpath) {
-  const normalized = typeof npmExecPath === "string" ? npmExecPath.replaceAll("\\", "/") : "";
-  const entries = normalized.toLowerCase().split("/");
-  if (path.posix.basename(normalized).toLowerCase() !== "npm-cli.js" || !entries.includes("npm")) {
-    throw new Error("POMEGR_RELEASE_NPM_ENTRY_INVALID");
-  }
-  return npmExecPath;
-}
-
 function capturedText(current, chunk, limit) {
   return current.length >= limit ? current : `${current}${chunk}`.slice(0, limit);
 }
@@ -66,15 +50,12 @@ function commandFailure(command, args, stderr = "") {
 
 export async function spawnCommand(command, args, {
   cwd = REPOSITORY_ROOT, capture = false, stdin = "ignore",
-  environment = process.env, nodeExecutable = process.execPath,
+  environment = process.env,
 } = {}) {
   return new Promise((resolve, reject) => {
-    const pathKey = Object.keys(environment).find((key) => key.toLowerCase() === "path") || "PATH";
-    const existingPath = environment[pathKey] || "";
-    const env = { ...environment, [pathKey]: `${path.dirname(nodeExecutable)}${path.delimiter}${existingPath}` };
     const child = spawn(command, args, {
       cwd,
-      env,
+      env: environment,
       shell: false,
       windowsHide: true,
       stdio: capture ? [stdin, "pipe", "pipe"] : [stdin, "inherit", "inherit"],
@@ -139,76 +120,43 @@ async function localRevision(runCommand, reference, cwd) {
   return requireCommitSha((await execute(runCommand, "git", ["rev-parse", reference], cwd, { capture: true })).trim(), "POMEGR_RELEASE_LOCAL_TAG_INVALID");
 }
 
-async function assertReleasePoint(runCommand, { tag, head }, cwd) {
+async function resolveReleasePoint(runCommand, tag, cwd) {
   await assertClean(runCommand, cwd);
-  const [currentHead, localTag, remoteTag] = await Promise.all([
+  const [head, localTag, remoteTag] = await Promise.all([
     localRevision(runCommand, "HEAD", cwd),
     localRevision(runCommand, `refs/tags/${tag}^{commit}`, cwd),
     resolveRemoteTagCommit(runCommand, tag, cwd),
   ]);
-  if (currentHead !== head) throw new Error("POMEGR_RELEASE_HEAD_MOVED");
   if (localTag !== head) throw new Error("POMEGR_RELEASE_LOCAL_TAG_MISMATCH");
   if (remoteTag !== head) throw new Error("POMEGR_RELEASE_REMOTE_TAG_MISMATCH");
+  return head;
 }
 
 export async function validateThenDispatchRelease({
   tag,
   checkOnly = false,
   cwd = REPOSITORY_ROOT,
-  platform = process.platform,
-  arch = process.arch,
-  nodeVersion = process.version,
-  npmExecPath = process.env.npm_execpath,
   readText = (filename) => readFile(filename, "utf8"),
   runCommand = spawnCommand,
   report = () => {},
 } = {}) {
-  if (platform !== "win32") throw new Error("POMEGR_RELEASE_WINDOWS_REQUIRED");
-  if (arch !== "x64") throw new Error("POMEGR_RELEASE_WINDOWS_X64_REQUIRED");
-  const [packageSource, workflowSource] = await Promise.all([
-    readText(path.join(cwd, "package.json")),
-    readText(path.join(cwd, ".github", "workflows", WORKFLOW)),
-  ]);
+  const packageSource = await readText(path.join(cwd, "package.json"));
   const packageVersion = parseJson(packageSource, "POMEGR_RELEASE_PACKAGE_INVALID")?.version;
   assertReleaseTag({ tag, version: packageVersion });
-  const expectedNodeVersion = releaseWorkflowNodeVersion(workflowSource);
-  if (String(nodeVersion).replace(/^v/, "") !== expectedNodeVersion) {
-    throw new Error(`POMEGR_RELEASE_NODE_VERSION_MISMATCH (requires ${expectedNodeVersion})`);
-  }
-  const npmCli = resolveNpmCli(npmExecPath);
 
   await execute(runCommand, "gh", ["auth", "status", "--hostname", "github.com"], cwd, { capture: true });
   await execute(runCommand, "gh", ["api", "--hostname", "github.com", "--method", "GET", `repos/${REPOSITORY}`], cwd, { capture: true });
-  const head = await localRevision(runCommand, "HEAD", cwd);
-  await assertReleasePoint(runCommand, { tag, head }, cwd);
-
-  for (const args of [
-    ["run", "check:release-source", "--", "--tag", tag],
-    ["ci"],
-    ["ci", "--prefix", "landing"],
-    ["run", "desktop:runtime"],
-    ["run", "verify"],
-    ["run", "verify:desktop:ci"],
-  ]) {
-    report(`Running: npm ${args.join(" ")}`);
-    await execute(runCommand, process.execPath, [npmCli, ...args], cwd, { stdin: "inherit" });
-  }
-
-  await assertReleasePoint(runCommand, { tag, head }, cwd);
+  const head = await resolveReleasePoint(runCommand, tag, cwd);
   if (!checkOnly) {
     await execute(runCommand, "gh", [
-      "workflow", "run", WORKFLOW, "--repo", REPOSITORY_URL, "--ref", tag, "-f", `tag=${tag}`, "-f", `verified_sha=${head}`,
+      "workflow", "run", WORKFLOW, "--repo", REPOSITORY_URL, "--ref", tag, "-f", `tag=${tag}`, "-f", `release_sha=${head}`,
     ], cwd, { stdin: "ignore" });
   }
-  report(`Local release verification passed for commit ${head}.`);
+  report(`Release dispatch check passed for commit ${head}.`);
   return { tag, version: packageVersion, dispatched: !checkOnly };
 }
 
 export async function runReleaseCli(argv, {
-  nodeVersion = process.version, platform = process.platform, arch = process.arch,
-  bootstrapped = process.env.POMEGR_RELEASE_NODE_BOOTSTRAPPED,
-  readText = (filename) => readFile(filename, "utf8"),
-  ensureRuntime = ensureReleaseNodeRuntime, runCommand = spawnCommand,
   validate = validateThenDispatchRelease,
   report = (message) => process.stdout.write(`${message}\n`),
 } = {}) {
@@ -217,20 +165,8 @@ export async function runReleaseCli(argv, {
     report(USAGE);
     return;
   }
-  if (platform !== "win32" || arch !== "x64") throw new Error("POMEGR_RELEASE_WINDOWS_X64_REQUIRED");
-  const expected = releaseWorkflowNodeVersion(await readText(path.join(REPOSITORY_ROOT, ".github", "workflows", WORKFLOW)));
-  if (String(nodeVersion).replace(/^v/, "") !== expected) {
-    if (bootstrapped) throw new Error(`POMEGR_RELEASE_NODE_VERSION_MISMATCH (requires ${expected})`);
-    const executable = await ensureRuntime({ version: expected, repositoryRoot: REPOSITORY_ROOT, report });
-    report(`Using Node.js ${expected} for release validation; your default Node.js stays unchanged.`);
-    await execute(runCommand, executable, [fileURLToPath(import.meta.url), ...argv], REPOSITORY_ROOT, {
-      stdin: "inherit", nodeExecutable: executable,
-      environment: { ...process.env, POMEGR_RELEASE_NODE_BOOTSTRAPPED: "1" },
-    });
-    return;
-  }
   const result = await validate({ ...options, report });
-  report(result.dispatched ? "Windows release workflow dispatched." : "Windows release preflight passed.");
+  report(result.dispatched ? "Windows release workflow dispatched." : "Windows release dispatch check passed.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
