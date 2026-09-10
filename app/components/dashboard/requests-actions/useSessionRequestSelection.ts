@@ -17,7 +17,6 @@ type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boo
 type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string };
 type PendingLocate = { id: string; scope: string } | null;
 type PendingPageStep = { offset: number; index: number } | null;
-const EMPTY_HISTORY_FEED: RequestSnapshotFeed = { status: "unavailable", items: [] };
 
 function historyScope(scope: string, agents: Agent[]): string {
   if (scope === "all") return "all";
@@ -103,11 +102,16 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const requestSerial = serial.current;
     return () => {
       // A locate action can start the next request before this effect cleans up.
-      if (request.current?.serial === requestSerial) request.current.controller.abort();
+      if (request.current?.serial === requestSerial) {
+        request.current.controller.abort();
+        requestedKey.current = "";
+      }
     };
   // History loads only when the session, filter, or chart capacity changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyEnabled, key, retry]);
+
+  useEffect(() => () => { request.current?.controller.abort(); }, []);
 
   useEffect(() => {
     if (!historyEnabled || history.key !== key || !history.retryable) return;
@@ -118,23 +122,30 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     return () => window.clearTimeout(timer);
   }, [history.unavailable, history.key, history.retryable, historyEnabled, key]);
 
-  const historyFeed = useMemo<RequestSnapshotFeed>(() => page ? { status: "ready", items: page.items } : historyEnabled ? EMPTY_HISTORY_FEED : requestSnapshots, [historyEnabled, page, requestSnapshots]);
+  const preview = historyEnabled && !page;
+  const historyFeed = useMemo<RequestSnapshotFeed>(() => page ? { status: "ready", items: page.items } : requestSnapshots, [page, requestSnapshots]);
   const allRows = useMemo(() => scopedRows(historyFeed, contextBoundaries, "all", cacheEvents, cacheReadDrops), [historyFeed, contextBoundaries, cacheEvents, cacheReadDrops]);
-  // History pages are already scoped server-side, so client filtering would make
-  // persistent session numbers appear to be local positions again. The retained
-  // feed keeps its established client-side filtering for fixture and legacy use.
-  const rows = useMemo(() => historyEnabled || resolvedScope === "all"
-    ? allRows
-    : scopedRows(requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops),
-  [allRows, cacheEvents, cacheReadDrops, contextBoundaries, historyEnabled, requestSnapshots, resolvedScope]);
+  // History pages are already scoped server-side. Summary previews still need
+  // local scoping, and do not have stable history numbers until the page arrives.
+  const rows = useMemo(() => {
+    const scoped = page || resolvedScope === "all" ? allRows
+      : scopedRows(requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops);
+    // Preview only the latest chart window. History owns stable numbering and
+    // full-session navigation; summary positions must never impersonate it.
+    return preview ? scoped.slice(-size).map((row, index) => ({ ...row, ordinal: index + 1, number: undefined, numberPending: true })) : scoped;
+  }, [allRows, cacheEvents, cacheReadDrops, contextBoundaries, page, preview, requestSnapshots, resolvedScope, size]);
   const scopeKey = (value: string) => `${sessionId}:${value}`;
   const pageStepTarget = pendingPageStep && page?.offset === pendingPageStep.offset
     ? rows[pendingPageStep.index - page.offset]?.id ?? null
     : null;
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate.id : null;
-  const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, locateTarget ?? pageStepTarget);
+  const atLatest = !page || page.offset + page.items.length >= page.total;
+  const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, locateTarget, atLatest);
   if (pendingLocate && locateTarget && rows.some((row) => row.id === locateTarget)) setPendingLocate(null);
-  if (pendingPageStep && pageStepTarget) setPendingPageStep(null);
+  if (pendingPageStep && pageStepTarget && page) {
+    selection.select(rows[pendingPageStep.index - page.offset], true);
+    setPendingPageStep(null);
+  }
 
   useEffect(() => {
     const atLatest = page && page.offset + page.items.length >= page.total;
@@ -148,7 +159,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const setScope = (value: string) => setPreference({ sessionId, scope: value });
   const locate = (id: string) => {
     const row = rows.find((item) => item.id === id);
-    if (row) return selection.select(row, true);
+    if (row) return selection.selectScope(rows, scopeKey(resolvedScope), row);
     const allRow = !historyEnabled ? scopedRows(requestSnapshots, contextBoundaries, "all", cacheEvents, cacheReadDrops).find((item) => item.id === id) : null;
     if (allRow) {
       setScope("all");
@@ -194,6 +205,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     ...selection, step, selectScope, rows, allRows, agents, scope: resolvedScope, setScope, phone, size, locate,
     history: {
       enabled: historyEnabled,
+      preview,
       status: history.loading ? "loading" : history.unavailable ? "unavailable" : page ? "ready" : "loading",
       revision: page?.revision ?? "",
       overview: page?.overview ?? null,

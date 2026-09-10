@@ -362,6 +362,12 @@ boundaries. After the initial page, preload committed request pages for the view
 scope. Dragging renders each resident window immediately, before pointer release,
 without fetching it again. Keep the last chart visible if a window is still loading.
 The overview bars and full-scope chart scale remain stable while the thumb and detail window move.
+Before full history arrives, render available recent request snapshots immediately,
+using observation times instead of stable request numbers. Explain the preview in
+the retention line and defer the full-history minimap until its page is ready.
+Keep this preview visible through loading and retries. Clicking or stepping to the
+newest bar on the latest live page resumes following; older-page selections and
+explicit Activity links remain anchored.
 The compact detail region aligns request facts with five ranked rows:
 request number, neutral bar, and request-local value. Its heading identifies the
 scope, and the ranking metric remains accessible. Omit repeated agent and Before

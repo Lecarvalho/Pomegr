@@ -8,7 +8,7 @@ import { WorkKindIcon } from "../WorkKindIcon";
 import { WORK_LABELS } from "../agents/agent-presentation";
 import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
-import { requestNumber } from "./requests-actions/model";
+import { requestMarker } from "./requests-actions/model";
 import { ACTIVITY_PAGE_SIZE, useActivityHistory } from "./useActivityHistory";
 
 const PAGE_SIZE = ACTIVITY_PAGE_SIZE;
@@ -101,14 +101,14 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
   const highlightedIndex = selected ? items.findIndex((event) => event.requestId === selected.id) : -1;
   const highlightVisible = selected && visible.some((event) => event.requestId === selected.id);
   const highlightedPage = highlightedIndex < 0 ? null : Math.floor(highlightedIndex / PAGE_SIZE) + 1;
-  const selectedNumber = selected && requestNumber(selected);
+  const selectedNumber = selected && requestMarker(selected);
   const selectionStatus = historyEnabled ? (highlightVisible ? "highlighted" : history.loading ? "· locating activity…" : "") : highlightedIndex >= 0 ? "highlighted" : activity.items.some((event) => event.requestId === selected?.id)
     ? "· linked activity outside this agent scope" : "· no linked activity in retained feed";
   const pageNumbers = [...new Set([1, page - 1, page, page + 1, pages])].filter((value) => value >= 1 && value <= pages).sort((a, b) => a - b);
   const topKinds = [...activity.byKind].sort((a, b) => b.count - a.count).slice(0, 3);
   return <section className="panel activityPanel" aria-label="Activity">
     <header className="activityPanelHeader">
-      <div><h2>Activity</h2><p>{historyEnabled ? total.toLocaleString() : activity.total.toLocaleString()} {(historyEnabled ? total : activity.total) === 1 ? "event" : "events"}{!historyEnabled && <> · {activity.toolCalls.toLocaleString()} tool calls · {activity.byKind.length} kinds</>}{selected && <> · request <span className="activitySelectedNumber">#{selectedNumber}</span> {selectionStatus}{historyEnabled && history.linkedCount !== null && <> · {history.linkedCount} linked {history.linkedCount === 1 ? "event" : "events"}</>}{!historyEnabled && !highlightVisible && highlightedPage !== null && <> · on <button className="commandTextLink" type="button" onClick={() => goToPage(highlightedPage)}>page {highlightedPage}</button></>}</>}</p></div>
+      <div><h2>Activity</h2><p>{historyEnabled ? total.toLocaleString() : activity.total.toLocaleString()} {(historyEnabled ? total : activity.total) === 1 ? "event" : "events"}{!historyEnabled && <> · {activity.toolCalls.toLocaleString()} tool calls · {activity.byKind.length} kinds</>}{selected && <> · request <span className="activitySelectedNumber">{selectedNumber}</span> {selectionStatus}{historyEnabled && history.linkedCount !== null && <> · {history.linkedCount} linked {history.linkedCount === 1 ? "event" : "events"}</>}{!historyEnabled && !highlightVisible && highlightedPage !== null && <> · on <button className="commandTextLink" type="button" onClick={() => goToPage(highlightedPage)}>page {highlightedPage}</button></>}</>}</p></div>
       <div className="activityControls"><div className="commandSegmented" role="group" aria-label="Activity agent scope">{([["all", "All agents"], ["primary", "Primary"], ["subagents", "Subagents"]] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setPaging({ scope: value, offset: 0, anchor: null }); }}>{label}</button>)}</div><button className="commandQuietAction" type="button" onClick={() => { onRefresh(); history.refresh(); }} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
     </header>
     {historyEnabled && history.newEvents > 0 && <div className="activityLinkNote"><button type="button" className="commandTextLink" onClick={history.latest}>{history.newEvents} new events · View latest</button></div>}
@@ -118,7 +118,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
         <div className="activityTable" aria-busy={historyEnabled && history.loading}>
           {!phone && <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span><span>DURATION</span><span>REQUEST</span></div>}
           {!visible.length && <EmptyState text={historyEnabled && history.loading ? "Loading session history…" : historyEnabled && history.failed ? "Session history is unavailable. Try Refresh." : scope !== "all" ? "No activity for these agents." : historical ? "No activity was recorded for this session." : "Tool use and messages will appear here as they happen."} />}
-          {visible.map((event) => <ActivityRow key={event.id} event={event} ordinal={"requestNumber" in event && typeof event.requestNumber === "number" ? event.requestNumber : event.requestId ? requestRows.get(event.requestId)?.ordinal : undefined} selected={Boolean(event.requestId && event.requestId === selected?.id)} phone={phone} onSelect={() => { if (event.requestId) selection.locate(event.requestId); }} />)}
+          {visible.map((event) => <ActivityRow key={event.id} event={event} ordinal={"requestNumber" in event && typeof event.requestNumber === "number" ? event.requestNumber : !historyEnabled && event.requestId ? requestRows.get(event.requestId)?.ordinal : undefined} selected={Boolean(event.requestId && event.requestId === selected?.id)} phone={phone} onSelect={() => { if (event.requestId) selection.locate(event.requestId); }} />)}
         </div>
         <footer className="activityPagination">
           {!phone && <span>Showing {total ? offset + 1 : 0}–{Math.min(offset + PAGE_SIZE, total)} of {total}{scope !== "all" ? " in this scope" : ""}{historyEnabled && history.loading ? " · Loading…" : ""}</span>}

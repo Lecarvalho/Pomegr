@@ -2,7 +2,7 @@ import type { Agent } from "../../../../shared/monitor-contract";
 import { agentDisplayName, cacheLifetimeLabel, shortTime } from "../../../dashboard-utils";
 import { AgentChip } from "../../AgentChip";
 import { WORK_LABELS } from "../../agents/agent-presentation";
-import { requestNumber, type RequestRow } from "./model";
+import { requestMarker, type RequestRow } from "./model";
 import { RequestCacheDetail } from "./RequestCacheDetail";
 
 export function RequestNavigation({ ordinal, count, onStep, canPrev = ordinal > 1, canNext = ordinal < count }: { ordinal: number; count: number; onStep: (delta: number) => void; canPrev?: boolean; canNext?: boolean }) {
@@ -19,7 +19,7 @@ export function RequestDetail({ row, agent, count, phone, cacheWriteAvailable, o
     { label: "Output", kind: "output", value: row.outputTokens },
   ];
   return <section className="requestsActionsDetail" aria-label="Selected request">
-    <header><div><h3>Request <span className="requestsActionsNumber">#{requestNumber(row)}</span></h3><p>{agent ? agentDisplayName(agent) : "Unknown agent"} · {shortTime(row.observedAt)} · {cacheLifetimeLabel(row.cacheLifetime).replace("cache TTL", "cache lifetime")}</p></div>
+    <header><div><h3>Request <span className="requestsActionsNumber">{requestMarker(row)}</span></h3><p>{agent ? agentDisplayName(agent) : "Unknown agent"} · {shortTime(row.observedAt)} · {cacheLifetimeLabel(row.cacheLifetime).replace("cache TTL", "cache lifetime")}</p></div>
       {!phone && <RequestNavigation ordinal={row.ordinal} count={count} onStep={onStep} canPrev={canPrev} canNext={canNext} />}</header>
     <p className="requestsActionsPrompt"><span>Full prompt</span><strong>{row.promptTokens.toLocaleString()} tokens</strong></p>
     <div className={`requestsActionsStats${cacheWriteAvailable ? "" : " withoutWrite"}`}>

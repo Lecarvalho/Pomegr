@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent, CacheEvent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
-import type { ComponentProps } from "react";
+import { StrictMode, type ComponentProps } from "react";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
@@ -102,6 +102,78 @@ afterEach(() => {
 });
 
 describe("RequestsActionsPanel", () => {
+  it("restarts an aborted initial history load during StrictMode effect replay", async () => {
+    const fetchPage = vi.fn(async () => ({ ok: true, json: async () => ({
+      status: "ready", kind: "requests", revision: "1", total: 1, offset: 0, linkedCount: 0,
+      items: [{ ...snapshot(1), number: 999 }],
+    }) }));
+    vi.stubGlobal("fetch", fetchPage);
+    render(<StrictMode><HistoryLocateHarness sessionId="strict-loading" requests={[snapshot(1)]} /></StrictMode>);
+    expect(await screen.findByRole("heading", { name: "Request #999" })).toBeInTheDocument();
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])("renders recent snapshots before history arrives without inventing stable numbers (phone: %s)", async (phone) => {
+    setPhone(phone);
+    let resolve!: (value: unknown) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise((done) => { resolve = done; })));
+    const requests = Array.from({ length: 100 }, (_, index) => snapshot(index + 1));
+    const { container } = render(<HistoryLocateHarness sessionId="preview" requests={requests} />);
+    const bars = container.querySelectorAll(".requestsActionsBar");
+    expect(bars).toHaveLength(phone ? 20 : 60);
+    expect(screen.getByText(/Showing recent requests by time while full history loads/)).toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: "Request window" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Request #/ })).not.toBeInTheDocument();
+    fireEvent.click(bars[0]);
+    const first = phone ? 81 : 41;
+    await act(async () => resolve({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "1", total: 100, offset: first - 1, linkedCount: 0,
+      items: requests.slice(first - 1).map((row, index) => ({ ...row, number: 1000 + first + index })),
+    }) }));
+    expect(screen.getByRole("heading", { name: `Request #${1000 + first}` })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Request window" })).toBeInTheDocument();
+    expect(screen.queryByText(/Showing recent requests by time/)).not.toBeInTheDocument();
+  });
+
+  it("keeps recent bars visible through failed history loads and retries", async () => {
+    vi.useFakeTimers();
+    const fetchPage = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ ok: true, json: async () => ({
+      status: "ready", kind: "requests", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 99 }],
+    }) });
+    vi.stubGlobal("fetch", fetchPage);
+    const { container } = render(<HistoryLocateHarness sessionId="preview-retry" requests={[snapshot(1)]} />);
+    await act(async () => {});
+    expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(1);
+    expect(screen.getByText(/Full history is unavailable; retrying/)).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.getByRole("heading", { name: "Request #99" })).toBeInTheDocument();
+  });
+
+  it("distinguishes loading history from a session with no observations", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(<HistoryLocateHarness sessionId="empty-loading" requests={[]} />);
+    expect(screen.getByText("Loading request history…")).toBeInTheDocument();
+    expect(screen.queryByText("No request observations for this session yet.")).not.toBeInTheDocument();
+  });
+
+  it("resumes history polling and selection after an older bar then the latest bar is clicked", async () => {
+    vi.useFakeTimers();
+    let count = 3;
+    const fetchPage = vi.fn(async () => ({ ok: true, json: async () => ({
+      status: "ready", kind: "requests", revision: String(count), total: count, offset: 0, linkedCount: 0,
+      items: Array.from({ length: count }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 })),
+    }) }));
+    vi.stubGlobal("fetch", fetchPage);
+    await act(async () => { render(<HistoryLocateHarness sessionId="resume-follow" requests={[]} />); });
+    fireEvent.click(screen.getByRole("button", { name: /^Request #1,/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /^Request #3,/ }));
+    count = 4;
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("heading", { name: "Request #4" })).toBeInTheDocument();
+  });
+
   it.each([false, true])("slides preloaded history immediately during a held pointer without network requests (phone: %s)", async (phone) => {
     setPhone(phone);
     const total = 180;

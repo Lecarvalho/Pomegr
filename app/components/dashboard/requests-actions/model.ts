@@ -1,6 +1,7 @@
 import type { CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import { requestCacheEvidence, type RequestCacheEvidence } from "./cache-evidence";
 import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
+import { shortTime } from "../../../dashboard-utils";
 export { snapshotEventKey } from "./cache-evidence";
 
 export type RequestScope = "all" | string;
@@ -18,6 +19,8 @@ export type RequestRow = RequestSnapshot & {
   ordinal: number;
   /** Stable, session-global request number supplied by paged history. */
   number?: number;
+  /** Summary preview has no stable history number yet. Never label its ordinal as one. */
+  numberPending?: boolean;
   /** Full request-local input, displayed numerically in request details. */
   promptTokens: number;
   /** The stacked fresh-token segments in the default chart mode. */
@@ -97,6 +100,10 @@ export function scopedRows(
 /** The persistent history number when available, otherwise retained-feed position. */
 export function requestNumber(row: Pick<RequestRow, "number" | "ordinal">): number {
   return row.number ?? row.ordinal;
+}
+
+export function requestMarker(row: RequestRow): string {
+  return row.numberPending ? shortTime(row.observedAt) : `#${requestNumber(row)}`;
 }
 
 /** Returns a 1-based inclusive window, with an empty range for no rows. */

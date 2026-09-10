@@ -181,6 +181,23 @@ positions; responses with a different revision or total never mix into the cache
 Preloading reads only existing committed pages, never provider evidence. Foreground
 navigation retains its existing fallback for windows that are not yet resident.
 
+Before the first request-history page arrives, F renders the latest scoped window
+of committed request snapshots already present in session state (60 desktop, 20
+phone). This recent-request preview uses observation times, never fabricated
+history numbers or a full-history minimap. It remains visible during history
+loading or failure; retries replace it with the committed history page and its
+stable numbers, preserving a selected request by identity when present. A ready
+request page or available preview can render independently of the broader
+`contextEvidence` loading gate. No preview changes evidence, checkpoints, or GET
+acquisition behavior.
+
+Selecting the newest request on the latest scoped live page resumes automatic
+selection and the three-second history refresh. Selecting older requests, including
+the last bar on an older page, keeps selection pinned. Keyboard steps follow the
+same rule; historical sessions never follow live appends. Explicit Activity and
+cache-evidence locate actions remain pinned by identity, even when the located
+request is currently newest.
+
 Codex U2 correlates rollout activity before global sorting, within each normalized
 actor's source sequence. Private parser callbacks identify normalized calls,
 replies, and usage observations by record position; no callback index or request

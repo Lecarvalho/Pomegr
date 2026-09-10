@@ -217,7 +217,7 @@ describe("ActivityPanel", () => {
     expect(panel(view.container).querySelectorAll(".activityRow.selected")).toHaveLength(0);
   });
 
-  it("keeps an explicitly selected newest request pinned when a live request arrives", async () => {
+  it("follows live requests after the newest histogram bar is selected", async () => {
     const user = userEvent.setup();
     const requests = [snapshot(1), snapshot(2), snapshot(3)];
     const view = renderActivity(activityFeed(activityItems(3)), requests);
@@ -228,9 +228,19 @@ describe("ActivityPanel", () => {
       requests={[...requests, snapshot(4)]}
     />);
 
+    expect(view.container.querySelector('[aria-label^="Request #3,"]')).toHaveAttribute("aria-pressed", "false");
+    expect(view.container.querySelector('[aria-label^="Request #4,"]')).toHaveAttribute("aria-pressed", "true");
+    expect(panel(view.container).querySelector(".activityPanelHeader p")).toHaveTextContent(/request #4 highlighted/i);
+  });
+
+  it("keeps a request located from Activity pinned even when it was newest", async () => {
+    const user = userEvent.setup();
+    const requests = [snapshot(1), snapshot(2), snapshot(3)];
+    const view = renderActivity(activityFeed(activityItems(3)), requests);
+    await user.click(within(panel(view.container)).getByRole("button", { name: /Tool 3, Primary agent, request #3/ }));
+    view.rerender(<ActivityHarness activity={activityFeed([activity(4), ...activityItems(3)])} requests={[...requests, snapshot(4)]} />);
     expect(view.container.querySelector('[aria-label^="Request #3,"]')).toHaveAttribute("aria-pressed", "true");
     expect(view.container.querySelector('[aria-label^="Request #4,"]')).toHaveAttribute("aria-pressed", "false");
-    expect(panel(view.container).querySelector(".activityPanelHeader p")).toHaveTextContent(/request #3 highlighted/i);
   });
 
   it("automatically reveals all linked rows when selecting or reselecting an off-page request bar", async () => {
