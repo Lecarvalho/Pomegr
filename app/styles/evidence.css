@@ -685,7 +685,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .sessionPomegrIntegrationGrid { grid-template-columns: 1fr; gap: 10px; }
 }
 
-/* Requests & actions */
+/* Requests */
 .commandSessionView .requestsActionsPanel { overflow: hidden; background: var(--command-panel); border-color: var(--command-line); }
 .requestsActionsHeader { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(140px, 160px); align-items: center; gap: 16px; min-height: 52px; padding: 16px 20px; }
 .requestsActionsHeading { display: flex; flex: 0 0 auto; align-items: center; gap: 16px; white-space: nowrap; }

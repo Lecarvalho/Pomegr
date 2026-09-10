@@ -183,7 +183,9 @@ describe("RequestsActionsPanel", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument());
     expect(axisLabels(container)).toEqual(["#1", "#20"]);
     expect(calls.at(-1)).toContain("requestId=request-10");
-    expect(screen.getByText("Request numbers are stable labels within this session, not provider ids.", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("Request numbers are stable labels within this session, not provider ids.", { exact: false })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "About request links" }));
+    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are stable labels within this session, not provider ids.");
   });
 
   it("discards an earlier session-history response after the viewed session changes", async () => {
@@ -345,12 +347,17 @@ describe("RequestsActionsPanel", () => {
     expect(Number(lastLabel.getAttribute("x"))).toBeCloseTo(Number(lastBar.getAttribute("x")) + Number(lastBar.getAttribute("width")) / 2);
   });
 
-  it("renders a 60-request desktop window from a 1,000-row retained feed", () => {
+  it("renders a 60-request desktop window from a 1,000-row retained feed", async () => {
+    const user = userEvent.setup();
     const { container } = renderPanel(Array.from({ length: 1_000 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(60);
     expect(axisLabels(container)).toEqual(["#941", "#1000"]);
     expect(screen.getByRole("heading", { name: "Request #1000" })).toBeInTheDocument();
-    expect(screen.getByText("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids. Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.")).toBeInTheDocument();
+    expect(screen.queryByText(/Request numbers are positions/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "About request links" }));
+    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids. Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "About request links" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Showing \d/)).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Request history pages" })).not.toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Request window" }).parentElement).not.toHaveTextContent(/Loaded|All \d/);

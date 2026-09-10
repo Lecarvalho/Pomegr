@@ -201,7 +201,7 @@ Inter keeps the dense monitoring workspace readable and direct. Geist Mono is re
 
 The app shell uses a 60px global header, a 220px desktop route rail, and a flexible evidence workspace. It does not reserve a persistent footer row, and session pages end with their final evidence panel rather than repeating observer, update, source, license, or version metadata. That supporting information belongs in Settings or About. Main content stays bounded by the shell while panels use a 4px/8px/16px/24px/32px rhythm. The header holds the compact pomegranate product mark, destination search, monitor state, notifications, and local profile control. Session routes place the Sessions › project breadcrumb in this header; on phones, the mark retains its accessible Pomegr home name while the visible wordmark gives that space to the breadcrumb. Long project names truncate within the header. The brand mark keeps the same position on routes with and without breadcrumbs. On phones, the breadcrumb and Pomegr wordmark share the same text origin, baseline, typography, and muted color. The Settings About pane presents the painted mark beside the product name and purpose before operational metadata.
 
-At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Requests & actions presents session evidence with one bar per request and numeric Full prompt in the selected-request details; Activity is a separate evidence panel rather than content inside Session details. The retained evidence meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
+At compact widths the rail reduces to an icon rail and controls may use the 32px compact height. At mobile widths navigation becomes an off-canvas labelled drawer and touch targets are at least 44px. Agent activity controls wrap below the section heading at widths of 640px or less so the heading and filters remain readable. Requests presents session evidence with one bar per request and numeric Full prompt in the selected-request details; Activity is a separate evidence panel rather than content inside Session details. The retained evidence meanings remain unchanged: context is latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed.
 
 Home remains a personal starting point for last-viewed and pinned destinations. Its sections collapse to one column while preserving reading order, bounded identity-only local preferences, and honest unavailable/coming-soon content.
 
@@ -280,7 +280,7 @@ Session headers show recorded or live lifecycle state in the status card without
 
 ### Session Evidence
 
-Activity follows Requests & actions, then Cache evidence precedes session summary
+Activity follows Requests, then Cache evidence precedes session summary
 cards and the agent roster. A 360px by-kind rail precedes the feed; compact
 desktop widths stack the rail above it. The six feed columns are Time, Agent,
 Action, Target, Duration, and Request. Linked rows use the quiet button role,
@@ -305,11 +305,13 @@ replies use the message icon; by-kind aggregates retain their normalized kinds.
 Keep 44px touch targets and a 48px per-session breakdown disclosure closed by
 default, with its title and percentages on one line and a trailing chevron. Agent
 scope applies to the feed; by-kind totals and the other activity aggregates
-cover the full retained session feed. Activity rows and Requests & actions
+cover the full retained session feed. Activity rows and Requests
 share request selection and links. Linked assistant replies show the same
 request number and selected state as linked tool calls. The request detail shows Before and Issued
-chips in one wrapping line separated by a vertical rule, with one shared
-evidence caveat below the panel. These compositions remain panel-local.
+chips in one wrapping line separated by a vertical rule. The shared evidence
+caveat lives in the existing dotted info popover on the Requests
+panel heading, with the accessible label About request links. Preview loading and retry status stays visible below the
+panel. These compositions remain panel-local.
 
 Repositories use a flat, linked index of observed projects. Each row shows the
 repository name, observed provider badges, live and history session counts, last
@@ -352,7 +354,7 @@ symbol and label lane sits above compaction labels. Show marker labels on select
 focus, or hover, with matching minimap ticks and request-local evidence in
 the selected-request details. Match only unambiguous normalized agent/timestamp pairs.
 
-Requests & actions is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, selected-request detail and action labels, and a scoped Largest requests ranking. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Show each mode's numeric scale and label Fresh as rescaled with cache reads excluded. Full prompt in request details represents uncached input + cache write + cache read, excluding output. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
+Requests is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, selected-request detail and action labels, and a scoped Largest requests ranking. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Show each mode's numeric scale and label Fresh as rescaled with cache reads excluded. Full prompt in request details represents uncached input + cache write + cache read, excluding output. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
 
 The desktop request header keeps its title and one-bar explanation inline, with
 the legend and controls alongside when space permits. The chart retains its scale
@@ -381,7 +383,7 @@ scope, with a quiet button cycling uncached input (default), output, cache write
 and total; skip cache write when unavailable. Omit repeated agent and Before
 metadata, expansion controls, and the ranking footer. Phone omits the ranking rail.
 
-Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Keep the Cache evidence disclosure after Activity, closed by default, with its saved disclosure state and event count. Requests & actions replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
+Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Keep the Cache evidence disclosure after Activity, closed by default, with its saved disclosure state and event count. Requests replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
 
 ## Do's and Don'ts
 
@@ -391,7 +393,7 @@ Use Inter for panel language and controls, and Geist Mono for request counts, or
 - **Do** use Inter at 26px titles, 16px sections, 14px UI/body, 13px controls, and 12px metadata; use Geist Mono for numeric and execution data.
 - **Do** preserve the 60px header, 220px desktop rail, 36px default controls, 32px compact controls, and 44px touch targets.
 - **Do** preserve provider-neutral identity, normalized privacy boundaries, and existing metric semantics.
-- **Do** keep Requests & actions as the session evidence panel and explain request-local values separately from retained context history.
+- **Do** keep Requests as the session evidence panel and explain request-local values separately from retained context history.
 - **Do** keep landing typography, paper artifacts, and brand decisions scoped to landing/marketing.
 
 ### Don't:

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../shared/monitor-contract";
 import { agentDisplayName, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
+import { DottedInfoPopover } from "../DottedInfoPopover";
 import { CommandSelect } from "../command-center/CommandPage";
 import { LargestRequestsList } from "./requests-actions/LargestRequestsList";
 import { RequestBarsChart } from "./requests-actions/RequestBarsChart";
@@ -33,9 +34,9 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
     select(row, true);
     if (phone) chartRef.current?.scrollIntoView?.({ block: "start" });
   };
-  return <section className="panel requestsActionsPanel" aria-label="Requests & actions">
+  return <section className="panel requestsActionsPanel" aria-label="Requests">
     <header className="requestsActionsHeader">
-      <div className="requestsActionsHeading"><h2>Requests &amp; actions</h2><span className="sessionEyebrow">One bar per model request</span></div>
+      <div className="requestsActionsHeading"><h2><DottedInfoPopover ariaLabel="About request links" content={<>{!requestHistory.preview && <>{requestHistory.enabled ? "Request numbers are stable labels within this session, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent), not provider ids."} </>}Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.</>}>Requests</DottedInfoPopover></h2><span className="sessionEyebrow">One bar per model request</span></div>
       <div className="requestsActionsLegend" aria-label="Chart legend">
         <span><i className="requestsActionsSwatch uncached" />{phone ? "Uncached" : "Uncached input"}</span>
         {cacheWriteAvailable && <span><i className="requestsActionsSwatch write" />Cache write</span>}
@@ -58,7 +59,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
         <RequestDetail row={selected} agent={agents.find((agent) => agent.id === selected.agentId)} count={rows.length} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />
         {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />}
       </div>
-      <p className="requestsActionsRetention">{requestHistory.preview ? (requestHistory.status === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…") : requestHistory.enabled ? "Request numbers are stable labels within this session, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent), not provider ids."} Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.</p>
+      {requestHistory.preview && <p className="requestsActionsRetention">{requestHistory.status === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…"}</p>}
     </>}
   </section>;
 }

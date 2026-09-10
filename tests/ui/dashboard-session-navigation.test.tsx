@@ -198,7 +198,7 @@ describe("dashboard session navigation", () => {
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · In progress");
     expect(screen.queryByLabelText("Session state: In progress")).not.toBeInTheDocument();
-    const actionsPanel = screen.getByRole("region", { name: "Requests & actions" });
+    const actionsPanel = screen.getByRole("region", { name: "Requests" });
     expect(container.querySelector(".sessionKpiStrip")?.nextElementSibling).toBe(actionsPanel);
     const activityPanel = container.querySelector(".activityPanel");
     expect(actionsPanel.nextElementSibling).toBe(activityPanel);
@@ -297,7 +297,7 @@ describe("dashboard session navigation", () => {
     renderDashboard([catalogSession(state)]);
 
     expect(await screen.findByRole("heading", { name: "Focused session" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Requests & actions" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Requests" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Context history" })).not.toBeInTheDocument();
     expect(screen.getByText("Resource use")).toBeInTheDocument();
     expect(screen.getByText("Session details")).toBeInTheDocument();
