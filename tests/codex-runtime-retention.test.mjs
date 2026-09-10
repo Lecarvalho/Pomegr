@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,7 +16,10 @@ async function waitFor(predicate, timeoutMs = 2_000) {
 }
 
 test("Codex runtime evidence survives continuous deltas and resets only on recorded changes or complete replacement", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-runtime-retention-"));
+  // Windows runners can expose TEMP through an 8.3 alias while realpath-based
+  // rollout discovery returns the expanded path. Keep observer fixture keys in
+  // the same canonical form used by the provider.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "pomegr-runtime-retention-")));
   const directory = path.join(root, "sessions");
   await mkdir(directory);
   const rootId = "runtime-retention-root";

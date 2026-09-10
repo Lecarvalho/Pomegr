@@ -287,7 +287,7 @@ export function createClaudeProvider(options = {}) {
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
   const readActivity = createClaudeActivityReader();
-  const nativeStatus = createClaudeSessionStatusReader({ configDir: configRoot, fetch: options.fetch || globalThis.fetch, now });
+  const nativeStatus = createClaudeSessionStatusReader({ configRoot, fetch: options.fetch || globalThis.fetch, now });
   function historyKey(localSessionId) {
     const { files, liveFile } = discoveredSessions();
     const main = explicitSession && path.basename(explicitSession, ".jsonl") === localSessionId ? explicitSession : files.find((item) => path.basename(item.file, ".jsonl") === localSessionId)?.file || (localSessionId ? null : liveFile);
