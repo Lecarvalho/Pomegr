@@ -126,6 +126,19 @@ eight rows; request windows contain at most 60 (20 on phones). Agent scope,
 request lookup, request-only filtering, and an opaque event anchor operate on
 committed indexes. GETs never acquire or normalize provider records.
 
+Request pages also carry a full scoped minimap `overview` from the same committed
+revision. Each chronological tuple contains only that request's non-negative safe
+integer uncached-input, cache-write, cache-read, and output counts. These are
+independent observations, never buckets, cumulative totals, or sums across requests.
+The tuple count equals the scoped history total. Publication stores the tuples in
+the normalized index; serving reads that index and only the selected detail blocks.
+It never loads all request-detail blocks for the minimap. Older indexes return a
+null overview until background publication upgrades them, including unchanged
+normalized history. Malformed or incomplete overview tuples degrade to null.
+The overview adds no provider identities, work details, paths, or raw records.
+Request-page preloads use `overview=0` to omit the already-loaded overview;
+omission or `overview=1` retains the default response. Other values are rejected.
+
 Provider-owned `readSessionHistory` replays available session sources in the
 background. Complete normalized history has no 100-request or 200-event lifetime
 cutoff. Ordinary context, cache-event, report, and state-feed budgets remain
@@ -155,6 +168,18 @@ Polling never cancels an in-flight navigation. A loading or unavailable response
 retries the same request lookup, scope, offset, and anchor instead of substituting
 the latest page. Background cleanup retains the current and previous immutable
 page generations after the new manifest commits.
+
+F preloads request history in sequential pages of at most 60 rows after the initial
+overview arrives, independently of pointer navigation. Only the viewed session,
+agent scope, viewport capacity, and committed revision are resident in memory;
+there is no browser persistence. Cached positions span that revision's retained
+history, allowing any fully loaded 60-row desktop or 20-row phone window to render
+synchronously during dragging. The initial page remains visible while other pages
+load. Failed preloads retain loaded rows and retry after five seconds. Session,
+scope, viewport, and revision changes abort obsolete preloads and discard their
+positions; responses with a different revision or total never mix into the cache.
+Preloading reads only existing committed pages, never provider evidence. Foreground
+navigation retains its existing fallback for windows that are not yet resident.
 
 Codex U2 correlates rollout activity before global sorting, within each normalized
 actor's source sequence. Private parser callbacks identify normalized calls,
@@ -1342,11 +1367,20 @@ context, activity, repository, resources, and usage as independently produced do
   orders Requests & actions, Activity, then Cache evidence. Request Prev/Next crosses
   committed history pages. The desktop and phone minimap navigates the full scoped history
   using its committed total and zero-based page offset, independent of stable
-  request numbers. Dragging or keyboard navigation requests only the bounded
-  history window; no overview acquisition or synthetic token history is added.
+  request numbers. Dragging or keyboard navigation uses the preloaded request
+  cache immediately; a missing window requests only its bounded history page,
+  accompanied by the compact committed overview. No provider acquisition or
+  synthetic token history is added. The overview's bar geometry is reused while
+  the window moves, rather than rebuilding every miniature bar per pointer event.
+  The detail chart uses the full-scope overview to keep its scale stable during
+  navigation, recalculating for scope, mode, capability, or revision changes.
   The thumb previews the requested position while the chart keeps its last
   committed page; aborted or stale responses cannot replace a newer navigation.
-  Miniature bars occupy only loaded positions and do not imply zero usage elsewhere.
+  Miniature bars cover all scoped requests and use one full-overview maximum for
+  the selected mode, independent of the detail page. Page and overview replace
+  together, retaining the last committed revision during loading or failure.
+  Older monitors without an overview show only loaded positions, which do not
+  imply zero usage elsewhere. Scope/session changes discard the prior overview.
   Selection still reveals linked activity without a
   request-only presentation filter. Cache evidence is a saved, closed-by-default
   disclosure and matches requests only by normalized

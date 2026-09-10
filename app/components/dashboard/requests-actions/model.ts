@@ -1,10 +1,17 @@
 import type { CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import { requestCacheEvidence, type RequestCacheEvidence } from "./cache-evidence";
+import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
 export { snapshotEventKey } from "./cache-evidence";
 
 export type RequestScope = "all" | string;
 export type ChartMode = "fresh" | "full";
 export type LargestSort = "uncachedInput" | "output" | "cacheWrite" | "total";
+
+export function isCompleteRequestOverview(overview: unknown, total: number): overview is RequestOverviewPoint[] {
+  return Array.isArray(overview) && overview.length === total && overview.every((point) =>
+    Array.isArray(point) && point.length === 4 && point.every((value) => Number.isSafeInteger(value) && value >= 0)
+    && Number.isSafeInteger(point.reduce((sum, value) => sum + value, 0)));
+}
 
 export type RequestRow = RequestSnapshot & {
   /** 1-based position in the retained feed after applying the selected scope. */
@@ -114,7 +121,9 @@ function nonNegativeFinite(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export function plottedTotal(row: RequestRow, mode: ChartMode, cacheWriteAvailable = true): number {
+type RequestTokenCounts = Pick<RequestRow, "uncachedInputTokens" | "cacheWriteTokens" | "cacheReadTokens" | "outputTokens">;
+
+export function plottedTotal(row: RequestTokenCounts, mode: ChartMode, cacheWriteAvailable = true): number {
   const cacheWrite = cacheWriteAvailable ? row.cacheWriteTokens : 0;
   if (mode === "full") {
     return nonNegativeFinite(
@@ -125,7 +134,7 @@ export function plottedTotal(row: RequestRow, mode: ChartMode, cacheWriteAvailab
 }
 
 /** Computes a fixed, readable scale over the complete scoped feed. */
-export function scaleMax(rows: RequestRow[], mode: ChartMode, cacheWriteAvailable = true): number {
+export function scaleMax(rows: RequestTokenCounts[], mode: ChartMode, cacheWriteAvailable = true): number {
   const maximum = rows.reduce((current, row) => Math.max(current, plottedTotal(row, mode, cacheWriteAvailable)), 0);
   if (maximum === 0) return 0;
 

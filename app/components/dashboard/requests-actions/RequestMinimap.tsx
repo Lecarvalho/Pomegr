@@ -1,12 +1,27 @@
-import { useRef, type PointerEvent } from "react";
-import { plottedTotal, type ChartMode, type RequestRow } from "./model";
+import { memo, useMemo, useRef, type PointerEvent } from "react";
+import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
+import { isCompleteRequestOverview, plottedTotal, type ChartMode, type RequestRow } from "./model";
 
-export function RequestMinimap({ rows, start, end, total = rows.length, offset = 0, mode, cacheWriteAvailable, onMove }: {
+const MiniBars = memo(function MiniBars({ values, offset, slotWidth }: { values: number[]; offset: number; slotWidth: number }) {
+  const maximum = values.reduce((max, value) => Math.max(max, value), 1);
+  return values.map((value, index) => {
+    const height = Math.max(.5, value / maximum * 22);
+    return <rect key={offset + index} className="requestsActionsMiniBar" x={(offset + index + .175) * slotWidth} y={25 - height} width={slotWidth * .65} height={height} />;
+  });
+});
+
+export function RequestMinimap({ rows, overview, start, end, total = rows.length, offset = 0, mode, cacheWriteAvailable, onMove }: {
   rows: RequestRow[]; start: number; end: number; mode: ChartMode; cacheWriteAvailable: boolean; onMove: (start: number) => void;
-  total?: number; offset?: number;
+  total?: number; offset?: number; overview?: RequestOverviewPoint[] | null;
 }) {
   const drag = useRef<{ pointerId: number; offset: number } | null>(null);
-  const maximum = Math.max(1, ...rows.map((row) => plottedTotal(row, mode, cacheWriteAvailable)));
+  const completeOverview = useMemo(() => isCompleteRequestOverview(overview, total), [overview, total]);
+  const fallbackRows = completeOverview ? null : rows;
+  const values = useMemo(() => fallbackRows
+    ? fallbackRows.map((row) => plottedTotal(row, mode, cacheWriteAvailable))
+    : (overview ?? []).map(([uncached, write, read, output]) => uncached + (cacheWriteAvailable ? write : 0) + (mode === "full" ? read : 0) + output),
+  [fallbackRows, overview, mode, cacheWriteAvailable]);
+  const barOffset = completeOverview ? 0 : offset;
   const slotWidth = 1000 / Math.max(1, total);
   const windowSize = end - start + 1;
   const lastStart = Math.max(1, total - windowSize + 1);
@@ -37,13 +52,8 @@ export function RequestMinimap({ rows, start, end, total = rows.length, offset =
         event.currentTarget.setPointerCapture?.(event.pointerId);
         move(event);
       }} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { drag.current = null; }}>
-      {rows.map((row, index) => {
-        const height = Math.max(.5, plottedTotal(row, mode, cacheWriteAvailable) / maximum * 22);
-        return <g key={row.id}>
-          <rect className="requestsActionsMiniBar" x={(offset + index + .175) * slotWidth} y={25 - height} width={slotWidth * .65} height={height} />
-          {row.cacheEvidence && <line className={`requestsActionsMiniRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`} x1={(offset + index + .5) * slotWidth} x2={(offset + index + .5) * slotWidth} y1={1} y2={8} />}
-        </g>;
-      })}
+      <MiniBars values={values} offset={barOffset} slotWidth={slotWidth} />
+      {rows.map((row, index) => row.cacheEvidence && <line key={row.id} className={`requestsActionsMiniRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`} x1={(offset + index + .5) * slotWidth} x2={(offset + index + .5) * slotWidth} y1={1} y2={8} />)}
       <rect className={`requestsActionsMiniWindow${start === 1 && end === total ? " isWhole" : ""}`} x={(start - 1) * slotWidth} y={1} width={windowSize * slotWidth} height={24} />
     </svg>
   </div>;

@@ -352,11 +352,17 @@ the legend and controls alongside when space permits. The chart retains its scal
 explanation and a slim minimap without a loaded-count label. Its scrollbar spans
 the full scoped request history, with a proportional visible-window thumb;
 dragging, clicking the track, arrows, Page Up/Down, and Home/End navigate committed
-history windows. Miniature bars show only loaded evidence at its actual history
-positions; empty track is not a zero-token observation. Omit the normal
+history windows. Miniature bars show every scoped request from the committed
+overview, independently of the loaded detail window, with a stable full-history
+scale for the selected mode. Older monitors without an overview show only loaded
+evidence at its actual positions; empty track is not a zero-token observation. Omit the normal
 request-count status and separate First / Older / Newer / Latest row; loading and
 unavailable states remain explicit. Prev/Next selection crosses request-page
-boundaries. The compact detail region aligns request facts with five ranked rows:
+boundaries. After the initial page, preload committed request pages for the viewed
+scope. Dragging renders each resident window immediately, before pointer release,
+without fetching it again. Keep the last chart visible if a window is still loading.
+The overview bars and full-scope chart scale remain stable while the thumb and detail window move.
+The compact detail region aligns request facts with five ranked rows:
 request number, neutral bar, and request-local value. Its heading identifies the
 scope, and the ranking metric remains accessible. Omit repeated agent and Before
 metadata, expansion controls, and the ranking footer. Phone omits the ranking rail.

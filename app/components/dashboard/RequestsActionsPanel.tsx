@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../shared/monitor-contract";
 import { agentDisplayName, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
@@ -9,7 +9,7 @@ import { LargestRequestsList } from "./requests-actions/LargestRequestsList";
 import { RequestBarsChart } from "./requests-actions/RequestBarsChart";
 import { RequestDetail, RequestNavigation } from "./requests-actions/RequestDetail";
 import { RequestMinimap } from "./requests-actions/RequestMinimap";
-import { scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
+import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
 import { CacheRefillIcon } from "./CacheRefillIcon";
 
@@ -20,7 +20,12 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
 }) {
   const [mode, setMode] = useState<ChartMode>("fresh");
   const { selected, start, end, select, step, moveWindow, phone, size, rows, scope: resolvedScope, setScope, history: requestHistory } = selection;
-  const maximum = Math.max(1, scaleMax(rows, mode, cacheWriteAvailable));
+  const overview = requestHistory.enabled ? requestHistory.overview : null;
+  const scaleRows = useMemo(() => isCompleteRequestOverview(overview, requestHistory.total)
+    ? overview.map(([uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens]) => ({ uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens }))
+    : null, [overview, requestHistory.total]);
+  const scaleInput = scaleRows ?? rows;
+  const maximum = useMemo(() => Math.max(1, scaleMax(scaleInput, mode, cacheWriteAvailable)), [scaleInput, mode, cacheWriteAvailable]);
   const scopedAgent = agents.find((agent) => agent.id === resolvedScope);
   const scopeLabel = resolvedScope === "all" ? "All agents" : scopedAgent ? agentDisplayName(scopedAgent) : "Unknown agent";
   const chartRef = useRef<HTMLDivElement>(null);
@@ -47,7 +52,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
       <div className="requestsActionsPlot" ref={chartRef}>
         <p className="requestsActionsScale" aria-live="polite"><strong>0–{compactNumber(maximum)} tokens</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
         <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} />
-        <RequestMinimap rows={rows} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
+        <RequestMinimap rows={rows} overview={requestHistory.enabled ? requestHistory.overview : null} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
         {phone && <RequestNavigation ordinal={selected.ordinal} count={rows.length} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />}
       </div>
       <div className="requestsActionsDetails">

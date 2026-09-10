@@ -6,6 +6,9 @@ import type { ComponentProps } from "react";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
 import { snapshotEventKey } from "../../app/components/dashboard/requests-actions/model";
+import { RequestMinimap } from "../../app/components/dashboard/requests-actions/RequestMinimap";
+import { scopedRows } from "../../app/components/dashboard/requests-actions/model";
+import type { RequestOverviewPoint } from "../../shared/session-history-contract";
 import { agent } from "./dashboard-test-fixtures";
 import { claudeCacheRefillFeeds } from "../helpers/claude-cache-refill.mjs";
 
@@ -43,6 +46,10 @@ function snapshot(index: number, agentId = "primary", overrides: Partial<Request
 
 function requestFeed(items: RequestSnapshot[], status: RequestSnapshotFeed["status"] = "ready"): RequestSnapshotFeed {
   return { status, items };
+}
+
+function overviewPoint(item: RequestSnapshot): RequestOverviewPoint {
+  return [item.uncachedInputTokens, item.cacheWriteTokens, item.cacheReadTokens, item.outputTokens];
 }
 
 function fullRefill(agentId: string, observedAt: string): CacheEventFeed["possibleFullRefills"] {
@@ -95,6 +102,43 @@ afterEach(() => {
 });
 
 describe("RequestsActionsPanel", () => {
+  it.each([false, true])("slides preloaded history immediately during a held pointer without network requests (phone: %s)", async (phone) => {
+    setPhone(phone);
+    const total = 180;
+    const size = phone ? 20 : 60;
+    const request = (position: number) => snapshot(position, "primary", position === 1 ? { uncachedInputTokens: 9_000_000 } : {});
+    const overview = Array.from({ length: total }, (_, index) => overviewPoint(request(index + 1)));
+    const fetchPage = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const limit = Number(params.get("limit"));
+      const offset = params.get("offset") === "latest" ? total - limit : Number(params.get("offset"));
+      return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "preloaded", total, offset, linkedCount: 0,
+        ...(params.get("overview") !== "0" ? { overview } : {}),
+        items: Array.from({ length: Math.min(limit, total - offset) }, (_, index) => ({ ...request(offset + index + 1), number: (offset + index + 1) * 10 })),
+      }) };
+    });
+    vi.stubGlobal("fetch", fetchPage);
+    const { container } = render(<HistoryLocateHarness sessionId="preload-drag" requests={[]} />);
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(phone ? 4 : 3));
+    const calls = fetchPage.mock.calls.length;
+    expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+    const minimap = screen.getByRole("slider", { name: "Request window" });
+    vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 180, top: 0, bottom: 44, width: 180, height: 44, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, clientX: 179, clientY: 20 });
+    fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 0, clientY: 20 });
+    expect(axisLabels(container)).toEqual(["#10", `#${size * 10}`]);
+    expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+    fireEvent.pointerMove(minimap, { pointerId: 1, clientX: size + 9, clientY: 20 });
+    expect(axisLabels(container)).toEqual(["#110", `#${(size + 10) * 10}`]);
+    fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 180, clientY: 20 });
+    expect(axisLabels(container)).toEqual([`#${(total - size + 1) * 10}`, "#1800"]);
+    expect(fetchPage).toHaveBeenCalledTimes(calls);
+    fireEvent.pointerUp(minimap, { pointerId: 1 });
+    fireEvent.keyDown(minimap, { key: "Home" });
+    expect(axisLabels(container)).toEqual(["#10", `#${size * 10}`]);
+    expect(fetchPage).toHaveBeenCalledTimes(calls);
+  });
+
   it("waits for slow navigation and retries the same request while history hydrates", async () => {
     vi.useFakeTimers();
     let resolveNavigation!: (value: unknown) => void;
@@ -175,6 +219,7 @@ describe("RequestsActionsPanel", () => {
       ok: true,
       json: async () => ({
         status: "ready", kind: "requests", revision: "global-history", total, offset, linkedCount: 0,
+        overview: Array.from({ length: total }, (_, index) => overviewPoint(snapshot(index + 1))),
         items: Array.from({ length: 60 }, (_, index) => {
           const position = offset + index + 1;
           return { ...snapshot(position), number: position * 10 };
@@ -182,7 +227,10 @@ describe("RequestsActionsPanel", () => {
       }),
     });
     const fetchPage = vi.fn((url: string) => {
-      const offsetValue = new URL(url, "http://localhost").searchParams.get("offset");
+      const params = new URL(url, "http://localhost").searchParams;
+      // Exercise navigation while the background preload is still unavailable.
+      if (params.get("overview") === "0") return Promise.resolve({ ok: true, json: async () => ({ status: "loading", kind: "requests", items: [] }) });
+      const offsetValue = params.get("offset");
       const offset = offsetValue === "latest" ? total - 60 : Number(offsetValue);
       if (offset === 0 && delayFirstPageMove) {
         delayFirstPageMove = false;
@@ -196,12 +244,16 @@ describe("RequestsActionsPanel", () => {
     const minimap = screen.getByRole("slider", { name: "Request window" });
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 100, top: 0, bottom: 26, width: 100, height: 26, x: 0, y: 0, toJSON: () => ({}) });
     expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
-    expect(container.querySelector(".requestsActionsMiniBar")?.getAttribute("x")).toBeCloseTo(667.64, 1);
+    expect(container.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(total);
+    expect(container.querySelector(".requestsActionsMiniBar")?.getAttribute("x")).toBeCloseTo(.97, 1);
+    const overviewBefore = minimap.querySelectorAll(".requestsActionsMiniBar");
+    const heightsBefore = Array.from(overviewBefore, (bar) => bar.getAttribute("height"));
 
     fireEvent.keyDown(minimap, { key: "Home" });
-    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchPage.mock.calls.filter(([url]) => !url.includes("overview=0"))).toHaveLength(2));
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 180");
     expect(axisLabels(container)).toEqual(["#1210", "#1800"]);
+    expect(Array.from(minimap.querySelectorAll(".requestsActionsMiniBar"), (bar) => bar.getAttribute("height"))).toEqual(heightsBefore);
     fireEvent.keyDown(minimap, { key: "End" });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
     resolveFirstPageMove!(page(0));
@@ -221,6 +273,7 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 0, clientY: 10 });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 180"));
     expect(axisLabels(container)).toEqual(["#10", "#600"]);
+    expect(Array.from(minimap.querySelectorAll(".requestsActionsMiniBar"), (bar) => bar.getAttribute("height"))).toEqual(heightsBefore);
     fireEvent.pointerDown(minimap, { button: 0, pointerId: 2, clientX: 100, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 2, clientX: 100, clientY: 10 });
     await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 121 to 180 of 180"));
@@ -627,12 +680,14 @@ describe("RequestsActionsPanel", () => {
       const offset = params.get("offset") === "latest" ? 80 : Number(params.get("offset"));
       expect(params.get("limit")).toBe("20");
       return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "phone", total: 100, offset, linkedCount: 0,
+        overview: Array.from({ length: 100 }, (_, index) => overviewPoint(snapshot(index + 1))),
         items: Array.from({ length: 20 }, (_, index) => ({ ...snapshot(offset + index + 1), number: offset + index + 1 })),
       }) };
     });
     vi.stubGlobal("fetch", fetchPage);
     const { container } = render(<HistoryLocateHarness sessionId="phone-minimap" requests={[]} />);
     await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
+    expect(container.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(100);
     const minimap = screen.getByRole("slider", { name: "Request window" });
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 300, top: 0, bottom: 44, width: 300, height: 44, x: 0, y: 0, toJSON: () => ({}) });
     fireEvent.pointerDown(minimap, { button: 0, pointerId: 1, pointerType: "touch", clientX: 270, clientY: 22 });
@@ -649,5 +704,29 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerUp(minimap, { pointerId: 3, pointerType: "touch", clientX: 300, clientY: 22 });
     await waitFor(() => expect(axisLabels(container)).toEqual(["#81", "#100"]));
     expect(screen.getByRole("button", { name: "Prev" })).toBeInTheDocument();
+  });
+});
+
+describe("committed request minimap overview", () => {
+  it("uses request-local categories across the whole history for both modes and provider capabilities", () => {
+    const rows = scopedRows(requestFeed([snapshot(2)]), [], "all");
+    const overview: RequestOverviewPoint[] = [[10, 90, 900, 100], [100, 0, 0, 0]];
+    const props = { rows, overview, start: 2, end: 2, total: 2, offset: 1, onMove: vi.fn(), cacheWriteAvailable: true };
+    const { container, rerender } = render(<RequestMinimap {...props} mode="fresh" />);
+    const heights = () => Array.from(container.querySelectorAll(".requestsActionsMiniBar"), (bar) => Number(bar.getAttribute("height")));
+    expect(heights()).toEqual([22, 11]);
+    rerender(<RequestMinimap {...props} mode="full" />);
+    expect(heights()).toEqual([22, 2]);
+    rerender(<RequestMinimap {...props} mode="fresh" cacheWriteAvailable={false} />);
+    expect(heights()[1]).toBeCloseTo(20);
+    rerender(<RequestMinimap {...props} mode="full" cacheWriteAvailable={false} />);
+    expect(heights()[1]).toBeCloseTo(100 / 1010 * 22);
+  });
+
+  it.each([null, [[1, 2, 3, 4]], [[1, 2, 3, 4], [1, -2, 3, 4]]])("keeps actual loaded positions when an overview is missing or invalid: %j", (overview) => {
+    const rows = scopedRows(requestFeed([snapshot(2)]), [], "all");
+    const { container } = render(<RequestMinimap rows={rows} overview={overview as RequestOverviewPoint[] | null} start={2} end={2} total={2} offset={1} onMove={vi.fn()} mode="fresh" cacheWriteAvailable />);
+    expect(container.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(1);
+    expect(Number(container.querySelector(".requestsActionsMiniBar")?.getAttribute("x"))).toBeGreaterThan(500);
   });
 });

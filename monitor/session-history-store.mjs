@@ -16,6 +16,14 @@ function fileName(sessionId) {
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function isObject(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function safeInteger(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
+function overviewTuple(value) {
+  if (!Array.isArray(value) || value.length !== 4 || value.some((item) => safeInteger(item) === null)) return null;
+  const tuple = value.slice();
+  return Number.isSafeInteger(tuple.reduce((sum, item) => sum + item, 0)) ? tuple : null;
+}
+function requestOverview(value) {
+  return [value.uncachedInputTokens, value.cacheWriteTokens, value.cacheReadTokens, value.outputTokens];
+}
 function safeTime(value) { return typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null; }
 function safeAgent(value) { return typeof value === "string" && AGENT_ID.test(value) ? value : null; }
 function safeRequest(value) {
@@ -88,16 +96,24 @@ export class SessionHistoryStore {
     }));
     const record = { version: 1, sessionId, revision: (current?.revision || 0) + 1, complete: candidate?.complete === true,
       nextNumber, numberRegistry, requests: sortRequests([...requests.values()]), activity: sortRows(resolvedActivity, "timestamp") };
-    if (current && JSON.stringify({ ...current, revision: 0 }) === JSON.stringify({ ...record, revision: 0 })) return current;
+    if (current && JSON.stringify({ ...current, revision: 0 }) === JSON.stringify({ ...record, revision: 0 })) {
+      if (!this.directory || await this.#hasOverviewIndex(sessionId, current)) return current;
+      // A legacy generation is immutable. Publish the migrated index under a
+      // fresh revision so readers holding the old manifest never race a block
+      // rewrite at the same generation path.
+      await this.#write(record);
+      this.#remember(sessionId, record);
+      return record;
+    }
     await this.#write(record); this.#remember(sessionId, record); return record;
   }
   async read(sessionId, query = {}) {
     // Serving deliberately consumes only a compact committed index and the
     // selected data blocks. Full normalized arrays are materialized only by
     // background publication/replacement, never a GET.
-    if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 };
+    if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(query.kind === "requests" ? { overview: null } : {}) };
     const record = await this.#load(sessionId); const kind = query.kind === "requests" ? "requests" : "activity";
-    if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 };
+    if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
     let rows = record[kind]; const scope = query.scope || "all";
     if (scope === "primary") rows = rows.filter((item) => item.agentId === "primary");
     else if (scope === "subagents") rows = rows.filter((item) => item.agentId && item.agentId !== "primary");
@@ -121,7 +137,9 @@ export class SessionHistoryStore {
     const linkedCount = kind === "requests" && REQUEST_ID.test(requestedId || "")
       ? record.activity.filter((item) => item.requestId === requestedId && scopeMatches(item, scope)).length
       : REQUEST_ID.test(requestedId || "") ? rows.filter((item) => item.requestId === requestedId).length : 0;
-    return { status: "ready", kind, revision: String(record.revision), total, offset, items, linkedCount };
+    const overview = kind === "requests" && query.overview !== "0" ? rows.map(requestOverview) : null;
+    return { status: "ready", kind, revision: String(record.revision), total, offset, items, linkedCount,
+      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}) };
   }
   async #load(sessionId) {
     if (this.#records.has(sessionId)) { this.#touch.set(sessionId, Date.now()); return this.#records.get(sessionId); }
@@ -166,7 +184,7 @@ export class SessionHistoryStore {
         await writeFile(path.join(generationDir, `${kind}-${page}.json`), JSON.stringify(block), "utf8");
         for (let slot = 0; slot < block.length; slot += 1) {
           const item = block[slot]; index[kind].push(kind === "requests"
-            ? { id: item.id, agentId: item.agentId, number: item.number, page, slot }
+            ? { id: item.id, agentId: item.agentId, number: item.number, overview: requestOverview(item), page, slot }
             : { id: item.id, agentId: item.agentId, requestId: item.requestId, page, slot });
         }
       }
@@ -192,6 +210,14 @@ export class SessionHistoryStore {
       if (!target.startsWith(`${root}${path.sep}`)) return;
       await rm(target, { recursive: true, force: true });
     }));
+  }
+  async #hasOverviewIndex(sessionId, record) {
+    const key = crypto.createHash("sha256").update(sessionId).digest("hex");
+    try {
+      const index = JSON.parse(await readFile(path.join(this.directory, `${key}.index.json`), "utf8"));
+      if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || index.revision !== record.revision || !Array.isArray(index.requests) || index.requests.length !== record.requests.length) return false;
+      return index.requests.every((item, position) => item?.id === record.requests[position]?.id && overviewTuple(item.overview) !== null);
+    } catch { return false; }
   }
   async #readIndexed(sessionId, query) {
     const key = crypto.createHash("sha256").update(sessionId).digest("hex"); let index;
@@ -224,7 +250,11 @@ export class SessionHistoryStore {
     if (items.some((item) => item === null) || items.length !== selected.length) return null;
     const requestedId = query.requestId || query.filterRequestId;
     const linkedCount = REQUEST_ID.test(requestedId || "") ? (kind === "requests" ? index.activity.filter((item) => item.requestId === requestedId && scopeMatches(item, scope)).length : refs.filter((item) => item.requestId === requestedId).length) : 0;
-    return { status: "ready", kind, revision: String(index.revision), total, offset, items, linkedCount };
+    const overview = kind === "requests" && query.overview !== "0"
+      ? (refs.every((item) => overviewTuple(item.overview) !== null) ? refs.map((item) => overviewTuple(item.overview)) : null)
+      : null;
+    return { status: "ready", kind, revision: String(index.revision), total, offset, items, linkedCount,
+      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}) };
   }
 }
 

@@ -23,6 +23,7 @@ test("persists sanitized pages with stable session-global request numbers", asyn
   await store.publish("codex:example", { requests: [request("0000000000000002", "2026-09-01T00:01:00Z"), request("0000000000000001", "2026-09-01T00:00:00Z")], activity: [], complete: true });
   const page = await store.read("codex:example", { kind: "requests", offset: "0", limit: "60" });
   assert.deepEqual(page.items.map((item) => item.number), [1, 2]);
+  assert.deepEqual(page.overview, [[1, 2, 3, 4], [1, 2, 3, 4]]);
   assert.equal(page.items[0].id, "request-0000000000000001");
   const reloaded = new SessionHistoryStore({ directory });
   assert.deepEqual((await reloaded.read("codex:example", { kind: "requests" })).items.map((item) => item.number), [1, 2]);
@@ -39,9 +40,87 @@ test("request lookup and activity anchor page bounded complete retained history"
   assert.equal(around.total, 80); assert.ok(around.items.some((item) => item.id === requests[40].id)); assert.equal(around.items.length, 9);
   const latest = await store.read("claude:example", { kind: "requests", offset: "latest", limit: "60" });
   assert.equal(latest.offset, 20); assert.equal(latest.items.length, 60);
+  assert.equal(latest.overview.length, 80);
   const activityPage = await store.read("claude:example", { kind: "activity", requestId: requests[10].id, limit: "8" });
   assert.ok(activityPage.items.some((item) => item.requestId === requests[10].id));
   assert.equal(activityPage.linkedCount, 1);
+});
+
+test("request prefetch pages can omit the full overview while activity and default reads retain their shape", async () => {
+  const store = new SessionHistoryStore();
+  const item = request("dddddddddddddddd", "2026-09-01T00:00:00Z");
+  await store.publish("codex:prefetch", { requests: [item], activity: [], complete: true });
+  const omitted = await store.read("codex:prefetch", { kind: "requests", overview: "0" });
+  assert.equal(Object.hasOwn(omitted, "overview"), false);
+  const included = await store.read("codex:prefetch", { kind: "requests", overview: "1" });
+  assert.deepEqual(included.overview, [[1, 2, 3, 4]]);
+  const activityPage = await store.read("codex:prefetch", { kind: "activity", overview: "0" });
+  assert.equal(Object.hasOwn(activityPage, "overview"), false);
+});
+
+test("disk request overviews are full scoped index tuples and reject malformed or private tuple fields", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-overview-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory });
+  const requests = [request("aaaaaaaaaaaaaaaa", "2026-09-05T00:00:00Z"), request("bbbbbbbbbbbbbbbb", "2026-09-05T00:01:00Z")];
+  requests[1].agentId = "child";
+  await store.publish("codex:overview", { requests, activity: [], complete: true });
+  const all = await store.read("codex:overview", { kind: "requests", limit: "1" });
+  assert.deepEqual(all.overview, [[1, 2, 3, 4], [1, 2, 3, 4]]);
+  assert.deepEqual((await store.read("codex:overview", { kind: "requests", scope: "primary" })).overview, [[1, 2, 3, 4]]);
+  const indexPath = path.join(directory, (await readdir(directory)).find((file) => file.endsWith(".index.json")));
+  const index = JSON.parse(await readFile(indexPath, "utf8"));
+  index.requests[0].overview = [1, 2, 3, 4, "PRIVATE"];
+  await writeFile(indexPath, JSON.stringify(index), "utf8");
+  const malformed = await new SessionHistoryStore({ directory }).read("codex:overview", { kind: "requests" });
+  assert.equal(malformed.overview, null);
+  assert.doesNotMatch(JSON.stringify(malformed), /PRIVATE/);
+});
+
+test("unchanged publish upgrades a legacy index while legacy indexes return ready detail with null overview", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-overview-migrate-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory });
+  const item = request("cccccccccccccccc", "2026-09-06T00:00:00Z");
+  await store.publish("codex:migrate", { requests: [item], activity: [], complete: true });
+  const indexPath = path.join(directory, (await readdir(directory)).find((file) => file.endsWith(".index.json")));
+  const index = JSON.parse(await readFile(indexPath, "utf8")); delete index.requests[0].overview; await writeFile(indexPath, JSON.stringify(index), "utf8");
+  const legacy = await new SessionHistoryStore({ directory }).read("codex:migrate", { kind: "requests" });
+  assert.equal(legacy.status, "ready"); assert.equal(legacy.overview, null);
+  await store.publish("codex:migrate", { requests: [item], activity: [], complete: true });
+  const migrated = await new SessionHistoryStore({ directory }).read("codex:migrate", { kind: "requests" });
+  assert.deepEqual(migrated.overview, [[1, 2, 3, 4]]);
+  assert.equal(Number(migrated.revision), Number(legacy.revision) + 1);
+  const afterMigration = await store.publish("codex:migrate", { requests: [item], activity: [], complete: true });
+  assert.equal(String(afterMigration.revision), migrated.revision);
+});
+
+test("disk overview is index-backed and survives missing unselected detail blocks", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-overview-index-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory });
+  const requests = Array.from({ length: 200 }, (_, index) => {
+    const item = request(index.toString(16).padStart(16, "0"), new Date(Date.parse("2026-09-07T00:00:00Z") + index * 1000).toISOString());
+    item.uncachedInputTokens = index + 1; item.cacheWriteTokens = index % 3; item.cacheReadTokens = index * 2; item.outputTokens = index + 4;
+    item.totalTokens = item.uncachedInputTokens + item.cacheWriteTokens + item.cacheReadTokens + item.outputTokens;
+    item.agentId = index % 2 ? "child" : "primary";
+    return item;
+  });
+  await store.publish("codex:index-overview", { requests, activity: [], complete: true });
+  const key = (await readdir(directory)).find((file) => file.endsWith(".index.json")).replace(".index.json", "");
+  const generation = (await readdir(directory, { withFileTypes: true })).find((entry) => entry.isDirectory() && entry.name.startsWith(`${key}-`)).name;
+  await rm(path.join(directory, generation, "requests-0.json"));
+  const latest = await new SessionHistoryStore({ directory }).read("codex:index-overview", { kind: "requests", offset: "latest", limit: "60" });
+  assert.equal(latest.status, "ready");
+  assert.equal(latest.items.length, 60);
+  assert.equal(latest.overview.length, 200);
+  assert.deepEqual(latest.overview[0], [1, 0, 0, 4]);
+  assert.deepEqual(latest.overview.at(-1), [200, 1, 398, 203]);
+  const primary = await new SessionHistoryStore({ directory }).read("codex:index-overview", { kind: "requests", scope: "primary", offset: "latest", limit: "1" });
+  assert.equal(primary.overview.length, 100);
+  assert.deepEqual(primary.overview[1], [3, 2, 4, 6]);
+  const activity = await new SessionHistoryStore({ directory }).read("codex:index-overview", { kind: "activity" });
+  assert.equal(Object.hasOwn(activity, "overview"), false);
 });
 
 test("retains all complete rows, rejects unsafe nested work, and preserves last good record on incomplete updates", async () => {
@@ -50,6 +129,7 @@ test("retains all complete rows, rejects unsafe nested work, and preserves last 
   const first = await store.publish("codex:large", { requests, activity: [], complete: true });
   assert.equal((await store.read("codex:large", { kind: "requests", limit: "60" })).total, 250);
   assert.equal((await store.publish("codex:large", { requests: [], activity: [], complete: false })).revision, first.revision);
+  assert.equal((await store.read("codex:large", { kind: "requests" })).overview.length, 250);
   const unsafe = request("ffffffffffffffff", "2026-09-02T01:00:00Z");
   unsafe.precedingWork = [{ kind: "read", count: 1, rawPrompt: "PRIVATE_PROMPT" }];
   const next = await store.publish("codex:unsafe", { requests: [unsafe], activity: [], complete: true });

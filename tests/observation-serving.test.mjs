@@ -95,7 +95,21 @@ test("concurrent state GETs consume one committed response without provider tran
   const historyPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=activity&limit=8`)));
   assert.ok(historyPages.every((response) => response.status === 200));
   for (const response of historyPages) assert.equal((await response.json()).kind, "activity");
+  const requestPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&limit=60`)));
+  for (const response of requestPages) {
+    assert.equal(response.status, 200);
+    const page = await response.json();
+    assert.equal(page.kind, "requests");
+    assert.deepEqual(page.overview, []);
+  }
   assert.equal(historyReads, beforeHistoryGets, "history GETs never invoke provider history acquisition");
+  const preloaded = await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&overview=0`);
+  assert.equal(preloaded.status, 200);
+  assert.equal(Object.hasOwn(await preloaded.json(), "overview"), false);
+  assert.equal(historyReads, beforeHistoryGets, "preload GETs never invoke provider history acquisition");
+  for (const overview of ["", "2", "false", "0&overview=1"]) {
+    assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&overview=${overview}`)).status, 400);
+  }
   assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&offset=..%2Fprivate`)).status, 400);
   const eventResponse = await fetch(`${origin}/api/events`);
   assert.equal(eventResponse.status, 200);

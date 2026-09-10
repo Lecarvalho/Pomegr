@@ -4,6 +4,7 @@ import type { RequestHistoryPage } from "../../../../shared/session-history-cont
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
 import { scopedRows, type RequestRow } from "./model";
 import { useRequestSelection } from "./useRequestSelection";
+import { useRequestPageCache } from "./useRequestPageCache";
 
 export type SessionRequestInputs = {
   agents: Agent[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
@@ -43,6 +44,8 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const resolvedScope = scope === "all" || agents.some((agent) => agent.id === scope) ? scope : "all";
   const key = pageKey(sessionId, resolvedScope, size);
   const [history, setHistory] = useState<HistoryState>({ key, page: null, loading: false, unavailable: false, retryable: false });
+  const page = historyEnabled && history.key === key ? history.page : null;
+  const pageCache = useRequestPageCache(key, sessionId, historyScope(resolvedScope, agents), page);
   const request = useRef<{ controller: AbortController; serial: number } | null>(null);
   const serial = useRef(0);
   const requestedKey = useRef("");
@@ -62,6 +65,12 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const requestSerial = ++serial.current;
     request.current = { controller, serial: requestSerial };
     const requestedOffset = typeof options.offset === "number" ? options.offset : undefined;
+    const cached = nextKey === key && requestedOffset !== undefined && !options.requestId
+      ? pageCache.window(requestedOffset, size) : null;
+    if (cached) {
+      setHistory({ key: nextKey, page: cached, loading: false, unavailable: false, retryable: false });
+      return Promise.resolve(cached);
+    }
     setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false, requestedOffset }));
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
@@ -73,7 +82,10 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
           setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
           return null;
         }
-        if (value.status === "ready") setHistory({ key: nextKey, page: value, loading: false, unavailable: false, retryable: false });
+        if (value.status === "ready") {
+          if (nextKey === key) pageCache.add(value);
+          setHistory({ key: nextKey, page: value, loading: false, unavailable: false, retryable: false });
+        }
         else if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
         else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
         return value.status === "ready" ? value : null;
@@ -106,7 +118,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     return () => window.clearTimeout(timer);
   }, [history.unavailable, history.key, history.retryable, historyEnabled, key]);
 
-  const page = historyEnabled && history.key === key ? history.page : null;
   const historyFeed = useMemo<RequestSnapshotFeed>(() => page ? { status: "ready", items: page.items } : historyEnabled ? EMPTY_HISTORY_FEED : requestSnapshots, [historyEnabled, page, requestSnapshots]);
   const allRows = useMemo(() => scopedRows(historyFeed, contextBoundaries, "all", cacheEvents, cacheReadDrops), [historyFeed, contextBoundaries, cacheEvents, cacheReadDrops]);
   // History pages are already scoped server-side, so client filtering would make
@@ -185,6 +196,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       enabled: historyEnabled,
       status: history.loading ? "loading" : history.unavailable ? "unavailable" : page ? "ready" : "loading",
       revision: page?.revision ?? "",
+      overview: page?.overview ?? null,
       total: page?.total ?? rows.length,
       offset: page?.offset ?? 0,
       windowStart: (history.key === key ? history.requestedOffset ?? page?.offset ?? 0 : 0) + 1,
