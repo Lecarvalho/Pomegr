@@ -244,14 +244,16 @@ test("release preparation requires a clean exact tag and emits a closed checksum
 });
 
 test("release workflow fails closed around signing, drafts, and exact-source publication", async () => {
-  const [workflowSource, releaseBuilderConfig, signatureVerifier, preparer, documentation] = await Promise.all([
+  const [workflowSource, releaseBuilderConfig, signatureVerifier, preparer, documentation, packageSource] = await Promise.all([
     readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"),
     readFile(new URL("../desktop/electron-builder.release.cjs", import.meta.url), "utf8"),
     readFile(new URL("../desktop/verify-signature.ps1", import.meta.url), "utf8"),
     readFile(new URL("../desktop/prepare-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../docs/DESKTOP_RELEASES.md", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
   const workflow = workflowSource.replaceAll("\r\n", "\n");
+  const packageDefinition = JSON.parse(packageSource);
   assert.equal(POMEGR_WINDOWS_PUBLISHER, "DSNK Technologie Inc");
   assert.match(workflow, /runs-on: windows-2022/);
   assert.doesNotMatch(workflow, /runs-on: windows-latest/);
@@ -295,6 +297,7 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   for (const command of ["npm run verify", "npm run desktop:smoke:ci"]) {
     assert.match(qualityStep, new RegExp(command.replaceAll(".", "\\.")));
   }
+  assert.match(packageDefinition.scripts["test:node"], /--test-concurrency=1/);
   assert.match(qualityStep, /\$ErrorActionPreference = 'Stop'/);
   assert.match(qualityStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
   assert.ok(qualityStep.indexOf("npm run verify") < qualityStep.indexOf("npm run desktop:smoke:ci"));
