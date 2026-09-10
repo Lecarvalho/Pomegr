@@ -8,13 +8,29 @@ function page(offset = 0, total = 40, revision = "1"): ActivityHistoryPage {
     items: Array.from({ length: Math.min(8, total - offset) }, (_, index) => ({
       id: `event-${offset + index}`, timestamp: "2026-09-09T12:00:00Z", actor: "Primary agent", agentId: "primary",
       tool: "Assistant replied", detail: "", workKind: "report", status: null, durationMs: null,
-      requestId: "request-0000000000000073", requestNumber: 73,
+      requestId: `request-${String(73 + offset).padStart(16, "0")}`, requestNumber: 73 + offset,
     })) };
 }
 const inputs = { enabled: true, sessionId: "claude:one", scope: "all", filterRequestId: null, navigation: null };
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("Activity history paging", () => {
+  it("reveals a resident linked page without a lookup or loading frame", async () => {
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      return { ok: true, json: async () => page(Number(params.get("offset"))) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useActivityHistory(inputs));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    act(() => result.current.locate("request-0000000000000073"));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.page?.offset).toBe(0);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // A partial resident page cannot establish a request's full linked count.
+    expect(result.current.linkedCount).toBeNull();
+  });
+
   it("does not let polling cancel a slow request lookup or lose its target during hydration", async () => {
     vi.useFakeTimers();
     let resolveLookup!: (value: unknown) => void;
@@ -27,11 +43,14 @@ describe("Activity history paging", () => {
     vi.stubGlobal("fetch", fetcher);
     const { result } = renderHook(() => useActivityHistory(inputs));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    act(() => result.current.locate("request-0000000000000073"));
+    act(() => result.current.locate("request-0000000000000097"));
+    act(() => result.current.locate("request-0000000000000097"));
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(lookupCount).toBe(1);
     await act(async () => { resolveLookup({ ok: true, json: async () => ({ ...page(), status: "loading", items: [] }) }); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(749); });
+    expect(lookupCount).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(lookupCount).toBe(2);
     expect(result.current.page?.offset).toBe(24);
   });
@@ -61,10 +80,75 @@ describe("Activity history paging", () => {
     vi.stubGlobal("fetch", fetcher);
     const { result, rerender } = renderHook(({ navigation }) => useActivityHistory({ ...inputs, navigation }), { initialProps: { navigation: null as { id: string } | null } });
     await waitFor(() => expect(result.current.page?.offset).toBe(0));
-    rerender({ navigation: { id: "request-0000000000000073" } });
+    rerender({ navigation: { id: "request-0000000000000097" } });
     await waitFor(() => expect(result.current.page?.offset).toBe(24));
-    expect(result.current.page?.items[0].requestNumber).toBe(73);
+    expect(result.current.page?.items[0].requestNumber).toBe(97);
     expect(result.current.linkedCount).toBe(2);
+  });
+
+  it("uses only the target lookup when scope and navigation change together", async () => {
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      return { ok: true, json: async () => page(Number(params.get("offset"))) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result, rerender } = renderHook(({ scope, navigation }) => useActivityHistory({ ...inputs, scope, navigation }), {
+      initialProps: { scope: "all", navigation: null as { id: string } | null },
+    });
+    await waitFor(() => expect(result.current.page?.offset).toBe(0));
+    const before = fetcher.mock.calls.length;
+    rerender({ scope: "primary", navigation: { id: "request-0000000000000097" } });
+    await waitFor(() => expect(result.current.page?.offset).toBe(0));
+    const newCalls = fetcher.mock.calls.slice(before).map(([url]) => new URL(url, "http://localhost").searchParams);
+    expect(newCalls[0]?.get("requestId")).toBe("request-0000000000000097");
+    expect(newCalls.some((params) => !params.has("requestId") && params.get("offset") === "0")).toBe(false);
+  });
+
+  it("keeps the newest navigation when an older aborted lookup resolves later", async () => {
+    const pending = new Map<string, (value: unknown) => void>();
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const requestId = params.get("requestId");
+      if (requestId) return new Promise((resolve) => pending.set(requestId, resolve));
+      return { ok: true, json: async () => page(Number(params.get("offset"))) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result, rerender } = renderHook(({ navigation }) => useActivityHistory({ ...inputs, navigation }), {
+      initialProps: { navigation: null as { id: string } | null },
+    });
+    await waitFor(() => expect(result.current.page?.offset).toBe(0));
+    const first = "request-0000000000000097";
+    const second = "request-0000000000000098";
+    rerender({ navigation: { id: first } });
+    await waitFor(() => expect(pending.has(first)).toBe(true));
+    rerender({ navigation: { id: second } });
+    await waitFor(() => expect(pending.has(second)).toBe(true));
+    await act(async () => { pending.get(second)!({ ok: true, json: async () => page(16) }); });
+    await waitFor(() => expect(result.current.page?.offset).toBe(16));
+    await act(async () => { pending.get(first)!({ ok: true, json: async () => page(24) }); });
+    expect(result.current.page?.offset).toBe(16);
+  });
+
+  it("keeps rows visible during silent polling but marks foreground refresh loading", async () => {
+    vi.useFakeTimers();
+    let refreshResolve!: (value: unknown) => void;
+    let calls = 0;
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      if (++calls === 3) return new Promise((resolve) => { refreshResolve = resolve; });
+      return { ok: true, json: async () => page(Number(params.get("offset"))) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useActivityHistory(inputs));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(result.current.page?.items).toHaveLength(8);
+    const rows = result.current.page?.items;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.page?.items).toEqual(rows);
+    await act(async () => { refreshResolve({ ok: true, json: async () => page(0, 40, "2") }); });
+    act(() => result.current.refresh());
+    expect(result.current.loading).toBe(true);
   });
 
   it("preserves the visible page on failure and does not leak it across sessions", async () => {

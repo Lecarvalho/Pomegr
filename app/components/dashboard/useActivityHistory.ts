@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActivityHistoryPage } from "../../../shared/session-history-contract";
 
 export const ACTIVITY_PAGE_SIZE = 8;
-type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean };
+type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean };
 
 /** Keep just the current page and its two neighbors; background arrivals preserve the anchor. */
 export function useActivityHistory({ enabled, sessionId, scope, filterRequestId, navigation }: {
@@ -17,9 +17,13 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   const baseline = useRef(0);
   const lastNavigation = useRef(navigation);
   const pending = useRef<{ offset: number; options: LoadOptions } | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async (offset: number, options: LoadOptions = {}) => {
+  const load = useCallback(async function loadPage(offset: number, options: LoadOptions = {}): Promise<void> {
     if (!enabled) return;
+    if (options.requestId && pending.current?.options.requestId === options.requestId && controllers.current.size) return;
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
     const generation = ++sequence.current;
     for (const controller of controllers.current) controller.abort();
     controllers.current.clear();
@@ -39,13 +43,21 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
         return page;
       } finally { controllers.current.delete(controller); }
     };
-    const cached = !options.requestId && !options.anchor && !options.refresh ? cache.current.get(offset) : null;
-    if (!cached) setState((previous) => ({ key, page: previous.key === key ? previous.page : null, newEvents: previous.key === key ? previous.newEvents : 0, linkedCount: options.requestId ? null : previous.linkedCount, loading: true, failed: false }));
+    // Any resident linked row can reveal this request; no server lookup is needed.
+    const cached = !options.anchor && !options.refresh
+      ? options.requestId
+        ? [current.current, ...cache.current.values()].find((page) => page?.items.some((item) => item.requestId === options.requestId))
+        : cache.current.get(offset)
+      : null;
+    if (!cached) setState((previous) => ({ key, page: previous.key === key ? previous.page : null, newEvents: previous.key === key ? previous.newEvents : 0, linkedCount: options.requestId ? null : previous.linkedCount, loading: !options.silent, failed: false }));
     try {
       const page = cached || await fetchPage(offset, options);
       if (sequence.current !== generation) return;
       if (page.status !== "ready") {
-        setState((previous) => ({ ...previous, key, loading: page.status === "loading", failed: page.status === "unavailable" }));
+        setState((previous) => ({ ...previous, key, loading: page.status === "loading" && !options.silent, failed: page.status === "unavailable" }));
+        if (page.status === "loading" && !options.silent) {
+          retryTimer.current = setTimeout(() => { void loadPage(offset, options); }, 750);
+        }
         return;
       }
       pending.current = null;
@@ -55,7 +67,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       cache.current.set(page.offset, page);
       const neighbors = [page.offset - ACTIVITY_PAGE_SIZE, page.offset, page.offset + ACTIVITY_PAGE_SIZE].filter((start) => start >= 0 && start < page.total);
       for (const start of cache.current.keys()) if (!neighbors.includes(start)) cache.current.delete(start);
-      setState((previous) => ({ key, page, loading: false, failed: false, newEvents: Math.max(0, page.total - baseline.current), linkedCount: options.requestId || filterRequestId ? page.linkedCount : previous.key === key ? previous.linkedCount : null }));
+      setState((previous) => ({ key, page, loading: false, failed: false, newEvents: Math.max(0, page.total - baseline.current), linkedCount: options.requestId ? cached ? null : page.linkedCount : filterRequestId ? page.linkedCount : previous.key === key ? previous.linkedCount : null }));
       await Promise.allSettled(neighbors.filter((start) => start !== page.offset && !cache.current.has(start)).map(async (start) => {
         const neighbor = await fetchPage(start);
         if (sequence.current === generation && neighbor.status === "ready" && neighbor.revision === page.revision) cache.current.set(start, neighbor);
@@ -69,13 +81,20 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     current.current = null;
     cache.current.clear();
     baseline.current = 0;
-    void load(0);
+    const target = navigation !== lastNavigation.current ? navigation : null;
+    if (target) lastNavigation.current = navigation;
+    void load(0, target ? { requestId: target.id } : {});
     const activeControllers = controllers.current;
     return () => {
       sequence.current += 1;
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+      pending.current = null;
       for (const controller of activeControllers) controller.abort();
       activeControllers.clear();
     };
+  // Scope/session initialization consumes a simultaneous navigation once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   useEffect(() => {
@@ -87,10 +106,10 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   useEffect(() => {
     if (!enabled) return;
     const timer = setInterval(() => {
-      if (controllers.current.size) return;
+      if (controllers.current.size || retryTimer.current) return;
       if (pending.current) { void load(pending.current.offset, pending.current.options); return; }
       const page = current.current;
-      void load(page?.offset ?? 0, { refresh: true, anchor: page && page.offset > 0 ? page.items[0]?.id : undefined });
+      void load(page?.offset ?? 0, { refresh: true, silent: Boolean(page), anchor: page && page.offset > 0 ? page.items[0]?.id : undefined });
     }, 10_000);
     return () => clearInterval(timer);
   }, [enabled, load]);

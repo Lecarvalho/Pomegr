@@ -23,9 +23,12 @@ it("discards old revision preload responses and keeps one complete revision", as
   const { result, rerender } = renderHook(({ seed }) => useRequestPageCache("session:all:60", "session", "all", seed), { initialProps: { seed: page("1") } });
   expect(result.current.window(0, 60)).toBeNull();
   expect(result.current.window(120, 60)?.revision).toBe("1");
+  expect(result.current.locate("request-1-125", 60)?.offset).toBe(120);
   rerender({ seed: page("2", 0, 60) });
   await act(async () => { resolve(response(page("1", 0))); });
   expect(result.current.page?.revision).toBe("2");
+  expect(result.current.locate("request-1-125", 60)).toBeNull();
+  expect(result.current.locate("request-2-30", 20)?.items).toHaveLength(20);
   expect(result.current.window(0, 60)?.items[0].id).toBe("request-2-0");
   expect(result.current.page?.overview).toHaveLength(60);
 });
@@ -39,6 +42,7 @@ it.each(["other-session:all:60", "session:child:60", "session:all:20"])("isolate
   await act(async () => { resolve(response(page("1", 0))); });
   expect(result.current).not.toBe(old);
   expect(result.current.window(120, 60)).toBeNull();
+  expect(result.current.locate("request-1-125", 60)).toBeNull();
   expect(result.current.page).toBeNull();
 });
 
@@ -55,6 +59,7 @@ it("retries a failed preload without replacing loaded evidence or repeating succ
   await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
   expect(fetchPage).toHaveBeenCalledTimes(3);
   expect(result.current.window(30, 60)?.items).toHaveLength(60);
+  expect(result.current.locate("request-1-60", 60)?.offset).toBe(30);
   expect(result.current.firstMissing()).toBeNull();
 });
 const seed = page("1");

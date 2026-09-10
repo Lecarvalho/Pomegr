@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizedRequestWork } from "./request-work.mjs";
 import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
@@ -7,6 +7,8 @@ import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 const MAX_SESSIONS = 24;
 const MAX_RESIDENT = 1;
 const PAGE_ROWS = 128;
+const MAX_INDEX_RESIDENT = 4;
+const MAX_INDEX_BYTES = 16 * 1024 * 1024;
 const REQUEST_ID = /^request-[a-f0-9]{16}$/;
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
@@ -64,9 +66,12 @@ function sortRequests(items) {
 
 /** Persisted, browser-safe history only. Provider IDs, paths, and raw records never enter this store. */
 export class SessionHistoryStore {
-  #records = new Map(); #touch = new Map();
-  constructor({ directory = null, maxSessions = MAX_SESSIONS, maxResident = MAX_RESIDENT } = {}) {
+  #records = new Map(); #touch = new Map(); #indexCache = new Map(); #indexBytes = 0;
+  constructor({ directory = null, maxSessions = MAX_SESSIONS, maxResident = MAX_RESIDENT,
+    maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES } = {}) {
     this.directory = directory; this.maxSessions = maxSessions; this.maxResident = maxResident;
+    this.maxIndexResident = Number.isSafeInteger(maxIndexResident) ? Math.max(0, Math.min(MAX_INDEX_RESIDENT, maxIndexResident)) : MAX_INDEX_RESIDENT;
+    this.maxIndexBytes = Number.isSafeInteger(maxIndexBytes) ? Math.max(0, Math.min(MAX_INDEX_BYTES, maxIndexBytes)) : MAX_INDEX_BYTES;
   }
   async publish(sessionId, candidate) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
@@ -102,10 +107,11 @@ export class SessionHistoryStore {
       // fresh revision so readers holding the old manifest never race a block
       // rewrite at the same generation path.
       await this.#write(record);
+      this.#forgetIndex(sessionId);
       this.#remember(sessionId, record);
       return record;
     }
-    await this.#write(record); this.#remember(sessionId, record); return record;
+    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); return record;
   }
   async read(sessionId, query = {}) {
     // Serving deliberately consumes only a compact committed index and the
@@ -211,6 +217,45 @@ export class SessionHistoryStore {
       await rm(target, { recursive: true, force: true });
     }));
   }
+  #forgetIndex(sessionId) {
+    const cached = this.#indexCache.get(sessionId);
+    if (cached) this.#indexBytes -= cached.bytes;
+    this.#indexCache.delete(sessionId);
+  }
+  #rememberIndex(sessionId, value, metadata, bytes) {
+    this.#forgetIndex(sessionId);
+    if (bytes > this.maxIndexBytes || this.maxIndexResident < 1) return;
+    this.#indexCache.set(sessionId, { value, metadata, bytes, touchedAt: Date.now() });
+    this.#indexBytes += bytes;
+    while (this.#indexCache.size > this.maxIndexResident || this.#indexBytes > this.maxIndexBytes) {
+      const oldest = [...this.#indexCache.entries()].sort((a, b) => a[1].touchedAt - b[1].touchedAt)[0]?.[0];
+      if (!oldest) break;
+      this.#forgetIndex(oldest);
+    }
+  }
+  async #readIndex(sessionId) {
+    const indexPath = path.join(this.directory, `${crypto.createHash("sha256").update(sessionId).digest("hex")}.index.json`);
+    let before;
+    try { before = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); return null; }
+    const metadata = `${before.dev}:${before.ino}:${before.size}:${before.mtimeNs}:${before.ctimeNs}`;
+    const cached = this.#indexCache.get(sessionId);
+    if (cached && cached.metadata === metadata) {
+      cached.touchedAt = Date.now();
+      return cached.value;
+    }
+    let source;
+    try { source = await readFile(indexPath, "utf8"); } catch { this.#forgetIndex(sessionId); return null; }
+    let after;
+    try { after = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); return null; }
+    if (`${after.dev}:${after.ino}:${after.size}:${after.mtimeNs}:${after.ctimeNs}` !== metadata) {
+      this.#forgetIndex(sessionId); return null;
+    }
+    try {
+      const value = JSON.parse(source);
+      this.#rememberIndex(sessionId, value, metadata, Buffer.byteLength(source, "utf8"));
+      return value;
+    } catch { this.#forgetIndex(sessionId); return null; }
+  }
   async #hasOverviewIndex(sessionId, record) {
     const key = crypto.createHash("sha256").update(sessionId).digest("hex");
     try {
@@ -220,8 +265,9 @@ export class SessionHistoryStore {
     } catch { return false; }
   }
   async #readIndexed(sessionId, query) {
-    const key = crypto.createHash("sha256").update(sessionId).digest("hex"); let index;
-    try { index = JSON.parse(await readFile(path.join(this.directory, `${key}.index.json`), "utf8")); } catch { return null; }
+    const key = crypto.createHash("sha256").update(sessionId).digest("hex");
+    const index = await this.#readIndex(sessionId);
+    if (!index) return null;
     const kind = query.kind === "requests" ? "requests" : "activity";
     if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) return null;
     const scope = query.scope || "all";

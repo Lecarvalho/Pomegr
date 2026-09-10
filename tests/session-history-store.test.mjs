@@ -162,3 +162,55 @@ test("keeps only current and previous immutable page generations", async (t) => 
   assert.equal(generations.length, 2);
   assert.equal((await new SessionHistoryStore({ directory }).read("codex:prune", { kind: "requests" })).status, "ready");
 });
+
+function manifestParseSpy(t) {
+  let count = 0;
+  const original = JSON.parse;
+  t.mock.method(JSON, "parse", function parse(source, ...args) {
+    if (typeof source === "string" && source.includes('"version":2') && source.includes('"sessionId"')) count += 1;
+    return original(source, ...args);
+  });
+  return () => count;
+}
+
+test("reuses an unchanged index, invalidates it on external publish, and rejects removal or corruption", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-index-cache-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory, maxIndexResident: 4 });
+  const id = "codex:index-cache";
+  await store.publish(id, { requests: [request("aaaaaaaaaaaaaaaa", "2026-09-08T00:00:00Z")], activity: [], complete: true });
+  const indexPath = path.join(directory, (await readdir(directory)).find((file) => file.endsWith(".index.json")));
+  const parsed = manifestParseSpy(t);
+  assert.equal((await store.read(id, { kind: "requests" })).revision, "1");
+  assert.equal(parsed(), 1);
+  assert.equal((await store.read(id, { kind: "requests" })).revision, "1");
+  assert.equal(parsed(), 1, "unchanged manifest reuses parsed index");
+
+  const external = new SessionHistoryStore({ directory });
+  const beforeExternalPublish = parsed();
+  await external.publish(id, { requests: [request("bbbbbbbbbbbbbbbb", "2026-09-08T00:01:00Z")], activity: [], complete: true });
+  assert.equal((await store.read(id, { kind: "requests" })).revision, "2");
+  assert.equal(parsed(), beforeExternalPublish + 2, "external manifest replacement forces a reparse");
+
+  await rm(indexPath);
+  assert.equal((await store.read(id, { kind: "requests" })).status, "unavailable");
+  await writeFile(indexPath, "{ malformed", "utf8");
+  assert.equal((await store.read(id, { kind: "requests" })).status, "unavailable");
+});
+
+test("bounds resident index cache by entries and source bytes", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-index-bounds-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory, maxIndexResident: 1, maxIndexBytes: 16 * 1024 * 1024 });
+  await store.publish("codex:one", { requests: [request("1111111111111111", "2026-09-09T00:00:00Z")], activity: [], complete: true });
+  await store.publish("codex:two", { requests: [request("2222222222222222", "2026-09-09T00:01:00Z")], activity: [], complete: true });
+  const parsed = manifestParseSpy(t);
+  await store.read("codex:one", { kind: "requests" });
+  assert.equal((await store.read("codex:two", { kind: "requests" })).status, "ready");
+  assert.equal((await store.read("codex:one", { kind: "requests" })).status, "ready");
+  assert.equal(parsed(), 3, "one-entry cache reparses after LRU eviction");
+
+  const byteBounded = new SessionHistoryStore({ directory, maxIndexResident: 4, maxIndexBytes: 1 });
+  const byteParsed = manifestParseSpy(t);
+  assert.equal((await byteBounded.read("codex:two", { kind: "requests" })).status, "ready");
+  assert.equal((await byteBounded.read("codex:two", { kind: "requests" })).status, "ready");
+  assert.equal(byteParsed(), 2, "manifest over byte budget is reparsed");
+});

@@ -840,6 +840,16 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .activityOtherCounts .activityFailures { color: var(--color-error); }
 .activityBreakdown p { margin: 16px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
 .activityFeed, .activityTable { min-width: 0; width: 100%; }
+.activityTableFrame { position: relative; isolation: isolate; }
+.activityLoadingStatus:empty { display: none; }
+.activityLoadingStatus { padding: 12px 20px; color: var(--color-text); font-size: var(--text-sm); }
+.activityLoadingVeil { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; pointer-events: none; background: color-mix(in srgb, var(--color-panel) 48%, transparent); backdrop-filter: blur(1px); }
+.activityLoadingVeil > span { padding: 8px 12px; background: var(--color-panel); border: 1px solid var(--color-line); border-radius: var(--control-radius); }
+.activityLoadingVeil::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--color-control); animation: activityLoadingPulse 1.2s ease-in-out infinite alternate; }
+.activityHistoryError { margin: 0; padding: 12px 20px; color: var(--color-error); font-size: var(--text-xs); }
+@keyframes activityLoadingPulse { from { opacity: .3; } to { opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .activityLoadingVeil::before { animation: none; } }
+@media (forced-colors: active) { .activityLoadingVeil { background: Canvas; backdrop-filter: none; } }
 .activityHead, .activityRow { display: grid; grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) 72px 56px; align-items: center; column-gap: 20px; padding: 0 20px; }
 .activityHead { height: 34px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--text-caption); letter-spacing: .08em; font-weight: 600; }
 .activityHead > span:nth-last-child(-n+2) { text-align: right; }

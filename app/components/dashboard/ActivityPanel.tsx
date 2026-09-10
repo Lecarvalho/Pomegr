@@ -39,7 +39,7 @@ function ActivityBreakdown({ activity }: { activity: ActivityFeed }) {
   </div>;
 }
 
-function ActivityRow({ event, ordinal, selected, phone, onSelect }: { event: Activity; ordinal?: number; selected: boolean; phone: boolean; onSelect: () => void }) {
+function ActivityRow({ event, ordinal, selected, phone, busy, onSelect }: { event: Activity; ordinal?: number; selected: boolean; phone: boolean; busy: boolean; onSelect: () => void }) {
   const iconKind = event.tool === "Bash" ? "shell" : event.tool === "Assistant replied" ? "input" : event.workKind;
   const action = <span className="activityAction"><WorkKindIcon kind={iconKind} /><strong>{event.tool}</strong></span>;
   const actor = <span className="actor"><i aria-hidden="true" /><span>{event.actor}</span></span>;
@@ -61,7 +61,7 @@ function ActivityRow({ event, ordinal, selected, phone, onSelect }: { event: Act
     {request}
   </>;
   const className = `activityRow${event.status === "failed" ? " failed" : ""}${selected ? " selected" : ""}${phone ? " activityRowPhone" : ""}`;
-  return ordinal ? <button type="button" className={`commandQuietAction ${className}`} aria-pressed={selected} onClick={onSelect} aria-label={`${event.tool}, ${event.actor}, request #${ordinal}`}>{content}</button>
+  return ordinal ? <button type="button" className={`commandQuietAction ${className}`} aria-pressed={selected} aria-disabled={busy || undefined} onClick={() => { if (!busy) onSelect(); }} aria-label={`${event.tool}, ${event.actor}, request #${ordinal}`}>{content}</button>
     : <div className={className}>{content}</div>;
 }
 
@@ -103,6 +103,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
   const page = Math.floor(offset / PAGE_SIZE) + 1;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const visible = historyEnabled ? history.page?.items ?? [] : items.slice(offset, offset + PAGE_SIZE);
+  const feedLoading = historyEnabled && (history.loading || selection.history.navigating);
   const goToPage = (value: number) => {
     if (historyEnabled) return history.goToPage(Math.max(1, Math.min(value, pages)));
     const start = (Math.max(1, Math.min(value, pages)) - 1) * PAGE_SIZE;
@@ -127,11 +128,15 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
     <div className="activityLayout">
       {phone ? <DashboardDisclosurePanel className="activityBreakdownDisclosure" title="Actions by kind" summary={<span>{topKinds.map(({ kind, count }) => `${WORK_LABELS[kind]} ${activity.toolCalls ? Math.round(count / activity.toolCalls * 100) : 0}%`).join(" · ")}</span>} defaultOpen={false} icon="chevron" storageKey={`pomegr-activity-breakdown-${sessionId}`}><ActivityBreakdown activity={activity} /></DashboardDisclosurePanel> : <ActivityBreakdown activity={activity} />}
       <div className="activityFeed">
-        <div className="activityTable" aria-busy={historyEnabled && history.loading}>
-          {!phone && <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span><span>DURATION</span><span>REQUEST</span></div>}
-          {!visible.length && <EmptyState text={historyEnabled && history.loading ? "Loading session history…" : historyEnabled && history.failed ? "Session history is unavailable. Try Refresh." : scope !== "all" ? "No activity for these agents." : historical ? "No activity was recorded for this session." : "Tool use and messages will appear here as they happen."} />}
-          {visible.map((event) => <ActivityRow key={event.id} event={event} ordinal={"requestNumber" in event && typeof event.requestNumber === "number" ? event.requestNumber : !historyEnabled && event.requestId ? requestRows.get(event.requestId)?.ordinal : undefined} selected={Boolean(event.requestId && event.requestId === selected?.id)} phone={phone} onSelect={() => { if (event.requestId) selection.locate(event.requestId); }} />)}
+        <div className="activityTableFrame">
+          <div className="activityTable" aria-busy={feedLoading}>
+            {!phone && <div className="activityHead"><span>TIME</span><span>AGENT</span><span>ACTION</span><span>TARGET</span><span>DURATION</span><span>REQUEST</span></div>}
+            {!visible.length && !feedLoading && <EmptyState text={historyEnabled && history.failed ? "Session history is unavailable. Try Refresh." : scope !== "all" ? "No activity for these agents." : historical ? "No activity was recorded for this session." : "Tool use and messages will appear here as they happen."} />}
+            {visible.map((event) => <ActivityRow key={event.id} event={event} ordinal={"requestNumber" in event && typeof event.requestNumber === "number" ? event.requestNumber : !historyEnabled && event.requestId ? requestRows.get(event.requestId)?.ordinal : undefined} selected={Boolean(event.requestId && event.requestId === selected?.id)} phone={phone} busy={feedLoading} onSelect={() => { if (event.requestId) selection.locate(event.requestId); }} />)}
+          </div>
+          <div className={`activityLoadingStatus${feedLoading && visible.length ? " activityLoadingVeil" : ""}`} role="status" aria-live="polite">{feedLoading && <span>Loading activity…</span>}</div>
         </div>
+        {historyEnabled && history.failed && visible.length > 0 && <p className="activityHistoryError" role="status">Activity could not update. Showing the previous page. Try Refresh.</p>}
         <footer className="activityPagination">
           {!phone && <span>Showing {total ? offset + 1 : 0}–{Math.min(offset + PAGE_SIZE, total)} of {total}{scope !== "all" ? " in this scope" : ""}{historyEnabled && history.loading ? " · Loading…" : ""}</span>}
           <nav aria-label="Activity pages"><button className="commandSecondaryAction" type="button" disabled={offset === 0} onClick={() => goToPage(page - 1)}>Previous</button>

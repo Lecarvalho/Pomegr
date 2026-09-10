@@ -348,11 +348,16 @@ describe("ActivityPanel", () => {
       expect(finishWindow).toBeDefined();
       expect(view.container.querySelector('[aria-label^="Request #100,"]')).toHaveAttribute("aria-pressed", "true");
       expect(lookups()).toHaveLength(0);
+      expect(activityPanel.querySelector(".activityTable")).toHaveAttribute("aria-busy", "true");
+      expect(within(activityPanel).getByRole("status")).toHaveTextContent("Loading activity…");
+      expect(within(activityPanel).getByRole("button", { name: /Tool 100, Primary agent, request #100/ })).toHaveAttribute("aria-disabled", "true");
       finishWindow!();
     }
     await waitFor(() => expect(view.container.querySelector('[aria-label^="Request #80,"]')).toHaveAttribute("aria-pressed", "true"));
     await waitFor(() => expect(within(activityPanel).getByRole("button", { name: /Tool 80, Primary agent, request #80/ })).toHaveClass("selected"));
     expect(activityPanel).toHaveTextContent("1 linked event");
+    expect(activityPanel.querySelector(".activityTable")).toHaveAttribute("aria-busy", "false");
+    expect(within(activityPanel).queryByText("Loading activity…")).not.toBeInTheDocument();
     expect(lookups()).toHaveLength(1);
     await user.click(within(activityPanel).getByRole("button", { name: "Next" }));
     await waitFor(() => expect(activityPanel).toHaveTextContent("Page 4 of 13"));
@@ -361,6 +366,76 @@ describe("ActivityPanel", () => {
     await waitFor(() => expect(within(activityPanel).getByRole("button", { name: "Refresh" })).not.toBeDisabled());
     expect(activityPanel).toHaveTextContent("Page 4 of 13");
     expect(lookups()).toHaveLength(1);
+  });
+
+  it.each([false, true])("selects another visible Activity row without veiling or reloading the feed (request cached: %s)", async (resident) => {
+    setPhone(false);
+    const requests = Array.from({ length: 180 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+    const events = activityItems(8).map((event) => ({ ...event, agentId: "primary", requestNumber: Number(event.requestId?.split("-")[1]) }));
+    const finishes = new Map<string, () => void>();
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const kind = params.get("kind");
+      const target = params.get("requestId");
+      const offset = target ? 0 : params.get("offset") === "latest" ? 120 : Number(params.get("offset"));
+      const response = { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: kind === "requests" ? 180 : 8, offset: kind === "requests" ? offset : 0, linkedCount: 0,
+        items: kind === "requests" ? requests.slice(offset, offset + 60) : events,
+        ...(kind === "requests" && params.get("overview") !== "0" ? { overview: requests.map((row) => [row.uncachedInputTokens, row.cacheWriteTokens, row.cacheReadTokens, row.outputTokens]) } : {}),
+      }) };
+      if (!resident && kind === "requests" && params.get("overview") === "0") return new Promise(() => {});
+      if (!resident && kind === "requests" && target) return new Promise((resolve) => { finishes.set(target, () => resolve(response)); });
+      return response;
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const view = render(<ActivityHarness activity={activityFeed(events)} requests={[]} historyEnabled historical />);
+    const activityPanel = panel(view.container);
+    await waitFor(() => expect(view.container.querySelector('[aria-label^="Request #180,"]')).toHaveAttribute("aria-pressed", "true"));
+    if (resident) await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url.includes("offset=60") && url.includes("overview=0"))).toBe(true));
+    const activityCalls = () => fetcher.mock.calls.filter(([url]) => url.includes("kind=activity"));
+    const before = activityCalls().length;
+    fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ }));
+    expect(activityPanel.querySelector(".activityTable")).toHaveAttribute("aria-busy", "false");
+    expect(activityPanel.querySelector(".activityLoadingVeil")).not.toBeInTheDocument();
+    fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 7, Primary agent, request #7/ }));
+    if (resident) {
+      expect(fetcher.mock.calls.filter(([url]) => url.includes("kind=requests") && url.includes("requestId="))).toHaveLength(0);
+    } else {
+      expect(finishes.has("request-7")).toBe(true);
+      finishes.get("request-7")!();
+      finishes.get("request-8")!();
+    }
+    await waitFor(() => expect(view.container.querySelector('[aria-label^="Request #7,"]')).toHaveAttribute("aria-pressed", "true"));
+    expect(activityCalls()).toHaveLength(before);
+  });
+
+  it.each([false, true])("keeps rows visible through foreground loading and exposes failure recovery (phone: %s)", async (phone) => {
+    setPhone(phone);
+    const user = userEvent.setup();
+    const events = activityItems(8).map((event) => ({ ...event, agentId: "primary", requestNumber: Number(event.requestId?.split("-")[1]) }));
+    let delay = false;
+    let finish!: () => void;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const kind = new URL(url, "http://localhost").searchParams.get("kind");
+      if (kind === "activity" && delay) return new Promise((resolve) => { finish = () => resolve({ ok: false }); });
+      return { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: kind === "activity" ? 8 : 0, offset: 0, linkedCount: 0, items: kind === "activity" ? events : [] }) };
+    }));
+    const view = render(<ActivityHarness activity={activityFeed(events)} requests={[]} historyEnabled historical />);
+    const activityPanel = panel(view.container);
+    await waitFor(() => expect(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ })).toBeInTheDocument());
+    delay = true;
+    await user.click(within(activityPanel).getByRole("button", { name: "Refresh" }));
+    expect(within(activityPanel).getByRole("status")).toHaveTextContent("Loading activity…");
+    expect(activityPanel.querySelector(".activityTable")).toHaveAttribute("aria-busy", "true");
+    expect(activityPanel.querySelectorAll(".activityRow")).toHaveLength(8);
+    const row = within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    await user.click(row);
+    expect(row).toHaveAttribute("aria-pressed", "false");
+    finish();
+    await waitFor(() => expect(activityPanel).toHaveTextContent("Activity could not update. Showing the previous page. Try Refresh."));
+    expect(activityPanel.querySelector(".activityLoadingVeil")).not.toBeInTheDocument();
+    expect(activityPanel.querySelectorAll(".activityRow")).toHaveLength(8);
+    expect(row).not.toHaveAttribute("aria-disabled");
   });
 
   it("does not follow a newer request when viewing a historical session", () => {

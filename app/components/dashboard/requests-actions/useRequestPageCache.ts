@@ -5,14 +5,18 @@ import type { HistoryRequest, RequestHistoryPage } from "../../../../shared/sess
 class RequestPageCache {
   page: RequestHistoryPage | null = null;
   private items = new Map<number, HistoryRequest>();
+  private positions = new Map<string, number>();
   private nextMissing = 0;
 
   add(page: RequestHistoryPage) {
     if (page.status !== "ready") return;
     const sameRevision = page.revision === this.page?.revision && page.total === this.page?.total;
-    if (!sameRevision) { this.items.clear(); this.nextMissing = 0; }
+    if (!sameRevision) { this.items.clear(); this.positions.clear(); this.nextMissing = 0; }
     this.page = { ...page, overview: page.overview ?? (sameRevision ? this.page?.overview : null) ?? null };
-    page.items.forEach((item, index) => this.items.set(page.offset + index, item));
+    page.items.forEach((item, index) => {
+      this.items.set(page.offset + index, item);
+      this.positions.set(item.id, page.offset + index);
+    });
   }
 
   window(offset: number, size: number): RequestHistoryPage | null {
@@ -29,6 +33,20 @@ class RequestPageCache {
   firstMissing(): number | null {
     while (this.items.has(this.nextMissing)) this.nextMissing += 1;
     return this.nextMissing < (this.page?.total ?? 0) ? this.nextMissing : null;
+  }
+
+  locate(id: string, size: number): RequestHistoryPage | null {
+    const position = this.positions.get(id);
+    if (position === undefined || !this.page) return null;
+    const length = Math.min(size, this.page.total);
+    let first = position;
+    let last = position;
+    while (position - first < length - 1 && this.items.has(first - 1)) first -= 1;
+    while (last - position < length - 1 && this.items.has(last + 1)) last += 1;
+    if (last - first + 1 < length) return null;
+    // Keep an available complete window when centering would cross an unloaded gap.
+    const offset = Math.max(first, Math.min(position - Math.floor(size / 2), last - length + 1));
+    return this.window(offset, size);
   }
 }
 

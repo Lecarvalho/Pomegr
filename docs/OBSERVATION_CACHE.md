@@ -148,6 +148,15 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
+The monitor privately caches at most four parsed history manifests, bounded by
+16 MiB of source JSON across entries (parsed-object overhead is additional).
+Every read verifies file identity, size, and nanosecond modification/change times;
+a cold read rechecks that fingerprint before caching. Changed, removed, or corrupt
+manifests invalidate cached entries, as does successful local publication. Least
+recently used entries are evicted at either bound; larger manifests are served
+without retention. Only selected immutable detail blocks are read, and all public
+rows still pass the existing normalized serializer. This cache adds no provider
+acquisition, browser fields, checkpoints, or persisted diagnostics.
 
 Opaque request identity does not include a streamed fragment's changing
 timestamp. A session-scoped number is assigned on first history publication and
@@ -164,9 +173,26 @@ anchors older live pages to their first visible event. New events offer View
 latest. Explicit request selection reveals linked rows, and an activity-row
 selection loads an absent request window. History readiness is separate from
 the summary's activity/context evidence readiness.
+Request selection first checks the current and adjacent committed activity pages;
+a resident match renders synchronously without a request lookup. A partial page
+does not establish the full linked-event count, so that count is omitted for a
+resident match. Scope initialization consumes a simultaneous request navigation
+once, and repeated selection of an in-flight target reuses that lookup.
+Foreground navigation preserves rows beneath a translucent loading veil and
+exposes a live status outside the busy table, including while the requested chart
+window is pending because of chart-window navigation. Selecting a visible
+Activity row only loads the linked chart details; it must not veil or disable the
+already-committed Activity page. Stale row links cannot activate while the feed
+itself is being replaced. Failures remove the veil and
+explain that the previous page is retained. Routine ten-second background refreshes
+remain visually quiet. These are F presentation states, not backend readiness.
 Polling never cancels an in-flight navigation. A loading or unavailable response
 retries the same request lookup, scope, offset, and anchor instead of substituting
-the latest page. Background cleanup retains the current and previous immutable
+the latest page. Foreground `loading` responses retry after 750 ms; failures retain
+the ten-second retry cadence. New navigation and unmount cancel pending retries.
+GETs continue to serve committed history only, with unchanged revision validation,
+last-known-good retention, and checkpoint/browser privacy boundaries.
+Background cleanup retains the current and previous immutable
 page generations after the new manifest commits.
 
 F preloads request history in sequential pages of at most 60 rows after the initial
@@ -180,6 +206,11 @@ scope, viewport, and revision changes abort obsolete preloads and discard their
 positions; responses with a different revision or total never mix into the cache.
 Preloading reads only existing committed pages, never provider evidence. Foreground
 navigation retains its existing fallback for windows that are not yet resident.
+Activity request links look up normalized request identity in the same cache and
+reuse any complete resident window containing that request. The identity index
+is discarded together with positions on session, scope, capacity, or revision
+change. A newer explicit row or bar selection cancels pending request navigation;
+late responses and retry timers cannot restore the older target.
 
 Before the first request-history page arrives, F renders the latest scoped window
 of committed request snapshots already present in session state (60 desktop, 20

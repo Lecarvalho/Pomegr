@@ -64,8 +64,10 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const requestSerial = ++serial.current;
     request.current = { controller, serial: requestSerial };
     const requestedOffset = typeof options.offset === "number" ? options.offset : undefined;
-    const cached = nextKey === key && requestedOffset !== undefined && !options.requestId
-      ? pageCache.window(requestedOffset, size) : null;
+    const cached = nextKey === key
+      ? options.requestId ? pageCache.locate(options.requestId, size)
+        : requestedOffset !== undefined ? pageCache.window(requestedOffset, size) : null
+      : null;
     if (cached) {
       setHistory({ key: nextKey, page: cached, loading: false, unavailable: false, retryable: false });
       return Promise.resolve(cached);
@@ -156,7 +158,20 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   }, [historical, history.loading, history.unavailable, historyEnabled, page, selection.pinned]);
 
   const setScope = (value: string) => setPreference({ sessionId, scope: value });
+  const cancelHistoryNavigation = () => {
+    if (!pendingLocate && !pendingPageSelection) return;
+    request.current?.controller.abort();
+    serial.current += 1;
+    setPendingLocate(null);
+    setPendingPageSelection(null);
+    setHistory((current) => ({ ...current, loading: false, retryable: false, unavailable: false, requestedOffset: undefined }));
+  };
+  const select = (row: RequestRow, center = false) => {
+    cancelHistoryNavigation();
+    selection.select(row, center);
+  };
   const locate = (id: string) => {
+    cancelHistoryNavigation();
     const row = rows.find((item) => item.id === id);
     if (row) return selection.selectScope(rows, scopeKey(resolvedScope), row);
     const allRow = !historyEnabled ? scopedRows(requestSnapshots, contextBoundaries, "all", cacheEvents, cacheReadDrops).find((item) => item.id === id) : null;
@@ -170,6 +185,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     void loadHistory({ scope: "all", requestId: id });
   };
   const selectScope = (nextRows: RequestRow[], nextScope: string, row: RequestRow) => {
+    cancelHistoryNavigation();
     setScope(nextScope);
     selection.selectScope(nextRows, scopeKey(nextScope), row);
   };
@@ -183,6 +199,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     pageTo(offset);
   };
   const step = (delta: number) => {
+    cancelHistoryNavigation();
     if (!historyEnabled || !page || !selection.selected) return selection.step(delta);
     if (delta < 0 && selection.selected.ordinal === 1 && page.offset > 0) {
       const offset = Math.max(0, page.offset - size);
@@ -201,11 +218,13 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const first = () => pageTo(0);
   const latest = () => pageTo("latest");
   return {
-    ...selection, step, selectScope, rows, allRows, agents, scope: resolvedScope, setScope, phone, size, locate,
+    ...selection, select, step, selectScope, rows, allRows, agents, scope: resolvedScope, setScope, phone, size, locate,
     history: {
       enabled: historyEnabled,
       preview,
       status: history.loading ? "loading" : history.unavailable ? "unavailable" : page ? "ready" : "loading",
+      // Activity row links load chart details without replacing the Activity page.
+      navigating: history.loading && pendingPageSelection?.key === key,
       revision: page?.revision ?? "",
       overview: page?.overview ?? null,
       total: page?.total ?? rows.length,

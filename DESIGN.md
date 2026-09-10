@@ -296,6 +296,18 @@ loads the corresponding request window. Selection highlights linked rows without
 filtering away other events. Omit the explanatory request-link strip. Older live
 pages retain their first visible event and offer View latest
 when new events arrive. Loading preserves the last committed page.
+Foreground loading covers the feed with a neutral translucent veil, a 1px
+backdrop blur, a softly pulsing top rule, and a centered **Loading activity…**
+label on desktop and phone. Keep the page geometry and controls stable; stale
+row links cannot activate until loading completes. The status is announced
+outside the busy table. Reduced motion keeps the rule static. Routine background
+refreshes do not veil the table; failed updates retain the rows and show a retry
+explanation. Selecting a request already in a resident activity page reveals it
+immediately. This loading treatment is local to Activity.
+Selecting a visible Activity row keeps the table clear and interactive while its
+linked request details load. Already-prefetched request windows are reused by
+request identity, including windows outside the chart's current view. A newer
+selection cancels an older pending request navigation.
 On phones, two-line rows are at least 73px high including padding and divider.
 The action icon and title lead the first line, with monospace time, optional
 duration, and request number aligned right. Muted, regular-weight agent labels
