@@ -12,6 +12,7 @@ import { createProviderStatusObservation } from "./provider-status-observation.m
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
+import { SessionHistoryStore } from "./session-history-store.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -98,6 +99,24 @@ export function createObservationRuntime(options = {}) {
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
+  const historyStore = options.historyStore || new SessionHistoryStore({
+    directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),
+    maxSessions: options.historyMaxSessions,
+    maxResident: options.historyMaxResident ?? 0,
+  });
+  const historyRefreshes = new Map();
+
+  function refreshSessionHistory(qualifiedId) {
+    if (historyRefreshes.has(qualifiedId)) return;
+    const snapshot = observationStore.getByQualifiedId(qualifiedId);
+    const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
+    if (!snapshot || typeof provider?.readSessionHistory !== "function") return;
+    const task = Promise.resolve(provider.readSessionHistory(snapshot.localSessionId))
+      .then((history) => historyStore.publish(qualifiedId, history))
+      .catch(() => null)
+      .finally(() => historyRefreshes.delete(qualifiedId));
+    historyRefreshes.set(qualifiedId, task);
+  }
 
   function checkpointPublicState({ providerId, localSessionId, evidence }) {
     const provider = registry.providers?.find((candidate) => candidate.id === providerId) || registry.defaultProvider;
@@ -432,7 +451,12 @@ export function createObservationRuntime(options = {}) {
     });
     agentQueryProjection.refresh();
     unsubscribeObservation = observationCoordinator.subscribe((event) => {
-      if (event.type === "session") options.onSessionCommitted?.(event.qualifiedId);
+      if (event.type === "session") {
+        options.onSessionCommitted?.(event.qualifiedId);
+        // Provider history acquisition belongs to the background observation
+        // lifecycle. Serving only reads the committed, normalized history file.
+        refreshSessionHistory(event.qualifiedId);
+      }
       if (event.type === "catalog") cacheUnavailableSessionResponses();
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
       if (event.type === "session" || event.type === "catalog") {
@@ -445,6 +469,10 @@ export function createObservationRuntime(options = {}) {
       await repositoryInventory.reconcile([]);
       repositoryInventory.startPluginObservation?.();
       await observationCoordinator.start();
+      // Checkpoint-restored sessions may rederive unchanged and therefore do
+      // not emit a fresh session commit. They still receive history hydration
+      // from this background lifecycle, never from a serving request.
+      for (const snapshot of observationStore.entries()) refreshSessionHistory(snapshot.qualifiedId);
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
       void refreshObservedResources();
@@ -524,6 +552,16 @@ export function createObservationRuntime(options = {}) {
     },
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    async serveSessionHistory(sessionId, query) {
+      const page = await historyStore.read(sessionId, query);
+      if (page.status !== "unavailable" || !observationServingActive) return page;
+      const snapshot = observationStore.getByQualifiedId(sessionId);
+      const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
+      if (snapshot && typeof provider?.readSessionHistory === "function") {
+        return { ...page, status: "loading" };
+      }
+      return page;
+    },
     serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),

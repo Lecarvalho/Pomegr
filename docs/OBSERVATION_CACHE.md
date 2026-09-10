@@ -79,7 +79,186 @@ U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream cons
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
 
-### Messages and summaries in Recent activity
+### Activity feed
+
+D derives `ActivityFeed` from the full retained normalized event set: total,
+tool-call count, message/input count, failed-shell count, and bounded WorkKind
+counts with median resolved wall durations. S serves only its newest 200 items;
+The small state feed remains a summary projection. The session Activity panel
+uses the separate paged history contract below. Totals can exceed the state
+window. No page or agent-scope action acquires provider evidence.
+Explicit request selection navigates F to a linked row's page using only that
+committed window, revealing All agents if the current Activity scope hides it.
+Background revisions preserve later-page anchors and do not trigger navigation.
+
+Activity items add only nullable `durationMs` (0–86,400,000 ms) and `requestId`
+(the opaque ID of a served request snapshot). U2 pairs recorded call/result
+timestamps privately; D validates request membership before stamping links.
+Unmatched or unavailable durations and links stay null. Provider call IDs and
+request-mapping keys never cross the browser or persistence boundary. C/P retain
+only validated normalized evidence. These fields round-trip through observation
+checkpoints; aggregate feeds are derived from retained evidence after restore.
+Readiness stays `activityEvidence`; Requests & actions retains its separate
+`contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
+checkpoint cadence, and browser polling remain unchanged.
+Claude's `conversation-activity-v6` and Codex's `codex-activity-v2` source
+fingerprints trigger rehydration of checkpoints produced before duration and
+request-link normalization was added.
+Claude merges recorded tool IDs across fragments sharing one request identity,
+including live snapshot merges after a read window advances. The private
+ID-to-kind map is stripped before normalized evidence and checkpoints. Usage
+remains the latest request snapshot; fragments never add token totals. Revision
+v5 also rebuilds the incomplete links produced by the earlier fragment handling.
+Revision v6 links assistant replies, including reply-only requests, through an
+exact actor-scoped recorded request identity. U2 retains only an opaque reply ID
+in its private correlation index; the index is stripped before evidence and
+checkpoints. D serves only links to retained request snapshots. Missing usage,
+altered identities, and requests outside the served window leave links null;
+timestamp proximity cannot establish a link. Replies remain message events.
+
+### Paged session evidence history
+
+`GET /api/session-history` serves committed normalized history independently of
+the bounded `/api/state` summary. Query kinds are `activity` and `requests`;
+responses carry readiness, revision, total row count, offset, a bounded page,
+and the selected request's linked-event count. Activity pages contain at most
+eight rows; request windows contain at most 60 (20 on phones). Agent scope,
+request lookup, request-only filtering, and an opaque event anchor operate on
+committed indexes. GETs never acquire or normalize provider records.
+
+Activity rows and offsets are chronological, earliest first, matching Requests.
+Page 1 contains the earliest scoped events. Activity `latest` and `last` select
+the aligned final page, which may contain fewer than eight rows. Serving reverses
+the committed descending activity index before applying offsets and lookups;
+existing persisted generations remain usable without rewriting them in a GET.
+
+Request pages also carry a full scoped minimap `overview` from the same committed
+revision. Each chronological tuple contains only that request's non-negative safe
+integer uncached-input, cache-write, cache-read, and output counts. These are
+independent observations, never buckets, cumulative totals, or sums across requests.
+The tuple count equals the scoped history total. Publication stores the tuples in
+the normalized index; serving reads that index and only the selected detail blocks.
+It never loads all request-detail blocks for the minimap. Older indexes return a
+null overview until background publication upgrades them, including unchanged
+normalized history. Malformed or incomplete overview tuples degrade to null.
+The overview adds no provider identities, work details, paths, or raw records.
+Request-page preloads use `overview=0` to omit the already-loaded overview;
+omission or `overview=1` retains the default response. Other values are rejected.
+
+Provider-owned `readSessionHistory` replays available session sources in the
+background. Complete normalized history has no 100-request or 200-event lifetime
+cutoff. Ordinary context, cache-event, report, and state-feed budgets remain
+independent. Complete candidates validate before replacement; incomplete or
+failed reads preserve the last committed history. History persistence contains
+only normalized request snapshots, sanitized activity metadata, stable request
+numbers, and indexes. It excludes raw content, native identities, transcript
+paths, and private correlation keys. Generation files and a committed manifest
+allow bounded page reads without reparsing complete histories in GETs.
+The monitor privately caches at most four parsed history manifests, bounded by
+16 MiB of source JSON across entries (parsed-object overhead is additional).
+Every read verifies file identity, size, and nanosecond modification/change times;
+a cold read rechecks that fingerprint before caching. Changed, removed, or corrupt
+manifests invalidate cached entries, as does successful local publication. Least
+recently used entries are evicted at either bound; larger manifests are served
+without retention. Only selected immutable detail blocks are read, and all public
+rows still pass the existing normalized serializer. This cache adds no provider
+acquisition, browser fields, checkpoints, or persisted diagnostics.
+
+Opaque request identity does not include a streamed fragment's changing
+timestamp. A session-scoped number is assigned on first history publication and
+preserved across filtering, paging, appends, and restart. Activity stores its
+normalized agent identity and request reference; display labels never establish
+ownership. A linked request need not occur in the current state summary or
+loaded chart window. User inputs and system events without an established
+request relationship remain unlinked; timing alone never establishes one.
+
+F keeps at most the current activity page and its adjacent pages, invalidating
+neighbors when history revision or scope changes. It renders up to eight rows, keeps
+existing content during a same-scope load, ignores stale session responses, and
+anchors older live pages, including page 1, to their first visible event. The feed
+opens at the latest page and follows its advancing page boundary on refresh.
+Manual older-page navigation or older-request selection anchors the view;
+new events offer View latest, which resumes following the final page. Explicit
+request selection reveals linked rows, and an activity-row
+selection loads an absent request window. History readiness is separate from
+the summary's activity/context evidence readiness.
+Request selection first checks the current and adjacent committed activity pages;
+a resident match renders synchronously without a request lookup. A partial page
+does not establish the full linked-event count, so that count is omitted for a
+resident match. Scope initialization consumes a simultaneous request navigation
+once, and repeated selection of an in-flight target reuses that lookup.
+Foreground navigation preserves rows beneath a translucent loading veil and
+exposes a live status outside the busy table, including while the requested chart
+window is pending because of chart-window navigation. Selecting a visible
+Activity row only loads the linked chart details; it must not veil or disable the
+already-committed Activity page. Stale row links cannot activate while the feed
+itself is being replaced. Failures remove the veil and
+explain that the previous page is retained. Routine ten-second background refreshes
+remain visually quiet. These are F presentation states, not backend readiness.
+Polling never cancels an in-flight navigation. A loading or unavailable response
+retries the same request lookup, scope, offset, and anchor instead of substituting
+the latest page. Foreground `loading` responses retry after 750 ms; failures retain
+the ten-second retry cadence. New navigation and unmount cancel pending retries.
+GETs continue to serve committed history only, with unchanged revision validation,
+last-known-good retention, and checkpoint/browser privacy boundaries.
+Background cleanup retains the current and previous immutable
+page generations after the new manifest commits.
+
+F preloads request history in sequential pages of at most 60 rows after the initial
+overview arrives, independently of pointer navigation. Only the viewed session,
+agent scope, viewport capacity, and committed revision are resident in memory;
+there is no browser persistence. Cached positions span that revision's retained
+history, allowing any fully loaded 60-row desktop or 20-row phone window to render
+synchronously during dragging. The initial page remains visible while other pages
+load. Failed preloads retain loaded rows and retry after five seconds. Session,
+scope, viewport, and revision changes abort obsolete preloads and discard their
+positions; responses with a different revision or total never mix into the cache.
+Preloading reads only existing committed pages, never provider evidence. Foreground
+navigation retains its existing fallback for windows that are not yet resident.
+Activity request links look up normalized request identity in the same cache and
+reuse any complete resident window containing that request. The identity index
+is discarded together with positions on session, scope, capacity, or revision
+change. A newer explicit row or bar selection cancels pending request navigation;
+late responses and retry timers cannot restore the older target.
+
+Before the first request-history page arrives, F renders the latest scoped window
+of committed request snapshots already present in session state (60 desktop, 20
+phone). This recent-request preview uses observation times, never fabricated
+history numbers or a full-history minimap. It remains visible during history
+loading or failure; retries replace it with the committed history page and its
+stable numbers, preserving a selected request by identity when present. A ready
+request page or available preview can render independently of the broader
+`contextEvidence` loading gate. No preview changes evidence, checkpoints, or GET
+acquisition behavior.
+
+Selecting the newest request on the latest scoped live page resumes automatic
+selection and the three-second history refresh. Activity row links, request bars,
+and keyboard steps use the same selection rule, including after a linked request
+window loads. Selecting older requests, including the last bar on an older page,
+keeps selection pinned; historical sessions never follow live appends. Selection
+navigation carries its follow-latest intent to Activity, so either surface resumes
+the feed's latest-page polling. Manual Activity paging stays independent between
+selection actions.
+
+Codex U2 correlates rollout activity before global sorting, within each normalized
+actor's source sequence. Private parser callbacks identify normalized calls,
+replies, and usage observations by record position; no callback index or request
+mapping enters evidence or persistence. A native `token_usage_record` seals an
+output group, and its request-local components must match the next `token_count`.
+Legacy streams can close a contiguous output group at token count directly.
+Turn/user/lifecycle boundaries, compaction, unusable usage, conflicting repeated
+identities, and a new response after tool results without closing usage break
+association. Pending output has no link until usage arrives. Canonical rows can
+inherit a link only through an identical normalized rollout event ID, after
+source merging. Snapshot fallback identity is the same for live and historical
+reads. Only opaque request IDs and normalized issued-work counts leave U2.
+Adjacent completed-message/response-item mirrors with matching text and phase
+share one normalized reply identity when the response item omits its native ID.
+The text digest is private and never establishes a cross-request association.
+Full observation hydration uses the strict ordinary evidence shape; history-only
+ownership markers are present solely during the separate history normalization.
+
+### Messages and summaries in Activity
 
 U2 emits **Assistant replied** only for recognized assistant text records and
 **Summary updated** for Claude Code's native `system/away_summary` records.
@@ -117,7 +296,7 @@ times never substitute for missing delivery evidence. At most 256 replies per
 parsed source and 4,096 merged activity events survive the existing Codex
 observation/checkpoint pipeline. Codex has no equivalent away-summary event.
 
-### System task notifications in Recent activity
+### System task notifications in Activity
 
 Claude U2 distinguishes provider-owned delivered task notifications from human input
 using the native system-origin metadata. It emits only the provider-neutral `System`
@@ -364,7 +543,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](METRICS.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v3`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v6`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
@@ -1135,12 +1314,21 @@ A normalized lifecycle change contributes to the adapter source fingerprint, so 
 
 Claude catalog acquisition also incrementally reduces the complete primary transcript
 for successful, structured background workflow/shell/native-agent launches and exact terminal
-notifications, or exact run-matched completed workflow manifests whose valid provider
+notifications, matched successful `TaskStop` results, or exact run-matched completed
+workflow manifests whose valid provider
 completion timestamp is at or after the recorded task launch. A resume can reuse the
 run ID while leaving an older completed manifest intact; the launch timestamp scopes
 private completion memory and participates in workflow-manifest cache validation.
 Both catalog and workflow detail reject that stale completion without changing the
 source lifetime, commit, serving, or checkpoint contracts.
+`TaskStop` requires a preceding structured call targeting an already observed open
+launch, a non-error tool result matching that call, and the same bounded `task_id`
+in the call and structured result. The result timestamp must be at or after the
+call. Pending stop calls retain only bounded identity, timestamp, and launch
+association in the existing private pending-call map. A delayed result cannot close
+a later launch reusing the task ID. Stop intent, text-only confirmation, malformed
+or mismatched identities, and failed results do not close work. Raw result content,
+messages, commands, and task types are not retained or exposed by this reducer.
 This evidence is scoped to the validated process identity and its
 registry start time, independent of native primary idle and modification-time agent
 heuristics. The private cache holds at most fifty sessions with 256 pending calls
@@ -1151,7 +1339,8 @@ last valid observation; process replacement discards the old association. Only t
 composed catalog activity enum crosses C Commit, with no new browser or checkpoint
 fields. Native `Agent` launch results require matching tool identity, explicit
 `status: async_launched`, `isAsync: true`, and a bounded `agentId`; only its exact
-trusted terminal notification closes that agent. Child completion, file recency,
+trusted terminal notification or matched successful `TaskStop` closes that agent.
+Child completion, file recency,
 agent counts, and foreground or incomplete launch results cannot substitute for
 this evidence. A confirmed background parent remains open while executing nested
 children, without acquiring child transcripts on the catalog path. Background work
@@ -1243,8 +1432,36 @@ context, activity, repository, resources, and usage as independently produced do
   Desktop retains a 60-request visible window and phone a 20-request window. Selection
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
-  already at the end. Scope, mode, and selection reset on session change. Cache evidence
-  is a saved, closed-by-default disclosure and matches requests only by normalized
+  already at the end. Scope, mode, and selection reset on session change. The session
+  orders Requests & actions, Activity, then Cache evidence. Desktop request Prev/Next crosses
+  committed history pages. Phone omits Prev/Next and retains a slim tappable minimap; horizontal dragging
+  on the chart moves its 20-request window, with rightward drags revealing older
+  requests and leftward drags revealing newer requests. Taps select bars; vertical
+  pan and pinch zoom remain native. Pointer cancellation releases the gesture,
+  additional pointers cannot take over, and a drag does not select a bar on release.
+  The minimap and phone chart navigate the full scoped history
+  using its committed total and zero-based page offset, independent of stable
+  request numbers. Dragging or keyboard navigation uses the preloaded request
+  cache immediately; a missing window requests only its bounded history page,
+  accompanied by the compact committed overview. No provider acquisition or
+  synthetic token history is added. The overview's bar geometry is reused while
+  the window moves, rather than rebuilding every miniature bar per pointer event.
+  The detail chart uses the full-scope overview to keep its scale stable during
+  navigation, recalculating for scope, mode, capability, or revision changes.
+  The thumb previews the requested position while the chart keeps its last
+  committed page; aborted or stale responses cannot replace a newer navigation.
+  Miniature bars cover all scoped requests and use one full-overview maximum for
+  the selected mode, independent of the detail page. Page and overview replace
+  together, retaining the last committed revision during loading or failure.
+  Older monitors without an overview show only loaded positions, which do not
+  imply zero usage elsewhere. Scope/session changes discard the prior overview.
+  A committed window move publishes its resulting chart selection to Activity once,
+  for both chart swipes and minimap navigation. Pending windows retain the prior
+  chart and activity target; background refreshes do not repeat that navigation or
+  override manual Activity paging.
+  Selection still reveals linked activity without a
+  request-only presentation filter. Cache evidence is a saved, closed-by-default
+  disclosure and matches requests only by normalized
   agent and observation timestamp. These presentation changes leave cache-only GETs,
   last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
 - The session KPI strip renders once core evidence is ready. Agent counts and status

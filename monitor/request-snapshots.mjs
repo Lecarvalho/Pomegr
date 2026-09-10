@@ -25,9 +25,11 @@ function normalizedParts(snapshot) {
   return { uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, totalTokens };
 }
 
-function opaqueId(sessionId, snapshot, timestamp) {
+function opaqueId(sessionId, snapshot) {
   return `request-${crypto.createHash("sha256")
-    .update(`${sessionId}|${snapshot.actorId}|${snapshot.dedupeId}|${timestamp}`)
+    // A request can acquire later streamed fragments with a newer observation
+    // time.  Its opaque identity is recorded evidence, never observation time.
+    .update(`${sessionId}|${snapshot.actorId}|${snapshot.dedupeId}`)
     .digest("hex").slice(0, 16)}`;
 }
 
@@ -54,7 +56,7 @@ export function normalizedRequestEvidence(agents, usageSnapshots, maximumPerAgen
     [...agentSnapshots.values()]
       .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
         || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId))
-      .slice(-maximumPerAgent)
+      .slice(maximumPerAgent === Infinity ? 0 : -maximumPerAgent)
   )).sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)
     || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId));
 }
@@ -63,10 +65,18 @@ export function normalizedRequestEvidence(agents, usageSnapshots, maximumPerAgen
  * Normalize independent request-local usage observations. This feed never
  * carries values forward, computes deltas, or consumes cumulative totals.
  */
-export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
-  const items = normalizedRequestEvidence(agents, usageSnapshots).map((item) => requestSnapshotFromEvidence(sessionId, item));
+export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false } = {}) {
+  const items = normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map((item) => requestSnapshotFromEvidence(sessionId, item));
 
   return { status: items.length > 0 ? "ready" : "unavailable", items };
+}
+
+/** Monitor-private lookup for correlating already-normalized tool evidence. */
+export function requestSnapshotIdsByEvidence({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false } = {}) {
+  return new Map(normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map(({ snapshot }) => [
+    `${snapshot.actorId}\u0000${snapshot.dedupeId}`,
+    opaqueId(sessionId, snapshot),
+  ]));
 }
 
 /** Serialize public request-local fields from validated evidence. */
@@ -74,7 +84,7 @@ export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, pa
   const precedingWork = normalizedRequestWork(snapshot.precedingWork);
   const issuedWork = normalizedRequestWork(snapshot.issuedWork);
   return {
-    id: opaqueId(sessionId, snapshot, timestamp),
+    id: opaqueId(sessionId, snapshot),
     agentId: snapshot.actorId,
     observedAt: timestamp,
     cacheLifetime: typeof snapshot.cacheLifetime === "string" && CACHE_LIFETIMES.has(snapshot.cacheLifetime)
@@ -97,6 +107,6 @@ export function buildRequestModelObservations({ sessionId = "session", agents = 
   return normalizedRequestEvidence(agents, usageSnapshots).flatMap(({ snapshot, timestamp }) => {
     if (typeof snapshot.model !== "string") return [];
     const model = snapshot.model.trim();
-    return model && model.length <= 120 ? [{ id: opaqueId(sessionId, snapshot, timestamp), observedAt: timestamp, model }] : [];
+    return model && model.length <= 120 ? [{ id: opaqueId(sessionId, snapshot), observedAt: timestamp, model }] : [];
   });
 }

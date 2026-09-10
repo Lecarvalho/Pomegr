@@ -86,10 +86,10 @@ export function CommandTable<Row>({ caption, rows, columns, getRowKey, className
       <span className="commandPaginationSummary">Showing {firstVisibleIndex + 1}–{Math.min(firstVisibleIndex + pageSize, rows.length)} of {rows.length}</span>
       <div className="commandPaginationControls">
         <button className="commandSecondaryAction" type="button" onClick={() => pagination.onPageChange(activePage - 1)} disabled={activePage === 1}>Previous</button>
-        <span className="commandPaginationPageStatus" aria-live="polite">Page {activePage} of {pageCount}</span>
         {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => <button type="button" className="commandSecondaryAction commandPaginationPage" aria-label={"Go to page " + pageNumber} aria-current={pageNumber === activePage ? "page" : undefined} onClick={() => pagination.onPageChange(pageNumber)} key={pageNumber}>{pageNumber}</button>)}
         <button className="commandSecondaryAction" type="button" onClick={() => pagination.onPageChange(activePage + 1)} disabled={activePage === pageCount}>Next</button>
       </div>
+      <span className="commandPaginationPageStatus" aria-live="polite">Page {activePage} of {pageCount}</span>
     </nav>}
   </>;
 }

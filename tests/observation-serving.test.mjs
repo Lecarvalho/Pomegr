@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
+import { SessionHistoryStore } from "../monitor/session-history-store.mjs";
 
 const evidence = JSON.parse(await readFile(new URL("./fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8"));
 
@@ -13,6 +14,7 @@ async function listen(server) {
 
 test("concurrent state GETs consume one committed response without provider transcript reads", async (context) => {
   let compatibilityReads = 0;
+  let historyReads = 0;
   let stopped = false;
   let resourceState = null;
   const resourceSamples = [];
@@ -21,6 +23,7 @@ test("concurrent state GETs consume one committed response without provider tran
     source: "Codex",
     capabilities: createEmptyProviderCapabilities(),
     homePolicy: { requestModelObservations: true, modelSelection: false, usageLimitActivity: { enabled: false } },
+    async readSessionHistory() { historyReads += 1; return { complete: true, requests: [], activity: [] }; },
   };
   const registry = {
     providers: [provider],
@@ -53,6 +56,7 @@ test("concurrent state GETs consume one committed response without provider tran
   const runtime = createMonitorRuntime({
     providerRegistry: registry,
     checkpointStore: false,
+    historyStore: new SessionHistoryStore(),
     observationCommitDelayMs: 0,
     scheduleObservation: (task) => setTimeout(task, 0),
     resourceUsageSampler: {
@@ -85,6 +89,28 @@ test("concurrent state GETs consume one committed response without provider tran
   const server = createMonitorServer({ runtime });
   const origin = await listen(server);
   context.after(() => new Promise((resolve) => server.close(resolve)));
+  for (let attempt = 0; attempt < 50 && !historyReads; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(historyReads > 0, "history acquisition belongs to background observation");
+  const beforeHistoryGets = historyReads;
+  const historyPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=activity&limit=8`)));
+  assert.ok(historyPages.every((response) => response.status === 200));
+  for (const response of historyPages) assert.equal((await response.json()).kind, "activity");
+  const requestPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&limit=60`)));
+  for (const response of requestPages) {
+    assert.equal(response.status, 200);
+    const page = await response.json();
+    assert.equal(page.kind, "requests");
+    assert.deepEqual(page.overview, []);
+  }
+  assert.equal(historyReads, beforeHistoryGets, "history GETs never invoke provider history acquisition");
+  const preloaded = await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&overview=0`);
+  assert.equal(preloaded.status, 200);
+  assert.equal(Object.hasOwn(await preloaded.json(), "overview"), false);
+  assert.equal(historyReads, beforeHistoryGets, "preload GETs never invoke provider history acquisition");
+  for (const overview of ["", "2", "false", "0&overview=1"]) {
+    assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=requests&overview=${overview}`)).status, 400);
+  }
+  assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&offset=..%2Fprivate`)).status, 400);
   const eventResponse = await fetch(`${origin}/api/events`);
   assert.equal(eventResponse.status, 200);
   assert.match(eventResponse.headers.get("content-type") || "", /^text\/event-stream/u);

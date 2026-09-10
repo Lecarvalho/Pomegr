@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { recentActivityEvents, shellFailureActivityEvents } from "./activity-events.mjs";
+import { buildActivityFeed, shellFailureActivityEvents } from "./activity-events.mjs";
 import { isRunningAgent } from "./agent-metadata.mjs";
 import { customAgentType, resolveAgentRole } from "./agent-roles.mjs";
 import { buildCacheEvidence } from "./cache-events.mjs";
@@ -226,11 +226,18 @@ export function projectProviderSessionEvidence({
       workKind: normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })),
       detail: call.detail,
       status: call.status === "failed" ? "failed" : null,
+      durationMs: call.durationMs,
+      requestId: call.requestId,
     })),
   ];
   const executionTasks = agents.find((agent) => agent.id === "primary")?.executionTasks || [];
-  const primaryActor = agents.find((agent) => agent.id === "primary")?.label || "Primary agent";
-  allEvents.push(...shellFailureActivityEvents(executionTasks, primaryActor));
+  const failedShellEvents = agents.flatMap((agent) => shellFailureActivityEvents(agent.executionTasks, agent.label));
+  allEvents.push(...failedShellEvents);
+  const requestIds = new Set(tokenUsage.requestSnapshots.items.map((snapshot) => snapshot.id));
+  for (const event of allEvents) {
+    if (!requestIds.has(event.requestId)) event.requestId = null;
+  }
+  const messageCount = evidence.activity.filter((event) => event?.tool === "Assistant replied" || event?.tool === "User input").length;
 
   const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
@@ -274,7 +281,12 @@ export function projectProviderSessionEvidence({
     workflows: evidence.workflows || [],
     toolPatterns,
     loops: loopPatterns,
-    activity: recentActivityEvents(allEvents),
+    activity: buildActivityFeed({
+      events: allEvents,
+      toolCalls: evidence.toolCalls,
+      messages: messageCount,
+      failed: failedShellEvents.length,
+    }),
     executionTasks,
     planTasks: evidence.planTasks,
     insights: insights.map(publicInsight),

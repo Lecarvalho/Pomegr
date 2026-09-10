@@ -28,6 +28,24 @@ const target: SessionSummary = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("progressive readiness", () => {
+  it("shows committed request snapshots while context evidence and full history are still loading", async () => {
+    const state = createEmptyMonitorState({ connected: true });
+    state.session = { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), id: target.id };
+    state.readiness = { core: "ready", agentEvidence: "ready", contextEvidence: "loading", activityEvidence: "ready", repository: "ready", resources: "ready", usageLimits: "ready" };
+    state.metrics.tokens.requestSnapshots = { status: "ready", items: [{
+      id: "request-preview", agentId: "primary", observedAt: target.updatedAt, cacheLifetime: null,
+      uncachedInputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 20, outputTokens: 2, totalTokens: 32,
+      precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
+    }] };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/state")
+      ? new Response(JSON.stringify(state), { status: 200 })
+      : new Promise<Response>(() => {}));
+    const { container } = render(<SessionCatalogProvider sessions={[target]}><Dashboard initialSessionId={target.id} /></SessionCatalogProvider>);
+    expect(await screen.findByText(/Showing recent requests by time while full history loads/)).toBeInTheDocument();
+    expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(1);
+    expect(screen.queryByLabelText("Loading context evidence")).not.toBeInTheDocument();
+  });
+
   it("keeps Home discovery usable while catalog readiness is loading", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
     const { container } = render(<SessionCatalogProvider sessions={[]} loading readiness={{ catalog: "loading" }}><HomeDashboard /></SessionCatalogProvider>);

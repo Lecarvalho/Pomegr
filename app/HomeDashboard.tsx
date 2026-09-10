@@ -102,7 +102,7 @@ export function HomeDashboard() {
         {ready && !updateDismissed && <HomeUpdateCard
           title="A clearer session page"
           description="See every model request as a bar, the work around it, and a grouped agent roster that never scrolls the page. Open any session to try it."
-          details="Requests & actions replaces Context history and Request snapshots: one bar per request, prompt size as the outline, compactions as dashed ticks, and a Largest requests list ranked by uncached input. Agent activity groups agents by workflow, keeps the roster inside a fixed region, and moves details into an inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay request-local and are never summed into spend."
+          details="Requests replaces Context history and Request snapshots: one bar per request, prompt size as the outline, compactions as dashed ticks, and a Largest requests list ranked by uncached input. Agent activity groups agents by workflow, keeps the roster inside a fixed region, and moves details into an inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay request-local and are never summed into spend."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

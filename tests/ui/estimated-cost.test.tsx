@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { MonitorState } from "../../shared/monitor-contract";
 import { SessionDetailsPanel } from "../../app/components/dashboard/SessionDetailsPanel";
 import { SessionHero } from "../../app/components/dashboard/SessionHero";
@@ -26,7 +26,7 @@ describe("estimated session cost", () => {
     expect(hero.container).not.toHaveTextContent(/cost estimate/i);
     hero.unmount();
 
-    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $1.23 (Claude Code estimate)");
     expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe("estimated session cost", () => {
       cost: { amount: 0.0042, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
     };
 
-    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $0.0042 (Claude Code estimate)");
     expect(within(document.querySelector(".sessionCostDetail")!).getByText("$0.0042")).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe("estimated session cost", () => {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 1.25, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
     };
-    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} showEstimatedCost={false} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} showEstimatedCost={false} /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
     expect(screen.getByText("Session details")).toBeInTheDocument();
@@ -60,11 +60,11 @@ describe("estimated session cost", () => {
 
   it("omits unobserved and unrecorded placeholder estimates", () => {
     const session = { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), updatedAt: "2026-08-09T12:00:00.000Z" };
-    const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
-    rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();
   });
@@ -74,7 +74,7 @@ describe("estimated session cost", () => {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 9, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-11T12:00:00.000Z" },
     };
-    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Codex", codexCapabilities)} historical={false} loading={false} onRefresh={vi.fn()} /></LiveClockProvider>);
+    render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Codex", codexCapabilities)} historical={false} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText("$9.00")).not.toBeInTheDocument();

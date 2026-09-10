@@ -8,14 +8,14 @@ import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
-import { mergeCodexActivityEvents, mergeCodexToolCalls, parseCodexAssistantReplyRecords, parseCodexCanonicalActivityEvents, parseCodexCanonicalTurns, parseCodexActivityRecords } from "./codex-activity-events.mjs";
+import { mergeCodexActivityEvents, mergeCodexToolCalls, parseCodexCanonicalActivityEvents, parseCodexCanonicalTurns } from "./codex-activity-events.mjs";
 import {
   mergeCodexExecutionTasks,
   parseCodexCanonicalExecutionTasks,
   parseCodexExecutionTaskStateRecords,
 } from "./codex-execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
-import { parseCodexContextRecords } from "./codex-context.mjs";
+import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "./codex-activity-correlation.mjs";
 import { parseCodexCurrentActivityStateRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
 import { mergeCodexPullRequestCreations, parseCodexCanonicalPullRequests, parseCodexPullRequestRecords } from "./codex-pull-requests.mjs";
@@ -38,6 +38,7 @@ import {
   trustedAppServerRolloutFile,
 } from "./codex-session-discovery.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
+import { normalizedSessionHistory } from "./session-history.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -46,7 +47,6 @@ import {
   normalizeCodexThreadMetadata,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
-
 const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
@@ -162,18 +162,15 @@ export function createCodexProvider(options = {}) {
     reusableLivePlanTasks,
     reusableLiveTaskState,
   } = liveState;
-
   function normalizeAppServerMetadata(thread, metadataOptions = {}) {
     const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
     if (!metadata) return null;
     const rolloutFile = trustedAppServerRolloutFile(thread, [sessionsRoot, archivedRoot]);
     return rolloutFile ? { ...metadata, rolloutFile } : metadata;
   }
-
   async function appServerCall(method, params) {
     return owningRuntime.request(method, params);
   }
-
   async function readAppServerCatalog() {
     if (!appServer) return null;
     const indexNames = readCodexSessionIndex(indexFile);
@@ -200,7 +197,6 @@ export function createCodexProvider(options = {}) {
       return null;
     }
   }
-
   const makeRolloutDiscovery = () => createCodexRolloutDiscovery({
     roots: [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])],
     maximumFiles: scanLimit, now,
@@ -248,7 +244,6 @@ export function createCodexProvider(options = {}) {
       return null;
     }
   }
-
   async function readAppServerSessionTree(localSessionId) {
     const root = await readAppServerSession(localSessionId);
     if (!root) return { metadata: [], descendantIds: new Set(), freshIds: new Set() };
@@ -363,7 +358,9 @@ export function createCodexProvider(options = {}) {
           thread.rolloutFile,
           historical || completeStory,
           thread.approvalReviewer ? maximumLiveTaskHistoryBytes : maximumLiveTailBytes,
+          completeStory,
         );
+        if (completeStory && !generation) return null;
         recordsByThreadId.set(thread.localId, records);
         if (generation) generationsByThreadId.set(thread.localId, generation);
         const previousRuntime = incremental && !completeStory ? readOptions.previousAgentRuntimeByThreadId?.get(thread.localId) : null;
@@ -473,7 +470,7 @@ export function createCodexProvider(options = {}) {
     ]));
     const rolloutTasksByActor = new Map();
     const rolloutActivityByActor = new Map();
-    const rolloutReplies = [];
+    const rolloutReplies = [], requestLinkGroups = [];
     const rolloutSignalsByActor = new Map();
     const rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
@@ -504,9 +501,10 @@ export function createCodexProvider(options = {}) {
         ? null
         : reusableLiveCurrentActivity(thread.rolloutFile, thread.localId, generation);
       const previousContext = liveContextUsageCache.get(thread.rolloutFile);
-      const context = parseCodexContextRecords(records, {
-        actorId: actor.id, fallbackTimestamp, sourceKey: thread.localId,
-        stableFallbackIdentity: !historical,
+      const context = parseCodexRequestActivityEvidence(records, {
+        actor, actorId: actor.id, fallbackTimestamp, sourceKey: thread.localId,
+        unlimited: completeStory,
+        stableFallbackIdentity: true,
         priorUsageSnapshots: !historical && hasLiveContextContinuity(thread.rolloutFile, generation)
           ? previousContext?.snapshots : [],
       });
@@ -562,7 +560,7 @@ export function createCodexProvider(options = {}) {
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
-      rolloutReplies.push(...parseCodexAssistantReplyRecords(records, { actor, sourceKey: thread.localId }));
+      rolloutReplies.push(...context.replies.map((event) => readOptions.historyActivity ? { ...event, _historyAgentId: actor.id } : event)); requestLinkGroups.push(context.links);
       if (!historical && generation) {
         liveCurrentActivityCache.delete(thread.rolloutFile);
         liveCurrentActivityCache.set(thread.rolloutFile, {
@@ -593,17 +591,14 @@ export function createCodexProvider(options = {}) {
         });
       usageSnapshots.push(...normalizedContext.snapshots);
       compactions.push(...normalizedContext.compactions);
-      return parseCodexActivityRecords(records, {
-        actor,
-        fallbackTimestamp,
-        sourceKey: thread.localId,
-      });
+      return context.toolCalls;
     });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
       readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
     )));
     const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
-    const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies]);
+    const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
+    stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
     const callsByActor = new Map();
     for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
     const canonicalTasksByActor = new Map(
@@ -706,6 +701,7 @@ export function createCodexProvider(options = {}) {
     if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId, { historical: true });
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
+  async function readSessionHistory(localSessionId = "") { return normalizedSessionHistory("codex", localSessionId, await readSession(localSessionId, { historical: true, completeStory: true, historyActivity: true })); }
 
   const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];
   return defineProvider({
@@ -749,6 +745,7 @@ export function createCodexProvider(options = {}) {
     },
     listSessions,
     readSession,
+    readSessionHistory,
     readRepositoryPluginSetup: createCodexPluginSetupReader({ env: options.env ?? process.env, codexHome }),
     createObserver: () => createCodexIncrementalObserver({
       list: listSessions, now,
@@ -776,7 +773,7 @@ export function createCodexProvider(options = {}) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
           thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
-        return createHash("sha256").update(JSON.stringify(["codex-activity-v1", catalogEntry?.isLive, states])).digest("hex");
+        return createHash("sha256").update(JSON.stringify(["codex-activity-v2", catalogEntry?.isLive, states])).digest("hex");
       },
     }),
     readTranscriptPath,

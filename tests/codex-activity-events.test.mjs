@@ -258,6 +258,18 @@ test("pairs rollout calls with outputs, ignores unknown records, and hashes mate
   assertNoPrivateFixtureSentinels(variants, "Codex repetition evidence");
 });
 
+test("Codex gives a call its recorded output duration and leaves unmatched calls unresolved", () => {
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-08-10T20:00:00.000Z", type: "response_item", payload: { type: "function_call", name: "shell_command", call_id: "finished", arguments: "{}" } },
+    { timestamp: "2026-08-10T20:00:01.250Z", type: "response_item", payload: { type: "function_call_output", call_id: "finished", output: "PRIVATE_OUTPUT" } },
+    { timestamp: "2026-08-10T20:00:02.000Z", type: "response_item", payload: { type: "custom_tool_call", name: "exec", call_id: "running", input: "PRIVATE_INPUT" } },
+  ], { actor: ACTOR, sourceKey: "duration" });
+  assert.equal(calls.find((call) => call.status === "completed").durationMs, 1_250);
+  assert.equal(calls.find((call) => call.status === "running").durationMs, null);
+  assert.equal(calls.every((call) => call.requestId === null), true);
+  assertNoPrivateFixtureSentinels(calls, "Codex activity duration");
+});
+
 test("provider merges rollout and canonical duplicates while agent and grouped totals agree", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-activity-"));
   context.after(() => rm(root, { recursive: true, force: true }));
