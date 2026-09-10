@@ -284,9 +284,10 @@ test("release workflow fails closed around signing, drafts, and exact-source pub
   assert.match(workflow, /RELEASE_SHA:\s*\$\{\{ inputs\.release_sha \}\}/);
   const refStep = workflow.match(/- name: Verify release source[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   assert.match(refStep, /verify-commit --sha \$env:RELEASE_SHA/);
-  assert.match(refStep, /npm run check:release-source -- --tag \$env:RELEASE_TAG/);
+  assert.match(refStep, /node scripts\/check-release-source\.mjs --tag \$env:RELEASE_TAG/);
+  assert.doesNotMatch(refStep, /npm run check:release-source/);
   assert.match(refStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);
-  assert.ok(workflow.indexOf("check:release-source") < workflow.indexOf("npm ci"));
+  assert.ok(workflow.indexOf("check-release-source.mjs") < workflow.indexOf("npm ci"));
   const installStep = workflow.match(/- name: Install locked dependencies[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
   assert.match(installStep, /npm ci\s+npm run desktop:runtime\s+npm ci --prefix landing/);
   assert.match(installStep, /\$PSNativeCommandUseErrorActionPreference = \$true/);

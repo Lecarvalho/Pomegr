@@ -50,7 +50,7 @@ jobs:
           node desktop/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
           node desktop/release-policy.mjs verify-commit --sha $env:RELEASE_SHA
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
-          npm run check:release-source -- --tag $env:RELEASE_TAG
+          node scripts/check-release-source.mjs --tag $env:RELEASE_TAG
 
       - name: Require Artifact Signing configuration
         shell: pwsh
