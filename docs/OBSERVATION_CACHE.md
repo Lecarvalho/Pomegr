@@ -1314,12 +1314,21 @@ A normalized lifecycle change contributes to the adapter source fingerprint, so 
 
 Claude catalog acquisition also incrementally reduces the complete primary transcript
 for successful, structured background workflow/shell/native-agent launches and exact terminal
-notifications, or exact run-matched completed workflow manifests whose valid provider
+notifications, matched successful `TaskStop` results, or exact run-matched completed
+workflow manifests whose valid provider
 completion timestamp is at or after the recorded task launch. A resume can reuse the
 run ID while leaving an older completed manifest intact; the launch timestamp scopes
 private completion memory and participates in workflow-manifest cache validation.
 Both catalog and workflow detail reject that stale completion without changing the
 source lifetime, commit, serving, or checkpoint contracts.
+`TaskStop` requires a preceding structured call targeting an already observed open
+launch, a non-error tool result matching that call, and the same bounded `task_id`
+in the call and structured result. The result timestamp must be at or after the
+call. Pending stop calls retain only bounded identity, timestamp, and launch
+association in the existing private pending-call map. A delayed result cannot close
+a later launch reusing the task ID. Stop intent, text-only confirmation, malformed
+or mismatched identities, and failed results do not close work. Raw result content,
+messages, commands, and task types are not retained or exposed by this reducer.
 This evidence is scoped to the validated process identity and its
 registry start time, independent of native primary idle and modification-time agent
 heuristics. The private cache holds at most fifty sessions with 256 pending calls
@@ -1330,7 +1339,8 @@ last valid observation; process replacement discards the old association. Only t
 composed catalog activity enum crosses C Commit, with no new browser or checkpoint
 fields. Native `Agent` launch results require matching tool identity, explicit
 `status: async_launched`, `isAsync: true`, and a bounded `agentId`; only its exact
-trusted terminal notification closes that agent. Child completion, file recency,
+trusted terminal notification or matched successful `TaskStop` closes that agent.
+Child completion, file recency,
 agent counts, and foreground or incomplete launch results cannot substitute for
 this evidence. A confirmed background parent remains open while executing nested
 children, without acquiring child transcripts on the catalog path. Background work

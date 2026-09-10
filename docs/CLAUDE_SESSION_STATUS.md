@@ -108,7 +108,13 @@ successful `Workflow` (`async_launched`, `local_workflow`), `Bash`
 bounded `agentId`) results, matched to their preceding structured tool calls.
 The exact task remains open until a provider queue notification or trusted
 system-delivered task notification reports a recognized terminal status for that
-task ID. A bounded workflow manifest with the exact run ID, `status: completed`,
+task ID. A successful structured `TaskStop` result also closes the exact launch
+targeted by its preceding call. The call and result must carry the same bounded
+`task_id`, the result must match the tool-use ID and follow the call, and the launch
+must still be the one targeted when the call was recorded. Failed results, stop
+intent alone, text-only confirmations, and delayed results after task ID reuse do
+not close work. Result messages, commands, and task types remain private.
+A bounded workflow manifest with the exact run ID, `status: completed`,
 and a valid provider completion timestamp at or after that task's launch also closes
 that attempt, even before its delayed notification arrives. Claude can resume a
 workflow with the same run ID and a new task ID while leaving its previous completed
@@ -126,7 +132,8 @@ process. Scope is recorded workflow, background-shell, and native background-age
 launches in the primary transcript; unrecorded SDK background tasks remain outside
 this local observation surface. A confirmed background-agent launch covers its
 execution while it works on nested children. The exact agent ID must receive a
-trusted terminal notification; another child's completion cannot close its parent.
+trusted terminal notification or matched successful `TaskStop` result; another
+child's completion cannot close its parent.
 A missing child file, foreground result, text-only agent reference, or requested
 `run_in_background` flag is not a substitute for the structured launch result.
 Child file age and missing stop reasons do not end recorded background work.

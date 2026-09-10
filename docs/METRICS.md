@@ -397,6 +397,14 @@ When Claude's local session registry is available, its entries are the primary l
 
 Claude Remote Control `sdk-cli` sessions can omit `status` from the local registry. Pomegr reads their native session metadata only for a validated local owner and exact bridge-session association. The provider reports `worker_status`: `running` maps to session `working` and primary agent `active`; `requires_action` maps to `needs_input`; `idle` remains primary-agent `idle` and maps to session `open` while local ownership is validated. These are deterministic primary-loop observations, independent of transcript age, subagent counts, hooks, and agent-reported progress percentage. Primary idle does not imply session-wide idle: successful structured background workflow/shell/native-agent launches remain open until their exact provider terminal notifications or run-matched completed workflow manifests. Native `Agent` results must match the launch call and explicitly report `async_launched`, `isAsync: true`, and a bounded `agentId`. A background parent remains open while executing nested children; another child's terminal notification cannot close it. Foreground results, launch intent, agent counts, and child file age are not substitutes. For a validated local process, recorded open background work makes the catalog `working` without changing an idle primary agent. Needs input takes priority. Lifecycle replay is scoped to the registry process start and uses complete input, never a recent-tail or silence heuristic. A missing or unrecognized response supplies no state. Temporary failures retain the last valid observation for the same owner without advancing its timestamp; owner, bridge, or credential changes invalidate that private cache. See [Claude session status](CLAUDE_SESSION_STATUS.md).
 
+Successful structured `TaskStop` results also end catalog background work when the
+preceding call and matching result identify the same open task. Stop intent, failed
+results, and text-only confirmations do not qualify. The result must follow its
+call and still refer to the launch targeted by that call; a delayed result cannot
+close a later reuse of the task ID. An idle primary with validated runtime ownership
+then returns to **Open** once no other background work remains. This recognition
+changes only catalog lifecycle; no raw stop-result fields enter browser state.
+
 Workflow completion manifests must also have a valid provider timestamp at or after
 the recorded launch. Claude can reuse a workflow run ID on resume while retaining
 the previous attempt's completed manifest. That older file cannot close new work or

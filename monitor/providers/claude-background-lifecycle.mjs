@@ -41,28 +41,39 @@ function reduceLifecycle(state, record, ownerStartedAt) {
   if (terminal) state.running.delete(terminal.taskId);
   const parts = Array.isArray(record?.message?.content) ? record.message.content : [];
   for (const part of parts) {
-    if (record.type === "assistant" && part.type === "tool_use" && ["Workflow", "Bash", "Agent"].includes(part.name)) {
+    if (record.type === "assistant" && part.type === "tool_use" && ["Workflow", "Bash", "Agent", "TaskStop"].includes(part.name)) {
       const id = safeId(part.id);
       if (!id) continue;
+      const taskId = part.name === "TaskStop" ? safeId(part.input?.task_id) : null;
+      const launch = taskId ? state.running.get(taskId) : null;
+      if (part.name === "TaskStop" && (!launch || timestamp < launch.launchedAt)) continue;
       if (state.calls.size >= MAX_PENDING_CALLS) { state.complete = false; continue; }
-      state.calls.set(id, part.name);
+      state.calls.set(id, { tool: part.name, taskId, launch, requestedAt: timestamp });
     }
     if (record.type !== "user" || part.type !== "tool_result") continue;
     const call = state.calls.get(part.tool_use_id);
     state.calls.delete(part.tool_use_id);
     if (!call || part.is_error === true) continue;
     const result = record.toolUseResult;
-    const id = claudeLaunchedTaskId(call, result);
+    if (call.tool === "TaskStop") {
+      if (part.is_error !== undefined && part.is_error !== false) continue;
+      // A successful structured result closes only the launch targeted by this
+      // call. A delayed result cannot stop a later reuse of the same task ID.
+      if (safeId(result?.task_id) === call.taskId && timestamp >= call.requestedAt
+        && state.running.get(call.taskId) === call.launch) state.running.delete(call.taskId);
+      continue;
+    }
+    const id = claudeLaunchedTaskId(call.tool, result);
     if (!id) continue;
     if (state.running.size >= MAX_OPEN_TASKS) { state.complete = false; continue; }
-    const runId = call === "Workflow" && /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(result?.runId || "") ? result.runId : null;
+    const runId = call.tool === "Workflow" && /^wf_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(result?.runId || "") ? result.runId : null;
     state.running.set(id, { runId, launchedAt: timestamp });
   }
   return state;
 }
 
 /** Complete, owner-scoped provider lifecycle, independent of transcript recency.
- * A successful background launch remains open until its exact provider notification.
+ * A successful background launch remains open until matched provider terminal evidence.
  * Raw records/fragments stay in U1/U2; only a tri-state observation leaves this reader.
  */
 export function createClaudeBackgroundLifecycleReader() {
