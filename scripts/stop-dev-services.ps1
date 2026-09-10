@@ -78,10 +78,12 @@ function Stop-DevPlan {
     $processId = [int]$original.ProcessId
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $processId"
     if (-not $current) { continue }
-    # A recycled PID must never become a new termination target.
+    # A recycled PID or a process already exiting must never become a new
+    # termination target. Skipping it is safe: the launcher checks both ports
+    # again before starting replacements.
     if ($current.CreationDate -ne $original.CreationDate -or
         $current.CommandLine -cne $original.CommandLine -or
-        $current.ExecutablePath -cne $original.ExecutablePath) { throw 'POMEGR_DEV_OWNERSHIP' }
+        $current.ExecutablePath -cne $original.ExecutablePath) { continue }
     # Hold a native process handle across the final identity check and termination.
     $handle = Get-Process -Id $processId -ErrorAction SilentlyContinue
     if (-not $handle) { continue }

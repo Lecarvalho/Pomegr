@@ -303,14 +303,14 @@ test("Windows cleanup protects the launcher and rejects recycled ancestry", { sk
   assert.deepEqual(stopPlan(processes).sort((a, b) => a - b), [2, 4]);
 });
 
-test("Windows cleanup revalidates identity before stopping a process", { skip: process.platform !== "win32" }, () => {
+test("Windows cleanup skips a replaced or already exiting process without opening it", { skip: process.platform !== "win32" }, () => {
   const output = runStopHelperTest(
     "$original = $fixture.process; function Get-CimInstance { $copy = $original.PSObject.Copy(); $copy.CreationDate = 'changed'; return $copy }; " +
     "function Get-Process { throw 'MUST_NOT_OPEN_PROCESS' }; " +
-    "try { Stop-DevPlan @([pscustomobject]@{ Process = $original }) } catch { Write-Output $_.Exception.Message }",
+    "Stop-DevPlan @([pscustomobject]@{ Process = $original }); Write-Output 'skipped'",
     { process: processFixture(1, 0, fixtureRoot + "\\monitor\\cli.mjs") },
   );
-  assert.equal(output, "POMEGR_DEV_OWNERSHIP");
+  assert.equal(output, "skipped");
 });
 
 test("Windows cleanup can stop an owned native process with CIM identity checks", { skip: process.platform !== "win32" }, async () => {
