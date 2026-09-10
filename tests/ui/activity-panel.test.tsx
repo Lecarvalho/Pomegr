@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMemo, type ComponentProps } from "react";
@@ -137,14 +137,20 @@ describe("ActivityPanel", () => {
     expect(activityPanel.querySelectorAll(".activityRow")).toHaveLength(8);
     expect(within(activityPanel).queryByRole("button", { name: "Show only this request" })).not.toBeInTheDocument();
     expect(activityPanel.querySelector(".activityLinkNote")).not.toBeInTheDocument();
-    expect(within(activityPanel).getByText("Showing 1–8 of 200")).toBeInTheDocument();
-    const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
-    await user.click(within(pages).getByRole("button", { name: "25" }));
-
     expect(within(activityPanel).getByText("Showing 193–200 of 200")).toBeInTheDocument();
+    const initialRows = activityPanel.querySelectorAll(".activityRow");
+    expect(initialRows[0]).toHaveTextContent("Tool 193");
+    expect(initialRows[7]).toHaveTextContent("Tool 200");
+    const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
+    await user.click(within(pages).getByRole("button", { name: "1" }));
+
+    expect(within(activityPanel).getByText("Showing 1–8 of 200")).toBeInTheDocument();
     expect(activityPanel.querySelectorAll(".activityRow")).toHaveLength(8);
-    expect(within(pages).getByRole("button", { name: "25" })).toHaveAttribute("aria-current", "page");
-    expect(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ })).toBeInTheDocument();
+    expect(within(pages).getByRole("button", { name: "1" })).toHaveAttribute("aria-current", "page");
+    expect(within(activityPanel).getByRole("button", { name: /Tool 1, Primary agent, request #1/ })).toBeInTheDocument();
+    await user.click(within(pages).getByRole("button", { name: "2" }));
+    expect(within(activityPanel).getByText("Showing 9–16 of 200")).toBeInTheDocument();
+    expect(within(activityPanel).getByRole("button", { name: /Tool 9, Primary agent, request #9/ })).toBeInTheDocument();
   });
 
   it("anchors a later live page to its first visible row when new events arrive", async () => {
@@ -154,16 +160,16 @@ describe("ActivityPanel", () => {
     const view = renderActivity(activityFeed(initialActivity), requests);
     const activityPanel = panel(view.container);
     const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
-    await user.click(within(pages).getByRole("button", { name: "2" }));
-    expect(activityPanel.querySelector(".activityRow")!).toHaveTextContent("Tool 52");
+    await user.click(within(pages).getByRole("button", { name: "7" }));
+    expect(activityPanel.querySelector(".activityRow")!).toHaveTextContent("Tool 49");
 
     view.rerender(<ActivityHarness
       activity={activityFeed([activity(61), ...initialActivity])}
       requests={[...requests, snapshot(61)]}
     />);
 
-    expect(within(panel(view.container)).getByText("Showing 10–17 of 61")).toBeInTheDocument();
-    expect(panel(view.container).querySelector(".activityRow")!).toHaveTextContent("Tool 52");
+    expect(within(panel(view.container)).getByText("Showing 49–56 of 61")).toBeInTheDocument();
+    expect(panel(view.container).querySelector(".activityRow")!).toHaveTextContent("Tool 49");
     expect(within(panel(view.container)).queryByRole("button", { name: /Tool 61, Primary agent/ })).not.toBeInTheDocument();
   });
 
@@ -188,7 +194,7 @@ describe("ActivityPanel", () => {
     const view = renderActivity(activityFeed(activityItems(100)), requests);
     const activityPanel = panel(view.container);
     const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
-    await user.click(within(pages).getByRole("button", { name: "13" }));
+    await user.click(within(pages).getByRole("button", { name: "1" }));
     await user.click(within(activityPanel).getByRole("button", { name: /Tool 3, Primary agent, request #3/ }));
 
     expect(view.container.querySelector(".requestsActionsChart")).toHaveAttribute("aria-label", "Model requests, positions 1 to 60");
@@ -201,12 +207,12 @@ describe("ActivityPanel", () => {
     const view = renderActivity(activityFeed(activityItems(100)), requests);
     const activityPanel = panel(view.container);
     const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
-    await user.click(within(pages).getByRole("button", { name: "13" }));
-    await user.click(within(activityPanel).getByRole("button", { name: /Tool 3, Primary agent, request #3/ }));
     await user.click(within(pages).getByRole("button", { name: "1" }));
+    await user.click(within(activityPanel).getByRole("button", { name: /Tool 3, Primary agent, request #3/ }));
+    await user.click(within(pages).getByRole("button", { name: "13" }));
 
-    const pageLink = within(activityPanel).getByRole("button", { name: "page 13" });
-    expect(activityPanel.querySelector(".activityPanelHeader p")).toHaveTextContent(/on page 13/);
+    const pageLink = within(activityPanel).getByRole("button", { name: "page 1" });
+    expect(activityPanel.querySelector(".activityPanelHeader p")).toHaveTextContent(/on page 1/);
     await user.click(pageLink);
     expect(within(activityPanel).getByRole("button", { name: /Tool 3, Primary agent, request #3/ })).toHaveClass("selected");
   });
@@ -235,34 +241,86 @@ describe("ActivityPanel", () => {
     expect(panel(view.container).querySelector(".activityPanelHeader p")).toHaveTextContent(/request #4 highlighted/i);
   });
 
-  it("keeps a request located from Activity pinned even when it was newest", async () => {
+  it.each([false, true])("resumes following live requests after selecting the latest Activity row (phone: %s)", async (phone) => {
     const user = userEvent.setup();
-    const requests = [snapshot(1), snapshot(2), snapshot(3)];
-    const view = renderActivity(activityFeed(activityItems(3)), requests);
-    await user.click(within(panel(view.container)).getByRole("button", { name: /Tool 3, Primary agent, request #3/ }));
-    view.rerender(<ActivityHarness activity={activityFeed([activity(4), ...activityItems(3)])} requests={[...requests, snapshot(4)]} />);
-    expect(view.container.querySelector('[aria-label^="Request #3,"]')).toHaveAttribute("aria-pressed", "true");
-    expect(view.container.querySelector('[aria-label^="Request #4,"]')).toHaveAttribute("aria-pressed", "false");
+    const requests = Array.from({ length: 8 }, (_, index) => snapshot(index + 1));
+    const initial = activityItems(8);
+    const view = renderActivity(activityFeed(initial), requests, { phone });
+    const activityPanel = panel(view.container);
+
+    // An older Activity link deliberately pins the chart; selecting the newest
+    // link must put it back into the same following mode as the newest bar.
+    await user.click(within(activityPanel).getByRole("button", { name: /Tool 7, Primary agent, request #7/ }));
+    await user.click(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ }));
+    view.rerender(<ActivityHarness
+      activity={activityFeed([activity(9), ...initial])}
+      requests={[...requests, snapshot(9)]}
+    />);
+
+    expect(view.container.querySelector('[aria-label^="Request #8,"]')).toHaveAttribute("aria-pressed", "false");
+    expect(view.container.querySelector('[aria-label^="Request #9,"]')).toHaveAttribute("aria-pressed", "true");
+    expect(within(panel(view.container)).getByRole("button", { name: /Tool 9, Primary agent, request #9/ })).toHaveClass("selected");
+    expect(panel(view.container)).toHaveTextContent(phone ? "Page 2 of 2" : "Showing 9–9 of 9");
+  });
+
+  it("refreshes the latest Activity history page after returning to its newest row", async () => {
+    const events = activityItems(8).map((event) => ({ ...event, agentId: "primary", requestNumber: Number(event.requestId?.split("-")[1]) }));
+    const requests = Array.from({ length: 8 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const kind = params.get("kind");
+      const offset = params.get("offset") === "latest" ? 0 : Number(params.get("offset"));
+      return { ok: true, json: async () => ({
+        kind,
+        status: "ready",
+        revision: "1",
+        total: 8,
+        offset,
+        linkedCount: params.has("requestId") ? 1 : 0,
+        items: (kind === "requests" ? requests : [...events].reverse()).slice(offset, offset + (kind === "requests" ? 60 : 8)),
+        ...(kind === "requests" ? { overview: requests.map((row) => [row.uncachedInputTokens, row.cacheWriteTokens, row.cacheReadTokens, row.outputTokens]) } : {}),
+      }) };
+    });
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("fetch", fetcher);
+      const view = render(<ActivityHarness activity={activityFeed(events)} requests={[]} historyEnabled />);
+      const activityPanel = panel(view.container);
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ })).toBeInTheDocument();
+
+      // Pin an older row first so the subsequent latest-row click is what resumes
+      // Activity's live polling mode.
+      fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 7, Primary agent, request #7/ }));
+      fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(view.container.querySelector('[aria-label^="Request #8,"]')).toHaveAttribute("aria-pressed", "true");
+      fetcher.mockClear();
+
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      expect(fetcher.mock.calls.some(([url]) => url.includes("kind=activity") && url.includes("offset=latest") && !url.includes("requestId="))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("automatically reveals all linked rows when selecting or reselecting an off-page request bar", async () => {
     const user = userEvent.setup();
     const requests = Array.from({ length: 60 }, (_, index) => snapshot(index + 1));
-    const items = activityItems(60);
-    items.splice(52, 0, ...[61, 62, 63].map((index) => activity(index, { requestId: "request-9" })));
+    const items = [...Array.from({ length: 8 }, (_, index) => activity(index + 1)), ...[61, 62, 63].map((index, position) => activity(index, { requestId: "request-9", timestamp: new Date(baseTime + 8 * 60_000 + (position + 1) * 1_000).toISOString() })), ...Array.from({ length: 52 }, (_, index) => activity(index + 9))].reverse();
     const view = renderActivity(activityFeed(items), requests);
     const activityPanel = panel(view.container);
     const pages = within(activityPanel).getByRole("navigation", { name: "Activity pages" });
     const bar = view.container.querySelector('[aria-label^="Request #9,"]') as HTMLElement;
 
     await user.click(bar);
-    expect(within(pages).getByRole("button", { name: "7" })).toHaveAttribute("aria-current", "page");
+    expect(within(pages).getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "page");
     expect(activityPanel.querySelectorAll(".activityRow.selected")).toHaveLength(4);
 
     await user.click(within(pages).getByRole("button", { name: "1" }));
     expect(activityPanel.querySelectorAll(".activityRow.selected")).toHaveLength(0);
     await user.click(bar);
-    expect(within(pages).getByRole("button", { name: "7" })).toHaveAttribute("aria-current", "page");
+    expect(within(pages).getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "page");
     expect(activityPanel.querySelectorAll(".activityRow.selected")).toHaveLength(4);
   });
 
@@ -292,7 +350,7 @@ describe("ActivityPanel", () => {
     const reply = within(activityPanel).getByRole("button", { name: "Assistant replied, Primary agent, request #73" });
     expect(reply).toHaveClass("selected");
     expect(reply.querySelector(".activityRequest")).toHaveTextContent("#73");
-    expect(within(activityPanel).getByText("Showing 25–32 of 100")).toBeInTheDocument();
+    expect(within(activityPanel).getByText("Showing 73–80 of 100")).toBeInTheDocument();
   });
 
   it("automatically reveals linked activity from the phone chart", async () => {
@@ -300,11 +358,11 @@ describe("ActivityPanel", () => {
     const requests = Array.from({ length: 60 }, (_, index) => snapshot(index + 1));
     const view = renderActivity(activityFeed(activityItems(60)), requests, { phone: true });
     const activityPanel = panel(view.container);
-    await user.click(within(activityPanel).getByRole("button", { name: "Next" }));
-    expect(activityPanel).toHaveTextContent("Page 2 of 8");
+    await user.click(within(activityPanel).getByRole("button", { name: "Previous" }));
+    expect(activityPanel).toHaveTextContent("Page 7 of 8");
     await user.click(view.container.querySelector('[aria-label^="Request #45,"]') as HTMLElement);
 
-    expect(activityPanel).toHaveTextContent("Page 2 of 8");
+    expect(activityPanel).toHaveTextContent("Page 6 of 8");
     expect(within(activityPanel).getByRole("button", { name: /Tool 45, Primary agent, request #45/ })).toHaveClass("selected");
   });
 
@@ -319,10 +377,10 @@ describe("ActivityPanel", () => {
       const kind = params.get("kind");
       const limit = Number(params.get("limit"));
       const target = Number(params.get("requestId")?.split("-")[1]);
-      const offset = kind === "activity" && target ? Math.floor((100 - target) / 8) * 8
-        : params.get("offset") === "latest" ? 100 - limit : Number(params.get("offset"));
+      const offset = kind === "activity" && target ? Math.floor((target - 1) / 8) * 8
+        : params.get("offset") === "latest" ? kind === "activity" ? Math.floor((100 - 1) / 8) * 8 : 100 - limit : Number(params.get("offset"));
       const response = { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: 100, offset, linkedCount: target ? 1 : 0,
-        items: (kind === "requests" ? requests : events).slice(offset, offset + limit),
+        items: (kind === "requests" ? requests : [...events].reverse()).slice(offset, offset + limit),
         ...(kind === "requests" ? { overview: requests.map((row) => [row.uncachedInputTokens, row.cacheWriteTokens, row.cacheReadTokens, row.outputTokens]) } : {}),
       }) };
       if (!resident && kind === "requests") {
@@ -360,11 +418,11 @@ describe("ActivityPanel", () => {
     expect(within(activityPanel).queryByText("Loading activity…")).not.toBeInTheDocument();
     expect(lookups()).toHaveLength(1);
     await user.click(within(activityPanel).getByRole("button", { name: "Next" }));
-    await waitFor(() => expect(activityPanel).toHaveTextContent("Page 4 of 13"));
+    await waitFor(() => expect(activityPanel).toHaveTextContent("Page 11 of 13"));
     view.rerender(<ActivityHarness {...props} />);
     await user.click(within(activityPanel).getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(within(activityPanel).getByRole("button", { name: "Refresh" })).not.toBeDisabled());
-    expect(activityPanel).toHaveTextContent("Page 4 of 13");
+    expect(activityPanel).toHaveTextContent("Page 11 of 13");
     expect(lookups()).toHaveLength(1);
   });
 
@@ -379,7 +437,7 @@ describe("ActivityPanel", () => {
       const target = params.get("requestId");
       const offset = target ? 0 : params.get("offset") === "latest" ? 120 : Number(params.get("offset"));
       const response = { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: kind === "requests" ? 180 : 8, offset: kind === "requests" ? offset : 0, linkedCount: 0,
-        items: kind === "requests" ? requests.slice(offset, offset + 60) : events,
+        items: kind === "requests" ? requests.slice(offset, offset + 60) : [...events].reverse(),
         ...(kind === "requests" && params.get("overview") !== "0" ? { overview: requests.map((row) => [row.uncachedInputTokens, row.cacheWriteTokens, row.cacheReadTokens, row.outputTokens]) } : {}),
       }) };
       if (!resident && kind === "requests" && params.get("overview") === "0") return new Promise(() => {});
@@ -417,7 +475,7 @@ describe("ActivityPanel", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const kind = new URL(url, "http://localhost").searchParams.get("kind");
       if (kind === "activity" && delay) return new Promise((resolve) => { finish = () => resolve({ ok: false }); });
-      return { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: kind === "activity" ? 8 : 0, offset: 0, linkedCount: 0, items: kind === "activity" ? events : [] }) };
+      return { ok: true, json: async () => ({ kind, status: "ready", revision: "1", total: kind === "activity" ? 8 : 0, offset: 0, linkedCount: 0, items: kind === "activity" ? [...events].reverse() : [] }) };
     }));
     const view = render(<ActivityHarness activity={activityFeed(events)} requests={[]} historyEnabled historical />);
     const activityPanel = panel(view.container);
@@ -486,7 +544,7 @@ describe("ActivityPanel", () => {
     const view = renderActivity(activityFeed(items), requests, { phone: true });
     const activityPanel = panel(view.container);
     const disclosure = activityPanel.querySelector("details.activityBreakdownDisclosure") as HTMLDetailsElement;
-    const unmatched = activityPanel.querySelector(".activityRow")!;
+    const unmatched = activityPanel.querySelectorAll(".activityRow")[1];
 
     expect(disclosure).toBeInTheDocument();
     expect(disclosure).not.toHaveAttribute("open");
@@ -496,7 +554,7 @@ describe("ActivityPanel", () => {
     expect(unmatched.querySelector(".activityRequest")).not.toBeInTheDocument();
     expect(unmatched.querySelector(".target")).not.toBeInTheDocument();
     expect(unmatched).not.toHaveTextContent(/[—·]/);
-    const linked = activityPanel.querySelectorAll(".activityRow")[1];
+    const linked = activityPanel.querySelectorAll(".activityRow")[0];
     expect(linked.querySelector(".activityRowMetadata")).toHaveTextContent(/·1.2s#1/);
     expect(linked.querySelector(".activityRowContext")).toHaveTextContent("Primary agent·target-1");
     expect(within(activityPanel).getByRole("button", { name: "Previous" })).toHaveClass("commandSecondaryAction");

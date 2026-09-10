@@ -65,28 +65,30 @@ function ActivityRow({ event, ordinal, selected, phone, busy, onSelect }: { even
     : <div className={className}>{content}</div>;
 }
 
-/** Explicit selection reveals linked rows; manual paging anchors later live pages by row id. */
+/** Chronological pages follow Requests; manual paging anchors older live pages by row id. */
 export function ActivityPanel({ activity, historical, loading, onRefresh, selection, sessionId, historyEnabled = false }: {
   activity: ActivityFeed; historical: boolean; loading: boolean; onRefresh: () => void; selection: SessionRequestSelection; sessionId: string; historyEnabled?: boolean;
 }) {
   const [scope, setScope] = useState<Scope>("all");
-  const [paging, setPaging] = useState({ scope, offset: 0, anchor: null as string | null });
+  const [paging, setPaging] = useState({ scope, offset: null as number | null, anchor: null as string | null });
   const { selected, phone, navigation } = selection;
   const [handledNavigation, setHandledNavigation] = useState(navigation);
   const navigating = navigation !== handledNavigation && navigation?.id === selected?.id;
+  const chronologicalItems = useMemo(() => [...activity.items].reverse(), [activity.items]);
   const scopedItems = useMemo(() => {
     const primary = selection.agents.find((agent) => agent.id === "primary")?.label ?? "Primary agent";
     const children = new Set(selection.agents.filter((agent) => agent.id !== "primary").map((agent) => agent.label));
-    return activity.items.filter((event) => scope === "all" || (scope === "primary" ? event.actor === primary : children.has(event.actor)));
-  }, [activity.items, scope, selection.agents]);
+    return chronologicalItems.filter((event) => scope === "all" || (scope === "primary" ? event.actor === primary : children.has(event.actor)));
+  }, [chronologicalItems, scope, selection.agents]);
   const revealAll = navigating && (historyEnabled
     ? (scope === "primary" && selected?.agentId !== "primary") || (scope === "subagents" && selected?.agentId === "primary")
     : !scopedItems.some((event) => event.requestId === selected?.id) && activity.items.some((event) => event.requestId === selected?.id));
   const activeScope = revealAll ? "all" : scope;
-  const items = revealAll ? activity.items : scopedItems;
+  const items = revealAll ? chronologicalItems : scopedItems;
   const history = useActivityHistory({ enabled: historyEnabled, sessionId, scope: activeScope, filterRequestId: null, navigation });
-  const anchorIndex = !historical && paging.offset > 0 && paging.anchor ? items.findIndex((event) => event.id === paging.anchor) : -1;
-  let offset = paging.scope !== activeScope ? 0 : Math.max(0, Math.min(anchorIndex >= 0 ? anchorIndex : paging.offset, Math.max(0, items.length - 1)));
+  const latestOffset = Math.floor(Math.max(0, items.length - 1) / PAGE_SIZE) * PAGE_SIZE;
+  const anchorIndex = !historical && paging.anchor ? items.findIndex((event) => event.id === paging.anchor) : -1;
+  let offset = paging.scope !== activeScope || paging.offset === null ? latestOffset : Math.max(0, Math.min(anchorIndex >= 0 ? anchorIndex : paging.offset, latestOffset));
   if (navigation !== handledNavigation) {
     setHandledNavigation(navigation);
     if (navigating) {
@@ -95,7 +97,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
       if (index >= 0 && !items.slice(offset, offset + PAGE_SIZE).some((event) => event.requestId === selected?.id)) {
         offset = Math.floor(index / PAGE_SIZE) * PAGE_SIZE;
       }
-      setPaging({ scope: activeScope, offset, anchor: items[offset]?.id ?? null });
+      setPaging({ scope: activeScope, offset: navigation?.followLatest ? null : offset, anchor: navigation?.followLatest ? null : items[offset]?.id ?? null });
     }
   }
   if (historyEnabled) offset = history.page?.offset ?? 0;
@@ -107,7 +109,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
   const goToPage = (value: number) => {
     if (historyEnabled) return history.goToPage(Math.max(1, Math.min(value, pages)));
     const start = (Math.max(1, Math.min(value, pages)) - 1) * PAGE_SIZE;
-    setPaging({ scope, offset: start, anchor: items[start]?.id ?? null });
+    setPaging({ scope, offset: start === latestOffset ? null : start, anchor: start === latestOffset ? null : items[start]?.id ?? null });
   };
   const requestRows = new Map(selection.allRows.map((row) => [row.id, row]));
   for (const row of selection.rows) requestRows.set(row.id, row);
@@ -122,7 +124,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
   return <section className="panel activityPanel" aria-label="Activity">
     <header className="activityPanelHeader">
       <div><h2>Activity</h2><p>{historyEnabled ? total.toLocaleString() : activity.total.toLocaleString()} {(historyEnabled ? total : activity.total) === 1 ? "event" : "events"}{!historyEnabled && <> · {activity.toolCalls.toLocaleString()} tool calls · {activity.byKind.length} kinds</>}{selected && <> · request <span className="activitySelectedNumber">{selectedNumber}</span> {selectionStatus}{historyEnabled && history.linkedCount !== null && <> · {history.linkedCount} linked {history.linkedCount === 1 ? "event" : "events"}</>}{!historyEnabled && !highlightVisible && highlightedPage !== null && <> · on <button className="commandTextLink" type="button" onClick={() => goToPage(highlightedPage)}>page {highlightedPage}</button></>}</>}</p></div>
-      <div className="activityControls"><div className="commandSegmented" role="group" aria-label="Activity agent scope">{([["all", "All agents"], ["primary", "Primary"], ["subagents", "Subagents"]] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setPaging({ scope: value, offset: 0, anchor: null }); }}>{label}</button>)}</div><button className="commandQuietAction" type="button" onClick={() => { onRefresh(); history.refresh(); }} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
+      <div className="activityControls"><div className="commandSegmented" role="group" aria-label="Activity agent scope">{([["all", "All agents"], ["primary", "Primary"], ["subagents", "Subagents"]] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setPaging({ scope: value, offset: null, anchor: null }); }}>{label}</button>)}</div><button className="commandQuietAction" type="button" onClick={() => { onRefresh(); history.refresh(); }} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
     </header>
     {historyEnabled && history.newEvents > 0 && <div className="activityLinkNote"><button type="button" className="commandTextLink" onClick={history.latest}>{history.newEvents} new events · View latest</button></div>}
     <div className="activityLayout">

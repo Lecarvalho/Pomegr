@@ -120,14 +120,16 @@ export class SessionHistoryStore {
     if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(query.kind === "requests" ? { overview: null } : {}) };
     const record = await this.#load(sessionId); const kind = query.kind === "requests" ? "requests" : "activity";
     if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
-    let rows = record[kind]; const scope = query.scope || "all";
+    let rows = kind === "activity" ? [...record.activity].reverse() : record[kind]; const scope = query.scope || "all";
     if (scope === "primary") rows = rows.filter((item) => item.agentId === "primary");
     else if (scope === "subagents") rows = rows.filter((item) => item.agentId && item.agentId !== "primary");
     else if (scope !== "all" && safeAgent(scope)) rows = rows.filter((item) => item.agentId === scope);
     if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) rows = rows.filter((item) => item.requestId === query.filterRequestId);
     const total = rows.length; const maximum = kind === "activity" ? 8 : 60;
     const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
-    let offset = query.offset === "latest" ? Math.max(0, total - limit)
+    let offset = kind === "activity" && (query.offset === "latest" || query.offset === "last")
+      ? Math.floor(Math.max(0, total - 1) / limit) * limit
+      : query.offset === "latest" ? Math.max(0, total - limit)
       : query.offset === "last" ? Math.max(0, total - limit)
         : Math.max(0, Number.parseInt(query.offset, 10) || 0);
     const target = kind === "requests" ? query.requestId : (query.requestId || query.anchor);
@@ -272,9 +274,12 @@ export class SessionHistoryStore {
     if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) return null;
     const scope = query.scope || "all";
     let refs = index[kind].filter((item) => isObject(item) && typeof item.id === "string" && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot) && scopeMatches(item, scope));
+    if (kind === "activity") refs = [...refs].reverse();
     if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) refs = refs.filter((item) => item.requestId === query.filterRequestId);
     const total = refs.length; const maximum = kind === "activity" ? 8 : 60; const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
-    let offset = query.offset === "latest" || query.offset === "last" ? Math.max(0, total - limit) : Math.max(0, Number.parseInt(query.offset, 10) || 0);
+    let offset = kind === "activity" && (query.offset === "latest" || query.offset === "last")
+      ? Math.floor(Math.max(0, total - 1) / limit) * limit
+      : query.offset === "latest" || query.offset === "last" ? Math.max(0, total - limit) : Math.max(0, Number.parseInt(query.offset, 10) || 0);
     const target = kind === "requests" ? query.requestId : (query.requestId || query.anchor);
     if (target) { const position = refs.findIndex((item) => item.id === target || (kind === "activity" && item.requestId === target));
       if (position >= 0 && kind === "activity" && query.anchor) offset = position;

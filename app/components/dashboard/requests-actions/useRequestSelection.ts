@@ -13,20 +13,19 @@ function sameRows(left: RequestRow[], right: RequestRow[]) {
 
 /**
  * Keep retained evidence anchored by identity when the bounded feed rolls over.
- * An explicit target is a locate action and remains pinned; atLatest only lets
- * direct selection or stepping onto the newest row resume live following.
+ * Selecting the newest request on the latest live page resumes following,
+ * regardless of whether selection came from a bar, a row link, or a step.
  */
 export function useRequestSelection(
   rows: RequestRow[],
   scope: string,
   size: number,
   historical: boolean,
-  targetId: string | null = null,
   atLatest = true,
 ) {
   const [stored, setStored] = useState(() => newest(rows, scope, size, historical || !atLatest));
   // A fresh target also records reselecting the same bar after paging elsewhere.
-  const [navigation, setNavigation] = useState<{ id: string } | null>(null);
+  const [navigation, setNavigation] = useState<{ id: string; followLatest: boolean } | null>(null);
   let current = stored;
   if ((!sameRows(stored.rows, rows)) || stored.scope !== scope || stored.size !== size) {
     const follow = atLatest && !historical && !stored.pinned && stored.selectedId === stored.rows.at(-1)?.id && stored.start + stored.size - 1 >= stored.rows.length;
@@ -42,16 +41,11 @@ export function useRequestSelection(
     }
     setStored(current);
   }
-  const target = targetId ? rows.find((row) => row.id === targetId) : null;
-  if (target && (current.selectedId !== target.id || !current.pinned)) {
-    current = { ...current, selectedId: target.id, start: windowFor(rows, target.ordinal, size).start, pinned: true };
-    setStored(current);
-  }
   const selected = rows.find((row) => row.id === current.selectedId) ?? null;
   const end = Math.min(rows.length, current.start + size - 1);
   const select = (row: RequestRow, center = false) => {
-    setNavigation({ id: row.id });
     const followsLatest = !historical && atLatest && row.id === rows.at(-1)?.id;
+    setNavigation({ id: row.id, followLatest: followsLatest });
     setStored({ ...current, pinned: !followsLatest, selectedId: row.id, start: center ? windowFor(rows, row.ordinal, size).start : current.start });
   };
   const moveWindow = (start: number) => setStored({ ...current, start: Math.max(1, Math.min(start, Math.max(1, rows.length - size + 1))) });
@@ -59,13 +53,14 @@ export function useRequestSelection(
     const ordinal = Math.max(1, Math.min(rows.length, (selected?.ordinal ?? rows.length) + delta));
     const row = rows[ordinal - 1];
     if (!row) return;
-    setNavigation({ id: row.id });
     const followsLatest = !historical && atLatest && row.id === rows.at(-1)?.id;
+    setNavigation({ id: row.id, followLatest: followsLatest });
     setStored({ ...current, pinned: !followsLatest, selectedId: row.id, start: ordinal < current.start ? ordinal : ordinal > end ? Math.max(1, ordinal - size + 1) : current.start });
   };
   const selectScope = (nextRows: RequestRow[], nextScope: string, row: RequestRow) => {
-    setNavigation({ id: row.id });
-    setStored({ rows: nextRows, scope: nextScope, size, selectedId: row.id, start: windowFor(nextRows, row.ordinal, size).start, pinned: true });
+    const followsLatest = !historical && atLatest && row.id === nextRows.at(-1)?.id;
+    setNavigation({ id: row.id, followLatest: followsLatest });
+    setStored({ rows: nextRows, scope: nextScope, size, selectedId: row.id, start: windowFor(nextRows, row.ordinal, size).start, pinned: !followsLatest });
   };
   return { selected, navigation, pinned: current.pinned, start: current.start, end, select, selectScope, moveWindow, step };
 }

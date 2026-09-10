@@ -126,6 +126,12 @@ eight rows; request windows contain at most 60 (20 on phones). Agent scope,
 request lookup, request-only filtering, and an opaque event anchor operate on
 committed indexes. GETs never acquire or normalize provider records.
 
+Activity rows and offsets are chronological, earliest first, matching Requests.
+Page 1 contains the earliest scoped events. Activity `latest` and `last` select
+the aligned final page, which may contain fewer than eight rows. Serving reverses
+the committed descending activity index before applying offsets and lookups;
+existing persisted generations remain usable without rewriting them in a GET.
+
 Request pages also carry a full scoped minimap `overview` from the same committed
 revision. Each chronological tuple contains only that request's non-negative safe
 integer uncached-input, cache-write, cache-read, and output counts. These are
@@ -167,10 +173,13 @@ loaded chart window. User inputs and system events without an established
 request relationship remain unlinked; timing alone never establishes one.
 
 F keeps at most the current activity page and its adjacent pages, invalidating
-neighbors when history revision or scope changes. It renders eight rows, keeps
+neighbors when history revision or scope changes. It renders up to eight rows, keeps
 existing content during a same-scope load, ignores stale session responses, and
-anchors older live pages to their first visible event. New events offer View
-latest. Explicit request selection reveals linked rows, and an activity-row
+anchors older live pages, including page 1, to their first visible event. The feed
+opens at the latest page and follows its advancing page boundary on refresh.
+Manual older-page navigation or older-request selection anchors the view;
+new events offer View latest, which resumes following the final page. Explicit
+request selection reveals linked rows, and an activity-row
 selection loads an absent request window. History readiness is separate from
 the summary's activity/context evidence readiness.
 Request selection first checks the current and adjacent committed activity pages;
@@ -223,11 +232,13 @@ request page or available preview can render independently of the broader
 acquisition behavior.
 
 Selecting the newest request on the latest scoped live page resumes automatic
-selection and the three-second history refresh. Selecting older requests, including
-the last bar on an older page, keeps selection pinned. Keyboard steps follow the
-same rule; historical sessions never follow live appends. Explicit Activity and
-cache-evidence locate actions remain pinned by identity, even when the located
-request is currently newest.
+selection and the three-second history refresh. Activity row links, request bars,
+and keyboard steps use the same selection rule, including after a linked request
+window loads. Selecting older requests, including the last bar on an older page,
+keeps selection pinned; historical sessions never follow live appends. Selection
+navigation carries its follow-latest intent to Activity, so either surface resumes
+the feed's latest-page polling. Manual Activity paging stays independent between
+selection actions.
 
 Codex U2 correlates rollout activity before global sorting, within each normalized
 actor's source sequence. Private parser callbacks identify normalized calls,

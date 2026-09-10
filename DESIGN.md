@@ -288,7 +288,11 @@ raised tone for the selected request, and error-soft tone for failed rows.
 Request numbers use the text-link treatment; the selected request number is the
 only brand accent in the feed. Missing links and durations use an em dash in
 desktop columns; phone rows omit absent metadata and its separators.
-Eight-row paging uses secondary Previous, numbered, and Next controls. Only one
+Rows and eight-row pages run from earliest to latest, matching Requests: page 1
+contains the first events, Previous moves earlier, and Next moves later. The feed
+opens on the final page and follows new arrivals there until an older request
+selection anchors it or the user browses an older page. Paging uses secondary
+Previous, numbered, and Next controls. Only one
 activity page is displayed; the current page and its two neighbors are cached.
 Request numbers are stable session labels, independent of page and agent scope.
 Selecting a request reveals its activity page; selecting a linked activity row
@@ -387,8 +391,9 @@ Before full history arrives, render available recent request snapshots immediate
 using observation times instead of stable request numbers. Explain the preview in
 the retention line and defer the full-history minimap until its page is ready.
 Keep this preview visible through loading and retries. Clicking or stepping to the
-newest bar on the latest live page resumes following; older-page selections and
-explicit Activity links remain anchored.
+newest bar or its linked Activity row on the latest live page resumes following
+in both panels, including after loading a linked request window. Older selections
+remain anchored, and historical sessions never follow live appends.
 The compact detail region aligns request facts with five ranked rows:
 request number, neutral bar, and request-local value. Its heading identifies the
 scope, with a quiet button cycling uncached input (default), output, cache write,

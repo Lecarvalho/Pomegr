@@ -139,8 +139,13 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const scopeKey = (value: string) => `${sessionId}:${value}`;
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate.id : null;
   const atLatest = !page || page.offset + page.items.length >= page.total;
-  const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, locateTarget, atLatest);
-  if (pendingLocate && locateTarget && rows.some((row) => row.id === locateTarget)) setPendingLocate(null);
+  const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, atLatest);
+  // A summary preview cannot establish whether the linked request is newest.
+  const locatedRow = locateTarget && page ? rows.find((row) => row.id === locateTarget) : null;
+  if (locatedRow) {
+    selection.select(locatedRow, true);
+    setPendingLocate(null);
+  }
   if (pendingPageSelection?.key === key && page && page.offset === pendingPageSelection.offset) {
     // Window navigation accepts the reconciled chart selection; keyboard stepping has an explicit target.
     const target = pendingPageSelection.index === null ? selection.selected : rows[pendingPageSelection.index - page.offset];
@@ -167,13 +172,14 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     setHistory((current) => ({ ...current, loading: false, retryable: false, unavailable: false, requestedOffset: undefined }));
   };
   const select = (row: RequestRow, center = false) => {
+    if (historyEnabled && !page) return locate(row.id);
     cancelHistoryNavigation();
     selection.select(row, center);
   };
   const locate = (id: string) => {
     cancelHistoryNavigation();
     const row = rows.find((item) => item.id === id);
-    if (row) return selection.selectScope(rows, scopeKey(resolvedScope), row);
+    if (row && (!historyEnabled || page)) return selection.select(row, true);
     const allRow = !historyEnabled ? scopedRows(requestSnapshots, contextBoundaries, "all", cacheEvents, cacheReadDrops).find((item) => item.id === id) : null;
     if (allRow) {
       setScope("all");

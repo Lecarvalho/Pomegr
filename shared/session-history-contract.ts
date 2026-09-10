@@ -12,6 +12,7 @@ type HistoryPageBase = {
   offset: number;
   linkedCount: number;
 };
+/** Oldest-first rows and offsets; latest selects the aligned final activity page. */
 export type ActivityHistoryPage = HistoryPageBase & { kind: "activity"; items: HistoryActivity[] };
 export type RequestHistoryPage = HistoryPageBase & {
   kind: "requests"; items: HistoryRequest[];

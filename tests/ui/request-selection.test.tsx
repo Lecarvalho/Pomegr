@@ -28,8 +28,8 @@ function rows(count: number, first = 1): RequestRow[] {
   });
 }
 
-function useSelection(items: RequestRow[], historical = false, targetId: string | null = null, atLatest = true) {
-  return useRequestSelection(items, "session:all", 3, historical, targetId, atLatest);
+function useSelection(items: RequestRow[], historical = false, atLatest = true) {
+  return useRequestSelection(items, "session:all", 3, historical, atLatest);
 }
 
 describe("useRequestSelection live following", () => {
@@ -42,7 +42,7 @@ describe("useRequestSelection live following", () => {
     act(() => result.current.select(initial[1]));
     expect(result.current.selected?.id).toBe("request-2");
     expect(result.current.pinned).toBe(true);
-    expect(result.current.navigation).toEqual({ id: "request-2" });
+    expect(result.current.navigation).toEqual({ id: "request-2", followLatest: false });
 
     const withFour = rows(4);
     rerender({ items: withFour });
@@ -52,7 +52,7 @@ describe("useRequestSelection live following", () => {
     act(() => result.current.select(withFour[3], true));
     expect(result.current.selected?.id).toBe("request-4");
     expect(result.current.pinned).toBe(false);
-    expect(result.current.navigation).toEqual({ id: "request-4" });
+    expect(result.current.navigation).toEqual({ id: "request-4", followLatest: true });
 
     rerender({ items: rows(5) });
     expect(result.current.selected?.id).toBe("request-5");
@@ -68,17 +68,17 @@ describe("useRequestSelection live following", () => {
     act(() => result.current.step(-1));
     expect(result.current.selected?.id).toBe("request-4");
     expect(result.current.pinned).toBe(true);
-    expect(result.current.navigation).toEqual({ id: "request-4" });
+    expect(result.current.navigation).toEqual({ id: "request-4", followLatest: false });
 
     act(() => result.current.step(1));
     expect(result.current.selected?.id).toBe("request-5");
     expect(result.current.pinned).toBe(false);
-    expect(result.current.navigation).toEqual({ id: "request-5" });
+    expect(result.current.navigation).toEqual({ id: "request-5", followLatest: true });
   });
 
   it("pins the initial and selected last row on an older page", () => {
     const older = rows(3, 4);
-    const { result } = renderHook(() => useSelection(older, false, null, false));
+    const { result } = renderHook(() => useSelection(older, false, false));
     expect(result.current.selected?.id).toBe("request-6");
     expect(result.current.pinned).toBe(true);
 
@@ -102,10 +102,13 @@ describe("useRequestSelection live following", () => {
     expect(result.current.pinned).toBe(true);
   });
 
-  it("keeps an explicit newest target pinned even on the latest page", () => {
+  it("follows the newest request when a row link reveals another scope", () => {
     const initial = rows(3);
-    const { result } = renderHook(() => useSelection(initial, false, "request-3", true));
-    expect(result.current.selected?.id).toBe("request-3");
-    expect(result.current.pinned).toBe(true);
+    const { result, rerender } = renderHook(({ items }) => useRequestSelection(items, "session:all", 3, false), { initialProps: { items: initial } });
+    act(() => result.current.selectScope(initial, "session:all", initial[2]));
+    expect(result.current.navigation).toEqual({ id: "request-3", followLatest: true });
+    expect(result.current.pinned).toBe(false);
+    rerender({ items: rows(4) });
+    expect(result.current.selected?.id).toBe("request-4");
   });
 });

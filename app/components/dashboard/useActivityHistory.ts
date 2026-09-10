@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActivityHistoryPage } from "../../../shared/session-history-contract";
 
 export const ACTIVITY_PAGE_SIZE = 8;
-type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean };
+type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean; followLatest?: boolean };
+type PageOffset = number | "latest";
 
 /** Keep just the current page and its two neighbors; background arrivals preserve the anchor. */
 export function useActivityHistory({ enabled, sessionId, scope, filterRequestId, navigation }: {
-  enabled: boolean; sessionId: string; scope: string; filterRequestId: string | null; navigation: { id: string } | null;
+  enabled: boolean; sessionId: string; scope: string; filterRequestId: string | null; navigation: { id: string; followLatest?: boolean } | null;
 }) {
   const [state, setState] = useState<{ key: string; page: ActivityHistoryPage | null; loading: boolean; failed: boolean; newEvents: number; linkedCount: number | null }>({ key: "", page: null, loading: false, failed: false, newEvents: 0, linkedCount: null });
   const key = `${sessionId}:${scope}:${filterRequestId ?? ""}`;
@@ -15,11 +16,12 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   const sequence = useRef(0);
   const controllers = useRef(new Set<AbortController>());
   const baseline = useRef(0);
+  const followingLatest = useRef(true);
   const lastNavigation = useRef(navigation);
-  const pending = useRef<{ offset: number; options: LoadOptions } | null>(null);
+  const pending = useRef<{ offset: PageOffset; options: LoadOptions } | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async function loadPage(offset: number, options: LoadOptions = {}): Promise<void> {
+  const load = useCallback(async function loadPage(offset: PageOffset, options: LoadOptions = {}): Promise<void> {
     if (!enabled) return;
     if (options.requestId && pending.current?.options.requestId === options.requestId && controllers.current.size) return;
     if (retryTimer.current) clearTimeout(retryTimer.current);
@@ -28,7 +30,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     for (const controller of controllers.current) controller.abort();
     controllers.current.clear();
     pending.current = { offset, options };
-    const fetchPage = async (start: number, extra: typeof options = {}): Promise<ActivityHistoryPage> => {
+    const fetchPage = async (start: PageOffset, extra: typeof options = {}): Promise<ActivityHistoryPage> => {
       const params = new URLSearchParams({ sessionId, kind: "activity", scope, offset: String(start), limit: String(ACTIVITY_PAGE_SIZE) });
       if (filterRequestId) params.set("filterRequestId", filterRequestId);
       if (extra.requestId) params.set("requestId", extra.requestId);
@@ -47,7 +49,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     const cached = !options.anchor && !options.refresh
       ? options.requestId
         ? [current.current, ...cache.current.values()].find((page) => page?.items.some((item) => item.requestId === options.requestId))
-        : cache.current.get(offset)
+        : typeof offset === "number" ? cache.current.get(offset) : null
       : null;
     if (!cached) setState((previous) => ({ key, page: previous.key === key ? previous.page : null, newEvents: previous.key === key ? previous.newEvents : 0, linkedCount: options.requestId ? null : previous.linkedCount, loading: !options.silent, failed: false }));
     try {
@@ -62,7 +64,9 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       }
       pending.current = null;
       if (current.current?.revision !== page.revision) cache.current.clear();
-      if (!current.current || page.offset === 0) baseline.current = page.total;
+      const atLatest = page.offset + ACTIVITY_PAGE_SIZE >= page.total;
+      if (!options.refresh) followingLatest.current = options.requestId ? options.followLatest === true : atLatest;
+      if (!current.current || atLatest) baseline.current = page.total;
       current.current = page;
       cache.current.set(page.offset, page);
       const neighbors = [page.offset - ACTIVITY_PAGE_SIZE, page.offset, page.offset + ACTIVITY_PAGE_SIZE].filter((start) => start >= 0 && start < page.total);
@@ -81,9 +85,10 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     current.current = null;
     cache.current.clear();
     baseline.current = 0;
+    followingLatest.current = true;
     const target = navigation !== lastNavigation.current ? navigation : null;
     if (target) lastNavigation.current = navigation;
-    void load(0, target ? { requestId: target.id } : {});
+    void load(target ? 0 : "latest", target ? { requestId: target.id, followLatest: target.followLatest } : {});
     const activeControllers = controllers.current;
     return () => {
       sequence.current += 1;
@@ -100,7 +105,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   useEffect(() => {
     if (navigation === lastNavigation.current) return;
     lastNavigation.current = navigation;
-    if (navigation) void load(0, { requestId: navigation.id });
+    if (navigation) void load(0, { requestId: navigation.id, followLatest: navigation.followLatest });
   }, [navigation, load]);
 
   useEffect(() => {
@@ -109,7 +114,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       if (controllers.current.size || retryTimer.current) return;
       if (pending.current) { void load(pending.current.offset, pending.current.options); return; }
       const page = current.current;
-      void load(page?.offset ?? 0, { refresh: true, silent: Boolean(page), anchor: page && page.offset > 0 ? page.items[0]?.id : undefined });
+      void load(followingLatest.current ? "latest" : page?.offset ?? 0, { refresh: true, silent: Boolean(page), anchor: page && !followingLatest.current ? page.items[0]?.id : undefined });
     }, 10_000);
     return () => clearInterval(timer);
   }, [enabled, load]);
@@ -123,7 +128,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     linkedCount: state.key === key ? state.linkedCount : null,
     goToPage: (number: number) => void load(Math.max(0, number - 1) * ACTIVITY_PAGE_SIZE),
     locate: (id: string) => void load(0, { requestId: id }),
-    refresh: () => void load(page?.offset ?? 0, { refresh: true, anchor: page && page.offset > 0 ? page.items[0]?.id : undefined }),
-    latest: () => void load(0, { refresh: true }),
+    refresh: () => void load(followingLatest.current ? "latest" : page?.offset ?? 0, { refresh: true, anchor: page && !followingLatest.current ? page.items[0]?.id : undefined }),
+    latest: () => void load("latest"),
   };
 }

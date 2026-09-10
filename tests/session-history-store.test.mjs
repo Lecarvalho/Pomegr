@@ -46,6 +46,36 @@ test("request lookup and activity anchor page bounded complete retained history"
   assert.equal(activityPage.linkedCount, 1);
 });
 
+for (const disk of [false, true]) {
+  test(`activity history reads chronologically with stable latest and anchor pages (${disk ? "disk restore" : "memory"})`, async (t) => {
+    const directory = disk ? await mkdtemp(path.join(os.tmpdir(), "pomegr-history-activity-order-")) : null;
+    if (directory) t.after(() => rm(directory, { recursive: true, force: true }));
+    const sessionId = "codex:activity-order";
+    const requests = Array.from({ length: 20 }, (_, index) => request(index.toString(16).padStart(16, "0"), `2026-09-10T00:${String(index).padStart(2, "0")}:00Z`));
+    const activities = requests.map((item, index) => activity(`event-${String(index).padStart(2, "0")}`, `2026-09-10T01:${String(index).padStart(2, "0")}:00Z`, item.id));
+    const store = new SessionHistoryStore({ directory });
+    await store.publish(sessionId, { requests, activity: activities.slice(0, 16), complete: true });
+    const reader = disk ? new SessionHistoryStore({ directory }) : store;
+
+    const first = await reader.read(sessionId, { kind: "activity", limit: "8" });
+    assert.deepEqual(first.items.map((item) => item.id), activities.slice(0, 8).map((item) => item.id));
+    const located = await reader.read(sessionId, { kind: "activity", requestId: requests[10].id, limit: "8" });
+    assert.equal(located.offset, 8);
+    assert.ok(located.items.some((item) => item.requestId === requests[10].id));
+
+    await store.publish(sessionId, { requests, activity: activities, complete: true });
+    const latest = await reader.read(sessionId, { kind: "activity", offset: "latest", limit: "8" });
+    const last = await reader.read(sessionId, { kind: "activity", offset: "last", limit: "8" });
+    assert.equal(latest.offset, 16);
+    assert.deepEqual(latest.items.map((item) => item.id), activities.slice(16).map((item) => item.id));
+    assert.deepEqual(last, latest);
+
+    const anchored = await reader.read(sessionId, { kind: "activity", anchor: activities[8].id, limit: "8" });
+    assert.equal(anchored.offset, 8);
+    assert.deepEqual(anchored.items.map((item) => item.id), activities.slice(8, 16).map((item) => item.id));
+  });
+}
+
 test("request prefetch pages can omit the full overview while activity and default reads retain their shape", async () => {
   const store = new SessionHistoryStore();
   const item = request("dddddddddddddddd", "2026-09-01T00:00:00Z");

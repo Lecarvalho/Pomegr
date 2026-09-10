@@ -27,7 +27,7 @@ describe("work-kind icons", () => {
     };
     const { container, getByText } = render(<ActivityWithSelection activity={activity} historical={historical} />);
     expect(getByText("Activity")).toBeInTheDocument();
-    expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Summary updated", "Assistant replied"]);
+    expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Assistant replied", "Summary updated"]);
     expect([...container.querySelectorAll(".target")].map((node) => node.textContent)).toEqual(["—", "—"]);
     expect(getByText("System")).toBeInTheDocument();
     expect(getByText("Primary agent")).toBeInTheDocument();
