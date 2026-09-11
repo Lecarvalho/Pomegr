@@ -16,8 +16,8 @@ export const PIPELINE_TRACE_SCENARIOS = Object.freeze([
 ]);
 export const PIPELINE_TRACE_STAGES = Object.freeze([
   "source_notification", "catalog_discovery", "source_queue", "source_preparation", "acquisition_normalization",
-  "catalog_commit_wait", "catalog_projection", "session_commit_wait", "session_derivation", "normalized_store_commit",
-  "candidate_to_commit", "history_read", "history_publish", "history_contribution", "checkpoint", "revision_notify",
+  "catalog_commit_wait", "catalog_projection", "session_commit_wait", "session_derivation", "session_projection", "session_capabilities", "session_state_projection", "normalized_store_commit",
+  "candidate_to_commit", "history_read", "history_publish", "history_contribution", "checkpoint", "checkpoint_validation", "checkpoint_privacy", "checkpoint_collection", "checkpoint_candidate", "checkpoint_size", "checkpoint_storage", "revision_notify",
   "cache_serve", "renderer_event", "renderer_fetch", "renderer_react_commit", "renderer_next_frame", "calibration",
   "benchmark_source", "visible_row",
 ]);

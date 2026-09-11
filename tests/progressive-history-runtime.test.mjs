@@ -9,6 +9,47 @@ import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shar
 const evidence = JSON.parse(await readFile(new URL("./fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8"));
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+test("repository inventory association does not delay a normalized live session", async (context) => {
+  let releaseAssociation;
+  const associationGate = new Promise((resolve) => { releaseAssociation = resolve; });
+  const provider = {
+    id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities(),
+    homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } },
+    async readSessionHistory() { return { complete: true, requests: [], activity: [] }; },
+  };
+  const repositoryInventory = {
+    ready: Promise.resolve(), async reconcile() {}, startPluginObservation() {}, async stopPluginObservation() {},
+    subscribe() { return () => {}; }, readRepositories() { return null; },
+    async associateSession() { await associationGate; return {}; },
+    readRevision() { return null; }, capture() { return null; }, refreshPluginSetup() { return null; },
+    readPluginSetup() { return null; }, preparePluginAction() { return null; },
+  };
+  const registry = {
+    providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
+    async resolveCapabilities() { return provider.capabilities; }, async readUsageLimits() { return createEmptyUsageLimits(); },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; }, unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      publisher.publishCatalog("codex", [{ localId: evidence.localId, title: evidence.session.title, project: evidence.session.project,
+        updatedAt: evidence.session.updatedAt, isLive: true, needsInput: false, activityStatus: "working" }]);
+      publisher.publishSession("codex", evidence.localId, evidence);
+      return { async hydrate() { return true; }, async stop() {} };
+    },
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry, checkpointStore: false, repositoryInventory,
+    observationCommitDelayMs: 0, scheduleObservation: (task) => setTimeout(task, 0),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(async () => { releaseAssociation(); await runtime.stopObservation(); });
+  await runtime.startObservation();
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (runtime.serveSession(`codex:${evidence.localId}`).status === "ready") break;
+    await pause(2);
+  }
+  assert.equal(runtime.serveSession(`codex:${evidence.localId}`).status, "ready");
+  releaseAssociation();
+});
+
 test("source-complete Activity commits while the unrelated session derivation is held", async (context) => {
   let releaseDerivation;
   let enteredDerivation;
@@ -42,13 +83,13 @@ test("source-complete Activity commits while the unrelated session derivation is
   const repositoryInventory = {
     ready: Promise.resolve(), async reconcile() {}, startPluginObservation() {}, async stopPluginObservation() {},
     subscribe() { return () => {}; }, readRepositories() { return null; },
-    async associateSession() { enteredDerivation(); await derivationGate; return {}; },
+    async associateSession() { return {}; },
     readRevision() { return null; }, capture() { return null; }, refreshPluginSetup() { return null; },
     readPluginSetup() { return null; }, preparePluginAction() { return null; },
   };
   const registry = {
     providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
-    async resolveCapabilities() { return provider.capabilities; }, async readUsageLimits() { return createEmptyUsageLimits(); },
+    async resolveCapabilities() { enteredDerivation(); await derivationGate; return provider.capabilities; }, async readUsageLimits() { return createEmptyUsageLimits(); },
     async inspectSessions() { return { sessions: [], resourceTargets: [] }; }, unavailableMessage: () => "Unavailable",
     async startObservers(publisher) {
       observerPublisher = publisher;

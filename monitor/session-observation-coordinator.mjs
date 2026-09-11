@@ -79,6 +79,16 @@ function downgradeRestoredLifecycle(record) {
   };
 }
 
+function checkpointFailureStage(error) {
+  const message = typeof error?.message === "string" ? error.message : "";
+  if (message === "checkpoint exceeds byte budget") return "checkpoint_size";
+  if (message === "checkpoint privacy validation failed") return "checkpoint_privacy";
+  if (message === "checkpoint collection is invalid") return "checkpoint_collection";
+  if (message === "checkpoint candidate was rejected") return "checkpoint_candidate";
+  if (message.startsWith("checkpoint ")) return "checkpoint_validation";
+  return "checkpoint_storage";
+}
+
 /** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
 export function createSessionObservationCoordinator(options = {}) {
   const { registry, store, deriveSession } = options;
@@ -111,6 +121,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const pendingSessions = new Map();
   const scheduledSessions = new Map();
   const sessionRetryAttempts = new Map();
+  const deferredProjectionRefreshes = new Set();
   const checkpointTimers = new Map();
   const restoredActivitySessions = new Set();
   const subscribers = new Set();
@@ -161,7 +172,10 @@ export function createSessionObservationCoordinator(options = {}) {
       const span = trace?.begin({ stage: "checkpoint", domain: "persistence", scope });
       void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).then(
         () => { trace?.end(span, { outcome: "accepted" }); },
-        () => { trace?.end(span, { outcome: "failed" }); },
+        (error) => {
+          trace?.end(span, { outcome: "failed" });
+          trace?.recordDuration({ stage: checkpointFailureStage(error), domain: "persistence", durationMs: 0, outcome: "failed", scope });
+        },
       );
     }, delay);
     checkpointTimers.set(snapshot.qualifiedId, { timer, firstDirtyAt });
@@ -350,6 +364,7 @@ export function createSessionObservationCoordinator(options = {}) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
       }
+      if (deferredProjectionRefreshes.delete(qualifiedId)) refreshProjection(qualifiedId);
     } catch {
       trace?.finishFlow(flow, { outcome: "failed" });
       // D failures retain the previous committed revision. Retry this candidate
@@ -524,7 +539,10 @@ export function createSessionObservationCoordinator(options = {}) {
 
   function refreshProjection(qualifiedId) {
     if (stopped || typeof qualifiedId !== "string" || !qualifiedId) return false;
-    if (pendingSessions.has(qualifiedId)) return true;
+    if (pendingSessions.has(qualifiedId)) {
+      deferredProjectionRefreshes.add(qualifiedId);
+      return true;
+    }
     const snapshot = store.getByQualifiedId(qualifiedId);
     if (!snapshot) return false;
     const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
@@ -559,6 +577,7 @@ export function createSessionObservationCoordinator(options = {}) {
     scheduledSessions.clear();
     pendingSessions.clear();
     sessionRetryAttempts.clear();
+    deferredProjectionRefreshes.clear();
     for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
       cancel(pendingCheckpoint.timer);
       const snapshot = store.getByQualifiedId(qualifiedId);

@@ -7,9 +7,9 @@ import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { createDevelopmentTraceScopeRegistry } from "./dev-trace-scopes.mjs";
 const STAGES = Object.freeze([
   "source_notification", "catalog_discovery", "source_queue", "source_preparation", "acquisition_normalization",
-  "catalog_commit_wait", "catalog_projection", "session_commit_wait", "session_derivation",
+  "catalog_commit_wait", "catalog_projection", "session_commit_wait", "session_derivation", "session_projection", "session_capabilities", "session_state_projection",
   "normalized_store_commit", "candidate_to_commit", "history_read", "history_publish", "history_contribution",
-  "checkpoint", "revision_notify", "cache_serve",
+  "checkpoint", "checkpoint_validation", "checkpoint_privacy", "checkpoint_collection", "checkpoint_candidate", "checkpoint_size", "checkpoint_storage", "revision_notify", "cache_serve",
 ]);
 
 /** Automatic development-only file logging. Production imports none of this composition. */

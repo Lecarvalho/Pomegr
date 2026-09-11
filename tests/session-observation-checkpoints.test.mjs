@@ -67,6 +67,43 @@ test("checkpoint round-trips normalized activity duration and opaque request cor
   assert.equal(loaded.records[0].evidence.toolCalls[0].requestId, "request-0123456789abcdef");
 });
 
+test("checkpoint permits only the contract-approved numeric reasoning output field", async (t) => {
+  const checkpoints = new SessionObservationCheckpointStore({ directory: await temporaryCheckpointDirectory(t) });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  assert.ok(evidence.usageSnapshots.some((entry) => Number.isFinite(entry.reasoningOutput)));
+  await checkpoints.write({ ...snapshot("codex", evidence.localId, 9), evidence });
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  assert.deepEqual(loaded.records[0].evidence.usageSnapshots, evidence.usageSnapshots);
+});
+
+test("checkpoint permits the contract-approved diagnostic and transcript flags", async (t) => {
+  const checkpoints = new SessionObservationCheckpointStore({ directory: await temporaryCheckpointDirectory(t) });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  evidence.agents[0].transcriptAvailable = true;
+  evidence.usageSnapshots[0].cacheMissDiagnosticState = "inconclusive";
+
+  await checkpoints.write({ ...snapshot("codex", evidence.localId, 10), evidence });
+  const loaded = await checkpoints.load();
+
+  assert.equal(loaded.ignored, 0);
+  assert.equal(loaded.records[0].evidence.agents[0].transcriptAvailable, true);
+  assert.equal(loaded.records[0].evidence.usageSnapshots[0].cacheMissDiagnosticState, "inconclusive");
+});
+
+test("checkpoint accepts the provider contract's largest bounded collection", async (t) => {
+  const checkpoints = new SessionObservationCheckpointStore({ directory: await temporaryCheckpointDirectory(t) });
+  const evidence = { session: { title: "Safe normalized title" }, observations: Array.from({ length: 4_096 }, (_, index) => ({ id: `observation-${index}` })) };
+  await checkpoints.write({ ...snapshot("provider-a", "bounded-collection", 10), evidence });
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  assert.equal(loaded.records[0].evidence.observations.length, 4_096);
+});
+
 async function temporaryCheckpointDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-observation-checkpoints-"));
   t.after(async () => rm(directory, { recursive: true, force: true }));

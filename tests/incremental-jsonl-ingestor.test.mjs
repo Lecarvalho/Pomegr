@@ -31,8 +31,8 @@ test("incremental reads expose only bounded bytes and parsed-record counters whe
   const enabled = await run(true);
   assert.deepEqual(enabled.published, ["a", "b"]);
   const counters = enabled.events.filter((event) => event.ph === "C");
-  assert.equal(counters.filter((event) => event.name === "bytes").length, Math.ceil(source.length / 5));
-  assert.equal(counters.filter((event) => event.name === "records").length, 2);
+  assert.equal(counters.filter((event) => event.name === "bytes").length, 1);
+  assert.equal(counters.filter((event) => event.name === "records").length, 1);
   assert.equal(counters.filter((event) => event.name === "bytes").reduce((sum, event) => sum + event.args.value, 0), source.length);
   assert.equal(counters.filter((event) => event.name === "records").reduce((sum, event) => sum + event.args.value, 0), 2);
   assert.doesNotMatch(JSON.stringify(enabled), /synthetic|PRIVATE|path|session/i);

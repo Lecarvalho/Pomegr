@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { claudeFiveHourLimitRejections, createClaudeProvider } from "../monitor/providers/claude.mjs";
+import { safeDetail } from "../monitor/providers/claude-tool-detail.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -118,6 +119,12 @@ test("Claude adapter keeps only the first structured five-hour rejection per res
   ]]);
   assert.deepEqual(events, [{ observedAt: "2026-08-25T02:21:06.475Z", resetsAt: "2026-08-25T05:10:00.000Z" }]);
   assert.equal(JSON.stringify(events).includes("MUST_NOT_LEAK"), false);
+});
+
+test("Claude tool details remove control characters before publication", () => {
+  const detail = safeDetail("Bash", { description: "Run\u001b[2J the checks\nnext" });
+  assert.equal(detail, "Run [2J the checks next");
+  assert.doesNotMatch(detail, /[\u0000-\u001f\u007f]/u);
 });
 
 test("Claude adapter returns sanitized provider evidence without changing normalized features", async (context) => {

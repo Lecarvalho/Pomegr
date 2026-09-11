@@ -107,6 +107,8 @@ export function createObservationRuntime(options = {}) {
   const historyRefreshes = new Map();
   const historyDirty = new Set();
   const historyContributionRetries = new Map();
+  const repositoryAssociations = new Map();
+  const pendingRepositoryAssociations = new Set();
   const historyTrace = options.pipelineTrace;
   const traceScopeForSession = typeof options.traceScopeForSession === "function"
     ? options.traceScopeForSession
@@ -118,6 +120,33 @@ export function createObservationRuntime(options = {}) {
       const scope = traceScopeForSession(sessionId);
       return scope && typeof scope === "object" && !Array.isArray(scope) ? scope : null;
     } catch { return null; }
+  }
+
+  function retainRepositoryAssociation(sessionId, association) {
+    repositoryAssociations.set(sessionId, association);
+    while (repositoryAssociations.size > 128) {
+      const oldest = repositoryAssociations.keys().next().value;
+      repositoryAssociations.delete(oldest);
+    }
+  }
+
+  function associateRepositoryInBackground(candidate) {
+    const sessionId = qualifiedSessionId(candidate.providerId, candidate.localSessionId);
+    if (repositoryAssociations.has(sessionId) || pendingRepositoryAssociations.has(sessionId)) return;
+    pendingRepositoryAssociations.add(sessionId);
+    void repositoryInventory.associateSession({
+      sessionId,
+      provider: candidate.providerId,
+      startedAt: candidate.evidence.session.startedAt,
+      cwd: candidate.evidence.session.cwd,
+      previousReference: observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
+    }).then(
+      (association) => retainRepositoryAssociation(sessionId, association || null),
+      () => retainRepositoryAssociation(sessionId, null),
+    ).finally(() => {
+      pendingRepositoryAssociations.delete(sessionId);
+      observationCoordinator.refreshProjection(sessionId);
+    });
   }
 
   function retryHistoryContribution(domain, sessionId, contribution, attempt = 1) {
@@ -381,12 +410,20 @@ export function createObservationRuntime(options = {}) {
     });
   }
 
-  async function projectSelection(selection, { useObservedUsage = false } = {}) {
+  async function projectSelection(selection, { useObservedUsage = false, trace = null, scope = null } = {}) {
     const { evidence, provider, sessionId } = selection;
     const historical = evidence.historical;
-    const capabilities = typeof registry.resolveCapabilities === "function"
-      ? await registry.resolveCapabilities(provider, { historical })
-      : provider.capabilities;
+    const capabilitiesSpan = trace?.begin?.({ stage: "session_capabilities", domain: "derivation", scope });
+    let capabilities;
+    try {
+      capabilities = typeof registry.resolveCapabilities === "function"
+        ? await registry.resolveCapabilities(provider, { historical })
+        : provider.capabilities;
+      trace?.end?.(capabilitiesSpan, { outcome: "completed" });
+    } catch (error) {
+      trace?.end?.(capabilitiesSpan, { outcome: "failed" });
+      throw error;
+    }
     let repository;
     let pullRequests;
     let enqueueLiveEnrichment = null;
@@ -417,17 +454,25 @@ export function createObservationRuntime(options = {}) {
         return unavailableResourceUsage();
       }
     })();
-    const state = projectProviderSessionEvidence({
-      evidence,
-      sessionId,
-      source: provider.source,
-      capabilities,
-      repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
-      repository,
-      pullRequests,
-      usageLimits: currentUsageLimits,
-      resources,
-    });
+    const stateProjectionSpan = trace?.begin?.({ stage: "session_state_projection", domain: "derivation", scope });
+    let state;
+    try {
+      state = projectProviderSessionEvidence({
+        evidence,
+        sessionId,
+        source: provider.source,
+        capabilities,
+        repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
+        repository,
+        pullRequests,
+        usageLimits: currentUsageLimits,
+        resources,
+      });
+      trace?.end?.(stateProjectionSpan, { outcome: "completed" });
+    } catch (error) {
+      trace?.end?.(stateProjectionSpan, { outcome: "failed" });
+      throw error;
+    }
     enqueueLiveEnrichment?.();
     return state;
   }
@@ -450,19 +495,28 @@ export function createObservationRuntime(options = {}) {
     async deriveSession(candidate) {
       const provider = registry.providers?.find((entry) => entry.id === candidate.providerId);
       if (!provider) throw new TypeError("Unknown observed provider");
-      const basePublicState = await projectSelection({
-        provider,
-        evidence: candidate.evidence,
-        sessionId: qualifiedSessionId(candidate.providerId, candidate.localSessionId),
-      }, { useObservedUsage: true });
-      const association = await repositoryInventory.associateSession({
-        sessionId: qualifiedSessionId(candidate.providerId, candidate.localSessionId),
-        provider: candidate.providerId,
-        startedAt: candidate.evidence.session.startedAt,
-        cwd: candidate.evidence.session.cwd,
-        previousReference: observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
-      });
-      const publicState = basePublicState.session ? {
+      const scope = traceScopeForSession?.(qualifiedSessionId(candidate.providerId, candidate.localSessionId)) || null;
+      const projectionSpan = options.pipelineTrace?.begin?.({ stage: "session_projection", domain: "derivation", scope });
+      let basePublicState;
+      try {
+        basePublicState = await projectSelection({
+          provider,
+          evidence: candidate.evidence,
+          sessionId: qualifiedSessionId(candidate.providerId, candidate.localSessionId),
+        }, { useObservedUsage: true, trace: options.pipelineTrace, scope });
+        options.pipelineTrace?.end?.(projectionSpan, { outcome: "completed" });
+      } catch (error) {
+        options.pipelineTrace?.end?.(projectionSpan, { outcome: "failed" });
+        throw error;
+      }
+      // Repository inventory is optional local enrichment. Start its one-time
+      // association after projection and rederive when it settles; it must
+      // never hold back the already-normalized session publication.
+      const sessionId = qualifiedSessionId(candidate.providerId, candidate.localSessionId);
+      const hasAssociation = repositoryAssociations.has(sessionId);
+      const association = repositoryAssociations.get(sessionId) || null;
+      if (!hasAssociation) associateRepositoryInBackground(candidate);
+      const publicState = basePublicState.session && association ? {
         ...basePublicState,
         session: { ...basePublicState.session, ...association },
       } : basePublicState;
@@ -629,6 +683,8 @@ export function createObservationRuntime(options = {}) {
     for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
     historyContributionRetries.clear();
     historyDirty.clear();
+    repositoryAssociations.clear();
+    pendingRepositoryAssociations.clear();
     await observationCoordinator.stop();
     await Promise.allSettled([usageRefreshInFlight, resourceRefreshInFlight].filter(Boolean));
     observationStartPromise = null;

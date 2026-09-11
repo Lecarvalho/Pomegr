@@ -23,6 +23,14 @@ settled span is unfinished, not failed. `gap` records report observed writer or 
 loss with a fixed reason. Retention, malformed records, partial lines, rotation, limits, missing
 files, and gaps reduce coverage; they never prove complete session history or a cause.
 
+`session_projection` is a derivation substage for the normalized browser-safe session projection;
+it excludes optional repository association, which must never delay publication.
+Its `session_capabilities` and `session_state_projection` children distinguish capability
+resolution from deterministic projection without adding source or session identity.
+Checkpoint diagnostics classify a failed write only as validation, privacy, collection,
+candidate, size, or storage; they never record an exception message, checkpoint path, or
+session identity.
+
 Logs must never contain session IDs or selectors, source paths or fingerprints, prompts,
 responses, reasoning, transcript or tool content, commands, output, credentials,
 provider-native payloads, or raw errors. They never enter checkpoints, browser state, reports,

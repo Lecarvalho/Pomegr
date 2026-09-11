@@ -23,6 +23,14 @@ function awaySummary(timestamp = "2026-09-07T18:48:00.000Z") {
   return { type: "system", subtype: "away_summary", uuid: "PRIVATE_SUMMARY_ID", timestamp, content: "PRIVATE_SUMMARY" };
 }
 
+test("session projection never mutates retained provider activity evidence", async () => {
+  const evidence = JSON.parse(await readFile(new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8"));
+  const activity = Object.freeze({ ...evidence.activity[0] });
+  evidence.activity = [activity, ...evidence.activity.slice(1)];
+  assert.doesNotThrow(() => monitorStateFromProviderEvidence("claude", evidence));
+  assert.equal(activity.requestId, evidence.activity[0].requestId);
+});
+
 test("Claude conversation events deduplicate reply fragments and keep summary updates separate", () => {
   const reply = assistantReply("PRIVATE_MESSAGE_ID");
   const later = { ...reply, uuid: "PRIVATE_FRAGMENT_ID", timestamp: "2026-09-07T18:47:02.000Z" };

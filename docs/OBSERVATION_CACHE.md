@@ -1733,7 +1733,9 @@ error text, command, executable, credential,
 or path is persisted. Fingerprints support only comparison to a previous saved capture;
 they are neither exposed nor treated as continuous configuration-drift observation.
 
-Session association is future-only and immutable. Sessions that predate the persisted
+Session association is future-only, immutable, and background-only. The normalized session
+commits before association begins; a settled association may queue a later re-projection but
+must never delay the ready session or retry its provider observation. Sessions that predate the persisted
 feature-introduction time receive an explicit no-binding decision. A new session may bind
 once to the newest revision for the same repository/provider whose successful commit time
 is no later than the session start. A capture completed after session start never attaches
