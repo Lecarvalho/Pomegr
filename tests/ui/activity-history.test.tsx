@@ -18,6 +18,163 @@ const inputs = { enabled: true, sessionId: "claude:one", scope: "all", filterReq
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("Activity history paging", () => {
+  it("shows newly committed activity as soon as the chart observes its revision", async () => {
+    vi.useFakeTimers();
+    let total = 40;
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      return { ok: true, json: async () => page(requestedOffset(params, total), total, String(total)) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result, rerender } = renderHook(({ historyRevision }) => useActivityHistory({ ...inputs, historyRevision }), {
+      initialProps: { historyRevision: "40" },
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    total = 41;
+    rerender({ historyRevision: "41" });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.page?.offset).toBe(32);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.page?.items[0].id).toBe("event-40");
+    expect(result.current.newEvents).toBe(0);
+    const calls = fetcher.mock.calls.length;
+    rerender({ historyRevision: "41" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(fetcher).toHaveBeenCalledTimes(calls);
+  });
+
+  it("emits fixed local timings only when a committed history response mints a capture token", async () => {
+    const mark = vi.fn();
+    const clearMarks = vi.fn();
+    const posts: unknown[] = [];
+    vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(10);
+      return 1;
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === "/api/renderer-trace") {
+        posts.push(JSON.parse(String(options?.body)));
+        return { ok: true };
+      }
+      return { ok: true, headers: { get: () => "r0123456789abcdef_1" }, json: async () => page(requestedOffset(new URL(url, "http://localhost").searchParams)) };
+    }));
+    renderHook(() => useActivityHistory(inputs));
+    await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+    const records = posts.flatMap((payload) => (payload as { records: unknown[] }).records);
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: "renderer_fetch", domain: "activity", token: "r0123456789abcdef_1" }),
+      expect.objectContaining({ stage: "renderer_react_commit", domain: "activity", token: "r0123456789abcdef_1" }),
+      expect.objectContaining({ stage: "renderer_next_frame", domain: "activity", token: "r0123456789abcdef_1" }),
+    ]));
+    expect(mark).toHaveBeenCalled();
+    expect(clearMarks).toHaveBeenCalled();
+  });
+
+  it("does not mark or submit browser timing while capture is inactive", async () => {
+    const mark = vi.fn();
+    const clearMarks = vi.fn();
+    vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
+    const fetcher = vi.fn(async (url: string) => ({
+      ok: true, json: async () => page(requestedOffset(new URL(url, "http://localhost").searchParams)),
+    }));
+    vi.stubGlobal("fetch", fetcher);
+    renderHook(() => useActivityHistory(inputs));
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(fetcher.mock.calls.every(([url]) => url.startsWith("/api/session-history"))).toBe(true);
+    expect(mark).not.toHaveBeenCalled();
+    expect(clearMarks).not.toHaveBeenCalled();
+  });
+
+  it("aborts pending renderer telemetry when the history hook unmounts", async () => {
+    const mark = vi.fn();
+    const clearMarks = vi.fn();
+    let telemetrySignal: AbortSignal | undefined;
+    vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === "/api/renderer-trace") {
+        telemetrySignal = options?.signal as AbortSignal;
+        return new Promise(() => {});
+      }
+      return { ok: true, headers: { get: () => "r0123456789abcdef_1" }, json: async () => page(requestedOffset(new URL(url, "http://localhost").searchParams)) };
+    }));
+    const { unmount } = renderHook(() => useActivityHistory(inputs));
+    await waitFor(() => expect(telemetrySignal).toBeDefined());
+    unmount();
+    expect(telemetrySignal?.aborted).toBe(true);
+  });
+
+  it("refreshes live activity within three seconds when the chart revision stays pinned", async () => {
+    vi.useFakeTimers();
+    let total = 40;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      return { ok: true, json: async () => page(requestedOffset(params, total), total, String(total)) };
+    }));
+    const { result } = renderHook(() => useActivityHistory({ ...inputs, historyRevision: "40" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    total = 41;
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_999); });
+    expect(result.current.page?.total).toBe(40);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(result.current.page?.total).toBe(41);
+    expect(result.current.page?.offset).toBe(40);
+  });
+
+  it("defers a changed revision until navigation finishes, then refreshes the anchored page", async () => {
+    vi.useFakeTimers();
+    let total = 40;
+    let resolveLookup!: (value: unknown) => void;
+    let lookupSignal: AbortSignal | undefined;
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      if (params.has("requestId")) {
+        lookupSignal = options?.signal as AbortSignal;
+        return new Promise((resolve) => { resolveLookup = resolve; });
+      }
+      const offset = params.has("anchor") ? Number(params.get("anchor")!.slice(6)) : requestedOffset(params, total);
+      return { ok: true, json: async () => page(offset, total, String(total)) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result, rerender } = renderHook(({ historyRevision }) => useActivityHistory({ ...inputs, historyRevision }), {
+      initialProps: { historyRevision: "40" },
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    act(() => result.current.locate("request-0000000000000090"));
+    total = 41;
+    rerender({ historyRevision: "41" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(lookupSignal?.aborted).toBe(false);
+    expect(result.current.page?.offset).toBe(32);
+    await act(async () => { resolveLookup({ ok: true, json: async () => page(16, 40, "40") }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.page?.offset).toBe(16);
+    expect(result.current.page?.revision).toBe("41");
+    expect(result.current.newEvents).toBe(1);
+    expect(result.current.loading).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => url.includes("anchor=event-16"))).toBe(true);
+  });
+
+  it("retains the slower historical cadence without reacting to chart revisions", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      return { ok: true, json: async () => page(requestedOffset(params)) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { rerender } = renderHook(({ historyRevision }) => useActivityHistory({ ...inputs, historical: true, historyRevision }), {
+      initialProps: { historyRevision: "1" },
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const calls = fetcher.mock.calls.length;
+    rerender({ historyRevision: "2" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+    expect(fetcher).toHaveBeenCalledTimes(calls);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetcher).toHaveBeenCalledTimes(calls + 1);
+  });
+
   it("resumes following across page boundaries when request selection carries live intent", async () => {
     vi.useFakeTimers();
     let total = 40;

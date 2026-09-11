@@ -38,7 +38,7 @@ import {
   trustedAppServerRolloutFile,
 } from "./codex-session-discovery.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
-import { normalizedSessionHistory } from "./session-history.mjs";
+import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -560,7 +560,8 @@ export function createCodexProvider(options = {}) {
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
-      rolloutReplies.push(...context.replies.map((event) => readOptions.historyActivity ? { ...event, _historyAgentId: actor.id } : event)); requestLinkGroups.push(context.links);
+      rolloutReplies.push(...context.replies.map((event) => readOptions.historyActivity || typeof readOptions.onHistoryActivity === "function"
+        ? { ...event, _historyAgentId: actor.id } : event)); requestLinkGroups.push(context.links);
       if (!historical && generation) {
         liveCurrentActivityCache.delete(thread.rolloutFile);
         liveCurrentActivityCache.set(thread.rolloutFile, {
@@ -593,12 +594,14 @@ export function createCodexProvider(options = {}) {
       compactions.push(...normalizedContext.compactions);
       return context.toolCalls;
     });
+    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: mergeCodexActivityEvents([rolloutReplies], Infinity), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
       readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
     )));
     const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
     stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
+    publishNormalizedHistoryRequests(readOptions.onHistoryRequests, "codex", metadata.localId, { agents, activity, toolCalls, usageSnapshots });
     const callsByActor = new Map();
     for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
     const canonicalTasksByActor = new Map(

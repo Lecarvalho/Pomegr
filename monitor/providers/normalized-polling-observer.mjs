@@ -66,6 +66,7 @@ export function createNormalizedPollingObserver(options) {
   }
 
   let publisher = null;
+  let trace = null;
   let signal = null;
   let timer = null;
   let refreshPending = false;
@@ -117,17 +118,27 @@ export function createNormalizedPollingObserver(options) {
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
         const preparationStartedAt = monotonicNow();
+        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition" });
         try {
           context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
+          trace?.end(preparationSpan, { outcome: "completed" });
+        } catch (error) {
+          trace?.end(preparationSpan, { outcome: "failed" });
+          throw error;
         } finally {
           timings.preparation.record(monotonicNow() - preparationStartedAt);
         }
       }
       const acquisitionStartedAt = monotonicNow();
+      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition" });
       failureStage = "acquire_normalize";
       let candidate;
       try {
         candidate = await acquire(localSessionId, publisher, context, { requested });
+        trace?.end(acquisitionSpan, { outcome: candidate ? "completed" : "unchanged" });
+      } catch (error) {
+        trace?.end(acquisitionSpan, { outcome: "failed" });
+        throw error;
       } finally {
         timings.acquisitionNormalization.record(monotonicNow() - acquisitionStartedAt);
       }
@@ -169,6 +180,7 @@ export function createNormalizedPollingObserver(options) {
         qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
+        trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs });
       }
       const task = runHydration(item.localSessionId, item.prepared, item.requested);
       runningHydrations.set(item.localSessionId, task);
@@ -221,6 +233,7 @@ export function createNormalizedPollingObserver(options) {
       requested,
       priority,
       sequence: queueSequence += 1,
+      queuedAt: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
       waiters: resolveWaiter ? [resolveWaiter] : [],
       sourceEventAt: Number.isFinite(sourceEventAt) ? sourceEventAt : null,
     });
@@ -241,8 +254,13 @@ export function createNormalizedPollingObserver(options) {
         try {
           if (prepare && batch.length) {
             const preparationStartedAt = monotonicNow();
+            const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition" });
             try {
               prepared = await prepare(batch.map(({ entry }) => entry));
+              trace?.end(preparationSpan, { outcome: "completed" });
+            } catch (error) {
+              trace?.end(preparationSpan, { outcome: "failed" });
+              throw error;
             } finally {
               timings.preparation.record(monotonicNow() - preparationStartedAt);
             }
@@ -294,9 +312,14 @@ export function createNormalizedPollingObserver(options) {
     qa.reconciliationRuns += 1;
     try {
       const discoveryStartedAt = monotonicNow();
+      const discoverySpan = trace?.begin({ stage: "catalog_discovery", domain: "acquisition" });
       let entries;
       try {
         entries = await list({ fresh });
+        trace?.end(discoverySpan, { outcome: "completed" });
+      } catch (error) {
+        trace?.end(discoverySpan, { outcome: "failed" });
+        throw error;
       } finally {
         timings.catalogDiscovery.record(monotonicNow() - discoveryStartedAt);
       }
@@ -342,6 +365,7 @@ export function createNormalizedPollingObserver(options) {
   async function handleSourceEvent(change) {
     if (stopped || signal?.aborted) return;
     const sourceEventAt = monotonicNow();
+    trace?.recordDuration({ stage: "source_notification", domain: "acquisition", durationMs: 0 });
     let routed;
     try {
       routed = normalizedSourceRoute(routeSourceEvent
@@ -402,7 +426,7 @@ export function createNormalizedPollingObserver(options) {
   }
 
   return Object.freeze({
-    async start(nextPublisher, nextSignal) {
+    async start(nextPublisher, nextSignal, diagnostics = {}) {
       if (publisher) throw new TypeError("Provider observer has already started");
       if (!nextPublisher || typeof nextPublisher.publishCatalog !== "function"
         || typeof nextPublisher.publishSession !== "function"
@@ -424,6 +448,7 @@ export function createNormalizedPollingObserver(options) {
         },
       };
       signal = nextSignal;
+      trace = diagnostics.trace || null;
       if (signal.aborted) {
         stop();
         return;
@@ -448,6 +473,7 @@ export function createNormalizedPollingObserver(options) {
         : 0,
       activeHydrations: runningHydrations.size,
       pendingHydrations: pendingHydrations.size,
+      oldestPendingMs: Math.max(0, ...[...pendingHydrations.values()].map((item) => monotonicNow() - item.queuedAt)),
       hydrationConcurrency: concurrency,
       failureDetails: failures.snapshot(),
       timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),

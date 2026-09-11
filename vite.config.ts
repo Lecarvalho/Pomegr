@@ -2,6 +2,7 @@ import vinext from "vinext";
 import { defineConfig, type UserConfig } from "vite";
 import { vinextLanCompatibilityPlugin } from "./scripts/vinext-lan-compat.mjs";
 import { providerFoldersLocalGatePlugin } from "./scripts/provider-folders-local-gate.mjs";
+import { rendererTraceLocalGatePlugin } from "./scripts/renderer-trace-local-gate.mjs";
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -31,6 +32,7 @@ export default defineConfig(async (): Promise<UserConfig> => {
     },
     plugins: [
       providerFoldersLocalGatePlugin(),
+      rendererTraceLocalGatePlugin(),
       vinextLanCompatibilityPlugin(),
       vinext(),
       cloudflare({

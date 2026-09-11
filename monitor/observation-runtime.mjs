@@ -105,16 +105,109 @@ export function createObservationRuntime(options = {}) {
     maxResident: options.historyMaxResident ?? 0,
   });
   const historyRefreshes = new Map();
+  const historyDirty = new Set();
+  const historyContributionRetries = new Map();
+  const historyTrace = options.pipelineTrace;
+
+  function retryHistoryContribution(domain, sessionId, contribution, attempt = 1) {
+    if (!observationServingActive) return;
+    const key = `${domain}:${sessionId}`;
+    const existing = historyContributionRetries.get(key);
+    if (existing) { existing.contribution = contribution; existing.version += 1; return; }
+    if (attempt > 3) return;
+    const pending = { contribution, timer: null, version: 1 };
+    historyContributionRetries.set(key, pending);
+    pending.timer = setTimeout(() => {
+      const current = historyContributionRetries.get(key);
+      if (current !== pending || !observationServingActive) {
+        if (current === pending) historyContributionRetries.delete(key);
+        return;
+      }
+      const version = current.version;
+      const retryContribution = current.contribution;
+      const publish = domain === "requests" ? historyStore.publishRequestContribution.bind(historyStore) : historyStore.publishActivityContribution.bind(historyStore);
+      publish(sessionId, retryContribution).then(
+        () => {
+          if (historyContributionRetries.get(key) !== pending) return;
+          historyContributionRetries.delete(key);
+          if (observationServingActive && pending.version !== version) retryHistoryContribution(domain, sessionId, pending.contribution, attempt);
+        },
+        () => {
+          if (historyContributionRetries.get(key) !== pending) return;
+          historyContributionRetries.delete(key);
+          if (observationServingActive) retryHistoryContribution(domain, sessionId, pending.contribution, attempt + 1);
+        },
+      );
+    }, attempt * 100);
+  }
+
+  function publishHistoryContribution(providerId, localSessionId, contribution) {
+    if (!observationServingActive) return Promise.resolve(null);
+    const sessionId = qualifiedSessionId(providerId, localSessionId);
+    const flow = historyTrace?.createFlow?.() || null;
+    const span = historyTrace?.begin?.({ stage: "history_contribution", domain: "activity", flow }) || null;
+    return historyStore.publishActivityContribution(sessionId, contribution).then(
+      (record) => {
+        historyTrace?.end?.(span, { outcome: record ? "accepted" : "unchanged" });
+        historyTrace?.finishFlow?.(flow, { outcome: record ? "completed" : "rejected" });
+        return record;
+      },
+      () => {
+        historyTrace?.end?.(span, { outcome: "failed" });
+        historyTrace?.finishFlow?.(flow, { outcome: "failed" });
+        retryHistoryContribution("activity", sessionId, contribution);
+        return null;
+      },
+    );
+  }
+  function publishHistoryRequestContribution(providerId, localSessionId, contribution) {
+    if (!observationServingActive) return Promise.resolve(null);
+    const sessionId = qualifiedSessionId(providerId, localSessionId);
+    const flow = historyTrace?.createFlow?.() || null;
+    const span = historyTrace?.begin?.({ stage: "history_contribution", domain: "requests", flow }) || null;
+    return historyStore.publishRequestContribution(sessionId, contribution).then(
+      (record) => {
+        historyTrace?.end?.(span, { outcome: record ? "accepted" : "unchanged" });
+        historyTrace?.finishFlow?.(flow, { outcome: record ? "completed" : "rejected" });
+        return record;
+      },
+      () => { historyTrace?.end?.(span, { outcome: "failed" }); historyTrace?.finishFlow?.(flow, { outcome: "failed" }); retryHistoryContribution("requests", sessionId, contribution); return null; },
+    );
+  }
 
   function refreshSessionHistory(qualifiedId) {
-    if (historyRefreshes.has(qualifiedId)) return;
+    if (!observationServingActive) return;
+    if (historyRefreshes.has(qualifiedId)) { historyDirty.add(qualifiedId); return; }
     const snapshot = observationStore.getByQualifiedId(qualifiedId);
     const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
     if (!snapshot || typeof provider?.readSessionHistory !== "function") return;
-    const task = Promise.resolve(provider.readSessionHistory(snapshot.localSessionId))
-      .then((history) => historyStore.publish(qualifiedId, history))
-      .catch(() => null)
-      .finally(() => historyRefreshes.delete(qualifiedId));
+    const flow = historyTrace?.createFlow?.() || null;
+    const readSpan = historyTrace?.begin?.({ stage: "history_read", domain: "activity", flow }) || null;
+    let historyOutcome = "completed";
+    const task = Promise.resolve(historyStore.activityFence(qualifiedId))
+      .then((activityFence) => provider.readSessionHistory(snapshot.localSessionId)
+        .then((history) => {
+          historyTrace?.end?.(readSpan, { outcome: "completed" });
+          const publishSpan = historyTrace?.begin?.({ stage: "history_publish", domain: "activity", flow }) || null;
+          return historyStore.publish(qualifiedId, history, { activityFence }).then(
+            (record) => {
+              historyTrace?.end?.(publishSpan, { outcome: record ? "accepted" : "unchanged" });
+              return record;
+            },
+            (error) => {
+              historyTrace?.end?.(publishSpan, { outcome: "failed" });
+              throw error;
+            },
+          );
+        }))
+      .catch(() => { historyOutcome = "failed"; return null; })
+      .finally(() => {
+        historyTrace?.end?.(readSpan, { outcome: "failed" });
+        historyTrace?.finishFlow?.(flow, { outcome: historyOutcome });
+        historyRefreshes.delete(qualifiedId);
+        const dirty = historyDirty.delete(qualifiedId);
+        if (dirty && observationServingActive) refreshSessionHistory(qualifiedId);
+      });
     historyRefreshes.set(qualifiedId, task);
   }
 
@@ -328,6 +421,9 @@ export function createObservationRuntime(options = {}) {
     checkpointDelayMs: options.checkpointDelayMs,
     checkpointMaxDelayMs: options.checkpointMaxDelayMs,
     now,
+    pipelineTrace: options.pipelineTrace,
+    onHistoryContribution: publishHistoryContribution,
+    onHistoryRequestContribution: publishHistoryRequestContribution,
     restoreState: checkpointPublicState,
     async deriveSession(candidate) {
       const provider = registry.providers?.find((entry) => entry.id === candidate.providerId);
@@ -508,6 +604,9 @@ export function createObservationRuntime(options = {}) {
     unsubscribeObservation?.();
     unsubscribeObservation = null;
     unavailableSessionResponses.clear();
+    for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
+    historyContributionRetries.clear();
+    historyDirty.clear();
     await observationCoordinator.stop();
     await Promise.allSettled([usageRefreshInFlight, resourceRefreshInFlight].filter(Boolean));
     observationStartPromise = null;
@@ -529,7 +628,11 @@ export function createObservationRuntime(options = {}) {
     if (Number.isSafeInteger(repositoryRevision) && repositoryRevision >= 0) {
       subscriber(Object.freeze({ domain: "repositories", revision: repositoryRevision }));
     }
-    return () => { unsubscribe(); unsubscribeRepositories(); };
+    // History publishes its current revision synchronously on subscription.
+    // Send the existing catalog envelope first so a newly opened SSE stream
+    // starts with the same catalog/repository baseline every client expects.
+    const unsubscribeHistory = historyStore.subscribeRevisionEvents(subscriber);
+    return () => { unsubscribe(); unsubscribeRepositories(); unsubscribeHistory(); };
   }
 
   return Object.freeze({
@@ -553,7 +656,10 @@ export function createObservationRuntime(options = {}) {
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
     async serveSessionHistory(sessionId, query) {
+      const servedAt = performance.now();
       const page = await historyStore.read(sessionId, query);
+      historyTrace?.recordDuration?.({ stage: "cache_serve", domain: "serving", durationMs: Math.max(0, performance.now() - servedAt),
+        outcome: page.status === "ready" ? "accepted" : page.status === "loading" ? "unchanged" : "rejected" });
       if (page.status !== "unavailable" || !observationServingActive) return page;
       const snapshot = observationStore.getByQualifiedId(sessionId);
       const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);

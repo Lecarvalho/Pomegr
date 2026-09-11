@@ -127,7 +127,7 @@ export function observeClaudeRegistryDepartures(observer, ...sources) {
   let cleanup = () => {};
   return {
     ...observer,
-    async start(publisher, signal) {
+    async start(publisher, signal, observerOptions) {
       cleanup();
       const unsubscribes = sources.flatMap((source) => {
         if (typeof source?.subscribe !== "function") return [];
@@ -143,7 +143,7 @@ export function observeClaudeRegistryDepartures(observer, ...sources) {
       };
       if (signal?.aborted) cleanup();
       else signal?.addEventListener("abort", cleanup, { once: true });
-      try { return await observer.start(publisher, signal); }
+      try { return await observer.start(publisher, signal, observerOptions); }
       catch (error) { cleanup(); throw error; }
     },
     stop() { cleanup(); observer.stop(); },

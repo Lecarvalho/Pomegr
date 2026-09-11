@@ -12,6 +12,10 @@ import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monit
 import { createObservationRuntime } from "./observation-runtime.mjs";
 import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./pipeline-operations-transport.mjs";
+import { createPipelineTraceRecorder } from "./pipeline-trace.mjs";
+import { createPipelineRendererTraceBridge } from "./pipeline-renderer-trace.mjs";
+import { startPipelineTraceCaptureTransport } from "./pipeline-trace-transport.mjs";
+import { startPipelineTraceSampling } from "./pipeline-trace-sampling.mjs";
 import { createRequestHandler } from "./request-handler.mjs";
 import { EMPTY_PROVIDER_FOLDERS } from "./provider-folders.mjs";
 import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./session-current-activity.mjs";
@@ -662,6 +666,7 @@ export function createMonitorRequestHandler(options = {}) {
   const runtime = options.runtime || createMonitorRuntime(options);
   return createRequestHandler({
     runtime,
+    rendererTraceBridge: options.rendererTraceBridge,
     authorizationToken: options.authorizationToken,
     agentAuthorizationToken: options.agentAuthorizationToken,
   });
@@ -676,12 +681,23 @@ export async function startMonitorServer(options = {}) {
   let handle;
   let runtime;
   let operationsTransport;
+  let traceTransport;
+  let traceSampling;
+  let rendererTraceBridge;
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
     const registry = options.providerRegistry || providerRegistry;
-    runtime = options.runtime || createMonitorRuntime(options);
-    server = (options.serverFactory || createMonitorServer)({ ...options, runtime });
+    const diagnosticsEnabled = options.pipelineDiagnostics ?? process.env.POMEGR_DIAGNOSTICS === "1";
+    const pipelineTrace = options.pipelineTrace || (diagnosticsEnabled ? createPipelineTraceRecorder({ stages: [
+      "source_notification", "catalog_discovery", "source_queue", "source_preparation", "acquisition_normalization",
+      "catalog_commit_wait", "catalog_projection", "session_commit_wait", "session_derivation",
+      "normalized_store_commit", "candidate_to_commit", "history_read", "history_publish", "history_contribution",
+      "checkpoint", "revision_notify", "cache_serve", "renderer_fetch", "renderer_react_commit", "renderer_next_frame",
+    ] }) : null);
+    rendererTraceBridge = options.rendererTraceBridge || (pipelineTrace ? createPipelineRendererTraceBridge({ recorder: pipelineTrace }) : null);
+    runtime = options.runtime || createMonitorRuntime({ ...options, pipelineTrace });
+    server = (options.serverFactory || createMonitorServer)({ ...options, runtime, rendererTraceBridge });
     await listen(server, { host, port, startupErrorCode: "MONITOR_START_FAILED" });
     handle = createLocalServiceHandle(server, {
       host,
@@ -690,9 +706,11 @@ export async function startMonitorServer(options = {}) {
       onClose: () => {
         void runtime.stopObservation?.();
         void operationsTransport?.close();
+        void traceTransport?.close();
+        traceSampling?.close();
       },
     });
-    if (port !== 0 && options.pipelineOperations !== false && typeof runtime.observationDiagnostics === "function") {
+    if ((port !== 0 || diagnosticsEnabled) && options.pipelineOperations !== false && typeof runtime.observationDiagnostics === "function") {
       try {
         operationsTransport = await startPipelineOperationsTransport({
           ...(options.pipelineOperationsOptions || {}),
@@ -701,6 +719,19 @@ export async function startMonitorServer(options = {}) {
         });
       } catch {
         options.logger?.warn?.("[pomegr] Pipeline operations transport unavailable.");
+      }
+    }
+    if (diagnosticsEnabled && pipelineTrace) {
+      try {
+        traceTransport = await startPipelineTraceCaptureTransport({
+          ...options.pipelineTraceOptions,
+          enabled: true,
+          port: handle.port,
+          recorder: pipelineTrace,
+        });
+        traceSampling = startPipelineTraceSampling({ recorder: pipelineTrace, diagnostics: runtime.observationDiagnostics });
+      } catch {
+        options.logger?.warn?.("[pomegr] Local diagnostic capture unavailable.");
       }
     }
     await runtime.startObservation?.();
@@ -714,6 +745,8 @@ export async function startMonitorServer(options = {}) {
       closePromise = (async () => {
         await runtime.stopObservation?.();
         await operationsTransport?.close();
+        await traceTransport?.close();
+        traceSampling?.close();
         await handle.close();
       })();
       return closePromise;
@@ -722,6 +755,8 @@ export async function startMonitorServer(options = {}) {
   } catch (error) {
     try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
+    try { await traceTransport?.close(); } catch { /* preserve bounded startup failure */ }
+    traceSampling?.close();
     if (handle) await handle.close();
     else await closeServer(server);
     throw safeServiceError(error, "MONITOR_START_FAILED");

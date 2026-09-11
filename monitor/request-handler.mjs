@@ -2,9 +2,21 @@ import { createHomeReadiness } from "./observation-readiness.mjs";
 import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
+import { normalizeRendererTracePayload } from "../shared/renderer-trace-contract.mjs";
+
+const MAX_RENDERER_TRACE_BYTES = 8 * 1024;
+
+async function rendererTraceBody(request) {
+  let body = "";
+  for await (const chunk of request) {
+    body += chunk;
+    if (Buffer.byteLength(body, "utf8") > MAX_RENDERER_TRACE_BYTES) return null;
+  }
+  try { return normalizeRendererTracePayload(JSON.parse(body)); } catch { return null; }
+}
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
-export function createRequestHandler({ runtime, authorizationToken: rawAuthorizationToken = "", agentAuthorizationToken: rawAgentAuthorizationToken = "" } = {}) {
+export function createRequestHandler({ runtime, rendererTraceBridge = null, authorizationToken: rawAuthorizationToken = "", agentAuthorizationToken: rawAgentAuthorizationToken = "" } = {}) {
   if (!runtime) throw new TypeError("Monitor request handler requires a runtime");
   const authorizationToken = rawAuthorizationToken
     ? requireDesktopToken(rawAuthorizationToken, "MONITOR_INVALID_AUTHORIZATION")
@@ -19,6 +31,19 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
+    if (requestUrl.pathname === "/internal/renderer-trace") {
+      const authorized = request.method === "POST" && !requestUrl.search && request.headers.host === expectedHost
+        && request.headers.origin === undefined && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+      if (!authorized || request.headers["content-type"] !== "application/json" || request.headers["transfer-encoding"] !== undefined
+        || Number(request.headers["content-length"] || 0) > MAX_RENDERER_TRACE_BYTES) {
+        response.writeHead(404, { "Cache-Control": "no-store" }); response.end(); return;
+      }
+      const payload = await rendererTraceBody(request);
+      if (payload && rendererTraceBridge?.record) {
+        try { rendererTraceBridge.record(payload); } catch { /* Capture diagnostics never affect serving. */ }
+      }
+      response.writeHead(204, { "Cache-Control": "no-store" }); response.end(); return;
+    }
     if (requestUrl.pathname === "/api/provider-folders") {
       const authorized = request.headers.host === expectedHost
         && request.headers.origin === undefined
@@ -204,7 +229,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
     const requestedRevisionValue = requestUrl.searchParams.get("revision");
     const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
-    const writeCommitted = (result, fallbackValue) => {
+    const writeCommitted = (result, fallbackValue, traceDomain = null) => {
       if (result?.status === "unchanged") {
         response.writeHead(204);
         response.end();
@@ -216,6 +241,10 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         ...(Number.isSafeInteger(revision) ? { "X-Pomegr-Revision": String(revision) } : {}),
+        ...(traceDomain && result?.status === "ready" ? (() => {
+          const token = rendererTraceBridge?.issueRevision?.(traceDomain);
+          return token ? { "X-Pomegr-Trace-Revision": token } : {};
+        })() : {}),
       });
       response.end(serialized);
     };
@@ -237,10 +266,10 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       let closed = false;
       let unsubscribe = null;
       const writeRevision = (event) => {
-        if (closed || !["sessions", "repositories"].includes(event?.domain)
+        if (closed || !["sessions", "repositories", "history"].includes(event?.domain)
           || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
         try {
-          const eventName = event.domain === "sessions" ? "catalog" : "repositories";
+          const eventName = event.domain === "sessions" ? "catalog" : event.domain;
           response.write(`event: ${eventName}\ndata: ${JSON.stringify({ domain: event.domain, revision: event.revision })}\n\n`);
         } catch { close(); }
       };
@@ -275,7 +304,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
             revision: 0,
             readiness: { catalog: "loading" },
             sessions: [],
-          });
+          }, "catalog");
           return;
         }
         const body = JSON.stringify(await runtime.sessionFeed());
@@ -313,7 +342,11 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       }
       try {
         const page = await runtime.serveSessionHistory?.(sessionId, { kind, scope, offset, limit, requestId, filterRequestId, anchor, overview });
-        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+        const traceToken = page?.status === "ready" && page.kind === kind
+          ? rendererTraceBridge?.issueRevision?.(kind)
+          : null;
+        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
+          ...(traceToken ? { "X-Pomegr-Trace-Revision": traceToken } : {}) });
         response.end(JSON.stringify(page || { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 }));
       } catch {
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });

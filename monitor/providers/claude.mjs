@@ -50,7 +50,7 @@ import {
 import { claudeRepositoryInventoryCaptureFromProviderOptions } from "./claude-repository-inventory.mjs";
 import { createClaudePluginSetupReader } from "./claude-plugin-setup.mjs";
 import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
-import { normalizedSessionHistory } from "./session-history.mjs";
+import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
@@ -643,8 +643,9 @@ export function createClaudeProvider(options = {}) {
         ? buildExecutionTasks(recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt, taskSignals })
         : [];
     }
+    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "claude", sessionId, { agents, activity, toolCalls });
     stampClaudeActivityRequestIds({ sessionId, agents, usageSnapshots, toolCalls, activity, ...activityRequestLinks, unlimited: completeHistory });
-
+    publishNormalizedHistoryRequests(readOptions.onHistoryRequests, "claude", sessionId, { agents, activity, toolCalls, usageSnapshots });
     const storedPlanTasks = readSessionTasks(tasksRoot, sessionId);
     let planTasks = storedPlanTasks;
     if (!planTasks.length) {
@@ -657,7 +658,6 @@ export function createClaudeProvider(options = {}) {
         transcriptPlanTasksCache.set(mainFile, { key: cacheKey, value: planTasks });
       }
     }
-
     const workflows = buildClaudeWorkflows({
       mainRecords,
       workflowRoot,

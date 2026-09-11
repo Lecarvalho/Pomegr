@@ -31,6 +31,39 @@ function linkedCodex(records, actorId = "primary") {
   return normalizedSessionHistory("codex", "test", evidence);
 }
 
+test("three incremental calls remain stable before usage and enrich after separate results", () => {
+  const records = [{ timestamp: stamp(0), type: "turn_context", payload: { turn_id: "PRIVATE_TURN", model: "gpt-6-astra" } }];
+  const ids = [];
+  for (let index = 1; index <= 3; index += 1) {
+    records.push({ timestamp: stamp(index), type: "response_item", payload: {
+      type: "function_call", call_id: `PRIVATE_CALL-${index}`, name: "exec_command", arguments: '{"cmd":"PRIVATE_COMMAND"}',
+    } });
+    const history = linkedCodex(records);
+    assert.equal(history.requests.length, 0);
+    assert.equal(history.activity.length, index);
+    assert.ok(history.activity.every((row) => row.requestId === null && row.durationMs === null));
+    assert.deepEqual(history.activity.slice(0, -1).map((row) => row.id), ids);
+    ids.push(history.activity.at(-1).id);
+  }
+  const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 };
+  records.push({ timestamp: stamp(4), type: "token_usage_record", payload: { usage } });
+  records.push({ timestamp: stamp(4), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: usage } } });
+  const linked = linkedCodex(records);
+  assert.equal(linked.requests.length, 1);
+  assert.deepEqual(linked.activity.map((row) => row.id), ids);
+  assert.ok(linked.activity.every((row) => row.requestId === linked.requests[0].id && row.durationMs === null));
+  for (let index = 1; index <= 3; index += 1) {
+    records.push({ timestamp: stamp(index + 5), type: "response_item", payload: {
+      type: "function_call_output", call_id: `PRIVATE_CALL-${index}`, output: "PRIVATE_OUTPUT",
+    } });
+    const enriched = linkedCodex(records);
+    assert.deepEqual(enriched.activity.map((row) => row.id), ids);
+    assert.equal(enriched.activity.filter((row) => row.durationMs !== null).length, index);
+    assert.equal(enriched.activity[index - 1].durationMs, 5_000);
+    assert.equal(JSON.stringify(enriched).includes("PRIVATE"), false);
+  }
+});
+
 test("Codex closing usage links multiple request groups in one turn without crossing actors", () => {
   const records = [...codexResponse(0), ...codexResponse(1).slice(1)];
   const history = linkedCodex(records);

@@ -9,6 +9,7 @@ import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
+import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
 import { OBSERVATION_WORKING_SET_MS } from "../monitor/observation-working-set.mjs";
 import { assertNoPrivateFixtureSentinels, readProviderFixture } from "./helpers/provider-fixtures.mjs";
 
@@ -158,6 +159,7 @@ test("source queue timing uses the monotonic clock across a wall-clock regressio
   let monotonicClock = 100;
   const controller = new AbortController();
   const watcher = watchHarness();
+  const trace = createPipelineTraceRecorder({ enabled: true });
   const observer = createNormalizedPollingObserver({
     list: async () => [],
     ingest: async () => null,
@@ -170,11 +172,17 @@ test("source queue timing uses the monotonic clock across a wall-clock regressio
     async yieldControl() {},
   });
   context.after(() => controller.abort());
-  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  context.after(() => trace.deactivate());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace });
   watcher.emit("change", "one.jsonl");
   await waitFor(() => observer.diagnostics().sourceEventQueueSamples === 1);
 
   assert.equal(observer.diagnostics().timings.queueWait.lastMs, 5);
+  const notification = trace.snapshot().traceEvents.find((event) => event.name === "source_notification");
+  assert.equal(notification?.cat, "acquisition");
+  assert.equal(notification?.ph, "X");
+  assert.equal(notification?.dur, 0);
+  assert.deepEqual(notification?.args, { outcome: "observed" });
 });
 
 test("source events publish a fresh catalog without waiting for slow hydration", async (context) => {

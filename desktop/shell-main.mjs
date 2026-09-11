@@ -121,7 +121,7 @@ function workerEntrypoint() {
   return entrypoint;
 }
 
-function startMonitorWorker(privateEnvironment) {
+function startMonitorWorker(privateEnvironment, diagnosticsEnabled = false) {
   return createMonitorWorker(workerEntrypoint(), {
     env: minimalRuntimeEnvironment(process.env, {
       POMEGR_RESOURCE_ROOT: desktopPaths.applicationRoot,
@@ -133,6 +133,7 @@ function startMonitorWorker(privateEnvironment) {
       agentAuthorizationToken,
       agentQueryDescriptorPath: resolveAgentQueryDescriptorPath(),
       privateEnvironment,
+      pipelineDiagnostics: diagnosticsEnabled,
       smoke: false,
     },
   });
@@ -537,13 +538,14 @@ async function startDesktop() {
     pomegrDataRoot: desktopPaths.dataRoot,
   });
   runtimeState = "starting";
+  const pipelineDiagnostics = environmentValue(process.env, "POMEGR_DIAGNOSTICS") === "1";
   try {
     await startShellRuntime({
       startTimeoutMs: START_TIMEOUT_MS,
       stopTimeoutMs: STOP_TIMEOUT_MS + KILL_TIMEOUT_MS,
       startMonitor() {
         recordStage("SHELL_MONITOR_STARTING");
-        monitorChild = startMonitorWorker(privateEnvironment);
+        monitorChild = startMonitorWorker(privateEnvironment, pipelineDiagnostics);
         privateEnvironment = undefined;
         const monitorFailed = () => {
           if (runtimeState === "starting") startupFailed = true;

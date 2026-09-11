@@ -154,6 +154,31 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
+Source-complete Activity may commit first with null request links and durations.
+The same observer then commits a bounded request contribution only after the
+existing strict monitor-side correlation resolves it; that contribution atomically
+adds request snapshots and enriches matching Activity IDs without removing retained
+rows. Both contributions carry private source epoch and sequence watermarks. A
+replay fences both domains and is discarded if either advances while it reads, then
+the runtime schedules one dirty follow-up replay. Same-process contribution bursts
+coalesce to one pending durable write; unchanged watermarks do not advance the
+browser-visible history revision. A failed durable contribution retries at most
+three times from its already-normalized envelope and never causes a GET acquisition.
+Private producer-admission watermarks are bounded to the active in-memory session
+cap. When that LRU cap evicts a current-runtime session, its narrow private
+watermark is restored from a runtime-nonce-bound sidecar before another
+contribution is admitted; this preserves stale rejection without evicting
+normalized history. A fresh runtime deliberately ignores the prior nonce so a
+restarted source may begin a new epoch/sequence safely.
+
+The maintained synthetic benchmark runs cold startup, disk-restored history with
+`maxResident: 0`, a 1,000-row warm append, and a 16-contribution continuous
+burst. It records only controlled history readiness, convergence, process CPU/RSS
+deltas, and GET/publication counts. Its per-scenario traces and summaries are not
+provider-I/O, whole-application, renderer, or paint measurements.
+The catalog's native presence/status remains an independent catalog observation;
+detailed per-agent lifecycle still shares the session acquisition path and has no
+separate producer until its source dependencies are split and measured.
 The monitor privately caches at most four parsed history manifests, bounded by
 16 MiB of source JSON across entries (parsed-object overhead is additional).
 Every read verifies file identity, size, and nanosecond modification/change times;
@@ -193,8 +218,13 @@ window is pending because of chart-window navigation. Selecting a visible
 Activity row only loads the linked chart details; it must not veil or disable the
 already-committed Activity page. Stale row links cannot activate while the feed
 itself is being replaced. Failures remove the veil and
-explain that the previous page is retained. Routine ten-second background refreshes
-remain visually quiet. These are F presentation states, not backend readiness.
+explain that the previous page is retained. Live Activity refreshes immediately when
+Requests receives a different committed history revision, and every three seconds
+independently so activity still advances while chart selection is pinned. These
+refreshes remain visually quiet and preserve older-page anchors. A revision arriving
+during navigation waits for that lookup to finish; repeated revisions do not cause
+extra fetches. Historical views retain the ten-second cadence. These are F
+presentation states, not backend readiness.
 Polling never cancels an in-flight navigation. A loading or unavailable response
 retries the same request lookup, scope, offset, and anchor instead of substituting
 the latest page. Foreground `loading` responses retry after 750 ms; failures retain
@@ -1770,16 +1800,23 @@ browser API fields, or per-session traces. Raw errors, messages, stacks, paths, 
 are excluded, and successful work does not erase historical failure details. Bounded
 monotonic duration windows may additionally cover catalog discovery, source preparation,
 combined acquisition/normalization, catalog projection, session derivation, normalized
-store commit, and candidate-to-commit delay. Delay diagnostics are aggregate numbers only;
-they contain no native source or session identity.
+store commit, and candidate-to-commit delay. The aggregate feed contains no native source
+or session identity. A separate, explicitly activated local diagnostic recording may
+retain bounded timing slices, outcomes, counters, and fresh capture-local correlation
+tokens, then export a sanitized trace to a requested local file. Its schema, activation,
+limits, and offline Perfetto analysis belong to `docs/PIPELINE_OPERATIONS.md`. Recording
+is disabled by default and cannot trigger provider work, change product scheduling, or
+enter checkpoints. Browser/LAN routes cannot start or stop capture. Raw data, paths,
+source fingerprints, session identity, and arbitrary error text remain forbidden.
 
-The manually launched `npm run ops:pipeline` client consumes a fixed versioned snapshot
+The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
 in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
 derivation, persistence, or revision publication. The complete operational contract and
-the separately deferred renderer `performance.mark()` bridge are documented in
-`docs/PIPELINE_OPERATIONS.md`. Browser presentation timing remains unavailable until that
-future opt-in milestone is implemented.
+the opt-in renderer `performance.mark()` bridge are documented in
+`docs/PIPELINE_OPERATIONS.md`. Request-interval calibration provides bounded response-to-
+renderer milestone intervals during an authenticated capture; pixels painted and
+source-to-pixel latency remain unmeasured.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

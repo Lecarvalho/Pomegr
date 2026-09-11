@@ -95,6 +95,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
   const now = options.now || Date.now;
   const monotonicNow = options.monotonicNow || (() => performance.now());
+  const trace = options.pipelineTrace;
   const catalogsByProvider = new Map();
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
@@ -146,20 +147,27 @@ export function createSessionObservationCoordinator(options = {}) {
     const delay = Math.min(checkpointDelayMs, maximumRemaining);
     const timer = schedule(() => {
       checkpointTimers.delete(snapshot.qualifiedId);
-      void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).catch(() => {});
+      const span = trace?.begin({ stage: "checkpoint", domain: "persistence" });
+      void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).then(
+        () => { trace?.end(span, { outcome: "accepted" }); },
+        () => { trace?.end(span, { outcome: "failed" }); },
+      );
     }, delay);
     checkpointTimers.set(snapshot.qualifiedId, { timer, firstDirtyAt });
   }
 
   function notify(event) {
+    const span = trace?.begin({ stage: "revision_notify", domain: "lifecycle" });
     for (const subscriber of subscribers) {
       try { subscriber(event); } catch { /* one consumer must not block publication */ }
     }
+    trace?.end(span, { outcome: "completed" });
   }
 
   function commitCatalog() {
     if (stopped) return;
     const projectionStartedAt = monotonicNow();
+    const projectionSpan = trace?.begin({ stage: "catalog_projection", domain: "derivation" });
     const checkedAt = now();
     let nextOpenExpiry = Infinity;
     if (openExpiryTimer !== null) cancel(openExpiryTimer);
@@ -173,6 +181,7 @@ export function createSessionObservationCoordinator(options = {}) {
       qa.catalogCommitDelayLastMs = delayMs;
       qa.catalogCommitDelayMaxMs = Math.max(qa.catalogCommitDelayMaxMs, delayMs);
       timings.catalogCommitWait.record(delayMs);
+      trace?.recordDuration({ stage: "catalog_commit_wait", domain: "commit", durationMs: delayMs });
       catalogDirtyAt = null;
     }
     const entries = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
@@ -236,6 +245,7 @@ export function createSessionObservationCoordinator(options = {}) {
       openExpiryTimer?.unref?.();
     }
     timings.catalogProjectionCommit.record(monotonicNow() - projectionStartedAt);
+    trace?.end(projectionSpan, { outcome: "completed" });
   }
 
   function scheduleCatalogCommit(delayMs = commitDelayMs) {
@@ -256,21 +266,34 @@ export function createSessionObservationCoordinator(options = {}) {
     scheduledSessions.delete(qualifiedId);
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
+    const flow = candidate.traceFlow;
     try {
       timings.sessionCommitWait.record(monotonicNow() - candidate.queuedAt);
+      trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow });
       const derivationStartedAt = monotonicNow();
+      const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow });
       let derived;
       try {
         derived = await deriveSession(candidate);
+        trace?.end(derivationSpan, { outcome: "completed" });
+      } catch (error) {
+        trace?.end(derivationSpan, { outcome: "failed" });
+        throw error;
       } finally {
         timings.sessionDerivation.record(monotonicNow() - derivationStartedAt);
       }
-      if (stopped || workGeneration !== generation) return;
+      if (stopped || workGeneration !== generation) {
+        trace?.finishFlow(flow, { outcome: "cancelled" });
+        return;
+      }
       if (pendingSessions.get(qualifiedId) !== candidate) {
+        trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, outcome: "superseded" });
+        trace?.finishFlow(flow, { outcome: "superseded" });
         scheduleSessionCommit(qualifiedId);
         return;
       }
       const storeStartedAt = monotonicNow();
+      const storeSpan = trace?.begin({ stage: "normalized_store_commit", domain: "commit", flow });
       let snapshot;
       try {
         snapshot = store.publish({
@@ -285,8 +308,12 @@ export function createSessionObservationCoordinator(options = {}) {
         });
       } finally {
         timings.sessionStoreCommit.record(monotonicNow() - storeStartedAt);
+        trace?.end(storeSpan, { outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       }
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
+      trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow,
+        outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
+      trace?.finishFlow(flow, { outcome: snapshot?.accepted ? "completed" : "rejected" });
       // Restored task state remains last-observed until new provider evidence
       // validates and commits, including an otherwise unchanged observation.
       if (snapshot?.accepted && candidate.freshObservation && restoredActivitySessions.delete(qualifiedId)) {
@@ -312,6 +339,7 @@ export function createSessionObservationCoordinator(options = {}) {
         sessionRetryAttempts.delete(qualifiedId);
       }
     } catch {
+      trace?.finishFlow(flow, { outcome: "failed" });
       // D failures retain the previous committed revision. Retry this candidate
       // only while it is current; an obsolete failure must not mark newer work
       // as a retry and reset its already-scheduled publication deadline.
@@ -339,6 +367,14 @@ export function createSessionObservationCoordinator(options = {}) {
   }
 
   const publisher = Object.freeze({
+    publishHistoryContribution(providerId, localSessionId, contribution) {
+      if (stopped) return;
+      options.onHistoryContribution?.(providerId, localSessionId, contribution);
+    },
+    publishHistoryRequestContribution(providerId, localSessionId, contribution) {
+      if (stopped) return;
+      options.onHistoryRequestContribution?.(providerId, localSessionId, contribution);
+    },
     checkpointFor(providerId, localSessionId) {
       const source = store.get(providerId, localSessionId)?.source;
       return source?.fingerprint && Number.isSafeInteger(source.completeOffset)
@@ -381,6 +417,7 @@ export function createSessionObservationCoordinator(options = {}) {
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
         pinned: Boolean(evidence?.historical === false),
         queuedAt: monotonicNow(),
+        traceFlow: trace?.createFlow(),
       }));
       sessionRetryAttempts.delete(qualifiedId);
       scheduleSessionCommit(qualifiedId);
@@ -453,7 +490,7 @@ export function createSessionObservationCoordinator(options = {}) {
         }
       }
       lifecycle = typeof registry.startObservers === "function"
-        ? await registry.startObservers(publisher, abortController.signal)
+        ? await registry.startObservers(publisher, abortController.signal, { trace })
         : null;
       return lifecycle;
     })();

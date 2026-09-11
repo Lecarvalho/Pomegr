@@ -1,10 +1,45 @@
-import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { HistoryLocateHarness, setPhone, snapshot } from "./requests-actions-test-fixtures";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { agent } from "./dashboard-test-fixtures";
 
 afterEach(() => vi.unstubAllGlobals());
+
+it("submits only fixed request timings from a committed capture token", async () => {
+  setPhone(false);
+  const mark = vi.fn();
+  const clearMarks = vi.fn();
+  const posts: unknown[] = [];
+  vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(10);
+    return 1;
+  });
+  const requests = [snapshot(1), snapshot(2), snapshot(3)];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/renderer-trace") {
+      posts.push(JSON.parse(String(options?.body)));
+      return { ok: true };
+    }
+    return { ok: true, headers: { get: () => "r0123456789abcdef_2" }, json: async () => ({
+      kind: "requests", status: "ready", revision: "2", total: requests.length, offset: 0, linkedCount: 0, items: requests,
+    }) };
+  }));
+  renderHook(() => useSessionRequestSelection({
+    agents: [agent], requestSnapshots: { status: "ready", items: requests }, contextBoundaries: [], historical: false,
+    historyEnabled: true, sessionId: "request-trace",
+  }));
+  await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+  const records = posts.flatMap((payload) => (payload as { records: unknown[] }).records);
+  expect(records).toEqual(expect.arrayContaining([
+    expect.objectContaining({ stage: "renderer_fetch", domain: "requests", token: "r0123456789abcdef_2" }),
+    expect.objectContaining({ stage: "renderer_react_commit", domain: "requests", token: "r0123456789abcdef_2" }),
+    expect.objectContaining({ stage: "renderer_next_frame", domain: "requests", token: "r0123456789abcdef_2" }),
+  ]));
+  expect(mark).toHaveBeenCalled();
+  expect(clearMarks).toHaveBeenCalled();
+});
 
 it.each([
   { action: "bar", total: 3 }, { action: "row", total: 3 },

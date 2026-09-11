@@ -15,6 +15,8 @@ const SKIP_DIRECTORIES = new Set([
   "build",
   "dist",
   "node_modules",
+  "work",
+  "outputs",
   "release",
   "release-acceptance",
   "plugins",

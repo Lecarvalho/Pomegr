@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import type { RequestHistoryPage } from "../../../../shared/session-history-contract";
+import { subscribeHistoryPublications } from "../../../history-publications";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
+import { beginRendererTrace } from "../../../renderer-trace";
 import { scopedRows, type RequestRow } from "./model";
 import { useRequestSelection } from "./useRequestSelection";
 import { useRequestPageCache } from "./useRequestPageCache";
@@ -14,9 +16,10 @@ export type SessionRequestInputs = {
 };
 
 type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean; requestedOffset?: number };
-type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string };
+type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string; eventReceivedAt?: number };
 type PendingLocate = { id: string; scope: string } | null;
 type PendingPageSelection = { key: string; offset: number; index: number | null } | null;
+type RendererTrace = NonNullable<ReturnType<typeof beginRendererTrace>>;
 
 function historyScope(scope: string, agents: Agent[]): string {
   if (scope === "all") return "all";
@@ -52,8 +55,13 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const [pendingLocate, setPendingLocate] = useState<PendingLocate>(null);
   const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
   const [retry, setRetry] = useState(0);
+  const queuedPublication = useRef<{ revision: number; receivedAt: number } | null>(null);
+  const publicationState = useRef({ pinned: false, atLatest: true, loading: false, unavailable: false });
+  const loadHistoryRef = useRef<(options?: HistoryQuery) => Promise<RequestHistoryPage | null>>(() => Promise.resolve(null));
+  const pendingTrace = useRef<{ trace: RendererTrace; startedAt: number; revision: string; eventReceivedAt?: number } | null>(null);
+  const activeTrace = useRef<RendererTrace | null>(null);
 
-  const loadHistory = (options: HistoryQuery = {}) => {
+  const loadHistory = useCallback((options: HistoryQuery = {}) => {
     if (!historyEnabled || !sessionId) return Promise.resolve(null);
     const nextScope = options.scope ?? resolvedScope;
     const nextKey = pageKey(sessionId, nextScope, size);
@@ -75,27 +83,71 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false, requestedOffset }));
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
+    const startedAt = performance.now();
+    let trace: RendererTrace | null = null;
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        const responseReceivedAt = performance.now();
+        if (!response.ok) return null;
+        const token = response.headers?.get("x-pomegr-trace-revision");
+        trace = token ? beginRendererTrace({ domain: "requests", token,
+          calibration: { requestStartedMs: startedAt, responseReceivedMs: responseReceivedAt } }) : null;
+        trace?.fetchCompleted(startedAt);
+        return response.json();
+      })
       .then((value: unknown) => {
-        if (controller.signal.aborted || requestSerial !== serial.current) return null;
+        if (controller.signal.aborted || requestSerial !== serial.current) {
+          trace?.stop();
+          return null;
+        }
         if (!isRequestPage(value)) {
+          trace?.stop();
           setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
           return null;
         }
         if (value.status === "ready") {
           if (nextKey === key) pageCache.add(value);
+          if (trace) {
+            activeTrace.current?.stop();
+            pendingTrace.current?.trace.stop();
+            activeTrace.current = trace;
+            pendingTrace.current = { trace, startedAt, revision: value.revision, eventReceivedAt: options.eventReceivedAt };
+          }
           setHistory({ key: nextKey, page: value, loading: false, unavailable: false, retryable: false });
         }
-        else if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
-        else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
+        else {
+          trace?.stop();
+          if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
+          else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
+        }
         return value.status === "ready" ? value : null;
       })
       .catch(() => {
+        trace?.stop();
         if (!controller.signal.aborted && requestSerial === serial.current) setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
         return null;
+      })
+      .finally(() => {
+        if (request.current?.serial === requestSerial) request.current = null;
       });
-  };
+  }, [agents, historyEnabled, key, pageCache, resolvedScope, sessionId, size]);
+  useEffect(() => { loadHistoryRef.current = loadHistory; }, [loadHistory]);
+
+  useEffect(() => {
+    const trace = pendingTrace.current;
+    if (!trace || history.page?.revision !== trace.revision) return;
+    if (trace.eventReceivedAt !== undefined) trace.trace.eventReceived(trace.eventReceivedAt);
+    trace.trace.reactCommitted(trace.startedAt);
+    trace.trace.nextFrame(trace.startedAt);
+    pendingTrace.current = null;
+  }, [history.page]);
+
+  useEffect(() => () => {
+    pendingTrace.current?.trace.stop();
+    pendingTrace.current = null;
+    activeTrace.current?.stop();
+    activeTrace.current = null;
+  }, []);
 
   useEffect(() => {
     if (!historyEnabled) return;
@@ -140,6 +192,9 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate.id : null;
   const atLatest = !page || page.offset + page.items.length >= page.total;
   const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, atLatest);
+  useEffect(() => {
+    publicationState.current = { pinned: selection.pinned, atLatest, loading: history.loading, unavailable: history.unavailable };
+  }, [atLatest, history.loading, history.unavailable, selection.pinned]);
   // A summary preview cannot establish whether the linked request is newest.
   const locatedRow = locateTarget && page ? rows.find((row) => row.id === locateTarget) : null;
   if (locatedRow) {
@@ -161,6 +216,28 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   // Live refresh intentionally follows only an unpinned latest page; older and selected pages stay anchored.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historical, history.loading, history.unavailable, historyEnabled, page, selection.pinned]);
+
+  useEffect(() => {
+    if (!historyEnabled || historical) return;
+    return subscribeHistoryPublications(({ revision, receivedAt }) => {
+      const current = publicationState.current;
+      if (current.pinned || !current.atLatest || current.unavailable) return;
+      if (current.loading || request.current) {
+        if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision, receivedAt };
+        return;
+      }
+      void loadHistoryRef.current({ offset: "latest", eventReceivedAt: receivedAt });
+    });
+  }, [historical, historyEnabled]);
+
+  useEffect(() => {
+    if (!historyEnabled || historical || queuedPublication.current === null || selection.pinned || !atLatest
+      || history.loading || history.unavailable || request.current) return;
+    const publication = queuedPublication.current;
+    if (!publication) return;
+    queuedPublication.current = null;
+    void loadHistory({ offset: "latest", eventReceivedAt: publication.receivedAt });
+  }, [atLatest, historical, history.loading, history.unavailable, historyEnabled, loadHistory, selection.pinned]);
 
   const setScope = (value: string) => setPreference({ sessionId, scope: value });
   const cancelHistoryNavigation = () => {

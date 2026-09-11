@@ -8,9 +8,12 @@ import { z } from "zod";
 /** @typedef {{status: "ready"} | {status: "unavailable", reason: string} | {status: "not_applicable"}} ProviderReadinessEntry */
 /** @typedef {Record<string, ProviderReadinessEntry>} ProviderRuntimeReadiness */
 /** @typedef {{requestModelObservations: boolean, modelSelection: boolean, usageLimitActivity: object}} ProviderHomePolicy */
-/** @typedef {{publishCatalog: (providerId: ProviderId, entries: z.infer<typeof providerSessionReferenceSchema>[], readiness?: "ready" | "unavailable") => void, publishSession: (providerId: ProviderId, localSessionId: string, evidence: ProviderSessionEvidence) => void, invalidateSession: (providerId: ProviderId, localSessionId: string, reason: string) => void, checkpointFor?: (providerId: ProviderId, localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} NormalizedObservationPublisher */
-/** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
-/** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
+/** @typedef {{publishCatalog: (providerId: ProviderId, entries: z.infer<typeof providerSessionReferenceSchema>[], readiness?: "ready" | "unavailable") => void, publishSession: (providerId: ProviderId, localSessionId: string, evidence: ProviderSessionEvidence) => void, publishHistoryContribution?: (providerId: ProviderId, localSessionId: string, contribution: HistoryActivityContribution) => void | Promise<void>, publishHistoryRequestContribution?: (providerId: ProviderId, localSessionId: string, contribution: HistoryRequestContribution) => void | Promise<void>, invalidateSession: (providerId: ProviderId, localSessionId: string, reason: string) => void, checkpointFor?: (providerId: ProviderId, localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} NormalizedObservationPublisher */
+/** @typedef {{epoch: number, sequence: number, activity: unknown[]}} HistoryActivityContribution */
+/** @typedef {{epoch: number, sequence: number, activity: unknown[], requests: unknown[]}} HistoryRequestContribution */
+/** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, publishHistoryContribution: (localSessionId: string, contribution: HistoryActivityContribution) => boolean, publishHistoryRequestContribution: (localSessionId: string, contribution: HistoryRequestContribution) => boolean, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
+/** @typedef {{trace?: unknown}} ProviderObserverOptions */
+/** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal, options?: ProviderObserverOptions) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
 
 export const PROVIDER_IDS = Object.freeze(["claude", "codex"]);
 
@@ -532,6 +535,31 @@ export function assertNormalizedObservationPublisher(publisher) {
   return /** @type {NormalizedObservationPublisher} */ (value);
 }
 
+/** Bound monitor-private source-domain ordering for an Activity contribution. */
+export function parseHistoryActivityContribution(/** @type {unknown} */ value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Activity contribution is invalid");
+  }
+  const contribution = /** @type {Record<string, unknown>} */ (value);
+  const epoch = contribution.epoch;
+  const sequence = contribution.sequence;
+  const activity = contribution.activity;
+  if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1
+    || typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence < 1
+    || !Array.isArray(activity) || activity.length > 4_096) {
+    throw new TypeError("Activity contribution is invalid");
+  }
+  return /** @type {HistoryActivityContribution} */ ({ epoch, sequence, activity });
+}
+export function parseHistoryRequestContribution(/** @type {unknown} */ value) {
+  const activity = parseHistoryActivityContribution(value);
+  const contribution = value && typeof value === "object" && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : null;
+  if (!contribution || !Array.isArray(contribution.requests) || contribution.requests.length > 4_096) {
+    throw new TypeError("Request contribution is invalid");
+  }
+  return /** @type {HistoryRequestContribution} */ ({ ...activity, requests: contribution.requests });
+}
+
 /**
  * Scope a monitor-owned publisher to a single adapter.  The wrapper validates
  * catalog references and evidence before the provider-neutral store ever sees
@@ -555,6 +583,18 @@ export function createScopedNormalizedObservationPublisher(providerId, publisher
     publishSession(localSessionId, candidate) {
       qualifyProviderSessionId(providerId, localSessionId);
       target.publishSession(providerId, localSessionId, parseProviderSessionEvidence(candidate, localSessionId));
+    },
+    publishHistoryContribution(/** @type {string} */ localSessionId, /** @type {HistoryActivityContribution} */ contribution) {
+      qualifyProviderSessionId(providerId, localSessionId);
+      if (typeof target.publishHistoryContribution !== "function") return false;
+      target.publishHistoryContribution(providerId, localSessionId, parseHistoryActivityContribution(contribution));
+      return true;
+    },
+    publishHistoryRequestContribution(/** @type {string} */ localSessionId, /** @type {HistoryRequestContribution} */ contribution) {
+      qualifyProviderSessionId(providerId, localSessionId);
+      if (typeof target.publishHistoryRequestContribution !== "function") return false;
+      target.publishHistoryRequestContribution(providerId, localSessionId, parseHistoryRequestContribution(contribution));
+      return true;
     },
     /** @param {string} localSessionId @param {string} reason */
     invalidateSession(localSessionId, reason) {

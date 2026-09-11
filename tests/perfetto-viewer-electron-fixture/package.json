@@ -1,0 +1,6 @@
+{
+  "name": "pomegr-perfetto-viewer-electron-fixture",
+  "private": true,
+  "type": "module",
+  "main": "../perfetto-viewer-electron-child.mjs"
+}

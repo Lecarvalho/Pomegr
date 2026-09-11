@@ -151,7 +151,7 @@ export function createProviderRegistry(adapters, options = {}) {
    * @param {unknown} publisher
    * @param {AbortSignal | undefined} [parentSignal]
    */
-  async function startObservers(publisher, parentSignal) {
+  async function startObservers(publisher, parentSignal, observerOptions = {}) {
     const target = assertNormalizedObservationPublisher(publisher);
     const controller = new AbortController();
     const abortFromParent = () => controller.abort();
@@ -175,6 +175,14 @@ export function createProviderRegistry(adapters, options = {}) {
             try { target.publishSession(providerId, localSessionId, evidence); }
             catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "session_publication"); }
           },
+          publishHistoryContribution(providerId, localSessionId, contribution) {
+            try { target.publishHistoryContribution?.(providerId, localSessionId, contribution); }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "history_publication"); }
+          },
+          publishHistoryRequestContribution(providerId, localSessionId, contribution) {
+            try { target.publishHistoryRequestContribution?.(providerId, localSessionId, contribution); }
+            catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "request_history_publication"); }
+          },
           invalidateSession(providerId, localSessionId, reason) {
             try { target.invalidateSession(providerId, localSessionId, reason); }
             catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "invalidation"); }
@@ -184,7 +192,7 @@ export function createProviderRegistry(adapters, options = {}) {
             catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "checkpoint_read"); return null; }
           },
         });
-        await observer.start(scopedPublisher, controller.signal);
+        await observer.start(scopedPublisher, controller.signal, observerOptions);
         observersByProvider.set(provider.id, observer);
       } catch (error) {
         try { await observer?.stop?.(); } catch { /* provider failure remains isolated */ }

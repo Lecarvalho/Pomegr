@@ -4,59 +4,221 @@ This document defines Pomegr's internal, manually launched observation-pipeline 
 It is an engineering diagnostic, not a product dashboard, session metric, or efficiency
 signal.
 
-For panel definitions, see [header and revisions](#header-and-revisions),
+## Local Perfetto capture
+
+Perfetto is the primary timeline and SQL analysis tool for new diagnostic recordings.
+The aggregate snapshot below remains an auxiliary current-health view because it retains
+fixed failure categories and live worker counters that are not part of a trace export.
+Recording is separate from provider observation:
+it cannot request acquisition, change scheduling, or modify product evidence.
+
+From the repository root, install the pinned official Windows processor and static UI:
+
+```powershell
+npm run diagnostics:setup
+```
+
+Setup verifies the [v58.2 release](https://github.com/google/perfetto/releases/tag/v58.2)
+archive SHA-256 values and stores tools in ignored
+`work/perfetto/`. Downloads follow only bounded official GitHub asset redirects.
+`npm run diagnostics:setup -- --offline` verifies the cached archives and restores their
+extracted files without network access.
+Capture, native queries, and the separate loopback viewer operate locally after setup.
+No trace upload, remote collector, or product iframe is involved. The local viewer sends
+a Content Security Policy that blocks external connections and remote assets.
+
+Enable the diagnostic listener when launching the monitor from a trusted local shell:
+
+```powershell
+$env:POMEGR_DIAGNOSTICS = "1"
+npm run dev
+```
+
+This permits capture attachment; it does not start recording. In another local shell:
+
+```powershell
+npm run diagnostics:capture -- --duration 30 --output outputs/pipeline-traces/capture.json
+npm run diagnostics:analyze -- --input outputs/pipeline-traces/capture.json --markdown
+npm run diagnostics:viewer
+```
+
+Open the viewer's loopback URL and choose **Open trace file**. Its WebAssembly and
+scripts come from the pinned local archive. Stop the viewer with Ctrl+C. Native SQL
+queries are also available through the installed Trace Processor; the maintained
+report query is `scripts/diagnostics/perfetto-report.sql`. Reports show per-stage
+samples, p50/p95, maximum, incomplete and failed/rejected attempts. Summed slice
+durations include overlapping work and are never described as end-to-end elapsed time.
+
+The capture client defaults to port 4317; use `--port` for another known local monitor.
+An authenticated Windows named pipe or per-user Unix socket admits one capture client.
+Its private token descriptor stays under the user's diagnostic directory, never in
+HTTP, logs, or trace exports. A second listener cannot overwrite an existing endpoint
+or descriptor. Browser/LAN clients cannot start or stop recording or supply output paths.
+Remove the environment variable before a later ordinary launch to disable attachment.
+
+The Windows desktop reads the same opt-in once in the trusted main process and passes
+only a boolean to its private monitor worker. Its monitor port is ephemeral. With the
+desktop launched from an opted-in shell, inspect descriptor **filenames only**:
+
+```powershell
+Get-ChildItem -LiteralPath "$env:LOCALAPPDATA/Pomegr/diagnostics" -Filter "pipeline-trace-win-*.json" | Select-Object -ExpandProperty Name
+npm run diagnostics:capture -- --port <port-from-filename> --duration 30 --output outputs/pipeline-traces/desktop.json
+npm run diagnostics:snapshot -- --port <port-from-filename> --json
+```
+
+Explicit desktop diagnostic opt-in also enables the passive aggregate snapshot endpoint
+on that assigned port. Ordinary ephemeral monitors do not expose it.
+The capture client reads the token privately; never print descriptor contents. No renderer
+control starts recording. A crashed process may leave a descriptor: confirm that its
+named pipe has no listener before removing that one stale local descriptor. Startup
+deliberately refuses to overwrite another listener's capability.
+
+The recorder defaults to 2,048 events, 256 open spans, and 256 combined flow/revision
+handles; hard bounds are 4,096 events and 1,024 spans/handles. Requested recordings last
+1–600 seconds, default 30. The client bounds response bytes to 4 MiB and times out.
+Buffers are in memory until an explicit export. Overflow and incomplete work remain
+visible in capture metadata; recording failure cannot block the product.
+
+Only fixed stage/domain/outcome labels, non-negative bounded timings/counters, synthetic
+lanes, and fresh capture-local flow/revision numbers are permitted. Tokens are not
+hashes of session identity. Starts and settlement outcomes distinguish unfinished,
+failed, rejected, unchanged, and superseded attempts. Overlapping jobs get separate
+logical lanes; Perfetto flow links express recorded scheduling relationships.
+
+### Renderer timing contract
+
+Renderer timing is disabled unless an authenticated capture is already active. A committed
+catalog, Activity, or Requests response may mint one bounded opaque capture token. The browser
+can return that token only with fixed `renderer_event`, `renderer_fetch`,
+`renderer_react_commit`, and `renderer_next_frame` duration records for the matching
+`catalog`, `activity`, or `requests` domain. It cannot mint a token, start or stop capture,
+choose a trace destination, attach a revision/session/source identifier, add a label, or
+send a URL, mark detail, text, native ID, clock claim, or arbitrary calibration value. It may
+return only the two fixed browser-monotonic boundaries of the token-bearing request interval;
+the monitor derives the clock bound from its private issuance time.
+
+The same-computer development bridge verifies the actual socket peer, local host and
+same-origin request; forwarded headers do not authorize it. The production monitor bridge
+is desktop-authenticated and accepts only the fixed payload after the browser route has
+validated it. Marks are cleared immediately, records and pending POSTs are bounded, and a
+capture shutdown aborts outstanding browser telemetry. `renderer_next_frame` records a
+requestAnimationFrame opportunity, never proof that pixels were painted.
+For a live History publication, the EventSource listener records `performance.now()` at the
+actual notification receipt and carries that fixed number only to the refresh it starts.
+`renderer_event` ends at that refresh's React commit. It therefore measures receipt to
+commit; it is never synthesized from a fetch response. `renderer_fetch` remains fetch start
+to response receipt, while the commit and next-frame stages remain separately overlapping
+intervals. A next frame is still an opportunity, never proof of pixels painted.
+
+The committed response is a request-bound calibration exchange. The monitor records its own
+monotonic token-issuance point between browser fetch start and response receipt. The browser
+returns only those two bounded `performance.now()` boundaries with the fixed timing records.
+The bridge derives the midpoint offset monitor-side and exports the converted renderer slices
+only when the interval is at most 1,000 ms, the token is fresh, and the active page remains
+visible. Error is at least 1 ms plus half the measured request interval; it is exported only
+as bounded `clockErrorUs` with `clock: request_interval_bound`. Raw browser timestamps and
+the token never enter a trace. Invalid, late, hidden, navigated, dropped, or uncalibrated
+browser data is unavailable rather than placed on an apparently shared clock.
+
+The capture has fixed `rendererClock` metadata only: unavailable/bounded status, emitted
+calibrated-span count, rejected-calibration count, and maximum error in microseconds. The
+trace records a zero-duration `cache_serve` issuance point and calibrated presentation slices
+under the same capture-local numeric revision handle, with a fixed catalog/activity/requests
+surface enum. This establishes bounded revision-to-renderer milestones; it does not establish
+source-to-pixel or visual latency. Capture start clips a duration that crosses it and drops a
+duration ending before it, marking incomplete coverage.
+
+Process sampling runs only during recording: CPU is microseconds consumed since the
+preceding sample, memory is process RSS bytes, and event-loop delay is the maximum
+observed delay in milliseconds for that sample interval. Queue depth, active slots,
+capacity, and oldest pending age are aggregate provider-worker values. Worker slots
+are asynchronous work, not OS threads or CPU cores. Coverage distinguishes configured
+measurement sites from sites actually observed in this capture.
+
+Export validation rejects unknown fields at every level. Prompts, responses, reasoning,
+tool arguments/results, commands, output streams, source paths/fingerprints, session
+IDs/titles, credentials, and arbitrary error text remain forbidden. Traces never enter
+observation checkpoints or normalized browser state. Diagnosis begins with coverage,
+drop counts and clock validity; absent observations cannot establish a cause.
+
+Use `diagnostics:benchmark` with an explicit archived baseline checkout and local output
+directory. The baseline must contain the pre-change runtime and resolve its dependencies.
+For example, after preparing that checkout locally:
+
+```powershell
+npm run diagnostics:benchmark -- --baseline-root work/perfetto-baseline --output-directory outputs/pipeline-traces/acceptance --repeat 5
+npm run diagnostics:compare -- --before outputs/pipeline-traces/acceptance/synthetic_warm_append_history-before.trace.json --after outputs/pipeline-traces/acceptance/synthetic_warm_append_history-after.trace.json --markdown
+```
+
+The maintained scenarios cover cold startup, disk-restored history, a warm append with
+1,000 retained rows, and a 16-item burst. Five to ten paired samples record first-ready
+and convergence percentiles, CPU/RSS deltas, history GET/read/publication counts, fixed
+workload parameters, Node/platform versions and code digests. Held derivation scenarios
+require publication before release, first-ready p95 below half the held baseline, correct
+row counts and convergence within one second. Restored history checks availability and
+correctness without requiring a relative speedup. Imposed waits demonstrate scheduling
+behavior; they do not predict latency for real sessions or measure browser presentation.
+
+The implementation acceptance run on 2026-09-10 passed all applicable checks across five
+samples per scenario. First-ready p95 in milliseconds, baseline/current: cold startup
+111.592/17.138, restored history 54.128/69.603, warm append 662.999/54.834, burst
+584.417/103.428. Restored reads were slower in this sample. Re-run against matching local
+builds to diagnose a regression; these figures are not production performance budgets.
+
+`diagnostics:analyze` runs maintained stage, resource-counter, causal-flow and calibrated
+renderer SQL. Its
+JSON and Markdown include capture loss, configured versus observed coverage, clocks,
+and per-stage samples. No causal edge means unavailable evidence, not zero delay.
+`diagnostics:compare` requires matching controlled scenario, schema, clock, coverage,
+and complete recordings before labeling results compatible; live captures without a
+controlled workload remain descriptive comparisons. Do not add stage percentiles.
+Renderer reports join response issuance to matching React/frame milestones and include
+lower/upper latency bounds from the clock uncertainty. Visual latency remains unavailable.
+Acquisition byte/record counters cover the incremental cursor only; supplementary discovery
+and full-history reads are not included. Missing counter samples do not mean zero I/O.
+`diagnostics:overhead` measures only a fixed synthetic recorder workload, with tracing
+off and on. It does not estimate whole-app overhead.
+
+For snapshot field definitions, see [header and revisions](#header-and-revisions),
 [worker columns](#worker-columns), [timing columns](#timing-columns), and
 [timing stages](#timings-available-in-v1). For interpretation, see
 [lifetime and reset behavior](#lifetime-and-reset-behavior) and
 [reading common patterns](#reading-common-patterns).
 
-## Run the V1 terminal monitor
+## Read the auxiliary current snapshot
 
-Start Pomegr from the repository, then attach the operations client in a separate terminal:
+Start Pomegr from the repository, then read one passive operations snapshot:
 
 ```powershell
 npm run dev
 ```
 
 ```powershell
-npm run ops:pipeline
+npm run diagnostics:snapshot
 ```
 
 Optional arguments:
 
 ```powershell
-npm run ops:pipeline -- --provider codex
-npm run ops:pipeline -- --port 4317
-npm run ops:pipeline -- --json
-npm run ops:pipeline -- --once
+npm run diagnostics:snapshot -- --provider codex
+npm run diagnostics:snapshot -- --port 4317
+npm run diagnostics:snapshot -- --json
 ```
 
-In an interactive terminal, continuous mode refreshes one panel in an alternate screen
-without adding snapshots to console scrollback. The panel fits the current terminal size;
-resize the terminal, filter with `--provider`, or use `--once` to see clipped rows or columns.
-Ctrl+C restores the previous console screen. `--once` and redirected output remain plain
-text without terminal control sequences.
-
-The feed sends a snapshot on connection and then every 500 ms by default. This is the
-panel refresh interval, not the provider acquisition interval. The client retries a lost
-connection every second; reconnecting does not reset a still-running monitor's counters.
+The command reads one bounded snapshot and exits. It emits Markdown by default; `--json`
+emits the validated fixed schema. It never starts a polling loop or an interactive panel.
+The feed remains passive and sends its first snapshot immediately; the client closes after
+the first valid record.
 
 The default monitor port is 4317, or the value of `SESSION_PULSE_PORT` when set;
-`--port` overrides it. `--provider` filters provider rows in the text panel only.
-Shared timings and revision counters always cover the whole monitor. `--json` prints
-the complete bounded snapshot as NDJSON, including all providers even when `--provider`
-is supplied. It also includes diagnostic fields not shown in the panel, such as individual
-failure categories and lifetime timing sample counts. Operators remain responsible for
-redirecting that output only to an approved local destination.
+`--port` overrides it. `--provider` filters provider rows in the Markdown view; JSON
+remains the complete validated snapshot. Both forms retain bounded failure categories,
+latest allowlisted failure detail, worker counters, revisions, and timing summaries.
+Operators remain responsible for redirecting output only to an approved local destination.
 
-`--once` prints the first valid snapshot and exits; it does not wait for every stage
-to have samples or for workers to become idle. Combine `--json --once` for one structured
-snapshot. If the connection closes before a valid snapshot, once mode exits unsuccessfully
-instead of reconnecting.
-
-V1 attaches to a source-development monitor running on a concrete port. The packaged
-desktop monitor selects an ephemeral authenticated port and does not currently advertise
-an operations endpoint to an external terminal.
+The snapshot reader attaches to source-development monitors on concrete ports. Desktop
+monitors use ephemeral ports and expose this auxiliary endpoint only when their trusted
+host explicitly opts into diagnostics, as described above.
 
 ## V1 architecture and privacy boundary
 
@@ -73,15 +235,15 @@ provider notification / reconciliation
  Windows named pipe / per-user Unix socket
                   |
                   v
-        npm run ops:pipeline
+        npm run diagnostics:snapshot
 ```
 
 The monitor publishes a fixed versioned NDJSON snapshot over local IPC. It does not add an
-HTTP route, browser proxy, or React state field. The terminal is passive: connecting cannot
+HTTP route, browser proxy, or React state field. The snapshot reader is passive: connecting cannot
 queue hydration, read a transcript, change cadence, or mutate a committed revision. The
 IPC server closes with the monitor lifecycle and never persists a snapshot.
 
-Each duration series retains at most 256 numeric values in memory. The terminal reports
+Each duration series retains at most 256 numeric values in memory. The snapshot reports
 the most recent value plus rolling average, p50, p95, and maximum. It may expose only:
 
 - a fixed schema version and local observation timestamp;
@@ -100,7 +262,7 @@ credentials, provider-native records, arbitrary error text, or checkpoint conten
 
 | Field | Meaning | How to read it |
 | --- | --- | --- |
-| Timestamp after `Pomegr pipeline operations` | UTC time when the monitor assembled this diagnostic snapshot, shown in ISO 8601 format. | It is not the time of the last provider event or the last timing sample. A changing timestamp confirms new diagnostic snapshots are arriving, even if every other value is unchanged. `time unavailable` means no valid timestamp was supplied. |
+| `observedAt` | UTC time when the monitor assembled this diagnostic snapshot, shown in ISO 8601 format. | It is not the time of the last provider event or the last timing sample. `null` means no valid timestamp was supplied. |
 | `catalog` | Current committed revision of the session catalog response used by `/api/sessions`. | Advances when a catalog response is committed, including catalog summaries. It is not the number of sessions. |
 | `home` | Current committed revision of the Home response used by `/api/home`. | Tracks Home publication independently of catalog and usage publication. |
 | `usage` | Current committed revision of the usage-limit response used by `/api/usage-limits`; named `usageLimits` in JSON. | It is not a count of provider API requests: a publication can contain cached values or readiness updates. |
@@ -138,7 +300,7 @@ succeeded.
 
 ### Failure details
 
-When a displayed provider has non-zero failures, the terminal adds a `FAILURES` section
+When a displayed provider has non-zero failures, the Markdown snapshot adds a `Failures` section
 before the timing table. It shows each non-zero category's cumulative count followed by
 its latest recorded stage, reason, and UTC timestamp. For example:
 
@@ -148,7 +310,7 @@ claude · acquisitionFailures: 1
 ```
 
 JSON exposes the same data under each provider's `failureDetails`, keyed by the existing
-failure-counter category. This is an additive V1 field: a new CLI can read an older monitor,
+failure-counter category. This is an additive V1 field: a new snapshot reader can read an older monitor,
 but shows `Detail unavailable (not recorded by this monitor).` for counts without detail.
 Restart the monitor with the updated code to begin recording details; old exceptions
 cannot be reconstructed, and restarting also resets the in-memory counters.
@@ -167,14 +329,14 @@ an allowlisted code, native `SyntaxError`, `TypeError`, and `RangeError` are rec
 recognized Zod validation exceptions are classified first as `schema_validation`.
 Everything else becomes `unknown`. A type classification is not proof of a particular
 schema or parser defect. Messages, stacks, causes, arbitrary names/codes, paths, and
-source/session identity are never retained. Both the monitor and CLI re-allowlist details.
+source/session identity are never retained. Both the monitor and snapshot reader re-allowlist details.
 
 Schema-validation details include an optional `validation` object with `issues` and
 `truncated`. Each issue contains only `field` and `rule`. The field vocabulary is derived
 from the canonical normalized evidence, catalog-reference, and usage schemas in
 `provider-contract.mjs`, not from rejected values or provider-native schemas. Numeric
 array indexes become `[]`; `$` means the root object; unknown paths become `unavailable`.
-The CLI renders these pairs beneath the failure, for example:
+The Markdown snapshot renders these pairs beneath the failure, for example:
 
 ```text
 claude · acquisitionFailures: 1
@@ -224,10 +386,10 @@ prefixed `shared` aggregate coordinator work across providers.
 | `p50` | 50th percentile of retained durations, using nearest rank: sorted sample at one-based position `ceil(0.50 × Window)`. For an even sample count this selects the lower middle sample, rather than averaging the two middle values. |
 | `p95` | 95th percentile, using the same rule at `ceil(0.95 × Window)`. With few samples it can equal `Max`; it is not a guarantee about future operations. |
 | `Max` | Largest duration still in the rolling window, not the all-time maximum. It can fall when an older slow sample leaves the window. |
-| `Window` | Number of retained samples for this stage, from 0 to 256 in the running V1 monitor. It is neither seconds nor the number of panel refreshes. JSON additionally exposes `sampleCount`, the lifetime number of recorded samples. |
+| `Window` | Number of retained samples for this stage, from 0 to 256 in the running V1 monitor. It is neither seconds nor the number of snapshot reads. JSON additionally exposes `sampleCount`, the lifetime number of recorded samples. |
 
 Durations are recorded as non-negative whole milliseconds, bounded to 24 hours per sample.
-The text panel shows `ms` below one second, `s` with two decimal places below one
+The Markdown snapshot shows `ms` below one second, `s` with two decimal places below one
 minute, and `m` with one decimal place thereafter. Formatting can round near a unit
 boundary. `0ms` can represent a measured duration below half a millisecond; it does not
 prove no work occurred.
@@ -235,7 +397,7 @@ prove no work occurred.
 When `Window` is zero, all five duration columns show `—`: no sample is available for
 that stage. This can mean it has not run, is still running, or has no applicable
 instrumentation. For example, a provider without a preparation hook has no preparation
-samples. Refreshing the panel does not create timing samples.
+samples. Reading a snapshot does not create timing samples.
 
 For example, four recorded durations in arrival order `4, 6, 10, 20 ms` produce
 `Last 20ms`, `Avg 10ms`, `p50 6ms`, `p95 20ms`, `Max 20ms`, and `Window 4`.
@@ -246,7 +408,7 @@ The first four labels are prefixed by the provider ID. The remaining six are pre
 `shared`. Phase names U1, U2, C, and D refer to the ownership model in
 [OBSERVATION_CACHE.md](OBSERVATION_CACHE.md#pipeline-terminology-and-ownership).
 
-| Terminal stage | Measurement boundary | Interpretation |
+| Stage | Measurement boundary | Interpretation |
 | --- | --- | --- |
 | `catalog discovery` | Start through settlement of the provider's catalog list call. | Time to discover catalog references. Excludes later source preparation and hydration. A failed list attempt can still produce a timing sample. |
 | `source queue` | After a source notification is routed, until its pending hydration is dequeued. | Wait for a worker slot or a previous hydration of the same session. Coalesced notifications retain the earliest routed timestamp for that pending job. Routine reconciliation and explicit hydration without a source-event timestamp do not add samples; this does not measure event-delivery or routing latency. |
@@ -254,7 +416,7 @@ The first four labels are prefixed by the provider ID. The remaining six are pre
 | `acquire + normalize` | Start through settlement of a worker's acquire/ingest call. | Combined U1/U2 duration, including failed calls. Excludes queue wait, the worker's preceding event-loop yield, separate preparation, and downstream shared derivation/commit. V1 does not split acquisition from normalization. |
 | `catalog commit wait` | First pending catalog-dirty mark through the start of catalog commit. | Intentional batching and scheduler delay. Structural changes normally use the next-event-loop-turn fast path and can preempt a queued summary refresh. |
 | `catalog projection` | Start of catalog commit through response construction, cache commit, and synchronous revision notification. | Shared D/C work to build and publish the catalog response. Excludes its earlier wait and asynchronous browser receipt or rendering. |
-| `session commit wait` | The candidate's monitor-side queue timestamp through the start of its commit attempt. | Normally includes the configured 500 ms coalescing delay plus scheduling. New candidates replace pending ones and restart that delay; retries can add longer waits. It does not start at the original provider event. |
+| `session commit wait` | The selected candidate's monitor-side queue timestamp through the start of its commit attempt. | New candidates replace pending ones but preserve the first pending deadline (normally 500 ms). A replacement near that deadline therefore has a shorter measured wait. Fresh evidence preempts a delayed failure retry. This is not the first dirty age or the original provider event's latency. |
 | `session derivation` | Start through settlement of public session derivation. | D work over an already normalized candidate. Failed or superseded attempts can add samples without reaching store publication. |
 | `normalized store commit` | Start through return or throw of the normalized store's publish call. | C validation and immutable in-memory L1 publication. Includes attempts that are unchanged, rejected, or throw. Excludes later checkpoint disk writes. |
 | `candidate to commit` | The candidate's queue timestamp through return from the store publish call. | Combined downstream wait, derivation, and store-attempt duration. Recorded even when the store returns unchanged or rejected; absent if derivation or publication throws, or the candidate is superseded before publication. Excludes upstream U1/U2 and downstream checkpoint, catalog/Home rebuild, API delivery, and browser work. |
@@ -280,15 +442,14 @@ as unavailable rather than inferred from unrelated timestamps.
 | --- | --- |
 | `Active`, `Queued`, `Capacity` | Read from the current provider observer on every snapshot. Active and pending counts rise and fall as work changes; capacity is configuration. |
 | `Coalesced`, `Dirty`, `Failures` | Accumulated in memory, not limited to the timing window and not decremented by successful work. Observer counters start fresh when that observer is recreated; registry failure counters live with the registry. Restarting the monitor recreates both. |
-| `failureDetails` | Latest stage, reason, and timestamp per fixed failure category. Lives with the corresponding observer or registry counter, survives successful work and CLI reconnects, and resets when its owner is recreated. Not a session trace or proof of an ongoing failure. |
+| `failureDetails` | Latest stage, reason, and timestamp per fixed failure category. Lives with the corresponding observer or registry counter, survives successful work and snapshot-reader reconnects, and resets when its owner is recreated. Not a session trace or proof of an ongoing failure. |
 | Timing columns | Each observer/coordinator owns its stage windows. A new sample beyond 256 evicts the oldest. Samples do not expire with elapsed time: an idle stage keeps its last values. Recreating the owning observer/coordinator resets its windows; monitor restart resets all of them. |
-| Header revisions | Sequence numbers for the current response-cache instances. Recreating those caches on monitor restart begins new sequences; startup publications can advance them before the CLI connects. Restored individual session evidence revisions are separate and do not restore these response counters. |
+| Header revisions | Sequence numbers for the current response-cache instances. Recreating those caches on monitor restart begins new sequences; startup publications can advance them before the snapshot reader connects. Restored individual session evidence revisions are separate and do not restore these response counters. |
 
-Closing, reopening, or filtering the CLI only changes the client view. It does not clear
+Reading or filtering a snapshot only changes the client view. It does not clear
 monitor diagnostics, reset windows, or trigger work. The diagnostic counters and durations
-are never persisted in observation checkpoints. After a disconnect the panel can retain
-its last frame while waiting to reconnect; use the header timestamp to distinguish that
-frame from a newly received snapshot.
+are never persisted in observation checkpoints. If the one-shot read fails, no new
+snapshot is available; use `observedAt` to distinguish a saved result from a new read.
 
 ## Reading common patterns
 
@@ -297,20 +458,20 @@ Compare the same stage and provider under similar workloads.
 
 | Pattern | What it can mean / what to check |
 | --- | --- |
-| `Active` stays at `Capacity`, `Queued` grows, and `source queue` rises | Hydration demand may be exceeding worker capacity. Compare preparation and acquisition timings; the panel alone does not prove CPU saturation or identify a source. |
+| `Active` stays at `Capacity`, `Queued` grows, and `source queue` rises | Hydration demand may be exceeding worker capacity. Compare preparation and acquisition timings; the snapshot alone does not prove CPU saturation or identify a source. |
 | `Dirty` and `Coalesced` increase during active sessions | New requests arrived while work was running or already queued. This is expected coalescing behavior; by itself it does not imply dropped evidence or a defect. |
 | `session commit wait` is near 500 ms while derivation and store commit are short | Often the configured coalescing delay. A larger value can also include scheduling or retry delay; it is not automatically slow parsing. |
 | `p95` is much higher than `p50` | The retained samples include a slower tail. Check `Window`: percentiles from a handful of samples are especially unstable. |
 | Timestamp advances but timings and counters do not | New diagnostic snapshots are arriving without new samples for those stages. Check current workers; they may be idle or still inside an operation that has not yet recorded its duration. |
 | `Failures` increases | One or more covered error/rejection counters increased. Inspect the bounded JSON categories before attributing a cause; the total does not identify a failed session or prove lost committed state. |
 | `—` remains on a timing row | No samples for that stage are available. It may be unused or uninstrumented, rather than fast or broken. |
-| Waiting-for-feed message or a frozen timestamp | The client may be disconnected or the feed may be delayed. Check that the development monitor and selected port are available. The last visible panel is not a new measurement. |
+| Snapshot connection failure | Check that the development monitor and selected port are available. A saved result is not a new measurement. |
 
 ## Implementation references
 
 When changing a field, keep this reference aligned with its measurement and display owners:
 
-- [CLI formatter and refresh behavior](../scripts/pipeline-ops.mjs).
+- [One-shot snapshot reader and Markdown formatter](../scripts/diagnostics-snapshot.mjs).
 - [Bounded schema, counters, and duration statistics](../monitor/pipeline-operations.mjs).
 - [Failure-detail recording and allowlisting](../monitor/pipeline-operations-failures.mjs).
 - [Normalized-schema failure summaries](../monitor/pipeline-operations-validation.mjs).
@@ -321,59 +482,19 @@ When changing a field, keep this reference aligned with its measurement and disp
 - [Response revision sources](../monitor/observation-runtime.mjs) and
   [response-cache revision allocation](../monitor/committed-response-cache.mjs).
 
-## Future milestone: renderer performance marks
+## Renderer measurement boundaries
 
-`performance.mark()` entries live only inside one browser renderer. They do not become
-visible to the operations terminal merely because the terminal is attached. A future
-renderer milestone may add an explicit, opt-in telemetry bridge while keeping the product
-UI unchanged.
+The implemented [renderer timing contract](#renderer-timing-contract) replaces the earlier
+catalog-only proposal. Activity and Requests use fixed, immediately cleared marks and
+capture-local nonce tokens. Their durations run from fetch start to response completion,
+React commit, or the next available animation frame; these intervals overlap and must
+not be added together. Marks never become aggregate snapshots or normalized evidence.
 
-The proposed renderer sequence is:
-
-```text
-catalog revision received
-        |
-        | performance.mark("pomegr:catalog-event-received")
-        v
-cache-only catalog GET completed
-        |
-        | performance.mark("pomegr:catalog-fetch-complete")
-        v
-React committed the matching revision
-        |
-        | performance.mark("pomegr:catalog-react-commit")
-        v
-next animation frame painted
-        |
-        | performance.mark("pomegr:catalog-next-paint")
-        v
-PerformanceObserver -> sanitized bridge -> terminal
-```
-
-The bridge design must satisfy all of the following before implementation:
-
-1. Renderer collection is disabled by default and active only for an explicit local
-   operations session. Disconnecting the terminal disables collection and clears marks.
-2. Mark and measure names come from a fixed allowlist. User, provider, route, component,
-   session, and source values may never become mark names or detail payloads.
-3. A record may contain only the committed catalog revision, a fixed stage enum, a bounded
-   duration, and a local observation timestamp. Correlation uses the revision; it does not
-   expose a provider event ID or session identity.
-4. A `PerformanceObserver` consumes and clears allowlisted entries with bounded sampling
-   and backpressure. Missing marks, navigation, background throttling, clock anomalies, or
-   bridge failure degrade to unavailable.
-5. Renderer telemetry remains in memory, is never written to observation checkpoints, and
-   never becomes normalized session evidence, an efficiency signal, or a user-facing
-   metric.
-6. The bridge must be unavailable to non-loopback browser clients and must not weaken the
-   monitor's desktop authorization, same-origin proxy, or Content Security Policy.
-7. The operations terminal joins renderer durations to backend aggregate/revision timing;
-   the browser cannot trigger U1, U2, C, D, or P work through this channel.
-
-The exact loopback/desktop handshake for enabling that bridge is deliberately deferred to
-the milestone's threat model. Direct Chrome DevTools Protocol attachment is not the
-preferred design because it is browser-specific and would widen the local debugging
-surface.
+History notification receipt and bounded browser/backend timestamp correlation use the
+request-interval method described above. The trace must not infer a receipt from fetch
+completion, add visual percentiles, label an animation frame as paint, or claim a
+source-to-pixel latency. Product code opens no debugging port; the optional Electron test
+uses a debugger attached only to its isolated synthetic fixture.
 
 ## Verification
 
@@ -386,5 +507,23 @@ npm run check:boundaries
 npm run verify:fast
 ```
 
-Any future renderer bridge additionally requires UI lifecycle, privacy serialization,
-loopback authorization, desktop boundary, and disabled-by-default tests.
+The renderer bridge is covered by UI lifecycle, privacy serialization, actual-peer
+authorization, ephemeral desktop capture, and disabled-by-default tests. After local
+setup, optional host browser checks use isolated, hidden, sandboxed Electron fixtures:
+
+```powershell
+$env:POMEGR_PERFETTO_ELECTRON_SMOKE = "1"
+$env:POMEGR_RENDERER_REACT_ELECTRON_SMOKE = "1"
+node --test tests/perfetto-viewer-electron.test.mjs tests/renderer-trace-react-electron.test.mjs
+```
+
+The first opens the pinned viewer with a synthetic local trace. The second bundles the
+actual Activity hook and tracing helper, proves an unlinked row renders before evidence
+is released, then verifies SSE-driven enrichment preserves its DOM node. These fixtures
+use no real provider files and assert zero unexpected external requests.
+
+Implementation acceptance on 2026-09-10 passed the production build, plugin/operations/
+inventory checks, 1,122 Node tests (one additional test skipped), 722 UI tests, both local
+Electron fixtures, native Trace Processor import/query/comparison and offline setup.
+The four controlled performance scenarios above also passed. Local logs and trace artifacts stay in ignored
+`outputs/` or `work/`; they are diagnostics, not release certification.

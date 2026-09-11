@@ -13,6 +13,7 @@ export function createIncrementalJsonlIngestor(options) {
     chunkBytes = 64 * 1024,
     maximumFragmentBytes = 256 * 1024,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
+    onCounter,
   } = options || {};
   if (typeof readChunk !== "function" || typeof parseRecord !== "function"
     || typeof initialState !== "function" || typeof reduce !== "function") {
@@ -26,6 +27,12 @@ export function createIncrementalJsonlIngestor(options) {
   }
   if (typeof yieldControl !== "function") {
     throw new TypeError("Incremental JSONL ingestor yieldControl must be a function");
+  }
+
+  function recordCounter(counter, value) {
+    if (counter !== "bytes" && counter !== "records") return;
+    if (!Number.isSafeInteger(value) || value < 0 || typeof onCounter !== "function") return;
+    try { onCounter(counter, value); } catch { /* diagnostics cannot block acquisition */ }
   }
 
   /** @type {{identity: string, completeOffset: number, fragment: Buffer, candidate: unknown, malformedRecords: number, oversizedFragments: number} | null} */
@@ -62,7 +69,9 @@ export function createIncrementalJsonlIngestor(options) {
       lineStart = index + 1;
       if (!line.length) continue;
       try {
-        state.candidate = reduce(state.candidate, parseRecord(line));
+        const record = parseRecord(line);
+        recordCounter("records", 1);
+        state.candidate = reduce(state.candidate, record);
       } catch {
         // A malformed complete record never blocks later complete records or
         // contaminates an otherwise valid committed candidate.
@@ -88,6 +97,7 @@ export function createIncrementalJsonlIngestor(options) {
       const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value || "");
       if (!bytes.length) break;
       if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
+      recordCounter("bytes", bytes.length);
       appendCompleteLines(state, bytes);
       // Reading all available chunks is required for correctness, but doing it
       // in one microtask chain can starve the monitor's cache-serving socket.

@@ -78,7 +78,7 @@ const OBSERVER_COUNTERS = Object.freeze([
   "acquisitionFailures",
 ]);
 
-/** Build the fixed monitor-private payload consumed by the terminal operations client. */
+/** Build the fixed monitor-private payload consumed by the passive snapshot reader. */
 export function createPipelineOperationsSnapshot(diagnostics, observedAt = new Date().toISOString()) {
   const coordinator = diagnostics?.coordinator || {};
   const observers = coordinator.observers && typeof coordinator.observers === "object"

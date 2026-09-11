@@ -38,6 +38,7 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
         headers: {
           "Cache-Control": "no-store",
           ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
+          ...(response.headers.get("x-pomegr-trace-revision") ? { "X-Pomegr-Trace-Revision": response.headers.get("x-pomegr-trace-revision")! } : {}),
         },
       });
     }
@@ -47,6 +48,7 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
         ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
+        ...(response.headers.get("x-pomegr-trace-revision") ? { "X-Pomegr-Trace-Revision": response.headers.get("x-pomegr-trace-revision")! } : {}),
       },
     });
   } catch {

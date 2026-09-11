@@ -6,6 +6,7 @@ import test from "node:test";
 import { createIncrementalProviderObserver, incrementalSourceDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { SessionObservationStore } from "../monitor/session-observation-store.mjs";
 import { createSessionObservationCoordinator } from "../monitor/session-observation-coordinator.mjs";
+import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
 
 async function waitFor(predicate, timeoutMs = 2_000) {
   const deadline = Date.now() + timeoutMs;
@@ -33,6 +34,7 @@ test("selected historical sessions recover after eviction without rebuilding unc
   const fixture = path.resolve("tests/fixtures/providers/claude/session.jsonl");
   const store = new SessionObservationStore({ maxEntries: 1 });
   const watcher = watchHarness();
+  const trace = createPipelineTraceRecorder({ enabled: true });
   let reads = 0;
   const observer = createIncrementalProviderObserver({
     providerId: "claude",
@@ -57,19 +59,22 @@ test("selected historical sessions recover after eviction without rebuilding unc
           publishSession: (id, evidence) => publisher.publishSession("claude", id, evidence),
           invalidateSession: (id, reason) => publisher.invalidateSession("claude", id, reason),
           checkpointFor: (id) => publisher.checkpointFor("claude", id),
-        }, signal);
+        }, signal, { trace });
         return { hydrate: (id) => observer.hydrate(id.slice("claude:".length)), stop: observer.stop };
       },
     },
     deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: evidence }),
   });
-  context.after(() => coordinator.stop());
+  context.after(() => { trace.deactivate(); return coordinator.stop(); });
   await coordinator.start();
   await waitFor(() => coordinator.catalog().snapshot?.value.sessions.length === 2);
   assert.equal(reads, 0, "old history starts as catalog-only");
   assert.equal(coordinator.session("claude:one").status, "loading");
   assert.equal(reads, 0, "serving never synchronously acquires provider evidence");
   await waitFor(() => store.get("claude", "one"));
+  const counterNames = trace.snapshot().traceEvents.filter((event) => event.ph === "C").map((event) => event.name);
+  assert.ok(counterNames.includes("bytes"));
+  assert.ok(counterNames.includes("records"));
   const original = coordinator.session("claude:one").snapshot;
   await waitFor(() => observer.diagnostics().activeHydrations === 0);
   assert.equal(await observer.hydrate("one"), false, "retained unchanged evidence does not reparse");

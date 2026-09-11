@@ -21,12 +21,6 @@ import {
   pipelineOperationsEndpoint,
   startPipelineOperationsTransport,
 } from "../monitor/pipeline-operations-transport.mjs";
-import {
-  formatPipelineOperationsSnapshot,
-  parsePipelineOperationsArgs,
-  pipelineOperationsHelp,
-  runPipelineOperationsCli,
-} from "../scripts/pipeline-ops.mjs";
 
 async function availablePort() {
   const server = createNetServer();
@@ -110,7 +104,6 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
   });
   assert.doesNotMatch(JSON.stringify(revalidated), /PRIVATE|RAW_MUST_NOT_LEAK/);
 });
-
 test("failure details retain only the latest bounded stage, reason and timestamp per category", () => {
   let time = Date.parse("2026-08-30T12:00:00.000Z");
   const recorder = createPipelineFailureRecorder({ now: () => time });
@@ -236,7 +229,7 @@ test("schema summaries are bounded, deduplicated, and re-allowlisted in monitor 
   } };
   const snapshot = createPipelineOperationsSnapshot({ coordinator: { observers: { claude: {
     acquisitionFailures: 1, failureDetails: { acquisitionFailures: detail },
-  } } } });
+  } } } }, "2026-09-10T00:00:00.000Z");
   assert.deepEqual(snapshot.providers[0].failureDetails.acquisitionFailures.validation, summary);
   const revalidated = normalizePipelineOperationsSnapshot({ ...snapshot, providers: [{
     ...snapshot.providers[0], failureDetails: { acquisitionFailures: { ...detail, validation: { issues: [
@@ -254,11 +247,6 @@ test("schema summaries are bounded, deduplicated, and re-allowlisted in monitor 
     .acquisitionFailures.validation, { issues: [], truncated: false });
   assert.equal(normalizePipelineFailureDetails({ acquisitionFailures: { ...detail, reason: "unknown" } })
     .acquisitionFailures.validation, undefined);
-  const rendered = formatPipelineOperationsSnapshot(snapshot);
-  assert.match(rendered, /session_publication · schema_validation/);
-  assert.match(rendered, /session.title · invalid_type/);
-  assert.match(rendered, /Additional validation issues omitted/);
-  assert.doesNotMatch(formatPipelineOperationsSnapshot(snapshot, { provider: "codex" }), /schema_validation/);
 });
 
 test("schema vocabulary follows nested optional and nullable contract fields but rejects invented paths", () => {
@@ -374,21 +362,6 @@ test("failed eager source preparation records detail without starting acquisitio
   assert.equal(observer.diagnostics().failureDetails.acquisitionFailures.stage, "source_preparation");
   assert.equal(observer.diagnostics().failureDetails.acquisitionFailures.reason, "EBUSY");
   assert.equal(acquired, false);
-});
-
-test("CLI renders latest failure details, unavailable legacy details, and provider filtering", () => {
-  const snapshot = createPipelineOperationsSnapshot({
-    coordinator: { observers: { claude: { acquisitionFailures: 2, failureDetails: { acquisitionFailures: {
-      stage: "acquire_normalize", reason: "EACCES", observedAt: "2026-08-30T12:00:00.000Z",
-    } } } } },
-    providers: { claude: { observerStartFailures: 1 }, codex: {} },
-  });
-  const rendered = formatPipelineOperationsSnapshot(snapshot);
-  assert.match(rendered, /FAILURES · cumulative counts; latest detail per category/);
-  assert.match(rendered, /claude · acquisitionFailures: 2\n  acquire_normalize · EACCES · 2026-08-30T12:00:00.000Z/);
-  assert.match(rendered, /observerStartFailures: 1\n  Detail unavailable/);
-  assert.ok(rendered.indexOf("FAILURES ·") < rendered.indexOf("PIPELINE TIMINGS"));
-  assert.doesNotMatch(formatPipelineOperationsSnapshot(snapshot, { provider: "codex" }), /claude|FAILURES ·/);
 });
 
 test("the operations transport streams bounded NDJSON over local IPC and closes cleanly", async (context) => {
@@ -507,151 +480,4 @@ test("pipeline endpoint names are deterministic per concrete monitor port", () =
     /pomegr-pipeline-42-4317\.sock$/,
   );
   assert.throws(() => pipelineOperationsEndpoint(0), /concrete monitor port/);
-});
-
-test("the terminal formatter and options stay bounded and provider-filterable", () => {
-  const snapshot = createPipelineOperationsSnapshot({
-    coordinator: {
-      observers: {
-        claude: { hydrationConcurrency: 2, activeHydrations: 1, pendingHydrations: 0 },
-        codex: { hydrationConcurrency: 2, activeHydrations: 2, pendingHydrations: 1 },
-      },
-    },
-    providers: { claude: {}, codex: {} },
-    responseRevisions: { catalog: 3, home: 2, usageLimits: 1 },
-  }, "2026-08-29T12:00:00.000Z");
-  const rendered = formatPipelineOperationsSnapshot(snapshot, { provider: "codex" });
-
-  assert.match(rendered, /Pomegr pipeline operations/);
-  assert.match(rendered, /codex\s+2\s+2\s+1/);
-  assert.doesNotMatch(rendered, /claude/);
-  assert.match(rendered, /acquire \+ normalize/);
-  assert.match(pipelineOperationsHelp(), /npm run ops:pipeline/);
-  assert.deepEqual(parsePipelineOperationsArgs(["--provider", "codex", "--port", "5000", "--json", "--once"]), {
-    port: 5000,
-    provider: "codex",
-    json: true,
-    once: true,
-    help: false,
-  });
-  assert.throws(() => parsePipelineOperationsArgs(["--provider", "PRIVATE PROVIDER"]), /provider is invalid/);
-  assert.throws(() => parsePipelineOperationsArgs(["--unknown"]), /Unknown/);
-});
-
-test("the continuous CLI reconnects and once mode consumes only one buffered snapshot", async (context) => {
-  const port = await availablePort();
-  let resolveOutput;
-  const output = new Promise((resolve) => { resolveOutput = resolve; });
-  const cli = runPipelineOperationsCli({ port, provider: "", json: true, once: false }, {
-    stdout: { isTTY: false, write(value) { resolveOutput(value); } },
-    stderr: { write() {} },
-    schedule(task) { return setTimeout(task, 10); },
-  });
-  context.after(() => cli.close());
-  await new Promise((resolve) => setTimeout(resolve, 25));
-  const transport = await startPipelineOperationsTransport({
-    port,
-    snapshot: () => createPipelineOperationsSnapshot({}, "2026-08-29T12:00:00.000Z"),
-    intervalMs: 100,
-  });
-  context.after(() => transport.close());
-  assert.match(await output, /"version":1/);
-
-  class FakeSocket extends EventEmitter {
-    setEncoding() {}
-    end() { this.emit("close"); }
-    destroy() { this.emit("close"); }
-  }
-  const socket = new FakeSocket();
-  const writes = [];
-  runPipelineOperationsCli({ port, provider: "", json: true, once: true }, {
-    connect: () => socket,
-    stdout: { isTTY: false, write(value) { writes.push(value); } },
-    stderr: { write() {} },
-  });
-  const line = JSON.stringify(createPipelineOperationsSnapshot({}));
-  socket.emit("data", `${line}\n${line}\n`);
-  assert.equal(writes.length, 1);
-});
-
-
-test("the live terminal reuses one bounded screen and restores it on shutdown", () => {
-  for (const shutdown of ["close", "SIGINT", "SIGTERM", "exit"]) {
-    const socket = new EventEmitter();
-    socket.destroy = () => socket.emit("close");
-    const signals = new EventEmitter();
-    const writes = [];
-    const exitCodes = [];
-    const stdout = { isTTY: true, columns: 120, rows: 40, write(value) { writes.push(value); } };
-    let retry;
-    let cancelled;
-    const cli = runPipelineOperationsCli({ port: 4317, json: false, once: false }, {
-      connect: () => socket,
-      stdout,
-      stderr: { write() {} },
-      signals,
-      schedule(callback) { retry = callback; return 123; },
-      cancel(timer) { cancelled = timer; },
-      setExitCode(code) { exitCodes.push(code); },
-    });
-    const snapshot = createPipelineOperationsSnapshot({
-      providers: { claude: {}, codex: {} },
-    }, "2026-08-29T12:00:00.000Z");
-    socket.emit("data", JSON.stringify(snapshot) + "\n");
-    assert.match(writes.join(""), /shared · candidate to commit/);
-
-    // A resize must not wrap or scroll, even when the panel is taller than the viewport.
-    stdout.columns = 60;
-    stdout.rows = 10;
-    const updated = { ...snapshot, revisions: { ...snapshot.revisions, catalog: 2 } };
-    socket.emit("data", JSON.stringify(updated) + "\n");
-    const frame = writes.at(-1);
-    assert.ok(frame.startsWith("\u001b[H\u001b[2J"));
-    assert.ok(!frame.endsWith("\n"));
-    const lines = frame.slice("\u001b[H\u001b[2J".length).split("\r\n");
-    assert.equal(lines.length, stdout.rows);
-    assert.ok(lines.every((line) => line.length <= stdout.columns));
-    assert.match(lines.at(-1), /Resize terminal/);
-    assert.match(frame, /catalog 2/);
-    assert.equal(writes.join("").split("\u001b[?1049h").length - 1, 1);
-
-    // A feed disconnect keeps the same screen; stopping also cancels its retry.
-    socket.emit("close");
-    assert.equal(typeof retry, "function");
-    assert.doesNotMatch(writes.join(""), /\u001b\[\?1049l/);
-    if (shutdown === "close") cli.close();
-    else signals.emit(shutdown);
-    assert.equal(cancelled, 123);
-    assert.ok(writes.at(-1).endsWith("\u001b[?25h\u001b[?1049l"));
-    assert.deepEqual(signals.eventNames(), []);
-    assert.deepEqual(exitCodes, shutdown === "SIGINT" ? [130] : shutdown === "SIGTERM" ? [143] : []);
-    const writeCount = writes.length;
-    socket.emit("data", JSON.stringify(snapshot) + "\n");
-    cli.close();
-    assert.equal(writes.length, writeCount);
-  }
-});
-
-test("once, JSON, and redirected CLI output stay printable without screen controls", () => {
-  for (const mode of [{ isTTY: true, once: true }, { isTTY: true, json: true }, { isTTY: false }]) {
-    const socket = new EventEmitter();
-    socket.end = socket.destroy = () => socket.emit("close");
-    const writes = [];
-    const signals = new EventEmitter();
-    const cli = runPipelineOperationsCli({ port: 4317, ...mode }, {
-      connect: () => socket,
-      stdout: { isTTY: mode.isTTY, write(value) { writes.push(value); } },
-      stderr: { write() {} },
-      signals,
-    });
-    const snapshot = createPipelineOperationsSnapshot({});
-    socket.emit("data", JSON.stringify(snapshot) + "\n");
-    cli.close();
-    assert.equal(writes.length, 1);
-    assert.doesNotMatch(writes[0], /\u001b/);
-    assert.ok(writes[0].endsWith("\n"));
-    assert.deepEqual(signals.eventNames(), []);
-    if (mode.json) assert.deepEqual(JSON.parse(writes[0]), snapshot);
-    else assert.match(writes[0], /shared · candidate to commit/);
-  }
 });
