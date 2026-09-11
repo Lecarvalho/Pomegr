@@ -106,7 +106,7 @@ test("renderer clock coverage counts only slices that fit the capture event cap"
 test("the monitor bridge is a local authenticated POST without an activation control", async (context) => {
   const recorder = createPipelineTraceRecorder({ enabled: true, stages: ["renderer_fetch"] });
   const authorization = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
-  const diagnostics = createDevelopmentDiagnostics({ recorder });
+  const diagnostics = createDevelopmentDiagnostics({ recorder, logWriter: { write: () => true, stats: () => ({}), close: async () => {} } });
   const runtime = { serveSessionHistory: async () => ({ kind: "activity", status: "ready", revision: "1", total: 0, offset: 0, items: [], linkedCount: 0 }) };
   const server = http.createServer(diagnostics.createRequestHandler({ runtime, authorizationToken: authorization }));
   context.after(() => new Promise((resolve) => server.close(resolve)));
@@ -130,7 +130,7 @@ test("the monitor bridge is a local authenticated POST without an activation con
 
 test("only a committed history GET mints a renderer revision token", async (context) => {
   const recorder = createPipelineTraceRecorder({ enabled: true, stages: ["renderer_fetch"] });
-  const diagnostics = createDevelopmentDiagnostics({ recorder });
+  const diagnostics = createDevelopmentDiagnostics({ recorder, logWriter: { write: () => true, stats: () => ({}), close: async () => {} } });
   let ready = false;
   const runtime = {
     serveSessionHistory: async () => ready

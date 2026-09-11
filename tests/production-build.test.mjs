@@ -35,6 +35,7 @@ test("production web artifacts exclude the recorder, capture protocol, and brows
   const artifact = await artifactText(fixture.outDir);
   for (const forbidden of [
     "createPipelineTraceRecorder", "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+    "createPipelineLogWriter", "pipeline-log-writer", "pipeline-log-stream", "pipeline-logs",
     "/api/renderer-trace", "x-pomegr-trace-revision", "renderer_event", "renderer_react_commit", "performance.mark",
   ]) assert.equal(new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u").test(artifact), false, forbidden);
 });

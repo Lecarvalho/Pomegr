@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
@@ -13,11 +13,10 @@ import { createDevelopmentDiagnostics } from "../monitor/dev-diagnostics.mjs";
 import { createDevelopmentTraceScopeRegistry } from "../monitor/dev-trace-scopes.mjs";
 import { runDiagnosticsSnapshot } from "../scripts/diagnostics-snapshot.mjs";
 
-test("development composition starts a rolling recorder without adding capture code to the monitor server", async (context) => {
+test("development composition writes continuous logs before observation and without a capture client", async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-desktop-trace-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
-  const descriptorPath = path.join(directory, "capability.json");
-  const diagnostics = createDevelopmentDiagnostics({ transportOptions: { descriptorPath } });
+  const diagnostics = createDevelopmentDiagnostics({ directory });
   const recorder = diagnostics.recorder;
   let starts = 0;
   const runtime = { startObservation: async () => { starts += 1; }, stopObservation: async () => {}, observationDiagnostics: () => ({}) };
@@ -31,13 +30,17 @@ test("development composition starts a rolling recorder without adding capture c
     providerRegistry: { watchTargets: async () => [] },
   });
   context.after(() => handle.close());
-  const capture = runDiagnosticsCapture({ port: handle.port, durationSeconds: 1, descriptorPath, outputPath: path.join(directory, "capture.json") });
   assert.equal(recorder.isRolling(), true);
   assert.equal(recorder.isActive(), true);
   recorder.recordCounter({ counter: "records", value: 1 });
   const snapshot = await runDiagnosticsSnapshot({ port: handle.port, json: true });
   assert.equal(snapshot.snapshot.version, 1);
-  await capture;
+  await diagnostics.logWriter.flush();
+  const files = await readdir(directory);
+  const rows = (await readFile(path.join(directory, files[0]), "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(rows[0].kind, "lifecycle");
+  assert.ok(rows.some((row) => row.kind === "counter" && row.counter === "records"));
+  assert.ok(rows.some((row) => row.kind === "health"));
   assert.equal(starts, 1, "diagnostic clients never restart or request provider observation");
   assert.equal(recorder.isActive(), true);
 });
@@ -59,13 +62,13 @@ test("development trace scopes retain known sessions at capacity and expire with
   assert.notEqual(registry.scopeForSession("claude:first"), first, "expired associations receive a fresh opaque scope");
 });
 
-test("development diagnostics isolate transport startup failures from monitor observation", async (context) => {
+test("development diagnostics isolate log initialization failures from monitor observation", async (context) => {
   const warnings = [];
   let observationStarts = 0;
   let samplingStarts = 0;
   let samplingCloses = 0;
   const diagnostics = createDevelopmentDiagnostics({
-    startTransport: async () => { throw new Error("PRIVATE_TRANSPORT_FAILURE"); },
+    createWriter: () => { throw new Error("PRIVATE_LOG_FAILURE"); },
     startSampling: () => ({ close() { samplingCloses += 1; }, marker: ++samplingStarts }),
     logger: { warn: (message) => warnings.push(message) },
   });
@@ -85,7 +88,7 @@ test("development diagnostics isolate transport startup failures from monitor ob
   context.after(() => handle.close());
   assert.equal(observationStarts, 1);
   assert.equal(samplingStarts, 1);
-  assert.deepEqual(warnings, ["[pomegr] Local diagnostic capture unavailable."]);
+  assert.deepEqual(warnings, ["[pomegr] Local diagnostic log unavailable."]);
   await handle.close();
   assert.equal(samplingCloses, 1, "initialized diagnostics close once when the monitor closes");
 });

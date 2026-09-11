@@ -2,7 +2,10 @@ import { createRequestHandler } from "./request-handler.mjs";
 import { createPipelineRendererTraceBridge } from "./pipeline-renderer-trace.mjs";
 import { createPipelineTraceRecorder } from "./pipeline-trace.mjs";
 import { startPipelineTraceSampling } from "./pipeline-trace-sampling.mjs";
-import { startPipelineTraceCaptureTransport } from "./pipeline-trace-transport.mjs";
+import { fileURLToPath } from "node:url";
+import { createPipelineLogWriter } from "./pipeline-log-writer.mjs";
+import { createPipelineLogStream } from "./pipeline-log-stream.mjs";
+import { createPipelineOperationsSnapshot } from "./pipeline-operations.mjs";
 import { createDevelopmentTraceScopeRegistry } from "./dev-trace-scopes.mjs";
 import { normalizeRendererTracePayload } from "../shared/renderer-trace-contract.mjs";
 
@@ -45,18 +48,32 @@ function internalRendererTraceRequest(request, response, bridge, authorizationTo
   return true;
 }
 
-/** Development-only Perfetto composition. Production imports neither this module nor its dependencies. */
+/** Automatic development-only file logging. Production imports none of this composition. */
 export function createDevelopmentDiagnostics({
-  recorder = createPipelineTraceRecorder({ rolling: true, stages: STAGES }),
-  transportOptions = {},
-  startTransport = startPipelineTraceCaptureTransport,
+  recorder = null,
+  logWriter = null,
+  createWriter = createPipelineLogWriter,
+  directory = fileURLToPath(new URL("../outputs/pipeline-logs/", import.meta.url)),
   startSampling = startPipelineTraceSampling,
   logger = console,
+  schedule = setInterval,
+  cancel = clearInterval,
 } = {}) {
+  let writer = logWriter;
+  let initializationWarned = false;
+  try { writer ||= createWriter({ directory }); } catch {
+    logger?.warn?.("[pomegr] Local diagnostic log unavailable.");
+    initializationWarned = true;
+    writer = { write: () => false, stats: () => ({ failed: true }), close: async () => {} };
+  }
+  const stream = createPipelineLogStream({ writer });
+  recorder ||= createPipelineTraceRecorder({ rolling: true, stages: STAGES, retainEvents: false, onEvent: stream.event });
+  stream.record({ kind: "lifecycle", event: "started" });
   const scopes = createDevelopmentTraceScopeRegistry({ createScope: () => recorder.createScope() });
   const bridge = createPipelineRendererTraceBridge({ recorder });
   return Object.freeze({
     recorder,
+    logWriter: writer,
     traceScopeForSession: scopes.scopeForSession,
     createRequestHandler(options) {
       const handler = createRequestHandler({
@@ -72,20 +89,24 @@ export function createDevelopmentDiagnostics({
         return handler(request, response);
       };
     },
-    async start({ port, runtime }) {
-      let transport = null;
+    async start({ runtime }) {
       let sampling = null;
-      try {
-        transport = await startTransport({
-          ...transportOptions,
-          enabled: true,
-          port,
-          recorder,
-          resolveSessionScope: scopes.resolveSessionScope,
-        });
-      } catch {
-        logger?.warn?.("[pomegr] Local diagnostic capture unavailable.");
-      }
+      let warned = initializationWarned;
+      let previousRejected = 0;
+      const health = () => {
+        try {
+          stream.reportLoss();
+          const instrumentation = recorder.statistics?.();
+          const rejected = (instrumentation?.droppedSpans || 0) + (instrumentation?.droppedHandles || 0);
+          if (rejected > previousRejected && stream.record({ kind: "gap", reason: "instrumentation_limit",
+            droppedRecords: 0, rejectedRecords: rejected - previousRejected })) previousRejected = rejected;
+          stream.record({ kind: "health", snapshot: createPipelineOperationsSnapshot(runtime.observationDiagnostics?.()) });
+          if (writer.stats().failed && !warned) { warned = true; logger?.warn?.("[pomegr] Local diagnostic log unavailable."); }
+        } catch { /* Diagnostic collection cannot affect observation. */ }
+      };
+      health();
+      const timer = schedule(health, 1_000);
+      timer?.unref?.();
       try {
         sampling = startSampling({ recorder, diagnostics: runtime.observationDiagnostics });
       } catch {
@@ -96,8 +117,12 @@ export function createDevelopmentDiagnostics({
         close() {
           if (closePromise) return closePromise;
           closePromise = (async () => {
+            cancel(timer);
             try { sampling?.close?.(); } catch { /* Diagnostic cleanup cannot affect monitor shutdown. */ }
-            try { await transport?.close?.(); } catch { /* Diagnostic cleanup cannot affect monitor shutdown. */ }
+            recorder.deactivate({ captureIncomplete: true });
+            health();
+            stream.record({ kind: "lifecycle", event: "stopped" });
+            try { await writer.close(); } catch { /* Diagnostic cleanup cannot affect monitor shutdown. */ }
           })();
           return closePromise;
         },

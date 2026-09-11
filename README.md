@@ -37,7 +37,7 @@ npm run diagnostics:snapshot
 
 Add `--json` for machine-readable output or `--provider codex` to filter one provider.
 See [Pipeline operations](docs/PIPELINE_OPERATIONS.md) for the bounded diagnostic
-contract and Perfetto capture workflow.
+contract, continuous local JSONL logs, and live/historical analysis.
 
 <p align="center">
   <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />

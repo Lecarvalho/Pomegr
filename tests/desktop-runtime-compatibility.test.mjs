@@ -333,6 +333,7 @@ test("desktop service bundling emits self-contained monitor and status-line work
     assert.doesNotMatch(bundle, /from\s+["'](?:\.\/|\.\.\/)/);
     for (const forbidden of [
       "createPipelineTraceRecorder", "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+      "createPipelineLogWriter", "pipeline-log-writer", "pipeline-log-stream", "pipeline-logs",
       "pomegr-pipeline-trace", "/internal/renderer-trace", "renderer-trace-contract", "renderer_event",
     ]) {
       assert.equal(bundle.includes(forbidden), false, forbidden);

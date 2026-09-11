@@ -1,6 +1,6 @@
 ---
 name: session-forensics
-description: Diagnose coding-agent session anomalies and delayed Pomegr live updates using local session evidence and Perfetto pipeline traces. Use for cache/context/compaction/tool-change investigations, late Activity or Request updates, and capture-based performance comparisons; not general application debugging.
+description: Diagnose coding-agent session anomalies and delayed Pomegr live updates using local session evidence and continuous JSONL pipeline logs. Use for cache/context/compaction/tool-change investigations, late Activity or Request updates, and evidence-based performance comparisons; not general application debugging.
 ---
 
 # Session Forensics
@@ -10,7 +10,7 @@ Reconstruct what happened from local evidence, separating provider-recorded fact
 ## Choose the evidence
 
 - For cache refills, context changes, compactions, or tool-definition changes, follow the provider investigation below.
-- For delayed Activity/Request rows, slow convergence, stalled live updates, or a supplied Perfetto trace, read [references/perfetto-diagnostics.md](references/perfetto-diagnostics.md). A session ID is not required to analyze the identity-free pipeline trace. Use native SQL for diagnosis; open the viewer when a visual explanation helps or the user asks.
+- For delayed Activity/Request rows, slow convergence, stalled live updates, or supplied pipeline logs, read [references/pipeline-logs.md](references/pipeline-logs.md). Analyze the continuously written local files first; no capture or native tool is needed.
 - For a mixed question, investigate each evidence source separately. A Pomegr delay does not explain a provider cache decision. Coincident timestamps do not establish that an anonymous trace flow belongs to a named request or session.
 
 ## Scope and authorization
@@ -18,7 +18,7 @@ Reconstruct what happened from local evidence, separating provider-recorded fact
 - An explicit request to diagnose a named local session authorizes read-only inspection of that session's transcript and related provider-owned metadata.
 - Keep the investigation read-only. Do not alter transcripts, provider state, configuration, caches, sessions, or running processes unless the user separately requests that action.
 - Stay within the named session and directly related child records. Do not inspect unrelated sessions merely because they are nearby.
-- A request to diagnose Pomegr performance authorizes reading sanitized local diagnostics and saving the development recorder's recent buffer through its authenticated local listener. Preserve recent history before investigating further. It does not authorize raw transcript inspection, restarting the app, or changing diagnostic configuration. Production and desktop builds have no recorder. Use existing authorization for separately requested setup/restarts; otherwise report the missing prerequisite.
+- A request to diagnose Pomegr performance authorizes reading sanitized local diagnostic files and preserving relevant retained files locally before rotation. It does not authorize raw transcript inspection, restarting the app, or changing diagnostic configuration. Production and desktop builds have no diagnostic writer. Use existing authorization for separately requested restarts; otherwise report the missing prerequisite.
 
 ## Provider evidence hierarchy
 

@@ -70,6 +70,8 @@ export function createPipelineTraceRecorder({
   maxHandles = DEFAULT_MAX_HANDLES,
   stages = undefined,
   scenario = "live_observation",
+  onEvent = null,
+  retainEvents = true,
 } = {}) {
   if (typeof now !== "function") throw new TypeError("Pipeline trace clock must be a function");
   const rollingMode = Boolean(rolling);
@@ -187,7 +189,13 @@ export function createPipelineTraceRecorder({
     return scopes.has(scope) ? scope : flowState?.scope ?? revisionState?.scope ?? null;
   }
 
-  function append(event, scope = null) {
+  function emit(event, scope = null, flow = null) {
+    try { onEvent?.(event, { scope, flow }); } catch { /* Diagnostics cannot interrupt observation. */ }
+  }
+
+  function append(event, scope = null, flow = null) {
+    emit(event, scope, flow);
+    if (!retainEvents) return true;
     const startMs = boundedInteger(event.ts / 1_000, Number.MAX_SAFE_INTEGER);
     const endMs = event.ph === "X" ? boundedInteger(startMs + event.dur / 1_000, Number.MAX_SAFE_INTEGER) : startMs;
     if (rollingMode) expireRetainedEvents(offsetMs(safeNow()));
@@ -237,7 +245,7 @@ export function createPipelineTraceRecorder({
     if (RENDERER_SURFACES.has(surface) && (stage === "cache_serve" || RENDERER_STAGES.has(stage))) args.surface = surface;
     const inheritedScope = resolvedScope(scope, flowState, revisionState);
     if (!append({ name: stage, cat: domain, ph: "X", ts: timestamp(spanStartedAt), dur: Math.round(safeDuration * 1_000),
-      pid: 1, tid: resolvedLane, args: Object.freeze(args) }, inheritedScope)) return false;
+      pid: 1, tid: resolvedLane, args: Object.freeze(args) }, inheritedScope, flowState?.id)) return false;
     laneEnds[resolvedLane] = Math.max(laneEnds[resolvedLane], spanStartedAt + safeDuration);
     if (calibratedRenderer) { calibratedRendererSpans += 1; maxRendererClockErrorUs = Math.max(maxRendererClockErrorUs, clockErrorUs); }
     observedStages.add(stage);
@@ -362,6 +370,8 @@ export function createPipelineTraceRecorder({
       const handle = Object.freeze({});
       laneEnds[lane] = started + MAX_DURATION_MS;
       openSpans.set(handle, Object.freeze({ stage, domain, lane, flow, revision, scope: inheritedScope, startedAt: started }));
+      emit({ name: stage, cat: domain, ph: "B", ts: timestamp(started), tid: lane,
+        args: revisionState ? { revision: revisionState.id } : {} }, inheritedScope, flowState?.id);
       return handle;
     },
     end(handle, { outcome = "observed" } = {}) {
@@ -388,6 +398,9 @@ export function createPipelineTraceRecorder({
       const observedAt = prepare();
       return append({ name: counter, cat: "runtime", ph: "C", ts: timestamp(observedAt), pid: 1, tid: 1,
         args: Object.freeze({ value: boundedInteger(value, Number.MAX_SAFE_INTEGER) }) });
+    },
+    statistics() {
+      return Object.freeze({ droppedEvents, droppedSpans, droppedHandles, openSpanCount: openSpans.size });
     },
     snapshot({ windowMs = undefined, scope = undefined } = {}) {
       const endMs = offsetMs(safeNow());
