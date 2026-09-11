@@ -6,6 +6,30 @@ function opaque(prefix, sessionId, agentId, nativeId) {
   return `${prefix}-${crypto.createHash("sha256").update(`${sessionId}|${agentId || ""}|${nativeId}`).digest("hex").slice(0, 16)}`;
 }
 
+/** Keep private actor ownership with history projections, never evidence candidates. */
+export function createHistoryOwnershipProjection() {
+  const actorIds = new Map();
+  return Object.freeze({
+    record(actorId, activity) {
+      if (typeof actorId !== "string" || !Array.isArray(activity)) return;
+      for (const item of activity) if (typeof item?.id === "string") actorIds.set(item.id, actorId);
+    },
+    project(activity) {
+      return Array.isArray(activity) ? activity.map((item) => {
+        const actorId = actorIds.get(item?.id);
+        return actorId ? { ...item, _historyAgentId: actorId } : item;
+      }) : [];
+    },
+  });
+}
+
+/** Replay complete history through the normalized callback after adapter enrichment. */
+export async function readCompleteSessionHistory(readSession) {
+  let history = null;
+  await readSession({ historical: true, completeStory: true, onHistoryRequests(value) { history = value; } });
+  return history || { requests: [], activity: [], complete: false };
+}
+
 /**
  * Convert complete provider-owned activity acquisition into rows that can be
  * served before request evidence has settled.  The row identity deliberately

@@ -155,6 +155,10 @@ numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
 Source-complete Activity may commit first with null request links and durations.
+Provider-private history ownership annotations stay in a separate history projection;
+registering progressive callbacks must not add fields to the strict session evidence.
+Observer-path tests validate session publication with those callbacks enabled and retain
+normalized agent ownership in both early and enriched history rows.
 The same observer then commits a bounded request contribution only after the
 existing strict monitor-side correlation resolves it; that contribution atomically
 adds request snapshots and enriches matching Activity IDs without removing retained

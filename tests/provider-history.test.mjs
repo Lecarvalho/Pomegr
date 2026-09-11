@@ -154,6 +154,53 @@ test("Codex history retains complete requests and replies beyond live limits", a
   assert.equal(JSON.stringify(history).includes("PRIVATE_REPLY"), false); assert.deepEqual(await provider.readSessionHistory(id), history);
 });
 
+test("Codex observer history callbacks retain reply ownership without contaminating strict session evidence", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-codex-observer-")); context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "01", "01"); await mkdir(directory, { recursive: true });
+  const id = "observer-codex"; const file = path.join(directory, "rollout-observer-codex.jsonl");
+  const records = [{ timestamp: stamp(0), type: "session_meta", payload: { id, timestamp: stamp(0), cwd: "C:\\private", source: "cli" } }, ...codexResponse(1)];
+  await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`); await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({ id, thread_name: "Observer", updated_at: stamp(1) })}\n`);
+  const provider = createCodexProvider({ codexHome: root, cacheMs: 0, includeArchived: false });
+  let activityHistory = null; let requestHistory = null;
+  const evidence = await provider.readSession(id, {
+    onHistoryActivity(value) { activityHistory = value; },
+    onHistoryRequests(value) { requestHistory = value; },
+  });
+  assert.doesNotThrow(() => parseProviderSessionEvidence(evidence, id));
+  assert.equal(JSON.stringify(evidence).includes("_historyAgentId"), false);
+  assert.equal(activityHistory?.find((item) => item.tool === "Assistant replied")?.agentId, "primary");
+  const requestReply = requestHistory?.activity.find((item) => item.tool === "Assistant replied");
+  assert.equal(requestReply?.agentId, "primary");
+  assert.equal(requestReply?.requestId, requestHistory?.requests[0]?.id);
+});
+
+test("Codex early, late, and replay history preserve duplicate child-label reply ownership", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-codex-duplicate-labels-")); context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "sessions", "2026", "01", "01"); await mkdir(directory, { recursive: true });
+  const id = "duplicate-root"; const childA = "duplicate-child-a"; const childB = "duplicate-child-b";
+  const record = (threadId, payload) => ({ timestamp: stamp(1), type: "session_meta", payload: { id: threadId, timestamp: stamp(1), cwd: "C:\\private", source: threadId === id ? "cli" : "sub_agent", ...(payload || {}) } });
+  const write = async (name, rows) => writeFile(path.join(directory, `rollout-${name}.jsonl`), `${rows.map(JSON.stringify).join("\n")}\n`);
+  await write("root", [record(id)]);
+  await write("child-a", [record(childA, { session_id: id, parent_thread_id: id, agent_nickname: "Same child" }), ...codexResponse(2)]);
+  await write("child-b", [record(childB, { session_id: id, parent_thread_id: id, agent_nickname: "Same child" }), ...codexResponse(3)]);
+  await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({ id, thread_name: "Duplicate children", updated_at: stamp(3) })}\n`);
+  const provider = createCodexProvider({ codexHome: root, cacheMs: 0, includeArchived: false });
+  let early = null; let late = null;
+  const evidence = await provider.readSession(id, {
+    historical: true,
+    completeStory: true,
+    onHistoryActivity(value) { early = value; },
+    onHistoryRequests(value) { late = value; },
+  });
+  assert.doesNotThrow(() => parseProviderSessionEvidence(evidence, id));
+  const replies = (history) => (Array.isArray(history) ? history : history.activity).filter((item) => item.tool === "Assistant replied")
+    .map((item) => ({ id: item.id, agentId: item.agentId })).sort((left, right) => left.agentId.localeCompare(right.agentId));
+  const expected = ["agent-duplicate-child-a", "agent-duplicate-child-b"];
+  assert.deepEqual(replies(early).map((item) => item.agentId), expected);
+  assert.deepEqual(replies(late), replies(early));
+  assert.deepEqual(replies(await provider.readSessionHistory(id)), replies(late));
+});
+
 test("history preserves explicit activity ownership when agent labels repeat", () => {
   const history = normalizedSessionHistory("claude", "same-label", { agents: [{ id: "agent-a", label: "Subagent", executionTasks: [] }, { id: "agent-b", label: "Subagent", executionTasks: [] }], usageSnapshots: [], toolCalls: [], activity: [{ id: "reply", timestamp: stamp(0), actor: "Subagent", tool: "Assistant replied", workKind: "report", detail: "", status: null, _historyAgentId: "agent-b" }] });
   assert.equal(history.activity[0].agentId, "agent-b");
