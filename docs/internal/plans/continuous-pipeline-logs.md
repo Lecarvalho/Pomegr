@@ -149,3 +149,28 @@ unchanged landing typecheck because the installed miniflare package does not exp
 convertV4MiniflareOptions and a dependent callback is implicitly any. No scoped logging
 file or test caused that failure. This checkpoint is the reviewed commit boundary; push,
 remaining documentation/package routing, live acceptance and plan closure remain later.
+
+## Checkpoint: 2026-09-11, package and canonical contracts
+
+Commit b672fb4 on codex/progressive-pipeline-perfetto contains the reviewed continuous-log
+implementation. After that commit, one serial Luna pass changed package.json to add
+diagnostics:logs, retained diagnostics:analyze for Perfetto, and added the three JSONL
+suites to test:diagnostics. One serial Terra pass aligned AGENTS.md,
+docs/PIPELINE_OPERATIONS.md, docs/OBSERVATION_CACHE.md, docs/ARCHITECTURE.md and
+docs/AGENT-WORKFLOW.md with file-first continuous logs, accurate queue/in-flight and
+retention bounds, privacy/loss/coverage semantics, development startup ownership and
+optional Perfetto tooling.
+
+These six files are uncommitted in the PR worktree. Package verification passed JSON
+parsing, diagnostics:logs help and test:diagnostics with 76 passed, 3 opt-in skips and no
+failures. Documentation verification passed diff whitespace plus production/desktop
+exclusion tests with 11 passed. A final worktree diff check also passed. No push, restart
+or live log-growth acceptance occurred.
+
+Usage guard observed 89% primary allowance with two live sessions and requested a voluntary
+pause. No more workers were started. Resume only after a fresh usage observation supports
+it. Next: review the six-file diff, run focused checks needed by any review fix, commit the
+package/contracts follow-up, then perform authorized restart and live growing-log/readiness
+acceptance. Reconcile the unrelated landing typecheck failure before claiming verify:fast,
+update/push PR 23, transfer enduring state, and delete this plan at closure. Preserve root
+dirty work, existing stash and unrelated desktop commit.

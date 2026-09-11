@@ -4,9 +4,26 @@ This document defines Pomegr's local development pipeline diagnostics.
 It is an engineering diagnostic, not a product dashboard, session metric, or efficiency
 signal.
 
-## Local Perfetto capture
+## Continuous development JSONL logs
 
-Perfetto is the primary timeline and SQL analysis tool for new diagnostic recordings.
+Normal development automatically creates one anonymous continuous JSONL writer before provider observation. It is the primary diagnostic history; Perfetto remains optional targeted export, viewer, and SQL tooling. The writer owns only generated files in ignored `outputs/pipeline-logs/`, assumes one development writer, and retains at most ten owned files of at most 25 MiB each (250 MiB default). It never follows symlinks or deletes files it does not own. Accepted records are bounded to 1 MiB of queued memory, with a separately bounded active in-flight write batch of at most 1 MiB; neither bound is a process-RSS guarantee. A record is limited to 64 KiB. Startup, retention, rotation, and append failures degrade diagnostics without changing observation behavior.
+
+Each newline-delimited record has a fixed versioned schema: a fresh per-run UUID, ISO observation time, and one of `span_start`, `span`, `flow`, `counter`, `health`, `gap`, or `lifecycle`. It can contain only allowlisted stage/domain/outcome/counter vocabulary, synthetic lanes, opaque numeric flow/revision/scope handles, bounded health snapshots, and non-negative bounded timings or counts. `span_start` without a matching settled span is unfinished, not failed. `gap` records report observed dropped or rejected records with only `backpressure`, `disk_error`, or `instrumentation_limit`; lifecycle records delimit a run. Retained files, malformed input, partial trailing lines, rotations, file disappearance, limits, and gaps reduce observed coverage. They never establish whole-session coverage, a cause, or end-to-end duration.
+
+Records must never contain session IDs or selectors, source paths or fingerprints, prompts, responses, reasoning, transcript/tool content, commands, output, credentials, provider-native payloads, or raw errors. The run UUID and opaque handles are diagnostic-local, not hashes or encodings of identity. Logs never enter checkpoints, browser state, reports, HTTP, or renderer IPC.
+
+From the repository root, passively analyze retained files or follow new validated records:
+
+```powershell
+npm run diagnostics:logs -- --since 1h
+npm run diagnostics:logs -- --follow
+```
+
+This file-first analyzer/follower validates the fixed schema and bounds its file, byte, line, pending-span, health-history, and follow output. It neither connects to the monitor nor triggers provider acquisition, scheduling, checkpoint persistence, or publication. Follow begins at current EOF, serializes polls, and reports missed rotation or bounded-poll coverage rather than silently claiming continuity. Normal `npm run dev` does not start capture IPC.
+
+## Optional Perfetto capture and viewer
+
+Perfetto remains optional targeted tooling and does not gate continuous logs.
 The aggregate snapshot below remains an auxiliary current-health view because it retains
 fixed failure categories and live worker counters that are not part of a trace export.
 Recording is separate from provider observation:
@@ -27,13 +44,13 @@ Capture, native queries, and the separate loopback viewer operate locally after 
 No trace upload, remote collector, or product iframe is involved. The local viewer sends
 a Content Security Policy that blocks external connections and remote assets.
 
-Recording starts automatically with the development app:
+Continuous JSONL logging starts automatically with the development app. The optional rolling capture does not: use the save/capture tooling only for a targeted trace.
 
 ```powershell
 npm run dev
 ```
 
-When an update feels late, save the recent history immediately from another local shell:
+For routine diagnosis, use `npm run diagnostics:logs -- ...`. When a targeted trace is needed, save rolling history from another local shell:
 
 ```powershell
 npm run diagnostics:save
@@ -69,8 +86,8 @@ Its private token descriptor stays under the user's diagnostic directory, never 
 HTTP, logs, or trace exports. A second listener cannot overwrite an existing endpoint
 or descriptor. Browser/LAN clients cannot start or stop recording or supply output paths.
 
-Production and desktop builds exclude the recorder, recording transport and renderer
-instrumentation. There is no desktop opt-in or production renderer-trace endpoint.
+Production and desktop builds exclude continuous logging, the recorder, recording transport,
+and renderer instrumentation. There is no desktop opt-in or production renderer-trace endpoint.
 The development entrypoint composes these capabilities separately from the core monitor;
 environment variables cannot enable them in a shipped application.
 The capture client reads the token privately; never print descriptor contents. No renderer
@@ -174,7 +191,7 @@ samples per scenario. First-ready p95 in milliseconds, baseline/current: cold st
 584.417/103.428. Restored reads were slower in this sample. Re-run against matching local
 builds to diagnose a regression; these figures are not production performance budgets.
 
-`diagnostics:analyze` runs maintained stage, resource-counter, causal-flow and calibrated
+`diagnostics:analyze` remains the Perfetto command: it runs maintained stage, resource-counter, causal-flow and calibrated
 renderer SQL. Its
 JSON and Markdown include capture loss, configured versus observed coverage, clocks,
 and per-stage samples. No causal edge means unavailable evidence, not zero delay.

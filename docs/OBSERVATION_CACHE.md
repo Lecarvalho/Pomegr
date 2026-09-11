@@ -1805,19 +1805,32 @@ are excluded, and successful work does not erase historical failure details. Bou
 monotonic duration windows may additionally cover catalog discovery, source preparation,
 combined acquisition/normalization, catalog projection, session derivation, normalized
 store commit, and candidate-to-commit delay. The aggregate feed contains no native source
-or session identity. Development startup separately composes a rolling recorder of bounded
-timing slices, outcomes, counters and opaque correlation handles. It targets the last five
-minutes under fixed event/byte/handle limits. Authenticated local save exports the retained
-window without stopping or clearing recording. A bounded private development lookup maps
-known normalized session selectors to opaque recorder-minted scopes; only those scope
-objects enter tracing APIs. Trace events, exports and reports never contain the selector
-or lookup map. Relevant shared work stays available alongside selected session work.
-The recorder, export transport and browser instrumentation are excluded from production
-and desktop artifacts. Schema, lifetime, coverage, local setup and offline analysis belong
-to `docs/PIPELINE_OPERATIONS.md`. Diagnostics cannot trigger provider work, change product
-scheduling, or enter checkpoints. Browser/LAN routes cannot start or stop recording.
-Raw data, source paths/fingerprints, session identity and arbitrary errors remain forbidden
-in diagnostic output.
+or session identity.
+
+Before development observation begins, the development composition creates one continuous
+anonymous JSONL writer. It is file-first: it owns generated files only in
+`outputs/pipeline-logs/`, retains at most ten files of at most 25 MiB each (250 MiB default),
+and assumes one development writer. Its accepted-record queue is bounded to 1 MiB, and a
+separate active drain batch is independently bounded to at most 1 MiB; neither bound is a
+process-memory guarantee. Fixed versioned records contain only a fresh run UUID, local
+observation timestamp, allowlisted stages/domains/outcomes/counters, synthetic lanes, and
+opaque numeric flow/revision/scope handles. They must not contain a session ID, selector,
+path, fingerprint, prompt, response, transcript/tool content, credential, raw error, or
+provider-native payload. `span_start` records make unfinished work explicit; `gap` records
+declare observed writer/instrumentation loss with fixed reasons; health records preserve
+bounded normalized operations snapshots; lifecycle records delimit a run. Retention,
+malformed records, partial trailing lines, rotations, limits, missing files, and gaps reduce
+coverage. They never establish a complete session history or a causal diagnosis.
+
+`npm run diagnostics:logs -- ...` passively validates, analyzes, or follows these retained
+files. It does not connect to the monitor, acquire provider data, alter scheduling, write
+checkpoints, or publish a revision. Diagnostic GETs do not exist. Normal development does
+not start capture IPC. The separate rolling recorder, authenticated capture/export transport,
+and Perfetto viewer remain optional targeted development tooling with their existing private
+scope; they do not gate continuous logs. Continuous logging, capture transport, and renderer
+instrumentation are excluded from production and desktop artifacts, not merely disabled.
+Browser/LAN routes cannot start or stop any diagnostic facility. Schema, retention, coverage,
+local setup and offline analysis belong to `docs/PIPELINE_OPERATIONS.md`.
 
 The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
