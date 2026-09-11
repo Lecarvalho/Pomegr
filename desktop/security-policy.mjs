@@ -17,9 +17,14 @@ export const DESKTOP_CSP = [
   "style-src 'self' 'unsafe-inline'",
 ].join("; ");
 
-const ALLOWED_EXTERNAL_PREFIXES = Object.freeze([
-  "https://github.com/Lecarvalho/pomegr",
+const ALLOWED_PROVIDER_STATUS_ORIGINS = Object.freeze([
+  "https://status.claude.com",
+  "https://status.openai.com",
 ]);
+const POMEGR_GITHUB_PATH_PREFIX = "/Lecarvalho/pomegr";
+const CODEX_CACHE_ISSUE_PATH = "/openai/codex/issues/35300";
+const GITHUB_PULL_REQUEST_PATH = /^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,9}$/;
+const PROVIDER_STATUS_PATH = /^\/(?:incidents\/[A-Za-z0-9_-]{1,128}\/?)?$/;
 
 // Web-only development routes. The desktop shell refuses to navigate to them even
 // though they share the application origin; the client view also hides them.
@@ -39,11 +44,14 @@ export function isAllowedExternalUrl(value) {
   let url;
   try { url = new URL(value); } catch { return false; }
   if (url.protocol !== "https:" || url.username || url.password) return false;
-  return ALLOWED_EXTERNAL_PREFIXES.some((prefix) => {
-    const allowed = new URL(prefix);
-    return url.origin === allowed.origin
-      && (url.pathname === allowed.pathname || url.pathname.startsWith(`${allowed.pathname}/`));
-  });
+  if (ALLOWED_PROVIDER_STATUS_ORIGINS.includes(url.origin)) {
+    return !url.search && !url.hash && PROVIDER_STATUS_PATH.test(url.pathname);
+  }
+  if (url.origin !== "https://github.com") return false;
+  if (url.pathname === POMEGR_GITHUB_PATH_PREFIX || url.pathname.startsWith(`${POMEGR_GITHUB_PATH_PREFIX}/`)) return true;
+  if (url.search) return false;
+  const pathname = url.pathname.replace(/\/$/, "");
+  return pathname === CODEX_CACHE_ISSUE_PATH || GITHUB_PULL_REQUEST_PATH.test(pathname);
 }
 
 export function secureBrowserWindowOptions({ preloadPath, browserSession, windowState }) {
@@ -115,14 +123,23 @@ export function installWebContentsSecurity(webContents, { webOrigin, openExterna
       return url.origin === expectedOrigin && !isDesktopHiddenPath(url.pathname);
     } catch { return false; }
   };
-  const denyUnexpectedNavigation = (event, target) => {
+  const openAllowedExternal = (value) => {
+    if (!isAllowedExternalUrl(value)) return;
+    try { void Promise.resolve(openExternal(value)).catch(() => {}); } catch {}
+  };
+  const handleNavigation = (event, target) => {
+    if (allowInternal(target)) return;
+    event.preventDefault();
+    openAllowedExternal(target);
+  };
+  const denyUnexpectedRedirect = (event, target) => {
     if (!allowInternal(target)) event.preventDefault();
   };
-  webContents.on("will-navigate", denyUnexpectedNavigation);
-  webContents.on("will-redirect", denyUnexpectedNavigation);
+  webContents.on("will-navigate", handleNavigation);
+  webContents.on("will-redirect", denyUnexpectedRedirect);
   webContents.on("will-attach-webview", (event) => event.preventDefault());
   webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedExternalUrl(url)) void openExternal(url).catch(() => {});
+    openAllowedExternal(url);
     return { action: "deny" };
   });
 }

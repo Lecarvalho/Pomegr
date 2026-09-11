@@ -139,7 +139,7 @@ test("desktop session injects local authorization and denies permissions and dow
   assert.equal(remoteHeaders[DESKTOP_AUTH_HEADER], undefined);
 });
 
-test("desktop navigation denies webviews, unexpected origins, and non-allowlisted external URLs", async () => {
+test("desktop navigation denies webviews and unexpected origins while opening approved external links", async () => {
   const contents = new EventEmitter();
   let openHandler;
   contents.setWindowOpenHandler = (handler) => { openHandler = handler; };
@@ -155,6 +155,14 @@ test("desktop navigation denies webviews, unexpected origins, and non-allowliste
   const unexpected = event();
   contents.emit("will-navigate", unexpected, "http://127.0.0.1:5555/");
   assert.equal(unexpected.prevented, true);
+  const externalNavigation = event();
+  contents.emit("will-navigate", externalNavigation, "https://github.com/openai/codex/issues/35300");
+  assert.equal(externalNavigation.prevented, true);
+  const externalRedirect = event();
+  contents.emit("will-redirect", externalRedirect, "https://status.openai.com/");
+  assert.equal(externalRedirect.prevented, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ["https://github.com/openai/codex/issues/35300"]);
   for (const target of [
     "http://127.0.0.1:4444/design-system",
     "http://127.0.0.1:4444/design-system/?logo=outline",
@@ -177,11 +185,39 @@ test("desktop navigation denies webviews, unexpected origins, and non-allowliste
   const webview = event();
   contents.emit("will-attach-webview", webview);
   assert.equal(webview.prevented, true);
-  assert.deepEqual(openHandler({ url: "https://example.com/private" }), { action: "deny" });
-  assert.deepEqual(openHandler({ url: "https://github.com/Lecarvalho/pomegr/blob/main/LICENSE" }), { action: "deny" });
+  const approvedExternalUrls = [
+    "https://github.com/Lecarvalho/pomegr/blob/main/LICENSE",
+    "https://github.com/openai/codex/issues/35300",
+    "https://github.com/PomegrHQ/pomegr/pull/42",
+    "https://status.claude.com/",
+    "https://status.claude.com/incidents/code",
+    "https://status.openai.com/",
+    "https://status.openai.com/incidents/native-issue-42",
+  ];
+  for (const url of approvedExternalUrls) {
+    assert.deepEqual(openHandler({ url }), { action: "deny" });
+  }
+  for (const url of [
+    "https://example.com/private",
+    "https://github.com.evil.invalid/Lecarvalho/pomegr",
+    "https://github.com/other-owner/other-repository",
+    "https://github.com/other-owner/other-repository/pull/0",
+    "https://github.com/other-owner/other-repository/pull/42/files",
+    "https://status.openai.com.evil.invalid/incidents/native-issue-42",
+    "https://status.openai.com/history",
+    "https://status.claude.com/incidents/code?private=value",
+    "http://github.com/Lecarvalho/pomegr",
+    "https://user@github.com/Lecarvalho/pomegr",
+    "javascript:alert(1)",
+  ]) {
+    assert.deepEqual(openHandler({ url }), { action: "deny" });
+  }
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(opened, ["https://github.com/Lecarvalho/pomegr/blob/main/LICENSE"]);
-  assert.equal(isAllowedExternalUrl("https://github.com/Lecarvalho/pomegr.evil.invalid/"), false);
+  assert.deepEqual(opened, ["https://github.com/openai/codex/issues/35300", ...approvedExternalUrls]);
+  assert.equal(isAllowedExternalUrl("https://github.com/openai/codex/issues/35300"), true);
+  assert.equal(isAllowedExternalUrl("https://status.claude.com/incidents/code"), true);
+  assert.equal(isAllowedExternalUrl("https://status.openai.com/incidents/native-issue-42"), true);
+  assert.equal(isAllowedExternalUrl("https://github.com.evil.invalid/Lecarvalho/pomegr"), false);
   assert.equal(isAllowedExternalUrl("http://github.com/Lecarvalho/pomegr"), false);
 });
 
