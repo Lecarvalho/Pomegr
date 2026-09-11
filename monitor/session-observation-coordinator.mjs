@@ -96,6 +96,16 @@ export function createSessionObservationCoordinator(options = {}) {
   const now = options.now || Date.now;
   const monotonicNow = options.monotonicNow || (() => performance.now());
   const trace = options.pipelineTrace;
+  const traceScopeForSession = typeof options.traceScopeForSession === "function"
+    ? options.traceScopeForSession
+    : null;
+  function traceScope(providerId, localSessionId) {
+    if (!traceScopeForSession) return null;
+    try {
+      const scope = traceScopeForSession(qualifiedSessionId(providerId, localSessionId));
+      return scope && typeof scope === "object" && !Array.isArray(scope) ? scope : null;
+    } catch { return null; }
+  }
   const catalogsByProvider = new Map();
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
@@ -147,7 +157,8 @@ export function createSessionObservationCoordinator(options = {}) {
     const delay = Math.min(checkpointDelayMs, maximumRemaining);
     const timer = schedule(() => {
       checkpointTimers.delete(snapshot.qualifiedId);
-      const span = trace?.begin({ stage: "checkpoint", domain: "persistence" });
+      const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
+      const span = trace?.begin({ stage: "checkpoint", domain: "persistence", scope });
       void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).then(
         () => { trace?.end(span, { outcome: "accepted" }); },
         () => { trace?.end(span, { outcome: "failed" }); },
@@ -267,11 +278,12 @@ export function createSessionObservationCoordinator(options = {}) {
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
     const flow = candidate.traceFlow;
+    const scope = candidate.traceScope || traceScope(candidate.providerId, candidate.localSessionId);
     try {
       timings.sessionCommitWait.record(monotonicNow() - candidate.queuedAt);
-      trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow });
+      trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope });
       const derivationStartedAt = monotonicNow();
-      const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow });
+      const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow, scope });
       let derived;
       try {
         derived = await deriveSession(candidate);
@@ -287,13 +299,13 @@ export function createSessionObservationCoordinator(options = {}) {
         return;
       }
       if (pendingSessions.get(qualifiedId) !== candidate) {
-        trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, outcome: "superseded" });
+        trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope, outcome: "superseded" });
         trace?.finishFlow(flow, { outcome: "superseded" });
         scheduleSessionCommit(qualifiedId);
         return;
       }
       const storeStartedAt = monotonicNow();
-      const storeSpan = trace?.begin({ stage: "normalized_store_commit", domain: "commit", flow });
+      const storeSpan = trace?.begin({ stage: "normalized_store_commit", domain: "commit", flow, scope });
       let snapshot;
       try {
         snapshot = store.publish({
@@ -311,7 +323,7 @@ export function createSessionObservationCoordinator(options = {}) {
         trace?.end(storeSpan, { outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       }
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
-      trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow,
+      trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope,
         outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       trace?.finishFlow(flow, { outcome: snapshot?.accepted ? "completed" : "rejected" });
       // Restored task state remains last-observed until new provider evidence
@@ -407,6 +419,7 @@ export function createSessionObservationCoordinator(options = {}) {
         cancel(scheduled);
         scheduledSessions.delete(qualifiedId);
       }
+      const scope = traceScope(providerId, localSessionId);
       pendingSessions.set(qualifiedId, Object.freeze({
         providerId,
         localSessionId,
@@ -417,7 +430,8 @@ export function createSessionObservationCoordinator(options = {}) {
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
         pinned: Boolean(evidence?.historical === false),
         queuedAt: monotonicNow(),
-        traceFlow: trace?.createFlow(),
+        traceScope: scope,
+        traceFlow: trace?.createFlow({ scope }),
       }));
       sessionRetryAttempts.delete(qualifiedId);
       scheduleSessionCommit(qualifiedId);
@@ -474,6 +488,7 @@ export function createSessionObservationCoordinator(options = {}) {
           if (!restored.accepted) continue;
           restoredActivitySessions.add(restored.snapshot.qualifiedId);
           const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
+          const scope = traceScope(record.providerId, record.localSessionId);
           pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
             providerId: record.providerId,
             localSessionId: record.localSessionId,
@@ -485,12 +500,14 @@ export function createSessionObservationCoordinator(options = {}) {
             observedAt: record.observedAt,
             pinned: Boolean(record.evidence?.historical === false),
             queuedAt: monotonicNow(),
+            traceScope: scope,
+            traceFlow: trace?.createFlow({ scope }),
           }));
           scheduleSessionCommit(restored.snapshot.qualifiedId);
         }
       }
       lifecycle = typeof registry.startObservers === "function"
-        ? await registry.startObservers(publisher, abortController.signal, { trace })
+        ? await registry.startObservers(publisher, abortController.signal, { trace, traceScopeForSession })
         : null;
       return lifecycle;
     })();
@@ -510,6 +527,7 @@ export function createSessionObservationCoordinator(options = {}) {
     if (pendingSessions.has(qualifiedId)) return true;
     const snapshot = store.getByQualifiedId(qualifiedId);
     if (!snapshot) return false;
+    const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
     pendingSessions.set(qualifiedId, Object.freeze({
       providerId: snapshot.providerId,
       localSessionId: snapshot.localSessionId,
@@ -519,6 +537,8 @@ export function createSessionObservationCoordinator(options = {}) {
       observedAt: snapshot.observedAt,
       pinned: Boolean(snapshot.evidence?.historical === false),
       queuedAt: monotonicNow(),
+      traceScope: scope,
+      traceFlow: trace?.createFlow({ scope }),
     }));
     sessionRetryAttempts.delete(qualifiedId);
     scheduleSessionCommit(qualifiedId);

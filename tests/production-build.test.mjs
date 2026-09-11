@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +17,27 @@ async function sourceBuild(context) {
   await writeFile(path.join(assets, "page-original.css"), "body { color: red; }");
   return { root, assets };
 }
+
+async function artifactText(root) {
+  const files = await readdir(root, { withFileTypes: true });
+  const pieces = await Promise.all(files.map(async (entry) => {
+    const filename = path.join(root, entry.name);
+    if (entry.isDirectory()) return artifactText(filename);
+    if (!entry.isFile() || (await stat(filename)).size > 4 * 1024 * 1024) return "";
+    return readFile(filename, "utf8").catch(() => "");
+  }));
+  return pieces.join("\n");
+}
+
+test("production web artifacts exclude the recorder, capture protocol, and browser trace instrumentation", async (context) => {
+  const fixture = await createProductionBuildFixture();
+  context.after(fixture.close);
+  const artifact = await artifactText(fixture.outDir);
+  for (const forbidden of [
+    "createPipelineTraceRecorder", "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+    "/api/renderer-trace", "x-pomegr-trace-revision", "renderer_event", "renderer_react_commit", "performance.mark",
+  ]) assert.equal(new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u").test(artifact), false, forbidden);
+});
 
 test("production-test assets survive replacement of the checkout build", async (context) => {
   const { root, assets } = await sourceBuild(context);

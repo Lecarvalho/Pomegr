@@ -1,4 +1,6 @@
-export type HistoryPublication = Readonly<{ domain: "history"; revision: number; receivedAt: number }>;
+import { rendererTraceReceiptTime } from "@pomegr/renderer-trace";
+
+export type HistoryPublication = Readonly<{ domain: "history"; revision: number; receivedAt?: number }>;
 type Listener = (publication: HistoryPublication) => void;
 
 const EVENT_STREAM = "/api/events";
@@ -19,8 +21,7 @@ function consume(message: MessageEvent<string>) {
     const event = value as { domain?: unknown; revision?: unknown };
     if (event.domain !== "history" || !validRevision(event.revision) || event.revision <= lastRevision) return;
     lastRevision = event.revision;
-    const receivedAt = typeof performance === "undefined" ? -1 : performance.now();
-    if (!Number.isFinite(receivedAt) || receivedAt < 0) return;
+    const receivedAt = rendererTraceReceiptTime();
     const publication = Object.freeze({ domain: "history" as const, revision: event.revision, receivedAt });
     for (const listener of listeners) {
       try { listener(publication); } catch { /* a consumer cannot break the shared stream */ }

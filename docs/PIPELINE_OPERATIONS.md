@@ -1,6 +1,6 @@
 # Pipeline operations monitor
 
-This document defines Pomegr's internal, manually launched observation-pipeline monitor.
+This document defines Pomegr's local development pipeline diagnostics.
 It is an engineering diagnostic, not a product dashboard, session metric, or efficiency
 signal.
 
@@ -27,20 +27,34 @@ Capture, native queries, and the separate loopback viewer operate locally after 
 No trace upload, remote collector, or product iframe is involved. The local viewer sends
 a Content Security Policy that blocks external connections and remote assets.
 
-Enable the diagnostic listener when launching the monitor from a trusted local shell:
+Recording starts automatically with the development app:
 
 ```powershell
-$env:POMEGR_DIAGNOSTICS = "1"
 npm run dev
 ```
 
-This permits capture attachment; it does not start recording. In another local shell:
+When an update feels late, save the recent history immediately from another local shell:
 
 ```powershell
-npm run diagnostics:capture -- --duration 30 --output outputs/pipeline-traces/capture.json
-npm run diagnostics:analyze -- --input outputs/pipeline-traces/capture.json --markdown
+npm run diagnostics:save
 npm run diagnostics:viewer
 ```
+
+The save command prints a timestamped file under ignored `outputs/pipeline-traces/`.
+It exports the preceding five minutes, or the shorter retained interval, without clearing
+the buffer or stopping recording. After two minutes of uptime, at most two minutes exist.
+Memory pressure can shorten the window; the export reports actual coverage. Restarting
+development clears the buffer. Saved files remain until explicitly removed.
+
+Use `--last 30s` for a shorter window or `--session <normalized-session-id>` to focus on
+known session work plus shared pipeline work. Session lookup is private to development;
+the selector and association map never enter the exported trace or reports. A selection
+with no retained match is reported as such, not attributed from coincident timestamps.
+`--output <local-path>` chooses a filename; save refuses to overwrite an existing file.
+For a readable report, run `node scripts/diagnostics-tools.mjs analyze --input <saved-file> --markdown`.
+The optional `diagnostics:capture -- --duration 30 --output <local-path>` still measures
+a future interval; on the development recorder it leaves the rolling buffer active.
+Requests longer than five minutes still export only the most recent retained window.
 
 Open the viewer's loopback URL and choose **Open trace file**. Its WebAssembly and
 scripts come from the pinned local archive. Stop the viewer with Ctrl+C. Native SQL
@@ -49,35 +63,30 @@ report query is `scripts/diagnostics/perfetto-report.sql`. Reports show per-stag
 samples, p50/p95, maximum, incomplete and failed/rejected attempts. Summed slice
 durations include overlapping work and are never described as end-to-end elapsed time.
 
-The capture client defaults to port 4317; use `--port` for another known local monitor.
+The save/capture client defaults to development port 4317; use `--port` for another known development monitor.
 An authenticated Windows named pipe or per-user Unix socket admits one capture client.
 Its private token descriptor stays under the user's diagnostic directory, never in
 HTTP, logs, or trace exports. A second listener cannot overwrite an existing endpoint
 or descriptor. Browser/LAN clients cannot start or stop recording or supply output paths.
-Remove the environment variable before a later ordinary launch to disable attachment.
 
-The Windows desktop reads the same opt-in once in the trusted main process and passes
-only a boolean to its private monitor worker. Its monitor port is ephemeral. With the
-desktop launched from an opted-in shell, inspect descriptor **filenames only**:
-
-```powershell
-Get-ChildItem -LiteralPath "$env:LOCALAPPDATA/Pomegr/diagnostics" -Filter "pipeline-trace-win-*.json" | Select-Object -ExpandProperty Name
-npm run diagnostics:capture -- --port <port-from-filename> --duration 30 --output outputs/pipeline-traces/desktop.json
-npm run diagnostics:snapshot -- --port <port-from-filename> --json
-```
-
-Explicit desktop diagnostic opt-in also enables the passive aggregate snapshot endpoint
-on that assigned port. Ordinary ephemeral monitors do not expose it.
+Production and desktop builds exclude the recorder, recording transport and renderer
+instrumentation. There is no desktop opt-in or production renderer-trace endpoint.
+The development entrypoint composes these capabilities separately from the core monitor;
+environment variables cannot enable them in a shipped application.
 The capture client reads the token privately; never print descriptor contents. No renderer
 control starts recording. A crashed process may leave a descriptor: confirm that its
 named pipe has no listener before removing that one stale local descriptor. Startup
 deliberately refuses to overwrite another listener's capability.
 
-The recorder defaults to 2,048 events, 256 open spans, and 256 combined flow/revision
-handles; hard bounds are 4,096 events and 1,024 spans/handles. Requested recordings last
-1–600 seconds, default 30. The client bounds response bytes to 4 MiB and times out.
-Buffers are in memory until an explicit export. Overflow and incomplete work remain
-visible in capture metadata; recording failure cannot block the product.
+The development ring targets 300,000 ms with at most 16,384 events and a 3 MiB serialized
+event budget. JavaScript object overhead is additional but bounded by the event/handle
+limits; this is not a process-RSS guarantee. Defaults are 256 open spans and 256 live
+flow/revision handles, with hard limits of 1,024. Expiry and completion release capacity.
+Exports rebase event timestamps to their retained window and remain bounded to 4 MiB.
+`metadata.rolling` reports start/end offsets from recorder startup, retained duration,
+eviction count, capacity limitation, and anonymous selection coverage. Open or clipped
+work is explicitly incomplete. Save does not create provider work or alter product state.
+Legacy standalone timed test recorders retain their smaller 2,048/4,096 event limits.
 
 Only fixed stage/domain/outcome labels, non-negative bounded timings/counters, synthetic
 lanes, and fresh capture-local flow/revision numbers are permitted. Tokens are not
@@ -87,7 +96,7 @@ logical lanes; Perfetto flow links express recorded scheduling relationships.
 
 ### Renderer timing contract
 
-Renderer timing is disabled unless an authenticated capture is already active. A committed
+Renderer timing is available only in the development build with its recorder running. A committed
 catalog, Activity, or Requests response may mint one bounded opaque capture token. The browser
 can return that token only with fixed `renderer_event`, `renderer_fetch`,
 `renderer_react_commit`, and `renderer_next_frame` duration records for the matching
@@ -98,9 +107,9 @@ return only the two fixed browser-monotonic boundaries of the token-bearing requ
 the monitor derives the clock bound from its private issuance time.
 
 The same-computer development bridge verifies the actual socket peer, local host and
-same-origin request; forwarded headers do not authorize it. The production monitor bridge
-is desktop-authenticated and accepts only the fixed payload after the browser route has
-validated it. Marks are cleared immediately, records and pending POSTs are bounded, and a
+same-origin request; forwarded headers do not authorize it. A development-only monitor
+handler accepts the fixed payload after the local middleware validates it. Production
+has neither route nor recording code. Marks are cleared immediately, records and pending POSTs are bounded, and a
 capture shutdown aborts outstanding browser telemetry. `renderer_next_frame` records a
 requestAnimationFrame opportunity, never proof that pixels were painted.
 For a live History publication, the EventSource listener records `performance.now()` at the
@@ -508,7 +517,7 @@ npm run verify:fast
 ```
 
 The renderer bridge is covered by UI lifecycle, privacy serialization, actual-peer
-authorization, ephemeral desktop capture, and disabled-by-default tests. After local
+authorization, rolling history exports, and production/desktop artifact exclusion tests. After local
 setup, optional host browser checks use isolated, hidden, sandboxed Electron fixtures:
 
 ```powershell
@@ -522,8 +531,12 @@ actual Activity hook and tracing helper, proves an unlinked row renders before e
 is released, then verifies SSE-driven enrichment preserves its DOM node. These fixtures
 use no real provider files and assert zero unexpected external requests.
 
-Implementation acceptance on 2026-09-10 passed the production build, plugin/operations/
-inventory checks, 1,122 Node tests (one additional test skipped), 722 UI tests, both local
-Electron fixtures, native Trace Processor import/query/comparison and offline setup.
-The four controlled performance scenarios above also passed. Local logs and trace artifacts stay in ignored
+Development rolling-recorder acceptance on 2026-09-11 passed the production build,
+plugin/operations/inventory checks, 1,124 Node tests (one additional test skipped),
+722 UI tests, 56 focused diagnostics tests, both local Electron fixtures, and the
+type/architecture/dependency checks. Web and desktop artifact scans verify that recording
+and renderer instrumentation are absent. Synthetic saves verify past coverage, repeated
+exports, opaque session selection, capacity limits, and native Trace Processor queries.
+The preceding implementation also passed native comparison, offline setup, and the four
+controlled performance scenarios above. Local logs and trace artifacts stay in ignored
 `outputs/` or `work/`; they are diagnostics, not release certification.

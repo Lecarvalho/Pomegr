@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
+import { validTrace } from "../scripts/diagnostics-capture.mjs";
 import {
   pipelineTraceCaptureDescriptor,
   startPipelineTraceCaptureTransport,
@@ -110,6 +111,131 @@ test("fixed counters and configured coverage reject arbitrary names", () => {
   assert.deepEqual(recorder.snapshot().metadata.coverage, {
     enabledStages: ["history_read"], observedStages: ["history_read"],
   });
+});
+
+test("rolling recorders evict expired evidence and keep the actual five-minute-style window", () => {
+  let now = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, now: () => now });
+  assert.equal(recorder.isActive(), true);
+  assert.equal(recorder.isRolling(), true);
+  now = 10;
+  recorder.recordCounter({ counter: "active", value: 1 });
+  now = 60;
+  recorder.recordCounter({ counter: "active", value: 2 });
+  now = 120;
+  recorder.recordCounter({ counter: "active", value: 3 });
+  const snapshot = recorder.snapshot();
+  assert.deepEqual(snapshot.traceEvents.map((event) => event.args.value), [2, 3]);
+  assert.deepEqual(snapshot.metadata.rolling, {
+    retentionMs: 100, windowStartMs: 20, windowEndMs: 120, retainedMs: 100,
+    evictedEvents: 1, capacityLimited: false, selection: "all", matchedEvents: 0,
+  });
+  assert.equal(recorder.isActive(), true);
+});
+
+test("rolling snapshots are nonmutating, clip a selected window, and continue recording", () => {
+  let now = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, now: () => now });
+  now = 50;
+  const span = recorder.begin({ stage: "history_read", domain: "activity" });
+  now = 110;
+  const clipped = recorder.snapshot({ windowMs: 40 });
+  assert.equal(clipped.metadata.capture.openSpanCount, 1);
+  assert.equal(clipped.metadata.capture.active, false);
+  assert.equal(clipped.metadata.capture.incomplete, true);
+  assert.equal(clipped.traceEvents[0].args.outcome, "incomplete");
+  assert.equal(clipped.metadata.rolling.windowStartMs, 70);
+  assert.equal(recorder.isActive(), true);
+  now = 115;
+  assert.equal(recorder.end(span, { outcome: "accepted" }), true);
+  const next = recorder.snapshot({ windowMs: 40 });
+  assert.equal(next.metadata.capture.openSpanCount, 0);
+  assert.equal(next.traceEvents.find((event) => event.ph === "X").args.outcome, "incomplete");
+  now = 116;
+  assert.equal(recorder.recordCounter({ counter: "active", value: 3 }), true);
+  assert.equal(recorder.snapshot().traceEvents.at(-1).args.value, 3);
+});
+
+test("rolling capacity evicts oldest events and releases expired handle slots", () => {
+  let now = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, maxEvents: 2, maxHandles: 2, now: () => now });
+  recorder.recordCounter({ counter: "active", value: 1 });
+  now = 1;
+  recorder.recordCounter({ counter: "active", value: 2 });
+  now = 2;
+  recorder.recordCounter({ counter: "active", value: 3 });
+  const capped = recorder.snapshot();
+  assert.deepEqual(capped.traceEvents.map((event) => event.args.value), [2, 3]);
+  assert.deepEqual(capped.metadata.rolling, {
+    retentionMs: 100, windowStartMs: 1, windowEndMs: 2, retainedMs: 1,
+    evictedEvents: 1, capacityLimited: true, selection: "all", matchedEvents: 0,
+  });
+  const first = recorder.createRevision();
+  const second = recorder.createRevision();
+  assert.ok(first);
+  assert.ok(second);
+  assert.equal(recorder.createRevision(), null);
+  now = 103;
+  assert.ok(recorder.createRevision());
+});
+
+test("fractional rolling capacity metadata stays integer-valid without exposing scope identity", () => {
+  let now = 0.123;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, maxEvents: 2, now: () => now });
+  const scope = recorder.createScope();
+  now = 1.123;
+  recorder.recordDuration({ stage: "history_read", domain: "activity", durationMs: 0.001, scope });
+  now = 2.246;
+  recorder.recordDuration({ stage: "history_publish", domain: "activity", durationMs: 0.001, scope });
+  now = 3.579;
+  recorder.recordCounter({ counter: "active", value: 1 });
+  const snapshot = recorder.snapshot({ scope });
+  assert.ok(Number.isSafeInteger(snapshot.metadata.rolling.windowStartMs));
+  assert.ok(Number.isSafeInteger(snapshot.metadata.rolling.windowEndMs));
+  assert.ok(Number.isSafeInteger(snapshot.metadata.rolling.retainedMs));
+  assert.equal(snapshot.metadata.rolling.capacityLimited, true);
+  assert.equal(validTrace(snapshot), true);
+  assert.doesNotMatch(JSON.stringify(snapshot), /scope|PRIVATE|raw-session-id/i);
+});
+
+test("rolling exports derive renderer coverage from the selected window only", () => {
+  let now = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, now: () => now });
+  now = 10;
+  recorder.recordDuration({ stage: "renderer_fetch", domain: "presentation", durationMs: 1,
+    clock: "request_interval_bound", clockErrorUs: 1_000, surface: "catalog" });
+  assert.deepEqual(recorder.snapshot().metadata.rendererClock, {
+    status: "bounded", calibratedSpans: 1, rejectedCalibrations: 0, maxErrorUs: 1_000,
+  });
+  now = 120;
+  recorder.recordCounter({ counter: "active", value: 1 });
+  const snapshot = recorder.snapshot();
+  assert.deepEqual(snapshot.metadata.rendererClock, {
+    status: "unavailable", calibratedSpans: 0, rejectedCalibrations: 0, maxErrorUs: 0,
+  });
+  assert.ok(!snapshot.metadata.coverage.observedStages.includes("renderer_fetch"));
+});
+
+test("rolling scope selection stays monitor-private and keeps unscoped shared evidence", () => {
+  let now = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retentionMs: 100, now: () => now });
+  const selectedScope = recorder.createScope();
+  const otherScope = recorder.createScope();
+  const flow = recorder.createFlow({ scope: selectedScope });
+  now = 1;
+  recorder.recordDuration({ stage: "history_read", domain: "activity", durationMs: 1, flow });
+  now = 2;
+  recorder.recordDuration({ stage: "history_publish", domain: "activity", durationMs: 1, scope: otherScope });
+  now = 3;
+  recorder.recordCounter({ counter: "active", value: 1 });
+  const snapshot = recorder.snapshot({ scope: selectedScope });
+  assert.equal(snapshot.metadata.rolling.selection, "session");
+  assert.ok(snapshot.metadata.rolling.matchedEvents > 0);
+  assert.ok(snapshot.traceEvents.some((event) => event.name === "history_read"));
+  assert.ok(snapshot.traceEvents.some((event) => event.name === "active"));
+  assert.ok(!snapshot.traceEvents.some((event) => event.name === "history_publish"));
+  assert.doesNotMatch(JSON.stringify(snapshot), /raw-session-id|prompt|response|command|credential|transcript|path/i);
+  assert.equal(recorder.snapshot({ scope: "raw-session-id" }).traceEvents.length, 0);
 });
 
 

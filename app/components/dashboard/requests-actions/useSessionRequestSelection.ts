@@ -3,7 +3,7 @@ import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, 
 import type { RequestHistoryPage } from "../../../../shared/session-history-contract";
 import { subscribeHistoryPublications } from "../../../history-publications";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
-import { beginRendererTrace } from "../../../renderer-trace";
+import { beginRendererTrace, startRendererTraceRequest } from "@pomegr/renderer-trace";
 import { scopedRows, type RequestRow } from "./model";
 import { useRequestSelection } from "./useRequestSelection";
 import { useRequestPageCache } from "./useRequestPageCache";
@@ -55,7 +55,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const [pendingLocate, setPendingLocate] = useState<PendingLocate>(null);
   const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
   const [retry, setRetry] = useState(0);
-  const queuedPublication = useRef<{ revision: number; receivedAt: number } | null>(null);
+  const queuedPublication = useRef<{ revision: number; receivedAt?: number } | null>(null);
   const publicationState = useRef({ pinned: false, atLatest: true, loading: false, unavailable: false });
   const loadHistoryRef = useRef<(options?: HistoryQuery) => Promise<RequestHistoryPage | null>>(() => Promise.resolve(null));
   const pendingTrace = useRef<{ trace: RendererTrace; startedAt: number; revision: string; eventReceivedAt?: number } | null>(null);
@@ -83,16 +83,15 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false, requestedOffset }));
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
-    const startedAt = performance.now();
+    const traceRequest = startRendererTraceRequest("requests");
+    let startedAt = 0;
     let trace: RendererTrace | null = null;
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const responseReceivedAt = performance.now();
         if (!response.ok) return null;
-        const token = response.headers?.get("x-pomegr-trace-revision");
-        trace = token ? beginRendererTrace({ domain: "requests", token,
-          calibration: { requestStartedMs: startedAt, responseReceivedMs: responseReceivedAt } }) : null;
-        trace?.fetchCompleted(startedAt);
+        const capture = traceRequest(response);
+        trace = capture?.trace ?? null;
+        startedAt = capture?.startedAt ?? 0;
         return response.json();
       })
       .then((value: unknown) => {

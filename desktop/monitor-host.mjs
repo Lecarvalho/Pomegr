@@ -86,7 +86,6 @@ async function main() {
         host: "127.0.0.1",
         port: 0,
         authorizationToken: workerData?.authorizationToken,
-        pipelineDiagnostics: workerData?.pipelineDiagnostics === true,
         agentAuthorizationToken,
         providerRegistry: createDefaultProviderRegistry(),
         logger: quietLogger,

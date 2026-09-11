@@ -1801,21 +1801,27 @@ are excluded, and successful work does not erase historical failure details. Bou
 monotonic duration windows may additionally cover catalog discovery, source preparation,
 combined acquisition/normalization, catalog projection, session derivation, normalized
 store commit, and candidate-to-commit delay. The aggregate feed contains no native source
-or session identity. A separate, explicitly activated local diagnostic recording may
-retain bounded timing slices, outcomes, counters, and fresh capture-local correlation
-tokens, then export a sanitized trace to a requested local file. Its schema, activation,
-limits, and offline Perfetto analysis belong to `docs/PIPELINE_OPERATIONS.md`. Recording
-is disabled by default and cannot trigger provider work, change product scheduling, or
-enter checkpoints. Browser/LAN routes cannot start or stop capture. Raw data, paths,
-source fingerprints, session identity, and arbitrary error text remain forbidden.
+or session identity. Development startup separately composes a rolling recorder of bounded
+timing slices, outcomes, counters and opaque correlation handles. It targets the last five
+minutes under fixed event/byte/handle limits. Authenticated local save exports the retained
+window without stopping or clearing recording. A bounded private development lookup maps
+known normalized session selectors to opaque recorder-minted scopes; only those scope
+objects enter tracing APIs. Trace events, exports and reports never contain the selector
+or lookup map. Relevant shared work stays available alongside selected session work.
+The recorder, export transport and browser instrumentation are excluded from production
+and desktop artifacts. Schema, lifetime, coverage, local setup and offline analysis belong
+to `docs/PIPELINE_OPERATIONS.md`. Diagnostics cannot trigger provider work, change product
+scheduling, or enter checkpoints. Browser/LAN routes cannot start or stop recording.
+Raw data, source paths/fingerprints, session identity and arbitrary errors remain forbidden
+in diagnostic output.
 
 The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
 in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
 derivation, persistence, or revision publication. The complete operational contract and
-the opt-in renderer `performance.mark()` bridge are documented in
+the development-only renderer `performance.mark()` bridge are documented in
 `docs/PIPELINE_OPERATIONS.md`. Request-interval calibration provides bounded response-to-
-renderer milestone intervals during an authenticated capture; pixels painted and
+renderer milestone intervals in retained development recordings; pixels painted and
 source-to-pixel latency remain unmeasured.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial

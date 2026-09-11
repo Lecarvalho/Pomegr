@@ -1,5 +1,16 @@
 import { hostname, networkInterfaces } from "node:os";
 
+const MAX_TRACE_BYTES = 8 * 1024;
+
+function loopbackMonitorOrigin(value) {
+  try {
+    const origin = new URL(value);
+    if (origin.protocol !== "http:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash
+      || !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname)) return null;
+    return origin.origin;
+  } catch { return null; }
+}
+
 function address(value) { return value?.toLowerCase().replace(/^\[|\]$/gu, "").replace(/^::ffff:/u, ""); }
 
 /** Reject LAN renderer telemetry before Vite converts the request to Fetch. */
@@ -36,5 +47,42 @@ export function rendererTraceLocalGate(request, response, next, identity = undef
 }
 
 export function rendererTraceLocalGatePlugin() {
-  return { name: "pomegr-renderer-trace-local-gate", enforce: "pre", configureServer(server) { server.middlewares.use(rendererTraceLocalGate); } };
+  return {
+    name: "pomegr-renderer-trace-development-middleware",
+    enforce: "pre",
+    configureServer(server) {
+      server.middlewares.use(rendererTraceLocalGate);
+      server.middlewares.use(rendererTraceDevelopmentProxy);
+    },
+  };
+}
+
+/** Dev-server-only bridge; production has no renderer telemetry route. */
+export async function rendererTraceDevelopmentProxy(request, response, next, {
+  fetchImpl = fetch,
+  monitorOrigin = process.env.POMEGR_MONITOR_ORIGIN || "http://127.0.0.1:4317",
+} = {}) {
+  let pathname;
+  try { pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname).replace(/\/+$/u, ""); } catch { next(); return; }
+  if (pathname !== "/api/renderer-trace") { next(); return; }
+  const target = loopbackMonitorOrigin(monitorOrigin);
+  if (!target) { response.writeHead(503, { "Cache-Control": "no-store" }); response.end(); return; }
+  let body = "";
+  try {
+    for await (const chunk of request) {
+      body += chunk;
+      if (Buffer.byteLength(body, "utf8") > MAX_TRACE_BYTES) {
+        response.writeHead(413, { "Cache-Control": "no-store" }); response.end(); return;
+      }
+    }
+    const upstream = await fetchImpl(`${target}/internal/renderer-trace`, {
+      method: "POST",
+      body,
+      headers: { "content-type": request.headers["content-type"] || "" },
+      signal: AbortSignal.timeout(2_000),
+    });
+    response.writeHead(upstream.ok ? 204 : 503, { "Cache-Control": "no-store" }); response.end();
+  } catch {
+    response.writeHead(503, { "Cache-Control": "no-store" }); response.end();
+  }
 }

@@ -12,7 +12,7 @@ import { z } from "zod";
 /** @typedef {{epoch: number, sequence: number, activity: unknown[]}} HistoryActivityContribution */
 /** @typedef {{epoch: number, sequence: number, activity: unknown[], requests: unknown[]}} HistoryRequestContribution */
 /** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, publishHistoryContribution: (localSessionId: string, contribution: HistoryActivityContribution) => boolean, publishHistoryRequestContribution: (localSessionId: string, contribution: HistoryRequestContribution) => boolean, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
-/** @typedef {{trace?: unknown}} ProviderObserverOptions */
+/** @typedef {{trace?: unknown, traceScopeForLocalId?: (localSessionId: string) => object | null}} ProviderObserverOptions */
 /** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal, options?: ProviderObserverOptions) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
 
 export const PROVIDER_IDS = Object.freeze(["claude", "codex"]);

@@ -77,6 +77,7 @@ export async function startPipelineTraceCaptureTransport({
   enabled = false,
   port,
   recorder,
+  resolveSessionScope = null,
   endpoint = null,
   descriptorPath = null,
   captureDurationMs = DEFAULT_CAPTURE_DURATION_MS,
@@ -108,19 +109,21 @@ export async function startPipelineTraceCaptureTransport({
     let completed = false;
     let input = "";
     let captureTimer = null;
+    let snapshotOptions = {};
+    const rolling = recorder.isRolling?.() === true;
     const authTimer = setTimeout(() => socket.destroy(), 5_000);
     authTimer.unref?.();
     const finish = (captureIncomplete) => {
       if (!authenticated || completed) return;
       completed = true;
       if (captureTimer) clearTimeout(captureTimer);
-      recorder.deactivate({ captureIncomplete });
-      try { socket.end(JSON.stringify(recorder.snapshot())); } catch { socket.destroy(); }
+      if (!rolling) recorder.deactivate({ captureIncomplete });
+      try { socket.end(JSON.stringify(recorder.snapshot(snapshotOptions))); } catch { socket.destroy(); }
     };
     const close = () => {
       clearTimeout(authTimer);
       if (captureTimer) clearTimeout(captureTimer);
-      if (authenticated && !completed) {
+      if (authenticated && !completed && !rolling) {
         recorder.deactivate({ captureIncomplete: true });
       }
       if (activeSocket === socket) activeSocket = null;
@@ -145,10 +148,27 @@ export async function startPipelineTraceCaptureTransport({
         }
         authenticated = true;
         clearTimeout(authTimer);
-        recorder.activate();
+        if (message.action === "save") {
+          if (!rolling || !Number.isSafeInteger(message.windowMs) || message.windowMs < 1 || message.windowMs > 300_000
+            || (message.sessionKey !== undefined && (typeof message.sessionKey !== "string"
+              || !/^(?:claude|codex):[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/u.test(message.sessionKey)))) {
+            socket.destroy(); return;
+          }
+          let scope;
+          if (message.sessionKey) {
+            try { scope = resolveSessionScope?.(message.sessionKey); } catch { socket.destroy(); return; }
+            if (!scope || typeof scope !== "object") { socket.destroy(); return; }
+          }
+          snapshotOptions = { windowMs: message.windowMs, ...(scope ? { scope } : {}) };
+          finish(false);
+          return;
+        }
+        if (message.action !== undefined && message.action !== "capture") { socket.destroy(); return; }
+        if (!rolling) recorder.activate();
         try { socket.write('{"type":"capturing"}\n'); } catch { socket.destroy(); return; }
         const requestedDuration = Number.isInteger(message.durationMs) && message.durationMs >= 1_000
           ? Math.min(durationLimit, message.durationMs) : durationLimit;
+        if (rolling) snapshotOptions = { windowMs: requestedDuration };
         captureTimer = setTimeout(() => finish(false), requestedDuration);
         captureTimer.unref?.();
         return;

@@ -2,21 +2,14 @@ import { createHomeReadiness } from "./observation-readiness.mjs";
 import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
-import { normalizeRendererTracePayload } from "../shared/renderer-trace-contract.mjs";
-
-const MAX_RENDERER_TRACE_BYTES = 8 * 1024;
-
-async function rendererTraceBody(request) {
-  let body = "";
-  for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body, "utf8") > MAX_RENDERER_TRACE_BYTES) return null;
-  }
-  try { return normalizeRendererTracePayload(JSON.parse(body)); } catch { return null; }
-}
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
-export function createRequestHandler({ runtime, rendererTraceBridge = null, authorizationToken: rawAuthorizationToken = "", agentAuthorizationToken: rawAgentAuthorizationToken = "" } = {}) {
+export function createRequestHandler({
+  runtime,
+  authorizationToken: rawAuthorizationToken = "",
+  agentAuthorizationToken: rawAgentAuthorizationToken = "",
+  responseHeaders = null,
+} = {}) {
   if (!runtime) throw new TypeError("Monitor request handler requires a runtime");
   const authorizationToken = rawAuthorizationToken
     ? requireDesktopToken(rawAuthorizationToken, "MONITOR_INVALID_AUTHORIZATION")
@@ -24,6 +17,7 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
   const agentAuthorizationToken = rawAgentAuthorizationToken
     ? requireDesktopToken(rawAgentAuthorizationToken, "MONITOR_INVALID_AGENT_AUTHORIZATION")
     : "";
+  const extraResponseHeaders = typeof responseHeaders === "function" ? responseHeaders : () => ({});
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -31,19 +25,6 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
-    if (requestUrl.pathname === "/internal/renderer-trace") {
-      const authorized = request.method === "POST" && !requestUrl.search && request.headers.host === expectedHost
-        && request.headers.origin === undefined && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
-      if (!authorized || request.headers["content-type"] !== "application/json" || request.headers["transfer-encoding"] !== undefined
-        || Number(request.headers["content-length"] || 0) > MAX_RENDERER_TRACE_BYTES) {
-        response.writeHead(404, { "Cache-Control": "no-store" }); response.end(); return;
-      }
-      const payload = await rendererTraceBody(request);
-      if (payload && rendererTraceBridge?.record) {
-        try { rendererTraceBridge.record(payload); } catch { /* Capture diagnostics never affect serving. */ }
-      }
-      response.writeHead(204, { "Cache-Control": "no-store" }); response.end(); return;
-    }
     if (requestUrl.pathname === "/api/provider-folders") {
       const authorized = request.headers.host === expectedHost
         && request.headers.origin === undefined
@@ -229,7 +210,13 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
     const requestedRevisionValue = requestUrl.searchParams.get("revision");
     const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
-    const writeCommitted = (result, fallbackValue, traceDomain = null) => {
+    const safeExtraResponseHeaders = (value) => {
+      try {
+        const headers = extraResponseHeaders(value);
+        return headers && typeof headers === "object" && !Array.isArray(headers) ? headers : {};
+      } catch { return {}; }
+    };
+    const writeCommitted = (result, fallbackValue) => {
       if (result?.status === "unchanged") {
         response.writeHead(204);
         response.end();
@@ -241,10 +228,7 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         ...(Number.isSafeInteger(revision) ? { "X-Pomegr-Revision": String(revision) } : {}),
-        ...(traceDomain && result?.status === "ready" ? (() => {
-          const token = rendererTraceBridge?.issueRevision?.(traceDomain);
-          return token ? { "X-Pomegr-Trace-Revision": token } : {};
-        })() : {}),
+        ...safeExtraResponseHeaders({ path: requestUrl.pathname, result, snapshot }),
       });
       response.end(serialized);
     };
@@ -304,7 +288,7 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
             revision: 0,
             readiness: { catalog: "loading" },
             sessions: [],
-          }, "catalog");
+          });
           return;
         }
         const body = JSON.stringify(await runtime.sessionFeed());
@@ -342,11 +326,9 @@ export function createRequestHandler({ runtime, rendererTraceBridge = null, auth
       }
       try {
         const page = await runtime.serveSessionHistory?.(sessionId, { kind, scope, offset, limit, requestId, filterRequestId, anchor, overview });
-        const traceToken = page?.status === "ready" && page.kind === kind
-          ? rendererTraceBridge?.issueRevision?.(kind)
-          : null;
         response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
-          ...(traceToken ? { "X-Pomegr-Trace-Revision": traceToken } : {}) });
+          ...safeExtraResponseHeaders({ path: requestUrl.pathname, page, sessionId, kind }),
+        });
         response.end(JSON.stringify(page || { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 }));
       } catch {
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });

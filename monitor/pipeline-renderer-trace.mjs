@@ -28,10 +28,10 @@ export function createPipelineRendererTraceBridge({ recorder, maxRevisions = MAX
 
   return Object.freeze({
     /** Called only by the monitor when it serves a committed revision. */
-    issueRevision(domain) {
+    issueRevision(domain, scope = undefined) {
       if (!synchronize() || !["catalog", "activity", "requests"].includes(domain)) return null;
       if (revisions.size >= limit) revisions.delete(revisions.keys().next().value);
-      const handle = recorder.createRevision();
+      const handle = recorder.createRevision({ scope });
       if (!handle) return null;
       const token = `r${captureNonce}_${nextToken++}`;
       const issuedAt = recorder.monotonicNow?.();

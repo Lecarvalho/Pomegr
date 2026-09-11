@@ -311,6 +311,7 @@ export async function analyzePerfettoTrace(tracePath, options = {}) {
     traceSchemaVersion: optionalNonNegativeInteger(row.trace_schema_version),
     provenance: metadata.provenance,
     capture: metadata.capture,
+    rolling: metadata.rolling,
     rendererClock: metadata.rendererClock,
     counters, flows, renderer,
     visualLatency: "unavailable",
@@ -337,7 +338,7 @@ export function comparePerfettoReports(before, after) {
   const clock = Boolean(before.provenance?.clockQuality) && before.provenance.clockQuality === after.provenance?.clockQuality;
   const coverage = Array.isArray(before.coverage?.observedStages) && Array.isArray(after.coverage?.observedStages)
     && [...before.coverage.observedStages].sort().join(",") === [...after.coverage.observedStages].sort().join(",");
-  const complete = (report) => report.capture ? report.capture.incomplete === false && report.capture.active === false
+  const complete = (report) => report.capture ? !report.rolling?.capacityLimited && report.capture.incomplete === false && report.capture.active === false
     && report.capture.droppedEvents === 0 && report.capture.droppedSpans === 0 && report.capture.droppedHandles === 0 : scenario;
   return Object.freeze({
     schema: "pomegr.perfetto.compare.v1",
@@ -382,6 +383,7 @@ export function formatPerfettoReportMarkdown(report) {
     `Clock quality: ${report.provenance?.clockQuality ?? "unknown"}; visual latency: unavailable`,
     `Renderer calibration: ${report.rendererClock?.status ?? "unavailable"}; rejected: ${report.rendererClock?.rejectedCalibrations ?? "unknown"}; maximum uncertainty (µs): ${report.rendererClock?.maxErrorUs ?? "unknown"}`,
     `Capture: ${report.capture ? (report.capture.incomplete || report.capture.active ? "incomplete" : "closed") : "unknown"}; dropped events: ${report.capture?.droppedEvents ?? "unknown"}; dropped spans: ${report.capture?.droppedSpans ?? "unknown"}; dropped handles: ${report.capture?.droppedHandles ?? "unknown"}`,
+    ...(report.rolling ? [`Rolling window: ${report.rolling.retainedMs} ms retained, from ${report.rolling.windowStartMs} to ${report.rolling.windowEndMs} ms since recorder start; capacity-limited: ${report.rolling.capacityLimited}; selection: ${report.rolling.selection}; matched events: ${report.rolling.matchedEvents}`] : []),
     `Slices: ${report.sliceCount}`,
     `Sum of slice durations (ns, overlapping work included): ${report.totalDurationNs}`,
     `Maximum slice (ns): ${report.maxDurationNs}`,

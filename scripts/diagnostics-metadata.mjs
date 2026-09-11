@@ -1,4 +1,5 @@
 import { open } from "node:fs/promises";
+import { validRollingMetadata } from "./diagnostics-capture.mjs";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 export const CONTROLLED_SCENARIOS = ["progressive_activity_withheld_correlation", "synthetic_cold_start_history",
@@ -9,7 +10,7 @@ const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : nul
 
 /** Read only bounded Pomegr JSON metadata; never echo arbitrary trace arguments. */
 export async function readDiagnosticMetadata(path, stages) {
-  const missing = { capture: null, rendererClock: null, enabledStages: null, provenance: { scenario: null, build: null, clockQuality: null } };
+  const missing = { capture: null, rolling: null, rendererClock: null, enabledStages: null, provenance: { scenario: null, build: null, clockQuality: null } };
   if (!path.toLowerCase().endsWith(".json")) return missing;
   let file;
   try {
@@ -32,6 +33,7 @@ export async function readDiagnosticMetadata(path, stages) {
     const enabled = metadata.coverage?.enabledStages;
     return {
       provenance,
+      rolling: validRollingMetadata(metadata.rolling) ? { ...metadata.rolling } : null,
       rendererClock: clock && ["unavailable", "bounded"].includes(clock.status) ? {
         status: clock.status, calibratedSpans: count(clock.calibratedSpans),
         rejectedCalibrations: count(clock.rejectedCalibrations), maxErrorUs: count(clock.maxErrorUs),

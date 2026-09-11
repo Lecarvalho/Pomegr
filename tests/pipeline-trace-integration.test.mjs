@@ -9,27 +9,85 @@ import { createNormalizedPollingObserver } from "../monitor/providers/normalized
 import { runDiagnosticsCapture, validTrace } from "../scripts/diagnostics-capture.mjs";
 import { startPipelineTraceSampling } from "../monitor/pipeline-trace-sampling.mjs";
 import { startMonitorServer } from "../monitor/server.mjs";
+import { createDevelopmentDiagnostics } from "../monitor/dev-diagnostics.mjs";
+import { createDevelopmentTraceScopeRegistry } from "../monitor/dev-trace-scopes.mjs";
 import { runDiagnosticsSnapshot } from "../scripts/diagnostics-snapshot.mjs";
 
-test("an opted-in ephemeral desktop-style monitor supports capture and passive snapshot without extra observation", async (context) => {
+test("development composition starts a rolling recorder without adding capture code to the monitor server", async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-desktop-trace-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const descriptorPath = path.join(directory, "capability.json");
-  const recorder = createPipelineTraceRecorder();
+  const diagnostics = createDevelopmentDiagnostics({ transportOptions: { descriptorPath } });
+  const recorder = diagnostics.recorder;
   let starts = 0;
   const runtime = { startObservation: async () => { starts += 1; }, stopObservation: async () => {}, observationDiagnostics: () => ({}) };
-  const handle = await startMonitorServer({ port: 0, pipelineDiagnostics: true, pipelineTrace: recorder,
-    runtime, providerRegistry: { watchTargets: async () => [] }, pipelineTraceOptions: { descriptorPath } });
+  const handle = await startMonitorServer({
+    port: 0,
+    pipelineOperationsAtEphemeralPort: true,
+    pipelineTrace: recorder,
+    requestHandlerFactory: (options) => diagnostics.createRequestHandler(options),
+    startupExtension: (start) => diagnostics.start(start),
+    runtime,
+    providerRegistry: { watchTargets: async () => [] },
+  });
   context.after(() => handle.close());
   const capture = runDiagnosticsCapture({ port: handle.port, durationSeconds: 1, descriptorPath, outputPath: path.join(directory, "capture.json") });
-  for (let attempt = 0; attempt < 100 && !recorder.isActive(); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(recorder.isRolling(), true);
   assert.equal(recorder.isActive(), true);
   recorder.recordCounter({ counter: "records", value: 1 });
   const snapshot = await runDiagnosticsSnapshot({ port: handle.port, json: true });
   assert.equal(snapshot.snapshot.version, 1);
   await capture;
   assert.equal(starts, 1, "diagnostic clients never restart or request provider observation");
-  assert.equal(recorder.isActive(), false);
+  assert.equal(recorder.isActive(), true);
+});
+
+test("development trace scopes retain known sessions at capacity and expire with a monotonic clock", () => {
+  let now = 0;
+  let created = 0;
+  const registry = createDevelopmentTraceScopeRegistry({
+    createScope: () => Object.freeze({ id: ++created }),
+    now: () => now,
+    maxEntries: 2,
+    ttlMs: 1_000,
+  });
+  const first = registry.scopeForSession("claude:first");
+  registry.scopeForSession("claude:second");
+  assert.equal(registry.scopeForSession("claude:first"), first, "a capacity read must not evict its existing association");
+  assert.equal(registry.resolveSessionScope("claude:missing"), registry.resolveSessionScope("invalid"));
+  now = 1_001;
+  assert.notEqual(registry.scopeForSession("claude:first"), first, "expired associations receive a fresh opaque scope");
+});
+
+test("development diagnostics isolate transport startup failures from monitor observation", async (context) => {
+  const warnings = [];
+  let observationStarts = 0;
+  let samplingStarts = 0;
+  let samplingCloses = 0;
+  const diagnostics = createDevelopmentDiagnostics({
+    startTransport: async () => { throw new Error("PRIVATE_TRANSPORT_FAILURE"); },
+    startSampling: () => ({ close() { samplingCloses += 1; }, marker: ++samplingStarts }),
+    logger: { warn: (message) => warnings.push(message) },
+  });
+  const runtime = {
+    async startObservation() { observationStarts += 1; },
+    async stopObservation() {},
+    observationDiagnostics() { return {}; },
+  };
+  const handle = await startMonitorServer({
+    port: 0,
+    pipelineTrace: diagnostics.recorder,
+    requestHandlerFactory: (options) => diagnostics.createRequestHandler(options),
+    startupExtension: (start) => diagnostics.start(start),
+    runtime,
+    providerRegistry: { async watchTargets() { return []; } },
+  });
+  context.after(() => handle.close());
+  assert.equal(observationStarts, 1);
+  assert.equal(samplingStarts, 1);
+  assert.deepEqual(warnings, ["[pomegr] Local diagnostic capture unavailable."]);
+  await handle.close();
+  assert.equal(samplingCloses, 1, "initialized diagnostics close once when the monitor closes");
 });
 
 test("resource sampling is passive, capture-scoped, and survives diagnostic errors", () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActivityHistoryPage } from "../../../shared/session-history-contract";
 import { subscribeHistoryPublications } from "../../history-publications";
-import { beginRendererTrace } from "../../renderer-trace";
+import { beginRendererTrace, startRendererTraceRequest } from "@pomegr/renderer-trace";
 
 export const ACTIVITY_PAGE_SIZE = 8;
 type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean; followLatest?: boolean; eventReceivedAt?: number };
@@ -26,7 +26,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   const pending = useRef<{ offset: PageOffset; options: LoadOptions } | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshedRevision = useRef({ key: "", revision: "" });
-  const queuedPublication = useRef<{ revision: number; receivedAt: number } | null>(null);
+  const queuedPublication = useRef<{ revision: number; receivedAt?: number } | null>(null);
   const pendingTrace = useRef<{ trace: RendererTrace; startedAt: number; revision: string; eventReceivedAt?: number } | null>(null);
   const activeTrace = useRef<RendererTrace | null>(null);
 
@@ -47,17 +47,13 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       const controller = new AbortController();
       controllers.current.add(controller);
       try {
-        const startedAt = performance.now();
+        const traceRequest = traceResponse ? startRendererTraceRequest("activity") : null;
         const response = await fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal });
-        const responseReceivedAt = performance.now();
         if (!response.ok) throw new Error("History unavailable");
         const page = await response.json() as ActivityHistoryPage;
         if (page.kind !== "activity" || !Array.isArray(page.items)) throw new Error("Invalid history page");
-        const token = traceResponse ? response.headers?.get("x-pomegr-trace-revision") : null;
-        const trace = token ? beginRendererTrace({ domain: "activity", token,
-          calibration: { requestStartedMs: startedAt, responseReceivedMs: responseReceivedAt } }) : null;
-        trace?.fetchCompleted(startedAt);
-        return { page, trace, startedAt, eventReceivedAt: extra.eventReceivedAt };
+        const capture = traceRequest?.(response) ?? null;
+        return { page, trace: capture?.trace ?? null, startedAt: capture?.startedAt ?? 0, eventReceivedAt: extra.eventReceivedAt };
       } finally { controllers.current.delete(controller); }
     };
     // Any resident linked row can reveal this request; no server lookup is needed.

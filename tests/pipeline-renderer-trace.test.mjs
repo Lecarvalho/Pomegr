@@ -4,7 +4,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { createPipelineRendererTraceBridge } from "../monitor/pipeline-renderer-trace.mjs";
 import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
-import { createRequestHandler } from "../monitor/request-handler.mjs";
+import { createDevelopmentDiagnostics } from "../monitor/dev-diagnostics.mjs";
 import { normalizeRendererTracePayload } from "../shared/renderer-trace-contract.mjs";
 
 async function origin(server) {
@@ -105,12 +105,17 @@ test("renderer clock coverage counts only slices that fit the capture event cap"
 
 test("the monitor bridge is a local authenticated POST without an activation control", async (context) => {
   const recorder = createPipelineTraceRecorder({ enabled: true, stages: ["renderer_fetch"] });
-  const bridge = createPipelineRendererTraceBridge({ recorder, nonce: "0123456789abcdef" });
-  const token = bridge.issueRevision("activity");
   const authorization = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
-  const server = http.createServer(createRequestHandler({ runtime: {}, rendererTraceBridge: bridge, authorizationToken: authorization }));
+  const diagnostics = createDevelopmentDiagnostics({ recorder });
+  const runtime = { serveSessionHistory: async () => ({ kind: "activity", status: "ready", revision: "1", total: 0, offset: 0, items: [], linkedCount: 0 }) };
+  const server = http.createServer(diagnostics.createRequestHandler({ runtime, authorizationToken: authorization }));
   context.after(() => new Promise((resolve) => server.close(resolve)));
   const base = await origin(server);
+  const history = await fetch(`${base}/api/session-history?sessionId=claude:opaque&kind=activity&scope=all&offset=0&limit=8`, {
+    headers: { "x-pomegr-desktop-authorization": authorization },
+  });
+  const token = history.headers.get("x-pomegr-trace-revision");
+  assert.match(token || "", /^r[a-f0-9]{16}_1$/u);
   const response = await fetch(`${base}/internal/renderer-trace`, {
     method: "POST", body: JSON.stringify({ calibration: { requestStartedMs: 10, responseReceivedMs: 12 }, records: [{ stage: "renderer_fetch", domain: "activity", token, durationMs: 3, startedAtMs: 10, endedAtMs: 13 }] }),
     headers: { "content-type": "application/json", "x-pomegr-desktop-authorization": authorization },
@@ -125,18 +130,18 @@ test("the monitor bridge is a local authenticated POST without an activation con
 
 test("only a committed history GET mints a renderer revision token", async (context) => {
   const recorder = createPipelineTraceRecorder({ enabled: true, stages: ["renderer_fetch"] });
-  const bridge = createPipelineRendererTraceBridge({ recorder, nonce: "0123456789abcdef" });
+  const diagnostics = createDevelopmentDiagnostics({ recorder });
   let ready = false;
   const runtime = {
     serveSessionHistory: async () => ready
       ? { kind: "activity", status: "ready", revision: "1", total: 0, offset: 0, items: [], linkedCount: 0 }
       : { kind: "activity", status: "loading", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 },
   };
-  const server = http.createServer(createRequestHandler({ runtime, rendererTraceBridge: bridge }));
+  const server = http.createServer(diagnostics.createRequestHandler({ runtime }));
   context.after(() => new Promise((resolve) => server.close(resolve)));
   const base = await origin(server);
   const address = `${base}/api/session-history?sessionId=claude:opaque&kind=activity&scope=all&offset=0&limit=8`;
   assert.equal((await fetch(address)).headers.get("x-pomegr-trace-revision"), null);
   ready = true;
-  assert.equal((await fetch(address)).headers.get("x-pomegr-trace-revision"), "r0123456789abcdef_1");
+  assert.match((await fetch(address)).headers.get("x-pomegr-trace-revision") || "", /^r[a-f0-9]{16}_1$/u);
 });

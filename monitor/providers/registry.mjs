@@ -192,7 +192,13 @@ export function createProviderRegistry(adapters, options = {}) {
             catch (error) { recordDiagnostic(providerId, "observerPublicationRejected", error, "checkpoint_read"); return null; }
           },
         });
-        await observer.start(scopedPublisher, controller.signal, observerOptions);
+        const providerObserverOptions = {
+          ...observerOptions,
+          traceScopeForLocalId: typeof observerOptions.traceScopeForSession === "function"
+            ? (localSessionId) => observerOptions.traceScopeForSession(`${provider.id}:${localSessionId}`)
+            : undefined,
+        };
+        await observer.start(scopedPublisher, controller.signal, providerObserverOptions);
         observersByProvider.set(provider.id, observer);
       } catch (error) {
         try { await observer?.stop?.(); } catch { /* provider failure remains isolated */ }

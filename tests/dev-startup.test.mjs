@@ -348,7 +348,7 @@ test("a second Windows dev launch replaces the first and reaches readiness", { s
       (_match, port) => String(ports[port === "4317" ? 0 : 1]));
     await writeFile(path.join(root, "scripts", "dev.mjs"), isolatedPorts(devSource));
     await writeFile(path.join(root, "scripts", "stop-dev-services.ps1"), isolatedPorts(helperSource));
-    for (const [entry, port] of [["monitor/cli.mjs", ports[0]], ["scripts/run-vinext.mjs", ports[1]]]) {
+    for (const [entry, port] of [["monitor/dev-cli.mjs", ports[0]], ["scripts/run-vinext.mjs", ports[1]]]) {
       await writeFile(path.join(root, entry), `import { createServer } from 'node:http'; createServer((req, res) => res.end('ready')).listen(${port}, '127.0.0.1');`);
     }
     await Promise.all(reservations.map((server) => new Promise((resolve) => server.close(resolve))));

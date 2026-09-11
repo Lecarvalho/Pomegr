@@ -8,18 +8,24 @@ whole runbook for every investigation. Reuse the repository's diagnostic tools.
 
 ## Acquire the smallest useful evidence
 
-Start with a supplied capture. If the user requests a current diagnosis and no suitable
-capture exists, record a short interval through the already enabled local listener.
+Start with a supplied capture. If the user reports a recent delay, immediately save the
+development recorder's retained history before older events are evicted.
 Run from the Pomegr repository root; choose a new output filename to preserve prior evidence:
 
 ```powershell
-node scripts/diagnostics-capture.mjs --duration 15 --output outputs/pipeline-traces/investigation.json
+node scripts/diagnostics-save.mjs --output outputs/pipeline-traces/investigation.json
 node scripts/diagnostics-tools.mjs analyze --input outputs/pipeline-traces/investigation.json --json
 ```
 
-This records a bounded interval; it is not continuous monitoring. Reproduce only actions
-within the user's authorized scope. For a visible-row investigation, include the affected
-visible page during capture; backend-only recordings cannot explain browser timing.
+Development recording starts with npm run dev and targets the last five minutes under
+strict memory limits; save neither clears nor stops it. Inspect metadata.rolling for
+actual retained coverage. Earlier events and pre-restart history cannot be reconstructed.
+Use --last 30s for a smaller window and --session <normalized-id> for private monitor-side
+selection; never write that selector into a filename or report. The exported trace remains
+anonymous and retains shared work. No retained match means unavailable session coverage.
+For a forward reproduction, diagnostics:capture remains available. Reproduce only actions
+within the user's authorized scope. Browser timing must have been collected from the
+affected visible development page during the interval; it cannot be added retrospectively.
 Use `diagnostics:snapshot` for current queue/capacity and fixed failure details absent from
 the trace. A later snapshot is not evidence of worker state during an earlier recording.
 
@@ -27,8 +33,9 @@ If the listener or processor is unavailable, inspect the local setup/activation 
 On managed Windows, retry a blocked named-pipe connection in the authorized host environment
 before concluding the listener is absent. An existing descriptor filename does not prove a
 listener is alive. Never print descriptor contents or delete a capability merely to retry.
-Desktop ports are ephemeral; use the known port or descriptor filename and `--port`.
-Do not silently install tools, restart processes, enable diagnostics, or fall back to raw
+These recording tools are development-only; production and desktop exclude them. Use the
+known development port with --port when it differs from 4317.
+Do not silently install tools, restart processes, or fall back to raw
 transcripts. Existing user authorization for those actions still applies.
 
 ## Interpret coverage before timings

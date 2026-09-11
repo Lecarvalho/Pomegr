@@ -41,8 +41,6 @@ export function parseDiagnosticsCaptureArgs(args = []) {
     const argument = args[index];
     if (["--port", "--duration", "--descriptor", "--output", "--out"].includes(argument)
       && (!args[index + 1] || args[index + 1].startsWith("--"))) throw new TypeError("Capture option requires a value");
-    if (["--port", "--duration", "--descriptor", "--output", "--out"].includes(argument)
-      && (!args[index + 1] || args[index + 1].startsWith("--"))) throw new TypeError("Capture option requires a value");
     if (argument === "--help" || argument === "-h") options.help = true;
     else if (argument === "--port") options.port = port(args[index += 1]);
     else if (argument === "--duration") options.durationSeconds = duration(args[index += 1]);
@@ -65,6 +63,7 @@ export function diagnosticsCaptureHelp() {
     "  --out <path>          Alias for --output",
     "  --descriptor <path>   Read the private local capture descriptor",
     "  --port <port>         Use the descriptor for a monitor port",
+    "Development rolling captures export at most the latest five minutes, even for longer waits.",
   ].join("\n");
 }
 
@@ -98,13 +97,21 @@ function validTraceEvent(event) {
       || !Number.isSafeInteger(event.args.clockErrorUs) || event.args.clockErrorUs < 1_000 || event.args.clockErrorUs > 1_001_000) return false;
   }
   if (event.args.revision !== undefined && (!Number.isSafeInteger(event.args.revision)
-    || event.args.revision < 1 || event.args.revision > 1_024)) return false;
+    || event.args.revision < 1)) return false;
   if (event.ph === "X") return event.id === undefined && stages.has(event.name) && domains.has(event.cat)
     && Number.isSafeInteger(event.dur) && event.dur >= 0 && event.dur <= 86_400_000_000;
   if (event.dur !== undefined || event.name !== "pipeline_flow" || event.cat !== "runtime"
-    || !Number.isSafeInteger(event.id) || event.id < 1 || event.id > 1_024) return false;
+    || !Number.isSafeInteger(event.id) || event.id < 1) return false;
   return event.args.revision === undefined || (Number.isSafeInteger(event.args.revision)
-    && event.args.revision >= 1 && event.args.revision <= 1_024);
+    && event.args.revision >= 1);
+}
+
+export function validRollingMetadata(value) {
+  return ownKeys(value, new Set(["retentionMs", "windowStartMs", "windowEndMs", "retainedMs", "evictedEvents", "capacityLimited", "selection", "matchedEvents"]))
+    && ["retentionMs", "windowStartMs", "windowEndMs", "retainedMs", "evictedEvents", "matchedEvents"].every((key) => Number.isSafeInteger(value[key]) && value[key] >= 0)
+    && value.retentionMs > 0 && value.retentionMs <= 300_000 && value.windowEndMs >= value.windowStartMs
+    && value.retainedMs === value.windowEndMs - value.windowStartMs && value.retainedMs <= value.retentionMs
+    && typeof value.capacityLimited === "boolean" && ["all", "session"].includes(value.selection) && value.matchedEvents <= 16_384;
 }
 
 export function validTrace(value) {
@@ -112,14 +119,16 @@ export function validTrace(value) {
   const coverage = value?.metadata?.coverage;
   const provenance = value?.metadata?.provenance;
   const clock = value?.metadata?.rendererClock;
-  return Array.isArray(value?.traceEvents) && value.traceEvents.length <= 4_096
+  const rolling = value?.metadata?.rolling;
+  return Array.isArray(value?.traceEvents) && value.traceEvents.length <= (rolling ? 16_384 : 4_096)
     && ownKeys(value, new Set(["traceEvents", "metadata"]))
     && value?.metadata?.version === 1 && capture && coverage && provenance
-    && ownKeys(value.metadata, new Set(["version", "capture", "coverage", "provenance", "rendererClock"]))
+    && ownKeys(value.metadata, new Set(["version", "capture", "coverage", "provenance", "rendererClock", "rolling"]))
+    && (rolling === undefined || validRollingMetadata(rolling))
     && (clock === undefined || (ownKeys(clock, new Set(["status", "calibratedSpans", "rejectedCalibrations", "maxErrorUs"]))
       && ["unavailable", "bounded"].includes(clock.status)
       && ["calibratedSpans", "rejectedCalibrations", "maxErrorUs"].every((key) => Number.isSafeInteger(clock[key]) && clock[key] >= 0)
-      && clock.calibratedSpans <= 4_096 && clock.maxErrorUs <= 1_001_000))
+      && clock.calibratedSpans <= 16_384 && clock.maxErrorUs <= 1_001_000))
     && ownKeys(capture, new Set(["active", "incomplete", "eventCount", "droppedEvents", "droppedSpans", "droppedHandles", "openSpanCount", "flowCount", "revisionCount"]))
     && typeof capture.active === "boolean" && typeof capture.incomplete === "boolean"
     && ["eventCount", "droppedEvents", "droppedSpans", "droppedHandles", "openSpanCount", "flowCount", "revisionCount"]
@@ -147,6 +156,11 @@ export async function runDiagnosticsCapture(options, {
 } = {}) {
   // The exported API has the same boundary as the CLI, including direct callers.
   options = { ...options, port: port(options?.port), durationSeconds: duration(options?.durationSeconds) };
+  const saving = options.mode === "save";
+  if (options.mode !== undefined && !["save", "capture"].includes(options.mode)) throw new Error("CAPTURE_MODE_INVALID");
+  if (saving && (!Number.isSafeInteger(options.windowMs) || options.windowMs < 1 || options.windowMs > 300_000
+    || (options.sessionKey !== undefined && (typeof options.sessionKey !== "string"
+      || !/^(?:claude|codex):[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/u.test(options.sessionKey))))) throw new Error("CAPTURE_SELECTION_INVALID");
   for (const key of ["descriptorPath", "outputPath"]) {
     const value = options[key];
     if (typeof value !== "string" || !value.trim() || value.length > 4_096 || /[\u0000\r\n]/u.test(value)
@@ -171,7 +185,7 @@ export async function runDiagnosticsCapture(options, {
       reject(error);
     };
     socket.setEncoding("utf8");
-    deadline = schedule(() => fail(new Error("CAPTURE_TIMEOUT")), options.durationSeconds * 1_000 + 5_000);
+    deadline = schedule(() => fail(new Error("CAPTURE_TIMEOUT")), saving ? 5_000 : options.durationSeconds * 1_000 + 5_000);
     socket.once("error", () => fail(new Error("CAPTURE_CONNECTION_FAILED")));
     socket.on("data", (chunk) => {
       received += chunk;
@@ -195,14 +209,18 @@ export async function runDiagnosticsCapture(options, {
         fail(new Error("CAPTURE_INVALID"));
         return;
       }
+      if (saving && !trace.metadata.rolling) { fail(new Error("CAPTURE_ROLLING_UNAVAILABLE")); return; }
       try {
         await makeDirectory(path.dirname(options.outputPath), { recursive: true });
-        await write(options.outputPath, `${JSON.stringify(trace)}\n`, "utf8");
+        await write(options.outputPath, `${JSON.stringify(trace)}\n`, saving ? { encoding: "utf8", flag: "wx" } : "utf8");
       } catch { fail(new Error("CAPTURE_WRITE_FAILED")); return; }
       settled = true;
-      resolve(Object.freeze({ outputPath: options.outputPath, eventCount: trace.traceEvents.length }));
+      resolve(Object.freeze({ outputPath: options.outputPath, eventCount: trace.traceEvents.length,
+        ...(trace.metadata.rolling ? { rolling: trace.metadata.rolling } : {}) }));
     });
-    socket.once("connect", () => socket.write(`${JSON.stringify({ type: "authenticate", token: descriptor.token, durationMs: options.durationSeconds * 1_000 })}\n`));
+    socket.once("connect", () => socket.write(`${JSON.stringify({ type: "authenticate", token: descriptor.token,
+      ...(saving ? { action: "save", windowMs: options.windowMs, ...(options.sessionKey ? { sessionKey: options.sessionKey } : {}) }
+        : { durationMs: options.durationSeconds * 1_000 }) })}\n`));
   });
 }
 

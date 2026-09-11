@@ -18,7 +18,7 @@ Reconstruct what happened from local evidence, separating provider-recorded fact
 - An explicit request to diagnose a named local session authorizes read-only inspection of that session's transcript and related provider-owned metadata.
 - Keep the investigation read-only. Do not alter transcripts, provider state, configuration, caches, sessions, or running processes unless the user separately requests that action.
 - Stay within the named session and directly related child records. Do not inspect unrelated sessions merely because they are nearby.
-- A request to diagnose Pomegr performance authorizes reading sanitized local diagnostics and taking a bounded recording through an already enabled local listener. It does not authorize raw transcript inspection, restarting the app, or changing diagnostic configuration. Use existing authorization for separately requested setup/restarts; otherwise report the missing prerequisite.
+- A request to diagnose Pomegr performance authorizes reading sanitized local diagnostics and saving the development recorder's recent buffer through its authenticated local listener. Preserve recent history before investigating further. It does not authorize raw transcript inspection, restarting the app, or changing diagnostic configuration. Production and desktop builds have no recorder. Use existing authorization for separately requested setup/restarts; otherwise report the missing prerequisite.
 
 ## Provider evidence hierarchy
 

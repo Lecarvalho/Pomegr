@@ -75,6 +75,9 @@ async function main() {
       format: "iife",
       platform: "browser",
       jsx: "automatic",
+      alias: {
+        "@pomegr/renderer-trace": path.join(testsDirectory, "..", "app", "renderer-trace.ts"),
+      },
       logLevel: "silent",
     });
     const bundle = await readFile(bundlePath);

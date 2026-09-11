@@ -67,6 +67,7 @@ export function createNormalizedPollingObserver(options) {
 
   let publisher = null;
   let trace = null;
+  let traceScopeForLocalId = null;
   let signal = null;
   let timer = null;
   let refreshPending = false;
@@ -106,7 +107,15 @@ export function createNormalizedPollingObserver(options) {
     acquisitionFailures: 0,
   };
 
-  async function runHydration(localSessionId, prepared, requested) {
+  function traceScope(localSessionId) {
+    if (typeof traceScopeForLocalId !== "function") return null;
+    try {
+      const value = traceScopeForLocalId(localSessionId);
+      return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+    } catch { return null; }
+  }
+
+  async function runHydration(localSessionId, prepared, requested, flow = null, scope = null) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     let failureStage = "worker_yield";
@@ -118,7 +127,7 @@ export function createNormalizedPollingObserver(options) {
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
         const preparationStartedAt = monotonicNow();
-        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition" });
+        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope });
         try {
           context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
           trace?.end(preparationSpan, { outcome: "completed" });
@@ -130,7 +139,7 @@ export function createNormalizedPollingObserver(options) {
         }
       }
       const acquisitionStartedAt = monotonicNow();
-      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition" });
+      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition", flow, scope });
       failureStage = "acquire_normalize";
       let candidate;
       try {
@@ -147,12 +156,14 @@ export function createNormalizedPollingObserver(options) {
         publisher.publishSession(localSessionId, candidate);
         qa.candidatesPublished += 1;
       }
+      trace?.finishFlow?.(flow, { outcome: candidate ? "completed" : "rejected" });
       return Boolean(candidate);
     } catch (error) {
       // Acquisition failures are isolated and sanitized. The previous
       // committed revision remains visible and reconciliation can retry.
       qa.acquisitionFailures += 1;
       failures.record("acquisitionFailures", error, failureStage);
+      trace?.finishFlow?.(flow, { outcome: "failed" });
       return false;
     }
   }
@@ -180,9 +191,10 @@ export function createNormalizedPollingObserver(options) {
         qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
-        trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs });
+        trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs,
+          flow: item.traceFlow, scope: item.traceScope });
       }
-      const task = runHydration(item.localSessionId, item.prepared, item.requested);
+      const task = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope);
       runningHydrations.set(item.localSessionId, task);
       void task.then((result) => {
         for (const resolve of item.waiters) resolve(result);
@@ -227,6 +239,7 @@ export function createNormalizedPollingObserver(options) {
     const active = runningHydrations.get(localSessionId);
     if (active && !rerunIfActive) return wait ? active : false;
     if (active) qa.hydrationDirtyAgain += 1;
+    const scope = traceScope(localSessionId);
     pendingHydrations.set(localSessionId, {
       localSessionId,
       prepared,
@@ -236,6 +249,8 @@ export function createNormalizedPollingObserver(options) {
       queuedAt: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
       waiters: resolveWaiter ? [resolveWaiter] : [],
       sourceEventAt: Number.isFinite(sourceEventAt) ? sourceEventAt : null,
+      traceScope: scope,
+      traceFlow: trace?.createFlow?.({ scope }) || null,
     });
     qa.hydrationsQueued += 1;
     drainHydrations();
@@ -449,6 +464,7 @@ export function createNormalizedPollingObserver(options) {
       };
       signal = nextSignal;
       trace = diagnostics.trace || null;
+      traceScopeForLocalId = diagnostics.traceScopeForLocalId || null;
       if (signal.aborted) {
         stop();
         return;

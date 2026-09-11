@@ -4,6 +4,7 @@ import {
   RENDERER_TRACE_MAX_MONOTONIC_MS,
   RENDERER_TRACE_STAGES,
 } from "../shared/renderer-trace-contract.mjs";
+import type { RendererTrace, RendererTraceCapture, RendererTraceDomain, RendererTraceInput, RendererTraceRequest } from "./renderer-trace-types";
 
 type Domain = (typeof RENDERER_TRACE_DOMAINS)[number];
 type Stage = (typeof RENDERER_TRACE_STAGES)[number];
@@ -17,6 +18,22 @@ type Calibration = { requestStartedMs: number; responseReceivedMs: number };
 type Record = { stage: Stage; domain: Domain; token: string; durationMs: number; startedAtMs: number; endedAtMs: number };
 
 function now() { return typeof performance === "undefined" ? 0 : performance.now(); }
+export function rendererTraceReceiptTime(): number | undefined {
+  const receivedAt = now();
+  return Number.isFinite(receivedAt) && receivedAt >= 0 ? receivedAt : undefined;
+}
+/** Starts a fixed trace interval. Response-token handling stays in the dev-only module. */
+export function startRendererTraceRequest(domain: RendererTraceDomain): RendererTraceRequest {
+  const startedAt = now();
+  return (response: Response): RendererTraceCapture | null => {
+    const responseReceivedAt = now();
+    const token = response.headers?.get("x-pomegr-trace-revision");
+    const trace = token ? beginRendererTrace({ domain, token,
+      calibration: { requestStartedMs: startedAt, responseReceivedMs: responseReceivedAt } }) : null;
+    trace?.fetchCompleted(startedAt);
+    return trace ? { trace, startedAt } : null;
+  };
+}
 function validCalibration(value: Calibration) {
   return Number.isFinite(value.requestStartedMs) && Number.isFinite(value.responseReceivedMs)
     && value.requestStartedMs >= 0 && value.responseReceivedMs >= value.requestStartedMs
@@ -25,7 +42,7 @@ function validCalibration(value: Calibration) {
 }
 
 /** Fixed, opt-in request-interval timings; the monitor alone derives backend correlation. */
-export function beginRendererTrace({ domain, token, calibration }: { domain: Domain; token: string; calibration: Calibration }) {
+export function beginRendererTrace({ domain, token, calibration }: RendererTraceInput): RendererTrace | null {
   if (typeof window === "undefined" || document.hidden || !domains.has(domain)
     || !/^r[a-f0-9]{16}_[1-9][0-9]{0,15}$/.test(token) || !validCalibration(calibration)) return null;
   let stopped = false;

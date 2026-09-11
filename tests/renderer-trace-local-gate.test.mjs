@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rendererTraceLocalGate } from "../scripts/renderer-trace-local-gate.mjs";
+import { Readable } from "node:stream";
+import { rendererTraceDevelopmentProxy, rendererTraceLocalGate } from "../scripts/renderer-trace-local-gate.mjs";
 
 function invoke(remoteAddress, headers = {}) {
   let forwarded = false;
@@ -25,4 +26,30 @@ test("renderer trace development transport requires an actual same-computer peer
     assert.equal(result.forwarded, false);
     assert.equal(result.status, 404);
   }
+});
+
+test("development middleware forwards only the fixed renderer route to loopback monitor", async () => {
+  const request = Readable.from(["{}"]);
+  Object.assign(request, { method: "POST", url: "/api/renderer-trace", headers: { "content-type": "application/json" } });
+  const response = { status: null, writeHead(status) { this.status = status; }, end() {} };
+  const calls = [];
+  await rendererTraceDevelopmentProxy(request, response, () => assert.fail("trace route must not fall through"), {
+    monitorOrigin: "http://127.0.0.1:4317",
+    fetchImpl: async (...args) => { calls.push(args); return { ok: true }; },
+  });
+  assert.equal(response.status, 204);
+  assert.deepEqual(calls, [["http://127.0.0.1:4317/internal/renderer-trace", {
+    method: "POST", body: "{}", headers: { "content-type": "application/json" }, signal: calls[0][1].signal,
+  }]]);
+});
+
+test("development middleware refuses a monitor origin outside loopback", async () => {
+  const request = Readable.from(["{}"]);
+  Object.assign(request, { method: "POST", url: "/api/renderer-trace", headers: { "content-type": "application/json" } });
+  const response = { status: null, writeHead(status) { this.status = status; }, end() {} };
+  await rendererTraceDevelopmentProxy(request, response, () => assert.fail("trace route must not fall through"), {
+    monitorOrigin: "https://example.test",
+    fetchImpl: () => assert.fail("remote telemetry must not be forwarded"),
+  });
+  assert.equal(response.status, 503);
 });
