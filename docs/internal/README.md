@@ -84,9 +84,8 @@ validation tooling remain pending.
 ## Migration and temporary work
 
 The progressive Activity/Request publication contract is maintained in
-[Observation cache](../OBSERVATION_CACHE.md). Local Perfetto installation, capture,
-analysis and synthetic performance acceptance are maintained in
-[Pipeline operations](../PIPELINE_OPERATIONS.md).
+[Observation cache](../OBSERVATION_CACHE.md). Continuous JSONL diagnostics and passive
+analysis are maintained in [Pipeline operations](../PIPELINE_OPERATIONS.md).
 
 The [documentation migration checklist](plans/documentation-migration.md) owns
 the migration sequence and completion record. Existing documents remain at their

@@ -17,8 +17,6 @@ module.exports = {
           "[.]d[.]ts$",
           // Vinext discovers this fixed capability endpoint without a source import.
           "^app[/\\\\]api[/\\\\]client-access[/\\\\]route[.]ts$",
-          // Vite resolves this development-only companion through its compile-time alias.
-          "^app[/\\\\]renderer-trace-response[.]dev[.]ts$",
           "(^|[/\\\\])tsconfig[.]json$",
           "(^|[/\\\\])(?:babel|webpack|vite|vitest|postcss|eslint)[.]config[.](?:js|cjs|mjs|ts|cts|mts|json)$",
         ],

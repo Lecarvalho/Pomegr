@@ -332,7 +332,7 @@ test("desktop service bundling emits self-contained monitor and status-line work
     assert.match(bundle, /DESKTOP_MONITOR_START_FAILED/);
     assert.doesNotMatch(bundle, /from\s+["'](?:\.\/|\.\.\/)/);
     for (const forbidden of [
-      "createPipelineTraceRecorder", "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+      "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
       "createPipelineLogWriter", "pipeline-log-writer", "pipeline-log-stream", "pipeline-logs",
       "pomegr-pipeline-trace", "/internal/renderer-trace", "renderer-trace-contract", "renderer_event",
     ]) {

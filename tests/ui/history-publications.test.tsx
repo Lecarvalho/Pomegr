@@ -77,7 +77,7 @@ describe("history publication notifications", () => {
     source.emit({ domain: "history", revision: 2 });
     source.emit({ domain: "history", revision: 2 });
     expect(first).toHaveBeenCalledTimes(1);
-    expect(first).toHaveBeenCalledWith({ domain: "history", revision: 2, receivedAt: 1234 });
+    expect(first).toHaveBeenCalledWith({ domain: "history", revision: 2 });
     expect(second).toHaveBeenCalledTimes(1);
     unsubscribeFirst();
     expect(source.closed).toBe(false);

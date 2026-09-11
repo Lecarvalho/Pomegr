@@ -4,8 +4,9 @@ User wants simpler files instead of Perfetto, emphasizing continuity: watch live
 go back in time without capture/save. Development-only and anonymous/privacy boundaries
 remain. Automatic JSONL append with bounded asynchronous queue, rotation, explicit loss
 and observed coverage. Default proposed disk budget: 250 MiB (10 x 25 MiB files).
-Questions pending: remove Perfetto entirely versus optional export; 250 MiB versus 1 GiB.
-No user response to those choices yet. Do not let optional tooling block continuous logs.
+Decision: remove Perfetto entirely; no optional export, capture, processor, viewer or
+benchmark remains. Continuous JSONL is the sole diagnostics path. Disk budget remains
+250 MiB by default unless the user separately changes it.
 
 Workspace: root dirty main preserves original implementation and unrelated desktop fix.
 PR 23 checkout work/pr-progressive-pipeline-perfetto is clean at 4c6fbfa; transfer only
@@ -174,3 +175,27 @@ package/contracts follow-up, then perform authorized restart and live growing-lo
 acceptance. Reconcile the unrelated landing typecheck failure before claiming verify:fast,
 update/push PR 23, transfer enduring state, and delete this plan at closure. Preserve root
 dirty work, existing stash and unrelated desktop commit.
+
+## Checkpoint: 2026-09-11, definitive Perfetto retirement
+
+The user explicitly resolved the earlier open choice: Perfetto is fully decommissioned,
+not optional. Earlier checkpoint wording that preserves optional Perfetto tooling is
+historical and superseded. Commit b2fbee2 records the preceding package/contracts pass.
+
+A serial Terra worker performed a removal inventory, then stopped without edits when the
+usage guard observed 90% primary allowance. Remove Perfetto-only diagnostic scripts, SQL,
+viewer fixtures/tests, capture/save/compare/benchmark paths and the local capture transport.
+Remove renderer/capture-only app, API, shared, monitor, Vite, boundary and test plumbing.
+Preserve pipeline-log-schema, pipeline-log-stream, pipeline-log-writer,
+diagnostics-logs, dev-diagnostics integration and the generic event instrumentation used by
+the JSONL sink. Reduce or rename pipeline-trace so it no longer owns rolling retention,
+export or capture APIs. Repoint diagnostics:analyze to diagnostics-logs, retain
+diagnostics:logs, and remove all other Perfetto package commands. Regenerate generated
+plugin artifacts; never hand-edit them.
+
+Update PIPELINE_OPERATIONS, OBSERVATION_CACHE, ARCHITECTURE, internal README, AGENTS,
+package/test routing, Vite and dependency boundaries. Delete obsolete sources and tests
+rather than archiving them. Run focused continuous-log, production/desktop exclusion,
+architecture and boundary checks, then required build/full tests. Do not pursue the known
+unrelated landing Miniflare typecheck failure. No replacement worker was started. Resume
+only after a fresh usage observation supports it.

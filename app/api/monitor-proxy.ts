@@ -1,5 +1,3 @@
-import { rendererTraceResponseHeader } from "#pomegr/renderer-trace-response";
-
 const DEFAULT_MONITOR_ORIGIN = "http://127.0.0.1:4317";
 
 export function monitorOrigin(value = process.env.POMEGR_MONITOR_ORIGIN) {
@@ -40,7 +38,6 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
         headers: {
           "Cache-Control": "no-store",
           ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
-          ...rendererTraceResponseHeader(response),
         },
       });
     }
@@ -50,7 +47,6 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
         ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
-        ...rendererTraceResponseHeader(response),
       },
     });
   } catch {

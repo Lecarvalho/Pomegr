@@ -1825,21 +1825,17 @@ coverage. They never establish a complete session history or a causal diagnosis.
 `npm run diagnostics:logs -- ...` passively validates, analyzes, or follows these retained
 files. It does not connect to the monitor, acquire provider data, alter scheduling, write
 checkpoints, or publish a revision. Diagnostic GETs do not exist. Normal development does
-not start capture IPC. The separate rolling recorder, authenticated capture/export transport,
-and Perfetto viewer remain optional targeted development tooling with their existing private
-scope; they do not gate continuous logs. Continuous logging, capture transport, and renderer
-instrumentation are excluded from production and desktop artifacts, not merely disabled.
+not start capture IPC. Continuous JSONL is the sole diagnostics path; no rolling recorder,
+capture/export transport, viewer, or renderer instrumentation remains. Continuous logging is
+excluded from production and desktop artifacts, not merely disabled.
 Browser/LAN routes cannot start or stop any diagnostic facility. Schema, retention, coverage,
 local setup and offline analysis belong to `docs/PIPELINE_OPERATIONS.md`.
 
 The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
 in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
-derivation, persistence, or revision publication. The complete operational contract and
-the development-only renderer `performance.mark()` bridge are documented in
-`docs/PIPELINE_OPERATIONS.md`. Request-interval calibration provides bounded response-to-
-renderer milestone intervals in retained development recordings; pixels painted and
-source-to-pixel latency remain unmeasured.
+derivation, persistence, or revision publication. The complete operational contract is
+documented in `docs/PIPELINE_OPERATIONS.md`.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

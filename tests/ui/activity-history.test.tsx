@@ -44,34 +44,6 @@ describe("Activity history paging", () => {
     expect(fetcher).toHaveBeenCalledTimes(calls);
   });
 
-  it("emits fixed local timings only when a committed history response mints a capture token", async () => {
-    const mark = vi.fn();
-    const clearMarks = vi.fn();
-    const posts: unknown[] = [];
-    vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
-    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(10);
-      return 1;
-    });
-    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
-      if (url === "/api/renderer-trace") {
-        posts.push(JSON.parse(String(options?.body)));
-        return { ok: true };
-      }
-      return { ok: true, headers: { get: () => "r0123456789abcdef_1" }, json: async () => page(requestedOffset(new URL(url, "http://localhost").searchParams)) };
-    }));
-    renderHook(() => useActivityHistory(inputs));
-    await waitFor(() => expect(posts.length).toBeGreaterThan(0));
-    const records = posts.flatMap((payload) => (payload as { records: unknown[] }).records);
-    expect(records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ stage: "renderer_fetch", domain: "activity", token: "r0123456789abcdef_1" }),
-      expect.objectContaining({ stage: "renderer_react_commit", domain: "activity", token: "r0123456789abcdef_1" }),
-      expect.objectContaining({ stage: "renderer_next_frame", domain: "activity", token: "r0123456789abcdef_1" }),
-    ]));
-    expect(mark).toHaveBeenCalled();
-    expect(clearMarks).toHaveBeenCalled();
-  });
-
   it("does not mark or submit browser timing while capture is inactive", async () => {
     const mark = vi.fn();
     const clearMarks = vi.fn();
@@ -85,24 +57,6 @@ describe("Activity history paging", () => {
     expect(fetcher.mock.calls.every(([url]) => url.startsWith("/api/session-history"))).toBe(true);
     expect(mark).not.toHaveBeenCalled();
     expect(clearMarks).not.toHaveBeenCalled();
-  });
-
-  it("aborts pending renderer telemetry when the history hook unmounts", async () => {
-    const mark = vi.fn();
-    const clearMarks = vi.fn();
-    let telemetrySignal: AbortSignal | undefined;
-    vi.stubGlobal("performance", { now: () => 10, mark, clearMarks });
-    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
-      if (url === "/api/renderer-trace") {
-        telemetrySignal = options?.signal as AbortSignal;
-        return new Promise(() => {});
-      }
-      return { ok: true, headers: { get: () => "r0123456789abcdef_1" }, json: async () => page(requestedOffset(new URL(url, "http://localhost").searchParams)) };
-    }));
-    const { unmount } = renderHook(() => useActivityHistory(inputs));
-    await waitFor(() => expect(telemetrySignal).toBeDefined());
-    unmount();
-    expect(telemetrySignal?.aborted).toBe(true);
   });
 
   it("refreshes live activity within three seconds when the chart revision stays pinned", async () => {

@@ -34,8 +34,10 @@ test("production web artifacts exclude the recorder, capture protocol, and brows
   context.after(fixture.close);
   const artifact = await artifactText(fixture.outDir);
   for (const forbidden of [
-    "createPipelineTraceRecorder", "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
-    "createPipelineLogWriter", "pipeline-log-writer", "pipeline-log-stream", "pipeline-logs",
+    "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+    // The package manifest is bundled for its displayed version and therefore contains
+    // diagnostics script/file names. Check executable composition identifiers here.
+    "createDevelopmentDiagnostics", "createPipelineLogWriter",
     "/api/renderer-trace", "x-pomegr-trace-revision", "renderer_event", "renderer_react_commit", "performance.mark",
   ]) assert.equal(new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u").test(artifact), false, forbidden);
 });

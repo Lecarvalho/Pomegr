@@ -1,6 +1,0 @@
-{
-  "name": "pomegr-renderer-trace-react-electron-fixture",
-  "private": true,
-  "type": "module",
-  "main": "../renderer-trace-react-electron-child.mjs"
-}

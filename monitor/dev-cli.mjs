@@ -8,7 +8,6 @@ try {
     logger: console,
     pipelineTrace: diagnostics.recorder,
     traceScopeForSession: diagnostics.traceScopeForSession,
-    requestHandlerFactory: (options) => diagnostics.createRequestHandler(options),
     startupExtension: (context) => diagnostics.start(context),
   });
 } catch (error) {

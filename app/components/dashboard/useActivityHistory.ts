@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActivityHistoryPage } from "../../../shared/session-history-contract";
 import { subscribeHistoryPublications } from "../../history-publications";
-import { beginRendererTrace, startRendererTraceRequest } from "@pomegr/renderer-trace";
 
 export const ACTIVITY_PAGE_SIZE = 8;
-type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean; followLatest?: boolean; eventReceivedAt?: number };
+type LoadOptions = { requestId?: string; anchor?: string; refresh?: boolean; silent?: boolean; followLatest?: boolean };
 type PageOffset = number | "latest";
-type RendererTrace = NonNullable<ReturnType<typeof beginRendererTrace>>;
-type TracedPage = { page: ActivityHistoryPage; trace: RendererTrace | null; startedAt: number; eventReceivedAt?: number };
 
 /** Keep just the current page and its two neighbors; background arrivals preserve the anchor. */
 export function useActivityHistory({ enabled, sessionId, scope, filterRequestId, navigation, historyRevision = "", historical = false }: {
@@ -26,9 +23,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
   const pending = useRef<{ offset: PageOffset; options: LoadOptions } | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshedRevision = useRef({ key: "", revision: "" });
-  const queuedPublication = useRef<{ revision: number; receivedAt?: number } | null>(null);
-  const pendingTrace = useRef<{ trace: RendererTrace; startedAt: number; revision: string; eventReceivedAt?: number } | null>(null);
-  const activeTrace = useRef<RendererTrace | null>(null);
+  const queuedPublication = useRef<{ revision: number } | null>(null);
 
   const load = useCallback(async function loadPage(offset: PageOffset, options: LoadOptions = {}): Promise<void> {
     if (!enabled) return;
@@ -39,7 +34,7 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
     for (const controller of controllers.current) controller.abort();
     controllers.current.clear();
     pending.current = { offset, options };
-    const fetchPage = async (start: PageOffset, extra: typeof options = {}, traceResponse = false): Promise<TracedPage> => {
+    const fetchPage = async (start: PageOffset, extra: typeof options = {}): Promise<{ page: ActivityHistoryPage }> => {
       const params = new URLSearchParams({ sessionId, kind: "activity", scope, offset: String(start), limit: String(ACTIVITY_PAGE_SIZE) });
       if (filterRequestId) params.set("filterRequestId", filterRequestId);
       if (extra.requestId) params.set("requestId", extra.requestId);
@@ -47,13 +42,11 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       const controller = new AbortController();
       controllers.current.add(controller);
       try {
-        const traceRequest = traceResponse ? startRendererTraceRequest("activity") : null;
         const response = await fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("History unavailable");
         const page = await response.json() as ActivityHistoryPage;
         if (page.kind !== "activity" || !Array.isArray(page.items)) throw new Error("Invalid history page");
-        const capture = traceRequest?.(response) ?? null;
-        return { page, trace: capture?.trace ?? null, startedAt: capture?.startedAt ?? 0, eventReceivedAt: extra.eventReceivedAt };
+        return { page };
       } finally { controllers.current.delete(controller); }
     };
     // Any resident linked row can reveal this request; no server lookup is needed.
@@ -64,10 +57,9 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       : null;
     if (!cached) setState((previous) => ({ key, page: previous.key === key ? previous.page : null, newEvents: previous.key === key ? previous.newEvents : 0, linkedCount: options.requestId ? null : previous.linkedCount, loading: !options.silent, failed: false }));
     try {
-      const result = cached ? { page: cached, trace: null, startedAt: 0 } : await fetchPage(offset, options, true);
+      const result = cached ? { page: cached } : await fetchPage(offset, options);
       const { page } = result;
       if (sequence.current !== generation) {
-        result.trace?.stop();
         return;
       }
       if (page.status !== "ready") {
@@ -75,7 +67,6 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
         if (page.status === "loading" && !options.silent) {
           retryTimer.current = setTimeout(() => { void loadPage(offset, options); }, 750);
         }
-        result.trace?.stop();
         return;
       }
       pending.current = null;
@@ -87,48 +78,24 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       cache.current.set(page.offset, page);
       const neighbors = [page.offset - ACTIVITY_PAGE_SIZE, page.offset, page.offset + ACTIVITY_PAGE_SIZE].filter((start) => start >= 0 && start < page.total);
       for (const start of cache.current.keys()) if (!neighbors.includes(start)) cache.current.delete(start);
-      if (result.trace) {
-        activeTrace.current?.stop();
-        pendingTrace.current?.trace.stop();
-        activeTrace.current = result.trace;
-        pendingTrace.current = { trace: result.trace, startedAt: result.startedAt, revision: page.revision, eventReceivedAt: result.eventReceivedAt };
-      }
       setState((previous) => ({ key, page, loading: false, failed: false, newEvents: Math.max(0, page.total - baseline.current), linkedCount: options.requestId ? cached ? null : page.linkedCount : filterRequestId ? page.linkedCount : previous.key === key ? previous.linkedCount : null }));
       await Promise.allSettled(neighbors.filter((start) => start !== page.offset && !cache.current.has(start)).map(async (start) => {
         const { page: neighbor } = await fetchPage(start);
         if (sequence.current === generation && neighbor.status === "ready" && neighbor.revision === page.revision) cache.current.set(start, neighbor);
       }));
       if (sequence.current === generation && queuedPublication.current !== null && !retryTimer.current) {
-        const publication = queuedPublication.current;
         queuedPublication.current = null;
         const nextPage = current.current;
         void load(followingLatest.current ? "latest" : nextPage?.offset ?? 0, {
           refresh: true,
           silent: Boolean(nextPage),
           anchor: nextPage && !followingLatest.current ? nextPage.items[0]?.id : undefined,
-          eventReceivedAt: publication.receivedAt,
         });
       }
     } catch {
       if (sequence.current === generation) setState((previous) => ({ ...previous, key, loading: false, failed: true }));
     }
   }, [enabled, sessionId, scope, filterRequestId, key]);
-
-  useEffect(() => {
-    const trace = pendingTrace.current;
-    if (!trace || state.page?.revision !== trace.revision) return;
-    if (trace.eventReceivedAt !== undefined) trace.trace.eventReceived(trace.eventReceivedAt);
-    trace.trace.reactCommitted(trace.startedAt);
-    trace.trace.nextFrame(trace.startedAt);
-    pendingTrace.current = null;
-  }, [state.page]);
-
-  useEffect(() => () => {
-    pendingTrace.current?.trace.stop();
-    pendingTrace.current = null;
-    activeTrace.current?.stop();
-    activeTrace.current = null;
-  }, []);
 
   useEffect(() => {
     current.current = null;
@@ -159,9 +126,9 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
 
   useEffect(() => {
     if (!enabled || historical) return;
-    return subscribeHistoryPublications(({ revision, receivedAt }) => {
+    return subscribeHistoryPublications(({ revision }) => {
       if (pending.current || controllers.current.size || retryTimer.current) {
-        if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision, receivedAt };
+        if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
         return;
       }
       const page = current.current;
@@ -169,7 +136,6 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
         refresh: true,
         silent: Boolean(page),
         anchor: page && !followingLatest.current ? page.items[0]?.id : undefined,
-        eventReceivedAt: receivedAt,
       });
     });
   }, [enabled, historical, load]);
@@ -184,7 +150,6 @@ export function useActivityHistory({ enabled, sessionId, scope, filterRequestId,
       refresh: true,
       silent: Boolean(page),
       anchor: page && !followingLatest.current ? page.items[0]?.id : undefined,
-      eventReceivedAt: publication.receivedAt,
     });
   }, [enabled, historical, load, state.page, state.loading, state.failed]);
 

@@ -19,10 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@pomegr/renderer-trace": ["./app/renderer-trace.inert.ts"],
-      "@pomegr/renderer-trace-response": ["./app/renderer-trace-response.inert.ts"],
-      "#pomegr/renderer-trace-response": ["./app/renderer-trace-response.inert.ts"]
+      "@/*": ["./*"]
     }
   },
   "include": [
