@@ -154,6 +154,51 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
+Complete replay uses two bounded ownership lanes: one foreground slot for the
+selected session and one maintenance slot for live refreshes and restored sessions.
+A selected state request may promote or enqueue asynchronous replay when the
+committed history does not match its current private observation-source key; it
+still returns the current committed state immediately. Repeated state polls do not
+replay history whose source key already committed, and `/api/session-history`
+never queues replay. Projection-only session revisions, including resource refreshes,
+do not schedule provider history acquisition. A fresh provider observation does.
+Same-session replay remains serialized and coalesces one follow-up when its source
+changes during an active read.
+The runtime retains at most 128 private attempted and completed source keys. A
+complete replay rejected by a newer contribution fence queues one follow-up; an
+incomplete stable source waits for a later source observation instead of spinning.
+A missing or invalid committed history manifest clears the matching proof so a
+later selected-state refresh can schedule repair. None of these keys enter history
+persistence, diagnostics, revision events, or browser state.
+Source-complete Activity may commit first with null request links and durations.
+Provider-private history ownership annotations stay in a separate history projection;
+registering progressive callbacks must not add fields to the strict session evidence.
+Observer-path tests validate session publication with those callbacks enabled and retain
+normalized agent ownership in both early and enriched history rows.
+The same observer then commits a bounded request contribution only after the
+existing strict monitor-side correlation resolves it; that contribution atomically
+adds request snapshots and enriches matching Activity IDs without removing retained
+rows. Both contributions carry private source epoch and sequence watermarks. A
+replay fences both domains and is discarded if either advances while it reads, then
+the runtime schedules one dirty follow-up replay. Same-process contribution bursts
+coalesce to one pending durable write; unchanged watermarks do not advance the
+browser-visible history revision. A failed durable contribution retries at most
+three times from its already-normalized envelope and never causes a GET acquisition.
+Private producer-admission watermarks are bounded to the active in-memory session
+cap. When that LRU cap evicts a current-runtime session, its narrow private
+watermark is restored from a runtime-nonce-bound sidecar before another
+contribution is admitted; this preserves stale rejection without evicting
+normalized history. A fresh runtime deliberately ignores the prior nonce so a
+restarted source may begin a new epoch/sequence safely.
+
+The maintained synthetic benchmark runs cold startup, disk-restored history with
+`maxResident: 0`, a 1,000-row warm append, and a 16-contribution continuous
+burst. It records only controlled history readiness, convergence, process CPU/RSS
+deltas, and GET/publication counts. Its per-scenario traces and summaries are not
+provider-I/O, whole-application, renderer, or paint measurements.
+The catalog's native presence/status remains an independent catalog observation;
+detailed per-agent lifecycle still shares the session acquisition path and has no
+separate producer until its source dependencies are split and measured.
 The monitor privately caches at most four parsed history manifests, bounded by
 16 MiB of source JSON across entries (parsed-object overhead is additional).
 Every read verifies file identity, size, and nanosecond modification/change times;
@@ -193,8 +238,13 @@ window is pending because of chart-window navigation. Selecting a visible
 Activity row only loads the linked chart details; it must not veil or disable the
 already-committed Activity page. Stale row links cannot activate while the feed
 itself is being replaced. Failures remove the veil and
-explain that the previous page is retained. Routine ten-second background refreshes
-remain visually quiet. These are F presentation states, not backend readiness.
+explain that the previous page is retained. Live Activity refreshes immediately when
+Requests receives a different committed history revision, and every three seconds
+independently so activity still advances while chart selection is pinned. These
+refreshes remain visually quiet and preserve older-page anchors. A revision arriving
+during navigation waits for that lookup to finish; repeated revisions do not cause
+extra fetches. Historical views retain the ten-second cadence. These are F
+presentation states, not backend readiness.
 Polling never cancels an in-flight navigation. A loading or unavailable response
 retries the same request lookup, scope, offset, and anchor instead of substituting
 the latest page. Foreground `loading` responses retry after 750 ms; failures retain
@@ -574,10 +624,19 @@ before presentation caps, using the thresholds and boundaries in [Metrics](METRI
 The read-share transition is at least 80% to at most 20%, with an independent
 requirement that actual cached tokens fall by at least 80%. The broader
 current-share ceiling changes only D derivation; evidence and response shapes
-remain compatible.
+remain compatible. Same-model occurrences omit `kind` and retain the existing
+possible-refill inference. When recorded models differ, D may retain the occurrence
+with the bounded `kind: "model_change"` value when the same normalized agent and
+comparison group have adjacent observations with explicit provenance, no
+compaction/context-reduction, and the prompt-size, read-share, cached-token collapse,
+and zero-write gates pass. F labels that occurrence **Cache reuse dropped
+across a model change** and makes no refill, expiry, or causation inference; model
+identifiers remain monitor-private.
 This feed is separate from write-backed cache events and report counts. F reuses
-the existing agent indicator and popover, labels the conclusion as an inference,
-and links the signal definition. It never reconstructs comparisons from request
+the existing agent indicator and popover, labels the same-model conclusion as an inference,
+and links the [same-model signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped)
+or [model-change signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
+It never reconstructs comparisons from request
 rows or provider schemas. S continues to serve committed responses only: no new
 endpoint, source read, subscription, polling lane, or provider request is added.
 
@@ -586,8 +645,9 @@ checkpoint without explicit eligibility remains unknown until normal background
 normalization commits a complete replacement. Eligibility and predecessor metadata
 remain inside L1/L2 evidence and never serialize to the browser. The public feed
 allows only readiness, normalized agent IDs, bounded counts, opaque occurrence IDs,
-original timestamps, two read percentages, and elapsed gaps. No raw usage, source
-paths, model identities, comparisons, prompts, or credentials are added. Existing
+original timestamps, two read percentages, elapsed gaps, and the optional bounded
+`model_change` kind. No raw usage, source paths, model identities, comparisons,
+prompts, or credentials are added. Existing
 revision handling, atomic commits, last-known-good retention, readiness, cache-only
 GETs, and UI polling remain unchanged.
 
@@ -778,7 +838,34 @@ failed Claude adapter cannot occupy Codex workers, and vice versa. Within one ob
 duplicate events for a queued session coalesce. If a source changes while that session is
 already being acquired, one dirty-again pass is retained so the newest complete records
 are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently.
+workers concurrently. Each provider defaults to two interactive hydration slots plus
+one background slot. First publication for a live or needs-input session and explicit
+selection use urgent priority; ordinary source updates can occupy only one of the two
+interactive slots. Urgent work may use both. With a custom single interactive slot,
+urgent work leads queued updates but cannot preempt an acquisition already running.
+Promoting a queued session immediately rechecks capacity without concurrent acquisition
+of the same session.
+
+Initial live hydration enters the queue directly with session-local preparation, ahead
+of bulk working-set preparation. It retains urgent eligibility across catalog refreshes
+until a candidate publishes successfully. The observer's private publication bookkeeping
+is pruned against its catalog and cleared on shutdown. Cold-discovered historical rows
+and routine reconciliation stay in the background lane. Broad lifecycle/index catalog
+notifications refresh non-live rows in that lane too; exact source notifications keep
+ordinary interactive priority. First-live work is queued before catalog fan-out. These
+are asynchronous event-loop tasks, so complete-file readers must also yield cooperatively;
+the slots do not imply separate CPU workers or a fixed source-to-display latency.
+
+Selecting a restored live snapshot with stale lifecycle evidence also queues urgent
+revalidation on a cache hit. Repeated reads coalesce, and a selection made before the
+observer attaches retains only the latest startup request. A fresh candidate awaiting
+commit suppresses redundant revalidation. Restored live evidence temporarily withholds
+its acquisition cursor so an unchanged source still normalizes once; normal cursor reuse
+resumes after fresh evidence commits. The saved revision remains readable throughout.
+Historical snapshots and freshly acquired unknown status do not trigger this restore
+refresh. GETs still serve committed caches only; they never acquire provider evidence
+synchronously. Atomic commits, revision handling, checkpoint privacy, and browser data
+boundaries remain unchanged.
 
 The adapter may map a known source directly through its private reverse index. A newly
 created or unresolved source requests a fresh catalog read that bypasses short-lived
@@ -1057,6 +1144,10 @@ React, persisted checkpoints, or browser API fields.
 - One provider worker pool may hydrate different sessions concurrently. Work for the same
   session is serialized, duplicate queued notifications coalesce, and a notification that
   arrives during acquisition retains one dirty-again follow-up.
+- Complete Claude history reads visit transcript files sequentially and yield after each
+  64 KiB chunk. Complete Codex rollout reads and parses the same bounded chunks. Both
+  revalidate the source generation before a complete replacement can commit, allowing
+  selected foreground work and cache serving to proceed between maintenance units.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
 - Codex fallback discovery collapses multiple rollout generations carrying the same
@@ -1146,9 +1237,10 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Work | Owner / phase | Cache relationship | Cadence |
 | --- | --- | --- | --- |
 | Source-change routing | Backend adapter / U1 | Maps a provider-native notification privately to catalog-dirty and/or session-dirty work | Wake immediately on a provider event or filesystem notification; known sessions enter the worker queue in the same event-loop turn |
-| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start when a provider worker is available; default concurrency is 2 sessions per provider, with same-session serialization and event coalescing |
+| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in a reserved provider lane: two interactive slots for notification/selection work and one background slot for reconciliation, with same-session serialization and event coalescing |
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
+| Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
@@ -1699,7 +1791,9 @@ error text, command, executable, credential,
 or path is persisted. Fingerprints support only comparison to a previous saved capture;
 they are neither exposed nor treated as continuous configuration-drift observation.
 
-Session association is future-only and immutable. Sessions that predate the persisted
+Session association is future-only, immutable, and background-only. The normalized session
+commits before association begins; a settled association may queue a later re-projection but
+must never delay the ready session or retry its provider observation. Sessions that predate the persisted
 feature-introduction time receive an explicit no-binding decision. A new session may bind
 once to the newest revision for the same repository/provider whose successful commit time
 is no later than the session start. A capture completed after session start never attaches
@@ -1770,16 +1864,38 @@ browser API fields, or per-session traces. Raw errors, messages, stacks, paths, 
 are excluded, and successful work does not erase historical failure details. Bounded
 monotonic duration windows may additionally cover catalog discovery, source preparation,
 combined acquisition/normalization, catalog projection, session derivation, normalized
-store commit, and candidate-to-commit delay. Delay diagnostics are aggregate numbers only;
-they contain no native source or session identity.
+store commit, and candidate-to-commit delay. The aggregate feed contains no native source
+or session identity.
 
-The manually launched `npm run ops:pipeline` client consumes a fixed versioned snapshot
+Before development observation begins, the development composition creates one continuous
+anonymous JSONL writer. It is file-first: it owns generated files only in
+`outputs/pipeline-logs/`, retains at most ten files of at most 25 MiB each (250 MiB default),
+and assumes one development writer. Its accepted-record queue is bounded to 1 MiB, and a
+separate active drain batch is independently bounded to at most 1 MiB; neither bound is a
+process-memory guarantee. Fixed versioned records contain only a fresh run UUID, local
+observation timestamp, allowlisted stages/domains/outcomes/counters, synthetic lanes, and
+opaque numeric flow/revision/scope handles. They must not contain a session ID, selector,
+path, fingerprint, prompt, response, transcript/tool content, credential, raw error, or
+provider-native payload. `span_start` records make unfinished work explicit; `gap` records
+declare observed writer/instrumentation loss with fixed reasons; health records preserve
+bounded normalized operations snapshots; lifecycle records delimit a run. Retention,
+malformed records, partial trailing lines, rotations, limits, missing files, and gaps reduce
+coverage. They never establish a complete session history or a causal diagnosis.
+
+`npm run diagnostics:logs -- ...` passively validates, analyzes, or follows these retained
+files. It does not connect to the monitor, acquire provider data, alter scheduling, write
+checkpoints, or publish a revision. Diagnostic GETs do not exist. Normal development does
+not start capture IPC. Continuous JSONL is the sole diagnostics path; no rolling recorder,
+capture/export transport, viewer, or renderer instrumentation remains. Continuous logging is
+excluded from production and desktop artifacts, not merely disabled.
+Browser/LAN routes cannot start or stop any diagnostic facility. Schema, retention, coverage,
+local setup and offline analysis belong to `docs/PIPELINE_OPERATIONS.md`.
+
+The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
 in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
-derivation, persistence, or revision publication. The complete operational contract and
-the separately deferred renderer `performance.mark()` bridge are documented in
-`docs/PIPELINE_OPERATIONS.md`. Browser presentation timing remains unavailable until that
-future opt-in milestone is implemented.
+derivation, persistence, or revision publication. The complete operational contract is
+documented in `docs/PIPELINE_OPERATIONS.md`.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

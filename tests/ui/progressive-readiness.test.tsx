@@ -43,6 +43,8 @@ describe("progressive readiness", () => {
     const { container } = render(<SessionCatalogProvider sessions={[target]}><Dashboard initialSessionId={target.id} /></SessionCatalogProvider>);
     expect(await screen.findByText(/Showing recent requests by time while full history loads/)).toBeInTheDocument();
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(1);
+    expect(screen.getByRole("img", { name: "Request map loading" })).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(1);
     expect(screen.queryByLabelText("Loading context evidence")).not.toBeInTheDocument();
   });
 

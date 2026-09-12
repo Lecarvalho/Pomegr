@@ -28,6 +28,7 @@ describe("RequestsActionsPanel", () => {
     vi.stubGlobal("fetch", fetchPage);
     render(<StrictMode><HistoryLocateHarness sessionId="strict-loading" requests={[snapshot(1)]} /></StrictMode>);
     expect(await screen.findByRole("heading", { name: "Request #999" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Request map loading" })).toBeInTheDocument();
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
@@ -40,12 +41,14 @@ describe("RequestsActionsPanel", () => {
     const bars = container.querySelectorAll(".requestsActionsBar");
     expect(bars).toHaveLength(phone ? 20 : 60);
     expect(screen.getByText(/Showing recent requests by time while full history loads/)).toBeInTheDocument();
-    expect(screen.queryByRole("slider", { name: "Request window" })).not.toBeInTheDocument();
+    const loadingMinimap = screen.getByRole("img", { name: "Request map loading" });
+    expect(loadingMinimap).toHaveAttribute("aria-busy", "true");
+    expect(loadingMinimap.querySelectorAll(".requestsActionsMiniBar")).toHaveLength(phone ? 20 : 60);
     expect(screen.queryByRole("button", { name: /^Request #/ })).not.toBeInTheDocument();
     fireEvent.click(bars[0]);
     const first = phone ? 81 : 41;
     await act(async () => resolve({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "1", total: 100, offset: first - 1, linkedCount: 0,
-      items: requests.slice(first - 1).map((row, index) => ({ ...row, number: 1000 + first + index })),
+      items: requests.slice(first - 1).map((row, index) => ({ ...row, number: 1000 + first + index })), overview: requests.map(overviewPoint),
     }) }));
     expect(screen.getByRole("heading", { name: `Request #${1000 + first}` })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Request window" })).toBeInTheDocument();

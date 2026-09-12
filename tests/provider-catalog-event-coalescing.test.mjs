@@ -96,7 +96,7 @@ test("late eager preparation cannot overwrite a newer lifecycle hydration", asyn
   let releaseHydration;
   const oldPreparation = new Promise((resolve) => { releasePreparation = resolve; });
   const activeHydration = new Promise((resolve) => { releaseHydration = resolve; });
-  let entry = { localId: "one", activityStatus: "open", isLive: true };
+  let entry = { localId: "one", activityStatus: "unknown", isLive: false };
   let preparations = 0;
   const hydrated = [];
   const observer = createNormalizedPollingObserver({
@@ -139,7 +139,7 @@ test("a source wake invalidates an earlier prepared batch even without catalog g
   let preparations = 0;
   const hydrated = [];
   const observer = createNormalizedPollingObserver({
-    async list() { return [{ localId: "one", isLive: true }]; },
+    async list() { return [{ localId: "one", isLive: false, updatedAt: new Date().toISOString() }]; },
     async prepare() {
       const snapshot = revision;
       preparations += 1;

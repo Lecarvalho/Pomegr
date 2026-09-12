@@ -217,7 +217,9 @@ export function projectProviderSessionEvidence({
     repeats: loop.count - 1,
   }));
   const allEvents = [
-    ...evidence.activity,
+    // Projection narrows request links below; it must never mutate immutable
+    // provider evidence retained for checkpointing or a later derivation.
+    ...evidence.activity.map((event) => ({ ...event })),
     ...evidence.toolCalls.map((call) => ({
       id: call.id,
       timestamp: call.timestamp,

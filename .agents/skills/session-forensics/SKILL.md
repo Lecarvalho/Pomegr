@@ -1,19 +1,26 @@
 ---
 name: session-forensics
-description: Diagnose coding-agent session anomalies from local transcripts and normalized telemetry, especially cache refills, context changes, compactions, and tool-definition changes. Use when a user supplies a session ID or asks why a recorded session event happened; do not use for ordinary application-code debugging.
+description: Diagnose coding-agent session anomalies and delayed Pomegr live updates using local session evidence and continuous JSONL pipeline logs. Use for cache/context/compaction/tool-change investigations, late Activity or Request updates, and evidence-based performance comparisons; not general application debugging.
 ---
 
 # Session Forensics
 
-Act as a **Session Forensics Analyst**. Reconstruct what happened from recorded session evidence, clearly separating provider facts from monitor-derived inference.
+Reconstruct what happened from local evidence, separating provider-recorded facts, measured Pomegr behavior, and inference.
+
+## Choose the evidence
+
+- For cache refills, context changes, compactions, or tool-definition changes, follow the provider investigation below.
+- For delayed Activity/Request rows, slow convergence, stalled live updates, or supplied pipeline logs, read [references/pipeline-logs.md](references/pipeline-logs.md). Analyze the continuously written local files first; no capture or native tool is needed.
+- For a mixed question, investigate each evidence source separately. A Pomegr delay does not explain a provider cache decision. Coincident timestamps do not establish that an anonymous trace flow belongs to a named request or session.
 
 ## Scope and authorization
 
 - An explicit request to diagnose a named local session authorizes read-only inspection of that session's transcript and related provider-owned metadata.
 - Keep the investigation read-only. Do not alter transcripts, provider state, configuration, caches, sessions, or running processes unless the user separately requests that action.
 - Stay within the named session and directly related child records. Do not inspect unrelated sessions merely because they are nearby.
+- A request to diagnose Pomegr performance authorizes reading sanitized local diagnostic files and preserving relevant retained files locally before rotation. It does not authorize raw transcript inspection, restarting the app, or changing diagnostic configuration. Production and desktop builds have no diagnostic writer. Use existing authorization for separately requested restarts; otherwise report the missing prerequisite.
 
-## Evidence hierarchy
+## Provider evidence hierarchy
 
 Prefer evidence in this order:
 
@@ -25,7 +32,7 @@ Prefer evidence in this order:
 
 Call levels 1–2 **recorded evidence**. Call levels 3–4 **inference**. Treat level 5 as a possible explanation, never a finding, unless the provider recorded it directly.
 
-## Investigation workflow
+## Provider investigation workflow
 
 1. Resolve the exact provider and session from the supplied identifier. Prefer an existing provider adapter or Pomegr's normalized state. If raw discovery is needed, search by exact session ID and never disclose the transcript path.
 2. Anchor the event: identify its request, normalized agent, timestamp, usage transition, and any provider diagnostic. Deduplicate streamed fragments that share one provider request identity. If a rule needs cross-request ordering and the provider identity is missing or malformed, leave that attribution unavailable instead of inventing a fallback identity.
@@ -56,6 +63,7 @@ Call levels 1–2 **recorded evidence**. Call levels 3–4 **inference**. Treat 
 Lead with the conclusion and use calibrated language:
 
 - **Recorded:** directly stored by the provider.
+- **Measured:** directly observed by Pomegr instrumentation, with its measurement boundary, capture coverage, and clock uncertainty stated. This is separate from provider evidence.
 - **Strong inference:** one complete structural rule fits and no competing transition does.
 - **Possible:** timing or incomplete evidence fits but does not identify a cause.
 - **Unavailable:** the required evidence is absent, truncated, malformed, or ambiguous.

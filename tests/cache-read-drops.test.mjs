@@ -108,12 +108,12 @@ test("includes the twenty-percent ceiling while preserving the cached-token coll
   for (const [cacheRead, expectedCount] of [[1_999, 1], [2_000, 1], [2_001, 0]]) {
     const result = drops(pair({
       before: { input: 0, cacheRead: 10_000 },
-      after: { input: 10_000 - cacheRead, cacheRead },
+      after: { input: 10_000 - cacheRead, cacheRead, model: "gpt-6-astra" },
     }));
     assert.equal(result.items[0]?.count ?? 0, expectedCount, String(cacheRead));
   }
   const insufficientCollapse = drops(pair({
-    after: { input: 10_000, cacheRead: 2_000 },
+    after: { input: 10_000, cacheRead: 2_000, model: "gpt-6-astra" },
   }));
   assert.deepEqual(insufficientCollapse.items, [], "a share below twenty percent still needs an eighty-percent cached-token collapse");
 });
@@ -122,12 +122,14 @@ test("missing or false provenance markers reset the per-agent baseline", () => {
   const missing = usage("missing", "2026-09-02T10:05:00.000Z", {
     input: 9_000,
     cacheRead: 0,
+    model: "gpt-6-astra",
     cacheReadComparable: undefined,
   });
   delete missing.cacheReadComparable;
   const falseMarker = usage("false", "2026-09-02T10:10:00.000Z", {
     input: 9_000,
     cacheRead: 0,
+    model: "gpt-6-astra",
     cacheReadComparable: false,
   });
   const result = drops([usage("before", "2026-09-02T10:00:00.000Z"), missing, falseMarker]);
@@ -142,29 +144,64 @@ test("missing or false provenance markers reset the per-agent baseline", () => {
 
 test("requires an actual cached-token drop, not only a diluted read percentage", () => {
   const diluted = drops(pair({
-    after: { input: 90_000, cacheRead: 9_000 },
+    after: { input: 90_000, cacheRead: 9_000, model: "gpt-6-astra" },
   }));
   assert.deepEqual(diluted.items, []);
 
   const threshold = drops(pair({
     before: { input: 1_000, cacheRead: 9_000 },
-    after: { input: 16_200, cacheRead: 1_800 },
+    after: { input: 16_200, cacheRead: 1_800, model: "gpt-6-astra" },
   }));
   assert.equal(threshold.items[0].count, 1);
   assert.equal(threshold.items[0].occurrences[0].cacheReadPercent, 10);
 });
 
-test("requires matching model, comparison group, adjacency proof, and no context boundary", () => {
+test("records a model change as neutral read-drop evidence without exposing models", () => {
+  const beforeAt = "2026-09-02T10:00:00.000Z";
+  const afterAt = "2026-09-02T22:38:50.000Z";
+  const result = drops([
+    usage("8", beforeAt, {
+      input: 10_249, cacheRead: 59_008, output: 4_643, model: "gpt-5.6-sol",
+    }),
+    usage("9", afterAt, {
+      input: 74_007, cacheRead: 7_168, output: 155, model: "gpt-6-astra", cacheReadPreviousAt: beforeAt,
+    }),
+  ]);
+  assert.deepEqual(result.items, [{
+    agentId: "primary",
+    count: 1,
+    occurrences: [{
+      id: result.items[0].occurrences[0].id,
+      observedAt: afterAt,
+      previousCacheReadPercent: 85.2,
+      cacheReadPercent: 8.8,
+      gapMs: 12 * 60 * 60_000 + 38 * 60_000 + 50_000,
+      kind: "model_change",
+    }],
+  }]);
+  assert.doesNotMatch(JSON.stringify(result), /gpt-5\.6-sol|gpt-6-astra/);
+});
+
+test("requires matching group, adjacency proof, and no context boundary for model changes", () => {
   const cases = [
-    { name: "model", after: { input: 10_000, cacheRead: 0, model: "gpt-5.5" } },
     { name: "empty model", after: { input: 10_000, cacheRead: 0, model: "" } },
     { name: "comparison group", after: { input: 10_000, cacheRead: 0, comparisonGroup: 1 } },
     { name: "missing predecessor", after: { input: 10_000, cacheRead: 0, cacheReadPreviousAt: null } },
     { name: "wrong predecessor", after: { input: 10_000, cacheRead: 0, cacheReadPreviousAt: "2026-09-02T09:59:00.000Z" } },
+    { name: "undersized current prompt", after: { input: 7_999, cacheRead: 0 } },
+    { name: "low previous read share", before: { input: 3_000, cacheRead: 7_000 }, after: { input: 10_000, cacheRead: 0 } },
+    { name: "high current read share", after: { input: 7_000, cacheRead: 3_000 } },
   ];
-  for (const item of cases) assert.deepEqual(drops(pair(item)).items, [], item.name);
+  for (const item of cases) {
+    const result = drops(pair({
+      ...item,
+      after: { ...item.after, model: item.after.model === "" ? "" : "gpt-6-astra" },
+    }));
+    assert.deepEqual(result.items, [], item.name);
+  }
   const control = drops(pair({ beforeAt: "2026-09-02T10:00:00.000Z", afterAt: "2026-09-02T10:05:00.000Z", after: { input: 10_000, cacheRead: 0 } }));
   assert.equal(control.items[0].count, 1, "a clean high-to-low pair is eligible");
+  assert.equal(control.items[0].occurrences[0].kind, undefined, "same-model inference keeps the existing shape");
   const [sameBefore, sameAfter] = pair({
     afterAt: "2026-09-02T10:00:00.000Z",
     after: { input: 10_000, cacheRead: 0, cacheReadPreviousAt: "2026-09-02T10:00:00.000Z" },
@@ -183,12 +220,12 @@ test("requires matching model, comparison group, adjacency proof, and no context
     { agentId: "primary", timestamp: "2026-09-02T10:02:00.000Z", kind: "automatic_compaction" },
     { agentId: "primary", timestamp: "2026-09-02T10:02:00.000Z", kind: "snapshot_drop" },
   ]) {
-    assert.deepEqual(drops(pair({ beforeAt, afterAt }), { boundaries: [boundary] }).items, [], boundary.kind);
+    assert.deepEqual(drops(pair({ beforeAt, afterAt, after: { model: "gpt-6-astra" } }), { boundaries: [boundary] }).items, [], boundary.kind);
   }
-  assert.deepEqual(drops(pair({ beforeAt, afterAt }), {
+  assert.deepEqual(drops(pair({ beforeAt, afterAt, after: { model: "gpt-6-astra" } }), {
     compactions: [{ actorId: "primary", timestamp: "2026-09-02T10:02:00.000Z", trigger: "auto" }],
   }).items, []);
-  assert.deepEqual(drops(pair({ beforeAt, afterAt, after: { input: 9_000, cacheRead: 0 } })).items, [], "derived context reduction suppresses the comparison");
+  assert.deepEqual(drops(pair({ beforeAt, afterAt, after: { input: 9_000, cacheRead: 0, model: "gpt-6-astra" } })).items, [], "derived context reduction suppresses the comparison");
 });
 
 test("parser marks explicit zero reads, preserves context normalization, and resets adjacency on bad evidence", () => {
@@ -329,7 +366,7 @@ test("keeps baselines independent for visible agents and forks", () => {
 
 test("never labels a positive cache write as an inferred read drop", () => {
   for (const cacheWrite of [1, 8_000]) {
-    const result = drops(pair({ after: { input: 10_000, cacheRead: 0, cacheWrite } }));
+    const result = drops(pair({ after: { input: 10_000, cacheRead: 0, cacheWrite, model: "gpt-6-astra" } }));
     assert.deepEqual(result.items, [], `cache write ${cacheWrite}`);
   }
 });

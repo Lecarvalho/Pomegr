@@ -79,6 +79,16 @@ function downgradeRestoredLifecycle(record) {
   };
 }
 
+function checkpointFailureStage(error) {
+  const message = typeof error?.message === "string" ? error.message : "";
+  if (message === "checkpoint exceeds byte budget") return "checkpoint_size";
+  if (message === "checkpoint privacy validation failed") return "checkpoint_privacy";
+  if (message === "checkpoint collection is invalid") return "checkpoint_collection";
+  if (message === "checkpoint candidate was rejected") return "checkpoint_candidate";
+  if (message.startsWith("checkpoint ")) return "checkpoint_validation";
+  return "checkpoint_storage";
+}
+
 /** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
 export function createSessionObservationCoordinator(options = {}) {
   const { registry, store, deriveSession } = options;
@@ -95,13 +105,26 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
   const now = options.now || Date.now;
   const monotonicNow = options.monotonicNow || (() => performance.now());
+  const trace = options.pipelineTrace;
+  const traceScopeForSession = typeof options.traceScopeForSession === "function"
+    ? options.traceScopeForSession
+    : null;
+  function traceScope(providerId, localSessionId) {
+    if (!traceScopeForSession) return null;
+    try {
+      const scope = traceScopeForSession(qualifiedSessionId(providerId, localSessionId));
+      return scope && typeof scope === "object" && !Array.isArray(scope) ? scope : null;
+    } catch { return null; }
+  }
   const catalogsByProvider = new Map();
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
   const scheduledSessions = new Map();
   const sessionRetryAttempts = new Map();
+  const deferredProjectionRefreshes = new Set();
   const checkpointTimers = new Map();
   const restoredActivitySessions = new Set();
+  const restoredHydrations = new Map();
   const subscribers = new Set();
   let catalogTimer = null;
   let openExpiryTimer = null;
@@ -113,6 +136,7 @@ export function createSessionObservationCoordinator(options = {}) {
   let stopped = true;
   let generation = 0;
   let selectedPinnedId = null;
+  let startupSelection = null;
   const timings = Object.freeze({
     catalogCommitWait: createDurationSeries(),
     catalogProjectionCommit: createDurationSeries(),
@@ -146,20 +170,31 @@ export function createSessionObservationCoordinator(options = {}) {
     const delay = Math.min(checkpointDelayMs, maximumRemaining);
     const timer = schedule(() => {
       checkpointTimers.delete(snapshot.qualifiedId);
-      void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).catch(() => {});
+      const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
+      const span = trace?.begin({ stage: "checkpoint", domain: "persistence", scope });
+      void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).then(
+        () => { trace?.end(span, { outcome: "accepted" }); },
+        (error) => {
+          trace?.end(span, { outcome: "failed" });
+          trace?.recordDuration({ stage: checkpointFailureStage(error), domain: "persistence", durationMs: 0, outcome: "failed", scope });
+        },
+      );
     }, delay);
     checkpointTimers.set(snapshot.qualifiedId, { timer, firstDirtyAt });
   }
 
   function notify(event) {
+    const span = trace?.begin({ stage: "revision_notify", domain: "lifecycle" });
     for (const subscriber of subscribers) {
       try { subscriber(event); } catch { /* one consumer must not block publication */ }
     }
+    trace?.end(span, { outcome: "completed" });
   }
 
   function commitCatalog() {
     if (stopped) return;
     const projectionStartedAt = monotonicNow();
+    const projectionSpan = trace?.begin({ stage: "catalog_projection", domain: "derivation" });
     const checkedAt = now();
     let nextOpenExpiry = Infinity;
     if (openExpiryTimer !== null) cancel(openExpiryTimer);
@@ -173,6 +208,7 @@ export function createSessionObservationCoordinator(options = {}) {
       qa.catalogCommitDelayLastMs = delayMs;
       qa.catalogCommitDelayMaxMs = Math.max(qa.catalogCommitDelayMaxMs, delayMs);
       timings.catalogCommitWait.record(delayMs);
+      trace?.recordDuration({ stage: "catalog_commit_wait", domain: "commit", durationMs: delayMs });
       catalogDirtyAt = null;
     }
     const entries = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
@@ -236,6 +272,7 @@ export function createSessionObservationCoordinator(options = {}) {
       openExpiryTimer?.unref?.();
     }
     timings.catalogProjectionCommit.record(monotonicNow() - projectionStartedAt);
+    trace?.end(projectionSpan, { outcome: "completed" });
   }
 
   function scheduleCatalogCommit(delayMs = commitDelayMs) {
@@ -256,21 +293,35 @@ export function createSessionObservationCoordinator(options = {}) {
     scheduledSessions.delete(qualifiedId);
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
+    const flow = candidate.traceFlow;
+    const scope = candidate.traceScope || traceScope(candidate.providerId, candidate.localSessionId);
     try {
       timings.sessionCommitWait.record(monotonicNow() - candidate.queuedAt);
+      trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope });
       const derivationStartedAt = monotonicNow();
+      const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow, scope });
       let derived;
       try {
         derived = await deriveSession(candidate);
+        trace?.end(derivationSpan, { outcome: "completed" });
+      } catch (error) {
+        trace?.end(derivationSpan, { outcome: "failed" });
+        throw error;
       } finally {
         timings.sessionDerivation.record(monotonicNow() - derivationStartedAt);
       }
-      if (stopped || workGeneration !== generation) return;
+      if (stopped || workGeneration !== generation) {
+        trace?.finishFlow(flow, { outcome: "cancelled" });
+        return;
+      }
       if (pendingSessions.get(qualifiedId) !== candidate) {
+        trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope, outcome: "superseded" });
+        trace?.finishFlow(flow, { outcome: "superseded" });
         scheduleSessionCommit(qualifiedId);
         return;
       }
       const storeStartedAt = monotonicNow();
+      const storeSpan = trace?.begin({ stage: "normalized_store_commit", domain: "commit", flow, scope });
       let snapshot;
       try {
         snapshot = store.publish({
@@ -285,8 +336,12 @@ export function createSessionObservationCoordinator(options = {}) {
         });
       } finally {
         timings.sessionStoreCommit.record(monotonicNow() - storeStartedAt);
+        trace?.end(storeSpan, { outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       }
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
+      trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope,
+        outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
+      trace?.finishFlow(flow, { outcome: snapshot?.accepted ? "completed" : "rejected" });
       // Restored task state remains last-observed until new provider evidence
       // validates and commits, including an otherwise unchanged observation.
       if (snapshot?.accepted && candidate.freshObservation && restoredActivitySessions.delete(qualifiedId)) {
@@ -299,7 +354,8 @@ export function createSessionObservationCoordinator(options = {}) {
         // Evidence is already committed: don't add a second summary delay before
         // publishing current activity and notifying the catalog's consumers.
         scheduleCatalogCommit(catalogStructuralDelayMs);
-        notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision });
+        notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision,
+          freshObservation: candidate.freshObservation === true });
         scheduleCheckpoint(snapshot.snapshot);
         options.onCommitted?.(snapshot.snapshot);
       } else if (snapshot?.accepted) {
@@ -311,7 +367,9 @@ export function createSessionObservationCoordinator(options = {}) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
       }
+      if (deferredProjectionRefreshes.delete(qualifiedId)) refreshProjection(qualifiedId);
     } catch {
+      trace?.finishFlow(flow, { outcome: "failed" });
       // D failures retain the previous committed revision. Retry this candidate
       // only while it is current; an obsolete failure must not mark newer work
       // as a retry and reset its already-scheduled publication deadline.
@@ -339,8 +397,22 @@ export function createSessionObservationCoordinator(options = {}) {
   }
 
   const publisher = Object.freeze({
+    publishHistoryContribution(providerId, localSessionId, contribution) {
+      if (stopped) return;
+      options.onHistoryContribution?.(providerId, localSessionId, contribution);
+    },
+    publishHistoryRequestContribution(providerId, localSessionId, contribution) {
+      if (stopped) return;
+      options.onHistoryRequestContribution?.(providerId, localSessionId, contribution);
+    },
     checkpointFor(providerId, localSessionId) {
-      const source = store.get(providerId, localSessionId)?.source;
+      const snapshot = store.get(providerId, localSessionId);
+      // A restored cursor alone cannot revalidate downgraded live lifecycle:
+      // unchanged bytes would skip normalization forever. Reacquire once while
+      // retaining the saved response, then resume cursor reuse after commit.
+      if (snapshot?.evidence?.historical === false
+        && restoredActivitySessions.has(qualifiedSessionId(providerId, localSessionId))) return null;
+      const source = snapshot?.source;
       return source?.fingerprint && Number.isSafeInteger(source.completeOffset)
         ? { fingerprint: source.fingerprint, completeOffset: source.completeOffset }
         : null;
@@ -371,6 +443,7 @@ export function createSessionObservationCoordinator(options = {}) {
         cancel(scheduled);
         scheduledSessions.delete(qualifiedId);
       }
+      const scope = traceScope(providerId, localSessionId);
       pendingSessions.set(qualifiedId, Object.freeze({
         providerId,
         localSessionId,
@@ -381,6 +454,8 @@ export function createSessionObservationCoordinator(options = {}) {
         observedAt: evidence?.session?.updatedAt || new Date().toISOString(),
         pinned: Boolean(evidence?.historical === false),
         queuedAt: monotonicNow(),
+        traceScope: scope,
+        traceFlow: trace?.createFlow({ scope }),
       }));
       sessionRetryAttempts.delete(qualifiedId);
       scheduleSessionCommit(qualifiedId);
@@ -437,6 +512,7 @@ export function createSessionObservationCoordinator(options = {}) {
           if (!restored.accepted) continue;
           restoredActivitySessions.add(restored.snapshot.qualifiedId);
           const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
+          const scope = traceScope(record.providerId, record.localSessionId);
           pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
             providerId: record.providerId,
             localSessionId: record.localSessionId,
@@ -448,31 +524,59 @@ export function createSessionObservationCoordinator(options = {}) {
             observedAt: record.observedAt,
             pinned: Boolean(record.evidence?.historical === false),
             queuedAt: monotonicNow(),
+            traceScope: scope,
+            traceFlow: trace?.createFlow({ scope }),
           }));
           scheduleSessionCommit(restored.snapshot.qualifiedId);
         }
       }
       lifecycle = typeof registry.startObservers === "function"
-        ? await registry.startObservers(publisher, abortController.signal)
+        ? await registry.startObservers(publisher, abortController.signal, { trace, traceScopeForSession })
         : null;
+      if (startupSelection) {
+        const selectedId = startupSelection;
+        startupSelection = null;
+        hydrate(selectedId, { restored: restoredActivitySessions.has(selectedId) });
+      }
       return lifecycle;
     })();
     try { return await startPromise; }
     catch (error) { startPromise = null; throw error; }
   }
 
-  function hydrate(requestedSessionId) {
-    if (!requestedSessionId || typeof lifecycle?.hydrate !== "function") return false;
+  function hydrate(requestedSessionId, { selected = false, restored = false } = {}) {
+    if (!requestedSessionId || stopped) return false;
+    if (typeof lifecycle?.hydrate !== "function") {
+      // Selection can arrive while checkpoints are already served but provider
+      // observers are still starting. Retain only the latest selection.
+      if (selected) startupSelection = requestedSessionId;
+      return false;
+    }
+    if (restored && (restoredHydrations.has(requestedSessionId)
+      || pendingSessions.get(requestedSessionId)?.freshObservation)) return true;
     qa.hydrationsQueued += 1;
-    void lifecycle.hydrate(requestedSessionId).catch(() => {});
+    if (!restored) void lifecycle.hydrate(requestedSessionId).catch(() => {});
+    else {
+      const observer = lifecycle;
+      const workGeneration = generation;
+      const request = Promise.resolve().then(() => !stopped && generation === workGeneration
+        ? observer.hydrate(requestedSessionId) : false).catch(() => {}).finally(() => {
+        if (restoredHydrations.get(requestedSessionId) === request) restoredHydrations.delete(requestedSessionId);
+      });
+      restoredHydrations.set(requestedSessionId, request);
+    }
     return true;
   }
 
   function refreshProjection(qualifiedId) {
     if (stopped || typeof qualifiedId !== "string" || !qualifiedId) return false;
-    if (pendingSessions.has(qualifiedId)) return true;
+    if (pendingSessions.has(qualifiedId)) {
+      deferredProjectionRefreshes.add(qualifiedId);
+      return true;
+    }
     const snapshot = store.getByQualifiedId(qualifiedId);
     if (!snapshot) return false;
+    const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
     pendingSessions.set(qualifiedId, Object.freeze({
       providerId: snapshot.providerId,
       localSessionId: snapshot.localSessionId,
@@ -482,6 +586,8 @@ export function createSessionObservationCoordinator(options = {}) {
       observedAt: snapshot.observedAt,
       pinned: Boolean(snapshot.evidence?.historical === false),
       queuedAt: monotonicNow(),
+      traceScope: scope,
+      traceFlow: trace?.createFlow({ scope }),
     }));
     sessionRetryAttempts.delete(qualifiedId);
     scheduleSessionCommit(qualifiedId);
@@ -502,6 +608,9 @@ export function createSessionObservationCoordinator(options = {}) {
     scheduledSessions.clear();
     pendingSessions.clear();
     sessionRetryAttempts.clear();
+    deferredProjectionRefreshes.clear();
+    restoredHydrations.clear();
+    startupSelection = null;
     for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
       cancel(pendingCheckpoint.timer);
       const snapshot = store.getByQualifiedId(qualifiedId);
@@ -535,6 +644,7 @@ export function createSessionObservationCoordinator(options = {}) {
       if (!selectedId) return Object.freeze({ status: "empty", selectedId: "", catalogEntry: null, snapshot: null });
       const snapshot = store.getByQualifiedId(selectedId);
       const catalogEntry = catalog.find((entry) => entry.id === selectedId) || null;
+      if (!lifecycle) startupSelection = null;
       if (snapshot || catalogEntry) {
         const selected = parseProviderSessionId(selectedId);
         // Pin a known selection before hydration so other commits cannot evict
@@ -559,13 +669,16 @@ export function createSessionObservationCoordinator(options = {}) {
             snapshot: null,
           });
         }
-        hydrate(selectedId);
+        hydrate(selectedId, { selected: true });
         return Object.freeze({
           status: "loading",
           selectedId,
           catalogEntry,
           snapshot: null,
         });
+      }
+      if (snapshot.evidence?.historical === false && restoredActivitySessions.has(selectedId)) {
+        hydrate(selectedId, { selected: true, restored: true });
       }
       qa.cacheHits += 1;
       return Object.freeze({

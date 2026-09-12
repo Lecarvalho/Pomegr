@@ -70,6 +70,8 @@ export function createIncrementalProviderObserver(options = {}) {
     routeSourceEvent,
     intervalMs,
     concurrency,
+    interactiveConcurrency,
+    backgroundConcurrency,
     watchTargets,
     watchSource,
     yieldControl,
@@ -83,6 +85,7 @@ export function createIncrementalProviderObserver(options = {}) {
   const ingestors = new Map();
   const sourceSessions = new Map();
   const sourcesBySession = new Map();
+  let trace = null;
 
   const sourceKey = (file) => {
     try {
@@ -138,6 +141,7 @@ export function createIncrementalProviderObserver(options = {}) {
         parseRecord(line) { return JSON.parse(line.toString("utf8")); },
         initialState: () => ({ completeRecords: 0 }),
         reduce(state) { return { completeRecords: state.completeRecords + 1 }; },
+        onCounter(counter, value) { trace?.recordCounter?.({ counter, value }); },
         yieldControl,
       });
       if (checkpoint?.fingerprint === sourceFingerprint) {
@@ -156,7 +160,27 @@ export function createIncrementalProviderObserver(options = {}) {
     entry.sourceRef.suffixDigest = source.suffixDigest || "";
     let candidate = null;
     await entry.ingestor.observe({ identity: observedIdentity, size: source.size }, async (_state, metadata) => {
-      const evidence = await readEvidence(localSessionId, { historical: Boolean(source.historical) });
+      entry.historyEpoch = metadata.replacement ? (entry.historyEpoch || 1) + 1 : (entry.historyEpoch || 1);
+      const evidence = await readEvidence(localSessionId, {
+        historical: Boolean(source.historical),
+        onHistoryActivity(activity) {
+          if (!Array.isArray(activity)) return;
+          publisher.publishHistoryContribution?.(localSessionId, {
+            epoch: entry.historyEpoch,
+            sequence: (entry.historySequence = (entry.historySequence || 0) + 1),
+            activity,
+          });
+        },
+        onHistoryRequests(history) {
+          if (!history || !Array.isArray(history.requests) || !Array.isArray(history.activity)) return;
+          publisher.publishHistoryRequestContribution?.(localSessionId, {
+            epoch: entry.historyEpoch,
+            sequence: (entry.requestHistorySequence = (entry.requestHistorySequence || 0) + 1),
+            requests: history.requests,
+            activity: history.activity,
+          });
+        },
+      });
       if (!evidence) throw new Error("Normalized evidence is temporarily unavailable");
       candidate = {
         ...evidence,
@@ -190,17 +214,28 @@ export function createIncrementalProviderObserver(options = {}) {
     return { catalog: true, sessionIds: [] };
   }
 
-  return createNormalizedPollingObserver({
+  const observer = createNormalizedPollingObserver({
     list,
     ingest: acquire,
     prepare: prepareSources,
     intervalMs,
     concurrency,
+    interactiveConcurrency,
+    backgroundConcurrency,
     watchTargets,
     routeSourceEvent: resolveSourceEvent,
     watchSource,
     yieldControl,
     now,
     shouldEagerHydrate,
+  });
+  return Object.freeze({
+    ...observer,
+    async start(publisher, nextSignal, observerOptions = {}) {
+      trace = observerOptions?.trace || null;
+      try { return await observer.start(publisher, nextSignal, observerOptions); }
+      catch (error) { trace = null; throw error; }
+    },
+    stop() { trace = null; observer.stop(); },
   });
 }

@@ -331,6 +331,13 @@ test("desktop service bundling emits self-contained monitor and status-line work
     const bundle = await readFile(path.join(outputRoot, "monitor-host.cjs"), "utf8");
     assert.match(bundle, /DESKTOP_MONITOR_START_FAILED/);
     assert.doesNotMatch(bundle, /from\s+["'](?:\.\/|\.\.\/)/);
+    for (const forbidden of [
+      "startPipelineTraceCaptureTransport", "pipeline-trace-transport",
+      "createPipelineLogWriter", "pipeline-log-writer", "pipeline-log-stream", "pipeline-logs",
+      "pomegr-pipeline-trace", "/internal/renderer-trace", "renderer-trace-contract", "renderer_event",
+    ]) {
+      assert.equal(bundle.includes(forbidden), false, forbidden);
+    }
     const bridge = await readFile(path.join(outputRoot, "claude-statusline-bridge.cjs"), "utf8");
     assert.match(bridge, /captureClaudeStatuslineCost/);
     assert.doesNotMatch(bridge, /from\s+["'](?:\.\/|\.\.\/)/);

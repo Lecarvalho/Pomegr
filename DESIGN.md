@@ -366,6 +366,12 @@ Only monitor-qualified possible full-refill transitions receive amber dotted lin
 with the shared stack-refill icon and the label Possible full refill. Ordinary
 cache growth and initial cache creation remain in the cache-write bars and details;
 read-drop inferences use an open arrowhead and the label Possible refill. Their
+model-change observations reuse the open arrowhead with the compact chart label
+Reuse drop · model change. Request details and agent occurrence popovers say
+Cache reuse dropped across a model change and distinguish the observation from
+refill or expiry inferences. Mixed agent counts describe cache-read drops, with
+each occurrence explaining its own evidence. These reuse existing controls.
+The cache-evidence
 symbol and label lane sits above compaction labels. Show marker labels on selection,
 focus, or hover, with matching minimap ticks and request-local evidence in
 the selected-request details. Match only unambiguous normalized agent/timestamp pairs.

@@ -13,6 +13,7 @@ export function createIncrementalJsonlIngestor(options) {
     chunkBytes = 64 * 1024,
     maximumFragmentBytes = 256 * 1024,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
+    onCounter,
   } = options || {};
   if (typeof readChunk !== "function" || typeof parseRecord !== "function"
     || typeof initialState !== "function" || typeof reduce !== "function") {
@@ -26,6 +27,12 @@ export function createIncrementalJsonlIngestor(options) {
   }
   if (typeof yieldControl !== "function") {
     throw new TypeError("Incremental JSONL ingestor yieldControl must be a function");
+  }
+
+  function recordCounter(counter, value) {
+    if (counter !== "bytes" && counter !== "records") return;
+    if (!Number.isSafeInteger(value) || value < 0 || typeof onCounter !== "function") return;
+    try { onCounter(counter, value); } catch { /* diagnostics cannot block acquisition */ }
   }
 
   /** @type {{identity: string, completeOffset: number, fragment: Buffer, candidate: unknown, malformedRecords: number, oversizedFragments: number} | null} */
@@ -51,7 +58,7 @@ export function createIncrementalJsonlIngestor(options) {
     };
   }
 
-  function appendCompleteLines(state, bytes) {
+  function appendCompleteLines(state, bytes, counters) {
     const buffer = state.fragment.length ? Buffer.concat([state.fragment, bytes]) : bytes;
     let lineStart = 0;
     for (let index = 0; index < buffer.length; index += 1) {
@@ -62,7 +69,9 @@ export function createIncrementalJsonlIngestor(options) {
       lineStart = index + 1;
       if (!line.length) continue;
       try {
-        state.candidate = reduce(state.candidate, parseRecord(line));
+        const record = parseRecord(line);
+        counters.records += 1;
+        state.candidate = reduce(state.candidate, record);
       } catch {
         // A malformed complete record never blocks later complete records or
         // contaminates an otherwise valid committed candidate.
@@ -81,17 +90,27 @@ export function createIncrementalJsonlIngestor(options) {
 
   async function consume(state, source) {
     const startingCompleteOffset = state.completeOffset;
-    while (state.completeOffset + state.fragment.length < source.size) {
-      const offset = state.completeOffset + state.fragment.length;
-      const requested = Math.min(chunkBytes, source.size - offset);
-      const value = await readChunk(offset, requested, source);
-      const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value || "");
-      if (!bytes.length) break;
-      if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
-      appendCompleteLines(state, bytes);
-      // Reading all available chunks is required for correctness, but doing it
-      // in one microtask chain can starve the monitor's cache-serving socket.
-      await yieldControl();
+    const counters = { bytes: 0, records: 0 };
+    try {
+      while (state.completeOffset + state.fragment.length < source.size) {
+        const offset = state.completeOffset + state.fragment.length;
+        const requested = Math.min(chunkBytes, source.size - offset);
+        const value = await readChunk(offset, requested, source);
+        const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value || "");
+        if (!bytes.length) break;
+        if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
+        counters.bytes += bytes.length;
+        appendCompleteLines(state, bytes, counters);
+        // Reading all available chunks is required for correctness, but doing it
+        // in one microtask chain can starve the monitor's cache-serving socket.
+        await yieldControl();
+      }
+    } finally {
+      // Counters describe one bounded acquisition pass, not every source chunk
+      // or record. This preserves totals without turning large histories into
+      // diagnostic write pressure.
+      if (counters.bytes) recordCounter("bytes", counters.bytes);
+      if (counters.records) recordCounter("records", counters.records);
     }
     return state.completeOffset > startingCompleteOffset;
   }

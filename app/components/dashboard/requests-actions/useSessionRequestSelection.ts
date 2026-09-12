@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import type { RequestHistoryPage } from "../../../../shared/session-history-contract";
+import { subscribeHistoryPublications } from "../../../history-publications";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
-import { scopedRows, type RequestRow } from "./model";
+import { isCompleteRequestOverview, scopedRows, type RequestRow } from "./model";
 import { useRequestSelection } from "./useRequestSelection";
 import { useRequestPageCache } from "./useRequestPageCache";
 
@@ -52,8 +53,11 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const [pendingLocate, setPendingLocate] = useState<PendingLocate>(null);
   const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
   const [retry, setRetry] = useState(0);
+  const queuedPublication = useRef<{ revision: number } | null>(null);
+  const publicationState = useRef({ pinned: false, atLatest: true, loading: false, unavailable: false, hydrating: true });
+  const loadHistoryRef = useRef<(options?: HistoryQuery) => Promise<RequestHistoryPage | null>>(() => Promise.resolve(null));
 
-  const loadHistory = (options: HistoryQuery = {}) => {
+  const loadHistory = useCallback((options: HistoryQuery = {}) => {
     if (!historyEnabled || !sessionId) return Promise.resolve(null);
     const nextScope = options.scope ?? resolvedScope;
     const nextKey = pageKey(sessionId, nextScope, size);
@@ -76,9 +80,14 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
       .then((value: unknown) => {
-        if (controller.signal.aborted || requestSerial !== serial.current) return null;
+        if (controller.signal.aborted || requestSerial !== serial.current) {
+          return null;
+        }
         if (!isRequestPage(value)) {
           setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
           return null;
@@ -87,15 +96,27 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
           if (nextKey === key) pageCache.add(value);
           setHistory({ key: nextKey, page: value, loading: false, unavailable: false, retryable: false });
         }
-        else if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
-        else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
+        else {
+          if (value.status === "loading") setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: true, requestedOffset }));
+          else setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
+        }
         return value.status === "ready" ? value : null;
       })
       .catch(() => {
         if (!controller.signal.aborted && requestSerial === serial.current) setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: false, unavailable: true, retryable: true }));
         return null;
+      })
+      .finally(() => {
+        if (request.current?.serial !== requestSerial) return;
+        request.current = null;
+        if (!controller.signal.aborted && historical && queuedPublication.current) {
+          queuedPublication.current = null;
+          const queued = lastQuery.current?.key === nextKey ? lastQuery.current.options : { offset: "latest" as const };
+          void loadHistoryRef.current(queued);
+        }
       });
-  };
+  }, [agents, historical, historyEnabled, key, pageCache, resolvedScope, sessionId, size]);
+  useEffect(() => { loadHistoryRef.current = loadHistory; }, [loadHistory]);
 
   useEffect(() => {
     if (!historyEnabled) return;
@@ -140,6 +161,10 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate.id : null;
   const atLatest = !page || page.offset + page.items.length >= page.total;
   const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, atLatest);
+  useEffect(() => {
+    const overviewPending = Boolean(page && page.total > 0 && !isCompleteRequestOverview(page.overview, page.total));
+    publicationState.current = { pinned: selection.pinned, atLatest, loading: history.loading, unavailable: history.unavailable, hydrating: !page || history.loading || overviewPending };
+  }, [atLatest, history.loading, history.unavailable, page, selection.pinned]);
   // A summary preview cannot establish whether the linked request is newest.
   const locatedRow = locateTarget && page ? rows.find((row) => row.id === locateTarget) : null;
   if (locatedRow) {
@@ -161,6 +186,39 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   // Live refresh intentionally follows only an unpinned latest page; older and selected pages stay anchored.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historical, history.loading, history.unavailable, historyEnabled, page, selection.pinned]);
+
+  useEffect(() => {
+    if (!historyEnabled) return;
+    return subscribeHistoryPublications(({ revision }) => {
+      const current = publicationState.current;
+      // Recorded sessions do not follow settled revisions, but their first
+      // history page may still be waiting for an asynchronous commit.
+      if (historical) {
+        if (current.unavailable || !current.hydrating) return;
+        if (request.current) {
+          if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
+          return;
+        }
+        void loadHistoryRef.current({ offset: "latest" });
+        return;
+      }
+      if (current.pinned || !current.atLatest || current.unavailable) return;
+      if (current.loading || request.current) {
+        if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
+        return;
+      }
+      void loadHistoryRef.current({ offset: "latest" });
+    });
+  }, [historical, historyEnabled]);
+
+  useEffect(() => {
+    if (!historyEnabled || historical || queuedPublication.current === null || selection.pinned || !atLatest
+      || history.loading || history.unavailable || request.current) return;
+    const publication = queuedPublication.current;
+    if (!publication) return;
+    queuedPublication.current = null;
+    void loadHistory({ offset: "latest" });
+  }, [atLatest, historical, history.loading, history.unavailable, historyEnabled, loadHistory, selection.pinned]);
 
   const setScope = (value: string) => setPreference({ sessionId, scope: value });
   const cancelHistoryNavigation = () => {

@@ -155,7 +155,7 @@ function completeOffset(parts) {
   }, 0);
 }
 
-function createPart(descriptor, yieldControl) {
+function createPart(descriptor, yieldControl, onCounter) {
   const sourceRef = { file: descriptor.file };
   const part = {
     descriptor,
@@ -179,6 +179,7 @@ function createPart(descriptor, yieldControl) {
     parseRecord(line) { return JSON.parse(line.toString("utf8")); },
     maximumFragmentBytes: MAX_CODEX_RECORD_BYTES,
     initialState: () => ({ completeRecords: 0, lifecycle: initialCodexRecordedLifecycle() }),
+    onCounter,
     reduce(state, record) {
       if (part.capture) {
         if (!part.pendingRecords.length) part.pendingLookbehind = part.tail.slice();
@@ -202,6 +203,8 @@ export function createCodexIncrementalObserver(options = {}) {
     transcriptPathsBySessionId,
     intervalMs,
     concurrency,
+    interactiveConcurrency,
+    backgroundConcurrency,
     watchTargets,
     catalogWatchTargets = [],
     watchSource,
@@ -215,6 +218,7 @@ export function createCodexIncrementalObserver(options = {}) {
   const sourceSessions = new Map();
   const sourcesBySession = new Map();
   const catalogTargets = new Set(catalogWatchTargets.map((target) => path.resolve(target)));
+  let trace = null;
 
   if (observationKey !== undefined && typeof observationKey !== "function") {
     throw new TypeError("Codex observation key hook must be a function");
@@ -343,6 +347,9 @@ export function createCodexIncrementalObserver(options = {}) {
         dirty: false,
         requiresFull: true,
         observationKey: null,
+        historyEpoch: 1,
+        historySequence: 0,
+        requestHistorySequence: 0,
       };
       sessions.set(localSessionId, session);
     }
@@ -359,7 +366,7 @@ export function createCodexIncrementalObserver(options = {}) {
     for (const descriptor of sourceSet.parts) {
       let part = session.parts.get(descriptor.file);
       if (!part) {
-        part = createPart(descriptor, yieldControl);
+        part = createPart(descriptor, yieldControl, (counter, value) => trace?.recordCounter?.({ counter, value }));
         session.parts.set(descriptor.file, part);
         session.requiresFull = true;
       }
@@ -403,7 +410,7 @@ export function createCodexIncrementalObserver(options = {}) {
       await part.ingestor.observe({ identity, size: descriptor.size }, (_state, metadata) => {
         part.ready = true;
         session.dirty = true;
-        if (metadata.replacement) session.requiresFull = true;
+        if (metadata.replacement) { session.requiresFull = true; session.historyEpoch += 1; }
       });
     }
 
@@ -465,6 +472,23 @@ export function createCodexIncrementalObserver(options = {}) {
           agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length), agent.reviewDecisions,
         ]),
       ),
+      onHistoryActivity(activity) {
+        if (!Array.isArray(activity)) return;
+        publisher.publishHistoryContribution?.(localSessionId, {
+          epoch: session.historyEpoch,
+          sequence: ++session.historySequence,
+          activity,
+        });
+      },
+      onHistoryRequests(history) {
+        if (!history || !Array.isArray(history.requests) || !Array.isArray(history.activity)) return;
+        publisher.publishHistoryRequestContribution?.(localSessionId, {
+          epoch: session.historyEpoch,
+          sequence: ++session.requestHistorySequence,
+          requests: history.requests,
+          activity: history.activity,
+        });
+      },
     });
     if (!next) return null;
     const evidence = completeStory ? next : mergeCodexObservationEvidence(session.evidence, next);
@@ -493,6 +517,8 @@ export function createCodexIncrementalObserver(options = {}) {
     prepare: prepareSources,
     intervalMs,
     concurrency,
+    interactiveConcurrency,
+    backgroundConcurrency,
     watchTargets,
     routeSourceEvent: routeCodexSourceEvent,
     watchSource,
@@ -508,13 +534,15 @@ export function createCodexIncrementalObserver(options = {}) {
     stopped = true;
     signal?.removeEventListener("abort", stop);
     unsubscribeLifecycle?.();
+    trace = null;
     observer.stop();
     options.onStop?.();
   };
   return Object.freeze({
     ...observer,
-    async start(publisher, nextSignal) {
+    async start(publisher, nextSignal, observerOptions) {
       signal = nextSignal;
+      trace = observerOptions?.trace || null;
       signal?.addEventListener("abort", stop, { once: true });
       try {
         const unsubscribe = options.subscribeLifecycleChanges?.(() => {
@@ -522,8 +550,8 @@ export function createCodexIncrementalObserver(options = {}) {
         });
         unsubscribeLifecycle = typeof unsubscribe === "function" ? unsubscribe : null;
       } catch { /* periodic reconciliation still projects current presence */ }
-      try { await observer.start(publisher, nextSignal); }
-      catch (error) { stop(); throw error; }
+      try { await observer.start(publisher, nextSignal, observerOptions); }
+      catch (error) { trace = null; stop(); throw error; }
       if (signal?.aborted) stop();
     },
     stop,

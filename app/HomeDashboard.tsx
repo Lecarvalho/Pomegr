@@ -100,9 +100,9 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="A clearer session page"
-          description="See every model request as a bar, the work around it, and a grouped agent roster that never scrolls the page. Open any session to try it."
-          details="Requests replaces Context history and Request snapshots: one bar per request, prompt size as the outline, compactions as dashed ticks, and a Largest requests list ranked by uncached input. Agent activity groups agents by workflow, keeps the roster inside a fixed region, and moves details into an inspector with a lineage strip, a Grid view, and a focused Tree. Numbers stay request-local and are never summed into spend."
+          title="Smoother live sessions, clearer cache evidence"
+          description="See recent requests and activity while older history loads. Live updates keep flowing, and cache reuse drops across model changes now have their own label."
+          details="The session you open gets loading priority, with recent requests visible while full history catches up. Requests and Activity preserve your place during updates; selecting the newest request resumes following live work. Restored sessions refresh their status more reliably. Cache evidence now distinguishes reuse drops across model changes from possible refills, without inferring a refill or expiry from a model change."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

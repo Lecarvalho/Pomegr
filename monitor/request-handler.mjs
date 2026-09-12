@@ -4,7 +4,12 @@ import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
-export function createRequestHandler({ runtime, authorizationToken: rawAuthorizationToken = "", agentAuthorizationToken: rawAgentAuthorizationToken = "" } = {}) {
+export function createRequestHandler({
+  runtime,
+  authorizationToken: rawAuthorizationToken = "",
+  agentAuthorizationToken: rawAgentAuthorizationToken = "",
+  responseHeaders = null,
+} = {}) {
   if (!runtime) throw new TypeError("Monitor request handler requires a runtime");
   const authorizationToken = rawAuthorizationToken
     ? requireDesktopToken(rawAuthorizationToken, "MONITOR_INVALID_AUTHORIZATION")
@@ -12,6 +17,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
   const agentAuthorizationToken = rawAgentAuthorizationToken
     ? requireDesktopToken(rawAgentAuthorizationToken, "MONITOR_INVALID_AGENT_AUTHORIZATION")
     : "";
+  const extraResponseHeaders = typeof responseHeaders === "function" ? responseHeaders : () => ({});
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -204,6 +210,12 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
     const requestedRevisionValue = requestUrl.searchParams.get("revision");
     const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
+    const safeExtraResponseHeaders = (value) => {
+      try {
+        const headers = extraResponseHeaders(value);
+        return headers && typeof headers === "object" && !Array.isArray(headers) ? headers : {};
+      } catch { return {}; }
+    };
     const writeCommitted = (result, fallbackValue) => {
       if (result?.status === "unchanged") {
         response.writeHead(204);
@@ -216,6 +228,7 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         ...(Number.isSafeInteger(revision) ? { "X-Pomegr-Revision": String(revision) } : {}),
+        ...safeExtraResponseHeaders({ path: requestUrl.pathname, result, snapshot }),
       });
       response.end(serialized);
     };
@@ -237,10 +250,10 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       let closed = false;
       let unsubscribe = null;
       const writeRevision = (event) => {
-        if (closed || !["sessions", "repositories"].includes(event?.domain)
+        if (closed || !["sessions", "repositories", "history"].includes(event?.domain)
           || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
         try {
-          const eventName = event.domain === "sessions" ? "catalog" : "repositories";
+          const eventName = event.domain === "sessions" ? "catalog" : event.domain;
           response.write(`event: ${eventName}\ndata: ${JSON.stringify({ domain: event.domain, revision: event.revision })}\n\n`);
         } catch { close(); }
       };
@@ -313,7 +326,9 @@ export function createRequestHandler({ runtime, authorizationToken: rawAuthoriza
       }
       try {
         const page = await runtime.serveSessionHistory?.(sessionId, { kind, scope, offset, limit, requestId, filterRequestId, anchor, overview });
-        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
+          ...safeExtraResponseHeaders({ path: requestUrl.pathname, page, sessionId, kind }),
+        });
         response.end(JSON.stringify(page || { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 }));
       } catch {
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });

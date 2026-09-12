@@ -668,7 +668,11 @@ export function createMonitorRequestHandler(options = {}) {
 }
 
 export function createMonitorServer(options = {}) {
-  return http.createServer(createMonitorRequestHandler(options));
+  const requestHandler = typeof options.requestHandlerFactory === "function"
+    ? options.requestHandlerFactory(options)
+    : createMonitorRequestHandler(options);
+  if (typeof requestHandler !== "function") throw new TypeError("Monitor request handler factory must return a function");
+  return http.createServer(requestHandler);
 }
 
 export async function startMonitorServer(options = {}) {
@@ -676,11 +680,12 @@ export async function startMonitorServer(options = {}) {
   let handle;
   let runtime;
   let operationsTransport;
+  let startupExtension;
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
     const registry = options.providerRegistry || providerRegistry;
-    runtime = options.runtime || createMonitorRuntime(options);
+    runtime = options.runtime || createMonitorRuntime({ ...options, pipelineTrace: options.pipelineTrace || null });
     server = (options.serverFactory || createMonitorServer)({ ...options, runtime });
     await listen(server, { host, port, startupErrorCode: "MONITOR_START_FAILED" });
     handle = createLocalServiceHandle(server, {
@@ -690,9 +695,11 @@ export async function startMonitorServer(options = {}) {
       onClose: () => {
         void runtime.stopObservation?.();
         void operationsTransport?.close();
+        void startupExtension?.close?.();
       },
     });
-    if (port !== 0 && options.pipelineOperations !== false && typeof runtime.observationDiagnostics === "function") {
+    if ((port !== 0 || options.pipelineOperationsAtEphemeralPort === true)
+      && options.pipelineOperations !== false && typeof runtime.observationDiagnostics === "function") {
       try {
         operationsTransport = await startPipelineOperationsTransport({
           ...(options.pipelineOperationsOptions || {}),
@@ -702,6 +709,13 @@ export async function startMonitorServer(options = {}) {
       } catch {
         options.logger?.warn?.("[pomegr] Pipeline operations transport unavailable.");
       }
+    }
+    if (typeof options.startupExtension === "function") {
+      startupExtension = await options.startupExtension(Object.freeze({
+        port: handle.port,
+        origin: handle.origin,
+        runtime,
+      }));
     }
     await runtime.startObservation?.();
     // Provider-owned watch targets remain private and are initialized only
@@ -714,6 +728,7 @@ export async function startMonitorServer(options = {}) {
       closePromise = (async () => {
         await runtime.stopObservation?.();
         await operationsTransport?.close();
+        await startupExtension?.close?.();
         await handle.close();
       })();
       return closePromise;
@@ -722,6 +737,7 @@ export async function startMonitorServer(options = {}) {
   } catch (error) {
     try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
+    try { await startupExtension?.close?.(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();
     else await closeServer(server);
     throw safeServiceError(error, "MONITOR_START_FAILED");

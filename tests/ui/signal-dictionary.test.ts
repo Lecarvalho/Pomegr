@@ -7,6 +7,7 @@ import {
   CACHE_REFILL_PROVIDER_STATUS_SIGNAL_DEFINITIONS,
   CACHE_REFILL_REASON_SIGNAL_DEFINITIONS,
   CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS,
+  cacheReadReuseDroppedModelChangeSignalDefinition,
   cacheRefillSignalDefinition,
 } from "../../shared/signal-dictionary";
 
@@ -22,6 +23,7 @@ describe("signal dictionary", () => {
       CACHE_LIFETIME_INFERENCE_SIGNAL_DEFINITIONS.cache_lifetime_elapsed,
       CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.remote_control_connected,
       CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS.post_tool_task_notification_resume,
+      cacheReadReuseDroppedModelChangeSignalDefinition(),
     ];
 
     for (const definition of definitions) {

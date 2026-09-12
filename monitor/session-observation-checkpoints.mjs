@@ -6,6 +6,7 @@ export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
+const MAX_COLLECTION_ENTRIES = 4_096;
 const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
   "MUST_NOT_LEAK",
   "PRIVATE_",
@@ -14,6 +15,14 @@ const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
   "AUTH_FILE",
 ]);
 const FORBIDDEN_KEY = /(?:prompt|response|reasoning|command|patch|stdout|stderr|tool.?result|oauth|credential|authorization|transcript|diagnostic|fragment|raw)/i;
+// These contract-defined normalized fields happen to contain terms rejected by
+// the generic raw-content guard. Keep the exception set exact and narrow: the
+// provider contract still validates their bounded primitive/enum values.
+const ALLOWED_NORMALIZED_KEYS = new Set([
+  "cacheMissDiagnosticState",
+  "reasoningOutput",
+  "transcriptAvailable",
+]);
 
 function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
@@ -33,7 +42,8 @@ function assertBounded(value, { depth = 0, maxDepth = 20 } = {}) {
   let count = 0;
   for (const [key, child] of entries) {
     count += 1;
-    if (count > 2_000 || (typeof key === "string" && (key.length > 160 || FORBIDDEN_KEY.test(key)))) {
+    if (count > MAX_COLLECTION_ENTRIES || (typeof key === "string" && (key.length > 160
+      || (!ALLOWED_NORMALIZED_KEYS.has(key) && FORBIDDEN_KEY.test(key))))) {
       throw new TypeError("checkpoint collection is invalid");
     }
     assertBounded(child, { depth: depth + 1, maxDepth });

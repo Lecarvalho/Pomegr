@@ -38,7 +38,7 @@ import {
   trustedAppServerRolloutFile,
 } from "./codex-session-discovery.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
-import { normalizedSessionHistory } from "./session-history.mjs";
+import { createHistoryOwnershipProjection, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests, readCompleteSessionHistory } from "./session-history.mjs";
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
@@ -138,6 +138,7 @@ export function createCodexProvider(options = {}) {
     scanLimit,
     maximumLiveTailBytes,
     maximumLiveTaskHistoryBytes,
+    yieldControl: options.yieldControl,
   });
   const transcriptPathsBySessionId = new Map();
   const {
@@ -354,7 +355,7 @@ export function createCodexProvider(options = {}) {
             generation: incrementalGenerationsByFile?.get(thread.rolloutFile) || null,
           }
           : null;
-        const { records, generation } = incremental || readRolloutRecords(
+        const { records, generation } = incremental || await readRolloutRecords(
           thread.rolloutFile,
           historical || completeStory,
           thread.approvalReviewer ? maximumLiveTaskHistoryBytes : maximumLiveTailBytes,
@@ -468,11 +469,9 @@ export function createCodexProvider(options = {}) {
       agent.id === "primary" ? localSessionId : agent.id.slice("agent-".length),
       { id: agent.id, label: agent.label },
     ]));
-    const rolloutTasksByActor = new Map();
-    const rolloutActivityByActor = new Map();
-    const rolloutReplies = [], requestLinkGroups = [];
-    const rolloutSignalsByActor = new Map();
-    const rolloutSkillsByActor = new Map();
+    const rolloutTasksByActor = new Map(), rolloutActivityByActor = new Map();
+    const rolloutReplies = [], historyOwnership = createHistoryOwnershipProjection(), requestLinkGroups = [];
+    const rolloutSignalsByActor = new Map(), rolloutSkillsByActor = new Map();
     const usageSnapshots = [];
     const compactions = [];
     const pullRequestCreationGroups = [];
@@ -560,7 +559,9 @@ export function createCodexProvider(options = {}) {
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
-      rolloutReplies.push(...context.replies.map((event) => readOptions.historyActivity ? { ...event, _historyAgentId: actor.id } : event)); requestLinkGroups.push(context.links);
+      rolloutReplies.push(...context.replies);
+      historyOwnership.record(actor.id, context.replies);
+      requestLinkGroups.push(context.links);
       if (!historical && generation) {
         liveCurrentActivityCache.delete(thread.rolloutFile);
         liveCurrentActivityCache.set(thread.rolloutFile, {
@@ -593,6 +594,7 @@ export function createCodexProvider(options = {}) {
       compactions.push(...normalizedContext.compactions);
       return context.toolCalls;
     });
+    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
       readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
     )));
@@ -642,6 +644,7 @@ export function createCodexProvider(options = {}) {
       Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId)
     ));
     compactions.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+    publishNormalizedHistoryRequests(readOptions.onHistoryRequests, "codex", metadata.localId, { agents, activity: historyOwnership.project(activity), toolCalls, usageSnapshots });
     return {
       localId: metadata.localId,
       historical,
@@ -701,7 +704,7 @@ export function createCodexProvider(options = {}) {
     if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId, { historical: true });
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
-  async function readSessionHistory(localSessionId = "") { return normalizedSessionHistory("codex", localSessionId, await readSession(localSessionId, { historical: true, completeStory: true, historyActivity: true })); }
+  async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }
 
   const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];
   return defineProvider({

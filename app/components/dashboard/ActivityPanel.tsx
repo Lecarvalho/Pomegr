@@ -85,7 +85,7 @@ export function ActivityPanel({ activity, historical, loading, onRefresh, select
     : !scopedItems.some((event) => event.requestId === selected?.id) && activity.items.some((event) => event.requestId === selected?.id));
   const activeScope = revealAll ? "all" : scope;
   const items = revealAll ? chronologicalItems : scopedItems;
-  const history = useActivityHistory({ enabled: historyEnabled, sessionId, scope: activeScope, filterRequestId: null, navigation });
+  const history = useActivityHistory({ enabled: historyEnabled, sessionId, scope: activeScope, filterRequestId: null, navigation, historyRevision: selection.history.revision, historical });
   const latestOffset = Math.floor(Math.max(0, items.length - 1) / PAGE_SIZE) * PAGE_SIZE;
   const anchorIndex = !historical && paging.anchor ? items.findIndex((event) => event.id === paging.anchor) : -1;
   let offset = paging.scope !== activeScope || paging.offset === null ? latestOffset : Math.max(0, Math.min(anchorIndex >= 0 ? anchorIndex : paging.offset, latestOffset));

@@ -24,6 +24,32 @@ What it does not prove: that a refill occurred, why cache reuse dropped, that a 
 
 Privacy: browser state contains only the bounded transition percentages, elapsed wall time, normalized agent association, observation timestamp, and stable public code. Requests, models, comparison groups, cache keys, prompts, provider diagnostics, and token counts remain monitor-private.
 
+<a id="cache-read-reuse-dropped-model-change"></a>
+
+### `cache.read_reuse_dropped.model_change`
+
+Class: bounded cache-reuse-drop observation across a model change.
+
+Pomegr emits this code when two distinct adjacent observations for the same normalized
+agent and comparison group have recorded models that differ, while the same numeric
+provenance and boundary gates as `cache.read_reuse_dropped` hold: both requests have at
+least 8,000 prompt-input tokens, the preceding cache-read share is at least 80%, the
+current share is no more than 20%, the current cached-token count is no more than 20%
+of the preceding count, and the current request has no positive recorded cache write.
+
+What it means: Pomegr observed a severe loss of cache reuse across a recorded model
+change.
+
+What it does not prove: that a refill occurred, that the cache expired, or that the
+model change caused the drop. This code carries no refill, expiry, or causation
+inference. An omitted kind on `cache.read_reuse_dropped` denotes the existing
+same-model possible-refill inference.
+
+Privacy: browser state contains only the bounded transition percentages, elapsed wall
+time, normalized agent association, observation timestamp, and this stable public code.
+Recorded model identifiers, requests, comparison details, cache keys, prompts, provider
+diagnostics, and token counts remain monitor-private.
+
 <a id="cache-model-changed"></a>
 
 ### `cache.model_changed`

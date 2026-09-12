@@ -1,0 +1,24 @@
+import { startMonitorServer } from "./server.mjs";
+import { createDevelopmentDiagnostics } from "./dev-diagnostics.mjs";
+
+let handle;
+try {
+  const diagnostics = createDevelopmentDiagnostics();
+  handle = await startMonitorServer({
+    logger: console,
+    pipelineTrace: diagnostics.recorder,
+    traceScopeForSession: diagnostics.traceScopeForSession,
+    startupExtension: (context) => diagnostics.start(context),
+  });
+} catch (error) {
+  console.error(`[pomegr] ${error?.code || "MONITOR_START_FAILED"}`);
+  process.exitCode = 1;
+}
+
+if (handle) {
+  const close = () => { void handle.close(); };
+  process.once("SIGINT", close);
+  process.once("SIGTERM", close);
+  const result = await handle.exit;
+  if (result.code === "MONITOR_EXIT_UNEXPECTED") process.exitCode = 1;
+}

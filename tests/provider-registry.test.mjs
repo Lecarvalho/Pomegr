@@ -378,6 +378,42 @@ test("starts isolated provider observers and validates their normalized publicat
   assert.equal(stopped, true);
 });
 
+test("provider observers receive opaque per-session trace scopes for both adapters", async () => {
+  const seen = [];
+  const scopes = new Map([
+    ["claude:session", Object.freeze({})],
+    ["codex:session", Object.freeze({})],
+  ]);
+  const providers = ["claude", "codex"].map((id) => defineProvider({
+    id,
+    source: id === "claude" ? "Claude Code" : "Codex",
+    capabilityManifest: capabilityManifest({ liveSessions: true }),
+    async listSessions() { return []; },
+    async readSession() { return null; },
+    createObserver() {
+      return {
+        async start(_publisher, _signal, options) {
+          seen.push({ id, scope: options.traceScopeForLocalId("session") });
+        },
+        async hydrate() { return false; },
+        async listSessions() { return []; },
+        stop() {},
+      };
+    },
+  }));
+  const registry = createProviderRegistry(providers);
+  const lifecycle = await registry.startObservers({
+    publishCatalog() {}, publishSession() {}, invalidateSession() {},
+  }, new AbortController().signal, {
+    traceScopeForSession: (sessionId) => scopes.get(sessionId),
+  });
+  assert.deepEqual(seen, [
+    { id: "claude", scope: scopes.get("claude:session") },
+    { id: "codex", scope: scopes.get("codex:session") },
+  ]);
+  await lifecycle.stop();
+});
+
 test("registry read failures retain safe details separately for each provider", async () => {
   const failure = Object.assign(new Error("PRIVATE_PROMPT C:\\PRIVATE_PATH"), { code: "EACCES" });
   const registry = createProviderRegistry([

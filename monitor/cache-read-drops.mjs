@@ -87,7 +87,6 @@ export function buildCacheReadDrops({
     const afterAt = timestampMs(current.timestamp);
     if (afterAt <= beforeAt
       || current.cacheReadPreviousAt !== previous.timestamp
-      || previous.model !== current.model
       || previous.comparisonGroup !== current.comparisonGroup
       || resets.some((boundary) => boundary.agentId === agentId
         && timestampMs(boundary.timestamp) >= beforeAt && timestampMs(boundary.timestamp) <= afterAt)) continue;
@@ -109,6 +108,7 @@ export function buildCacheReadDrops({
       previousCacheReadPercent: Math.round(before.readShare * 1_000) / 10,
       cacheReadPercent: Math.round(after.readShare * 1_000) / 10,
       gapMs: afterAt - beforeAt,
+      ...(previous.model === current.model ? {} : { kind: "model_change" }),
     });
     results.set(agentId, summary);
   }

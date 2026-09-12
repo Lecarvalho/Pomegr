@@ -28,15 +28,16 @@ services are cleaned up too. An unrelated app (including the packaged desktop ap
 using port 3003 or 4317 is left running and startup explains which port is blocked.
 On other platforms, stop the previous instance before running the command again.
 
-For internal pipeline timing diagnostics, attach the passive terminal monitor from a
+For a bounded current health snapshot, attach the passive diagnostics reader from a
 second shell:
 
 ```powershell
-npm run ops:pipeline
+npm run diagnostics:snapshot
 ```
 
-See [Pipeline operations monitor](docs/PIPELINE_OPERATIONS.md) for its bounded diagnostic
-contract, available stages, and the separately planned browser-render timing milestone.
+Add `--json` for machine-readable output or `--provider codex` to filter one provider.
+See [Pipeline operations](docs/PIPELINE_OPERATIONS.md) for the bounded diagnostic
+contract, continuous local JSONL logs, and live/historical analysis.
 
 <p align="center">
   <img src="landing/public/landing/about/observer-principles-signal.webp" alt="A hand-drawn pomegranate connected to four small signal seeds." width="360" />
