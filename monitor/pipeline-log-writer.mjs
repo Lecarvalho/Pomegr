@@ -1,6 +1,6 @@
 import * as nodeFs from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { resolve as resolvePath } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
 
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024;
 const HARD_MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -30,10 +30,11 @@ const asPromises = (value) => value?.promises ?? value ?? nodeFs;
  * This module deliberately does not inspect or validate record domains.
  */
 export function createPipelineLogWriter(options = {}) {
-  const directory = options.directory;
+  let directory = options.directory;
   if (typeof directory !== "string" || directory.length === 0) {
     throw new TypeError("directory is required");
   }
+  directory = resolvePath(directory);
 
   const fileSystem = asPromises(options.fs);
   const timers = options.timers ?? globalThis;
@@ -132,15 +133,23 @@ export function createPipelineLogWriter(options = {}) {
   };
 
   const validateDirectory = async () => {
-    const directoryStat = await fileSystem.lstat(directory);
-    if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) throw new Error("invalid pipeline log directory");
-    const actual = await fileSystem.realpath(directory);
-    const expected = resolvePath(directory);
-    const normalize = (value) => {
-      const normalized = resolvePath(value);
-      return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-    };
-    if (normalize(actual) !== normalize(expected)) throw new Error("redirected pipeline log directory");
+    // Check every component before canonicalizing: realpath also expands legitimate
+    // Windows short names, so a spelling difference alone cannot prove redirection.
+    let component = directory;
+    while (true) {
+      try {
+        const entry = await fileSystem.lstat(component);
+        if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error("invalid pipeline log directory");
+      } catch (error) {
+        // Missing components may be created only after their existing parents pass.
+        if (error?.code !== "ENOENT") throw error;
+      }
+      const parent = dirname(component);
+      if (parent === component) break;
+      component = parent;
+    }
+    await fileSystem.mkdir(directory, { recursive: true });
+    directory = await fileSystem.realpath(directory);
   };
 
   const pruneOwnedFiles = async (activePath = null) => {
@@ -175,7 +184,6 @@ export function createPipelineLogWriter(options = {}) {
 
   const initialize = (async () => {
     try {
-      await fileSystem.mkdir(directory, { recursive: true });
       await validateDirectory();
       await pruneOwnedFiles();
       await createUniqueFile();

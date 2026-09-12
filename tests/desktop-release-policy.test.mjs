@@ -25,6 +25,35 @@ import {
 
 const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
 
+test("Windows verification covers main changes without release credentials or publication", async () => {
+  const [workflowSource, documentation] = await Promise.all([
+    readFile(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8"),
+    readFile(new URL("../docs/AGENT-WORKFLOW.md", import.meta.url), "utf8"),
+  ]);
+  const workflow = workflowSource.replaceAll("\r\n", "\n");
+  assert.match(workflow, /pull_request:\s*\n\s*branches:\s*\n\s*- main/);
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- main/);
+  const permissions = workflow.match(/^permissions:\n((?:  [^\n]+\n)+)/m)?.[1].trim();
+  assert.equal(permissions, "contents: read");
+  assert.match(workflow, /group: verify-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/);
+  assert.match(workflow, /cancel-in-progress: true/);
+  assert.match(workflow, /runs-on: windows-2022/);
+  assert.doesNotMatch(workflow, /runs-on: windows-latest/);
+  assert.match(workflow, /node-version: 22\.13\.0/);
+  assert.match(workflow, /cache: npm/);
+  assert.match(workflow, /persist-credentials: false/);
+  const installStep = workflow.match(/- name: Install locked dependencies[\s\S]*?(?=\n\s+- name:)/)?.[0] || "";
+  assert.match(installStep, /npm ci\s+npm run desktop:runtime\s+npm ci --prefix landing/);
+  const verificationStep = workflow.match(/- name: Run canonical verifier and desktop smoke[\s\S]*$/)?.[0] || "";
+  assert.match(verificationStep, /npm run verify/);
+  assert.match(verificationStep, /npm run desktop:smoke:ci/);
+  assert.ok(verificationStep.indexOf("npm run verify") < verificationStep.indexOf("npm run desktop:smoke:ci"));
+  assert.doesNotMatch(workflow, /\$\{\{\s*(?:secrets|vars)\./);
+  assert.doesNotMatch(workflow, /(?:upload-artifact|azure\/login|electron-builder|gh release)/i);
+  assert.match(documentation, /Pull requests targeting `main` and pushes to `main` run/);
+  assert.doesNotMatch(documentation, /PR\/main GitHub Actions verification is intentionally paused/);
+});
+
 test("release workflow requires the complete selected commit to match the checkout", () => {
   const commit = "a".repeat(40);
   assert.doesNotThrow(() => assertExpectedReleaseCommit({ releaseSha: commit, commit }));

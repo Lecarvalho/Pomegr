@@ -15,6 +15,10 @@ to 1 MiB. A record is at most 64 KiB. Startup, retention, rotation, and append f
 degrade diagnostics only and cannot change acquisition, normalization, scheduling,
 persistence, publication, or committed evidence.
 
+Directory validation rejects symlinks and junctions in every path component before
+using the canonical directory. Windows short-name aliases are valid directory spellings;
+a difference between the supplied spelling and `realpath` is not proof of redirection.
+
 Each record has fixed schema version 1, a fresh diagnostic-local run UUID, an ISO observation
 time, and one of `span_start`, `span`, `flow`, `counter`, `health`, `gap`, or `lifecycle`.
 It may contain only allowlisted stages, domains, outcomes, counters, synthetic lanes, opaque

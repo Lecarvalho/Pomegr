@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,7 +117,29 @@ test("startup retention prunes only owned files and preserves unrelated files", 
   });
 });
 
-test("rejects a redirected directory and leaves symlinked owned files untouched", async (t) => {
+test("Windows short-path directories retain and write complete records", { skip: process.platform !== "win32" }, async (t) => {
+  await withDirectory(async (directory) => {
+    const shortDirectory = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      "(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:POMEGR_TEST_LOG_DIRECTORY).ShortPath",
+    ], { env: { ...process.env, POMEGR_TEST_LOG_DIRECTORY: directory }, encoding: "utf8", windowsHide: true, timeout: 15_000 }).trim();
+    if (!shortDirectory.includes("~")) { t.skip("Windows short names unavailable on this volume"); return; }
+    const writer = createPipelineLogWriter({ directory: shortDirectory, maxFileBytes: 20, maxFiles: 2 });
+    try {
+      for (let sequence = 1; sequence <= 3; sequence += 1) assert.equal(writer.write({ sequence }), true);
+      await writer.flush();
+      assert.equal(writer.stats().failureKind, "none");
+      assert.equal(writer.stats().written, 3);
+      const files = await ownedFiles(directory);
+      assert.equal(files.length, 2);
+      const rows = await Promise.all(files.map(async (file) => JSON.parse(await readFile(join(directory, file), "utf8"))));
+      assert.deepEqual(rows, [{ sequence: 2 }, { sequence: 3 }]);
+    } finally {
+      await writer.close();
+    }
+  });
+});
+
+test("rejects redirected directories, including a junction in a parent component", async (t) => {
   await withDirectory(async (directory) => {
     const targetDirectory = join(directory, "target");
     const redirectedDirectory = join(directory, "redirected");
@@ -134,12 +157,38 @@ test("rejects a redirected directory and leaves symlinked owned files untouched"
     await redirected.flush();
     assert.equal(redirected.stats().failureKind, "startup");
     assert.deepEqual(await readdir(targetDirectory), []);
+    await redirected.close();
 
+    const nested = createPipelineLogWriter({ directory: join(redirectedDirectory, "nested") });
+    nested.write({ redirected: true });
+    await nested.close();
+    assert.equal(nested.stats().failureKind, "startup");
+    assert.deepEqual(await readdir(targetDirectory), [], "startup must not create directories through a junction");
+  });
+});
+
+test("creates missing directory components beneath ordinary parents", async () => {
+  await withDirectory(async (directory) => {
+    const nestedDirectory = join(directory, "new", "nested");
+    const writer = createPipelineLogWriter({ directory: nestedDirectory });
+    writer.write({ sequence: 1 });
+    await writer.close();
+    assert.equal(writer.stats().failureKind, "none");
+    assert.equal(writer.stats().written, 1);
+    assert.equal((await ownedFiles(nestedDirectory)).length, 1);
+  });
+});
+
+test("leaves symlinked owned files untouched", async (t) => {
+  await withDirectory(async (directory) => {
+    const targetDirectory = join(directory, "target");
+    const outside = join(directory, "outside.jsonl");
+    await import("node:fs/promises").then((fs) => fs.mkdir(targetDirectory));
+    await writeFile(outside, "outside\n");
     const ownedLink = join(targetDirectory, "pipeline-20260101T000000000Z-aaaaaaaaaaaa-000001.jsonl");
     try {
       await symlink(outside, ownedLink, "file");
     } catch (error) {
-      await redirected.close();
       if (["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) { t.skip("file symlinks unavailable"); return; }
       throw error;
     }

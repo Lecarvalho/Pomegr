@@ -43,20 +43,21 @@ Preparation from an existing build checks that the built legal copies still matc
 exactly before bundling services; it never regenerates legal files after the web build.
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
-`BrowserWindow`. GitHub-hosted Windows runners have no interactive desktop, so the
-manually dispatched release workflow runs the canonical `npm run verify` followed by
-`npm run desktop:smoke:ci`. The latter exercises the packaged Electron main process,
-ASAR/native runtime, loopback services, provider discovery, APIs, privacy checks, and
-shutdown without constructing an Electron renderer. The canonical verifier owns the UI,
-landing, repository-inventory, and desktop-security suites without repeating them in a
-second desktop wrapper. `npm run verify:desktop:ci` remains available for focused local use.
-The full sandboxed preload, renderer, and `BrowserWindow` smoke remains a local or
-interactive-VM release acceptance requirement.
+`BrowserWindow`. Pull requests targeting `main` and pushes to `main` run
+[Windows verification](../.github/workflows/verify.yml) on `windows-2022` with Node
+22.13.0. It installs the locked root and landing dependencies plus Electron's on-demand
+runtime, then runs the canonical `npm run verify` followed by
+`npm run desktop:smoke:ci`. The CI-safe smoke exercises the packaged Electron main
+process, ASAR/native runtime, loopback services, provider discovery, APIs, privacy
+checks, and shutdown without constructing an Electron renderer. The canonical verifier
+owns the UI, landing, repository-inventory, and desktop-security suites without repeating
+them in a second desktop wrapper. `npm run verify:desktop:ci` remains available for
+focused local use. The full sandboxed preload, renderer, and `BrowserWindow` smoke
+remains a local or interactive-VM release acceptance requirement.
 
-PR/main GitHub Actions verification is intentionally paused. Run `npm run verify` and the
-applicable desktop command locally before pushing. Creating or pushing a tag does not start
-the Windows release workflow; dispatch it manually with the existing release tag only after
-the candidate is ready to package and publish.
+Creating or pushing a tag does not start the Windows release workflow; dispatch it
+manually with the existing release tag only after the candidate is ready to package and
+publish.
 
 The independent public landing deployment is also manual: dispatch
 `.github/workflows/deploy-landing.yml` with the branch to deploy. It runs the landing

@@ -86,11 +86,17 @@ test("health failures retain bounded timestamped history while latest health can
   assert.deepEqual(report.healthHistory[0].failures, [{ stage: "acquire_normalize", reason: "EACCES" }]);
 });
 
-test("directory selection ignores symlinks and non-writer filenames", async () => {
-  const { directory, path } = await fixture([{ ...common, kind: "lifecycle", event: "started" }]);
+test("directory selection ignores symlinks and non-writer filenames", async (t) => {
+  const { directory, path } = await fixture([`${JSON.stringify({ ...common, kind: "lifecycle", event: "started" })}\n`]);
   await writeFile(join(directory, "private.jsonl"), "{bad}\n");
+  const beforeLink = await analyzePipelineLogs({ directory });
+  assert.equal(beforeLink.files.selected, 1);
+  assert.equal(beforeLink.records.total, 1);
   const linked = join(directory, "pipeline-20260911T120001000Z-a1b2c3d4e5f6-000001.jsonl");
-  try { await symlink(path, linked); } catch { return; }
+  try { await symlink(path, linked); } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) { t.skip("file symlinks unavailable"); return; }
+    throw error;
+  }
   const report = await analyzePipelineLogs({ directory });
   assert.equal(report.files.selected, 1);
   assert.equal(report.records.total, 1);
