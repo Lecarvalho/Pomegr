@@ -352,7 +352,8 @@ export function createSessionObservationCoordinator(options = {}) {
         // Evidence is already committed: don't add a second summary delay before
         // publishing current activity and notifying the catalog's consumers.
         scheduleCatalogCommit(catalogStructuralDelayMs);
-        notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision });
+        notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision,
+          freshObservation: candidate.freshObservation === true });
         scheduleCheckpoint(snapshot.snapshot);
         options.onCommitted?.(snapshot.snapshot);
       } else if (snapshot?.accepted) {

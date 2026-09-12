@@ -104,6 +104,7 @@ export class SessionHistoryStore {
   #records = new Map(); #touch = new Map(); #indexCache = new Map(); #indexBytes = 0; #writes = new Map();
   #historyRevision = 0; #revisionSubscribers = new Set(); #activityAdmissions = new Map(); #requestAdmissions = new Map(); #generationLeases = new Map();
   #pendingContributions = new Map(); #pendingRequests = new Map(); #admissionTouch = new Map(); #admissionClock = 0;
+  #committedHistory = new Map();
   #admissionRuntime = crypto.randomBytes(16).toString("hex");
   constructor({ directory = null, maxSessions = MAX_SESSIONS, maxResident = MAX_RESIDENT,
     maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES } = {}) {
@@ -190,15 +191,26 @@ export class SessionHistoryStore {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     return this.#serialized(sessionId, () => this.#publish(sessionId, candidate, activityFence));
   }
-  async #publish(sessionId, candidate, activityFence) {
+  #markCommitted(sessionId) {
+    this.#committedHistory.delete(sessionId);
+    this.#committedHistory.set(sessionId, true);
+    while (this.#committedHistory.size > 128) this.#committedHistory.delete(this.#committedHistory.keys().next().value);
+  }
+  #forgetCommitted(sessionId) { this.#committedHistory.delete(sessionId); }
+  async publishOutcome(sessionId, candidate, { activityFence = null } = {}) {
+    if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return { record: null, accepted: false, reason: "invalid" };
+    return this.#serialized(sessionId, () => this.#publish(sessionId, candidate, activityFence, true));
+  }
+  async #publish(sessionId, candidate, activityFence, includeOutcome = false) {
+    const outcome = (record, accepted, reason) => includeOutcome ? Object.freeze({ record, accepted, reason }) : record;
     // Never replace a usable committed revision with incomplete acquisition.
-    if (!candidate || candidate.complete !== true) return this.#load(sessionId);
+    if (!candidate || candidate.complete !== true) return outcome(await this.#load(sessionId), false, "incomplete");
     const current = await this.#load(sessionId);
     if (isObject(activityFence) && current && (
       current.activityEpoch !== activityFence.epoch || current.activitySequence !== activityFence.sequence
       || current.requestEpoch !== activityFence.requestEpoch || current.requestSequence !== activityFence.requestSequence
       || current.revision !== activityFence.revision
-    )) return current;
+    )) return outcome(current, false, "stale_fence");
     const priorNumbers = new Map(Object.entries(current?.numberRegistry || {}).filter((entry) => Number.isSafeInteger(entry[1])));
     for (const item of current?.requests || []) priorNumbers.set(item.id, item.number);
     let nextNumber = current?.nextNumber || 1;
@@ -232,17 +244,21 @@ export class SessionHistoryStore {
       requestEpoch: current?.requestEpoch || 0, requestSequence: current?.requestSequence || 0,
       nextNumber, numberRegistry, requests: sortRequests([...requests.values()]), activity: sortRows(resolvedActivity, "timestamp") };
     if (current && sameServedHistory(current, record)) {
-      if (!this.directory || await this.#hasOverviewIndex(sessionId, current)) return current;
+      if (!this.directory || await this.#hasOverviewIndex(sessionId, current)) {
+        if (this.directory) this.#markCommitted(sessionId);
+        return outcome(current, true, "accepted");
+      }
       // A legacy generation is immutable. Publish the migrated index under a
       // fresh revision so readers holding the old manifest never race a block
       // rewrite at the same generation path.
       await this.#write(record);
       this.#forgetIndex(sessionId);
       this.#remember(sessionId, record);
-      return record;
+      return outcome(record, true, "accepted");
     }
-    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); this.#notifyHistoryRevision(); return record;
+    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); this.#notifyHistoryRevision(); return outcome(record, true, "accepted");
   }
+  hasCommitted(sessionId) { return this.directory ? this.#committedHistory.has(sessionId) : this.#records.has(sessionId); }
   /**
    * Commit a source-complete Activity contribution without waiting for request
    * correlation. Epoch/sequence are monitor-private, monotonic source-domain
@@ -551,7 +567,7 @@ export class SessionHistoryStore {
     // The manifest is the serving commit point. Never replace the legacy
     // recovery snapshot before a new generation is visible through it.
     const temp = `${destination}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temp, JSON.stringify(index), "utf8"); await rename(temp, destination);
+    await writeFile(temp, JSON.stringify(index), "utf8"); await rename(temp, destination); this.#markCommitted(record.sessionId);
     const legacy = path.join(this.directory, fileName(record.sessionId)); const legacyTemp = `${legacy}.${process.pid}.${Date.now()}.tmp`;
     try { await writeFile(legacyTemp, JSON.stringify(record), "utf8"); await rename(legacyTemp, legacy); } catch { try { await rm(legacyTemp, { force: true }); } catch {} }
     // Publication is complete before pruning. Retain the immediately previous
@@ -592,25 +608,27 @@ export class SessionHistoryStore {
   async #readIndex(sessionId) {
     const indexPath = path.join(this.directory, `${crypto.createHash("sha256").update(sessionId).digest("hex")}.index.json`);
     let before;
-    try { before = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); return null; }
+    try { before = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null; }
     const metadata = `${before.dev}:${before.ino}:${before.size}:${before.mtimeNs}:${before.ctimeNs}`;
     const cached = this.#indexCache.get(sessionId);
     if (cached && cached.metadata === metadata) {
       cached.touchedAt = Date.now();
+      this.#markCommitted(sessionId);
       return cached.value;
     }
     let source;
-    try { source = await readFile(indexPath, "utf8"); } catch { this.#forgetIndex(sessionId); return null; }
+    try { source = await readFile(indexPath, "utf8"); } catch { this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null; }
     let after;
-    try { after = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); return null; }
+    try { after = await stat(indexPath, { bigint: true }); } catch { this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null; }
     if (`${after.dev}:${after.ino}:${after.size}:${after.mtimeNs}:${after.ctimeNs}` !== metadata) {
-      this.#forgetIndex(sessionId); return null;
+      this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null;
     }
     try {
       const value = JSON.parse(source);
       this.#rememberIndex(sessionId, value, metadata, Buffer.byteLength(source, "utf8"));
+      this.#markCommitted(sessionId);
       return value;
-    } catch { this.#forgetIndex(sessionId); return null; }
+    } catch { this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null; }
   }
   async #hasOverviewIndex(sessionId, record) {
     const key = crypto.createHash("sha256").update(sessionId).digest("hex");
@@ -625,7 +643,7 @@ export class SessionHistoryStore {
     const index = await this.#readIndex(sessionId);
     if (!index) return null;
     const kind = query.kind === "requests" ? "requests" : "activity";
-    if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) return null;
+    if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) { this.#forgetCommitted(sessionId); return null; }
     if (kind === "requests" && index.requestsReady === false || kind === "activity" && index.activityReady === false) {
       return { status: "loading", kind, revision: String(index.revision), total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
     }
@@ -658,7 +676,7 @@ export class SessionHistoryStore {
       }
       return safeActivity(raw, requestNumbers);
     });
-    if (items.some((item) => item === null) || items.length !== selected.length) return null;
+    if (items.some((item) => item === null) || items.length !== selected.length) { this.#forgetCommitted(sessionId); return null; }
     const requestedId = query.requestId || query.filterRequestId;
     const linkedCount = REQUEST_ID.test(requestedId || "") ? (kind === "requests" ? index.activity.filter((item) => item.requestId === requestedId && scopeMatches(item, scope)).length : refs.filter((item) => item.requestId === requestedId).length) : 0;
     const overview = kind === "requests" && query.overview !== "0"

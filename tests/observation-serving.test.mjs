@@ -91,6 +91,13 @@ test("concurrent state GETs consume one committed response without provider tran
   context.after(() => new Promise((resolve) => server.close(resolve)));
   for (let attempt = 0; attempt < 50 && !historyReads; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
   assert.ok(historyReads > 0, "history acquisition belongs to background observation");
+  let committedHistory;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    committedHistory = await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "activity", limit: "8" });
+    if (committedHistory.status === "ready") break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(committedHistory.status, "ready", "the background replay commits before GET isolation is measured");
   const beforeHistoryGets = historyReads;
   const historyPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=activity&limit=8`)));
   assert.ok(historyPages.every((response) => response.status === 200));

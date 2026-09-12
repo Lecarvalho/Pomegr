@@ -154,6 +154,22 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
+Complete replay uses two bounded ownership lanes: one foreground slot for the
+selected session and one maintenance slot for live refreshes and restored sessions.
+A selected state request may promote or enqueue asynchronous replay when the
+committed history does not match its current private observation-source key; it
+still returns the current committed state immediately. Repeated state polls do not
+replay history whose source key already committed, and `/api/session-history`
+never queues replay. Projection-only session revisions, including resource refreshes,
+do not schedule provider history acquisition. A fresh provider observation does.
+Same-session replay remains serialized and coalesces one follow-up when its source
+changes during an active read.
+The runtime retains at most 128 private attempted and completed source keys. A
+complete replay rejected by a newer contribution fence queues one follow-up; an
+incomplete stable source waits for a later source observation instead of spinning.
+A missing or invalid committed history manifest clears the matching proof so a
+later selected-state refresh can schedule repair. None of these keys enter history
+persistence, diagnostics, revision events, or browser state.
 Source-complete Activity may commit first with null request links and durations.
 Provider-private history ownership annotations stay in a separate history projection;
 registering progressive callbacks must not add fields to the strict session evidence.
@@ -812,7 +828,11 @@ failed Claude adapter cannot occupy Codex workers, and vice versa. Within one ob
 duplicate events for a queued session coalesce. If a source changes while that session is
 already being acquired, one dirty-again pass is retained so the newest complete records
 are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently.
+workers concurrently. Each provider reserves two interactive hydration slots for newly
+discovered sessions, source notifications, and explicit selection, plus one background
+slot for routine eager reconciliation. Promoting a queued background session immediately
+rechecks interactive capacity. These are asynchronous event-loop tasks, so complete-file
+readers must also yield cooperatively; the slots do not imply separate CPU workers.
 
 The adapter may map a known source directly through its private reverse index. A newly
 created or unresolved source requests a fresh catalog read that bypasses short-lived
@@ -1091,6 +1111,10 @@ React, persisted checkpoints, or browser API fields.
 - One provider worker pool may hydrate different sessions concurrently. Work for the same
   session is serialized, duplicate queued notifications coalesce, and a notification that
   arrives during acquisition retains one dirty-again follow-up.
+- Complete Claude history reads visit transcript files sequentially and yield after each
+  64 KiB chunk. Complete Codex rollout reads and parses the same bounded chunks. Both
+  revalidate the source generation before a complete replacement can commit, allowing
+  selected foreground work and cache serving to proceed between maintenance units.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
 - Codex fallback discovery collapses multiple rollout generations carrying the same
@@ -1180,9 +1204,10 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Work | Owner / phase | Cache relationship | Cadence |
 | --- | --- | --- | --- |
 | Source-change routing | Backend adapter / U1 | Maps a provider-native notification privately to catalog-dirty and/or session-dirty work | Wake immediately on a provider event or filesystem notification; known sessions enter the worker queue in the same event-loop turn |
-| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start when a provider worker is available; default concurrency is 2 sessions per provider, with same-session serialization and event coalescing |
+| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in a reserved provider lane: two interactive slots for notification/selection work and one background slot for reconciliation, with same-session serialization and event coalescing |
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
+| Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |

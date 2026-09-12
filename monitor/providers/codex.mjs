@@ -138,6 +138,7 @@ export function createCodexProvider(options = {}) {
     scanLimit,
     maximumLiveTailBytes,
     maximumLiveTaskHistoryBytes,
+    yieldControl: options.yieldControl,
   });
   const transcriptPathsBySessionId = new Map();
   const {
@@ -354,7 +355,7 @@ export function createCodexProvider(options = {}) {
             generation: incrementalGenerationsByFile?.get(thread.rolloutFile) || null,
           }
           : null;
-        const { records, generation } = incremental || readRolloutRecords(
+        const { records, generation } = incremental || await readRolloutRecords(
           thread.rolloutFile,
           historical || completeStory,
           thread.approvalReviewer ? maximumLiveTaskHistoryBytes : maximumLiveTailBytes,

@@ -13,6 +13,7 @@ import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
+import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
@@ -104,8 +105,6 @@ export function createObservationRuntime(options = {}) {
     maxSessions: options.historyMaxSessions,
     maxResident: options.historyMaxResident ?? 0,
   });
-  const historyRefreshes = new Map();
-  const historyDirty = new Set();
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();
   const pendingRepositoryAssociations = new Set();
@@ -121,6 +120,13 @@ export function createObservationRuntime(options = {}) {
       return scope && typeof scope === "object" && !Array.isArray(scope) ? scope : null;
     } catch { return null; }
   }
+
+  const sessionHistory = createSessionHistoryRuntime({
+    registry, observationStore, historyStore, trace: historyTrace, ownedTraceScope,
+    isActive: () => observationServingActive,
+    foregroundConcurrency: options.historyForegroundConcurrency ?? 1,
+    backgroundConcurrency: options.historyBackgroundConcurrency ?? 1,
+  });
 
   function retainRepositoryAssociation(sessionId, association) {
     repositoryAssociations.set(sessionId, association);
@@ -222,43 +228,6 @@ export function createObservationRuntime(options = {}) {
       },
       () => { historyTrace?.end?.(span, { outcome: "failed" }); historyTrace?.finishFlow?.(flow, { outcome: "failed" }); retryHistoryContribution("requests", sessionId, contribution); return null; },
     );
-  }
-
-  function refreshSessionHistory(qualifiedId) {
-    if (!observationServingActive) return;
-    if (historyRefreshes.has(qualifiedId)) { historyDirty.add(qualifiedId); return; }
-    const snapshot = observationStore.getByQualifiedId(qualifiedId);
-    const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
-    if (!snapshot || typeof provider?.readSessionHistory !== "function") return;
-    const scope = ownedTraceScope(qualifiedId);
-    const flow = historyTrace?.createFlow?.({ scope }) || null;
-    const readSpan = historyTrace?.begin?.({ stage: "history_read", domain: "activity", flow, scope }) || null;
-    let historyOutcome = "completed";
-    const task = Promise.resolve(historyStore.activityFence(qualifiedId))
-      .then((activityFence) => provider.readSessionHistory(snapshot.localSessionId)
-        .then((history) => {
-          historyTrace?.end?.(readSpan, { outcome: "completed" });
-          const publishSpan = historyTrace?.begin?.({ stage: "history_publish", domain: "activity", flow, scope }) || null;
-          return historyStore.publish(qualifiedId, history, { activityFence }).then(
-            (record) => {
-              historyTrace?.end?.(publishSpan, { outcome: record ? "accepted" : "unchanged" });
-              return record;
-            },
-            (error) => {
-              historyTrace?.end?.(publishSpan, { outcome: "failed" });
-              throw error;
-            },
-          );
-        }))
-      .catch(() => { historyOutcome = "failed"; return null; })
-      .finally(() => {
-        historyTrace?.end?.(readSpan, { outcome: "failed" });
-        historyTrace?.finishFlow?.(flow, { outcome: historyOutcome });
-        historyRefreshes.delete(qualifiedId);
-        const dirty = historyDirty.delete(qualifiedId);
-        if (dirty && observationServingActive) refreshSessionHistory(qualifiedId);
-      });
-    historyRefreshes.set(qualifiedId, task);
   }
 
   function checkpointPublicState({ providerId, localSessionId, evidence }) {
@@ -604,6 +573,7 @@ export function createObservationRuntime(options = {}) {
   async function startObservation() {
     if (observationStartPromise) return observationStartPromise;
     observationServingActive = true;
+    sessionHistory.start();
     // This D-only cache begins from the committed store and catalog. It never
     // invokes observers, hydration, parsing, or any provider read.
     agentsObservation.start();
@@ -627,7 +597,11 @@ export function createObservationRuntime(options = {}) {
         options.onSessionCommitted?.(event.qualifiedId);
         // Provider history acquisition belongs to the background observation
         // lifecycle. Serving only reads the committed, normalized history file.
-        refreshSessionHistory(event.qualifiedId);
+        if (event.freshObservation) {
+          sessionHistory.observe(event.qualifiedId, event.revision);
+          const historical = observationStore.getByQualifiedId(event.qualifiedId)?.evidence?.historical !== false;
+          sessionHistory.refresh(event.qualifiedId, historical ? 2 : 1, true, true);
+        }
       }
       if (event.type === "catalog") cacheUnavailableSessionResponses();
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
@@ -644,7 +618,10 @@ export function createObservationRuntime(options = {}) {
       // Checkpoint-restored sessions may rederive unchanged and therefore do
       // not emit a fresh session commit. They still receive history hydration
       // from this background lifecycle, never from a serving request.
-      for (const snapshot of observationStore.entries()) refreshSessionHistory(snapshot.qualifiedId);
+      for (const snapshot of observationStore.entries()) {
+        sessionHistory.ensureObserved(snapshot.qualifiedId, snapshot.revision);
+        sessionHistory.refresh(snapshot.qualifiedId, 2, true, true);
+      }
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
       void refreshObservedResources();
@@ -682,7 +659,7 @@ export function createObservationRuntime(options = {}) {
     unavailableSessionResponses.clear();
     for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
     historyContributionRetries.clear();
-    historyDirty.clear();
+    sessionHistory.stop();
     repositoryAssociations.clear();
     pendingRepositoryAssociations.clear();
     await observationCoordinator.stop();
@@ -724,6 +701,9 @@ export function createObservationRuntime(options = {}) {
     serveCatalog: (revision) => observationCoordinator.catalog(revision),
     serveSession(sessionId, revision) {
       const result = observationCoordinator.session(sessionId, revision);
+      if (result.selectedId && result.status !== "empty" && result.status !== "unavailable") {
+        sessionHistory.prioritize(result.selectedId);
+      }
       if (result.status === "unavailable") {
         return { ...result, unavailableSnapshot: unavailableSessionResponses.get(result.selectedId) || null };
       }
@@ -736,6 +716,9 @@ export function createObservationRuntime(options = {}) {
     async serveSessionHistory(sessionId, query) {
       const servedAt = performance.now();
       const page = await historyStore.read(sessionId, query);
+      if (page.status === "unavailable") {
+        sessionHistory.invalidate(sessionId);
+      }
       historyTrace?.recordDuration?.({ stage: "cache_serve", domain: "serving", durationMs: Math.max(0, performance.now() - servedAt),
         outcome: page.status === "ready" ? "accepted" : page.status === "loading" ? "unchanged" : "rejected" });
       if (page.status !== "unavailable" || !observationServingActive) return page;
@@ -766,6 +749,7 @@ export function createObservationRuntime(options = {}) {
         agents: agentsObservation.read({ project: "all", days: 30, scope: "all" })?.revision || 0,
       }),
       agents: agentsObservation.diagnostics(),
+      historyRefresh: sessionHistory.diagnostics(),
     }),
   });
 }

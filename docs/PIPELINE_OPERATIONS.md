@@ -48,7 +48,10 @@ npm run diagnostics:analyze -- --since 1h
 The analyzer validates fixed records, bounds file/byte/line/pending-span/history/follow output,
 does not contact the monitor, and cannot trigger provider work, scheduling, checkpoint writes,
 or publication. Follow starts at current EOF, serializes polls, and reports partial or missed
-rotation coverage.
+rotation coverage. Partial lines retain independent bounded bytes across reads. Each poll
+reports bounded malformed and oversized record counts and reduces coverage when either is
+nonzero; intentional timestamp or stage filtering is not a coverage loss. Coverage describes
+only that poll, never a complete session.
 
 ## Auxiliary current snapshot
 

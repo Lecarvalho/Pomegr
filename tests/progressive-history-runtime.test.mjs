@@ -72,7 +72,8 @@ test("source-complete Activity commits while the unrelated session derivation is
       return durableHistoryStore.publishActivityContribution(...args);
     },
     publishRequestContribution: (...args) => durableHistoryStore.publishRequestContribution(...args),
-    publish: (...args) => durableHistoryStore.publish(...args), activityFence: (...args) => durableHistoryStore.activityFence(...args),
+    publish: (...args) => durableHistoryStore.publish(...args), publishOutcome: (...args) => durableHistoryStore.publishOutcome(...args),
+    hasCommitted: (...args) => durableHistoryStore.hasCommitted(...args), activityFence: (...args) => durableHistoryStore.activityFence(...args),
     read: (...args) => durableHistoryStore.read(...args), subscribeRevisionEvents: (...args) => durableHistoryStore.subscribeRevisionEvents(...args),
   };
   const provider = {
@@ -140,7 +141,7 @@ test("source-complete Activity commits while the unrelated session derivation is
     await pause(2);
   }
   const laterEvidence = JSON.parse(JSON.stringify(evidence));
-  laterEvidence.session.updatedAt = "2026-09-10T12:00:00.000Z";
+  laterEvidence.session.title = "Same-timestamp semantic update";
   observerPublisher.publishSession("codex", evidence.localId, laterEvidence);
   releaseHistory();
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -171,7 +172,8 @@ test("stopping cancels contribution retries and prevents a dirty replay follow-u
   const historyStore = {
     publishActivityContribution() { contributionAttempts += 1; return Promise.reject(new Error("synthetic write failure")); },
     publishRequestContribution: (...args) => durableHistoryStore.publishRequestContribution(...args),
-    publish: (...args) => durableHistoryStore.publish(...args), activityFence: (...args) => durableHistoryStore.activityFence(...args),
+    publish: (...args) => durableHistoryStore.publish(...args), publishOutcome: (...args) => durableHistoryStore.publishOutcome(...args),
+    hasCommitted: (...args) => durableHistoryStore.hasCommitted(...args), activityFence: (...args) => durableHistoryStore.activityFence(...args),
     read: (...args) => durableHistoryStore.read(...args), subscribeRevisionEvents: (...args) => durableHistoryStore.subscribeRevisionEvents(...args),
   };
   const provider = {

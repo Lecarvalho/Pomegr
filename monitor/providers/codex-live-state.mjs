@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import { priorSourceSuffixMatches } from "./source-generation.mjs";
 import { createHash } from "node:crypto";
 import { parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
@@ -10,12 +11,14 @@ import { parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
+const defaultYield = () => new Promise((resolve) => setImmediate(resolve));
 
 /** Owns bounded live-rollout reads, hydration, and cache reuse for one adapter. */
 export function createCodexLiveState({
   scanLimit,
   maximumLiveTailBytes,
   maximumLiveTaskHistoryBytes,
+  yieldControl = defaultYield,
 }) {
   const rolloutCache = new Map();
   const liveAgentAssignmentCache = new Map();
@@ -255,7 +258,7 @@ export function createCodexLiveState({
     return { snapshots: merged, compactions: mergedCompactions };
   }
 
-  function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes, strict = false) {
+  async function readRolloutRecords(file, historical, liveMaximumBytes = maximumLiveTailBytes, strict = false) {
     let stat;
     try { stat = fs.statSync(file); } catch {
       invalidateRolloutFile(file, { clearContext: true });
@@ -276,14 +279,42 @@ export function createCodexLiveState({
       }
       invalidateRolloutFile(file, { clearContext: true });
     }
-    let text = "";
-    let buffer;
+    const records = [];
+    const decoder = new StringDecoder("utf8");
+    let remainder = "";
+    let malformed = false;
+    let offset = 0;
+    let suffix = Buffer.alloc(0);
+    let discardFirst = !historical && stat.size > bytes;
     let descriptor;
     try {
       descriptor = fs.openSync(file, "r");
-      buffer = Buffer.alloc(bytes);
-      if (fs.readSync(descriptor, buffer, 0, bytes, historical ? 0 : Math.max(0, stat.size - bytes)) !== bytes) throw new Error("Incomplete Codex rollout read");
-      text = buffer.toString("utf8");
+      while (offset < bytes) {
+        const length = Math.min(64 * 1024, bytes - offset);
+        const buffer = Buffer.alloc(length);
+        const position = (historical ? 0 : stat.size - bytes) + offset;
+        if (fs.readSync(descriptor, buffer, 0, length, position) !== length) throw new Error("Incomplete Codex rollout read");
+        offset += length;
+        suffix = Buffer.concat([suffix, buffer]).subarray(Math.max(0, suffix.length + buffer.length - 256));
+        const lines = (remainder + decoder.write(buffer)).split(/\r?\n/);
+        remainder = lines.pop() || "";
+        for (const line of lines) {
+          if (discardFirst) { discardFirst = false; continue; }
+          if (!line.trim()) continue;
+          try {
+            const record = JSON.parse(line);
+            if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+          } catch { malformed = true; }
+        }
+        await yieldControl();
+      }
+      remainder += decoder.end();
+      if (!discardFirst && remainder.trim()) {
+        try {
+          const record = JSON.parse(remainder);
+          if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
+        } catch { malformed = true; }
+      }
     } catch {
       invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
@@ -299,23 +330,11 @@ export function createCodexLiveState({
       invalidateRolloutFile(file, { clearContext: true });
       return { records: [], generation: null };
     }
-    if (!historical && stat.size > bytes) {
-      const newline = text.indexOf("\n");
-      text = newline >= 0 ? text.slice(newline + 1) : "";
-    }
-    const records = []; let malformed = false;
-    for (const line of text.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const record = JSON.parse(line);
-        if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
-      } catch { malformed = true; }
-    }
     if (strict && malformed) return { records: [], generation: null };
     rolloutStats.reads += 1;
     rolloutStats.bytes += bytes;
-    const suffixBytes = Math.min(256, buffer.length);
-    const generation = { identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixBytes, suffixDigest: digest(buffer.subarray(buffer.length - suffixBytes)) };
+    const suffixBytes = suffix.length;
+    const generation = { identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixBytes, suffixDigest: digest(suffix) };
     rolloutCache.delete(file);
     rolloutCache.set(file, { key, records, generation, complete: !malformed });
     while (rolloutCache.size > scanLimit) {

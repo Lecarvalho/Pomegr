@@ -726,6 +726,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsCacheDetail a { display: inline-flex; align-items: center; margin-top: 8px; color: var(--command-brand-text); }
 .requestsActionsMinimap { margin-top: 6px; color: var(--command-faint); font: var(--text-caption) var(--font-data); }
 .requestsActionsMinimap svg { display: block; width: 100%; height: 26px; cursor: grab; touch-action: none; outline: none; }
+.requestsActionsMinimap.isLoading svg { cursor: default; }
 .requestsActionsMinimap svg:active { cursor: grabbing; }
 .requestsActionsMinimap svg:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 @media (max-width: 760px), (pointer: coarse) {
@@ -762,11 +763,12 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsLargest > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .requestsActionsLargest h3 { margin: 0; }
 .requestsActionsLargest > div { display: grid; gap: 0; }
-.requestsActionsPanel .requestsActionsLargestRow { display: grid; grid-template-columns: 48px minmax(0, 1fr) 60px; align-items: center; gap: 10px; width: 100%; min-height: 28px; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: var(--control-radius); background: transparent; text-align: left; font-size: 12px; cursor: pointer; }
+.requestsActionsPanel .requestsActionsLargestRow { display: grid; grid-template-columns: 92px minmax(36px, 1fr) minmax(4ch, max-content); align-items: center; gap: 8px; width: 100%; min-height: 28px; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: var(--control-radius); background: transparent; text-align: left; font-size: 12px; cursor: pointer; }
 .requestsActionsLargestRow:hover, .requestsActionsLargestRow.isSelected { background: var(--command-panel-2); }
 .requestsActionsLargestRow.isSelected > span:first-child { color: var(--command-brand-text); }
 .requestsActionsLargestRow:focus-visible { outline-offset: -3px; }
-.requestsActionsLargestRow > span:last-child { text-align: right; }
+.requestsActionsLargestLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.requestsActionsLargestValue { min-width: 4ch; text-align: right; }
 .requestsActionsLargestBar { display: block; height: 5px; background: var(--command-panel-2); }
 .requestsActionsLargestBar i { display: block; height: 100%; background: var(--command-line-strong); }
 .requestsActionsRetention { margin: 0; padding: 8px 20px; border-top: 1px solid var(--command-line); color: var(--command-faint); font-size: var(--text-caption); }

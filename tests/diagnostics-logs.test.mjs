@@ -13,6 +13,7 @@ import {
   parseDiagnosticsLogsArgs,
 } from "../scripts/diagnostics-logs.mjs";
 import { createPipelineOperationsSnapshot } from "../monitor/pipeline-operations.mjs";
+import { normalizePipelineLogRecord } from "../monitor/pipeline-log-schema.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -155,6 +156,53 @@ test("concurrent follow polls share one serialized operation", async () => {
   const first = follower.poll();
   assert.strictEqual(first, follower.poll());
   await first;
+});
+
+test("follow preserves valid health and ordinary rows crossing read-buffer boundaries", async () => {
+  const observers = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [`p${index}`, {
+    failureDetails: { acquisitionFailures: {
+      stage: "acquire_normalize", reason: "schema_validation", observedAt: at,
+      validation: { issues: Array.from({ length: 20 }, (_, issue) => ({ field: `field_${issue}`, rule: `rule_${issue}` })) },
+    } },
+  }]));
+  const health = normalizePipelineLogRecord({ ...common, kind: "health",
+    snapshot: createPipelineOperationsSnapshot({ coordinator: { observers } }),
+  });
+  assert.ok(health);
+  assert.ok(Buffer.byteLength(JSON.stringify(health)) > 16 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(health)) < 64 * 1024);
+  const ordinary = Array.from({ length: 200 }, (_, index) => ({
+    ...common, kind: "lifecycle", event: index % 2 ? "started" : "stopped",
+  }));
+  for (const expected of [[health], ordinary]) {
+    const { directory, path } = await fixture([]);
+    const follower = await createPipelineLogFollower({ directory });
+    await appendFile(path, expected.map((record) => `${JSON.stringify(record)}\n`).join(""));
+    const actual = await follower.poll();
+    assert.deepEqual(actual, expected);
+    assert.equal(actual.coverage.status, "complete");
+    assert.equal(actual.coverage.malformedRecords, 0);
+  }
+});
+
+test("follow reports invalid rows as coverage loss while keeping filtering lossless", async () => {
+  const { directory, path } = await fixture([]);
+  const follower = await createPipelineLogFollower({ directory, stage: "catalog_discovery" });
+  const filtered = { ...common, kind: "span", stage: "history_read", domain: "activity",
+    startMs: 1, lane: 1, durationMs: 1, outcome: "completed" };
+  const valid = { ...common, kind: "lifecycle", event: "started" };
+  await appendFile(path, `{not json}\n{}\n${"x".repeat(70 * 1024)}\n${JSON.stringify(valid)}\n`);
+  const damaged = await follower.poll();
+  assert.deepEqual(damaged, [valid]);
+  assert.equal(damaged.coverage.status, "partial");
+  assert.equal(damaged.coverage.malformedRecords, 2);
+  assert.equal(damaged.coverage.oversizedRecords, 1);
+  await appendFile(path, `${JSON.stringify(filtered)}\n`);
+  const filteredOnly = await follower.poll();
+  assert.deepEqual(filteredOnly, []);
+  assert.equal(filteredOnly.coverage.status, "complete");
+  assert.equal(filteredOnly.coverage.malformedRecords, 0);
+  assert.equal(filteredOnly.coverage.oversizedRecords, 0);
 });
 
 test("invalid CLI input emits a fixed sanitized failure", async () => {

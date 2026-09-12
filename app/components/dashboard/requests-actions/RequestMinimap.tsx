@@ -10,9 +10,9 @@ const MiniBars = memo(function MiniBars({ values, offset, slotWidth }: { values:
   });
 });
 
-export function RequestMinimap({ rows, overview, start, end, total = rows.length, offset = 0, mode, cacheWriteAvailable, onMove }: {
+export function RequestMinimap({ rows, overview, start, end, total = rows.length, offset = 0, mode, cacheWriteAvailable, onMove, interactive = true }: {
   rows: RequestRow[]; start: number; end: number; mode: ChartMode; cacheWriteAvailable: boolean; onMove: (start: number) => void;
-  total?: number; offset?: number; overview?: RequestOverviewPoint[] | null;
+  total?: number; offset?: number; overview?: RequestOverviewPoint[] | null; interactive?: boolean;
 }) {
   const drag = useRef<{ pointerId: number; offset: number } | null>(null);
   const completeOverview = useMemo(() => isCompleteRequestOverview(overview, total), [overview, total]);
@@ -38,15 +38,16 @@ export function RequestMinimap({ rows, overview, start, end, total = rows.length
     drag.current = null;
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  return <div className="requestsActionsMinimap">
-    <svg viewBox="0 0 1000 26" preserveAspectRatio="none" role="slider" aria-label="Request window" tabIndex={0}
-      aria-valuemin={1} aria-valuemax={lastStart} aria-valuenow={start} aria-valuetext={`Request positions ${start} to ${end} of ${total}`}
+  return <div className={`requestsActionsMinimap${interactive ? "" : " isLoading"}`}>
+    <svg viewBox="0 0 1000 26" preserveAspectRatio="none" role={interactive ? "slider" : "img"} aria-label={interactive ? "Request window" : "Request map loading"} tabIndex={interactive ? 0 : undefined} aria-busy={interactive ? undefined : true}
+      aria-valuemin={interactive ? 1 : undefined} aria-valuemax={interactive ? lastStart : undefined} aria-valuenow={interactive ? start : undefined} aria-valuetext={interactive ? `Request positions ${start} to ${end} of ${total}` : undefined}
       onKeyDown={(event) => {
+        if (!interactive) return;
         const next = event.key === "ArrowLeft" ? start - 1 : event.key === "ArrowRight" ? start + 1 : event.key === "PageUp" ? start - windowSize : event.key === "PageDown" ? start + windowSize : event.key === "Home" ? 1 : event.key === "End" ? lastStart : null;
         if (next !== null) { event.preventDefault(); moveTo(next); }
       }}
       onPointerDown={(event) => {
-        if (event.button !== 0 || drag.current) return;
+        if (!interactive || event.button !== 0 || drag.current) return;
         const position = point(event);
         drag.current = { pointerId: event.pointerId, offset: position >= start - 1 && position <= end ? position - (start - 1) : (end - start + 1) / 2 };
         event.currentTarget.setPointerCapture?.(event.pointerId);

@@ -34,6 +34,8 @@ export function createNormalizedPollingObserver(options) {
     prepare,
     intervalMs = 10_000,
     concurrency = 2,
+    interactiveConcurrency = options?.interactiveConcurrency ?? Math.max(1, concurrency),
+    backgroundConcurrency = options?.backgroundConcurrency ?? 1,
     watchTargets = [],
     routeSourceEvent,
     watchSource = fs.watch,
@@ -52,6 +54,13 @@ export function createNormalizedPollingObserver(options) {
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
     throw new TypeError("Normalized polling observer concurrency must be between 1 and 16");
   }
+  if (!Number.isInteger(interactiveConcurrency) || interactiveConcurrency < 1 || interactiveConcurrency > 16) {
+    throw new TypeError("Normalized polling observer interactive concurrency must be between 1 and 16");
+  }
+  if (!Number.isInteger(backgroundConcurrency) || backgroundConcurrency < 1 || backgroundConcurrency > 16) {
+    throw new TypeError("Normalized polling observer background concurrency must be between 1 and 16");
+  }
+  const maxTotalConcurrency = interactiveConcurrency + backgroundConcurrency;
   if (prepare !== undefined && typeof prepare !== "function") {
     throw new TypeError("Normalized polling observer prepare hook must be a function");
   }
@@ -168,10 +177,13 @@ export function createNormalizedPollingObserver(options) {
     }
   }
 
-  function nextPendingHydration() {
+  function nextPendingHydration(allowInteractive, allowBackground) {
     let selected = null;
     for (const item of pendingHydrations.values()) {
       if (runningHydrations.has(item.localSessionId)) continue;
+      const isInteractive = item.priority === 0;
+      if (isInteractive && !allowInteractive) continue;
+      if (!isInteractive && !allowBackground) continue;
       if (!selected || item.priority < selected.priority
         || (item.priority === selected.priority && item.sequence < selected.sequence)) selected = item;
     }
@@ -180,9 +192,18 @@ export function createNormalizedPollingObserver(options) {
 
   function drainHydrations() {
     if (stopped || signal?.aborted) return;
-    while (runningHydrations.size < concurrency) {
-      const item = nextPendingHydration();
-      if (!item) return;
+    while (runningHydrations.size < maxTotalConcurrency) {
+      let activeInteractive = 0;
+      let activeBackground = 0;
+      for (const info of runningHydrations.values()) {
+        if (info.priority === 0) activeInteractive += 1;
+        else activeBackground += 1;
+      }
+      const allowInteractive = activeInteractive < interactiveConcurrency;
+      const allowBackground = activeBackground < backgroundConcurrency;
+      if (!allowInteractive && !allowBackground) break;
+      const item = nextPendingHydration(allowInteractive, allowBackground);
+      if (!item) break;
       pendingHydrations.delete(item.localSessionId);
       if (Number.isFinite(item.sourceEventAt)) {
         const queueDelayMs = Math.max(0, monotonicNow() - item.sourceEventAt);
@@ -194,9 +215,9 @@ export function createNormalizedPollingObserver(options) {
         trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs,
           flow: item.traceFlow, scope: item.traceScope });
       }
-      const task = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope);
-      runningHydrations.set(item.localSessionId, task);
-      void task.then((result) => {
+      const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope);
+      runningHydrations.set(item.localSessionId, { promise: taskPromise, priority: item.priority });
+      void taskPromise.then((result) => {
         for (const resolve of item.waiters) resolve(result);
       }).finally(() => {
         runningHydrations.delete(item.localSessionId);
@@ -234,10 +255,11 @@ export function createNormalizedPollingObserver(options) {
       }
       if (resolveWaiter) pending.waiters.push(resolveWaiter);
       qa.hydrationsCoalesced += 1;
+      drainHydrations();
       return result;
     }
     const active = runningHydrations.get(localSessionId);
-    if (active && !rerunIfActive) return wait ? active : false;
+    if (active && !rerunIfActive) return wait ? active.promise : false;
     if (active) qa.hydrationDirtyAgain += 1;
     const scope = traceScope(localSessionId);
     pendingHydrations.set(localSessionId, {

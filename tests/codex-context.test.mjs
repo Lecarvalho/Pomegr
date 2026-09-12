@@ -734,7 +734,7 @@ test("keeps last-known Codex compaction evidence when a non-continuous tail has 
   const file = path.join(root, "rollout.jsonl");
   await writeFile(file, '{"type":"padding"}\n', "utf8");
   const liveState = createCodexLiveState({ scanLimit: 4, maximumLiveTailBytes: 64, maximumLiveTaskHistoryBytes: 128 });
-  const { generation } = liveState.readRolloutRecords(file, false);
+  const { generation } = await liveState.readRolloutRecords(file, false);
   const compaction = { actorId: "primary", timestamp: "2026-08-25T15:00:03.000Z", trigger: "auto", preTokens: 215_025, inferred: true };
   liveState.mergeLiveContextEvidence(file, generation, { usageSnapshots: [], compactions: [compaction] });
 

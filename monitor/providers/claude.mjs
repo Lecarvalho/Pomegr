@@ -51,6 +51,7 @@ import { claudeRepositoryInventoryCaptureFromProviderOptions } from "./claude-re
 import { createClaudePluginSetupReader } from "./claude-plugin-setup.mjs";
 import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
+import { readClaudeHistoryRecords } from "./claude-history-reader.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const LIVE_USAGE_SUFFIX_BYTES = 256;
@@ -89,11 +90,6 @@ function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   return text.split(/\r?\n/).filter(Boolean).flatMap((line) => {
     try { return [JSON.parse(line)]; } catch { return []; }
   });
-}
-function readJsonlComplete(file) {
-  const stat = statSafe(file); if (!stat?.isFile()) return { records: [], complete: false }; const records = []; let offset = 0; let remainder = ""; let fd;
-  try { fd = fs.openSync(file, "r"); while (offset < stat.size) { const bytes = Math.min(64 * 1024, stat.size - offset); const buffer = Buffer.alloc(bytes); if (fs.readSync(fd, buffer, 0, bytes, offset) !== bytes) return { records: [], complete: false }; offset += bytes; const lines = (remainder + buffer.toString("utf8")).split(/\r?\n/); remainder = lines.pop() || ""; for (const line of lines) { if (!line) continue; try { records.push(JSON.parse(line)); } catch { return { records: [], complete: false }; } } } if (remainder.trim()) { try { records.push(JSON.parse(remainder)); } catch { return { records: [], complete: false }; } } const confirmed = statSafe(file); return confirmed?.size === stat.size && confirmed.mtimeMs === stat.mtimeMs ? { records, complete: true } : { records: [], complete: false };
-  } catch { return { records: [], complete: false }; } finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 function fileIdentity(stat) {
   const device = Number.isFinite(stat?.dev) ? stat.dev : null;
@@ -472,7 +468,8 @@ export function createClaudeProvider(options = {}) {
     fileByAgentId.set("primary", mainFile);
     for (const file of ordinaryAgentFiles) fileByAgentId.set(path.basename(file, ".jsonl"), file);
     const completeHistory = readOptions.completeHistory === true;
-    const completeReads = new Map(files.map((file) => [file, completeHistory ? readJsonlComplete(file) : null]));
+    const completeReads = new Map();
+    for (const file of files) completeReads.set(file, completeHistory ? await readClaudeHistoryRecords(file, options.yieldControl) : null);
     if (completeHistory && [...completeReads.values()].some((item) => !item.complete)) return null;
     const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || readJsonlTail(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
@@ -784,6 +781,8 @@ export function createClaudeProvider(options = {}) {
         routeSourceEvent: routeClaudeSourceEvent,
         intervalMs: options.observerIntervalMs ?? 10_000,
         concurrency: options.observerConcurrency ?? 2,
+        interactiveConcurrency: options.observerInteractiveConcurrency ?? options.observerConcurrency ?? 2,
+        backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
         watchTargets: [projectsRoot, registryRoot],
         watchSource: options.observerWatchSource,
       }), registryObservation, nativeStatus);

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
+import { safeDetail } from "../monitor/providers/claude-tool-detail.mjs";
 import { claudeLifecycleSource } from "../monitor/providers/claude-session-status.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
@@ -22,6 +23,12 @@ function assistantReply(id, timestamp = "2026-09-07T18:47:00.000Z") {
 function awaySummary(timestamp = "2026-09-07T18:48:00.000Z") {
   return { type: "system", subtype: "away_summary", uuid: "PRIVATE_SUMMARY_ID", timestamp, content: "PRIVATE_SUMMARY" };
 }
+
+test("Claude tool details remove control characters before publication", () => {
+  const detail = safeDetail("Bash", { description: "Run\u001b[2J the checks\nnext" });
+  assert.equal(detail, "Run [2J the checks next");
+  assert.doesNotMatch(detail, /[\u0000-\u001f\u007f]/u);
+});
 
 test("session projection never mutates retained provider activity evidence", async () => {
   const evidence = JSON.parse(await readFile(new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8"));

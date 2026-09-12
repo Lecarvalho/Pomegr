@@ -282,6 +282,8 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
   const pollOnce = async () => {
       const output = [];
       let bytesRead = 0;
+      let malformedRecords = 0;
+      let oversizedRecords = 0;
       let partialCoverage = false;
       let missedRotation = false;
       const files = await listFiles(options);
@@ -298,6 +300,7 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
         let partialState = partials.get(path) || { buffer: Buffer.alloc(0), discardingLine: false };
         let partial = partialState.buffer;
         let discardingLine = partialState.discardingLine;
+        if (discardingLine) partialCoverage = true;
         if (entry.size <= offset) {
           offsets.set(path, offset);
           if (partial.length || discardingLine) partialCoverage = true;
@@ -332,9 +335,10 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
               if (line.length <= MAX_LINE_BYTES) {
                 try {
                   const record = normalizePipelineLogRecord(JSON.parse(line.toString("utf8").replace(/\r$/u, "")));
-                  if (record && recordMatches(options, record)) output.push(record);
-                } catch { /* Live output never reports unvalidated source data. */ }
-              }
+                  if (!record) malformedRecords += 1;
+                  else if (recordMatches(options, record)) output.push(record);
+                } catch { malformedRecords += 1; }
+              } else oversizedRecords += 1;
               start = end + 1;
               if (output.length >= pollRecordLimit) { stopOffset = dataStartOffset + start; break; }
             }
@@ -345,8 +349,14 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
               discardingLine = false;
               break;
             }
-            partial = bytes.subarray(start);
-            if (partial.length > MAX_LINE_BYTES) { partial = Buffer.alloc(0); discardingLine = true; partialCoverage = true; }
+            // The next read reuses chunk. Retained line bytes must own their storage.
+            partial = Buffer.from(bytes.subarray(start));
+            if (partial.length > MAX_LINE_BYTES) {
+              partial = Buffer.alloc(0);
+              discardingLine = true;
+              oversizedRecords += 1;
+              partialCoverage = true;
+            }
           }
           if (partial.length || discardingLine) partialCoverage = true;
           if (bytesRead >= pollByteLimit || output.length >= pollRecordLimit) partialCoverage = true;
@@ -354,6 +364,7 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
         offsets.set(path, offset);
         if (partial.length || discardingLine) partials.set(path, { buffer: partial, discardingLine }); else partials.delete(path);
       }
+      partialCoverage ||= malformedRecords > 0 || oversizedRecords > 0;
       const coverage = Object.freeze({
         status: missedRotation ? "rotation_missed" : partialCoverage ? "partial" : "complete",
         missedRotation,
@@ -362,6 +373,8 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
         byteLimit: pollByteLimit,
         recordsReturned: output.length,
         recordLimit: pollRecordLimit,
+        malformedRecords,
+        oversizedRecords,
       });
       Object.defineProperty(output, "coverage", { value: coverage, enumerable: false });
       return Object.freeze(output);
@@ -388,7 +401,7 @@ async function main() {
         try {
           const records = await follower.poll();
           for (const record of records) process.stdout.write(`${JSON.stringify(record)}\n`);
-          if (records.coverage.status !== "complete") process.stderr.write(`[pomegr] Follow coverage: ${records.coverage.status}.\n`);
+          if (records.coverage.status !== "complete") process.stderr.write(`[pomegr] Follow coverage: ${records.coverage.status}; malformed: ${records.coverage.malformedRecords}; oversized: ${records.coverage.oversizedRecords}.\n`);
         } finally { polling = false; }
       };
       await print();

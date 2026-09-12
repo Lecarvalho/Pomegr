@@ -156,4 +156,80 @@ describe("history publication notifications", () => {
     await act(async () => { await Promise.resolve(); });
     expect(fetcher).toHaveBeenCalledTimes(afterFirst);
   });
+
+  it("settles a historical request overview on its committed-history publication without following later revisions", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
+      items: [{ ...snapshot(1), number: 1 }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) })
+      .mockResolvedValue({ ok: true, json: async () => ready });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([snapshot(1)]), contextBoundaries: [], historical: true, sessionId: "claude:recorded-hydration", historyEnabled: true }));
+    await waitFor(() => expect(result.current.history.status).toBe("ready"));
+    expect(result.current.history.overview).toBeNull();
+    expect(HistoryEventSource.instances).toHaveLength(1);
+
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 }));
+    await waitFor(() => expect(result.current.history.overview).toEqual(ready.overview));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 }));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces historical publications behind an in-flight hydration request", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    let firstSignal: AbortSignal | undefined;
+    let firstRequest!: (value: unknown) => void;
+    const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
+      items: [{ ...snapshot(1), number: 1 }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
+    const fetcher = vi.fn((_: string, options?: RequestInit) => {
+      if (!firstSignal) {
+        firstSignal = options?.signal as AbortSignal;
+        return new Promise((resolve) => { firstRequest = resolve; });
+      }
+      return Promise.resolve({ ok: true, json: async () => ready });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([snapshot(1)]), contextBoundaries: [], historical: true, sessionId: "claude:recorded-in-flight", historyEnabled: true }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 });
+      HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 });
+      HistoryEventSource.instances[0].emit({ domain: "history", revision: 4 });
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(firstSignal?.aborted).toBe(false);
+    firstRequest({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.history.overview).toEqual(ready.overview));
+  });
+
+  it("does not replay a queued historical publication after cancellation", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    let firstRequest!: (value: unknown) => void;
+    const fetcher = vi.fn((_: string, options?: RequestInit) => {
+      if (fetcher.mock.calls.length === 1) {
+        expect(options?.signal).toBeInstanceOf(AbortSignal);
+        return new Promise((resolve) => { firstRequest = resolve; });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 0, offset: 0, linkedCount: 0, items: [], overview: [] }) });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const hook = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([snapshot(1)]), contextBoundaries: [], historical: true, sessionId: "claude:recorded-cancelled", historyEnabled: true }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 });
+      HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 });
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    hook.unmount();
+    firstRequest({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 0, offset: 0, linkedCount: 0, items: [], overview: [] }) });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });

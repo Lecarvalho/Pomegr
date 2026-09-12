@@ -107,10 +107,12 @@ for (const disk of [false, true]) {
     const fence = await store.activityFence(sessionId);
     await store.publishActivityContribution(sessionId, { epoch: 1, sequence: 2, activity: [later] });
     const linked = request("abcdefabcdefabcd", "2026-09-10T02:00:02Z");
-    await store.publish(sessionId, { complete: true, requests: [linked], activity: [activity("call-early", early.timestamp, linked.id)] }, { activityFence: fence });
+    const rejectedReplay = await store.publishOutcome(sessionId, { complete: true, requests: [linked], activity: [activity("call-early", early.timestamp, linked.id)] }, { activityFence: fence });
+    assert.equal(rejectedReplay.accepted, false);
     assert.equal((await store.read(sessionId, { kind: "activity" })).items.find((item) => item.id === "call-early").requestId, null, "an obsolete replay cannot write any domain");
     const replayFence = await store.activityFence(sessionId);
-    await store.publish(sessionId, { complete: true, requests: [linked], activity: [activity("call-early", early.timestamp, linked.id), later] }, { activityFence: replayFence });
+    const acceptedReplay = await store.publishOutcome(sessionId, { complete: true, requests: [linked], activity: [activity("call-early", early.timestamp, linked.id), later] }, { activityFence: replayFence });
+    assert.equal(acceptedReplay.accepted, true);
     const afterReplay = await store.read(sessionId, { kind: "activity" });
     assert.deepEqual(afterReplay.items.map((item) => item.id).sort(), ["call-early", "call-later"]);
     assert.equal(afterReplay.items.find((item) => item.id === "call-early").requestId, linked.id);

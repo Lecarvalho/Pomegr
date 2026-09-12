@@ -22,9 +22,9 @@ export function LargestRequestsList({ rows, scopeLabel, selectedId, cacheWriteAv
     <div>{largest.map((row) => {
       return <button type="button" key={row.id} className={`commandQuietAction requestsActionsLargestRow${selectedId === row.id ? " isSelected" : ""}`} aria-pressed={selectedId === row.id}
         aria-label={`Locate request ${requestMarker(row)}, ${row[valueKey].toLocaleString()} ${sortLabel}`} onClick={() => onSelect(row)}>
-        <span className="requestsActionsNumber">{requestMarker(row)}</span>
+        <span className="requestsActionsNumber requestsActionsLargestLabel">{requestMarker(row)}</span>
         <span className="requestsActionsLargestBar"><i aria-hidden="true" style={{ width: `${row[valueKey] / maximum * 100}%` }} /></span>
-        <span className="requestsActionsNumber">{row[valueKey].toLocaleString()}</span>
+        <span className="requestsActionsNumber requestsActionsLargestValue">{row[valueKey].toLocaleString()}</span>
       </button>;
     })}</div>
   </section>;
