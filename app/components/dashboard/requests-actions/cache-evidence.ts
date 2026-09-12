@@ -1,13 +1,14 @@
 import type { CacheEvent, CacheEventFeed, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
 
 export type RequestCacheEvidence = {
-  kind: "refill" | "possible_refill";
+  kind: "refill" | "possible_refill" | "model_change";
   event?: CacheEvent;
   occurrence?: CacheRefillOccurrence;
   readDrop?: CacheReadDropOccurrence;
 };
 
-export function cacheEvidenceLabel(evidence: RequestCacheEvidence) {
+export function cacheEvidenceLabel(evidence: RequestCacheEvidence, compact = false) {
+  if (evidence.kind === "model_change") return compact ? "Reuse drop · model change" : "Cache reuse dropped across a model change";
   return evidence.kind === "refill" ? "Possible full refill" : "Possible refill";
 }
 
@@ -46,7 +47,7 @@ export function requestCacheEvidence(snapshots: RequestSnapshot[], events?: Cach
     // alone can be cache growth or initial creation; event details only enrich it.
     // Occurrences also preserve transitions beyond the detailed event cap.
     if (occurrence) result.set(request.id, { kind: "refill", event, occurrence });
-    else if (readDrop) result.set(request.id, { kind: "possible_refill", readDrop });
+    else if (readDrop) result.set(request.id, { kind: readDrop.kind === "model_change" ? "model_change" : "possible_refill", readDrop });
   }
   return result;
 }

@@ -415,7 +415,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.equal(Number.isSafeInteger(readDrop.count) && readDrop.count > 0 && readDrop.count <= 999, true);
       assert.equal(readDrop.occurrences.length, readDrop.count);
       for (const occurrence of readDrop.occurrences) {
-        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheReadPercent", "gapMs", "id", "observedAt", "previousCacheReadPercent"]);
+        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheReadPercent", "gapMs", "id", ...(occurrence.kind === "model_change" ? ["kind"] : []), "observedAt", "previousCacheReadPercent"]);
         assert.match(occurrence.id, /^cache-read-drop-[a-f0-9]{16}$/);
         assert.equal(Number.isFinite(Date.parse(occurrence.observedAt)), true);
         assert.equal(Number.isFinite(occurrence.previousCacheReadPercent), true);
@@ -423,7 +423,7 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
         assert.equal(Number.isSafeInteger(occurrence.gapMs) && occurrence.gapMs > 0, true);
       }
     }
-    assert.doesNotMatch(JSON.stringify(state.metrics.tokens.cacheReadDrops), /cacheReadComparable|cacheReadPreviousAt|dedupeId|comparisonGroup|model|input|cacheWrite/);
+    assert.doesNotMatch(JSON.stringify(state.metrics.tokens.cacheReadDrops), /cacheReadComparable|cacheReadPreviousAt|dedupeId|comparisonGroup|"model"\s*:|input|cacheWrite/);
     for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
       assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "occurrences", "reasons", "toolChangeAttributions"]);
       assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);

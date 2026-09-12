@@ -54,7 +54,7 @@ export function RequestMinimap({ rows, overview, start, end, total = rows.length
         move(event);
       }} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { drag.current = null; }}>
       <MiniBars values={values} offset={barOffset} slotWidth={slotWidth} />
-      {rows.map((row, index) => row.cacheEvidence && <line key={row.id} className={`requestsActionsMiniRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`} x1={(offset + index + .5) * slotWidth} x2={(offset + index + .5) * slotWidth} y1={1} y2={8} />)}
+      {rows.map((row, index) => row.cacheEvidence && <line key={row.id} className={`requestsActionsMiniRefill${row.cacheEvidence.kind !== "refill" ? " isInferred" : ""}`} x1={(offset + index + .5) * slotWidth} x2={(offset + index + .5) * slotWidth} y1={1} y2={8} />)}
       <rect className={`requestsActionsMiniWindow${start === 1 && end === total ? " isWhole" : ""}`} x={(start - 1) * slotWidth} y={1} width={windowSize * slotWidth} height={24} />
     </svg>
   </div>;

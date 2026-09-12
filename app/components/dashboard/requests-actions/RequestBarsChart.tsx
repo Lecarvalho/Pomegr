@@ -52,6 +52,8 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
     .map((id) => visible.find((row) => row.id === id && row.cacheEvidence))
     .find((row) => row !== undefined);
   const labelX = labeledRow ? left + step * visible.indexOf(labeledRow) + width / 2 : left;
+  const labelText = labeledRow?.cacheEvidence ? cacheEvidenceLabel(labeledRow.cacheEvidence, true) : "";
+  const labelStart = Math.max(left, Math.min(labelX + 12, right - labelText.length * 6));
   const keyboardStep = (event: KeyboardEvent<SVGSVGElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
@@ -90,15 +92,15 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
         {stack}
         {selected && <rect className="requestsActionsSelection" x={x} y={barTop} width={width} height={Math.max(1, height(stacked))} />}
         {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} /><text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text></g>}
-        {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind === "possible_refill" ? " isInferred" : ""}`}>
+        {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind !== "refill" ? " isInferred" : ""}`}>
           <title>{cacheEvidenceLabel(row.cacheEvidence)} · request {requestMarker(row)}</title>
           <line x1={x + width / 2} x2={x + width / 2} y1={top - 18} y2={bottom} />
-          <g transform={`translate(${x + width / 2 - 8} ${top - 42})`}><CacheRefillIcon size={16} inferred={row.cacheEvidence.kind === "possible_refill"} /></g>
+          <g transform={`translate(${x + width / 2 - 8} ${top - 42})`}><CacheRefillIcon size={16} inferred={row.cacheEvidence.kind !== "refill"} /></g>
         </g>}
         {selected && <text className="requestsActionsSelectedLabel" x={barCenter(index)} y={Math.max(16, barTop - 8)} textAnchor="middle">{requestMarker(row)}</text>}
       </g>;
     })}
-    {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelX < right - 115 ? labelX + 12 : labelX - 12} y={top - 43} textAnchor={labelX < right - 115 ? "start" : "end"}>{cacheEvidenceLabel(labeledRow.cacheEvidence)}</text>}
+    {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelStart} y={top - 43} textAnchor="start">{labelText}</text>}
     <g className="requestsActionsAxis">
       {axisLabels.map((label) => <text key={label.index} x={label.x} y={phone ? 192 : 266} textAnchor={label.anchor}>{label.text}</text>)}
     </g>

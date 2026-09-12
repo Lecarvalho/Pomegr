@@ -247,9 +247,12 @@ they preserve qualifying transitions beyond the detailed event cap. Detailed
 `refill`/`miss_refill` events may enrich a matched transition but never create a line
 on their own. Ordinary cache growth and initial cache creation remain visible in
 cache-write bars, request token details, and the separate event disclosure. Independent
-read-drop occurrences use an open arrowhead and **Possible refill**, with the selected
-request explicitly labeled **Inference · no recorded cache write**. Neither bar height
-nor an uncached-input spike creates a marker. Reuse events have no refill marker.
+same-model read-drop occurrences use an open arrowhead and **Possible refill**, with the
+selected request explicitly labeled **Inference · no recorded cache write**. A read-drop
+occurrence across a recorded model change uses the same open arrowhead and the label
+**Cache reuse dropped across a model change**; it carries no refill, expiry, or causation
+inference. Neither bar height nor an uncached-input spike creates a marker. Reuse events
+have no refill marker.
 Association requires a unique retained request with the same normalized agent and
 observation timestamp; unmatched or ambiguous evidence is omitted. Recorded-write
 evidence takes precedence if both feeds match the same request. The agent filter scopes
@@ -264,21 +267,31 @@ contribute to report refill totals, or create an efficiency recommendation. Code
 normalization explicitly marks eligible observations; other adapters and legacy
 checkpoints without that metadata remain unavailable.
 
-The deterministic starting rule requires two adjacent, distinct requests from the
-same normalized agent, recorded model, and comparison group. Both have at least
-8,000 prompt-input tokens; the preceding cache-read share is at least 80% and the
-current share at most 20%. The current cached-token count must also be at most 20%
-of its predecessor, so new uncached input alone cannot trigger a drop. The current
-request must have no positive recorded cache write. These thresholds describe a
-pattern, not a validated measurement of a refill or cache failure. The 20%
-current-share ceiling retains severe drops with partial reuse above 10%; the
-separate requirement for at least an 80% fall in actual cached tokens still applies.
+The same-model starting rule requires two adjacent, distinct requests from the same
+normalized agent, recorded model, and comparison group. Both have at least 8,000
+prompt-input tokens; the preceding cache-read share is at least 80% and the current
+share at most 20%. The current cached-token count must also be at most 20% of its
+predecessor, so new uncached input alone cannot trigger a drop. The current request
+must have no positive recorded cache write. These thresholds describe a pattern, not
+a validated measurement of a refill or cache failure. The 20% current-share ceiling
+retains severe drops with partial reuse above 10%; the separate requirement for at
+least an 80% fall in actual cached tokens still applies.
+
+When the two recorded models differ, the same normalized agent and comparison group,
+adjacency, and numeric-provenance gates still apply, as do the prompt, read-share, cached-token-drop,
+and zero-write thresholds above. Such an occurrence is retained with the optional
+`model_change` kind and the fixed label **Cache reuse dropped across a model change**.
+It describes the observed loss of reuse across a model change; it does not infer a
+refill, expiry, or cause. Recorded model identifiers remain monitor-private. An
+omitted kind is the existing same-model possible-refill inference.
 
 The adapter must retain explicit numeric input/read/write provenance and the normalized
 timestamp of the immediately preceding eligible observation. Missing counts
 are not known zero. Coerced, conflicting, clamped, invalid, or incomplete counts,
-fallback-only timestamps, missing intermediate observations, model/group changes,
-and compaction or context-reduction boundaries break comparisons. Detection checks
+fallback-only timestamps, missing intermediate observations, comparison-group changes,
+and compaction or context-reduction boundaries break comparisons. A model change
+breaks the same-model path but may select the `model_change` path when all other gates
+pass. Detection checks
 all retained boundaries, not only the UI's newest 100. A smaller overlapping source
 read may recover already-proven context at an identical immutable request and
 carry it into following records. Without that exact overlap or recorded model
@@ -287,21 +300,27 @@ context, new requests remain ineligible; no latest-session model is guessed.
 Only a high-to-low transition is counted; repeated low-read requests and duplicate
 observations do not add occurrences. Each agent and fork establishes its own
 baseline. Up to 999 chronological occurrences and their count are retained per
-visible agent, within the existing normalized evidence bounds. `ready` means at
+visible agent, within the existing normalized evidence bounds. The optional kind is
+the bounded public enum `model_change`; its absence denotes the same-model path.
+`ready` means at
 least one eligible observation exists, including when no transition qualifies;
 `unavailable` means no eligible evidence. Counts describe retained evidence only.
 
-List and Tree reuse the amber icon, scoped count, and occurrence popover. Read-drop
-occurrences are explicitly labeled as an **Inference**, with the limitation:
+List and Tree reuse the amber icon, scoped count, and occurrence popover. Same-model
+read-drop occurrences are explicitly labeled as an **Inference**, with the limitation:
 **No positive cache-write evidence, so a refill and its cause cannot be confirmed.**
-The bottom **Open signal definition** link documents the complete rule and caveats
-in [Signal dictionary](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped).
+Model-change occurrences use the fixed label **Cache reuse dropped across a model
+change** and carry no refill, expiry, or causation inference. The bottom **Open signal
+definition** link documents the complete rules and caveats in the [same-model signal
+definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped) and [model-change signal
+definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
 Elapsed time is supporting evidence, never proof of expiration; `30m+` never
 enables an expiry inference. No cost, charge, or savings claim is made.
 
 The public feed contains only readiness, normalized agent IDs, bounded counts,
 opaque occurrence IDs, original observation timestamps, preceding/current read
-percentages, and elapsed gaps. Eligibility, predecessor metadata, model names,
+percentages, elapsed gaps, and the optional bounded `model_change` kind. Eligibility,
+predecessor metadata, model names,
 comparison groups, dedupe keys, raw usage, prompts, and source paths stay private.
 
 ## Live resource use

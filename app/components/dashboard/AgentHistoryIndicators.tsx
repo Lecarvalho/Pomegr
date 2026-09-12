@@ -2,7 +2,7 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import type { CacheLifetimeInference, CacheReadDropCount, CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
-import { cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
+import { cacheReadReuseDroppedModelChangeSignalDefinition, cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
 import { formatDuration, timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { ExternalLink } from "../ExternalLink";
@@ -55,10 +55,14 @@ export function summarizeCacheReadDropOccurrences(cacheReadDrops: CacheReadDropC
     .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
 }
 
-function cacheReadDropSummary(count: number, representedAgents = 1) {
-  const occurrences = count === 1 ? "1 time" : `${count} times`;
+export function cacheReadDropDescription(count: number, occurrences: ReturnType<typeof summarizeCacheReadDropOccurrences>, representedAgents = 1) {
+  const modelChanges = occurrences.filter((occurrence) => "kind" in occurrence && occurrence.kind === "model_change").length;
+  const possibleRefills = count - modelChanges;
+  const occurrenceText = count === 1 ? "1 time" : `${count} times`;
   const scope = representedAgents > 1 ? ` across ${representedAgents} agents` : "";
-  return `Possible cache refill inferred ${occurrences}${scope}.`;
+  if (modelChanges === 0) return `Possible cache refill inferred ${occurrenceText}${scope}.`;
+  if (possibleRefills === 0) return `Cache reuse dropped across a model change ${occurrenceText}${scope}.`;
+  return `Cache reuse drops observed ${occurrenceText}${scope}: ${possibleRefills} possible cache ${possibleRefills === 1 ? "refill" : "refills"} inferred; ${modelChanges} across a model ${modelChanges === 1 ? "change" : "changes"}.`;
 }
 
 function CacheRefillTrigger({ count, label, expanded, controls, onClick, text }: {
@@ -268,7 +272,22 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
   const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions, cacheRefillOccurrences);
   const cacheReadDropOccurrences = summarizeCacheReadDropOccurrences(cacheReadDrops, agentIds);
-  const cacheReadDropLabel = cacheReadDropSummary(cacheReadDropCount, agentIds.length);
+  const cacheReadDropLabel = cacheReadDropDescription(cacheReadDropCount, cacheReadDropOccurrences, agentIds.length);
+  const modelChangeReadDropCount = cacheReadDropOccurrences.filter((occurrence) => "kind" in occurrence && occurrence.kind === "model_change").length;
+  const possibleRefillReadDropCount = cacheReadDropCount - modelChangeReadDropCount;
+  const cacheReadDropTitle = modelChangeReadDropCount === 0
+    ? "Possible cache refill"
+    : possibleRefillReadDropCount === 0
+      ? "Cache reuse dropped across a model change"
+      : "Cache reuse drops observed";
+  const cacheReadDropDialogLabel = modelChangeReadDropCount === 0 ? "Possible cache refill evidence" : "Cache reuse drop evidence";
+  const cacheReadDropTriggerText = expandedRows
+    ? modelChangeReadDropCount === 0
+      ? `Cache-read drops ×${cacheReadDropCount} · possible refill inference`
+      : possibleRefillReadDropCount === 0
+        ? `Cache reuse drops ×${cacheReadDropCount} · model change`
+        : `Cache reuse drops ×${cacheReadDropCount}`
+    : undefined;
   if (summary.total === 0 && cacheRefillCount === 0 && cacheReadDropCount === 0) return null;
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>
@@ -301,11 +320,12 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
       </CacheEvidencePopover>}
     </span>}
     {cacheReadDropCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cacheReadDropPopoverAnchorRef}>
-      <CacheRefillTrigger count={cacheReadDropCount} text={expandedRows ? `Cache-read drops ×${cacheReadDropCount} · possible refill inference` : undefined} label={cacheReadDropLabel} expanded={cacheReadDropPopoverOpen} controls={cacheReadDropPopoverId} onClick={() => setCacheReadDropPopoverOpen((open) => !open)} />
-      {cacheReadDropPopoverOpen && <CacheEvidencePopover anchorRef={cacheReadDropPopoverAnchorRef} id={cacheReadDropPopoverId} ariaLabel="Possible cache refill evidence" eyebrow="Cache evidence" title="Possible cache refill" closeLabel="Close possible cache refill evidence" onClose={closeCacheReadDropPopover} summary={cacheReadDropSummary(cacheReadDropCount, agentIds.length)} className="cacheRefillPopover">
-        <ol className="cacheRefillPopoverOccurrences" aria-label="Possible cache refill occurrences">
+      <CacheRefillTrigger count={cacheReadDropCount} text={cacheReadDropTriggerText} label={cacheReadDropLabel} expanded={cacheReadDropPopoverOpen} controls={cacheReadDropPopoverId} onClick={() => setCacheReadDropPopoverOpen((open) => !open)} />
+      {cacheReadDropPopoverOpen && <CacheEvidencePopover anchorRef={cacheReadDropPopoverAnchorRef} id={cacheReadDropPopoverId} ariaLabel={cacheReadDropDialogLabel} eyebrow="Cache evidence" title={cacheReadDropTitle} closeLabel={`Close ${cacheReadDropDialogLabel}`} onClose={closeCacheReadDropPopover} summary={cacheReadDropLabel} className="cacheRefillPopover">
+        <ol className="cacheRefillPopoverOccurrences" aria-label={`${cacheReadDropTitle} occurrences`}>
           {cacheReadDropOccurrences.map((occurrence, index) => {
-            const signal = cacheReadReuseDroppedSignalDefinition();
+            const modelChanged = "kind" in occurrence && occurrence.kind === "model_change";
+            const signal = modelChanged ? cacheReadReuseDroppedModelChangeSignalDefinition() : cacheReadReuseDroppedSignalDefinition();
             return <li key={occurrence.id}>
               <div className="cacheRefillPopoverOccurrenceHeading">
                 <span>{index + 1}</span>
@@ -313,8 +333,9 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
               </div>
               <dl className="cacheRefillEvidenceGrid cacheReadDropEvidenceGrid">
                 <div><dt>Observed</dt><dd>{occurrence.previousCacheReadPercent}% → {occurrence.cacheReadPercent}% cache read</dd></div>
-                <div><dt>Inference</dt><dd>Possible cache refill.</dd></div>
-                <div><dt>Limitation</dt><dd>No positive cache-write evidence, so a refill and its cause cannot be confirmed.</dd></div>
+                {modelChanged
+                  ? <><div><dt>Model</dt><dd>Model change recorded between requests.</dd></div><div><dt>Limitation</dt><dd>A model change was recorded between these requests. A refill and its cause cannot be confirmed.</dd></div></>
+                  : <><div><dt>Inference</dt><dd>Possible cache refill.</dd></div><div><dt>Limitation</dt><dd>No positive cache-write evidence, so a refill and its cause cannot be confirmed.</dd></div></>}
               </dl>
               <div className="cacheRefillDefinition">
                 <code>{signal.code}</code>

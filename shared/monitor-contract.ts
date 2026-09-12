@@ -289,6 +289,8 @@ export type CacheReadDropOccurrence = {
   previousCacheReadPercent: number;
   cacheReadPercent: number;
   gapMs: number;
+  /** A recorded model changed between otherwise comparable adjacent requests. */
+  kind?: "model_change";
 };
 
 export type CacheReadDropCount = {

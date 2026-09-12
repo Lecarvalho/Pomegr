@@ -87,6 +87,16 @@ export function cacheReadReuseDroppedSignalDefinition(): CacheSignalDefinition {
   };
 }
 
+export function cacheReadReuseDroppedModelChangeSignalDefinition(): CacheSignalDefinition {
+  return {
+    code: "cache.read_reuse_dropped.model_change",
+    anchor: "cache-read-reuse-dropped-model-change",
+    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-read-reuse-dropped-model-change`,
+    observed: "Cache reuse dropped across a model change.",
+    impact: "A refill and its cause cannot be confirmed.",
+  };
+}
+
 export function cacheRefillSignalDefinition(occurrence: Pick<CacheRefillOccurrence, "cacheLifetimeInference" | "messageChangeSequence" | "providerStatus" | "reason" | "toolChangeAttribution">) {
   if (occurrence.messageChangeSequence) return CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS[occurrence.messageChangeSequence];
   if (occurrence.reason === "tools_changed" && occurrence.toolChangeAttribution?.cause === "remote_control_connected") {

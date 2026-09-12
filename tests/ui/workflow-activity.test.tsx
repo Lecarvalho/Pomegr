@@ -265,6 +265,38 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.queryByRole("button", { name: /Possible cache refill inferred/ })).not.toBeInTheDocument();
   });
 
+  it("describes model-change cache-read drops without presenting them as possible refills", async () => {
+    const user = userEvent.setup();
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheReadDrops={[{
+      agentId: "primary",
+      count: 1,
+      occurrences: [{ id: "model-change", kind: "model_change", observedAt: "2026-08-15T12:01:00.000Z", previousCacheReadPercent: 91, cacheReadPercent: 6, gapMs: 60_000 }],
+    }]} />);
+
+    await user.click(screen.getByRole("button", { name: "Cache reuse dropped across a model change 1 time." }));
+    const popover = screen.getByRole("dialog", { name: "Cache reuse drop evidence" });
+    expect(popover).toHaveTextContent("Cache reuse dropped across a model change");
+    expect(popover).toHaveTextContent("91% → 6% cache read");
+    expect(popover).toHaveTextContent("A model change was recorded between these requests. A refill and its cause cannot be confirmed.");
+    expect(popover).not.toHaveTextContent("Possible cache refill.");
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change");
+  });
+
+  it("keeps mixed cache-read-drop counts neutral in tree accessibility labels", () => {
+    const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
+    const cacheReadDrops: CacheReadDropCount[] = [{
+      agentId: "primary",
+      count: 2,
+      occurrences: [
+        { id: "same-model", observedAt: "2026-08-15T12:01:00.000Z", previousCacheReadPercent: 92, cacheReadPercent: 4, gapMs: 60_000 },
+        { id: "model-change", kind: "model_change", observedAt: "2026-08-15T12:02:00.000Z", previousCacheReadPercent: 86, cacheReadPercent: 8, gapMs: 60_000 },
+      ],
+    }];
+    render(treeView({ agents: [primary], cacheReadDrops, sessionId: "codex:mixed-cache-read-drops", workflows: [] }));
+
+    expect(screen.getByRole("treeitem", { name: /2 cache reuse drops \(1 possible cache refill inferred, 1 across model change\)/ })).toBeInTheDocument();
+  });
+
   it("caps an inferred cache-refill indicator at 99+ while retaining its full accessible count", () => {
     render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheReadDrops={[{
       agentId: "primary",

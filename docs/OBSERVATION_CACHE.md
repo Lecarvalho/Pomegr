@@ -624,10 +624,19 @@ before presentation caps, using the thresholds and boundaries in [Metrics](METRI
 The read-share transition is at least 80% to at most 20%, with an independent
 requirement that actual cached tokens fall by at least 80%. The broader
 current-share ceiling changes only D derivation; evidence and response shapes
-remain compatible.
+remain compatible. Same-model occurrences omit `kind` and retain the existing
+possible-refill inference. When recorded models differ, D may retain the occurrence
+with the bounded `kind: "model_change"` value when the same normalized agent and
+comparison group have adjacent observations with explicit provenance, no
+compaction/context-reduction, and the prompt-size, read-share, cached-token collapse,
+and zero-write gates pass. F labels that occurrence **Cache reuse dropped
+across a model change** and makes no refill, expiry, or causation inference; model
+identifiers remain monitor-private.
 This feed is separate from write-backed cache events and report counts. F reuses
-the existing agent indicator and popover, labels the conclusion as an inference,
-and links the signal definition. It never reconstructs comparisons from request
+the existing agent indicator and popover, labels the same-model conclusion as an inference,
+and links the [same-model signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped)
+or [model-change signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
+It never reconstructs comparisons from request
 rows or provider schemas. S continues to serve committed responses only: no new
 endpoint, source read, subscription, polling lane, or provider request is added.
 
@@ -636,8 +645,9 @@ checkpoint without explicit eligibility remains unknown until normal background
 normalization commits a complete replacement. Eligibility and predecessor metadata
 remain inside L1/L2 evidence and never serialize to the browser. The public feed
 allows only readiness, normalized agent IDs, bounded counts, opaque occurrence IDs,
-original timestamps, two read percentages, and elapsed gaps. No raw usage, source
-paths, model identities, comparisons, prompts, or credentials are added. Existing
+original timestamps, two read percentages, elapsed gaps, and the optional bounded
+`model_change` kind. No raw usage, source paths, model identities, comparisons,
+prompts, or credentials are added. Existing
 revision handling, atomic commits, last-known-good retention, readiness, cache-only
 GETs, and UI polling remain unchanged.
 

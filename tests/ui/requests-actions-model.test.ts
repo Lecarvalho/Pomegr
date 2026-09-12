@@ -254,4 +254,13 @@ describe("requests and actions model", () => {
     const result = scopedRows(feed([request("one", "primary", observedAt)]), [], "all", undefined, readDropFeed("primary", observedAt));
     expect(result[0].cacheEvidence).toMatchObject({ kind: "possible_refill", readDrop: { id: "drop-1" } });
   });
+
+  it("preserves a monitor-recorded model-change drop without classifying a refill", () => {
+    const observedAt = "2026-08-01T12:00:00.000Z";
+    const drops = readDropFeed("primary", observedAt);
+    drops.items[0].occurrences[0].kind = "model_change";
+    const result = scopedRows(feed([request("one", "primary", observedAt)]), [], "all", undefined, drops);
+    expect(result[0].cacheEvidence).toMatchObject({ kind: "model_change", readDrop: { kind: "model_change" } });
+    expect(scopedRows(feed([request("child", "child", observedAt)]), [], "all", undefined, drops)[0].cacheEvidence).toBeUndefined();
+  });
 });
