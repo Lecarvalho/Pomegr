@@ -159,6 +159,16 @@ test("source-complete Activity commits while the unrelated session derivation is
 });
 
 test("stopping cancels contribution retries and prevents a dirty replay follow-up", async (context) => {
+  // Hold the retry clock while startup and session derivation settle. Real
+  // elapsed time here can exceed the first retry's 100 ms deadline under load.
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const waitFor = async (predicate, message) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (predicate()) return;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.fail(message);
+  };
   let releaseHistory;
   const historyGate = new Promise((resolve) => { releaseHistory = resolve; });
   let historyReads = 0;
@@ -202,21 +212,25 @@ test("stopping cancels contribution retries and prevents a dirty replay follow-u
   };
   const runtime = createMonitorRuntime({
     providerRegistry: registry, checkpointStore: false, historyStore, repositoryInventory,
-    observationCommitDelayMs: 0, scheduleObservation: (task) => setTimeout(task, 0),
+    observationCommitDelayMs: 0, scheduleObservation: (task) => setImmediate(task), cancelObservation: clearImmediate,
     resourceUsageSampler: { async sample() {}, get() { return null; } },
   });
   context.after(async () => { releaseHistory(); await runtime.stopObservation(); });
   await runtime.startObservation();
-  for (let attempt = 0; attempt < 50 && historyReads !== 1; attempt += 1) await pause(2);
+  await waitFor(() => historyReads === 1, "the initial replay did not start");
   assert.equal(historyReads, 1);
   assert.equal(contributionAttempts, 1);
   const laterEvidence = JSON.parse(JSON.stringify(evidence));
   laterEvidence.session.updatedAt = "2026-09-10T13:00:00.000Z";
   observerPublisher.publishSession("codex", evidence.localId, laterEvidence);
-  await pause(20);
+  await waitFor(
+    () => runtime.serveSession(`codex:${evidence.localId}`).snapshot?.publicState?.session?.updatedAt === laterEvidence.session.updatedAt,
+    "the newer observation did not commit while the replay was held",
+  );
   await runtime.stopObservation();
   releaseHistory();
-  await pause(150);
+  context.mock.timers.tick(1_000);
+  await waitFor(() => runtime.observationDiagnostics().historyRefresh.active === 0, "the held replay did not settle");
   assert.equal(contributionAttempts, 1, "a stopped runtime never executes its queued contribution retry");
   assert.equal(historyReads, 1, "a stopped runtime never starts its dirty replay follow-up");
 });
