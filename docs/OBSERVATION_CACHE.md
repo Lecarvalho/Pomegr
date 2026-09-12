@@ -838,11 +838,34 @@ failed Claude adapter cannot occupy Codex workers, and vice versa. Within one ob
 duplicate events for a queued session coalesce. If a source changes while that session is
 already being acquired, one dirty-again pass is retained so the newest complete records
 are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently. Each provider reserves two interactive hydration slots for newly
-discovered sessions, source notifications, and explicit selection, plus one background
-slot for routine eager reconciliation. Promoting a queued background session immediately
-rechecks interactive capacity. These are asynchronous event-loop tasks, so complete-file
-readers must also yield cooperatively; the slots do not imply separate CPU workers.
+workers concurrently. Each provider defaults to two interactive hydration slots plus
+one background slot. First publication for a live or needs-input session and explicit
+selection use urgent priority; ordinary source updates can occupy only one of the two
+interactive slots. Urgent work may use both. With a custom single interactive slot,
+urgent work leads queued updates but cannot preempt an acquisition already running.
+Promoting a queued session immediately rechecks capacity without concurrent acquisition
+of the same session.
+
+Initial live hydration enters the queue directly with session-local preparation, ahead
+of bulk working-set preparation. It retains urgent eligibility across catalog refreshes
+until a candidate publishes successfully. The observer's private publication bookkeeping
+is pruned against its catalog and cleared on shutdown. Cold-discovered historical rows
+and routine reconciliation stay in the background lane. Broad lifecycle/index catalog
+notifications refresh non-live rows in that lane too; exact source notifications keep
+ordinary interactive priority. First-live work is queued before catalog fan-out. These
+are asynchronous event-loop tasks, so complete-file readers must also yield cooperatively;
+the slots do not imply separate CPU workers or a fixed source-to-display latency.
+
+Selecting a restored live snapshot with stale lifecycle evidence also queues urgent
+revalidation on a cache hit. Repeated reads coalesce, and a selection made before the
+observer attaches retains only the latest startup request. A fresh candidate awaiting
+commit suppresses redundant revalidation. Restored live evidence temporarily withholds
+its acquisition cursor so an unchanged source still normalizes once; normal cursor reuse
+resumes after fresh evidence commits. The saved revision remains readable throughout.
+Historical snapshots and freshly acquired unknown status do not trigger this restore
+refresh. GETs still serve committed caches only; they never acquire provider evidence
+synchronously. Atomic commits, revision handling, checkpoint privacy, and browser data
+boundaries remain unchanged.
 
 The adapter may map a known source directly through its private reverse index. A newly
 created or unresolved source requests a fresh catalog read that bypasses short-lived

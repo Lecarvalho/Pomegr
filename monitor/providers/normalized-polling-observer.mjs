@@ -13,6 +13,10 @@ import { createPipelineFailureRecorder } from "../pipeline-operations-failures.m
  */
 export { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 
+const URGENT = 0;
+const SOURCE_UPDATE = 1;
+const BACKGROUND = 2;
+
 function watchFilename(value) {
   if (typeof value === "string") return value;
   if (Buffer.isBuffer(value)) return value.toString("utf8");
@@ -61,6 +65,7 @@ export function createNormalizedPollingObserver(options) {
     throw new TypeError("Normalized polling observer background concurrency must be between 1 and 16");
   }
   const maxTotalConcurrency = interactiveConcurrency + backgroundConcurrency;
+  const sourceUpdateConcurrency = Math.max(1, interactiveConcurrency - 1);
   if (prepare !== undefined && typeof prepare !== "function") {
     throw new TypeError("Normalized polling observer prepare hook must be a function");
   }
@@ -92,6 +97,7 @@ export function createNormalizedPollingObserver(options) {
   const runningHydrations = new Map();
   const latestEntries = new Map();
   const catalogHydrations = new Map();
+  const hydratedSessions = new Set();
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
@@ -163,6 +169,7 @@ export function createNormalizedPollingObserver(options) {
       if (!stopped && !signal?.aborted && candidate) {
         failureStage = "session_publication";
         publisher.publishSession(localSessionId, candidate);
+        hydratedSessions.add(localSessionId);
         qa.candidatesPublished += 1;
       }
       trace?.finishFlow?.(flow, { outcome: candidate ? "completed" : "rejected" });
@@ -177,12 +184,18 @@ export function createNormalizedPollingObserver(options) {
     }
   }
 
-  function nextPendingHydration(allowInteractive, allowBackground) {
+  function needsInitialLiveHydration(localSessionId) {
+    const entry = latestEntries.get(localSessionId);
+    return Boolean(entry?.isLive || entry?.needsInput) && !hydratedSessions.has(localSessionId);
+  }
+
+  function nextPendingHydration(allowInteractive, allowSourceUpdate, allowBackground) {
     let selected = null;
     for (const item of pendingHydrations.values()) {
       if (runningHydrations.has(item.localSessionId)) continue;
-      const isInteractive = item.priority === 0;
+      const isInteractive = item.priority < BACKGROUND;
       if (isInteractive && !allowInteractive) continue;
+      if (item.priority === SOURCE_UPDATE && !allowSourceUpdate) continue;
       if (!isInteractive && !allowBackground) continue;
       if (!selected || item.priority < selected.priority
         || (item.priority === selected.priority && item.sequence < selected.sequence)) selected = item;
@@ -194,15 +207,20 @@ export function createNormalizedPollingObserver(options) {
     if (stopped || signal?.aborted) return;
     while (runningHydrations.size < maxTotalConcurrency) {
       let activeInteractive = 0;
+      let activeSourceUpdates = 0;
       let activeBackground = 0;
       for (const info of runningHydrations.values()) {
-        if (info.priority === 0) activeInteractive += 1;
+        if (info.priority < BACKGROUND) activeInteractive += 1;
         else activeBackground += 1;
+        if (info.priority === SOURCE_UPDATE) activeSourceUpdates += 1;
       }
       const allowInteractive = activeInteractive < interactiveConcurrency;
       const allowBackground = activeBackground < backgroundConcurrency;
       if (!allowInteractive && !allowBackground) break;
-      const item = nextPendingHydration(allowInteractive, allowBackground);
+      // Keep one of the default two interactive slots available for first live
+      // publication or selection, even during a continuous source-update burst.
+      const item = nextPendingHydration(allowInteractive,
+        activeSourceUpdates < sourceUpdateConcurrency, allowBackground);
       if (!item) break;
       pendingHydrations.delete(item.localSessionId);
       if (Number.isFinite(item.sourceEventAt)) {
@@ -232,7 +250,7 @@ export function createNormalizedPollingObserver(options) {
    */
   function enqueueHydration(localSessionId, {
     prepared,
-    priority = 1,
+    priority = BACKGROUND,
     rerunIfActive = false,
     wait = false,
     requested = false,
@@ -247,7 +265,7 @@ export function createNormalizedPollingObserver(options) {
     if (pending) {
       pending.priority = Math.min(pending.priority, priority);
       pending.requested ||= requested;
-      if (priority === 0 || (pending.priority !== 0 && prepared !== undefined)) pending.prepared = prepared;
+      if (priority < BACKGROUND || (pending.priority === BACKGROUND && prepared !== undefined)) pending.prepared = prepared;
       if (Number.isFinite(sourceEventAt)) {
         pending.sourceEventAt = Number.isFinite(pending.sourceEventAt)
           ? Math.min(pending.sourceEventAt, sourceEventAt)
@@ -321,15 +339,21 @@ export function createNormalizedPollingObserver(options) {
     }
   }
 
-  function scheduleEagerHydration(entries, previousIds) {
+  function scheduleEagerHydration(entries) {
     preparationGeneration += 1;
-    pendingEagerEntries = entries.filter((entry) => entry.detailReadiness !== "unavailable" && shouldEagerHydrate(entry)).map((entry) => ({
-      entry,
-      // Newly discovered sessions enter acquisition ahead of routine
-      // working-set reconciliation without changing public catalog order.
-      priority: previousIds.has(entry.localId) ? 2 : 0,
-    }));
-    void drainEagerPreparation();
+    const background = [];
+    for (const entry of entries) {
+      if (entry.detailReadiness === "unavailable" || !shouldEagerHydrate(entry)) continue;
+      if (needsInitialLiveHydration(entry.localId)) {
+        // Do not wait for preparation of unrelated history. Keep retrying this
+        // lane across catalog refreshes until initial evidence is published.
+        enqueueHydration(entry.localId, { priority: URGENT, rerunIfActive: true });
+      } else background.push({ entry, priority: BACKGROUND });
+    }
+    pendingEagerEntries = background;
+    // Let urgent workers start their session-local preparation before a bulk
+    // preparer can do synchronous work on this same event loop.
+    void yieldControl().then(() => drainEagerPreparation(), () => {});
   }
 
   /** @param {{fresh?: boolean, sessionIds?: string[], sourceEventAt?: number}} [request] */
@@ -362,24 +386,27 @@ export function createNormalizedPollingObserver(options) {
       }
       if (stopped || signal?.aborted) return;
       if (!Array.isArray(entries)) throw new TypeError("Provider catalog is unavailable");
-      const previousIds = new Set(latestEntries.keys());
       latestEntries.clear();
       for (const entry of entries) {
         if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
       }
       publisher.publishCatalog(entries);
+      for (const id of hydratedSessions) {
+        if (!latestEntries.has(id)) hydratedSessions.delete(id);
+      }
+      // Queue initial live loads before broad catalog notifications can consume
+      // acquisition capacity. Routine eager preparation remains independent.
+      scheduleEagerHydration(entries);
       // Lifecycle/index notifications hydrate against the catalog just read,
       // including sessions that left the eager working set on this revision.
       for (const [localSessionId, eventAt] of rehydrate) {
         preparationGeneration += 1;
         if (latestEntries.has(localSessionId) && latestEntries.get(localSessionId).detailReadiness !== "unavailable") enqueueHydration(localSessionId, {
-          priority: 0, rerunIfActive: true, sourceEventAt: eventAt,
+          priority: needsInitialLiveHydration(localSessionId) ? URGENT
+            : latestEntries.get(localSessionId).isLive || latestEntries.get(localSessionId).needsInput ? SOURCE_UPDATE : BACKGROUND,
+          rerunIfActive: true, sourceEventAt: eventAt,
         });
       }
-      // Catalog discovery is an independent lane. Source preparation and
-      // acquisition continue asynchronously and cannot hold a later catalog
-      // publication behind a complete working-set hydration pass.
-      scheduleEagerHydration(entries, previousIds);
     } catch {
       for (const [id, eventAt] of rehydrate) {
         if (!catalogHydrations.has(id)) catalogHydrations.set(id, eventAt);
@@ -422,7 +449,7 @@ export function createNormalizedPollingObserver(options) {
     for (const localSessionId of routed.sessionIds) {
       preparationGeneration += 1;
       enqueueHydration(localSessionId, {
-        priority: 0,
+        priority: needsInitialLiveHydration(localSessionId) ? URGENT : SOURCE_UPDATE,
         rerunIfActive: true,
         sourceEventAt,
       });
@@ -459,6 +486,7 @@ export function createNormalizedPollingObserver(options) {
     }
     pendingHydrations.clear();
     catalogHydrations.clear();
+    hydratedSessions.clear();
     pendingEagerEntries = null;
   }
 
@@ -499,7 +527,7 @@ export function createNormalizedPollingObserver(options) {
     },
     hydrate(localSessionId) {
       preparationGeneration += 1;
-      return enqueueHydration(localSessionId, { priority: 0, wait: true, requested: true, rerunIfActive: true });
+      return enqueueHydration(localSessionId, { priority: URGENT, wait: true, requested: true, rerunIfActive: true });
     },
     listSessions: list,
     refresh,

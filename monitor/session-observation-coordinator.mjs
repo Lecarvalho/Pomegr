@@ -124,6 +124,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const deferredProjectionRefreshes = new Set();
   const checkpointTimers = new Map();
   const restoredActivitySessions = new Set();
+  const restoredHydrations = new Map();
   const subscribers = new Set();
   let catalogTimer = null;
   let openExpiryTimer = null;
@@ -135,6 +136,7 @@ export function createSessionObservationCoordinator(options = {}) {
   let stopped = true;
   let generation = 0;
   let selectedPinnedId = null;
+  let startupSelection = null;
   const timings = Object.freeze({
     catalogCommitWait: createDurationSeries(),
     catalogProjectionCommit: createDurationSeries(),
@@ -404,7 +406,13 @@ export function createSessionObservationCoordinator(options = {}) {
       options.onHistoryRequestContribution?.(providerId, localSessionId, contribution);
     },
     checkpointFor(providerId, localSessionId) {
-      const source = store.get(providerId, localSessionId)?.source;
+      const snapshot = store.get(providerId, localSessionId);
+      // A restored cursor alone cannot revalidate downgraded live lifecycle:
+      // unchanged bytes would skip normalization forever. Reacquire once while
+      // retaining the saved response, then resume cursor reuse after commit.
+      if (snapshot?.evidence?.historical === false
+        && restoredActivitySessions.has(qualifiedSessionId(providerId, localSessionId))) return null;
+      const source = snapshot?.source;
       return source?.fingerprint && Number.isSafeInteger(source.completeOffset)
         ? { fingerprint: source.fingerprint, completeOffset: source.completeOffset }
         : null;
@@ -525,16 +533,38 @@ export function createSessionObservationCoordinator(options = {}) {
       lifecycle = typeof registry.startObservers === "function"
         ? await registry.startObservers(publisher, abortController.signal, { trace, traceScopeForSession })
         : null;
+      if (startupSelection) {
+        const selectedId = startupSelection;
+        startupSelection = null;
+        hydrate(selectedId, { restored: restoredActivitySessions.has(selectedId) });
+      }
       return lifecycle;
     })();
     try { return await startPromise; }
     catch (error) { startPromise = null; throw error; }
   }
 
-  function hydrate(requestedSessionId) {
-    if (!requestedSessionId || typeof lifecycle?.hydrate !== "function") return false;
+  function hydrate(requestedSessionId, { selected = false, restored = false } = {}) {
+    if (!requestedSessionId || stopped) return false;
+    if (typeof lifecycle?.hydrate !== "function") {
+      // Selection can arrive while checkpoints are already served but provider
+      // observers are still starting. Retain only the latest selection.
+      if (selected) startupSelection = requestedSessionId;
+      return false;
+    }
+    if (restored && (restoredHydrations.has(requestedSessionId)
+      || pendingSessions.get(requestedSessionId)?.freshObservation)) return true;
     qa.hydrationsQueued += 1;
-    void lifecycle.hydrate(requestedSessionId).catch(() => {});
+    if (!restored) void lifecycle.hydrate(requestedSessionId).catch(() => {});
+    else {
+      const observer = lifecycle;
+      const workGeneration = generation;
+      const request = Promise.resolve().then(() => !stopped && generation === workGeneration
+        ? observer.hydrate(requestedSessionId) : false).catch(() => {}).finally(() => {
+        if (restoredHydrations.get(requestedSessionId) === request) restoredHydrations.delete(requestedSessionId);
+      });
+      restoredHydrations.set(requestedSessionId, request);
+    }
     return true;
   }
 
@@ -579,6 +609,8 @@ export function createSessionObservationCoordinator(options = {}) {
     pendingSessions.clear();
     sessionRetryAttempts.clear();
     deferredProjectionRefreshes.clear();
+    restoredHydrations.clear();
+    startupSelection = null;
     for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
       cancel(pendingCheckpoint.timer);
       const snapshot = store.getByQualifiedId(qualifiedId);
@@ -612,6 +644,7 @@ export function createSessionObservationCoordinator(options = {}) {
       if (!selectedId) return Object.freeze({ status: "empty", selectedId: "", catalogEntry: null, snapshot: null });
       const snapshot = store.getByQualifiedId(selectedId);
       const catalogEntry = catalog.find((entry) => entry.id === selectedId) || null;
+      if (!lifecycle) startupSelection = null;
       if (snapshot || catalogEntry) {
         const selected = parseProviderSessionId(selectedId);
         // Pin a known selection before hydration so other commits cannot evict
@@ -636,13 +669,16 @@ export function createSessionObservationCoordinator(options = {}) {
             snapshot: null,
           });
         }
-        hydrate(selectedId);
+        hydrate(selectedId, { selected: true });
         return Object.freeze({
           status: "loading",
           selectedId,
           catalogEntry,
           snapshot: null,
         });
+      }
+      if (snapshot.evidence?.historical === false && restoredActivitySessions.has(selectedId)) {
+        hydrate(selectedId, { selected: true, restored: true });
       }
       qa.cacheHits += 1;
       return Object.freeze({

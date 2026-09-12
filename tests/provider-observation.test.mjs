@@ -252,7 +252,8 @@ test("session events run different sessions in parallel and coalesce a dirty in-
     routeSourceEvent: ({ filename }) => ({ catalog: false, sessionIds: [filename.slice(0, -6)] }),
     watchTargets: ["synthetic-root"],
     watchSource: watcher.watch,
-    concurrency: 2,
+    // Two source workers plus the reserved urgent slot.
+    interactiveConcurrency: 3,
     intervalMs: 60_000,
     async yieldControl() {},
   });
@@ -398,11 +399,11 @@ test("startup hydrates only the seven-day working set while old catalog rows rem
   await startupFinished;
 
   assert.deepEqual(catalog.map((entry) => entry.localId), entries.map((entry) => entry.localId));
-  assert.deepEqual(preparedBatches[0], ["live-old", "needs-input-old", "boundary"]);
+  assert.deepEqual(preparedBatches.slice().sort(), [["boundary"], ["live-old"], ["needs-input-old"]]);
   assert.deepEqual(acquired, ["live-old", "needs-input-old", "boundary"]);
 
   await observer.hydrate("stale");
-  assert.deepEqual(preparedBatches[1], ["stale"]);
+  assert.deepEqual(preparedBatches.at(-1), ["stale"]);
   assert.equal(acquired.at(-1), "stale");
   assert.equal(acquired.includes("invalid"), false);
 });
