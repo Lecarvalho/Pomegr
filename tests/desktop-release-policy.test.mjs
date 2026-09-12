@@ -31,6 +31,7 @@ test("Windows verification covers main changes without release credentials or pu
     readFile(new URL("../docs/AGENT-WORKFLOW.md", import.meta.url), "utf8"),
   ]);
   const workflow = workflowSource.replaceAll("\r\n", "\n");
+  assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /pull_request:\s*\n\s*branches:\s*\n\s*- main/);
   assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- main/);
   const permissions = workflow.match(/^permissions:\n((?:  [^\n]+\n)+)/m)?.[1].trim();

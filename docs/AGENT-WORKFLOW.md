@@ -55,6 +55,9 @@ them in a second desktop wrapper. `npm run verify:desktop:ci` remains available 
 focused local use. The full sandboxed preload, renderer, and `BrowserWindow` smoke
 remains a local or interactive-VM release acceptance requirement.
 
+Windows verification can also be dispatched manually from Actions without creating a
+release tag. Keep this workflow enabled in GitHub so PR and main events can start it.
+
 Creating or pushing a tag does not start the Windows release workflow; dispatch it
 manually with the existing release tag only after the candidate is ready to package and
 publish.
