@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createMonitorServer } from "../monitor/server.mjs";
+
+async function listen(server) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+test("session domains and history use revision ETags with bodyless 204 responses", async (context) => {
+  const domainValue = { domain: "session-summary", sessionId: "codex:transport", revision: 7, readiness: "ready", observedAt: null };
+  const runtime = {
+    serveSessionDomain(_sessionId, _domain, _agentId, revision) {
+      return revision === 7
+        ? { status: "unchanged", revision: 7, snapshot: null }
+        : { status: "ready", revision: 7, snapshot: { revision: 7, serialized: JSON.stringify(domainValue), value: domainValue } };
+    },
+    async serveSessionHistory(_sessionId, query) {
+      return { status: "ready", kind: query.kind, revision: "9", total: 0, offset: 0, items: [], linkedCount: 0,
+        ...(query.kind === "activity" ? { requestGroups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, byKind: [], shellTasks: { total: 0, failed: 0 } } : {}) };
+    },
+  };
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const initial = await fetch(`${origin}/api/session-domain?sessionId=codex%3Atransport&domain=session-summary`);
+  assert.equal(initial.status, 200);
+  assert.equal(initial.headers.get("etag"), '"7"');
+  assert.equal(initial.headers.get("x-pomegr-revision"), "7");
+  assert.deepEqual(await initial.json(), domainValue);
+
+  for (const url of [
+    `${origin}/api/session-domain?sessionId=codex%3Atransport&domain=session-summary&revision=7`,
+    `${origin}/api/session-domain?sessionId=codex%3Atransport&domain=session-summary`,
+  ]) {
+    const response = url.endsWith("revision=7")
+      ? await fetch(url)
+      : await fetch(url, { headers: { "If-None-Match": 'W/"7"' } });
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("etag"), '"7"');
+    assert.equal(response.headers.get("x-pomegr-revision"), "7");
+    assert.equal(await response.text(), "");
+  }
+
+  const history = await fetch(`${origin}/api/session-history?sessionId=codex%3Atransport&kind=activity&revision=9`);
+  assert.equal(history.status, 204);
+  assert.equal(history.headers.get("etag"), '"9"');
+  assert.equal(history.headers.get("x-pomegr-revision"), "9");
+  assert.equal(await history.text(), "");
+});
+
+test("session-domain and range-history requests reject invalid methods, identities, and paging values", async (context) => {
+  const runtime = {
+    serveSessionDomain() { throw new Error("invalid requests must not reach serving"); },
+    serveSessionHistory() { throw new Error("invalid requests must not reach serving"); },
+  };
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  assert.equal((await fetch(`${origin}/api/session-domain?sessionId=codex%3Ax&domain=session-summary`, { method: "POST" })).status, 405);
+  for (const query of [
+    "sessionId=codex%3A..%2Fsecret&domain=session-summary",
+    "sessionId=codex%3Ax&domain=unknown",
+    "sessionId=codex%3Ax&domain=agent",
+    "sessionId=codex%3Ax&domain=details&agentId=primary",
+    "sessionId=codex%3Ax&domain=details&domain=signals",
+  ]) assert.equal((await fetch(`${origin}/api/session-domain?${query}`)).status, 400);
+  for (const query of [
+    "from=1",
+    "from=4&to=2",
+    "from=1&to=65",
+    "from=1&to=2&workKind=private-command",
+    "from=1&to=2&continuation=..%2Fprivate",
+  ]) assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3Ax&kind=activity&${query}`)).status, 400);
+});
+
+test("SSE carries session-scoped domain revisions and history totals", async (context) => {
+  const runtime = {
+    subscribeRevisionEvents(subscriber) {
+      subscriber({ domain: "signals", sessionId: "codex:events", revision: 3 });
+      subscriber({ domain: "history", sessionId: "codex:events", revision: 4, total: 12 });
+      return () => {};
+    },
+  };
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(`${origin}/api/events`);
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  try {
+    const source = new TextDecoder().decode((await reader.read()).value);
+    assert.match(source, /event: signals\ndata: \{"domain":"signals","sessionId":"codex:events","revision":3\}/u);
+    assert.match(source, /event: history\ndata: \{"domain":"history","sessionId":"codex:events","revision":4,"total":12\}/u);
+    assert.doesNotMatch(source, /prompt|response|credential|path/iu);
+  } finally {
+    await reader.cancel();
+  }
+});

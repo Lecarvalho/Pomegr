@@ -15,6 +15,8 @@ export async function GET(request: Request) {
   });
   if (revision !== null && revision.length <= 16 && /^\d+$/u.test(revision) && Number.isSafeInteger(Number(revision))) params.set("revision", String(Number(revision)));
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path: "/api/agents?" + params,
     timeoutMs: 7500,
     unavailableBody: { readiness: "unavailable", generatedAt: null, error: "Agent summary is unavailable." },

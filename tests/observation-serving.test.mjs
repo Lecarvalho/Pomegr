@@ -124,9 +124,20 @@ test("concurrent state GETs consume one committed response without provider tran
   const eventReader = eventResponse.body.getReader();
   try {
     const initialEvent = new TextDecoder().decode((await eventReader.read()).value);
-    assert.match(initialEvent, /^event: catalog\ndata: \{"domain":"sessions","revision":\d+\}\n\n/u);
+    assert.match(initialEvent, /event: catalog\ndata: \{"domain":"sessions","revision":\d+\}\n\n/u);
     assert.match(initialEvent, /event: repositories\ndata: \{"domain":"repositories","revision":\d+\}\n\n/u);
-    assert.doesNotMatch(initialEvent, /codex-fixture|prompt|response|path|credential/iu);
+    assert.doesNotMatch(initialEvent, /prompt|response|path|credential/iu);
+    const publications = initialEvent.split("\n\n").filter(Boolean).map((event) => JSON.parse(event.split("\ndata: ")[1]));
+    const scoped = publications.filter((event) => event.sessionId !== undefined);
+    assert.ok(scoped.some((event) => event.domain === "session-summary"));
+    assert.ok(scoped.some((event) => event.domain === "history"));
+    for (const event of scoped) {
+      assert.equal(event.sessionId, `codex:${evidence.localId}`);
+      assert.deepEqual(Object.keys(event).sort(), (event.domain === "history"
+        ? ["domain", "sessionId", "revision", "total"] : ["domain", "sessionId", "revision"]).sort());
+      assert.ok(Number.isSafeInteger(event.revision) && event.revision > 0);
+      if (event.domain === "history") assert.ok(Number.isSafeInteger(event.total) && event.total >= 0);
+    }
   } finally {
     await eventReader.cancel().catch(() => {});
   }

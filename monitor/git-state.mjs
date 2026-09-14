@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { repositoryRelativePath } from "./repository-path.mjs";
 
 const MAIN_BRANCH_CANDIDATES = ["main", "master", "trunk", "develop"];
 const MAX_COMMITS = 8;
@@ -63,6 +64,24 @@ async function tryGitAsync(cwd, args, timeout) {
 
 function safeText(value, maximumLength) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximumLength);
+}
+
+function repositoryRoot(cwd) {
+  const value = tryGit(cwd, ["rev-parse", "--show-toplevel"], 1_500).trim();
+  return value && path.isAbsolute(value) ? path.normalize(value) : null;
+}
+
+async function repositoryRootAsync(cwd) {
+  const value = (await tryGitAsync(cwd, ["rev-parse", "--show-toplevel"], 1_500)).trim();
+  return value && path.isAbsolute(value) ? path.normalize(value) : null;
+}
+
+function repositoryFiles(output, root, forbiddenRoots) {
+  if (!root) return [];
+  return output.split(/\r?\n/u).filter(Boolean).flatMap((line) => {
+    const safePath = repositoryRelativePath(line.slice(3), root, { forbiddenRoots });
+    return safePath ? [{ status: line.slice(0, 2), path: safePath }] : [];
+  });
 }
 
 function refExists(cwd, ref) {
@@ -369,7 +388,7 @@ function remoteRepositoryState(cwd, currentBranch, head) {
   };
 }
 
-export function readGitState(cwd) {
+export function readGitState(cwd, { forbiddenRoots = [] } = {}) {
   const empty = {
     available: false,
     branch: "Not a Git repository",
@@ -386,24 +405,23 @@ export function readGitState(cwd) {
   if (!head) return empty;
   if (!branch) branch = `detached@${head.slice(0, 12)}`;
 
-  const output = tryGit(cwd, ["status", "--porcelain=v1"], 2_500);
-  const files = output.split(/\r?\n/).filter(Boolean).map((line) => ({
-    status: line.slice(0, 2),
-    path: line.slice(3),
-  }));
+  const root = repositoryRoot(cwd);
+  const output = tryGit(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], 2_500);
+  const files = repositoryFiles(output, root, forbiddenRoots);
   const remoteState = branch.startsWith("detached@")
     ? { isMain: false, comparison: null, commits: commitHistory(cwd, "HEAD"), remote: { status: "unavailable", checkedAt: null } }
     : remoteRepositoryState(cwd, branch, head);
 
   return {
     available: true,
+    _repositoryRoot: root,
     branch: safeText(branch, 200),
     files,
     ...remoteState,
   };
 }
 
-export async function readGitStateAsync(cwd) {
+export async function readGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   const empty = {
     available: false,
     branch: "Not a Git repository",
@@ -415,26 +433,25 @@ export async function readGitStateAsync(cwd) {
   };
   if (!cwd) return empty;
 
-  const [branchOutput, headOutput, statusOutput] = await Promise.all([
+  const [branchOutput, headOutput, statusOutput, root] = await Promise.all([
     tryGitAsync(cwd, ["branch", "--show-current"], 1_500),
     tryGitAsync(cwd, ["rev-parse", "HEAD"], 1_500),
-    tryGitAsync(cwd, ["status", "--porcelain=v1"], 2_500),
+    tryGitAsync(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], 2_500),
+    repositoryRootAsync(cwd),
   ]);
   let branch = branchOutput.trim();
   const head = headOutput.trim();
   if (!head) return empty;
   if (!branch) branch = `detached@${head.slice(0, 12)}`;
 
-  const files = statusOutput.split(/\r?\n/).filter(Boolean).map((line) => ({
-    status: line.slice(0, 2),
-    path: line.slice(3),
-  }));
+  const files = repositoryFiles(statusOutput, root, forbiddenRoots);
   const remoteState = branch.startsWith("detached@")
     ? { isMain: false, comparison: null, commits: await commitHistoryAsync(cwd, "HEAD"), remote: { status: "unavailable", checkedAt: null } }
     : await remoteRepositoryStateAsync(cwd, branch, head);
 
   return {
     available: true,
+    _repositoryRoot: root,
     branch: safeText(branch, 200),
     files,
     ...remoteState,

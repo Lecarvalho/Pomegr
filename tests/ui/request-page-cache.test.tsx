@@ -46,7 +46,7 @@ it.each(["other-session:all:60", "session:child:60", "session:all:20"])("isolate
   expect(result.current.page).toBeNull();
 });
 
-it("retries a failed preload without replacing loaded evidence or repeating successful pages", async () => {
+it("stops a failed preload until a foreground revision replaces it", async () => {
   vi.useFakeTimers();
   const fetchPage = vi.fn().mockRejectedValueOnce(new Error("offline"))
     .mockResolvedValueOnce(response(page("1", 0)))
@@ -56,11 +56,11 @@ it("retries a failed preload without replacing loaded evidence or repeating succ
   await act(async () => {});
   expect(result.current.window(120, 60)?.items).toHaveLength(60);
   expect(result.current.window(0, 60)).toBeNull();
-  await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-  expect(fetchPage).toHaveBeenCalledTimes(3);
-  expect(result.current.window(30, 60)?.items).toHaveLength(60);
-  expect(result.current.locate("request-1-60", 60)?.offset).toBe(30);
-  expect(result.current.firstMissing()).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+  expect(fetchPage).toHaveBeenCalledOnce();
+  expect(result.current.window(30, 60)).toBeNull();
+  expect(result.current.locate("request-1-60", 60)).toBeNull();
+  expect(result.current.firstMissing()).toBe(0);
 });
 const seed = page("1");
 
@@ -71,4 +71,16 @@ it("refuses a mismatched preload revision until foreground refresh adopts it", a
   await waitFor(() => expect(fetchPage).toHaveBeenCalledOnce());
   expect(result.current.window(0, 60)).toBeNull();
   expect(result.current.window(120, 60)?.revision).toBe("1");
+});
+
+it("omits the domain revision for an uncached preload so revision-only 204 responses cannot hide a page", async () => {
+  const fetchPage = vi.fn(async (url: string) => {
+    const params = new URL(url, "http://localhost").searchParams;
+    if (params.has("revision")) return new Response(null, { status: 204 });
+    return new Response(JSON.stringify(page("1", Number(params.get("offset")))), { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetchPage);
+  const { result } = renderHook(() => useRequestPageCache("session:all:60", "session", "all", seed));
+  await waitFor(() => expect(result.current.window(0, 60)?.revision).toBe("1"));
+  expect(new URL(fetchPage.mock.calls[0][0], "http://localhost").searchParams.has("revision")).toBe(false);
 });

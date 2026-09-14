@@ -3,10 +3,14 @@ import type { HistoryRequest, RequestHistoryPage } from "../../../../shared/sess
 
 /** Only the viewed session/scope is resident. Positions are valid within one committed revision. */
 class RequestPageCache {
+  // The identity makes cache invalidation explicit at the construction site.
+  readonly identity: string;
   page: RequestHistoryPage | null = null;
   private items = new Map<number, HistoryRequest>();
   private positions = new Map<string, number>();
   private nextMissing = 0;
+
+  constructor(identity: string) { this.identity = identity; }
 
   add(page: RequestHistoryPage) {
     if (page.status !== "ready") return;
@@ -50,9 +54,9 @@ class RequestPageCache {
   }
 }
 
-/** Preload committed pages independently of pointer navigation; never cache across revisions or scopes. */
+/** Preload each committed revision once; foreground events start a replacement revision. */
 export function useRequestPageCache(key: string, sessionId: string, scope: string, page: RequestHistoryPage | null) {
-  const cache = useMemo(() => new RequestPageCache(), [key]);
+  const cache = useMemo(() => new RequestPageCache(key), [key]);
   const revision = page?.revision;
   const total = page?.total;
   const canPreload = Array.isArray(page?.overview) && page.overview.length === total;
@@ -60,14 +64,14 @@ export function useRequestPageCache(key: string, sessionId: string, scope: strin
   useEffect(() => {
     if (!canPreload || !revision || total === undefined) return;
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const preload = async () => {
       while (!controller.signal.aborted && cache.page?.revision === revision) {
         const offset = cache.firstMissing();
         if (offset === null) return;
-        const params = new URLSearchParams({ sessionId, kind: "requests", scope, limit: "60", offset: String(offset), overview: "0" });
+        const params: URLSearchParams = new URLSearchParams({ sessionId, kind: "requests", scope, limit: "60", offset: String(offset), overview: "0" });
         try {
-          const response = await fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal });
+          const response: Response = await fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal });
+          if (response.status === 204) return;
           const value: RequestHistoryPage | null = response.ok ? await response.json() : null;
           if (controller.signal.aborted || cache.page?.revision !== revision) return;
           // A changing live revision is adopted by foreground refresh, never mixed into this cache.
@@ -77,10 +81,9 @@ export function useRequestPageCache(key: string, sessionId: string, scope: strin
           cache.add(value);
         } catch { break; }
       }
-      if (!controller.signal.aborted) timer = setTimeout(() => { void preload(); }, 5_000);
     };
     void preload();
-    return () => { controller.abort(); clearTimeout(timer); };
+    return () => { controller.abort(); };
   }, [cache, canPreload, revision, scope, sessionId, total]);
   return cache;
 }

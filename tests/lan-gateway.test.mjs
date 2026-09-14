@@ -3,6 +3,7 @@ import { once } from "node:events";
 import http from "node:http";
 import net from "node:net";
 import test from "node:test";
+import { gzipSync } from "node:zlib";
 
 import { startLanGateway } from "../desktop/lan-gateway.mjs";
 import { createLanSharingController } from "../desktop/lan-sharing.mjs";
@@ -61,12 +62,15 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
       response.write("data: ready\n\n");
       return;
     }
+    const compressed = request.url.startsWith("/api/session-domain?") && request.headers["accept-encoding"] === "gzip";
     response.writeHead(200, {
       "Content-Type": "application/json", Vary: "RSC", "Set-Cookie": "upstream=forbidden",
       "X-Pomegr-Revision": "42", "X-Accel-Buffering": "no", "X-Vinext-Rsc": "1",
       "Content-Security-Policy": "default-src 'self'", "X-Frame-Options": "DENY",
+      ...(compressed ? { "Content-Encoding": "gzip", Vary: "RSC, Accept-Encoding" } : {}),
     });
-    response.end(JSON.stringify({ local: true }));
+    const body = JSON.stringify({ local: true });
+    response.end(compressed ? gzipSync(body) : body);
   });
   const upstreamOrigin = await listen(upstream);
   let changes = 0;
@@ -97,6 +101,8 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     const cookie = redeemed.headers.get("set-cookie").split(";", 1)[0];
 
     assert.equal((await fetch(`${gateway.origin}/api/state`)).status, 401);
+    const domainPath = "/api/session-domain?sessionId=claude%3Afixture&domain=agents&revision=7";
+    assert.equal((await fetch(`${gateway.origin}${domainPath}`)).status, 401);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`)).status, 401);
     const redirect = await fetch(gateway.origin, { redirect: "manual" });
     assert.equal(redirect.status, 302);
@@ -154,6 +160,22 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal(forwarded.headers.cookie, undefined);
     assert.equal(forwarded.headers.rsc, "1");
     assert.equal(forwarded.headers["next-url"], "/?revision=7");
+
+    const domain = await fetch(`${gateway.origin}${domainPath}`, {
+      headers: { Cookie: cookie, "Accept-Encoding": "gzip", "x-pomegr-desktop-authorization": "client-value" },
+    });
+    assert.equal(domain.status, 200);
+    assert.deepEqual(await domain.json(), { local: true });
+    assert.equal(domain.headers.get("x-pomegr-revision"), "42");
+    assert.equal(domain.headers.get("content-encoding"), "gzip");
+    assert.equal(domain.headers.get("vary"), "RSC, Accept-Encoding");
+    assert.equal(observed.at(-1).url, domainPath);
+    assert.equal(observed.at(-1).headers["accept-encoding"], "gzip");
+    assert.equal(observed.at(-1).headers["x-pomegr-desktop-authorization"], AUTHORIZATION);
+    assert.equal(observed.at(-1).headers.cookie, undefined);
+    assert.equal((await fetch(`${gateway.origin}${domainPath}`, {
+      headers: { Cookie: cookie, Origin: "http://127.0.0.1:1" },
+    })).status, 403);
 
     const rsc = await fetch(`${gateway.origin}/settings.rsc?_rsc=test`, {
       headers: { Cookie: cookie, RSC: "1", "X-Vinext-Mounted-Slots": "main", "X-Vinext-Rsc-Render-Mode": "prefetch" },

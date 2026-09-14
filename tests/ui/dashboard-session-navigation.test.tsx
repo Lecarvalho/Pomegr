@@ -168,7 +168,7 @@ describe("dashboard session navigation", () => {
     await act(async () => {});
     const stateCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/state")).length;
     const beforeOpenPoll = stateCalls();
-    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(stateCalls()).toBeGreaterThan(beforeOpenPoll);
     expect(screen.getByLabelText("Session status")).toHaveTextContent("Live session · Open");
     expect(screen.queryByLabelText("Session state: Open")).not.toBeInTheDocument();
@@ -178,6 +178,38 @@ describe("dashboard session navigation", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
     expect(stateCalls()).toBe(beforeHistory);
     view.unmount();
+  });
+
+  it("keeps the last state and clears the offline indicator when a real 204 follows a transient failure", async () => {
+    vi.useFakeTimers();
+    const hidden = Object.getOwnPropertyDescriptor(document, "hidden");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    const state = liveState("claude:state-204", "Retained live state");
+    state.revision = 1;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (!url.startsWith("/api/state")) return Promise.reject(new Error(`Unexpected request: ${url}`));
+      const count = fetchMock.mock.calls.filter(([value]) => String(value).startsWith("/api/state")).length;
+      if (count === 1) return Promise.resolve(jsonResponse(state));
+      if (count === 2) return Promise.resolve(new Response(null, { status: 503 }));
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    render(
+      <DisplayPreferencesProvider>
+        <SessionCatalogProvider sessions={[catalogSession(state)]}>
+          <Dashboard initialSessionId="claude:state-204" />
+        </SessionCatalogProvider>
+      </DisplayPreferencesProvider>,
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText("Retained live state")).toBeInTheDocument();
+    await act(async () => { window.dispatchEvent(new Event("focus")); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByLabelText("Session state: Monitor offline")).toBeInTheDocument();
+    await act(async () => { window.dispatchEvent(new Event("focus")); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.queryByLabelText("Session state: Monitor offline")).not.toBeInTheDocument();
+    expect(screen.getByText("Retained live state")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/state"))).toHaveLength(3);
+    if (hidden) Object.defineProperty(document, "hidden", hidden);
   });
 
   it("orders KPIs, requests, activity, cache evidence, summary cards, agents, resources, repository and details", async () => {

@@ -276,6 +276,7 @@ export function projectProviderSessionEvidence({
       activeAgents,
       toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0),
       repeatedCalls,
+      overlappingTargets: overlaps.length,
       resources: historical ? null : resources,
       tokens: tokenUsage,
     },

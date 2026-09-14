@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, and `/api/repository-inventory` handlers
+- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, and `/api/repository-inventory` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -70,7 +70,7 @@ Use these names in code, tests, diagnostics, and architecture discussions:
 | **U1 — Acquisition** | Backend, provider adapter | Raw provider-owned files, events, or APIs | Complete native records and adapter-private cursor state; no committed cache mutation |
 | **U2 — Normalization** | Backend, provider adapter | Complete provider-native records | Bounded, privacy-filtered normalized candidate evidence |
 | **C — Commit** | Backend, shared observation store | A validated normalized candidate | One immutable L1 evidence revision |
-| **D — Derivation** | Backend, monitor jobs | Committed L1 evidence plus independently committed Git, resource, and usage state | Public session, catalog, Home, correlation, or usage response revisions |
+| **D — Derivation** | Backend, monitor jobs | Committed L1 evidence plus independently committed Git, resource, and usage state | Independently revisioned session domains, composed public state, catalog, Home, correlation, or usage responses |
 | **P — Persistence** | Backend, checkpoint writer | Committed L1 evidence | Privacy-filtered L2 checkpoint JSON |
 | **S — Serving** | Backend, API handlers | Committed L1 response revisions | A response body, loading shell, or `204 No Content`; never normalized evidence |
 | **F — Presentation** | Frontend, React | Provider-neutral API responses | Frontend view state and independently rendered regions |
@@ -116,6 +116,44 @@ checkpoints. D serves only links to retained request snapshots. Missing usage,
 altered identities, and requests outside the served window leave links null;
 timestamp proximity cannot establish a link. Replies remain message events.
 
+### Session response domains
+
+D projects each committed session into seven independently revisioned response domains:
+`session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and
+`details`. `agent` selects one normalized agent ID from its committed projection.
+`session-summary` alone contains the session header and Overview inputs: lifecycle,
+all-agent context, current-agent rows, two efficiency signals, a repository summary,
+the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
+kind totals, and the normalized cost estimate. `signals` owns flow and cache evidence;
+the other domains retain their corresponding normalized public state. The inspector
+also carries bounded selected-agent request, insight, cache and task evidence. Each
+composed domain preserves the readiness of its source sections: a ready core does not
+make missing agent, context, activity or request evidence ready. Request-strip readiness
+is retained separately from its bounded items; missing evidence is never a measured zero.
+
+Each projection has its own monotonic revision clock and bounded readiness. D stages and
+serializes every candidate before atomically publishing any of them. A failure therefore
+retains the complete last-known-good set and emits no partial revision events. The
+top-level observation time is metadata rather than semantic content, so a later identical
+observation does not revise every domain. Catalog lifecycle changes can revise the summary
+without revising unrelated domains. Startup derives the domains for every restored L1
+entry even when checkpoint rederivation is unchanged.
+
+The derived-domain cache retains at most 24 sessions by default. A session not read or
+rederived for ten minutes drops from this cache while its committed L1 evidence or L2
+checkpoint remains authoritative. The first later GET returns explicit loading readiness
+and queues a D-only rebuild from committed state. It never parses or acquires provider
+data. Rebuild revisions cannot reuse an ETag previously held by a client.
+
+Repository paths in the new projection are checked against the canonical Git root
+retained privately by background enrichment, including when the session working
+directory is nested. The dedicated validator rejects traversal, absolute and Windows
+special forms, configured provider roots, and link escapes. An unknown root or uncertain
+containment cannot admit a path. This does not introduce file-change persistence:
+`fileHistory` and retained resource tables remain explicitly unavailable until their
+producers are implemented. Existing committed live repository/resource evidence remains
+available, and missing historical evidence never falls back to today's working tree.
+
 ### Paged session evidence history
 
 `GET /api/session-history` serves committed normalized history independently of
@@ -125,6 +163,22 @@ and the selected request's linked-event count. Activity pages contain at most
 eight rows; request windows contain at most 60 (20 on phones). Agent scope,
 request lookup, request-only filtering, and an opaque event anchor operate on
 committed indexes. GETs never acquire or normalize provider records.
+
+Activity history additionally accepts a positive request-number `from`/`to` range
+covering at most 64 consecutive numbers, `selected`, one recognized `workKind`, and
+an opaque continuation. Range endpoints must be supplied together; reversed or
+out-of-bound ranges, duplicate query keys and unrecognized work kinds are rejected. It returns at most five
+scoped request headers around the selection, adjusted at either end, with calls nested
+under their recorded request. A work-kind filter retains each request header and reports
+`noMatchingCalls` when no nested call matches. Each group carries at most 50 calls and a
+page carries at most 200; remaining calls use explicit continuation. A continuation
+reserves budget for its target group before other groups, so dense preceding groups
+cannot prevent progress. Nested calls retain chronological order. Stable request
+numbers do not change across filters. Calls without a recorded request association stay
+in the legacy flat feed but never enter a request group. Agent scope is applied
+consistently to request headers, nested calls, work-kind counts, median wall durations,
+and shell-task totals. A request-linked call with no normalized actor participates only
+in `scope=all`.
 
 Activity rows and offsets are chronological, earliest first, matching Requests.
 Page 1 contains the earliest scoped events. Activity `latest` and `last` select
@@ -138,9 +192,13 @@ integer uncached-input, cache-write, cache-read, and output counts. These are
 independent observations, never buckets, cumulative totals, or sums across requests.
 The tuple count equals the scoped history total. Publication stores the tuples in
 the normalized index; serving reads that index and only the selected detail blocks.
-It never loads all request-detail blocks for the minimap. Older indexes return a
-null overview until background publication upgrades them, including unchanged
-normalized history. Malformed or incomplete overview tuples degrade to null.
+It never loads all request-detail blocks for the minimap. Index schema version 3
+contains request overviews and the activity work-kind, status, duration, request, and
+agent references used by grouped reads. Older indexes are not served as grouped history;
+ordinary background publication replaces them under a new immutable generation,
+including when normalized history is unchanged. A v3 index with a missing overview
+returns a null overview until the same background upgrade. Malformed or incomplete
+overview tuples degrade to null.
 The overview adds no provider identities, work details, paths, or raw records.
 Request-page preloads use `overview=0` to omit the already-loaded overview;
 omission or `overview=1` retains the default response. Other values are rejected.
@@ -238,19 +296,16 @@ window is pending because of chart-window navigation. Selecting a visible
 Activity row only loads the linked chart details; it must not veil or disable the
 already-committed Activity page. Stale row links cannot activate while the feed
 itself is being replaced. Failures remove the veil and
-explain that the previous page is retained. Live Activity refreshes immediately when
-Requests receives a different committed history revision, and every three seconds
-independently so activity still advances while chart selection is pinned. These
-refreshes remain visually quiet and preserve older-page anchors. A revision arriving
-during navigation waits for that lookup to finish; repeated revisions do not cause
-extra fetches. Historical views retain the ten-second cadence. These are F
-presentation states, not backend readiness.
-Polling never cancels an in-flight navigation. A loading or unavailable response
-retries the same request lookup, scope, offset, and anchor instead of substituting
-the latest page. Foreground `loading` responses retry after 750 ms; failures retain
-the ten-second retry cadence. New navigation and unmount cancel pending retries.
-GETs continue to serve committed history only, with unchanged revision validation,
-last-known-good retention, and checkpoint/browser privacy boundaries.
+explain that the previous page is retained. Live Activity refreshes on matching history
+publications and the shared 30/5/30-second fallback described under Frontend API cadence.
+Refreshes stay visually quiet and preserve older-page anchors. A revision arriving during
+navigation coalesces into one follow-up after the lookup finishes. Historical hydration
+uses events and reconnect revalidation; ready historical queries have no periodic timer.
+These are F presentation states, not backend readiness.
+Refreshes never cancel an in-flight navigation. A loading or unavailable response retains
+the same request lookup, scope, offset and anchor instead of substituting the latest page.
+New navigation and unmount cancel obsolete work. GETs continue to serve committed history
+only, preserving last-known-good values and checkpoint/browser privacy.
 Background cleanup retains the current and previous immutable
 page generations after the new manifest commits.
 
@@ -260,8 +315,10 @@ agent scope, viewport capacity, and committed revision are resident in memory;
 there is no browser persistence. Cached positions span that revision's retained
 history, allowing any fully loaded 60-row desktop or 20-row phone window to render
 synchronously during dragging. The initial page remains visible while other pages
-load. Failed preloads retain loaded rows and retry after five seconds. Session,
-scope, viewport, and revision changes abort obsolete preloads and discard their
+load. Failed preloads retain loaded rows; readiness, a new committed revision or reconnect
+can resume work without a fixed preload timer. Uncached preload queries omit the revision
+so the monitor returns their body. Session, scope, viewport and revision changes abort
+obsolete preloads and discard their
 positions; responses with a different revision or total never mix into the cache.
 Preloading reads only existing committed pages, never provider evidence. Foreground
 navigation retains its existing fallback for windows that are not yet resident.
@@ -282,13 +339,12 @@ request page or available preview can render independently of the broader
 acquisition behavior.
 
 Selecting the newest request on the latest scoped live page resumes automatic
-selection and the three-second history refresh. Activity row links, request bars,
-and keyboard steps use the same selection rule, including after a linked request
-window loads. Selecting older requests, including the last bar on an older page,
-keeps selection pinned; historical sessions never follow live appends. Selection
-navigation carries its follow-latest intent to Activity, so either surface resumes
-the feed's latest-page polling. Manual Activity paging stays independent between
-selection actions.
+selection and event-driven history refresh. Activity row links, request bars and
+keyboard steps share that selection rule, including after a linked window loads.
+Older selections stay pinned while incoming history totals extend the minimap;
+historical sessions never follow live appends. Navigation carries its follow-latest
+intent to Activity, and manual Activity paging remains independent between selection
+actions. Live recovery uses the shared fallback cadence rather than a three-second timer.
 
 Codex U2 correlates rollout activity before global sorting, within each normalized
 actor's source sequence. Private parser callbacks identify normalized calls,
@@ -656,7 +712,7 @@ GETs, and UI polling remain unchanged.
 | Tier | Authority and contents | Current default bound |
 | --- | --- | --- |
 | **L1 evidence cache** | Runtime-authoritative immutable normalized session evidence in monitor memory | 100-entry and 8 MiB pruning targets for unpinned entries; one entry larger than 8 MiB is rejected |
-| **L1 response cache** | Prebuilt provider-neutral JSON responses and revisions for cache-only serving | Bounded by the committed evidence and response domains |
+| **L1 response cache** | Prebuilt provider-neutral JSON responses and independent revisions for cache-only serving | Session domains retain 24 sessions and evict after ten idle minutes; other response domains retain their documented bounds |
 | **L2 checkpoint cache** | Schema-versioned, privacy-filtered JSON used only to accelerate restart recovery | 100 entries and 16 MiB total |
 | **Frontend view state** | The latest response retained by React while refreshing | Not a source of truth and not durable |
 
@@ -1243,8 +1299,9 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
+| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session/catalog commits, after restore even when evidence is unchanged, and asynchronously after a known evicted session is requested |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
-| Catalog revision notification | Backend serving / S | Carries no state; announces only the committed `sessions` revision | Emit immediately after a catalog response revision commits |
+| Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
 | Routine checkpoint | Backend writer / P | Reads L1 evidence and atomically replaces L2 JSON | Five seconds after quiet; at least once per 60 seconds during continuous activity |
 | Graceful shutdown | Backend writer / P | Flushes the latest committed L1 revision for every pending checkpoint | After uncommitted scheduled candidates are cancelled and before the observer lifecycle is released |
@@ -1260,8 +1317,10 @@ remain the source of truth.
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
 | `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries and per-row summary readiness | Application shell, Sessions directory, sidebar, Home destination labels |
-| `/api/events` | No committed data; server-sent invalidation events containing only a fixed domain and revision | Application shell immediate refresh trigger |
+| `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
+| `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |
+| `/api/session-history?sessionId=...` | Committed activity or request pages, including bounded grouped request-range activity | Activity and request navigation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Retained aggregate API; the Home page no longer requests this domain |
 | `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Usage limits and session views |
 
@@ -1269,9 +1328,24 @@ Callers send their current revision. When the relevant committed revision is unc
 returns `204 No Content` with no state body. A known uncached session returns its safe
 catalog identity and loading readiness while asynchronous hydration proceeds.
 
+Committed JSON responses use the quoted numeric revision as `ETag` and preserve
+`X-Pomegr-Revision`. The same-origin proxy requests identity encoding from the monitor,
+then may gzip the decoded JSON for a client that accepts it. It honors explicit quality
+zero and wildcard precedence, sets `Vary: Accept-Encoding` on compressed and
+uncompressed results, and never attaches a body to `204`. Bodies under 1,024 decoded
+bytes remain uncompressed. Every JSON proxy forwards a validated `If-None-Match`;
+paired LAN forwarding preserves that header and `Accept-Encoding`, together with
+response ETag, revision, encoding and Vary. These headers do not weaken no-store or
+pairing authorization.
+
 `/api/home` retains its committed response and provider-limit revision contract. Any correlation consumer must match that revision to the centralized usage snapshot before combining them. The personal Home page consumes neither domain; removing its polling does not change cache-only GET serving, backend derivation, last-known-good retention, or revision semantics.
 
 Historical session state never receives current Git state or current usage limits.
+
+Session-domain revision clocks are monotonic per domain across sessions. A domain
+advances only when its semantic JSON changes; the observation timestamp alone does not
+advance it. Eviction retains the clock floor, so rebuilding a response cannot make an
+old client ETag appear current.
 
 Session publications allocate revisions from a store-wide monotonic sequence. Evicting
 and rebuilding a session cannot reuse a revision still held by a client and incorrectly
@@ -1514,8 +1588,12 @@ support is separate: an unsupported capability is not loading or unavailable.
 - Readiness granularity follows independently produced backend jobs, not every React
   component.
 
-The retained Home aggregate API tracks catalog, provider limits, per-limit activity correlation, and per-session summary enrichment independently. The Home page itself uses the shell catalog only to resolve pinned destinations and the last-viewed session; product discovery is available independently of catalog readiness. Session views track core provider evidence, agents,
-context, activity, repository, resources, and usage as independently produced domains.
+The retained Home aggregate API tracks catalog, provider limits, per-limit activity correlation, and per-session summary enrichment independently. The Home page itself uses the shell catalog only to resolve pinned destinations and the last-viewed session; product discovery is available independently of catalog readiness. Session views consume explicit readiness from
+`session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and
+`details`; Activity and Requests consume history readiness. The composed `/api/state`
+readiness remains compatible while consumers migrate. A future file-history producer
+and retained resource-history producer are explicitly unavailable; this does not erase
+valid committed repository files or current live resource samples.
 
 ## Presentation rules
 
@@ -1587,30 +1665,44 @@ context, activity, repository, resources, and usage as independently produced do
 
 ## Frontend API cadence
 
-Polls are serialized, scheduled after the preceding response, aborted on navigation, and
-never overlap. Focus or return to the foreground triggers an immediate fetch. Desktop
-**Pause updates** pauses F only and never controls backend observation.
+One tab-scoped, reference-counted `EventSource` serves the application shell, session
+view, history hooks and repository consumers. The first subscriber connects and the last
+subscriber releases the stream and reconnect timer. Publications are validated and
+deduplicated by domain and normalized session within the connection epoch. A new stream
+resets that epoch; only a real open event marks it connected.
 
-For the catalog/sidebar, a committed revision event is the primary visible refresh
-trigger. The application shell immediately issues its normal revisioned cache-only GET
-and applies session identity, live count, and attention state as an urgent React update.
-Ready-state polling remains at five seconds only as lost-event and disconnected-stream
-recovery; it is not the expected propagation path.
+Revision events are the primary refresh trigger. Each consumer serializes requests and
+coalesces events received during a request into one follow-up. Late responses cannot
+replace a newer selection. A revision is sent only when the exact query already has a
+retained body: uncached offsets, request lookups and preload pages must fetch a body.
+A `204` retains that query's body and restores connectivity after a transient failure.
 
-| Consumer | Visible cadence |
+| Consumer | Refresh and recovery |
 | --- | --- |
-| Loading session | `/api/state` every 1 second until required regions are ready |
-| Selected live session | `/api/state` every 2 seconds |
-| Ready historical session | Fetch once, then stop |
-| Loading catalog/sidebar | `/api/sessions` every 1 second |
-| Ready catalog/sidebar | Immediately on a safe catalog revision event; `/api/sessions` every 5 seconds as recovery |
+| Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
+| Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
+| Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
+| Historical session and history | Mounted queries hydrate through events and reconnect revalidation; ready queries have no periodic timer; navigation, focus and reconnect may revalidate |
+| Repository inventory | Repository events and the same 30/5/30-second fallback; shared consumers and desktop Pause do not create extra pollers |
+| Request-history preload | Readiness/revision-driven sequential pages; no fixed preload timer |
 | Personal Home | No page-owned polling; destination labels reuse the shell catalog |
-| Loading provider usage | `/api/usage-limits` every 1 second |
-| Ready provider usage | `/api/usage-limits` every 60 seconds |
-| Any active consumer in a hidden tab | Every 30 seconds |
+| Provider/account usage | Separate shared store: 1 second unresolved, 60 seconds ready, 30 seconds hidden |
+| Public provider status | Separate shared store: 30 seconds |
+| Global agents analytics | Separate query store: 60 seconds while mounted |
 
-Failed frontend calls back off approximately 2, 5, 10, then 30 seconds while retaining
-the most recent committed value.
+The last three stores have separate producers without session-domain invalidations;
+their existing bounded polling remains independent of session evidence. Usage failures
+retain their established 2/5/10/30-second backoff. All frontend refreshes retain
+last-known-good values. Focus or foreground return revalidates mounted consumers;
+hidden session consumers suppress immediate event bursts and use their 30-second
+fallback. Desktop **Pause updates** pauses F subscriptions and polling, including
+repository views, and never controls backend observation.
+
+A loading historical response cannot leave an in-flight flag set after its request
+settles: later readiness events and reconnects must be able to finish hydration.
+Following latest updates chart and feed together. An older pinned selection retains its
+visible page while newer committed totals extend the minimap; it must never be
+reinterpreted as a different request. Preload and visible-page revisions never mix.
 
 ## Home navigation preferences
 
@@ -1744,6 +1836,53 @@ records, and every other agent field remain outside the catalog response. React 
 each row directly and never joins catalog identity to a parallel summary collection.
 Caught provider, filesystem, and checkpoint failures use fixed sanitized states rather
 than arbitrary exception text.
+
+### Approved file-history persistence contract
+
+This subsection approves prerequisite policy for the planned file-history and historical
+Repository work; it does not describe a currently shipped checkpoint, index, or browser
+surface. Until that implementation lands, provider mutation targets still do not enter
+checkpoints or browser responses, and historical Git state retains its current narrower
+behavior.
+
+A future L1 revision and L2 checkpoint may retain bounded normalized file evidence
+consisting only of a normalized repository identity, safe repository-relative path, fixed
+`created`, `edited`, `deleted`, or `moved` kind, observation timestamp, and opaque file
+identity when continuity across paths requires one. Normalized session and agent identities
+and a stable session-scoped request number are nullable and may accompany the record only
+when recorded provider evidence establishes each attribution. A move
+observed only through asynchronous Git inspection may preserve repository-scoped path,
+time, kind, and opaque file continuity, but it cannot itself create a session file-change
+record, populate session, agent, or request identity, or contribute to session edit counts.
+Joining by time, path, branch, or nearby activity must not fill those fields.
+
+U2 validates each candidate with a dedicated repository-path validator before C commits
+it. The validator uses the monitor-private recognized repository root and rejects absolute
+paths on every platform, drive-relative paths, UNC and device paths, traversal segments,
+control characters, empty or otherwise unsafe paths, configured provider configuration
+or transcript locations, and any candidate that cannot be contained under the recognized
+root. It normalizes the accepted browser value to a bounded repository-relative path and
+preserves legitimate nested directories and filenames; the custom-agent identifier syntax
+is not a path validator. Invalid or over-bound candidates are dropped rather than
+truncated into a different path. Repository roots, native target values, commands, tool
+arguments, provider records, and validation failures remain monitor-private.
+
+The planned monitor-owned file-history index is a derivative of committed file-change
+evidence plus Git state acquired asynchronously outside S Serving. It must be rebuildable
+from retained checkpoints and independently committed Git evidence. Index loss or rebuild
+cannot trigger provider acquisition from a GET, change a committed evidence revision, or
+weaken last-known-good retention. Git can establish repository-scoped path and file-
+identity continuity in the index's file-path records; it cannot establish which session,
+agent, or request made a change or add a session-level file-change count.
+
+Future historical repository snapshots may additionally checkpoint the bounded recorded
+uncommitted-file list, branch comparison state (branch, comparison kind, ahead, and
+behind), and the allowlisted pull-request state with its original last-check timestamp.
+The snapshot is committed while the session is eligible for live Git observation and is
+served unchanged for historical views. Missing, failed, partial, or over-bound evidence
+remains unavailable and does not erase the last complete valid snapshot. Historical GETs
+never inspect Git or GitHub and never substitute the current branch, working tree,
+comparison, files, commits, or pull-request state for recorded evidence.
 
 ## Repository context inventory
 

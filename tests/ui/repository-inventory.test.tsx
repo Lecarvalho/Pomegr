@@ -1,14 +1,29 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RepositoriesView } from "../../app/components/command-center/CommandViews";
 import { MachineryPanel } from "../../app/components/dashboard/MachineryPanel";
-import { useRepositoryInventory } from "../../app/repository-inventory-client";
+import { RepositoryInventoryStore, useRepositoryInventory } from "../../app/repository-inventory-client";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 
 const repositoryId = "repo-0123456789abcdef01234567";
+class RepositoryEventSource {
+  static instances: RepositoryEventSource[] = [];
+  private listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
+  constructor(_: string | URL) { RepositoryEventSource.instances.push(this); }
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+    if (typeof listener !== "function") return;
+    const entries = this.listeners.get(type) || new Set();
+    entries.add(listener as (event: MessageEvent<string>) => void);
+    this.listeners.set(type, entries);
+  }
+  emit(value: object) { for (const listener of this.listeners.get("repositories") || []) listener(new MessageEvent("repositories", { data: JSON.stringify(value) })); }
+  close() {}
+}
+const originalHidden = Object.getOwnPropertyDescriptor(document, "hidden");
+function setHidden(hidden: boolean) { Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden }); }
 const snapshot: RepositoryInventorySnapshot = {
   revision: 1,
   readiness: "ready",
@@ -36,6 +51,9 @@ function RefreshProbe({ onReady }: { onReady: (refresh: (force?: boolean) => Pro
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  RepositoryEventSource.instances = [];
+  if (originalHidden) Object.defineProperty(document, "hidden", originalHidden);
   Reflect.deleteProperty(window, "pomegrDesktop");
 });
 
@@ -142,6 +160,21 @@ describe("repository index", () => {
     await waitFor(() => expect(replies).toHaveLength(1));
     replies.shift()!(new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } }));
     await forced;
+  });
+
+  it("suppresses hidden repository publications and revalidates on foreground", async () => {
+    vi.stubGlobal("EventSource", RepositoryEventSource);
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const store = new RepositoryInventoryStore();
+    const unsubscribe = store.subscribe(() => {});
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    setHidden(true);
+    act(() => RepositoryEventSource.instances[0].emit({ domain: "repositories", revision: 2 }));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    setHidden(false);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    unsubscribe();
   });
 
   it("renders a compact immutable session reference and never asks for /context", () => {

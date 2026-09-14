@@ -635,9 +635,44 @@ Current-window correlation considers bounded live and recently updated completed
 
 Live branch metadata comes from read-only Git commands against the primary session's working directory. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
 
+The approved future historical Repository contract will preserve a bounded last complete
+snapshot of recorded uncommitted files, branch comparison, and pull-request state at its
+original last-check time. This is prerequisite policy, not shipped behavior; current
+historical views retain only the narrower evidence described above. After implementation,
+missing recorded fields will remain unavailable rather than being filled from the current
+working tree or current branch.
+
+## File-change history
+
+File-change history is approved future behavior and is not currently produced by Pomegr.
+It will report bounded recorded file operations, grouped by normalized repository,
+session, file identity, and safe repository-relative path. The fixed kinds are created,
+edited, deleted, and moved. Session, agent, and request labels mean that recorded provider
+evidence proved each association. A move observed only through Git may preserve
+repository-scoped path continuity, but it does not create a session file-change record or
+identify a session, agent, or request, and it does not contribute to session edit counts.
+Path or timestamp proximity is not attribution.
+
+Coverage is intentionally partial. Recognized structured Write and Edit operations can
+contribute records; shell scripts, external editors, unrecognized tools, incomplete or
+invalid provider records, paths rejected by the repository-path policy, retention bounds,
+and observation gaps can leave changes missing. Git comparison can add repository-scoped
+path and move continuity when acquired asynchronously, but it cannot recover the
+responsible session, agent, or request. A recorded absence therefore does not prove that a
+file was unchanged, and an edit count is a count of retained recorded operations rather
+than lines changed, commits, or all filesystem writes. History must disclose these coverage
+limits wherever totals or empty states are presented.
+
 ## Pull-request associations
 
-Pomegr associates a pull request with a session only when a successful, recognized pull-request creation tool result contains a canonical GitHub pull-request URL, or when GitHub reports a pull request for the live session's current branch. Historical sessions never infer associations from the current working tree or branch. A transcript-recorded association may refresh its current GitHub status, which is labeled with the local observation time rather than presented as recorded historical state.
+Pomegr currently associates a pull request with a session only when a successful, recognized pull-request creation tool result contains a canonical GitHub pull-request URL, or when GitHub reports a pull request for the live session's current branch. Historical sessions never infer associations from the current working tree or branch. Under the current legacy behavior, a transcript-recorded association may refresh its current GitHub status; the UI labels that refresh with its local observation time and does not present it as recorded historical state.
+
+The approved future Repository domain uses a different historical rule. It snapshots the
+allowlisted pull-request state and original last-check time while the session is eligible
+for live observation, then serves that recorded snapshot unchanged after the session
+becomes historical. Implementing that domain replaces the legacy refresh behavior for its
+historical Repository view; it must not rewrite the recorded snapshot with current GitHub
+state.
 
 The monitor parses tool results privately and returns only an allowlist: host, repository slug, pull-request number, bounded title, canonical URL, open/draft/merged/closed state, head and base branch names, non-negative additions and deletions, association source, and timestamps. Commands, raw tool output, PR bodies, authors, comments, reviews, checks, and credentials never enter the browser API. GitHub CLI and network failures degrade independently; a safely parsed transcript link can remain visible without current metadata.
 

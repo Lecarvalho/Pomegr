@@ -64,6 +64,11 @@ class CatalogEventSource {
     for (const listener of this.listeners.get("catalog") || []) listener(event);
   }
 
+  emitOpen() {
+    const event = new Event("open");
+    for (const listener of this.listeners.get("open") || []) listener(event as MessageEvent<string>);
+  }
+
   close() { this.closed = true; }
 }
 
@@ -262,6 +267,8 @@ describe("Command Center app shell", () => {
 
   it("keeps live sessions ordered by creation time descending across refreshed activity", async () => {
     vi.useFakeTimers();
+    CatalogEventSource.instances = [];
+    vi.stubGlobal("EventSource", CatalogEventSource);
     const first = { ...sessions[0], id: "codex:first", title: "Created first", createdAt: "2026-08-24T11:58:00.000Z", updatedAt: "2026-08-24T11:58:00.000Z" };
     const second = { ...sessions[0], id: "codex:second", title: "Created second", createdAt: "2026-08-24T11:59:00.000Z", updatedAt: "2026-08-24T11:59:00.000Z" };
     const refreshedSecond = { ...second, updatedAt: "2026-08-24T12:01:00.000Z", activityStatus: "idle" as const, progress: { ...second.progress!, percent: 100 } };
@@ -269,11 +276,29 @@ describe("Command Center app shell", () => {
       .mockImplementationOnce(() => response({ sessions: [first, second] }))
       .mockImplementationOnce(() => response({ sessions: [refreshedSecond, first] }));
     render(<AppShell><LiveSessionConsumer /></AppShell>);
+    act(() => CatalogEventSource.instances[0].emitOpen());
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created second 42%, Created first 42%");
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created second 100%, Created first 42%");
+  });
+
+  it("retains the catalog and restores its online state when a real 204 follows a transient failure", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ revision: 1, sessions }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    render(<AppShell><LiveSessionConsumer /></AppShell>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.getByText("Monitor offline")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.getByText("Local monitor")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 

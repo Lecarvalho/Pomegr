@@ -22,5 +22,5 @@ export async function GET(request: Request) {
     || fetchSite !== null && fetchSite !== "same-origin") {
     return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
-  return proxyMonitorJson({ path: "/api/provider-folders", timeoutMs: 7500, unavailableBody: unavailable });
+  return proxyMonitorJson({ path: "/api/provider-folders", timeoutMs: 7500, unavailableBody: unavailable, acceptEncoding: request.headers.get("accept-encoding"), ifNoneMatch: request.headers.get("if-none-match") });
 }

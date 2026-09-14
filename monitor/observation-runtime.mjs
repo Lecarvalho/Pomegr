@@ -14,10 +14,9 @@ import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
+import { createSessionDomainStore } from "./session-domain-store.mjs";
 
-function qualifiedSessionId(providerId, localSessionId) {
-  return `${providerId}:${localSessionId}`;
-}
+function qualifiedSessionId(providerId, localSessionId) { return `${providerId}:${localSessionId}`; }
 
 /**
  * Owns the monitor-side observation lifecycle, response caches, and
@@ -105,6 +104,14 @@ export function createObservationRuntime(options = {}) {
     maxSessions: options.historyMaxSessions,
     maxResident: options.historyMaxResident ?? 0,
   });
+  const sessionDomains = options.sessionDomainStore || createSessionDomainStore({
+    now,
+    maxSessions: options.sessionDomainMaxSessions,
+    idleMs: options.sessionDomainIdleMs,
+    forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
+    repositoryRootForSession: options.repositoryRootForSession,
+  });
+  const pendingDomainRebuilds = new Set();
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();
   const pendingRepositoryAssociations = new Set();
@@ -558,6 +565,25 @@ export function createObservationRuntime(options = {}) {
     };
   }
 
+  function domainCatalogEntry(sessionId) {
+    return (observationCoordinator.catalog()?.snapshot?.value?.sessions || []).find((entry) => entry.id === sessionId) || null;
+  }
+  function commitSessionDomains(sessionId, snapshot = observationStore.getByQualifiedId(sessionId)) {
+    if (snapshot) return sessionDomains.commit(sessionId, snapshot, domainCatalogEntry(sessionId));
+    const catalogEntry = domainCatalogEntry(sessionId);
+    if (!catalogEntry) return null;
+    const provider = registry.providerForSessionId(sessionId) || registry.defaultProvider;
+    return sessionDomains.commitUnavailable(sessionId, catalogEntry, provider.source, provider.capabilities);
+  }
+  function scheduleSessionDomainRebuild(sessionId) {
+    if (pendingDomainRebuilds.has(sessionId)) return;
+    pendingDomainRebuilds.add(sessionId);
+    scheduleObservation(() => {
+      try { if (observationServingActive) commitSessionDomains(sessionId); }
+      finally { pendingDomainRebuilds.delete(sessionId); }
+    }, 0);
+  }
+
   function cacheUnavailableSessionResponses() {
     const catalog = observationCoordinator.catalog()?.snapshot?.value?.sessions || [];
     const next = new Map();
@@ -594,6 +620,8 @@ export function createObservationRuntime(options = {}) {
     agentQueryProjection.refresh();
     unsubscribeObservation = observationCoordinator.subscribe((event) => {
       if (event.type === "session") {
+        const committed = observationStore.getByQualifiedId(event.qualifiedId);
+        if (committed) commitSessionDomains(event.qualifiedId, committed);
         options.onSessionCommitted?.(event.qualifiedId);
         // Provider history acquisition belongs to the background observation
         // lifecycle. Serving only reads the committed, normalized history file.
@@ -603,7 +631,13 @@ export function createObservationRuntime(options = {}) {
           sessionHistory.refresh(event.qualifiedId, historical ? 2 : 1, true, true);
         }
       }
-      if (event.type === "catalog") cacheUnavailableSessionResponses();
+      if (event.type === "invalidation") commitSessionDomains(event.qualifiedId);
+      if (event.type === "catalog") {
+        cacheUnavailableSessionResponses();
+        for (const entry of observationCoordinator.catalog()?.snapshot?.value?.sessions || []) {
+          commitSessionDomains(entry.id);
+        }
+      }
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
       if (event.type === "session" || event.type === "catalog") {
         void repositoryInventory.reconcile(observationCoordinator.catalog()?.snapshot?.value?.sessions || []);
@@ -615,10 +649,8 @@ export function createObservationRuntime(options = {}) {
       await repositoryInventory.reconcile([]);
       repositoryInventory.startPluginObservation?.();
       await observationCoordinator.start();
-      // Checkpoint-restored sessions may rederive unchanged and therefore do
-      // not emit a fresh session commit. They still receive history hydration
-      // from this background lifecycle, never from a serving request.
       for (const snapshot of observationStore.entries()) {
+        commitSessionDomains(snapshot.qualifiedId, snapshot);
         sessionHistory.ensureObserved(snapshot.qualifiedId, snapshot.revision);
         sessionHistory.refresh(snapshot.qualifiedId, 2, true, true);
       }
@@ -657,6 +689,8 @@ export function createObservationRuntime(options = {}) {
     unsubscribeObservation?.();
     unsubscribeObservation = null;
     unavailableSessionResponses.clear();
+    sessionDomains.clear();
+    pendingDomainRebuilds.clear();
     for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
     historyContributionRetries.clear();
     sessionHistory.stop();
@@ -675,6 +709,7 @@ export function createObservationRuntime(options = {}) {
     };
     const unsubscribe = observationCoordinator.subscribe(publish);
     const unsubscribeRepositories = repositoryInventory.subscribe(subscriber);
+    const unsubscribeSessionDomains = sessionDomains.subscribe(subscriber);
     const currentRevision = observationCoordinator.catalog()?.snapshot?.revision;
     if (Number.isSafeInteger(currentRevision) && currentRevision >= 0) {
       subscriber(Object.freeze({ domain: "sessions", revision: currentRevision }));
@@ -687,7 +722,7 @@ export function createObservationRuntime(options = {}) {
     // Send the existing catalog envelope first so a newly opened SSE stream
     // starts with the same catalog/repository baseline every client expects.
     const unsubscribeHistory = historyStore.subscribeRevisionEvents(subscriber);
-    return () => { unsubscribe(); unsubscribeRepositories(); unsubscribeHistory(); };
+    return () => { unsubscribe(); unsubscribeRepositories(); unsubscribeSessionDomains(); unsubscribeHistory(); };
   }
 
   return Object.freeze({
@@ -710,6 +745,15 @@ export function createObservationRuntime(options = {}) {
       return result.status === "loading" || result.status === "empty"
         ? { ...result, loadingState: loadingState(result.selectedId, result.catalogEntry) }
         : result;
+    },
+    serveSessionDomain(sessionId, domain, agentId, revision) {
+      const result = sessionDomains.read(sessionId, domain, agentId, revision);
+      if (result.status !== "empty") return result;
+      if (!observationStore.getByQualifiedId(sessionId) && !domainCatalogEntry(sessionId)) {
+        return { status: "unavailable", revision: 0, snapshot: null };
+      }
+      scheduleSessionDomainRebuild(sessionId);
+      return { status: "loading", revision: 0, snapshot: null };
     },
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),

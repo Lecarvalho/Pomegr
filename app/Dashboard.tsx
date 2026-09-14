@@ -24,8 +24,10 @@ import type { DesktopState } from "./components/DesktopControls";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-client";
 import { useProviderStatus, useProviderStatusPollingPause } from "./provider-status-client";
+import { useRepositoryInventoryPollingPause } from "./repository-inventory-client";
 import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor } from "./components/ProviderStatus";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
+import { subscribeLiveEvents } from "./live-events";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -62,6 +64,7 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const [paused, setPaused] = useState(false);
   useUsageLimitsPollingPause(paused);
   useProviderStatusPollingPause(paused);
+  useRepositoryInventoryPollingPause(paused);
   const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
   const revisionsBySessionRef = useRef(new Map<string, number | string>());
@@ -80,6 +83,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession
     ? !selectedSession.isLive && selectedSession.activityStatus !== "open"
     : data.view === "history"));
+  const transportTargetRef = useRef({ sessionId: selectedSessionId ?? data.session?.id ?? null, historical: selectedIsHistorical, loading });
+  useEffect(() => {
+    transportTargetRef.current = { sessionId: selectedSessionId ?? data.session?.id ?? null, historical: selectedIsHistorical, loading };
+  }, [data.session?.id, loading, selectedIsHistorical, selectedSessionId]);
   const [, setProviderNoticeVersion] = useState(0);
 
   useEffect(() => {
@@ -109,8 +116,12 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     try {
       const revisionKey = selectedSessionId ?? "__current__";
       const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store", signal });
+      if (signal?.aborted) return "aborted" as const;
       if (!response.ok) throw new Error("Monitor unavailable");
-      if (response.status === 204) return "unchanged" as const;
+      if (response.status === 204) {
+        setData((current) => ({ ...current, connected: true, error: undefined }));
+        return "unchanged" as const;
+      }
       const nextData = await response.json() as MonitorState;
       if (signal?.aborted) return "aborted" as const;
       startTransition(() => {
@@ -135,7 +146,10 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
   useEffect(() => {
     const controller = new AbortController();
     let nextRefresh: number | null = null;
-    let retryAttempt = 0;
+    let reconnecting = false;
+    let unsubscribeEvents: (() => void) | null = null;
+    let requestInFlight = false;
+    let refreshAfterFlight = false;
     if (paused) return () => controller.abort();
     const schedule = (delay: number) => {
       if (controller.signal.aborted) return;
@@ -143,15 +157,21 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
       nextRefresh = window.setTimeout(() => { nextRefresh = null; void poll(); }, delay);
     };
     const poll = async () => {
+      if (requestInFlight) { refreshAfterFlight = true; return; }
+      requestInFlight = true;
       const result = await refresh(controller.signal);
+      requestInFlight = false;
       if (controller.signal.aborted || paused || result === "aborted") return;
-      if (result === "failed") return schedule([2_000, 5_000, 10_000, 30_000][Math.min(retryAttempt++, 3)]);
-      retryAttempt = 0;
+      if (refreshAfterFlight) { refreshAfterFlight = false; schedule(0); return; }
+      if (transportTargetRef.current.historical) return;
       if (document.hidden) return schedule(30_000);
-      if (result === "loading") return schedule(1_000);
-      if (!selectedIsHistorical) schedule(2_000);
+      // Only unresolved live evidence retains the fast loading probe. Ready
+      // state is driven by revisions, with a low-frequency missed-event guard.
+      if (result === "loading" && !transportTargetRef.current.historical) return schedule(1_000);
+      schedule(reconnecting ? 5_000 : 30_000);
     };
     const foreground = () => {
+      if (!document.hidden && transportTargetRef.current.historical) { void poll(); return; }
       if (!document.hidden && nextRefresh !== null) {
         window.clearTimeout(nextRefresh);
         nextRefresh = null;
@@ -161,13 +181,33 @@ export function Dashboard({ initialSessionId = null }: { initialSessionId?: stri
     window.addEventListener("focus", foreground);
     document.addEventListener("visibilitychange", foreground);
     void poll();
+    unsubscribeEvents = subscribeLiveEvents((event) => {
+      if (controller.signal.aborted) return;
+      if (event.type === "connection") {
+        reconnecting = event.state === "reconnecting";
+        if (event.state === "reconnecting" && nextRefresh !== null) { window.clearTimeout(nextRefresh); nextRefresh = null; schedule(document.hidden ? 30_000 : 5_000); }
+        // A reconnect may have missed the readiness event. Revalidate an
+        // unfinished historical mount once without starting a history poll.
+        if (event.state === "connected" && transportTargetRef.current.historical && transportTargetRef.current.loading) void poll();
+        return;
+      }
+      const activeSessionId = transportTargetRef.current.sessionId;
+      if (event.domain === "sessions" || (activeSessionId && event.sessionId === activeSessionId)) {
+        // Background tabs coalesce publications into their 30s cadence. A
+        // foreground/focus transition performs the immediate revalidation.
+        if (document.hidden) return;
+        if (nextRefresh !== null) { window.clearTimeout(nextRefresh); nextRefresh = null; }
+        void poll();
+      }
+    });
     return () => {
       controller.abort();
       if (nextRefresh !== null) window.clearTimeout(nextRefresh);
+      unsubscribeEvents?.();
       window.removeEventListener("focus", foreground);
       document.removeEventListener("visibilitychange", foreground);
     };
-  }, [paused, refresh, selectedIsHistorical]);
+  }, [paused, refresh]);
 
   const activeSessionId = data.session?.id ?? null;
   const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId

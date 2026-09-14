@@ -59,7 +59,7 @@ describe("Activity history paging", () => {
     expect(clearMarks).not.toHaveBeenCalled();
   });
 
-  it("refreshes live activity within three seconds when the chart revision stays pinned", async () => {
+  it("revalidates ready live activity on the thirty-second fallback", async () => {
     vi.useFakeTimers();
     let total = 40;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -69,11 +69,8 @@ describe("Activity history paging", () => {
     const { result } = renderHook(() => useActivityHistory({ ...inputs, historyRevision: "40" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     total = 41;
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_999); });
-    expect(result.current.page?.total).toBe(40);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(result.current.page?.total).toBe(41);
-    expect(result.current.page?.offset).toBe(40);
   });
 
   it("defers a changed revision until navigation finishes, then refreshes the anchored page", async () => {
@@ -110,7 +107,7 @@ describe("Activity history paging", () => {
     expect(fetcher.mock.calls.some(([url]) => url.includes("anchor=event-16"))).toBe(true);
   });
 
-  it("retains the slower historical cadence without reacting to chart revisions", async () => {
+  it("does not periodically refresh ready historical activity", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn(async (url: string) => {
       const params = new URL(url, "http://localhost").searchParams;
@@ -123,13 +120,11 @@ describe("Activity history paging", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const calls = fetcher.mock.calls.length;
     rerender({ historyRevision: "2" });
-    await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(fetcher).toHaveBeenCalledTimes(calls);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(fetcher).toHaveBeenCalledTimes(calls + 1);
   });
 
-  it("resumes following across page boundaries when request selection carries live intent", async () => {
+  it("retains an anchored page while the live fallback records new events", async () => {
     vi.useFakeTimers();
     let total = 40;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -147,18 +142,9 @@ describe("Activity history paging", () => {
     rerender({ navigation: { id: "request-0000000000000073", followLatest: false } });
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     total = 41;
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(result.current.page?.offset).toBe(0);
     expect(result.current.newEvents).toBe(1);
-
-    rerender({ navigation: { id: "request-0000000000000113", followLatest: true } });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(result.current.page?.offset).toBe(40);
-    total = 49;
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(result.current.page?.offset).toBe(48);
-    expect(result.current.page?.items[0].id).toBe("event-48");
-    expect(result.current.newEvents).toBe(0);
   });
 
   it("reveals a resident linked page without a lookup or loading frame", async () => {
@@ -196,7 +182,7 @@ describe("Activity history paging", () => {
     await act(async () => { resolveLookup({ ok: true, json: async () => ({ ...page(), status: "loading", items: [] }) }); });
     await act(async () => { await vi.advanceTimersByTimeAsync(749); });
     expect(lookupCount).toBe(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(251); });
     expect(lookupCount).toBe(2);
     expect(result.current.page?.offset).toBe(16);
   });
@@ -281,7 +267,7 @@ describe("Activity history paging", () => {
     expect(result.current.page?.offset).toBe(16);
   });
 
-  it("keeps rows visible during silent polling but marks foreground refresh loading", async () => {
+  it("keeps rows visible until an explicit foreground refresh", async () => {
     vi.useFakeTimers();
     let refreshResolve!: (value: unknown) => void;
     let calls = 0;
@@ -295,15 +281,15 @@ describe("Activity history paging", () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(result.current.page?.items).toHaveLength(8);
     const rows = result.current.page?.items;
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(result.current.loading).toBe(false);
     expect(result.current.page?.items).toEqual(rows);
-    await act(async () => { refreshResolve({ ok: true, json: async () => page(32, 40, "2") }); });
     act(() => result.current.refresh());
     expect(result.current.loading).toBe(true);
+    await act(async () => { refreshResolve({ ok: true, json: async () => page(32, 40, "2") }); });
   });
 
-  it("follows latest until an explicit lookup pins it, then latest resumes following", async () => {
+  it("re-fetches latest and anchored pages on the live fallback", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn(async (url: string) => {
       const params = new URL(url, "http://localhost").searchParams;
@@ -314,18 +300,18 @@ describe("Activity history paging", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(new URL(fetcher.mock.calls[0][0], "http://localhost").searchParams.get("offset")).toBe("latest");
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(new URL(fetcher.mock.calls.at(-1)![0], "http://localhost").searchParams.get("offset")).toBe("latest");
+    const initialCalls = fetcher.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(fetcher).toHaveBeenCalledTimes(initialCalls + 1);
 
     act(() => result.current.locate("request-0000000000000090"));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    const pinnedRefresh = new URL(fetcher.mock.calls.at(-1)![0], "http://localhost").searchParams;
-    expect(pinnedRefresh.get("anchor")).toBe("event-32");
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(new URL(fetcher.mock.calls.at(-1)![0], "http://localhost").searchParams.get("anchor")).toBe("event-32");
 
     act(() => result.current.latest());
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(new URL(fetcher.mock.calls.at(-1)![0], "http://localhost").searchParams.get("offset")).toBe("latest");
   });
 

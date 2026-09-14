@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&amp;family=Geist+Mono:wght@400&amp;display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
+    .mono { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .panel { background: #191c20; border: 1px solid #333941; border-radius: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; font-size: 11px; font-weight: 500; color: #a8afb9; white-space: nowrap; }
+    .chip.green { color: #91c5a4; }
+    .chip.amber { color: #e3b575; }
+    .chip.brand { color: #a8afb9; }
+    .chip.ctx { color: #bbb3d3; }
+    .btnSecondary { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #edf0f3; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .btnPrimary { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid #a63c32; border-radius: 4px; background: #a63c32; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .btnQuiet { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: #a8afb9; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .seg { display: inline-flex; border: 1px solid #333941; border-radius: 4px; overflow: hidden; }
+    .seg > span { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: 500; color: #a8afb9; }
+    .seg > span + span { border-left: 1px solid #333941; }
+    .seg > span.on { background: #23272d; color: #edf0f3; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #333941; }
+    .tab { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; font-size: 13px; font-weight: 500; color: #a8afb9; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tab.on { color: #edf0f3; border-bottom-color: #a63c32; }
+    .tab .cnt { font-size: 11px; color: #a8afb9; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .kpi { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-right: 1px solid #333941; }
+    .kpi:last-child { border-right: 0; }
+    .kpi .v { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; }
+    .kpi .s { font-size: 12px; color: #a8afb9; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #91c5a4; flex: 0 0 auto; }
+    .dot.idle { background: #697482; } .dot.amber { background: #e3b575; } .dot.done { background: #bbb3d3; }
+    .th { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .tr { display: grid; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid #333941; font-size: 13px; }
+    .muted { color: #a8afb9; }
+    .h2 { font-size: 16px; font-weight: 650; line-height: 1.35; margin: 0; }
+    .h1 { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+    .note { background: transparent; border: 1px dashed #697482; color: #a8afb9; border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+    .sidebar { width: 176px; flex: 0 0 176px; border-right: 1px solid #333941; background: #191c20; padding: 20px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .navItem { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 4px; font-size: 13px; font-weight: 500; color: #a8afb9; }
+    .navItem.on { background: #23272d; color: #edf0f3; }
+    .navItem .cnt { margin-left: auto; font-size: 11px; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .header { height: 60px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid #333941; background: #191c20; }
+    .search { display: flex; align-items: center; gap: 8px; height: 34px; width: 300px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; color: #a8afb9; font-size: 13px; background: #111315; }
+    svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .bar { height: 6px; border-radius: 3px; background: #23272d; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: #697482; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1040px; box-sizing: border-box; padding: 40px 48px; display: flex; flex-direction: column; gap: 28px; background: #111315;">
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span class="eyebrow">Proposed sitemap</span>
+      <h1 class="h1">Four layers, one direction of travel: overview first, depth on demand</h1>
+      <span class="muted" style="font-size: 13px;">Each layer loads only its own data. Deeper layers are URLs, so they are linkable, back-button safe, and lazily fetched.</span>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <span class="chip green">Everyone</span>
+      <span class="chip ctx">Analyst</span>
+      <span class="chip amber">Expert</span>
+      <span class="muted" style="font-size: 12px;">audience of the layer</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; align-items: start;">
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L0 · Global nav</span><span class="chip green">Everyone</span></div>
+      <div class="panel" style="padding: 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div class="navItem">Home</div>
+        <div class="navItem on">Sessions <span class="cnt">2</span></div>
+        <div class="navItem">Repositories</div>
+        <div class="navItem">Models &amp; delegation</div>
+        <div class="navItem">Usage limits</div>
+        <div class="navItem">Settings</div>
+      </div>
+      <div class="note">Drop <b>Dashboards</b>: today it is a 4-row link table duplicating the nav. Merge its intent into Home pins.</div>
+      <div class="note">Rename <b>Agents</b> to <b>Models &amp; delegation</b>: the page aggregates runs by model, role and work kind across sessions. It is not a list of agents.</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L1 · Session overview</span><span class="chip green">Everyone</span></div>
+      <div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+        <span class="mono muted">/sessions/:id</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+          <div class="row"><span class="dot"></span><span>Hero: title, state, wall time, report</span></div>
+          <div class="row"><span class="dot"></span><span>5 KPIs (unchanged)</span></div>
+          <div class="row"><span class="dot"></span><span><b>Right now</b>: what each active agent is doing</span></div>
+          <div class="row"><span class="dot amber"></span><span>Needs attention + top 2 insights</span></div>
+          <div class="row"><span class="dot"></span><span>Progress + repo one-liner</span></div>
+          <div class="row"><span class="dot"></span><span>Tab bar (L2 entry)</span></div>
+        </div>
+        <div class="muted" style="font-size: 12px;">Fits one desktop viewport. No stacked disclosures. No scroll to find a tab.</div>
+      </div>
+      <div class="note">Payload: slim <span class="mono">/api/state</span> without cache events, request snapshots, context history, resources. Those move to tab endpoints.</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L2 · Session tabs</span><span class="chip ctx">Analyst</span></div>
+      <div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 0;">
+        <span class="mono muted" style="padding-bottom: 8px;">/sessions/:id?tab=…</span>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Agents</span><span class="chip green">Everyone</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Activities · requests and tool calls</span><span class="chip">Analyst</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Repository</span><span class="chip green">Everyone</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Signals</span><span class="chip amber">Expert</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Resources</span><span class="chip ctx">Analyst</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Details</span><span class="chip ctx">Analyst</span></div>
+      </div>
+      <div class="note">Each tab mounts its own hook and polls only while visible. Activity already has <span class="mono">/api/session-history</span> for requests and tool calls; Signals, Resources and Details get the same treatment.</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L3 · Agent pane and agent-scoped Activities</span><span class="chip ctx">Analyst</span></div>
+      <div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+        <span class="mono muted">?tab=agents&amp;agent=:id · ?tab=activities&amp;agent=:id</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+          <div class="row"><span class="dot"></span><span>Role, model, status, lineage</span></div>
+          <div class="row"><span class="dot"></span><span>Own context, calls, wall time</span></div>
+          <div class="row"><span class="dot"></span><span>Own activity: Activities tab filtered to the agent</span></div>
+          <div class="row"><span class="dot amber"></span><span>Own requests, cache lifetime, refills</span></div>
+          <div class="row"><span class="dot"></span><span>Signals + insights for this agent</span></div>
+        </div>
+        <div class="muted" style="font-size: 12px;">No separate route (decision 2026-09-14). The Agents tab selected-agent pane answers what the agent is; the Activities tab filtered to the agent answers what it did. Deep links carry the agent id in the query.</div>
+      </div>
+      <div class="note">Join key already exists: <span class="mono">(sessionId, agentId)</span> on every AgentsRun. Today the link drops agentId.</div>
+    </div>
+  </div>
+
+  <div class="panel" style="padding: 18px 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="eyebrow">Cross-links to add</span>
+      <div style="font-size: 13px; display: flex; flex-direction: column; gap: 4px;">
+        <span>Session agent row <span class="muted">to</span> Activities filtered to that agent</span>
+        <span>Agent pane <span class="muted">to</span> Models &amp; delegation, filtered to that model</span>
+        <span>Insight <span class="muted">to</span> the cache event or compaction it traces to</span>
+        <span>Usage limits window <span class="muted">to</span> sessions active in that window</span>
+        <span>Session repo one-liner <span class="muted">to</span> Repository detail</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="eyebrow">Duplicates to collapse</span>
+      <div style="font-size: 13px; display: flex; flex-direction: column; gap: 4px;">
+        <span>Agent status, context and cache TTL: 4 places, keep row + detail</span>
+        <span>Cache badges (AgentHistoryIndicators): 3 places, keep detail only</span>
+        <span>Workflow progress: summary card + roster header, keep one</span>
+        <span>Tool call total: KPI + Activity header, keep KPI</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="eyebrow">Already right, keep</span>
+      <div style="font-size: 13px; display: flex; flex-direction: column; gap: 4px;">
+        <span>Repositories: index + tabbed detail is the target pattern</span>
+        <span>Settings: tabbed; gains a Storage section (retention, desktop-only)</span>
+        <span>Revision + 204 short-circuit on state, sessions, limits</span>
+        <span>Sessions list: triage table with Live / Needs input / History</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -14,7 +14,7 @@ async function repositoryFixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr Git José -"));
   const repository = path.join(root, "repository with spaces");
   const remote = path.join(root, "origin é.git");
-  context.after(() => rm(root, { recursive: true, force: true }));
+  context.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
   execFileSync("git", ["init", "--initial-branch=main", repository], { stdio: "ignore" });
   git(repository, "config", "user.name", "Pomegr Test");
@@ -93,6 +93,38 @@ test("does not fall back to a stale tracking ref when the remote is unavailable"
 
   assert.equal(state.remote.status, "unavailable");
   assert.equal(state.comparison, null);
+});
+
+test("binds file paths to the Git top-level from a nested cwd and excludes custom roots and junction escapes", async (context) => {
+  const { root, repository } = await repositoryFixture(context);
+  const nested = path.join(repository, "packages", "app");
+  const allowed = path.join(repository, "allowed");
+  const providerPrivate = path.join(repository, "provider-private");
+  const outside = path.join(root, "outside-transcripts");
+  await Promise.all([mkdir(nested, { recursive: true }), mkdir(allowed), mkdir(providerPrivate), mkdir(outside)]);
+  await Promise.all([
+    writeFile(path.join(allowed, "visible.txt"), "first\n"),
+    writeFile(path.join(providerPrivate, "secret.txt"), "first\n"),
+    writeFile(path.join(outside, "transcript.jsonl"), "PRIVATE_TRANSCRIPT\n"),
+  ]);
+  git(repository, "add", "allowed/visible.txt", "provider-private/secret.txt");
+  git(repository, "commit", "-m", "Add path fixtures");
+  await Promise.all([
+    writeFile(path.join(allowed, "visible.txt"), "second\n"),
+    writeFile(path.join(providerPrivate, "secret.txt"), "second\n"),
+  ]);
+  let linked = true;
+  try { await symlink(outside, path.join(repository, "escape"), process.platform === "win32" ? "junction" : "dir"); }
+  catch { linked = false; }
+
+  const syncState = readGitState(nested, { forbiddenRoots: [providerPrivate] });
+  const asyncState = await readGitStateAsync(nested, { forbiddenRoots: [providerPrivate] });
+  for (const state of [syncState, asyncState]) {
+    assert.equal(state._repositoryRoot, path.normalize(repository));
+    assert.deepEqual(state.files, [{ status: " M", path: "allowed/visible.txt" }]);
+    assert.doesNotMatch(JSON.stringify(state.files), /secret|PRIVATE_TRANSCRIPT/u);
+    if (linked) assert.equal(state.files.some((file) => file.path.startsWith("escape")), false);
+  }
 });
 
 test("treats squash-merged branch changes as integrated instead of ahead", async (context) => {
