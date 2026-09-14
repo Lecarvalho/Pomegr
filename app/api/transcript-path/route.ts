@@ -14,6 +14,8 @@ export async function GET(request: Request) {
   }
   const monitorParams = new URLSearchParams({ sessionId, agentId });
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path: `/api/transcript-path?${monitorParams}`,
     timeoutMs: 7500,
     unavailableBody: { error: "Transcript path unavailable." },

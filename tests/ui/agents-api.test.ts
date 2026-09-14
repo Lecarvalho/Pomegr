@@ -11,7 +11,7 @@ describe("Agents same-origin proxy", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await GET(new Request("http://localhost:3003/api/agents?project=Pomegr&days=7&scope=delegated&revision=6&url=https://evil.example&sourcePath=PRIVATE_PATH"));
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:4317/api/agents?project=Pomegr&days=7&scope=delegated&revision=6", expect.objectContaining({
-      cache: "no-store", headers: { "x-pomegr-desktop-authorization": "private-monitor-token" },
+      cache: "no-store", headers: { "accept-encoding": "identity", "x-pomegr-desktop-authorization": "private-monitor-token" },
     }));
     expect(result.headers.get("x-pomegr-revision")).toBe("7");
     expect(result.headers.get("cache-control")).toBe("no-store");
@@ -19,9 +19,14 @@ describe("Agents same-origin proxy", () => {
   });
 
   it("preserves a revision-only 204 response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
-    const result = await GET(new Request("http://localhost:3003/api/agents?revision=7"));
+    const fetchMock = vi.fn().mockImplementation((_url, options) => {
+      expect(options.headers["if-none-match"]).toBe('"7"');
+      return Promise.resolve(new Response(null, { status: 204, headers: { ETag: '"7"' } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await GET(new Request("http://localhost:3003/api/agents", { headers: { "If-None-Match": '"7"' } }));
     expect(result.status).toBe(204);
+    expect(result.headers.get("etag")).toBe('"7"');
     expect(await result.text()).toBe("");
   });
 

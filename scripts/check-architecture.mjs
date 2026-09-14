@@ -43,6 +43,8 @@ async function collectSourceFiles(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.isDirectory() && SKIP_DIRECTORIES.has(entry.name)) continue;
     const entryPath = path.join(directory, entry.name);
+    // Exported design-reference runtimes are generated assets, not source modules.
+    if (/^docs\/internal\/plans\/ia-redesign\/prototype\/[^/]+-html\/(?:vendor(?:\/|$)|support\.js$)/.test(displayPath(entryPath))) continue;
     if (entry.isDirectory()) {
       files.push(...await collectSourceFiles(entryPath));
       continue;

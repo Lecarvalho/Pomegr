@@ -11,9 +11,11 @@ import { SessionCatalogProvider } from "../hooks/SessionCatalogContext";
 import type { DesktopState } from "./DesktopControls";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
 import { useProviderStatusPollingPause } from "../provider-status-client";
+import { useRepositoryInventoryPollingPause } from "../repository-inventory-client";
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
 import { PhoneAccessExpiredNotice, useClientAccess } from "../hooks/ClientAccessContext";
 import { CommandCenterShell } from "./command-center/CommandCenterShell";
+import { subscribeLiveEvents } from "../live-events";
 
 type AppShellDesktopBridge = {
   getDesktopState(): Promise<DesktopState | null>;
@@ -39,6 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { mode: clientAccessMode, markAccessExpired, refreshAccess } = useClientAccess();
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
   useProviderStatusPollingPause(Boolean(desktopState?.paused));
+  useRepositoryInventoryPollingPause(Boolean(desktopState?.paused));
   const { ready: homePreferencesReady, rememberSession } = useHomePreferences();
 
   useEffect(() => {
@@ -55,11 +58,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
     let timer: number | null = null;
-    let retryAttempt = 0;
     let requestInFlight = false;
     let refreshAfterFlight = false;
     let pendingEventRevision: number | null = null;
-    let eventSource: EventSource | null = null;
+    let unsubscribeEvents: (() => void) | null = null;
+    let reconnecting = false;
     let focusListener: (() => void) | null = null;
     let visibilityListener: (() => void) | null = null;
     if (desktopState?.paused) return () => controller.abort();
@@ -76,10 +79,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       try {
         const query = catalogRevisionRef.current === null ? "" : `?revision=${encodeURIComponent(String(catalogRevisionRef.current))}`;
         const response = await fetch(`/api/sessions${query}`, { cache: "no-store", signal: controller.signal });
+        if (controller.signal.aborted) return;
         if (response.status === 204) {
           catalogNotificationStartedAtRef.current = null;
+          setConnected(true);
+          setLoading(false);
           succeeded = true;
-          retryAttempt = 0;
           return;
         }
         if (!response.ok) {
@@ -143,9 +148,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             pendingEventRevision = null;
           }
           const delay = succeeded
-          ? (document.hidden ? 30_000 : catalogReadinessRef.current.catalog === "loading" ? 1_000 : 5_000)
-            : [2_000, 5_000, 10_000, 30_000][Math.min(retryAttempt++, 3)];
-          if (succeeded) retryAttempt = 0;
+            ? (document.hidden ? 30_000 : catalogReadinessRef.current.catalog === "loading" ? 1_000 : reconnecting ? 5_000 : 30_000)
+            : (document.hidden ? 30_000 : 5_000);
           schedule(delay);
         }
       }
@@ -156,30 +160,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("focus", focusListener);
     document.addEventListener("visibilitychange", visibilityListener);
     void poll();
-    if (typeof EventSource === "function") {
-      eventSource = new EventSource("/api/events");
-      eventSource.addEventListener("catalog", (message) => {
-        if (controller.signal.aborted || document.hidden) return;
-        try {
-          const event = JSON.parse((message as MessageEvent<string>).data) as { domain?: unknown; revision?: unknown };
-          if (event.domain !== "sessions" || !Number.isSafeInteger(event.revision) || Number(event.revision) < 0
-            || String(event.revision) === String(catalogRevisionRef.current ?? "")) return;
-          pendingEventRevision = Number(event.revision);
-          catalogNotificationStartedAtRef.current = performance.now();
-          if (requestInFlight) refreshAfterFlight = true;
-          else {
-            if (timer !== null) window.clearTimeout(timer);
-            timer = null;
-            void poll();
-          }
-        } catch {
-          // Malformed or future event shapes cannot alter browser state.
-        }
-      });
-    }
+    unsubscribeEvents = subscribeLiveEvents((event) => {
+      if (controller.signal.aborted) return;
+      if (event.type === "connection") {
+        reconnecting = event.state === "reconnecting";
+        if (timer !== null) { window.clearTimeout(timer); timer = null; schedule(document.hidden ? 30_000 : reconnecting ? 5_000 : 30_000); }
+        return;
+      }
+      if (event.domain !== "sessions" || document.hidden || String(event.revision) === String(catalogRevisionRef.current ?? "")) return;
+      pendingEventRevision = event.revision;
+      catalogNotificationStartedAtRef.current = performance.now();
+      if (requestInFlight) refreshAfterFlight = true;
+      else { if (timer !== null) window.clearTimeout(timer); timer = null; void poll(); }
+    });
     return () => {
       controller.abort();
-      eventSource?.close();
+      unsubscribeEvents?.();
       if (timer !== null) window.clearTimeout(timer);
       if (focusListener) window.removeEventListener("focus", focusListener);
       if (visibilityListener) document.removeEventListener("visibilitychange", visibilityListener);

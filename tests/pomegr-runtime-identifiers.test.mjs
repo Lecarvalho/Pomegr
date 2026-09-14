@@ -71,12 +71,12 @@ test("forwards only the Pomegr API monitor token and header", async () => {
     process.env.POMEGR_MONITOR_TOKEN = TOKEN;
     process.env.THREADLIGHT_MONITOR_TOKEN = "legacy-token-must-be-ignored";
     await proxyMonitorJson({ path: "/api/state", timeoutMs: 100, unavailableBody: {} });
-    assert.deepEqual(requests[0].options.headers, { "x-pomegr-desktop-authorization": TOKEN });
+    assert.deepEqual(Object.fromEntries(new Headers(requests[0].options.headers)), { "accept-encoding": "identity", "x-pomegr-desktop-authorization": TOKEN });
     assert.equal(JSON.stringify(requests[0].options.headers).includes("legacy-token"), false);
 
     delete process.env.POMEGR_MONITOR_TOKEN;
     await proxyMonitorJson({ path: "/api/sessions", timeoutMs: 100, unavailableBody: {} });
-    assert.equal(requests[1].options.headers, undefined);
+    assert.deepEqual(Object.fromEntries(new Headers(requests[1].options.headers)), { "accept-encoding": "identity" });
   } finally {
     globalThis.fetch = previousFetch;
     if (previousPomegr === undefined) delete process.env.POMEGR_MONITOR_TOKEN;

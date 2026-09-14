@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import type { RequestHistoryPage } from "../../../../shared/session-history-contract";
-import { subscribeHistoryPublications } from "../../../history-publications";
+import { subscribeLiveEvents } from "../../../live-events";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
 import { isCompleteRequestOverview, scopedRows, type RequestRow } from "./model";
 import { useRequestSelection } from "./useRequestSelection";
@@ -15,7 +15,7 @@ export type SessionRequestInputs = {
 };
 
 type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean; requestedOffset?: number };
-type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string };
+type HistoryQuery = { offset?: number | "latest"; requestId?: string; scope?: string; refresh?: boolean };
 type PendingLocate = { id: string; scope: string } | null;
 type PendingPageSelection = { key: string; offset: number; index: number | null } | null;
 
@@ -54,8 +54,11 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
   const [retry, setRetry] = useState(0);
   const queuedPublication = useRef<{ revision: number } | null>(null);
-  const publicationState = useRef({ pinned: false, atLatest: true, loading: false, unavailable: false, hydrating: true });
+  const hiddenPublication = useRef(false);
+  const publicationState = useRef({ pinned: false, atLatest: true, offset: 0, loading: false, unavailable: false, hydrating: true });
   const loadHistoryRef = useRef<(options?: HistoryQuery) => Promise<RequestHistoryPage | null>>(() => Promise.resolve(null));
+  const reconnecting = useRef(true);
+  const [transportVersion, setTransportVersion] = useState(0);
 
   const loadHistory = useCallback((options: HistoryQuery = {}) => {
     if (!historyEnabled || !sessionId) return Promise.resolve(null);
@@ -64,23 +67,28 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     requestedKey.current = nextKey;
     lastQuery.current = { key: nextKey, options };
     request.current?.controller.abort();
-    const controller = new AbortController();
     const requestSerial = ++serial.current;
-    request.current = { controller, serial: requestSerial };
     const requestedOffset = typeof options.offset === "number" ? options.offset : undefined;
     const cached = nextKey === key
       ? options.requestId ? pageCache.locate(options.requestId, size)
         : requestedOffset !== undefined ? pageCache.window(requestedOffset, size) : null
       : null;
-    if (cached) {
+    if (cached && !options.refresh) {
+      request.current = null;
       setHistory({ key: nextKey, page: cached, loading: false, unavailable: false, retryable: false });
       return Promise.resolve(cached);
     }
+    const controller = new AbortController();
+    request.current = { controller, serial: requestSerial };
     setHistory((current) => ({ key: nextKey, page: current.key === nextKey ? current.page : null, loading: true, unavailable: false, retryable: false, requestedOffset }));
     const params = new URLSearchParams({ sessionId, kind: "requests", scope: historyScope(nextScope, agents), limit: String(size), offset: String(options.offset ?? "latest") });
     if (options.requestId) params.set("requestId", options.requestId);
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
+        // Navigation and range queries cannot carry a page-level revision: the
+        // monitor's revision is domain-wide, not a proof this exact query is
+        // resident. Cached exact windows return before fetch above.
+        if (response.status === 204) return null;
         if (!response.ok) return null;
         return response.json();
       })
@@ -109,9 +117,15 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       .finally(() => {
         if (request.current?.serial !== requestSerial) return;
         request.current = null;
-        if (!controller.signal.aborted && historical && queuedPublication.current) {
+        if (!controller.signal.aborted && queuedPublication.current) {
           queuedPublication.current = null;
-          const queued = lastQuery.current?.key === nextKey ? lastQuery.current.options : { offset: "latest" as const };
+          // A revision can arrive while an older or pinned page is resolving.
+          // Re-read that same viewport once, so its total/overview advances
+          // without moving the selected request to the latest window.
+          const current = publicationState.current;
+          const queued = historical
+            ? (lastQuery.current?.key === nextKey ? { ...lastQuery.current.options, refresh: true } : { offset: "latest" as const, refresh: true })
+            : { offset: current.atLatest ? "latest" as const : current.offset, refresh: true };
           void loadHistoryRef.current(queued);
         }
       });
@@ -138,12 +152,13 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
 
   useEffect(() => {
     if (!historyEnabled || history.key !== key || !history.retryable) return;
+    if (historical) return;
     const timer = window.setTimeout(() => {
       requestedKey.current = "";
       setRetry((value) => value + 1);
-    }, history.unavailable ? 5_000 : 750);
+    }, document.hidden ? 30_000 : history.unavailable ? 5_000 : 1_000);
     return () => window.clearTimeout(timer);
-  }, [history.unavailable, history.key, history.retryable, historyEnabled, key]);
+  }, [historical, history.unavailable, history.key, history.retryable, historyEnabled, key]);
 
   const preview = historyEnabled && !page;
   const historyFeed = useMemo<RequestSnapshotFeed>(() => page ? { status: "ready", items: page.items } : requestSnapshots, [page, requestSnapshots]);
@@ -163,7 +178,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, atLatest);
   useEffect(() => {
     const overviewPending = Boolean(page && page.total > 0 && !isCompleteRequestOverview(page.overview, page.total));
-    publicationState.current = { pinned: selection.pinned, atLatest, loading: history.loading, unavailable: history.unavailable, hydrating: !page || history.loading || overviewPending };
+    publicationState.current = { pinned: selection.pinned, atLatest, offset: page?.offset ?? 0, loading: history.loading, unavailable: history.unavailable, hydrating: !page || history.loading || overviewPending };
   }, [atLatest, history.loading, history.unavailable, page, selection.pinned]);
   // A summary preview cannot establish whether the linked request is newest.
   const locatedRow = locateTarget && page ? rows.find((row) => row.id === locateTarget) : null;
@@ -179,22 +194,25 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   }
 
   useEffect(() => {
-    const atLatest = page && page.offset + page.items.length >= page.total;
-    if (!historyEnabled || historical || selection.pinned || history.loading || history.unavailable || !atLatest) return;
-    const timer = window.setTimeout(() => { void loadHistory({ offset: "latest" }); }, 3_000);
-    return () => window.clearTimeout(timer);
-  // Live refresh intentionally follows only an unpinned latest page; older and selected pages stay anchored.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historical, history.loading, history.unavailable, historyEnabled, page, selection.pinned]);
-
-  useEffect(() => {
     if (!historyEnabled) return;
-    return subscribeHistoryPublications(({ revision }) => {
+    return subscribeLiveEvents((event) => {
+      if (event.type === "connection") {
+        reconnecting.current = event.state === "reconnecting";
+        setTransportVersion((value) => value + 1);
+        if (event.state === "connected" && historical && publicationState.current.hydrating && !request.current) void loadHistoryRef.current({ offset: "latest" });
+        return;
+      }
+      if (event.domain !== "history" || event.sessionId !== sessionId) return;
+      if (document.hidden) {
+        hiddenPublication.current = true;
+        return;
+      }
+      const { revision } = event;
       const current = publicationState.current;
       // Recorded sessions do not follow settled revisions, but their first
       // history page may still be waiting for an asynchronous commit.
       if (historical) {
-        if (current.unavailable || !current.hydrating) return;
+        if (!current.hydrating && !current.unavailable) return;
         if (request.current) {
           if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
           return;
@@ -202,23 +220,46 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
         void loadHistoryRef.current({ offset: "latest" });
         return;
       }
-      if (current.pinned || !current.atLatest || current.unavailable) return;
       if (current.loading || request.current) {
         if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
         return;
       }
-      void loadHistoryRef.current({ offset: "latest" });
+      // A pinned window retains its selection while its committed revision and
+      // minimap overview advance; it must not suppress new history evidence.
+      void loadHistoryRef.current({ offset: current.atLatest ? "latest" : current.offset, refresh: true });
     });
-  }, [historical, historyEnabled]);
+  }, [historical, historyEnabled, sessionId]);
 
   useEffect(() => {
-    if (!historyEnabled || historical || queuedPublication.current === null || selection.pinned || !atLatest
-      || history.loading || history.unavailable || request.current) return;
-    const publication = queuedPublication.current;
-    if (!publication) return;
-    queuedPublication.current = null;
-    void loadHistory({ offset: "latest" });
-  }, [atLatest, historical, history.loading, history.unavailable, historyEnabled, loadHistory, selection.pinned]);
+    if (!historyEnabled) return;
+    const foreground = () => {
+      if (document.hidden) return;
+      const current = publicationState.current;
+      if (request.current) {
+        if (hiddenPublication.current && !queuedPublication.current) queuedPublication.current = { revision: Number.MAX_SAFE_INTEGER };
+        return;
+      }
+      hiddenPublication.current = false;
+      void loadHistoryRef.current({ offset: current.atLatest ? "latest" : current.offset, refresh: true });
+    };
+    window.addEventListener("focus", foreground);
+    document.addEventListener("visibilitychange", foreground);
+    return () => {
+      window.removeEventListener("focus", foreground);
+      document.removeEventListener("visibilitychange", foreground);
+    };
+  }, [historyEnabled]);
+
+  useEffect(() => {
+    if (!historyEnabled || historical || history.loading) return;
+    const delay = document.hidden ? 30_000 : reconnecting.current ? 5_000 : 30_000;
+    const timer = window.setTimeout(() => {
+      if (request.current) return;
+      const current = publicationState.current;
+      void loadHistoryRef.current({ offset: current.atLatest ? "latest" : current.offset, refresh: true });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [historical, history.loading, history.key, historyEnabled, transportVersion]);
 
   const setScope = (value: string) => setPreference({ sessionId, scope: value });
   const cancelHistoryNavigation = () => {

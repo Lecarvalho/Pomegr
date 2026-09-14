@@ -1,0 +1,639 @@
+# Information architecture redesign
+
+> Status: Session 1 complete; T02 and T01 verified and independently accepted.
+> Created: 2026-09-13.
+> Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
+> Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
+> Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
+> Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
+> Next task or decision: Session 2 is next; it has not started. Begin it only in a fresh user-started implementation session.
+> Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
+> Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
+
+## Outcome
+
+Pomegr shows an overview first and depth on demand. A newcomer starts with the session
+overview; an analyst opens a tab; an expert selects an agent or request within it.
+Tabs and selections have URLs, load their own data, and subscribe only while
+mounted (the persistent session header and shell keep their own subscriptions).
+The visual tone stays calm: outline chips, muted tints and the scoped brand accents
+listed under Visual tone.
+
+The approved visual reference is the prototype in
+[`ia-redesign/prototype/`](ia-redesign/prototype/README.md). Implementation must
+match it at high fidelity, subject to the explicit written overrides below. Artboard names in this plan are shorthand; the prototype README links the current
+`<name>-html/<name>.dc.html` exports. Each UI task ends with a side-by-side comparison of the
+running app and the matching artboard, recorded in the task checkpoint.
+
+## Prototype fidelity rules
+
+- Open the artboard HTML file next to the running app at 1440px (desktop) or
+  390px (phone) width. Every artboard is sized to its full content, so nothing
+  below the fold is implied: what the artboard shows is the complete planned
+  page, top to bottom. Compare layout, order, spacing, type sizes, chip styles,
+  and wording. Differences must be either fixed or written down with a reason.
+- The prototype uses hard-coded dark theme colors copied from
+  `app/styles/tokens.css`. The implementation uses the tokens and must also render
+  correctly in the light theme.
+- Every control uses one of the six button roles in `app/styles/shell.css`. Chips
+  use `.commandChip` / `.agentChip`. No new literal colors, radii, or font sizes.
+  Add samples to `/design-system` and `DESIGN.md` for every new shared control
+  (tab bar, page header, lane chart, file tree, file history panel, sidebar limits).
+- Sample data in the prototype is placeholder. File names such as
+  `SessionTabs.tsx` and `RequestLanes.tsx` are illustrative, not required names.
+- Fonts: the prototype loads Inter and Geist Mono from Google Fonts for preview
+  only. The app keeps its bundled fonts.
+
+### Prototype-only elements that must not ship
+
+| Element in prototype | Treatment in the app |
+| --- | --- |
+| Audience chips "Everyone", "Analyst", "Expert" (sitemap and Details tab context inventory) | Do not render. They mark intended audience for the plan only. |
+| Dashed grey note boxes on the sitemap artboard | Do not render. |
+| Muted hint text inside the tab bar ("Header stays on every tab · tabs load on open") | Do not render. |
+| Subtitle "click a lane name to focus it" on Activities | Move into the dotted info popover on the Requests chart heading. |
+| Minimap hint "Drag the window · arrow keys step · Home / End" | Do not render inline. Keep it as the minimap `aria-valuetext` and popover text. |
+| Footer lines that explain a rule ("Edited by comes from…", "Peaks are matched…", "Estimates from the provider's…") | Keep the short honesty caveats that exist today ("File history covers recorded operations…", "Not a quality assessment", "Estimate, not a bill"). Move longer explanations into info popovers. |
+| Placeholder counts in tab labels | Real counts from the domain responses; hide the count when a domain is not ready. |
+| Sidebar limits at 70 and 90 percent | Use the METRICS.md thresholds (75 and 85 percent) and severity colors. |
+
+## Agreed decisions
+
+Sitemap and navigation:
+
+- Three route layers: global navigation, session overview, and session tabs. Agent depth uses the Agents tab inspector; request depth uses Activities. Both selections are deep-linkable within the session route; there is no separate agent detail route.
+- Global navigation order: Home, Sessions (live count badge), Repositories, Models & delegation, then Usage limits, Settings.
+- Rename the `/agents` page to "Models & delegation". Its unit of analysis is a run aggregated by model, role, and work kind across sessions. Route may stay `/agents`; the label changes.
+- Remove the `/dashboards` page. It is a four-row link table duplicating navigation. Redirect `/dashboards` to `/` and fold its intent into Home pins.
+- Repositories page gains a Files tab beside Overview, Git, Plugin, Context inventory, Reporting.
+
+App bar and page header (artboard `HeaderStandard`):
+
+- The app bar never changes shape by route: brand, spacer, search trigger, monitor dot, alerts, profile. Search trigger is 280px on desktop, 200px on tablet, icon only on phone. It opens a Ctrl K palette. The app bar never contains a breadcrumb.
+- The palette is a new overlay component. Today the "palette" is a single search input with a Ctrl K focus shortcut (`CommandCenterShell.tsx`). The overlay keeps the current regex routing to the destinations (minus Dashboards) and adds recent sessions and repositories as results.
+- One page header component on every page: breadcrumb eyebrow (absent on Home and Settings), title, optional meta line, actions slot on the right bottom-aligned with the last line of the title block, optional tab bar below. Sessions list puts its filter segment in the actions slot. Session detail breadcrumb ends at the project; the title is the session title.
+- Sidebar bottom holds a limits widget: one line per provider with sessions in the last seven days, showing that provider's tightest window percentage and window label, and a link to the Usage limits page. Fill colors follow the existing usage-limit rule in `docs/METRICS.md` ("Usage-limit colors"): normal from 0 through 74 percent, warning from 75 through 84, critical from 85 through 100. The prototype's 70 and 90 percent thresholds are superseded; every usage-limit surface keeps one rule. It is shell chrome, never session data, and never renders inside historical session state. Cursor appears the same way once its adapter reports windows.
+
+Session page (artboards `Main`, `SessionAgents`, `ActivityTab`, `SignalsTab`, `RepositoryTab`, `ResourcesTab`, `DetailsTab`, `Mobile`; Settings › Storage on `SettingsStorage`):
+
+- Persistent session header on every tab: breadcrumb (Sessions › project), title, one meta line, and the five KPIs (agents observed, all-agent context, wall time, tool calls, agent estimate). The meta line holds, in order: provider chip, session state chip (Live · In progress, Finished, Needs input; green tone on text and dot only), shortened session id (first and last segment, full value on hover), branch chip with the git icon, and the start time. The actions slot bottom-aligns with the last line of the title block: the meta line here, the title on pages without one such as the Sessions list. It holds actions only. Download report is a quiet action, as DESIGN.md already specifies. The project name appears once, in the breadcrumb; wall time appears once, in the KPI; approval mode and the full session id live on the Details tab. There is no live state card and no collapsed header variant. The header is identical on every tab.
+- Tab bar sits directly under the KPIs. Tabs in order: Overview, Agents, Activities, Repository, Signals, Resources, Details. URL values are `overview`, `agents`, `activities`, `repository`, `signals`, `resources`, `details`; unknown values fall back to Overview. Resources is hidden only when a session has neither live samples nor stored resource rows, including peaks. Deep links accept `agent`, `request`, and `path` parameters.
+- Overview tab content: Right now (one row per active agent: name, role and model, latest action, latest context, age), top two efficiency signals with "Show in agent" or an evidence link to Activities, Repository one-liner, last-48-request strip with fresh tokens and role-family track/legend linking to Activities, Progress (agent-maintained plan and agent estimate), Work by kind counts, and Cost estimate.
+- Agents tab keeps today's roster and selected-agent inspector: status bar, legend, role counts, filter, Group by workflow, Status and Model selects, Hide finished, Sort, and desktop List/Tree/Grid. The inspector retains lineage, facts, skills, cache lifetime, compactions, shell tasks and signals, plus "Activities for this agent", "<model> across sessions", and one-shot Copy transcript path. Models & delegation uses the shared row where applicable and links to the inspector by agent id.
+- Activities tab combines a Requests chart as scrubber and one Activity feed grouped by request. The agent filter in the chart header applies to the whole tab. Largest requests is a strip under the minimap. The feed's left rail contains Actions by kind (icon, count, share, median; one pressed toggle filters nested calls), Shell tasks, Failed shell runs, and caveats. The right side shows five requests around selection with request-local counts and nested tool calls, then Previous / Next / Jump to latest. Targets show basenames only. Agent navigation opens the Agents inspector. There is no separate Requests tab and no Fed by / Called row.
+- Desktop chart: one lane per agent sharing request order, viewport, minimap and keyboard stepping. Every request occurs once, with compactions in its own lane. Per-lane scales print maxima; the primary lane is taller. Labels are 220px, ellipsized, with the full name and role/model in a title tooltip and accessible name, and no role-colored dots. More than eight lanes collapse by workflow group; click expands a group or focuses a lane. Controls are Fresh tokens / Full breakdown and Lanes / Single chart; single chart includes the role-family agent track. The minimap is neutral grey. Chart selection uses bars or arrow keys; Previous / Next belong to the feed. Request detail shows the four request-local counts.
+- Signals tab holds efficiency signals, cache evidence, flow score with its two inputs, cache lifetime by agent, and agent-reported MCP signals. Introduce deterministic rules with "Not a quality assessment"; retain observed/inference/attributed qualifications on cache evidence and clearly distinguish agent-reported signals. Evidence links go to Activities with the corresponding agent/request selected; never invent a request association. Flow score leaves Details.
+- Live selection and correlation: incoming requests extend history and the minimap. The chart may advance while the selected bar remains inside its viewport; when further advancement would push it out, anchor the viewport with that bar at its left edge. Do not clamp an old bar into a false request position. Request details and the Activities feed always follow the selected visible bar. Anchoring never pauses collection. Dragging away transfers selection to the nearest visible bar (the left-edge bar when dragging right); update chart, request details and feed together. Jump to latest reveals/selects the latest request. Filters, keyboard navigation and paging obey the same invariant; no detail survives without its bar. During a range fetch retain the previous correlated view until the new view is ready, or show a coordinated loading state.
+
+- Repository tab: one bar with branch, comparison chip ("2 ahead of origin/main"), PR chip, and a muted second line (commits in session, PR size, remote check age, git task counts), plus a link to the repository Git tab. Below it, the shared file tree scoped to files this session touched (status chip and name only, no agent or edit counts), a "Changed elsewhere" group for uncommitted files the session did not touch, a search box, and the segment Touched here / Uncommitted / Changed elsewhere. The right pane is the shared file history panel with the current session highlighted. Commit lists leave the session page.
+- Resources tab: CPU, memory and disk-I/O sparkline cards with current value and window peak, a 5 min / 30 min / Session window selector, and a peaks table with a time-overlap caveat. Live sessions use raw recent samples or Session minute aggregates. Historical sessions show retained Session curves and recorded peaks; if curves were pruned, show peaks and the retention explanation. Hide only when neither live samples nor stored rows exist. Peak selection zooms to its retained sample window when available. Machine-aggregate measurements do not imply per-task resource attribution. The process table is deferred to a separate monitor-private sampler.
+- Details tab: Session facts (provider, session id, project, started, approval mode, session-observed plugin/policy), one-shot Copy transcript path, Cost estimate, and inline Context inventory with category table, groups and repository revision link. Flow score is on Signals; usage limits remain shell chrome.
+- Phone: app bar with menu, brand, search and alerts; three KPIs (agents, context, calls); sticky tabs Overview, Agents, Activities, Repo, More fitting 390px without scrolling. More opens Signals, Resources and Details using the same query URLs. Agents shows List/Grid without Tree; a row opens the full-viewport inspector with Back and focus restoration. Direct subagents uses one 48px summary line; context uses regular-weight primary text.
+- Phone Activities always uses single chart, with no lane toggle. Include role track/legend, compaction labels in a reserved band above bars, minimap and Largest strip. Put five request groups before Actions by kind and Shell tasks. Each request line shows agent, role, uncached input and time; tool lines show kind, target and duration, without colored counts or per-call times. Other token counts and call times remain in request detail. The selected request has the approved brand-colored left rule. Use one short caveat with a dotted "how to read this" popover and 44px Previous / Next / Jump to latest targets. Overview stays about two phone screens; hit targets are at least 44px.
+
+Agent selection and deep links:
+
+- Inspector: `/sessions/:sessionId?tab=agents&agent=<id>`.
+- Scoped activity: `/sessions/:sessionId?tab=activities&agent=<id>`; append `request=<n>` for a specific request.
+- Models & delegation evidence and "Show in agent" retain both session and agent identity. A request link selects the matching visible bar and feed group.
+- No `/sessions/:sessionId/agents/:agentId` route or separate agent chart is added.
+
+File history (artboards `RepositoryTab`, `RepoFiles`):
+
+- One record type: file change with normalized repository identity, opaque file identity, safe relative path, kind (created, edited, deleted, moved), and observation time. Session, agent and request attribution require supporting recorded evidence under T00; Git-only move continuity must not invent them.
+- Two groupings of the same records. Repository Files tab groups by file: tree with per-file distinct session counts rolled up to folders, search, "With session history only" and "Include historical files" toggles, file history panel on the right. Session Repository tab groups by session as described above.
+- File history panel: breadcrumb path, file name, working-tree status chip when the file is currently modified, "N recorded sessions · newest first", provider segment (All providers / Claude Code / Codex), one entry per session with kind chip (Edited, Created), edit count, session title link, provider chip, agent names, time. Header action differs by side: "Copy path" on the repository side, "All history on repository page" on the session side. Footer caveat: recorded Write and Edit operations only; shell scripts and external edits may be missing.
+- Moves keep file identity. History for the new path shows older sessions with the old path noted per entry. Untracked moves outside both detection sources stay as delete plus create.
+- Deep links: `/repositories/:id?tab=files&path=…` and `/sessions/:id?tab=repository&path=…`.
+
+Transport and caching:
+
+- One `EventSource` per browser tab, module singleton with reference counting.
+- Domain responses with independent revisions, 204 on unchanged revision, ETag equals revision, gzip.
+- SSE is the primary trigger; fallback poll 30s while connected, 5s while reconnecting, 30s when hidden. No fixed 2s or 3s timers. Historical sessions load each mounted domain/query once ready; explicit range/filter navigation and reconnect recovery may fetch again, without periodic history polling.
+- Live chart: while following the latest window, a history event triggers one page fetch. With the viewport anchored on an older selection, history totals extend the minimap without moving the viewport or selection; fetch committed visible-range revisions only when its existing evidence changes. A range navigation fetches the corresponding chart and feed together.
+- Browser store keyed by session, domain, params; bounded to the current session plus two recent ones.
+- Monitor derivation split per domain; derived caches for sessions idle for ten minutes drop to checkpoint and rebuild on demand.
+- File-change index in `node:sqlite`, monitor-owned, rebuildable from checkpoints plus git.
+- Development request log stays available for debugging behind an environment flag; the default output omits 204 responses.
+
+Visual tone:
+
+- Outline chips only; tone in text (amber MOD, green NEW, green Active); no tinted chip fills. This changes the base chip: `.commandChip` and `.agentChip` currently carry a border plus the panel-2 fill, enforced by `tests/ui/pomegr-design-contract.test.tsx`. T03 removes the base fill, updates the test, and fixes the DESIGN.md sentence that already contradicts the CSS ("Evidence chips stay flat fills with no border").
+- Agent tints color by role family, never by agent identity. `Agent.role` is the bounded browser-safe enum, so the palette is fixed: primary (orchestrator) carries no tint and uses the neutral track grey; reading (explore, researcher) blue; planning (plan) teal; writing (builder, tester) ochre, kept away from warning amber; reviewing (reviewer) rose, kept away from error red; generic (general-purpose, workflow-worker, fork) grey; system (compaction, unknown, custom) lighter grey. Five tints plus neutral, muted, same oklch chroma and lightness with only the hue varying. Tints appear only in agent tracks and their legends (Overview and single-chart Activities); lanes, minimap, trees, and lists use no role colors. The legend lists role families present in the session with counts ("explore ×3"); same-role agents share one tint, and hovering or clicking a bar names the agent. Role tint never appears as a dot beside an agent name: the status dot stays status (green active, grey idle, amber needs input, purple finished).
+- Selected rows use the raised surface. The phone Activities feed alone uses the approved brand-colored left rule for the selected request; document this scoped exception in DESIGN.md and its contract test during T06.
+- Progress and limit bars are grey unless warning.
+- Brand color appears on the primary action, active tab underline, text links, sidebar active item background, and the selected-request rule in the phone Activities feed.
+
+## Findings that motivated the plan
+
+Measured on 2026-09-13 with one live session tab, sixty seconds, steady state:
+
+| Endpoint | Requests per 60s |
+| --- | --- |
+| `/api/state` | 30 |
+| `/api/session-history?kind=activity` | 20 |
+| `/api/session-history?kind=requests` | 20 |
+| `/api/sessions` | 12 |
+| `/api/usage-limits`, `/api/provider-status` | 3 |
+| `/api/events` SSE | 2 open streams |
+
+Causes: fixed-interval polling continues although SSE exists (`app/components/dashboard/useActivityHistory.ts`, `app/components/AppShell.tsx`); two separate `EventSource` connections (`AppShell.tsx` and `app/history-publications.ts`); activity keeps polling every 10s on historical sessions; `/api/state` serializes every section on every 2s poll regardless of what is on screen; vinext logs one line per request.
+
+Structure: `app/Dashboard.tsx` stacks twelve panels with disclosures and no tabs. Agent status, context, and cache lifetime render in four places; cache badges in three; workflow progress twice. The session page never links to an agent page; `AgentEvidencePanel.tsx` links to a session but drops the agent id although `(sessionId, agentId)` exists on every `AgentsRun`. Insights link to an agent, never to the cache event or compaction they trace to. Usage limits is a dead end although `HomeSnapshot.limitActivities` exists in the contract and no component renders it (not addressed by this plan; T12 records it as a follow-up). `docs/METRICS.md` and `docs/SIGNAL_DICTIONARY.md` have no audience tiers; the tiers must be invented in the UI, not surfaced from metadata.
+
+## Session execution queue
+
+These six completion checkboxes are the queue for fresh implementation sessions.
+Read them in document order and take exactly the first unchecked session. T00 is
+already documented; the detailed T-numbered tasks below remain the acceptance
+specification. Do not skip an unfinished session or automatically begin the next
+one after finishing the selected scope.
+
+### Session 1 — Data foundation
+
+- [x] Session 1 complete — T02 then T01; verification baseline restored.
+
+Start by inspecting the current worktree and reproducing the existing prototype
+vendor/support lint failures. Fix only the generated-artifact lint boundary as
+appropriate to repository policy; do not disable application lint rules or
+rewrite exported vendor code. Record the resulting verification baseline.
+
+A Sol worker owns T02: domain contracts, committed projection/serving, bounded
+request-range paging, independent revisions and events, with privacy tests.
+Keep domains whose producers arrive in later sessions explicitly unavailable;
+do not fabricate file/resource evidence to fill the new shapes. After the
+contracts and events are integrated, a Terra worker owns T01: the shared event
+stream, subscriptions and fallback/reconnect behavior. Use Sol for an independent
+review of cache-only GETs, last-known-good retention and historical isolation.
+
+Done when both tasks and their required checks pass, the quiet-session request
+count meets T01's target, and the handoff identifies the final domain/query
+contracts for the UI workers. Keep the composed `/api/state` compatibility view.
+
+### Session 2 — Navigation and session shell
+
+- [ ] Session 2 complete — T03, T04 and T05.
+
+A Terra worker owns T03's app bar, palette, page header, sidebar limits and shared
+design controls. Integrate that contract before T04. A Sol worker then owns
+T04's session shell, URL selection and Overview. Once the shell is stable, a
+Terra worker owns T05's roster and inspector migration. Sol reviews navigation,
+scope preservation, accessibility and historical data boundaries independently
+of the workers that changed them.
+
+Done when all three tasks pass their checks and desktop/phone artboard comparisons,
+agent links open the inspector without a new agent route, and tabs awaiting later
+sessions retain the explicitly permitted existing-panel transition. Record those
+temporary panels so Session 6 can verify their removal.
+
+### Session 3 — Activities and Signals
+
+- [ ] Session 3 complete — T06 and T06b.
+
+A Sol worker owns T06's shared selection state, lane chart and grouped feed
+integration. Once its selection/range interface is fixed, that worker may delegate
+a disjoint chart, feed or phone component to Terra with an explicit file boundary.
+Keep ownership of the shared selection hook with one worker. A Terra worker owns
+T06b after Activities navigation is integrated. A different Sol worker reviews
+the complete correlation behavior and evidence semantics.
+
+Done when the selected bar, details and feed remain correlated through appends,
+anchoring, drag, paging, filtering, keyboard navigation and loading; Signals links
+resolve correctly; and desktop/phone comparisons and required tests pass. Record
+any shared controls or contracts that Session 5 must reuse.
+
+### Session 4 — Persistence and storage
+
+- [ ] Session 4 complete — T07 then T13.
+
+A Sol worker first verifies SQLite in the actual Electron monitor worker, then
+owns T07's persistence schemas, concrete bounds, validated evidence, rebuild and
+retention behavior. After the committed storage status and settings interface are
+fixed, a Terra worker owns T13's native settings integration and storage usage bar.
+A different Sol worker reviews checkpoint privacy, attribution, native-only
+writes, soft-threshold behavior and failure recovery.
+
+Done when T07 and T13 pass their checks, protected history survives age/size
+cleanup, true over-100% usage remains visible, browser/LAN settings are read-only,
+and the handoff specifies the committed file/resource queries for Session 5.
+Resolve any SQLite fallback before marking this session complete.
+
+### Session 5 — Repository and Resources
+
+- [ ] Session 5 complete — T08 and T09.
+
+With Session 4's contracts integrated, two Terra workers may implement T08 and
+T09 in parallel if their files are disjoint. The coordinator owns any shared
+route/type integration; workers request interface changes rather than both
+editing the same file. Sol independently reviews historical repository snapshots,
+file-history attribution, retained resource curves/peaks and request-link wording.
+
+Done when both tabs use committed domain data, unavailable/retained/pruned states
+are honest, repository and session file deep links work, and the desktop/phone
+checks and artboard comparisons pass. Preserve the distinction between temporal
+resource overlap and task attribution.
+
+### Session 6 — Remaining migration and closure
+
+- [ ] Session 6 complete — T10, T11 and T12.
+
+Terra owns T10 Details and Luna owns the bounded T11 development-log change;
+these can run in parallel when files are disjoint. After integration, a Sol
+reviewer audits the full migration, temporary panels, `/api/state` consumers,
+domain/privacy contracts and cross-tab navigation. The coordinator owns T12,
+final verification, the quiet-session request measurement and documentation
+closure. Do not remove `/api/state` while any consumer remains.
+
+Done when the entire plan meets its acceptance criteria, required checks pass,
+enduring rules and deferred follow-ups have maintained owners, and T12 removes
+this plan and its prototype folder. Record final completion and verification in
+the task's final handoff before deletion; do not retain an archive copy merely
+to keep this checkbox. There is no next queue item after closure.
+
+## Orchestration and completion protocol
+
+Use the same protocol in every fresh session. The session group is the unit of
+completion; worker tasks are bounded pieces within it.
+
+1. Read this queue, the selected session's detailed tasks, the latest checkpoint,
+   applicable AGENTS.md instructions and the relevant authority documents. Inspect
+   the actual worktree before choosing files; preserve unrelated work. Briefly
+   state the selected scope and worker assignments, then execute the already
+   approved orchestration without asking the user to approve it again.
+2. Keep the coordinator responsible for dependency order, interface decisions,
+   integration, independent review and final verification. Delegate focused
+   implementation and investigation. Use explicit `gpt-5.6-sol` for coupled
+   state/persistence work and substantive independent reviews, `gpt-5.6-terra`
+   for bounded UI/transport work, and `gpt-5.6-luna` for narrow probes or edits.
+   Workers and their descendants must never use Astra. If a selected model is
+   unavailable, choose another allowed model; do not silently exceed the ceiling.
+3. Use at most the available four concurrent agent slots, including the root
+   coordinator. Normally run two workers and leave the remaining slot for review
+   or one nested worker. Nested delegation consumes this same limit; it does not
+   create a separate allowance. Delegate only independent bounded work, with one
+   active owner per file or shared contract. Do not run separate queue sessions
+   concurrently against the same checkout.
+4. Give workers a fresh, focused brief: task ID, objective, owned files, fixed
+   interfaces, relevant plan/contract references, required checks and completion
+   criteria. Avoid copying this conversation or the entire repository into every
+   brief. Nested workers inherit the same model, ownership and reporting rules.
+   A worker should finish one bounded deliverable before taking another; use a
+   new worker for unrelated work rather than growing a long investigative chat.
+5. Workers return a concise handoff: changed files, contract decisions, tests and
+   results, unresolved findings and next dependency. Keep full logs and repetitive
+   source listings out of the coordinator's context; retain only the evidence
+   needed for the next decision. Reference source files rather than creating
+   duplicate permanent documentation. Independent reviewers read the actual diff
+   and affected contracts, not just the builder's summary.
+6. Integrate prerequisite work before dependent work. Resolve review findings,
+   update enduring documentation with each behavior change, and run the selected
+   tasks' required checks. The coordinator serializes full builds/tests after
+   integration: `npm test` already includes the build, so never run them together.
+   Use the required host/escalated environment from AGENTS.md. Focused worker tests
+   do not replace final integrated checks or required desktop/phone comparisons.
+7. Before finishing, add a dated checkpoint containing the session number, completed
+   task IDs, changed files, interface decisions, exact verification outcomes,
+   accepted visual differences, remaining work and the next session number. Record
+   branch/commit identity when available and whether changes remain uncommitted;
+   a checkbox does not authorize a commit, push or release.
+8. Mark only the selected session checkbox `[x]`, and only after its entire scope,
+   required verification and review pass. Failed or unrun required checks leave
+   it `[ ]`. If context or an external blocker interrupts work, checkpoint completed
+   subtasks and the precise resume step without checking the session. A fresh
+   session resumes that first unchecked item rather than redoing completed work.
+   Stop after the selected session; the user starts the next fresh session.
+
+The handoff documents decisions and verified state; it cannot guarantee that no
+worker will compact. If compaction happens, continue from the same checkpoint and
+owned task rather than expanding the scope or repeating finished investigations.
+
+## Tasks
+
+Each task lists its owner area from `docs/AGENT-WORKFLOW.md`, the artboards it must match, the verification commands, and the privacy checks. Run `npm run verify:fast` before handing off any task and `npm test` for rendering, metric, parser, or structure changes. Record a checkpoint under the task when done.
+
+Execution order and dependencies:
+
+1. T00 prerequisite documentation is complete; its executable privacy checks belong to T02, T07, and T08 before new evidence can ship.
+2. T02 before T01 and domain-consuming UI work. T01 supplies the shared transport for T04 onward.
+3. T03 before T04 (page header and tab shell). T04 before T05, T06, T06b, T08, T09, and T10. Former T04b is merged into T06; T06b owns Signals and depends on T06 for request navigation.
+4. T07 before T08, T09, and T13. T03 before T13 for shared settings presentation.
+5. T11 any time. T12 last, after every implementation task and its checks.
+
+Common rules for every task:
+
+- `scripts/check-architecture.mjs` caps new source files at 800 lines. Split the lane chart, file tree, file history panel, and page header into files under that cap from the start.
+- `npm run check:boundaries` rejects orphan modules. Delete a replaced component and its test in the same change; never leave it unreferenced.
+- Check route and redirect access through `desktop/lan-gateway.mjs`. Existing session query URLs need no agent-route expansion; preserve `/dashboards` access long enough for its redirect to work on LAN.
+
+### T00 Privacy decisions for file history and repository persistence
+
+Owner: `AGENTS.md`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`. Artboards: none. Documentation only.
+
+Approved prerequisite contracts are recorded in their owners; runtime support remains pending. T02, T07 and T08 must enforce them before the new evidence can be committed or exposed.
+
+- File-change evidence permits only bounded repository-relative paths validated against a recognized monitor-private root, opaque normalized file identity, normalized repository/session/agent IDs, fixed kind, observation time, and request number where supported.
+- Use dedicated path validation, never the custom-agent terminal-identifier validator. Accept legitimate nested relative paths; reject absolute/drive/UNC/device paths, traversal, control characters, provider configuration or transcript paths, and any target whose containment is uncertain. Raw tool arguments and source paths remain private.
+- Checkpoints may persist only these validated normalized records. The index rebuilds from committed checkpoints plus separately acquired Git evidence; GETs serve committed readiness or last-known-good state and cannot scan or rebuild synchronously.
+- Historical repository persistence permits bounded recorded uncommitted files, comparison, and PR state with original check time. Missing historical evidence remains unavailable, never substituted from today's working tree.
+- Git move evidence may preserve file identity but cannot invent session, agent or request attribution. File history describes recorded operations and incomplete coverage, never authorship of every change.
+- T02/T07/T08 add serialization and checkpoint tests for valid nested paths, rejected path forms, forbidden source content, atomic replacement, recorded historical state and cache-only GETs. These tests are implementation work, not a completed T00 verification.
+
+### T01 Single shared event stream and SSE-primary cadence
+
+Completed 2026-09-14 in Session 1. See the [verified handoff](#session-1-handoff).
+
+Owner: browser/API state (`app/`). Artboards: none.
+
+Depends on T02 (204 path for session-history, domain events).
+
+- Create one `EventSource` module (`app/live-events.ts` or extend `app/history-publications.ts`) with reference counting; `AppShell.tsx` and the history hooks subscribe to it. Delete the second connection.
+- Replace every fixed timer with revision-gated fetches triggered by events plus the fallback cadence (30s connected, 5s reconnecting, 30s hidden). Timers to remove: catalog poll 5s ready and 1s loading in `AppShell.tsx`; activity 3s live and 10s historical in `useActivityHistory.ts`; the 3s stay-at-latest timer in `useSessionRequestSelection.ts`; the 5s preloader in `useRequestPageCache.ts` (keep the preloader, drive it by readiness instead of a timer). Live loading states may keep a 1s poll until the domain reports ready; historical hydration uses events and reconnect revalidation without a periodic timer.
+- Historical sessions: load each mounted domain until ready using its events, including revalidation after SSE reconnect so a missed readiness event cannot strand it. Once ready, no periodic timers. Explicit navigation to a new range or filter still fetches that committed query once.
+- Update the "Frontend API cadence" table in `docs/OBSERVATION_CACHE.md`.
+- Verify: `npx vitest run tests/ui/` suites touching Activity and Requests; a manual sixty-second count with one live tab must be under fifteen requests on a quiet session.
+
+### T02 Per-domain session responses with independent revisions
+
+Completed 2026-09-14 in Session 1. See the [verified handoff](#session-1-handoff).
+
+Owner: monitor indexing and projection (`monitor/`), serving handlers, `shared/`.
+
+- Split session projection into domains: `session-summary`, `agents`, `agent` (inspector by id), `signals`, `repository`, `resources`, `details`. Signals owns cache events, efficiency signals, flow score, per-agent cache lifetime, and agent-reported signals. Activity and requests stay on `session-history`; `scope=<agentId>` scopes the chart, ranking, feed, kind aggregates, and shell-task views together.
+- Page `kind=activity&from=<n>&to=<n>` by a bounded request-number range with tool calls nested under each request. The default feed shows five scoped requests around selection, adjusted at either end. Preserve stable session request numbers across filters and exclude unresolved associations from request groups rather than inventing one. Add a bounded `workKind=<WorkKind>` filter (one recognized value) for nested calls. A kind filter must not remove the selected request header or its bar; show an explicit no-matching-calls state. Validate range bounds and maintain response limits for requests with many calls, with explicit continuation rather than silent truncation.
+- Each domain owns a revision counter and readiness; `writeCommitted` serves 204 on matching revision. `/api/session-history` today always answers 200 with an in-body revision string and never uses `writeCommitted`; add the 204 path there too.
+- Set ETag to the revision. Compression is new work: vinext compresses only static build assets, and `proxyMonitorJson` buffers the body and copies one header. Implement gzip in the monitor (honor `Accept-Encoding`, `Vary: Accept-Encoding`) and let the proxy pass `Content-Encoding` through, or compress in the proxy. `desktop/lan-gateway.mjs` already forwards `etag`, `if-none-match`, and `content-encoding`.
+- SSE events carry domain, session id, revision, and for history the total count. Today `/api/events` emits only `catalog`, `repositories`, and `history` with `{domain, revision}` and no session id.
+- Keep `/api/state` as a composed view until every consumer has migrated, including Signals, Repository, Resources and Details; audit remaining consumers and delete it in T12.
+- Privacy: add serialization coverage per domain for forbidden content and for the narrow T00 repository-relative path exception. Prove rejected paths cannot enter committed evidence, checkpoints, history or responses; retain the explicit one-shot transcript-path and provider-folder exceptions.
+- Update `docs/OBSERVATION_CACHE.md` (phases D and S, revision semantics, readiness per domain) and `docs/ARCHITECTURE.md`.
+
+### T03 App bar, palette, page header, sidebar limits
+
+Owner: UI (`app/components/command-center/`, `app/styles/shell.css`, `DESIGN.md`). Artboard: `HeaderStandard.html`; app bar and sidebar also visible on every desktop artboard.
+
+- App bar: remove the breadcrumb and the `hasBreadcrumb` grid variants from `CommandCenterShell.tsx` and `shell.css`. Search becomes a fixed-width trigger that opens the palette; phone shows an icon.
+- Palette: reuse the current regex routing; add recent sessions and repositories from the catalog store. Keyboard: Ctrl K opens, Esc closes, arrows move, Enter navigates.
+- Page header component with breadcrumb eyebrow, title, meta line, actions slot, optional tabs. Adopt it on Home, Sessions, session detail, Repositories index and detail, Models & delegation, Usage limits, Settings.
+- Sidebar limits widget from the existing usage-limits store: one line per provider with sessions in the last seven days (computed from `SessionSummary.provider` and `createdAt` in the catalog context), tightest window only, colors from the METRICS.md usage-limit rule (75 and 85 percent). Never rendered as part of session state; historical views unaffected.
+- Rename the Agents navigation label to "Models & delegation". Remove the Dashboards page and its navigation entry; redirect `/dashboards`. Keep `/dashboards` allowed in `desktop/lan-gateway.mjs` so the redirect works in paired LAN browsers. Remove the old Home pin in `app/HomeDashboard.tsx`, the palette regex row, the `DashboardsView` component in `CommandViews.tsx`, and `tests/ui/dashboards-view.test.tsx`.
+- Chip base change: remove the panel-2 fill from `.commandChip` and `.agentChip`, keep the border, keep tone on text and dot only. Update the chip assertions in `tests/ui/pomegr-design-contract.test.tsx` and correct the DESIGN.md chip sentence.
+- Add page header, tab bar, and sidebar limits samples to `/design-system`; update `DESIGN.md` and `tests/ui/pomegr-design-contract.test.tsx`.
+- Compare against `HeaderStandard.html` at 1440, 900, and 390 widths.
+
+### T04 Session header, tab bar, Overview tab
+
+Owner: UI (`app/Dashboard.tsx`, `app/components/dashboard/`). Artboards: `Main.html`, `Mobile.html`.
+
+- Persistent header: hero and KPI strip as today, with the breadcrumb from the page header. Tab bar directly under the KPIs; tab in `?tab=`; unknown values fall back to Overview. Reuse the URL pattern from `app/components/repositories/repository-route.ts` and `RepositoryDetailView.tsx` (parser, `router.replace` with `scroll: false`, `role="tab"` keyboard handling). `app/sessions/[sessionId]/page.tsx` takes no `searchParams` today; thread `tab`, `agent`, `request`, and `path` through it.
+- Role tint tokens: add the five family tints plus neutral to `app/styles/tokens.css` (light and dark, `--role-reading`, `--role-planning`, `--role-writing`, `--role-reviewing`, `--role-generic`, `--role-system`), map `AgentRole` to a family in one shared browser module, document the mapping in `DESIGN.md` as the only per-role color exception, and render the legend sample in `/design-system`. Same-role agents share a tint by design.
+- Overview tab renders from `session-summary` only: Right now, Efficiency signals, Repository one-liner, request strip with agent track and legend, Progress, Work by kind, Cost.
+- Remove from the page: stacked disclosures, `ResourceUsagePanel` default-open, `CacheEvidenceDisclosure`, `RepositoryDisclosurePanel`, `SessionDetailsPanel` (their content moves to tabs in later tasks). Until those tasks land, the tabs may render the existing panels behind the tab switch.
+- Phone: three KPIs, sticky five-tab bar with More, overview in the order Right now, Signals, Repository, Requests strip, Progress, Work by kind, Cost (about 1380px tall at 390px width), 44px targets. Test at 390px that the tab bar has no horizontal scrollbar.
+- Compare against `Main.html` and `Mobile.html`.
+
+### T05 Agents tab and inspector
+
+Owner: UI and agents analytics (`app/components/dashboard/agent-roster/`, `app/agents/`, `monitor/agents-analytics.mjs`). Artboards: `SessionAgents`, `Mobile`.
+
+Depends on T04 and the T02 agents/agent domains.
+
+- Preserve the existing roster, filters, grouping, List/Tree/Grid and selected-agent inspector described in Agreed decisions. The inspector reads the `agent` domain; a new domain does not imply a new page.
+- Use `?tab=agents&agent=<id>` for selection and external evidence links. "Activities for this agent" opens `?tab=activities&agent=<id>`. Model navigation keeps its filter. No agent-detail route or LAN route expansion.
+- Preserve lineage, facts, skills, shell tasks, signals and local-client transcript-copy gating in the inspector. Derive per-agent compactions from normalized context boundaries and ancestry from `parentId`; retain latest-snapshot context semantics.
+- Reuse the roster row where appropriate in Models & delegation Live agents. Repair `AgentEvidencePanel.tsx` so links carry the agent id.
+- Phone uses List/Grid and the existing full-screen inspector sheet with Back/Escape, focus restoration and scroll lock; implement the group row and regular-weight context from `Mobile`.
+- Verify scoped deep links, filters and inspector selection across view changes, phone focus restoration, historical evidence and serialization; compare both artboards.
+
+### T06 Activities: correlated requests and grouped feed
+
+Owner: UI (`app/components/dashboard/requests-actions/`, activity feed) and committed history serving. Artboards: `ActivityTab`, `Mobile`. This absorbs former T04b.
+
+Depends on T04, T02 request-range history, and T01 transport.
+
+- Build the lane chart and single-chart mode from Agreed decisions: shared request order, exactly-one-lane assignment, per-lane scales, compactions, workflow collapse beyond eight, focus, 220px labels and tooltips, neutral minimap, Fresh tokens / Full breakdown.
+- Place agent scope in the chart header and apply it to chart, Largest strip, feed, Actions by kind and shell-task views. Kind toggles filter nested calls with count/share/median context; they do not orphan selection by deleting its request header. Largest values remain request-local.
+- Under the minimap and Largest strip, render one Activity feed: left Actions by kind, Shell tasks and Failed shell runs; right five request groups around selection with nested calls. Previous / Next changes the request range and keeps chart selection visible; Jump to latest reveals and selects the latest request. No old cross-tab return strip or Fed by / Called tallies.
+- Implement the approved anchored viewport in `useSessionRequestSelection.ts` and `RequestMinimap.tsx`: stop automatic viewport advance before selection would leave it, while history and minimap totals grow. Dragging beyond selection transfers it to a visible bar. Details and feed must never retain a selection absent from the chart. Use coherent loading and cancellation so rapid navigation cannot mix requests.
+- Phone follows the single-chart and quiet grouped-feed rules above. Add the scoped selected-request left-rule exception to DESIGN.md and its contract tests before styling it.
+- Keep traceable observed metadata in Activities; full cache evidence and rule-generated views live in Signals. Request details retain four counts and the shared association caveat explaining that recorded links do not allocate task token cost.
+- Tests: growing totals with anchored selection; drag, page, keyboard and filter selection; synchronized loading and cancellation; request groups at range edges, empty/unresolved associations and bounded continuation; lane assignment/focus/collapse; scope consistency; no provider identifiers in DOM.
+- Update `docs/OBSERVATION_CACHE.md` for range paging, selection and event totals, and `docs/METRICS.md` for request-local and association wording. Compare desktop and phone artboards.
+
+### T06b Signals tab
+
+Owner: UI (`app/components/dashboard/`), monitor signal projection, `docs/METRICS.md`. Artboard: `SignalsTab`; phone access through `Mobile` More sheet.
+
+Depends on T04, T02 signals domain, and T06 request navigation.
+
+- Render efficiency signals, cache evidence, flow score with its two inputs, cache lifetime by agent, and agent-reported MCP signals from the committed signals domain.
+- Put the deterministic-rules and "Not a quality assessment" caveat at the tab introduction. Preserve evidence-specific observed/inference/attributed labels and identify MCP content as agent-reported; a shared tab does not make agent reports deterministic measurements.
+- Link supported evidence to Activities with its request and agent selected. Evidence without a supported request link remains informative without a fabricated target. Remove flow score from Details and the old standalone cache disclosure.
+- Test caveats, readiness/unavailable states, request navigation, historical isolation and domain serialization. Update METRICS.md and compare the artboard.
+
+### T07 Monitor SQLite store: file-change index and resource history
+
+Owner: monitor persistence (`monitor/`), `docs/OBSERVATION_CACHE.md`.
+
+Depends on T00.
+
+- Add one monitor-owned `node:sqlite` database under the Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`, `%APPDATA%\pomegr` on Windows), for example `monitor-store-v1/monitor.sqlite`. Not under `outputs/`, which holds development diagnostics only. It hosts file-change and resource history. Use indexed session/time-range queries; measure actual database growth, indexes and peak-window overhead during implementation rather than assuming a per-session byte size.
+- File-change tables: `files` (id, repository id, current relative path, first seen, deleted at), `file_paths` (file id, path, valid from, valid to, bounded source enum), `file_changes` (id, file id, session id, agent id, kind, observed at, request number). Attribution columns are nullable when supporting evidence is absent; Git-only continuity must not create a session edit count. Choose and test concrete path, page, record and snapshot bounds before committing evidence.
+- Resource tables, written on the checkpoint cadence from the in-memory sampler (raw samples stay in memory for the last 30 minutes only):
+  - `resource_minutes` (session id, minute start, and for each of CPU cores, CPU machine percent, memory bytes, read bytes per second, write bytes per second: min, avg, max, and the exact sample timestamp of the max). One row per minute per session; a peak keeps its magnitude and its second-level time after downsampling.
+  - `resource_peak_samples` (session id, peak id, timestamp, the five fields): raw samples for the two minutes before and after each of the top ten peaks per field. Bounded to ten peaks per field per session. Older peaks that fall out of the top ten lose their window.
+  - `resource_peaks` (session id, field, timestamp, value, matched task ids, matched request number): the bounded peaks table itself, a few hundred bytes per session.
+- Peak matching uses normalized execution-task start/end intervals for overlap only; unfinished tasks extend only through the latest observation. Link a request only when its normalized temporal association is unambiguous, otherwise omit the link. Usage observation timestamps alone do not establish a request execution interval. Request-local counts describe that request, never task cost; document the deterministic association rule in METRICS.md before shipping.
+- Retention, monitor-side, run after checkpoint writes and never in a GET:
+  - Age: retention setting with fixed choices 30, 90, 180, 365 days, or keep all. Default 90 days. Past the age, drop `resource_minutes` and `resource_peak_samples` for that session. Keep `resource_peaks` and `file_changes` for as long as the session remains in the catalog.
+  - Size: a soft resource-history cleanup threshold, default 500 MB. At or above it, the next prune cycle removes the oldest sessions' `resource_minutes`, then their `resource_peak_samples`, and runs incremental vacuum. Preserve peaks and file changes while their session remains in the catalog. If protected records alone exceed the threshold, allow the database to exceed it; do not delete protected history or stop new records merely to enforce a hard cap. Age retention applies independently.
+  - Settings read: desktop passes the two bounded values through the existing private desktop settings and a fixed-key IPC, like the provider folders; web development reads `POMEGR_RETENTION_DAYS` and `POMEGR_STORE_MAX_MB`. Browser and LAN requests can never change retention or trigger a prune.
+  - Expose bounded committed storage readiness for Settings: database size in bytes, oldest retained day, last prune time, effective choices, and a fixed cleanup status distinguishing ordinary usage, cleanup pending and protected-history excess. Never paths or raw database errors. The percentage is database bytes divided by the effective byte threshold; label and bar use the same units. Checkpoint/prune work owns measurement; GETs serve the committed result.
+- Populate from recorded Write and Edit targets during commit (phase C to P), never during GETs. Providers currently keep only basenames and hashed scope digests for these targets; retain the repository-relative path in evidence under the T00 rule and persist it in checkpoints so the index is rebuildable. Learn moves from `git diff --name-status -M` at checkpoints and from shell tasks already classified by private command structure as `mv` or `git mv` with two repository-relative arguments. Ambiguous commands are ignored.
+- Repository-relative paths only. Never absolute paths, command text, PIDs, or transcript paths. Add serialization tests.
+- Rebuild on missing or corrupt index; serve "history rebuilding" readiness meanwhile.
+- Confirm `node:sqlite` is available in the Electron runtime used by `desktop/`; if not, record the fallback decision here before proceeding. Verified on 2026-09-13: the module loads on the installed Node 24 with an `ExperimentalWarning`, and the `engines` floor of 22.13 is the first unflagged release. The monitor runs inside an Electron 43 `worker_threads` worker (`desktop/monitor-worker.mjs`), so the check must run there, not in the system Node. Silence or accept the experimental warning in development output.
+- Document the store, bounds, and rebuild rule in `docs/OBSERVATION_CACHE.md`.
+
+### T08 Repository tab and repository Files tab
+
+Owner: UI (`app/components/repositories/`, `app/components/dashboard/`). Artboards: `RepositoryTab.html`, `RepoFiles.html`.
+
+- Shared file tree component with scope variants: repository scope (session counts, rolled up to folders, toggles) and session scope (status chip and name only, Changed elsewhere group, three-way segment).
+- Shared file history panel with the two header actions and the current-session highlight.
+- Session Repository tab: top bar as in the artboard; commit lists removed from the session page; PR popover replaced by the chip and second line.
+- Repository page Files tab beside the existing tabs; Git tab gains the commit lists that left the session page.
+- Deep links with `path` on both sides.
+- Historical sessions: recorded branch, recorded files, PR state at last check, never the current tree. This needs the T00 checkpoint additions: today `recordedGitState` in `monitor/server.mjs` keeps only the branch and returns empty files, null comparison, empty commits, and unavailable pull requests for historical sessions. Persist files, comparison, and pull-request state at the last live check and serve them from the `repository` domain.
+- "Commits in session" is a new count. Today the repository section carries the last eight commits on HEAD regardless of session. Count commits whose committed time falls inside the session's wall-time window on the recorded branch, or drop the number from the second line.
+- Compare against both artboards.
+
+### T09 Resources tab
+
+Owner: UI (`app/components/dashboard/ResourceUsagePanel.tsx` successor). Artboard: `ResourcesTab.html` (version 22 shows the peak zoom panel in place of the process table).
+
+Depends on T07 (resource tables).
+
+- Three sparkline cards with current and peak, window segment 5 min / 30 min / Session, peaks table matched to activity by time with the caveat. No process table (see Agreed decisions; deferred).
+- Data sources by window: 5 min and 30 min read the in-memory raw samples through the `resources` domain; Session reads `resource_minutes` (max line with avg band). Clicking a peak in the table or on the chart zooms to its `resource_peak_samples` window at full resolution when one exists; otherwise the minute row is shown with "full-resolution window not retained".
+- Peaks table row: field, time, value, matched execution tasks (work kind and Bash description, wall duration), and a link to Activities with a request only when the temporal association is unambiguous. Say "Request observed near this peak · N uncached input tokens"; describe interval overlap in the info popover. Never claim request execution intervals from usage timestamps alone, or say "this task cost N tokens".
+- Live sessions render cards and peaks; historical sessions render the Session window and the peaks table from the store. Both use the same components.
+- Tab hidden only when there are neither live samples nor stored rows for the session.
+- Retention effects are visible: if curve rows are absent, retain the peaks table and explain whether age retention or size cleanup removed the curve, using bounded reason metadata. Never label missing data as a zero value or claim age-based deletion for size cleanup.
+- Remove `observedPeak` from the in-memory state once the store serves peaks.
+- Privacy: the `resources` domain exposes only normalized session id, bounded readiness/retention reasons, timestamps, bounded raw samples or minute min/avg/max aggregates with peak timestamps for the five numeric fields, bounded peak IDs, matched normalized task IDs, and optional request numbers. Resolve task labels through existing normalized metadata. Add a serialization test; no process identity or source content.
+- Compare against the artboard.
+
+### T10 Details tab
+
+Owner: UI (`SessionDetailsPanel.tsx`, `MachineryPanel.tsx` successors). Artboard: `DetailsTab.html`.
+
+- Session facts, one-shot Copy transcript path (unchanged endpoint), Cost estimate with the estimate label, Context inventory inline with the category table, groups link, and repository inventory revision link. Flow score and its inputs belong only to Signals.
+- No usage limits on this tab. No audience chip.
+- Compare against the artboard.
+
+### T11 Development request log
+
+Owner: `scripts/dev.mjs`, `scripts/run-vinext.mjs`.
+
+- The per-request lines come from vinext's development server (`node_modules/vinext/dist/server/request-log.js`), not from Pomegr scripts; both scripts spawn children with inherited stdio and log nothing per request. First check whether the installed vinext version exposes a request-log option. If not, `scripts/run-vinext.mjs` pipes the child's stdout, drops lines whose status is 204, and writes the rest through unchanged. Keep TTY color detection working by forwarding `FORCE_COLOR` when the parent is a TTY.
+- `POMEGR_DEV_REQUEST_LOG=all` restores every line. Document the flag in `docs/CONFIGURATION.md` with the other development-only variables.
+
+### T13 Storage retention setting
+
+Owner: desktop lifecycle (`desktop/`), Settings UI (`app/settings/`), `docs/CONFIGURATION.md`. Artboard: `SettingsStorage.html`; it follows the existing Settings → Providers layout.
+
+Depends on T07.
+
+- Settings → Storage section: retention age as a segmented control with the fixed choices from T07; **Resource history cleanup threshold** select (250 MB, 500 MB, 1 GB, 2 GB); a usage bar beside the selector; and the readiness line (size, oldest retained day, last prune). Show used/threshold and percentage, for example "380 MB / 500 MB · 76%" (illustrative). Desktop users can increase the threshold; browser/LAN clients see read-only values. Changes require fixed-key enum IPC and native confirmation.
+- The monitor applies changes on the next prune cycle. Never prune in IPC or GET handlers and never delete peaks or file changes for cataloged sessions because of age or size cleanup.
+- Bar copy: "At 100%, older resource curves and detailed sample windows become eligible for automatic cleanup. File history and recorded peaks are preserved." Explain that age retention applies independently. Cap visual fill at 100% but print the actual percentage above it; for example "550 MB / 500 MB · 110%". Use "Cleanup pending" until the monitor confirms protected records cause the excess, then "Preserved history exceeds the cleanup threshold." Use existing accessible meter/progress styling, numeric text and status wording; missing readiness is unavailable, never 0%. The bar is informational, not an interactive slider.
+- Document the two development environment variables and the defaults in `docs/CONFIGURATION.md`; document the bounded IPC in `docs/OBSERVATION_CACHE.md` next to the provider-folder settings.
+- Reuse existing segmented controls and selects. Add a static storage usage sample covering ordinary, 100%, over-threshold and unavailable states to `/design-system`; update DESIGN.md and contract tests for any new shared meter pattern. Test units, actual over-100 text with clamped fill, cleanup status, read-only browser/LAN behavior and native enum validation.
+- Compare against `SettingsStorage.html`, recording the approved usage-bar addition and soft-threshold wording as intentional differences from the existing export.
+
+### T12 Closure
+
+- Confirm each task has moved its enduring rules into `DESIGN.md` (page header, tab bar, correlated Activities, agent inspector, lanes, file tree, history panel, sidebar limits, role tints, storage bar and phone selection exception), `docs/OBSERVATION_CACHE.md` (domains, cadence, anchored selection, file-change index), and `docs/METRICS.md` (Signals caveats, recorded associations, lane presentation and role tints as presentation, never measurement). Do not wait until closure to update a contract changed by an earlier task.
+- Delete `/api/state` and its proxy once all domain consumers, including Signals, have migrated; update `docs/ARCHITECTURE.md` and `AGENTS.md` (Architecture section lists the route).
+- Record the final sixty-second request count and the before/after screenshot pairs in the last checkpoint.
+- Record follow-ups that leave this plan: the Resources process table with a monitor-private per-task sampler, and a consumer for `HomeSnapshot.limitActivities` or its removal from the contract.
+- Move the SQLite store schema, retention tiers, and storage readiness into `docs/OBSERVATION_CACHE.md`, and the peak-matching rule (time overlap, adjacency wording) into `docs/METRICS.md`.
+- Delete this plan and the prototype folder in the same change.
+
+## Readiness and implementation handoff
+
+No unresolved product decision blocks implementation. The latest approved rules are folded into the tasks above.
+
+- Undrawn states follow existing components and DESIGN.md: historical readiness/empty/error states, desktop roster Tree/Grid, lane collapse/focus, palette overlay, Models & delegation Live agents, repository Git commits, Home pins, Sessions header and light theme. Record material deviations during task verification.
+- Existing exports are visual references, not current runtime behavior. Use the actual paths in the prototype README. Written changes override stale drawing details: Activities/Signals navigation, inspector selection, no per-agent role dots in lists, phone selected-request rule, historical resource curves, and the Storage usage bar/soft threshold. Do not claim regenerated artboards for this documentation update.
+- Verify SQLite inside the Electron monitor worker before T07 implementation. Resolve technical fallback from evidence if unavailable; a system-Node probe is insufficient.
+- Implementation orchestration is finalized in the session queue and protocol above. The user will request implementation separately; that request starts exactly the first unchecked session. Do not start code changes under this documentation authorization.
+- For implementation delegation use Sol or cheaper models only: explicit `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`. No Astra subagents. Nested subagents are permitted under the same ceiling, bounded task ownership and available concurrency. Prefer the cheapest capable model.
+- Keep the coordinator's context small through focused task briefs and concise handoffs. Follow the ownership, dependency waves, model choices, integration/review responsibilities and verification protocol above; checkpoints must allow work to continue without repeating investigations.
+
+## Continuation checkpoint
+
+### Session 1 handoff
+
+2026-09-14 · Post-acceptance runtime correction: PR #24 exposed a missing development
+transport check. The proxy returned precompressed gzip without the Workers manual-body
+option; the Cloudflare-backed dev server encoded it again and the browser received
+unparseable catalog/state bodies. `encodeBody: "manual"` now prevents the second pass.
+The actual `localhost:3003` catalog, live session dashboard/request chart and Usage limits
+loaded successfully after the fix. A real Miniflare/workerd regression is wired into
+`test:node`; removing the option reproduced the failure during test development.
+The full `npm test` (including build and 738 UI tests), `verify:fast`, and production
+gzip/identity/204 wire checks passed. The earlier Windows CI short-path assertion was
+separately fixed in `b939370`; its Windows verifier and desktop smoke passed. These are
+Session 1 corrections; no later implementation session has started.
+
+2026-09-14 · **T02 and T01 complete.** Sol owned the domain foundation and independent
+reviews; Terra owned browser transport and bounded supporting work. The coordinator
+integrated T02 before T01 and ran the final checks. All delegated models stayed within
+the Sol-or-cheaper ceiling. No Session 2 implementation started.
+
+Changed ownership areas:
+
+- Domain contracts and committed projections: `shared/session-domain-contract.ts`,
+  `monitor/session-domain-projection.mjs`, `monitor/session-domain-store.mjs`,
+  observation runtime, request handler and `app/api/session-domain/route.ts`.
+- Request-range history and privacy: `shared/session-history-contract.ts`,
+  `monitor/session-history-groups.mjs`, history store, dedicated repository-path
+  validator, Git-root enrichment, and focused domain/history/path serialization tests.
+- Transport: `app/live-events.ts`, history publications, AppShell, Dashboard,
+  Activity/Requests hooks, request preload, shared repository inventory, JSON proxies
+  and paired-LAN forwarding, with matching UI and HTTP regressions.
+- Authorities and verification: `docs/OBSERVATION_CACHE.md`, `docs/ARCHITECTURE.md`,
+  canonical test wiring in `package.json`, and generated-prototype exclusions in
+  `eslint.config.mjs` and `scripts/check-architecture.mjs`. The reproduced baseline
+  had 36 errors and 6,628 warnings in exported vendor/support scripts; only that
+  generated boundary was excluded. Application rules remain enforced.
+
+Contracts for the next UI session:
+
+- `GET /api/session-domain?sessionId=&domain=&agentId=&revision=` exposes
+  `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`
+  and `details`. Use normalized `agentId` for the inspector. Each domain has an
+  independent semantic revision and readiness; mixed domains also expose section
+  readiness. The summary includes bounded header/Overview data, the inspector includes
+  selected-agent evidence, and Signals includes readiness-qualified Flow inputs.
+- Domains stage complete replacements atomically, retain last-known-good state, restore
+  from committed checkpoints, and rebuild evicted projections asynchronously from
+  committed state. Their cache retains 24 sessions with ten-minute idle eviction.
+  File-history and retained-resource producers remain explicitly unavailable.
+- `/api/session-history` preserves flat queries and adds five scoped request groups
+  around `selected`. Optional `from`/`to` bound at most 64 request numbers;
+  `scope`, one `workKind`, and opaque `continuation` preserve recorded associations.
+  Limits are 50 nested calls per group and 200 per page; continuation makes progress
+  without removing selected headers. History index version 3 upgrades old indexes.
+- SSE publishes domain/session/revision and history totals. `catalog` events use
+  domain `sessions`; repositories are global. Reuse the ref-counted singleton;
+  subscribe only while mounted. It validates events, retains at most 256 revision
+  keys per connection epoch, and treats only real stream open as connected.
+- Matching revision or ETag returns bodyless 204. Send a revision only for an exact
+  query with a retained body. JSON proxies support gzip and `Vary`; LAN forwarding
+  preserves negotiation. Keep composed `/api/state` until the planned UI migration.
+- Live consumers use event invalidation and 30-second connected/hidden fallback,
+  five seconds reconnecting, and one second for unresolved foreground live data.
+  Historical hydration uses events/reconnect without periodic timers. Hidden events,
+  in-flight invalidations, unavailable recovery and cached navigation retain pending
+  work; pinned viewports keep their selection while totals advance. Account/provider
+  and global analytics store exceptions are listed in the canonical cadence table.
+
+Verification and review:
+
+- `npm test` passed, including the production build, plugin suites, 1,166 Node
+  tests and 738 UI tests across 82 files. Default skips were two file-symlink
+  cases unavailable on this host and the explicitly opt-in native Codex writer test.
+- `npm run verify:fast` passed: zero lint errors (16 warnings), typecheck,
+  provider/documentation checks, 716-source architecture check, and dependency
+  boundaries (476 modules, 1,455 dependencies). `git diff --check` passed; all 13
+  local file links in the plan and changed authority documents resolve.
+- Independent Sol backend and browser acceptance passed with no remaining findings.
+  Focused evidence includes 159 browser tests, 35 transport/history tests, per-domain
+  allowlists, cache-only GETs, checkpoint/path privacy, atomic retention, historical
+  isolation, real bodyless 204 recovery, event races and hidden/foreground recovery.
+- The accepted production build, one live browser tab and a settled synthetic session
+  made **11 HTTP requests in exactly sixty seconds**, below the target of fifteen.
+  There was one active/maximum SSE stream. Breakdown: state 2, catalog 2, history 4,
+  provider status 2, usage limits 1. Real web-route ETag/204 and gzip smoke checks passed.
+  Ignored evidence: `outputs/ia-session1-accepted-test.log`,
+  `outputs/ia-session1-accepted-verify-fast.log`, and
+  `outputs/ia-quiet-accepted-measurement.json`. Temporary browser/server were closed.
+- Artboards: none for T01/T02; no new visual controls or accepted visual deviations.
+
+Verification branch `docs/ia-redesign-plan`, base HEAD `1b84bf02854312a9797736f5386916b7ffeaab82`.
+Changes were uncommitted at acceptance; this handoff accompanies the Session 1 commit.
+Pre-existing documentation and prototype-export work was preserved. There are no remaining Session 1 findings. Session 2 (T03, T04, T05)
+is the next unchecked item and is intentionally left for a fresh user-started session.
+
+
+- 2026-09-14 · Orchestration finalized: six ordered session checkboxes map every remaining task to one implementation session. Fresh sessions take the first unchecked item, preserve partial progress, use Sol-or-cheaper workers with bounded nested delegation, verify before checking completion, and stop before the next item. No implementation started; Session 1 is next. This update changes the plan only.
+- Orchestration verification: all six session checkboxes are present, ordered 1–6 and unchecked; the plan's local Markdown link resolves; `git diff --check` passed. `npm run verify:fast` was rerun and still stops at lint with 36 errors in exported prototype runtime files (6,628 warnings overall). Session 1 owns resolving that baseline blocker. No implementation checks are marked complete.
+- 2026-09-14 · Documentation reconciliation and T00 prerequisite policy complete: Activities/Signals and inspector decisions folded into tasks; former T04b absorbed by T06 and T06b added; phone rules, anchored selection, soft storage threshold and usage bar recorded. AGENTS.md, OBSERVATION_CACHE.md and METRICS.md now own the approved file-history privacy and historical repository prerequisites, explicitly marked as not shipped. Prototype README reconciled; artboards unchanged. Runtime implementation remains pending. User implementation/model constraints saved above.
+- Verification for this documentation update: `git diff --check` passed; `npm run check:provider-docs` passed; all 14 local Markdown links in the plan and prototype README resolve. A bounded independent plan review found no remaining decision conflicts. `npm run verify:fast` failed at lint on 36 errors in the existing exported prototype vendor/support JavaScript; later stages did not run. Those generated exports were already present before this update and were not changed. No build, runtime privacy tests or visual comparison was claimed for this documentation-only task. Resolve the verifier blocker before accepting implementation tasks.
+
+- 2026-09-14 · Design exports reached canvas version 46. Desktop Activities and Signals, the retained agent inspector, and five phone screens were approved; the current decisions and tasks above now own those rules. Existing exports were subsequently placed in the artboard folders linked by the prototype README. No exports regenerated in the documentation reconciliation.
+- 2026-09-13 · Initial codebase/design validation established privacy pre-work, T02 before T01, the SQLite resource-history approach, full-height artboards, role-family tints, and usage-limit thresholds. The current plan supersedes earlier navigation and storage wording. No runtime implementation completed.
+- Checkpoint format for implementation: task id, completion date, changed behavior and files, actual verification commands/results, artboard comparison with accepted deviations, and remaining work. Delete this plan and its temporary assets at T12 after enduring rules and follow-ups have owners.

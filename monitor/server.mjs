@@ -114,9 +114,15 @@ export function createMonitorRuntime(options = {}) {
   async function refreshLiveEnrichment(entry, input) {
     let repository;
     try {
-      repository = { ...await gitReader(input.cwd), historical: false };
+      const acquired = await gitReader(input.cwd, {
+        forbiddenRoots: Object.values(providerFolders.folders || {}).filter(Boolean),
+      });
+      const { _repositoryRoot: repositoryRoot = null, ...publicRepository } = acquired;
+      repository = { ...publicRepository, historical: false };
+      entry.repositoryRoot = repositoryRoot;
     } catch {
       repository = { ...unavailableGitState(), historical: false };
+      entry.repositoryRoot = null;
     }
     let pullRequests;
     try {
@@ -148,6 +154,7 @@ export function createMonitorRuntime(options = {}) {
         sessionCreations,
         refreshedAt: null,
         refreshing: false,
+        repositoryRoot: null,
         value: {
           repository: { ...unavailableGitState(), historical: false },
           pullRequests: unavailablePullRequests(),
@@ -161,6 +168,7 @@ export function createMonitorRuntime(options = {}) {
       entry.sessionCreations = sessionCreations;
       entry.refreshedAt = null;
       entry.refreshing = false;
+      entry.repositoryRoot = null;
       entry.value = {
         repository: { ...unavailableGitState(), historical: false },
         pullRequests: unavailablePullRequests(),
@@ -611,6 +619,7 @@ export function createMonitorRuntime(options = {}) {
     now,
     scheduleHomeRefresh,
     buildHomeSnapshot: () => buildHomeSnapshot(),
+    repositoryRootForSession: (sessionId) => enrichmentCache.get(sessionId)?.repositoryRoot || null,
     liveEnrichment,
     recordedGitState,
     unavailableGitState,
@@ -641,6 +650,7 @@ export function createMonitorRuntime(options = {}) {
     observationActive: observation.observationActive,
     serveCatalog: observation.serveCatalog,
     serveSession: observation.serveSession,
+    serveSessionDomain: observation.serveSessionDomain,
     serveHome: observation.serveHome,
     serveUsageLimits: observation.serveUsageLimits,
     serveSessionHistory: observation.serveSessionHistory,

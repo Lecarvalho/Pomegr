@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   const monitorParams = new URLSearchParams({ scope: "aggregates" });
   if (revision !== null && revision !== "") monitorParams.set("revision", revision);
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path: `/api/home?${monitorParams}`,
     timeoutMs: 10000,
     unavailableBody: { generatedAt: null, providerLimits: [], limitActivities: [], error: "Home overview is unavailable." },

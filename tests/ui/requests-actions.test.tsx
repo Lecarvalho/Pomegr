@@ -76,7 +76,7 @@ describe("RequestsActionsPanel", () => {
     expect(screen.queryByText("No request observations for this session yet.")).not.toBeInTheDocument();
   });
 
-  it("resumes history polling and selection after an older bar then the latest bar is clicked", async () => {
+  it("refreshes the latest selection on the live fallback", async () => {
     vi.useFakeTimers();
     let count = 3;
     const fetchPage = vi.fn(async () => ({ ok: true, json: async () => ({
@@ -90,7 +90,7 @@ describe("RequestsActionsPanel", () => {
     expect(fetchPage).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /^Request #3,/ }));
     count = 4;
-    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(fetchPage).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("heading", { name: "Request #4" })).toBeInTheDocument();
   });
@@ -161,7 +161,7 @@ describe("RequestsActionsPanel", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(fetchPage).toHaveBeenCalledTimes(2);
     await act(async () => { resolveNavigation(response([], "loading")); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(750); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(fetchPage).toHaveBeenCalledTimes(3);
     expect(fetchPage.mock.calls[2][0]).toContain("requestId=request-10");
     expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument();

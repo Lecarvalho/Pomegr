@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&amp;family=Geist+Mono:wght@400&amp;display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
+    .mono { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .panel { background: #191c20; border: 1px solid #333941; border-radius: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; font-size: 11px; font-weight: 500; color: #a8afb9; white-space: nowrap; }
+    .chip.green { color: #91c5a4; }
+    .chip.amber { color: #e3b575; }
+    .chip.brand { color: #a8afb9; }
+    .chip.ctx { color: #bbb3d3; }
+    .btnSecondary { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #edf0f3; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .btnPrimary { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid #a63c32; border-radius: 4px; background: #a63c32; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .btnQuiet { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: #a8afb9; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .seg { display: inline-flex; border: 1px solid #333941; border-radius: 4px; overflow: hidden; }
+    .seg > span { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: 500; color: #a8afb9; }
+    .seg > span + span { border-left: 1px solid #333941; }
+    .seg > span.on { background: #23272d; color: #edf0f3; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #333941; }
+    .tab { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; font-size: 13px; font-weight: 500; color: #a8afb9; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tab.on { color: #edf0f3; border-bottom-color: #a63c32; }
+    .tab .cnt { font-size: 11px; color: #a8afb9; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .kpi { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-right: 1px solid #333941; }
+    .kpi:last-child { border-right: 0; }
+    .kpi .v { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; }
+    .kpi .s { font-size: 12px; color: #a8afb9; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #91c5a4; flex: 0 0 auto; }
+    .dot.idle { background: #697482; } .dot.amber { background: #e3b575; } .dot.done { background: #bbb3d3; }
+    .th { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .tr { display: grid; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid #333941; font-size: 13px; }
+    .muted { color: #a8afb9; }
+    .h2 { font-size: 16px; font-weight: 650; line-height: 1.35; margin: 0; }
+    .h1 { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+    .note { background: transparent; border: 1px dashed #697482; color: #a8afb9; border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+    .sidebar { width: 176px; flex: 0 0 176px; border-right: 1px solid #333941; background: #191c20; padding: 20px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .navItem { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 4px; font-size: 13px; font-weight: 500; color: #a8afb9; }
+    .navItem.on { background: #23272d; color: #edf0f3; }
+    .navItem .cnt { margin-left: auto; font-size: 11px; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .header { height: 60px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid #333941; background: #191c20; }
+    .search { display: flex; align-items: center; gap: 8px; height: 34px; width: 300px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; color: #a8afb9; font-size: 13px; background: #111315; }
+    svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .bar { height: 6px; border-radius: 3px; background: #23272d; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: #697482; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1040px; display: flex; flex-direction: column; background: #111315;">
+<div class="header">
+  <div class="row" style="width: 156px; gap: 10px; font-weight: 600;"><span style="width: 24px; height: 24px; border-radius: 50%; background: #a63c32; display: inline-block;"></span>Pomegr</div>
+  <div class="search" style="margin-left: auto; width: 280px;"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<span class="chip" style="margin-left: auto; height: 18px;">Ctrl K</span></div>
+  <div class="row muted" style="font-size: 12px;"><span class="dot"></span>Local monitor</div>
+  <svg class="i" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"></path><path d="M6.5 14h3"></path></svg>
+  <span class="chip" style="height: 28px; width: 28px; padding: 0; justify-content: center; border-radius: 50%;">LP</span>
+</div>
+<div style="display: flex; flex: 1 1 auto; min-height: 0;">
+  <div class="sidebar">
+    <div class="navItem"><svg class="i" viewBox="0 0 16 16"><path d="M2 8l6-5 6 5v6H2z"></path></svg>Home</div>
+    <div class="navItem on"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1"></rect><path d="M5 7h6M5 10h4"></path></svg>Sessions <span class="cnt">2</span></div>
+    <div class="navItem"><svg class="i" viewBox="0 0 16 16"><circle cx="5" cy="4" r="2"></circle><circle cx="5" cy="12" r="2"></circle><circle cx="11" cy="8" r="2"></circle><path d="M5 6v4M7 5l2 2M7 11l2-2"></path></svg>Repositories</div>
+    <div class="navItem"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="6" r="3"></circle><path d="M3 14c1-3 9-3 10 0"></path></svg>Models &amp; delegation</div>
+    <div style="height: 1px; background: #333941; margin: 8px 0;"></div>
+    <div class="navItem"><svg class="i" viewBox="0 0 16 16"><path d="M2 13l4-5 3 3 5-7"></path></svg>Usage limits</div>
+    <div class="navItem"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5"></circle><path d="M8 2v2M8 12v2M2 8h2M12 8h2"></path></svg>Settings</div>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px;">
+      <div class="panel" style="padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #111315;">
+        <div class="row" style="justify-content: space-between;"><span class="eyebrow">Limits</span><a href="#" style="font-size: 11px;">All windows</a></div>
+        <div style="display: flex; flex-direction: column; gap: 3px;"><div class="row" style="justify-content: space-between; font-size: 12px;"><span>Claude</span><span class="mono">6% · 5h</span></div><div class="bar" style="height: 4px;"><i style="width: 6%;"></i></div></div>
+        <div style="display: flex; flex-direction: column; gap: 3px;"><div class="row" style="justify-content: space-between; font-size: 12px;"><span>Codex</span><span class="mono" style="color: #e3b575;">74% · 5h</span></div><div class="bar" style="height: 4px;"><i style="width: 74%; background: #e3b575;"></i></div></div>
+        <span class="muted" style="font-size: 11px;">Tightest window per provider with sessions this week</span>
+      </div>
+      <div style="font-size: 11px; color: #a8afb9; line-height: 1.4;">Session data remains on this machine.<br>Pomegr v0.4.1</div>
+    </div>
+  </div>
+
+  <div style="flex: 1 1 auto; min-width: 0; padding: 28px 32px 32px; display: flex; flex-direction: column; gap: 18px;">
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div class="row muted" style="font-size: 12px; gap: 6px;"><a href="#">Sessions</a><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M6 3l5 5-5 5"></path></svg><span>Pomegr</span></div>
+      <h1 class="h1">IA and progressive-disclosure audit for Pomegr UI</h1>
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+        <div class="row muted" style="font-size: 12px; gap: 8px;"><span class="chip">Claude Code</span><span class="chip green"><span class="dot"></span>Live · In progress</span><span class="mono" title="ba8fe758-f2b6-48cc-b991-9605551c0b8c">ba8fe758…c0b8c</span><span class="chip"><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><circle cx="4" cy="4" r="1.6"></circle><circle cx="4" cy="12" r="1.6"></circle><circle cx="12" cy="6" r="1.6"></circle><path d="M4 5.6v4.8M12 7.6c0 3-8 1.5-8 4.4"></path></svg>main</span><span>started 1:37 p.m.</span></div>
+        <span class="btnQuiet"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M8 2v8M5 7l3 3 3-3M3 13h10"></path></svg>Download report</span>
+      </div>
+    </div>
+
+    <div class="panel" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));">
+      <div class="kpi"><span class="eyebrow">Agents observed</span><span class="v">4</span><span class="s"><span style="color: #91c5a4;">4 active</span> · 0 idle · 0 finished</span></div>
+      <div class="kpi"><span class="eyebrow">All-agent context</span><span class="v" style="color: #bbb3d3;">398.8K</span><span class="s">Sum of latest snapshots · not spend</span></div>
+      <div class="kpi"><span class="eyebrow">Wall time</span><span class="v">32m</span><span class="s">Includes idle gaps</span></div>
+      <div class="kpi"><span class="eyebrow">Tool calls</span><span class="v">118</span><span class="s">0 repeated</span></div>
+      <div class="kpi"><span class="eyebrow">Agent estimate</span><span class="v muted">—</span><span class="s">No estimate recorded</span></div>
+    </div>
+
+    <div class="tabs">
+      <span class="tab">Overview</span>
+      <span class="tab">Agents <span class="cnt">4</span></span>
+      <span class="tab">Activities <span class="cnt">102</span></span>
+      <span class="tab">Repository <span class="cnt">5</span></span>
+      <span class="tab">Signals <span class="cnt">6</span></span>
+      <span class="tab on">Resources</span>
+      <span class="tab">Details</span>
+    </div>
+
+    <div class="row" style="gap: 12px;">
+      <span class="muted" style="font-size: 12px;">Machine resources while this session ran · sampled every 2s live · Session window from stored minute aggregates</span>
+      <span class="seg" style="margin-left: auto;"><span>5 min</span><span class="on">30 min</span><span>Session</span></span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <div class="row" style="justify-content: space-between; padding: 12px 16px 4px;"><span class="eyebrow">CPU</span><span class="muted" style="font-size: 11px;">of one core</span></div>
+        <div class="row" style="padding: 0 16px; align-items: baseline; gap: 8px;"><span style="font-size: 26px; font-weight: 650; letter-spacing: -.025em;">0.63%</span><span class="muted" style="font-size: 12px;">peak 18% at 1:52</span></div>
+        <div style="padding: 8px 16px 12px;"><svg viewBox="0 0 400 80" preserveAspectRatio="none" style="display: block; width: 100%; height: 80px;"><line x1="0" x2="400" y1="79" y2="79" stroke="#333941" stroke-width="1"></line><polygon points="0,80 0.0,73.9 13.8,73.9 27.6,69.8 41.4,73.9 55.2,65.7 69.0,69.8 82.8,73.9 96.6,61.6 110.3,28.7 124.1,4.0 137.9,41.0 151.7,65.7 165.5,69.8 179.3,73.9 193.1,73.9 206.9,69.8 220.7,53.3 234.5,65.7 248.3,73.9 262.1,73.9 275.9,69.8 289.7,73.9 303.4,65.7 317.2,73.9 331.0,73.9 344.8,69.8 358.6,73.9 372.4,73.9 386.2,73.9 400.0,73.9 400,80" fill="#8ca8b3" fill-opacity="0.15"></polygon><polyline points="0.0,73.9 13.8,73.9 27.6,69.8 41.4,73.9 55.2,65.7 69.0,69.8 82.8,73.9 96.6,61.6 110.3,28.7 124.1,4.0 137.9,41.0 151.7,65.7 165.5,69.8 179.3,73.9 193.1,73.9 206.9,69.8 220.7,53.3 234.5,65.7 248.3,73.9 262.1,73.9 275.9,69.8 289.7,73.9 303.4,65.7 317.2,73.9 331.0,73.9 344.8,69.8 358.6,73.9 372.4,73.9 386.2,73.9 400.0,73.9" fill="none" stroke="#8ca8b3" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline></svg><div class="row" style="justify-content: space-between; margin-top: 4px;"><span class="mono muted" style="font-size: 10px;">2:05 p.m.</span><span class="mono muted" style="font-size: 10px;">now</span></div></div>
+      </div>
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <div class="row" style="justify-content: space-between; padding: 12px 16px 4px;"><span class="eyebrow">Memory</span><span class="muted" style="font-size: 11px;">resident, all processes</span></div>
+        <div class="row" style="padding: 0 16px; align-items: baseline; gap: 8px;"><span style="font-size: 26px; font-weight: 650; letter-spacing: -.025em;">523 MiB</span><span class="muted" style="font-size: 12px;">peak 611 MiB</span></div>
+        <div style="padding: 8px 16px 12px;"><svg viewBox="0 0 400 80" preserveAspectRatio="none" style="display: block; width: 100%; height: 80px;"><line x1="0" x2="400" y1="79" y2="79" stroke="#333941" stroke-width="1"></line><polygon points="0,80 0.0,72.1 13.8,70.9 27.6,69.2 41.4,65.6 55.2,63.3 69.0,60.3 82.8,53.2 96.6,45.6 110.3,4.0 124.1,10.2 137.9,19.0 151.7,24.9 165.5,27.9 179.3,30.8 193.1,31.4 206.9,30.2 220.7,27.9 234.5,28.5 248.3,30.8 262.1,32.3 275.9,31.4 289.7,29.6 303.4,27.9 317.2,29.1 331.0,30.2 344.8,30.8 358.6,29.9 372.4,30.5 386.2,29.9 400.0,29.9 400,80" fill="#aaa0b0" fill-opacity="0.15"></polygon><polyline points="0.0,72.1 13.8,70.9 27.6,69.2 41.4,65.6 55.2,63.3 69.0,60.3 82.8,53.2 96.6,45.6 110.3,4.0 124.1,10.2 137.9,19.0 151.7,24.9 165.5,27.9 179.3,30.8 193.1,31.4 206.9,30.2 220.7,27.9 234.5,28.5 248.3,30.8 262.1,32.3 275.9,31.4 289.7,29.6 303.4,27.9 317.2,29.1 331.0,30.2 344.8,30.8 358.6,29.9 372.4,30.5 386.2,29.9 400.0,29.9" fill="none" stroke="#aaa0b0" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline></svg><div class="row" style="justify-content: space-between; margin-top: 4px;"><span class="mono muted" style="font-size: 10px;">2:05 p.m.</span><span class="mono muted" style="font-size: 10px;">now</span></div></div>
+      </div>
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <div class="row" style="justify-content: space-between; padding: 12px 16px 4px;"><span class="eyebrow">Disk I/O</span><span class="row" style="gap: 10px; font-size: 11px; color: #a8afb9;"><span class="row" style="gap: 4px;"><i style="width: 10px; height: 2px; background: #8caaa8; display: inline-block;"></i>read</span><span class="row" style="gap: 4px;"><i style="width: 10px; height: 2px; background: #baa38d; display: inline-block;"></i>write</span></span></div>
+        <div class="row" style="padding: 0 16px; align-items: baseline; gap: 8px;"><span style="font-size: 26px; font-weight: 650; letter-spacing: -.025em;">72 KiB/s</span><span class="muted" style="font-size: 12px;">peak 4.1 MiB/s</span></div>
+        <div style="padding: 8px 16px 12px;"><svg viewBox="0 0 400 80" preserveAspectRatio="none" style="display: block; width: 100%; height: 80px;"><line x1="0" x2="400" y1="79" y2="79" stroke="#333941" stroke-width="1"></line><polygon points="0,80 0.0,77.6 13.8,77.5 27.6,77.5 41.4,76.9 55.2,77.3 69.0,77.4 82.8,76.6 96.6,4.0 110.3,61.8 124.1,74.4 137.9,75.8 151.7,76.4 165.5,76.7 179.3,76.9 193.1,76.6 206.9,76.8 220.7,76.9 234.5,76.7 248.3,77.0 262.1,76.9 275.9,76.7 289.7,76.9 303.4,77.0 317.2,76.9 331.0,76.7 344.8,76.8 358.6,76.9 372.4,76.8 386.2,76.7 400.0,76.7 400,80" fill="#8caaa8" fill-opacity="0.1"></polygon><polyline points="0.0,77.6 13.8,77.5 27.6,77.5 41.4,76.9 55.2,77.3 69.0,77.4 82.8,76.6 96.6,4.0 110.3,61.8 124.1,74.4 137.9,75.8 151.7,76.4 165.5,76.7 179.3,76.9 193.1,76.6 206.9,76.8 220.7,76.9 234.5,76.7 248.3,77.0 262.1,76.9 275.9,76.7 289.7,76.9 303.4,77.0 317.2,76.9 331.0,76.7 344.8,76.8 358.6,76.9 372.4,76.8 386.2,76.7 400.0,76.7" fill="none" stroke="#8caaa8" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline><polygon points="0,80 0.0,75.5 13.8,75.0 27.6,75.8 41.4,70.6 55.2,73.1 69.0,74.3 82.8,68.1 96.6,4.0 110.3,33.6 124.1,55.8 137.9,63.2 151.7,68.1 165.5,70.6 179.3,70.6 193.1,69.4 206.9,70.6 220.7,71.1 234.5,70.1 248.3,70.6 262.1,71.8 275.9,70.6 289.7,71.1 303.4,71.6 317.2,70.6 331.0,70.1 344.8,71.1 358.6,71.6 372.4,71.1 386.2,70.6 400.0,70.6 400,80" fill="#baa38d" fill-opacity="0.1"></polygon><polyline points="0.0,75.5 13.8,75.0 27.6,75.8 41.4,70.6 55.2,73.1 69.0,74.3 82.8,68.1 96.6,4.0 110.3,33.6 124.1,55.8 137.9,63.2 151.7,68.1 165.5,70.6 179.3,70.6 193.1,69.4 206.9,70.6 220.7,71.1 234.5,70.1 248.3,70.6 262.1,71.8 275.9,70.6 289.7,71.1 303.4,71.6 317.2,70.6 331.0,70.1 344.8,71.1 358.6,71.6 372.4,71.1 386.2,70.6 400.0,70.6" fill="none" stroke="#baa38d" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline></svg><div class="row" style="justify-content: space-between; margin-top: 4px;"><span class="mono muted" style="font-size: 10px;">2:05 p.m.</span><span class="mono muted" style="font-size: 10px;">now</span></div></div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; flex: 1 1 auto; min-height: 0;">
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <div class="row" style="justify-content: space-between; padding: 12px 16px 6px;"><div class="row" style="gap: 8px;"><h2 class="h2" style="font-size: 14px;">Peak 1:52:04</h2><span class="chip">CPU 18%</span></div><span class="muted" style="font-size: 11px;">full resolution · 2 min before and after</span></div>
+        <div style="padding: 4px 16px 8px;"><svg viewBox="0 0 560 96" style="width: 100%; height: 96px; display: block;"><polyline fill="none" stroke="#697482" stroke-width="1.5" points="0,80 40,78 80,74 120,76 160,70 200,66 240,60 260,40 280,12 300,20 320,48 360,62 400,70 440,74 480,76 520,78 560,80"></polyline><line x1="280" y1="0" x2="280" y2="96" stroke="#e3b575" stroke-dasharray="3 3"></line></svg></div>
+        <div class="tr" style="grid-template-columns: 120px 1fr; font-size: 12px;"><span class="muted">Overlapping tasks</span><span>Shell task · <b>npm run build</b> · 4m 10s · started 1:49:58</span></div>
+        <div class="tr" style="grid-template-columns: 120px 1fr; font-size: 12px;"><span class="muted">Request active</span><span><a href="#">#108</a> · Orchestrator · request after this task carried <span class="mono">2.0M</span> uncached input tokens</span></div>
+        <div class="row muted" style="padding: 8px 16px 12px; font-size: 11px;">Time overlap only. Adjacency, not attribution: no per-task token cost is derived.</div>
+      </div>
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <div class="row" style="justify-content: space-between; padding: 12px 16px 6px;"><h2 class="h2" style="font-size: 14px;">Peaks in this window</h2><a href="#" style="font-size: 12px;">Show in Activity</a></div>
+        <div class="tr" style="grid-template-columns: 70px 1fr 80px; font-size: 12px; background: #23272d;"><span class="mono muted">1:52:04</span><span>CPU 18% · during <b>npm run build</b> shell task</span><span class="mono muted" style="text-align: right;">#108</span></div>
+        <div class="tr" style="grid-template-columns: 70px 1fr 80px; font-size: 12px;"><span class="mono muted">1:49:30</span><span>I/O 4.1 MiB/s · during <b>Read</b> burst by Inventory sitemap</span><span class="mono muted" style="text-align: right;">#96</span></div>
+        <div class="tr" style="grid-template-columns: 70px 1fr 80px; font-size: 12px;"><span class="mono muted">1:41:12</span><span>Memory 611 MiB · 4 agents active</span><span class="mono muted" style="text-align: right;">#61</span></div>
+        <div class="row muted" style="padding: 8px 16px 12px; font-size: 11px;">Peaks are matched to activity by time only. Coincidence, not causation.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

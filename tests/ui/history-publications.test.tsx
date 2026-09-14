@@ -50,6 +50,8 @@ function activityPage(total: number, revision = String(total), offset = Math.flo
 }
 
 const subscriptions: Array<() => void> = [];
+const originalHidden = Object.getOwnPropertyDescriptor(document, "hidden");
+function setHidden(hidden: boolean) { Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden }); }
 
 afterEach(() => {
   for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
@@ -57,10 +59,11 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   HistoryEventSource.instances = [];
+  if (originalHidden) Object.defineProperty(document, "hidden", originalHidden);
 });
 
 describe("history publication notifications", () => {
-  it("shares one stream, validates the identity-free numeric payload, and dedupes repeats", () => {
+  it("shares one stream, validates session-scoped payloads, and dedupes repeats", () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     vi.spyOn(performance, "now").mockReturnValue(1234);
     const first = vi.fn();
@@ -71,11 +74,12 @@ describe("history publication notifications", () => {
     expect(HistoryEventSource.instances).toHaveLength(1);
     const source = HistoryEventSource.instances[0];
     source.emit({ domain: "sessions", revision: 1 });
-    source.emit({ domain: "history", revision: -1 });
-    source.emit({ domain: "history", revision: 1.5 });
-    source.emit({ domain: "history", revision: "2" });
-    source.emit({ domain: "history", revision: 2 });
-    source.emit({ domain: "history", revision: 2 });
+    source.emit({ domain: "history", sessionId: "bad", revision: 2 });
+    source.emit({ domain: "history", sessionId: "claude:one", revision: -1 });
+    source.emit({ domain: "history", sessionId: "claude:one", revision: 1.5 });
+    source.emit({ domain: "history", sessionId: "claude:one", revision: "2" });
+    source.emit({ domain: "history", sessionId: "claude:one", revision: 2 });
+    source.emit({ domain: "history", sessionId: "claude:one", revision: 2 });
     expect(first).toHaveBeenCalledTimes(1);
     expect(first).toHaveBeenCalledWith({ domain: "history", revision: 2 });
     expect(second).toHaveBeenCalledTimes(1);
@@ -92,18 +96,18 @@ describe("history publication notifications", () => {
     const unsubscribe = subscribeHistoryPublications(listener);
     subscriptions.push(unsubscribe);
     const first = HistoryEventSource.instances[0];
-    first.emit({ domain: "history", revision: 8 });
+    first.emit({ domain: "history", sessionId: "claude:one", revision: 8 });
     expect(listener).toHaveBeenCalledTimes(1);
 
     first.emitError();
-    first.emit({ domain: "history", revision: 1 });
+    first.emit({ domain: "history", sessionId: "claude:one", revision: 1 });
     expect(listener).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(250); });
     expect(HistoryEventSource.instances).toHaveLength(2);
     const second = HistoryEventSource.instances[1];
-    second.emit({ domain: "history", revision: 1 });
+    second.emit({ domain: "history", sessionId: "claude:one", revision: 1 });
     expect(listener).toHaveBeenCalledTimes(2);
-    first.emit({ domain: "history", revision: 2 });
+    first.emit({ domain: "history", sessionId: "claude:one", revision: 2 });
     expect(listener).toHaveBeenCalledTimes(2);
 
     unsubscribe();
@@ -124,12 +128,12 @@ describe("history publication notifications", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const calls = fetcher.mock.calls.length;
     total = 9;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 1 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
     expect(result.current.page?.total).toBe(9);
     expect(fetcher).toHaveBeenCalledTimes(calls + 2);
     const afterFirst = fetcher.mock.calls.length;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 1 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
     await act(async () => { await Promise.resolve(); });
     expect(fetcher).toHaveBeenCalledTimes(afterFirst);
   });
@@ -148,13 +152,59 @@ describe("history publication notifications", () => {
     await waitFor(() => expect(result.current.history.status).toBe("ready"));
     const calls = fetcher.mock.calls.length;
     total = 3;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:request-events", revision: 3 }));
     await waitFor(() => expect(result.current.history.total).toBe(3));
     expect(fetcher).toHaveBeenCalledTimes(calls + 1);
     const afterFirst = fetcher.mock.calls.length;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:request-events", revision: 3 }));
     await act(async () => { await Promise.resolve(); });
     expect(fetcher).toHaveBeenCalledTimes(afterFirst);
+  });
+
+  it("suppresses hidden history events and revalidates the mounted request page on foreground", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    const fetcher = vi.fn(async () => {
+      const page: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
+        items: [{ ...snapshot(1), number: 1 }], overview: [[1, 2, 3, 4]] };
+      return { ok: true, json: async () => page };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const sessionId = "claude:hidden-history";
+    renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([]), contextBoundaries: [], historical: false, sessionId, historyEnabled: true }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    setHidden(true);
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId, revision: 2 }));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    setHidden(false);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps receiving publications after cached request-window navigation", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    const pageFor = (offset: number, revision: string): RequestHistoryPage => {
+      const total = 120;
+      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(offset + index + 1), number: offset + index + 1 }));
+      return { kind: "requests", status: "ready", revision, total, offset, linkedCount: 0, items,
+        overview: Array.from({ length: total }, (_, index) => [index + 1, 2, 3, 4]) };
+    };
+    const fetcher = vi.fn(async (url: string) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const offset = params.get("offset") === "latest" ? 60 : Number(params.get("offset"));
+      return { ok: true, json: async () => pageFor(offset, "2") };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const sessionId = "claude:cached-window";
+    const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([]), contextBoundaries: [], historical: false, sessionId, historyEnabled: true }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    act(() => result.current.history.first());
+    await waitFor(() => expect(result.current.history.offset).toBe(0));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId, revision: 2 }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    const params = new URL(fetcher.mock.calls[2][0], "http://localhost").searchParams;
+    expect(params.get("offset")).toBe("0");
+    expect(params.get("overview")).not.toBe("0");
   });
 
   it("settles a historical request overview on its committed-history publication without following later revisions", async () => {
@@ -170,12 +220,28 @@ describe("history publication notifications", () => {
     expect(result.current.history.overview).toBeNull();
     expect(HistoryEventSource.instances).toHaveLength(1);
 
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-hydration", revision: 2 }));
     await waitFor(() => expect(result.current.history.overview).toEqual(ready.overview));
     expect(fetcher).toHaveBeenCalledTimes(2);
 
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 }));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-hydration", revision: 3 }));
     await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])("retries an unavailable %s request history page when its next publication arrives", async (historical) => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
+      items: [{ ...snapshot(1), number: 1 }], overview: [[1, 2, 3, 4]] };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ kind: "requests", status: "unavailable", revision: "1", total: 0, offset: 0, linkedCount: 0, items: [] }) })
+      .mockResolvedValue({ ok: true, json: async () => ready });
+    vi.stubGlobal("fetch", fetcher);
+    const sessionId = historical ? "claude:recorded-unavailable" : "claude:live-unavailable";
+    const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([]), contextBoundaries: [], historical, sessionId, historyEnabled: true }));
+    await waitFor(() => expect(result.current.history.status).toBe("unavailable"));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId, revision: 2 }));
+    await waitFor(() => expect(result.current.history.revision).toBe("2"));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -197,15 +263,53 @@ describe("history publication notifications", () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
 
     act(() => {
-      HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 });
-      HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 });
-      HistoryEventSource.instances[0].emit({ domain: "history", revision: 4 });
+      HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-in-flight", revision: 2 });
+      HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-in-flight", revision: 3 });
+      HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-in-flight", revision: 4 });
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(firstSignal?.aborted).toBe(false);
     firstRequest({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) });
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.history.overview).toEqual(ready.overview));
+  });
+
+  it("replays one in-flight publication for a pinned older request page without moving its selection", async () => {
+    vi.stubGlobal("EventSource", HistoryEventSource);
+    const pageFor = (revision: string, total: number): RequestHistoryPage => {
+      const offset = 0;
+      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+      return { kind: "requests", status: "ready", revision, total, offset, linkedCount: 0, items,
+        overview: Array.from({ length: total }, (_, index) => [index + 1, 2, 3, 4]) };
+    };
+    let settleRefresh!: (value: unknown) => void;
+    const fetcher = vi.fn((_: string) => {
+      const call = fetcher.mock.calls.length;
+      if (call === 1) {
+        const initial = { ...pageFor("1", 120), offset: 60 };
+        delete initial.overview;
+        return Promise.resolve({ ok: true, json: async () => initial });
+      }
+      if (call === 2) return Promise.resolve({ ok: true, json: async () => pageFor("1", 120) });
+      if (call === 3) return new Promise((resolve) => { settleRefresh = resolve; });
+      return Promise.resolve({ ok: true, json: async () => pageFor("2", 121) });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([]), contextBoundaries: [], historical: false, sessionId: "claude:pinned-in-flight", historyEnabled: true }));
+    await waitFor(() => expect(result.current.history.offset).toBe(60));
+    act(() => result.current.locate("request-not-resident"));
+    await waitFor(() => expect(result.current.history.offset).toBe(0));
+    act(() => result.current.select(result.current.rows[12]));
+    const selected = result.current.selected?.id;
+    act(() => result.current.locate("request-still-absent"));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:pinned-in-flight", revision: 2, total: 121 }));
+    settleRefresh({ ok: true, json: async () => pageFor("1", 120) });
+    await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => !String(url).includes("overview=0"))).toHaveLength(4));
+    await waitFor(() => expect(result.current.history.revision).toBe("2"));
+    expect(result.current.history.total).toBe(121);
+    expect(result.current.history.offset).toBe(0);
+    expect(result.current.selected?.id).toBe(selected);
   });
 
   it("does not replay a queued historical publication after cancellation", async () => {
@@ -223,8 +327,8 @@ describe("history publication notifications", () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
 
     act(() => {
-      HistoryEventSource.instances[0].emit({ domain: "history", revision: 2 });
-      HistoryEventSource.instances[0].emit({ domain: "history", revision: 3 });
+      HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-cancelled", revision: 2 });
+      HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:recorded-cancelled", revision: 3 });
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     hook.unmount();

@@ -1,3 +1,5 @@
+import { gzipSync } from "node:zlib";
+
 const DEFAULT_MONITOR_ORIGIN = "http://127.0.0.1:4317";
 
 export function monitorOrigin(value = process.env.POMEGR_MONITOR_ORIGIN) {
@@ -19,16 +21,65 @@ type MonitorProxyOptions = {
   path: string;
   timeoutMs: number;
   unavailableBody: object;
+  acceptEncoding?: string | null;
+  ifNoneMatch?: string | null;
 };
 
-export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: MonitorProxyOptions) {
+export function acceptsGzipEncoding(value: string | null) {
+  let gzip: number | null = null;
+  let wildcard: number | null = null;
+  for (const entry of (value || "").split(",")) {
+    const [rawName, ...parameters] = entry.trim().split(";");
+    const name = rawName.trim().toLowerCase();
+    if (name !== "gzip" && name !== "*") continue;
+    let quality = 1;
+    let hasInvalidQuality = false;
+    let hasQuality = false;
+    for (const parameter of parameters) {
+      const qualityParameter = /^\s*q\s*=\s*(.*?)\s*$/iu.exec(parameter);
+      if (!qualityParameter) continue;
+      if (hasQuality || !/^(?:0(?:\.\d{1,3})?|\.\d{1,3}|1(?:\.0{1,3})?)$/u.test(qualityParameter[1])) {
+        hasInvalidQuality = true;
+        continue;
+      }
+      hasQuality = true;
+      quality = Number(qualityParameter[1]);
+    }
+    if (hasInvalidQuality) quality = 0;
+    if (name === "gzip") gzip = gzip === null ? quality : Math.max(gzip, quality);
+    else wildcard = wildcard === null ? quality : Math.max(wildcard, quality);
+  }
+  return (gzip ?? wildcard ?? 0) > 0;
+}
+
+function proxyRevision(value: string | null) {
+  return value && /^\d{1,20}$/u.test(value) ? value : null;
+}
+
+function proxyEtag(value: string | null) {
+  return value && /^(?:W\/)?"[\x21\x23-\x7e]{0,510}"$/u.test(value) ? value : null;
+}
+
+function revisionHeaders(response: Response) {
+  const revision = proxyRevision(response.headers.get("x-pomegr-revision"));
+  const etag = proxyEtag(response.headers.get("etag"));
+  return {
+    ...(revision ? { "X-Pomegr-Revision": revision } : {}),
+    ...(etag ? { ETag: etag } : {}),
+  };
+}
+
+export async function proxyMonitorJson({ path, timeoutMs, unavailableBody, acceptEncoding = null, ifNoneMatch = null }: MonitorProxyOptions) {
   try {
     const authorizationToken = process.env.POMEGR_MONITOR_TOKEN;
+    const conditionalTag = proxyEtag(ifNoneMatch);
     const response = await fetch(`${monitorOrigin()}${path}`, {
       cache: "no-store",
-      headers: authorizationToken
-        ? { "x-pomegr-desktop-authorization": authorizationToken }
-        : undefined,
+      headers: {
+        "accept-encoding": "identity",
+        ...(conditionalTag ? { "if-none-match": conditionalTag } : {}),
+        ...(authorizationToken ? { "x-pomegr-desktop-authorization": authorizationToken } : {}),
+      },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`Monitor returned ${response.status}`);
@@ -37,22 +88,30 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody }: Mon
         status: 204,
         headers: {
           "Cache-Control": "no-store",
-          ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
+          Vary: "Accept-Encoding",
+          ...revisionHeaders(response),
         },
       });
     }
-    return new Response(await response.text(), {
-      status: 200,
+    const text = await response.text();
+    const compressed = acceptsGzipEncoding(acceptEncoding) && Buffer.byteLength(text) >= 1_024;
+    const body = compressed ? new Uint8Array(gzipSync(Buffer.from(text))) : text;
+    return new Response(body, {
+      // Workers otherwise compress this already encoded body a second time.
+      ...(compressed ? { encodeBody: "manual" as const } : {}),
+      status: response.status,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
-        ...(response.headers.get("x-pomegr-revision") ? { "X-Pomegr-Revision": response.headers.get("x-pomegr-revision")! } : {}),
+        Vary: "Accept-Encoding",
+        ...(compressed ? { "Content-Encoding": "gzip" } : {}),
+        ...revisionHeaders(response),
       },
     });
   } catch {
     return Response.json(unavailableBody, {
       status: 503,
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": "no-store", Vary: "Accept-Encoding" },
     });
   }
 }

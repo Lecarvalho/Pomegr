@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   }
   const params = new URLSearchParams({ repositoryId, provider, revisionId });
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path: `/api/repository-inventory?${params}`,
     timeoutMs: 4_000,
     unavailableBody: { error: "Repository inventory unavailable" },

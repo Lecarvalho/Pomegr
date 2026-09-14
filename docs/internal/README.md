@@ -99,6 +99,12 @@ Keep the plan until the user explicitly approves deletion. Runtime rules are
 recorded in [Activity events](../METRICS.md#activity-events) and the
 [Activity feed contract](../OBSERVATION_CACHE.md#activity-feed).
 
+The [information architecture redesign plan](plans/ia-redesign.md) holds the
+approved navigation, session tab, agent detail, file history, and transport
+redesign with its prototype artboards. Implementation has not started;
+[DESIGN.md](../../DESIGN.md), [Observation cache](../OBSERVATION_CACHE.md), and
+[Metrics](../METRICS.md) stay authoritative until each task updates them.
+
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not
 make them current authority or evidence of shipped features. Active plans will

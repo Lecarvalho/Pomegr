@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   const monitorParams = new URLSearchParams();
   if (revision !== null && revision !== "") monitorParams.set("revision", revision);
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path: `/api/usage-limits${monitorParams.size ? `?${monitorParams}` : ""}`,
     timeoutMs: 7500,
     unavailableBody: {

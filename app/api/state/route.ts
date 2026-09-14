@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const path = `/api/state${monitorParams.size ? `?${monitorParams}` : ""}`;
 
   return proxyMonitorJson({
+    ifNoneMatch: request.headers.get("if-none-match"),
+    acceptEncoding: request.headers.get("accept-encoding"),
     path,
     timeoutMs: 7500,
     unavailableBody: createEmptyMonitorState({

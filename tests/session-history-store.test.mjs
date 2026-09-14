@@ -89,6 +89,82 @@ test("request prefetch pages can omit the full overview while activity and defau
 });
 
 for (const disk of [false, true]) {
+  test(`activity request groups bound headers and calls while retaining flat rows (${disk ? "disk" : "memory"})`, async (t) => {
+    const directory = disk ? await mkdtemp(path.join(os.tmpdir(), "pomegr-history-groups-")) : null;
+    if (directory) t.after(() => rm(directory, { recursive: true, force: true }));
+    const store = new SessionHistoryStore({ directory });
+    const sessionId = "codex:grouped-history";
+    const requests = Array.from({ length: 8 }, (_, index) => request(index.toString(16).padStart(16, "0"), `2026-09-11T00:00:${String(index).padStart(2, "0")}Z`));
+    const calls = requests.flatMap((item, index) => index >= 1 && index <= 4
+      ? Array.from({ length: 55 }, (_, call) => ({ ...activity(`read-${index}-${String(call).padStart(3, "0")}`, `2026-09-11T01:${String(call % 60).padStart(2, "0")}:00Z`, item.id), workKind: "read" }))
+      : [{ ...activity(`shell-${index}`, `2026-09-11T02:${String(index).padStart(2, "0")}:00Z`, item.id), workKind: "shell" }]);
+    calls.push({ ...activity("unresolved-read", "2026-09-11T03:00:00Z", null), workKind: "read" });
+    calls.push({ ...activity("linked-without-agent", "2026-09-11T03:01:00Z", requests[0].id), agentId: null, workKind: "read" });
+    await store.publish(sessionId, { requests, activity: calls, complete: true });
+
+    const allActors = await store.read(sessionId, { kind: "activity", from: "1", to: "5", selected: "1", scope: "all" });
+    assert.ok(allActors.requestGroups.find((group) => group.request.number === 1).calls
+      .some((call) => call.id === "linked-without-agent"), "a direct request association does not require an actor id");
+    const primaryActors = await store.read(sessionId, { kind: "activity", from: "1", to: "5", selected: "1", scope: "primary" });
+    assert.equal(primaryActors.requestGroups.find((group) => group.request.number === 1).calls
+      .some((call) => call.id === "linked-without-agent"), false, "agent scopes exclude calls without a matching actor id");
+
+    const grouped = await store.read(sessionId, { kind: "activity", from: "1", to: "7", selected: "4", workKind: "read", scope: "primary" });
+    assert.deepEqual(grouped.requestGroups.map((group) => group.request.number), [2, 3, 4, 5, 6]);
+    assert.deepEqual(grouped.range, { from: 2, to: 6 });
+    assert.equal(grouped.requestTotal, 8);
+    assert.equal(grouped.callTotal, 220);
+    assert.equal(grouped.requestGroups[4].noMatchingCalls, true);
+    assert.equal(grouped.requestGroups[2].calls.length, 50);
+    assert.equal(grouped.requestGroups[2].continuation.remaining, 5);
+    assert.equal(grouped.requestGroups.reduce((total, group) => total + group.calls.length, 0), 200);
+    assert.deepEqual(grouped.requestGroups[0].calls.map((call) => call.id),
+      Array.from({ length: 50 }, (_, call) => `read-1-${String(call).padStart(3, "0")}`),
+      "calls inside a request group retain chronological Activity order");
+    const flatLatest = await store.read(sessionId, { kind: "activity", offset: "latest" });
+    assert.ok(flatLatest.items.some((item) => item.id === "unresolved-read"), "legacy flat rows retain unresolved calls");
+
+    const continued = await store.read(sessionId, { kind: "activity", selected: "4", workKind: "read", continuation: grouped.requestGroups[2].continuation.cursor });
+    const selected = continued.requestGroups.find((group) => group.request.number === 4);
+    assert.equal(selected.calls.length, 5);
+    assert.equal(selected.continuation, null);
+    assert.equal(selected.noMatchingCalls, false);
+  });
+}
+
+test("continuation prioritizes its request before the shared call-page budget", async () => {
+  const store = new SessionHistoryStore();
+  const requests = Array.from({ length: 5 }, (_, index) => request(`f${String(index).padStart(15, "0")}`, `2026-09-11T05:00:0${index}Z`));
+  const calls = requests.flatMap((item, index) => Array.from({ length: index === 4 ? 55 : 50 }, (_, call) =>
+    activity(`budget-${index}-${call}`, `2026-09-11T05:${String(call).padStart(2, "0")}:30Z`, item.id)));
+  await store.publish("codex:continuation-budget", { requests, activity: calls, complete: true });
+  const first = await store.read("codex:continuation-budget", { kind: "activity", from: "1", to: "5", selected: "5" });
+  const target = first.requestGroups.find((group) => group.request.number === 5);
+  assert.equal(target.calls.length, 0);
+  assert.equal(target.continuation.remaining, 55);
+  const second = await store.read("codex:continuation-budget", { kind: "activity", from: "1", to: "5", selected: "5", continuation: target.continuation.cursor });
+  const continued = second.requestGroups.find((group) => group.request.number === 5);
+  assert.equal(continued.calls.length, 50);
+  assert.equal(continued.continuation.remaining, 5);
+  const third = await store.read("codex:continuation-budget", { kind: "activity", from: "1", to: "5", selected: "5", continuation: continued.continuation.cursor });
+  assert.equal(third.requestGroups.find((group) => group.request.number === 5).calls.length, 5);
+  assert.equal(third.requestGroups.find((group) => group.request.number === 5).continuation, null);
+});
+
+test("history revisions replay bounded per-session events without a synthetic global event", async () => {
+  const store = new SessionHistoryStore();
+  await store.publish("codex:events-one", { requests: [request("eeeeeeeeeeeeeeee", "2026-09-11T04:00:00Z")], activity: [], complete: true });
+  await store.publish("codex:events-two", { requests: [request("ffffffffffffffff", "2026-09-11T04:01:00Z")], activity: [], complete: true });
+  const events = [];
+  const unsubscribe = store.subscribeRevisionEvents((event) => events.push(event));
+  unsubscribe();
+  assert.deepEqual(events.map((event) => ({ domain: event.domain, sessionId: event.sessionId, revision: event.revision, total: event.total })), [
+    { domain: "history", sessionId: "codex:events-one", revision: 1, total: 1 },
+    { domain: "history", sessionId: "codex:events-two", revision: 1, total: 1 },
+  ]);
+});
+
+for (const disk of [false, true]) {
   test(`Activity contribution publishes before request replay and a fenced replay retains a newer row (${disk ? "disk" : "memory"})`, async (t) => {
     const directory = disk ? await mkdtemp(path.join(os.tmpdir(), "pomegr-history-progressive-")) : null;
     if (directory) t.after(() => rm(directory, { recursive: true, force: true }));
@@ -124,9 +200,9 @@ for (const disk of [false, true]) {
     assert.equal((await store.read(sessionId, { kind: "activity" })).items.find((item) => item.id === "call-early").requestId, linked.id, "partial source rows never clear resolved enrichment");
     await store.publishActivityContribution(sessionId, { epoch: 1, sequence: 99, activity: [activity("call-stale", "2026-09-10T02:00:04Z", null)] });
     assert.equal((await store.read(sessionId, { kind: "activity" })).items.some((item) => item.id === "call-stale"), false);
-    assert.deepEqual(revisions.map((event) => event.domain), ["history", "history", "history", "history", "history"]);
-    assert.deepEqual(revisions.map((event) => event.revision), [0, 1, 2, 3, 4]);
-    assert.doesNotMatch(JSON.stringify(revisions), /codex:progressive/);
+    assert.deepEqual(revisions.map((event) => event.domain), ["history", "history", "history", "history"]);
+    assert.deepEqual(revisions.map((event) => event.revision), [1, 2, 3, 4]);
+    assert.deepEqual(revisions.map((event) => event.sessionId), Array(4).fill(sessionId));
     unsubscribe();
     if (directory) {
       const restarted = new SessionHistoryStore({ directory });
@@ -147,9 +223,9 @@ test("coalesces a burst of append contributions without dropping rows or revisin
     store.publishActivityContribution(sessionId, { epoch: 1, sequence: 3, activity: [activity("call-three", "2026-09-10T03:00:02Z", null)] }),
   ]);
   assert.deepEqual((await store.read(sessionId, { kind: "activity" })).items.map((item) => item.id).sort(), ["call-one", "call-three", "call-two"]);
-  assert.deepEqual(revisions, [0, 1]);
+  assert.deepEqual(revisions, [1]);
   await store.publishActivityContribution(sessionId, { epoch: 1, sequence: 4, activity: [activity("call-three", "2026-09-10T03:00:02Z", null)] });
-  assert.deepEqual(revisions, [0, 1], "a source watermark alone does not churn the public revision");
+  assert.deepEqual(revisions, [1], "a source watermark alone does not churn the public revision");
 });
 
 test("bounds runtime admission state while restoring stale rejection after LRU eviction", async (t) => {
@@ -206,7 +282,7 @@ test("an empty request contribution transitions Activity-first history to reques
   const requests = await store.read(sessionId, { kind: "requests" });
   assert.equal(requests.status, "ready");
   assert.equal(requests.total, 0);
-  assert.deepEqual(revisions, [0, 1, 2]);
+  assert.deepEqual(revisions, [1, 2]);
 });
 
 test("a failed Activity contribution write accepts the same source contribution on retry", async (t) => {
@@ -257,6 +333,31 @@ test("unchanged publish upgrades a legacy index while legacy indexes return read
   assert.equal(Number(migrated.revision), Number(legacy.revision) + 1);
   const afterMigration = await store.publish("codex:migrate", { requests: [item], activity: [], complete: true });
   assert.equal(String(afterMigration.revision), migrated.revision);
+});
+
+test("unchanged publication replaces a v2 activity index before grouped reads", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-v2-migrate-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const sessionId = "codex:v2-activity-index";
+  const item = request("abababababababab", "2026-09-06T01:00:00Z");
+  const call = { ...activity("v2-call", "2026-09-06T01:00:01Z", item.id), workKind: "shell", durationMs: 25 };
+  const store = new SessionHistoryStore({ directory });
+  await store.publish(sessionId, { requests: [item], activity: [call], complete: true });
+  const indexPath = path.join(directory, (await readdir(directory)).find((file) => file.endsWith(".index.json")));
+  const index = JSON.parse(await readFile(indexPath, "utf8"));
+  index.version = 2;
+  delete index.activity[0].workKind;
+  delete index.activity[0].durationMs;
+  delete index.activity[0].status;
+  await writeFile(indexPath, JSON.stringify(index), "utf8");
+
+  assert.equal((await new SessionHistoryStore({ directory }).read(sessionId, { kind: "activity" })).status, "unavailable");
+  const migrated = await store.publish(sessionId, { requests: [item], activity: [call], complete: true });
+  assert.equal(migrated.revision, 2);
+  const grouped = await new SessionHistoryStore({ directory }).read(sessionId, { kind: "activity", workKind: "shell" });
+  assert.equal(grouped.status, "ready");
+  assert.equal(grouped.requestGroups[0].calls[0].id, "v2-call");
+  assert.deepEqual(grouped.byKind, [{ kind: "shell", count: 1, medianDurationMs: 25 }]);
 });
 
 test("disk overview is index-backed and survives missing unselected detail blocks", async (t) => {
@@ -372,7 +473,7 @@ function manifestParseSpy(t) {
   let count = 0;
   const original = JSON.parse;
   t.mock.method(JSON, "parse", function parse(source, ...args) {
-    if (typeof source === "string" && source.includes('"version":2') && source.includes('"sessionId"')) count += 1;
+    if (typeof source === "string" && source.includes('"version":3') && source.includes('"sessionId"')) count += 1;
     return original(source, ...args);
   });
   return () => count;

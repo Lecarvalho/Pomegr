@@ -2,6 +2,18 @@ import { createHomeReadiness } from "./observation-readiness.mjs";
 import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
+import { SESSION_DOMAIN_NAMES } from "./session-domain-store.mjs";
+import { WORK_KINDS } from "./work-kind.mjs";
+
+const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
+const WORK_KIND_SET = new Set(WORK_KINDS);
+
+function requestRevision(requestUrl, request) {
+  const query = requestUrl.searchParams.get("revision");
+  if (/^\d+$/u.test(query || "")) return Number(query);
+  const etag = String(request.headers["if-none-match"] || "").trim().replace(/^W\//u, "").replace(/^"|"$/gu, "");
+  return /^\d+$/u.test(etag) ? Number(etag) : null;
+}
 
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
 export function createRequestHandler({
@@ -208,8 +220,7 @@ export function createRequestHandler({
       return;
     }
     if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
-    const requestedRevisionValue = requestUrl.searchParams.get("revision");
-    const requestedRevision = /^\d+$/u.test(requestedRevisionValue || "") ? Number(requestedRevisionValue) : null;
+    const requestedRevision = requestRevision(requestUrl, request);
     const safeExtraResponseHeaders = (value) => {
       try {
         const headers = extraResponseHeaders(value);
@@ -217,17 +228,21 @@ export function createRequestHandler({
       } catch { return {}; }
     };
     const writeCommitted = (result, fallbackValue) => {
+      const revision = result?.snapshot?.revision ?? result?.unavailableSnapshot?.revision ?? result?.revision;
+      const revisionHeaders = Number.isSafeInteger(revision) ? {
+        "X-Pomegr-Revision": String(revision),
+        ETag: `"${revision}"`,
+      } : {};
       if (result?.status === "unchanged") {
-        response.writeHead(204);
+        response.writeHead(204, revisionHeaders);
         response.end();
         return;
       }
       const snapshot = result?.snapshot || result?.unavailableSnapshot;
       const serialized = snapshot?.serialized || snapshot?.serializedState || JSON.stringify(fallbackValue);
-      const revision = snapshot?.revision;
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
-        ...(Number.isSafeInteger(revision) ? { "X-Pomegr-Revision": String(revision) } : {}),
+        ...revisionHeaders,
         ...safeExtraResponseHeaders({ path: requestUrl.pathname, result, snapshot }),
       });
       response.end(serialized);
@@ -250,11 +265,19 @@ export function createRequestHandler({
       let closed = false;
       let unsubscribe = null;
       const writeRevision = (event) => {
-        if (closed || !["sessions", "repositories", "history"].includes(event?.domain)
+        if (closed || !["sessions", "repositories", "history", ...SESSION_DOMAIN_NAMES].includes(event?.domain)
           || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
+        const sessionDomain = event.domain === "history" || SESSION_DOMAIN_SET.has(event.domain);
+        if (sessionDomain && (typeof event.sessionId !== "string" || event.sessionId.length < 3 || event.sessionId.length > 640)) return;
         try {
           const eventName = event.domain === "sessions" ? "catalog" : event.domain;
-          response.write(`event: ${eventName}\ndata: ${JSON.stringify({ domain: event.domain, revision: event.revision })}\n\n`);
+          const payload = {
+            domain: event.domain,
+            ...(sessionDomain ? { sessionId: event.sessionId } : {}),
+            revision: event.revision,
+            ...(event.domain === "history" && Number.isSafeInteger(event.total) && event.total >= 0 ? { total: event.total } : {}),
+          };
+          response.write(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
         } catch { close(); }
       };
       const heartbeat = setInterval(() => {
@@ -300,9 +323,47 @@ export function createRequestHandler({
       }
       return;
     }
+    if (requestUrl.pathname === "/api/session-domain") {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
+      const allowed = new Set(["sessionId", "domain", "agentId", "revision"]);
+      const sessionId = requestUrl.searchParams.get("sessionId") || "";
+      const domain = requestUrl.searchParams.get("domain") || "";
+      const agentId = requestUrl.searchParams.get("agentId");
+      const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key)
+        && requestUrl.searchParams.getAll(key).length === 1);
+      const validSession = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u.test(sessionId);
+      const validAgent = domain === "agent"
+        ? typeof agentId === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(agentId)
+        : agentId === null;
+      if (!oneEach || !validSession || !SESSION_DOMAIN_SET.has(domain) || !validAgent) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid session domain query" }));
+        return;
+      }
+      try {
+        const result = runtime.serveSessionDomain?.(sessionId, domain, agentId, requestedRevision);
+        if (!result || result.status === "unavailable") {
+          response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ error: "Session domain unavailable" }));
+          return;
+        }
+        writeCommitted(result, {
+          domain,
+          sessionId,
+          revision: 0,
+          readiness: "loading",
+          observedAt: null,
+        });
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Session domain unavailable" }));
+      }
+      return;
+    }
     if (requestUrl.pathname === "/api/session-history") {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
-      const allowed = new Set(["sessionId", "kind", "scope", "offset", "limit", "requestId", "filterRequestId", "anchor", "overview"]);
+      const allowed = new Set(["sessionId", "kind", "scope", "offset", "limit", "requestId", "filterRequestId", "anchor", "overview",
+        "revision", "from", "to", "selected", "workKind", "continuation"]);
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
       const kind = requestUrl.searchParams.get("kind") || "activity";
       const scope = requestUrl.searchParams.get("scope") || "all";
@@ -312,6 +373,11 @@ export function createRequestHandler({
       const filterRequestId = requestUrl.searchParams.get("filterRequestId") || "";
       const anchor = requestUrl.searchParams.get("anchor") || "";
       const overview = requestUrl.searchParams.get("overview") || "";
+      const from = requestUrl.searchParams.get("from") || "";
+      const to = requestUrl.searchParams.get("to") || "";
+      const selected = requestUrl.searchParams.get("selected") || "";
+      const workKind = requestUrl.searchParams.get("workKind") || "";
+      const continuation = requestUrl.searchParams.get("continuation") || "";
       const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
       const validScope = scope === "all" || scope === "primary" || scope === "subagents" || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(scope);
       const validOffset = /^(?:0|[1-9]\d*|latest|last)$/.test(offset);
@@ -320,13 +386,32 @@ export function createRequestHandler({
       const validFilter = !filterRequestId || /^request-[a-f0-9]{16}$/.test(filterRequestId);
       const validAnchor = !anchor || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(anchor);
       const validOverview = !requestUrl.searchParams.has("overview") || overview === "0" || overview === "1";
+      const rangePresent = Boolean(from || to);
+      const validRange = !rangePresent || /^(?:[1-9]\d{0,6})$/u.test(from) && /^(?:[1-9]\d{0,6})$/u.test(to)
+        && Number(from) <= Number(to) && Number(to) - Number(from) < 64;
+      const validSelected = !selected || /^(?:[1-9]\d{0,6})$/u.test(selected);
+      const validWorkKind = !workKind || WORK_KIND_SET.has(workKind);
+      const validContinuation = !continuation || /^[A-Za-z0-9_-]{1,96}$/u.test(continuation);
       if (!oneEach || !/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionId)
-        || !["activity", "requests"].includes(kind) || !validScope || !validOffset || !validLimit || !validRequest || !validFilter || !validAnchor || !validOverview) {
+        || !["activity", "requests"].includes(kind) || !validScope || !validOffset || !validLimit || !validRequest || !validFilter || !validAnchor || !validOverview
+        || !validRange || !validSelected || !validWorkKind || !validContinuation) {
         response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ error: "Invalid session history query" })); return;
       }
       try {
-        const page = await runtime.serveSessionHistory?.(sessionId, { kind, scope, offset, limit, requestId, filterRequestId, anchor, overview });
-        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
+        const page = await runtime.serveSessionHistory?.(sessionId, {
+          kind, scope, offset, limit, requestId, filterRequestId, anchor, overview,
+          from, to, selected, workKind, continuation,
+        });
+        const pageRevision = /^\d+$/u.test(page?.revision || "") ? Number(page.revision) : null;
+        const historyHeaders = Number.isSafeInteger(pageRevision) ? {
+          "X-Pomegr-Revision": String(pageRevision), ETag: `"${pageRevision}"`,
+        } : {};
+        if (Number.isSafeInteger(requestedRevision) && pageRevision === requestedRevision) {
+          response.writeHead(204, { "Cache-Control": "no-store", ...historyHeaders });
+          response.end();
+          return;
+        }
+        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8", ...historyHeaders,
           ...safeExtraResponseHeaders({ path: requestUrl.pathname, page, sessionId, kind }),
         });
         response.end(JSON.stringify(page || { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0 }));

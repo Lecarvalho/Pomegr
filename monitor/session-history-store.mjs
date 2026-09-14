@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizedRequestWork } from "./request-work.mjs";
-import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
+import { normalizedWorkKind, toolWorkKind, WORK_KINDS } from "./work-kind.mjs";
+import { activityGroupPlan, emptyActivityGroups, scopeMatches, servedActivityGroups } from "./session-history-groups.mjs";
 
 const MAX_SESSIONS = 24;
 const MAX_RESIDENT = 1;
@@ -102,7 +103,7 @@ function sameServedHistory(left, right) {
 /** Persisted, browser-safe history only. Provider IDs, paths, and raw records never enter this store. */
 export class SessionHistoryStore {
   #records = new Map(); #touch = new Map(); #indexCache = new Map(); #indexBytes = 0; #writes = new Map();
-  #historyRevision = 0; #revisionSubscribers = new Set(); #activityAdmissions = new Map(); #requestAdmissions = new Map(); #generationLeases = new Map();
+  #historyRevision = 0; #revisionSubscribers = new Set(); #historyEvents = new Map(); #activityAdmissions = new Map(); #requestAdmissions = new Map(); #generationLeases = new Map();
   #pendingContributions = new Map(); #pendingRequests = new Map(); #admissionTouch = new Map(); #admissionClock = 0;
   #committedHistory = new Map();
   #admissionRuntime = crypto.randomBytes(16).toString("hex");
@@ -173,9 +174,12 @@ export class SessionHistoryStore {
     await writeFile(temporary, JSON.stringify({ version: 1, runtime: this.#admissionRuntime, activity, requests }), "utf8");
     await rename(temporary, destination);
   }
-  #notifyHistoryRevision() {
+  #notifyHistoryRevision(sessionId, record) {
     this.#historyRevision += 1;
-    const event = Object.freeze({ domain: "history", revision: this.#historyRevision });
+    const event = Object.freeze({ domain: "history", sessionId, revision: record.revision,
+      total: record.requestsReady !== false ? record.requests.length : record.activity.length });
+    this.#historyEvents.delete(sessionId); this.#historyEvents.set(sessionId, event);
+    while (this.#historyEvents.size > 128) this.#historyEvents.delete(this.#historyEvents.keys().next().value);
     for (const subscriber of this.#revisionSubscribers) {
       try { subscriber(event); } catch { /* notification listeners cannot interrupt publication */ }
     }
@@ -184,7 +188,7 @@ export class SessionHistoryStore {
   subscribeRevisionEvents(subscriber) {
     if (typeof subscriber !== "function") throw new TypeError("History revision subscriber must be a function");
     this.#revisionSubscribers.add(subscriber);
-    subscriber(Object.freeze({ domain: "history", revision: this.#historyRevision }));
+    for (const event of this.#historyEvents.values()) subscriber(event);
     return () => this.#revisionSubscribers.delete(subscriber);
   }
   async publish(sessionId, candidate, { activityFence = null } = {}) {
@@ -256,7 +260,7 @@ export class SessionHistoryStore {
       this.#remember(sessionId, record);
       return outcome(record, true, "accepted");
     }
-    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); this.#notifyHistoryRevision(); return outcome(record, true, "accepted");
+    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); this.#notifyHistoryRevision(sessionId, record); return outcome(record, true, "accepted");
   }
   hasCommitted(sessionId) { return this.directory ? this.#committedHistory.has(sessionId) : this.#records.has(sessionId); }
   /**
@@ -379,7 +383,7 @@ export class SessionHistoryStore {
     await this.#write(record); await this.#writeAdmissions(sessionId, { activity: nextAdmission });
     this.#forgetIndex(sessionId); this.#remember(sessionId, record);
     this.#setAdmission("activity", sessionId, nextAdmission);
-    this.#notifyHistoryRevision(); return record;
+    this.#notifyHistoryRevision(sessionId, record); return record;
   }
   async #publishRequestContribution(sessionId, contribution) {
     if (!validRequestContribution(contribution)) return this.#load(sessionId);
@@ -434,22 +438,20 @@ export class SessionHistoryStore {
     await this.#write(record); await this.#writeAdmissions(sessionId, { requests: nextAdmission });
     this.#forgetIndex(sessionId); this.#remember(sessionId, record);
     this.#setAdmission("requests", sessionId, nextAdmission);
-    this.#notifyHistoryRevision(); return record;
+    this.#notifyHistoryRevision(sessionId, record); return record;
   }
   async read(sessionId, query = {}) {
     // Serving deliberately consumes only a compact committed index and the
     // selected data blocks. Full normalized arrays are materialized only by
     // background publication/replacement, never a GET.
-    if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(query.kind === "requests" ? { overview: null } : {}) };
+    if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(query.kind === "requests" ? { overview: null } : emptyActivityGroups()) };
     const record = await this.#load(sessionId); const kind = query.kind === "requests" ? "requests" : "activity";
-    if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
+    if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : emptyActivityGroups()) };
     if (kind === "requests" && record.requestsReady === false || kind === "activity" && record.activityReady === false) {
-      return { status: "loading", kind, revision: String(record.revision), total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
+      return { status: "loading", kind, revision: String(record.revision), total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : emptyActivityGroups()) };
     }
     let rows = kind === "activity" ? [...record.activity].reverse() : record[kind]; const scope = query.scope || "all";
-    if (scope === "primary") rows = rows.filter((item) => item.agentId === "primary");
-    else if (scope === "subagents") rows = rows.filter((item) => item.agentId && item.agentId !== "primary");
-    else if (scope !== "all" && safeAgent(scope)) rows = rows.filter((item) => item.agentId === scope);
+    rows = rows.filter((item) => scopeMatches(item, scope));
     if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) rows = rows.filter((item) => item.requestId === query.filterRequestId);
     const total = rows.length; const maximum = kind === "activity" ? 8 : 60;
     const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
@@ -472,8 +474,9 @@ export class SessionHistoryStore {
       ? record.activity.filter((item) => item.requestId === requestedId && scopeMatches(item, scope)).length
       : REQUEST_ID.test(requestedId || "") ? rows.filter((item) => item.requestId === requestedId).length : 0;
     const overview = kind === "requests" && query.overview !== "0" ? rows.map(requestOverview) : null;
+    const groups = kind === "activity" ? servedActivityGroups(activityGroupPlan(record.requests, record.activity, query)) : null;
     return { status: "ready", kind, revision: String(record.revision), total, offset, items, linkedCount,
-      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}) };
+      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}), ...(groups || {}) };
   }
   async #load(sessionId) {
     if (this.#records.has(sessionId)) {
@@ -484,7 +487,7 @@ export class SessionHistoryStore {
     if (!this.directory) return null;
     const index = await this.#readIndex(sessionId);
     if (index?.snapshotVersion === 1) {
-      if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId
+      if (!isObject(index) || ![2, 3].includes(index.version) || index.sessionId !== sessionId
         || !Number.isSafeInteger(index.revision) || index.revision < 1) return null;
       try {
         const key = crypto.createHash("sha256").update(sessionId).digest("hex");
@@ -549,7 +552,7 @@ export class SessionHistoryStore {
     const generation = `${key}-${record.revision}`;
     const generationDir = path.join(this.directory, generation);
     await mkdir(generationDir, { recursive: true });
-    const index = { version: 2, snapshotVersion: 1, sessionId: record.sessionId, revision: record.revision, complete: record.complete, activityReady: record.activityReady !== false, requestsReady: record.requestsReady === true,
+    const index = { version: 3, snapshotVersion: 1, sessionId: record.sessionId, revision: record.revision, complete: record.complete, activityReady: record.activityReady !== false, requestsReady: record.requestsReady === true,
       nextNumber: record.nextNumber, requests: [], activity: [] };
     for (const kind of ["requests", "activity"]) {
       const rows = record[kind];
@@ -559,7 +562,8 @@ export class SessionHistoryStore {
         for (let slot = 0; slot < block.length; slot += 1) {
           const item = block[slot]; index[kind].push(kind === "requests"
             ? { id: item.id, agentId: item.agentId, number: item.number, overview: requestOverview(item), page, slot }
-            : { id: item.id, agentId: item.agentId, requestId: item.requestId, page, slot });
+            : { id: item.id, agentId: item.agentId, requestId: item.requestId, workKind: item.workKind,
+              status: item.status, durationMs: item.durationMs, page, slot });
         }
       }
     }
@@ -634,8 +638,19 @@ export class SessionHistoryStore {
     const key = crypto.createHash("sha256").update(sessionId).digest("hex");
     try {
       const index = JSON.parse(await readFile(path.join(this.directory, `${key}.index.json`), "utf8"));
-      if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || index.revision !== record.revision || !Array.isArray(index.requests) || index.requests.length !== record.requests.length) return false;
-      return index.requests.every((item, position) => item?.id === record.requests[position]?.id && overviewTuple(item.overview) !== null);
+      if (!isObject(index) || index.version !== 3 || index.sessionId !== sessionId || index.revision !== record.revision
+        || !Array.isArray(index.requests) || index.requests.length !== record.requests.length
+        || !Array.isArray(index.activity) || index.activity.length !== record.activity.length) return false;
+      const requestsValid = index.requests.every((item, position) => item?.id === record.requests[position]?.id
+        && safeAgent(item.agentId) && Number.isSafeInteger(item.number) && item.number > 0
+        && overviewTuple(item.overview) !== null && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot));
+      const activityValid = index.activity.every((item, position) => item?.id === record.activity[position]?.id
+        && (item.agentId === null || Boolean(safeAgent(item.agentId)))
+        && (item.requestId === null || REQUEST_ID.test(item.requestId || "")) && WORK_KINDS.includes(item.workKind)
+        && (item.status === null || item.status === "failed")
+        && (item.durationMs === null || safeInteger(item.durationMs) !== null && item.durationMs <= 86_400_000)
+        && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot));
+      return requestsValid && activityValid;
     } catch { return false; }
   }
   async #readIndexed(sessionId, query) {
@@ -643,9 +658,9 @@ export class SessionHistoryStore {
     const index = await this.#readIndex(sessionId);
     if (!index) return null;
     const kind = query.kind === "requests" ? "requests" : "activity";
-    if (!isObject(index) || index.version !== 2 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) { this.#forgetCommitted(sessionId); return null; }
+    if (!isObject(index) || index.version !== 3 || index.sessionId !== sessionId || !Number.isSafeInteger(index.revision) || index.revision < 1 || !Array.isArray(index[kind]) || !Array.isArray(index.activity) || !Array.isArray(index.requests)) { this.#forgetCommitted(sessionId); return null; }
     if (kind === "requests" && index.requestsReady === false || kind === "activity" && index.activityReady === false) {
-      return { status: "loading", kind, revision: String(index.revision), total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : {}) };
+      return { status: "loading", kind, revision: String(index.revision), total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : emptyActivityGroups()) };
     }
     const generation = `${key}-${index.revision}`;
     this.#generationLeases.set(generation, (this.#generationLeases.get(generation) || 0) + 1);
@@ -682,17 +697,48 @@ export class SessionHistoryStore {
     const overview = kind === "requests" && query.overview !== "0"
       ? (refs.every((item) => overviewTuple(item.overview) !== null) ? refs.map((item) => overviewTuple(item.overview)) : null)
       : null;
+    let groups = null;
+    if (kind === "activity") {
+      const requestRefs = index.requests.filter((item) => isObject(item) && REQUEST_ID.test(item.id || "")
+        && safeAgent(item.agentId) && Number.isSafeInteger(item.number) && item.number > 0
+        && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot));
+      const activityRefs = index.activity.filter((item) => isObject(item) && typeof item.id === "string"
+        && (item.requestId === null || REQUEST_ID.test(item.requestId || ""))
+        && (item.agentId === null || Boolean(safeAgent(item.agentId)))
+        && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot));
+      const plan = activityGroupPlan(requestRefs, activityRefs, query);
+      const requestBlocks = new Map(); const activityBlocks = new Map();
+      const requestedRequestRefs = plan.requestGroups.map((group) => group.request);
+      const requestedActivityRefs = plan.requestGroups.flatMap((group) => group.calls);
+      await Promise.all([...new Set(requestedRequestRefs.map((item) => item.page))].map(async (page) => {
+        try { requestBlocks.set(page, JSON.parse(await readFile(path.join(this.directory, `${key}-${index.revision}`, `requests-${page}.json`), "utf8"))); } catch { requestBlocks.set(page, []); }
+      }));
+      await Promise.all([...new Set(requestedActivityRefs.map((item) => item.page))].map(async (page) => {
+        try { activityBlocks.set(page, JSON.parse(await readFile(path.join(this.directory, `${key}-${index.revision}`, `activity-${page}.json`), "utf8"))); } catch { activityBlocks.set(page, []); }
+      }));
+      const groupRequests = new Map(requestedRequestRefs.map((ref) => {
+        const raw = requestBlocks.get(ref.page)?.[ref.slot]; const value = safeRequest(raw);
+        return [`${ref.page}:${ref.slot}`, value && raw.number === ref.number ? { ...value, number: raw.number } : null];
+      }));
+      const groupCalls = new Map(requestedActivityRefs.map((ref) => [
+        `${ref.page}:${ref.slot}`, safeActivity(activityBlocks.get(ref.page)?.[ref.slot], requestNumbers),
+      ]));
+      if ([...groupRequests.values(), ...groupCalls.values()].some((item) => item === null)) { this.#forgetCommitted(sessionId); return null; }
+      groups = {
+        ...plan,
+        requestGroups: plan.requestGroups.map((group) => ({
+          request: clone(groupRequests.get(`${group.request.page}:${group.request.slot}`)),
+          calls: group.calls.map((call) => clone(groupCalls.get(`${call.page}:${call.slot}`))),
+          noMatchingCalls: group.noMatchingCalls, continuation: group.continuation,
+        })),
+      };
+    }
     return { status: "ready", kind, revision: String(index.revision), total, offset, items, linkedCount,
-      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}) };
+      ...(kind === "requests" && query.overview !== "0" ? { overview } : {}), ...(groups || {}) };
     } finally {
       const remaining = (this.#generationLeases.get(generation) || 1) - 1;
       if (remaining > 0) this.#generationLeases.set(generation, remaining);
       else this.#generationLeases.delete(generation);
     }
   }
-}
-
-function scopeMatches(item, scope) {
-  return scope === "all" || !scope || (scope === "primary" && item.agentId === "primary")
-    || (scope === "subagents" && item.agentId && item.agentId !== "primary") || item.agentId === scope;
 }

@@ -1,5 +1,5 @@
 import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
-import type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
+import type { CacheLifetime, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
 export type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type ReportedSignal = {
@@ -767,6 +767,8 @@ export type MonitorState = {
     activeAgents: number;
     toolCalls: number;
     repeatedCalls: number;
+    /** Distinct concurrent mutation targets used as one Flow-score input. */
+    overlappingTargets?: number;
     resources: ResourceUsage | null;
     tokens: {
       allAgents: number;

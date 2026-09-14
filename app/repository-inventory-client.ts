@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { ContextInventoryRevisionDetail, ProviderId, RepositoryInventorySnapshot } from "../shared/monitor-contract";
 import type { RepositoryPluginAction, RepositoryPluginActionStatus } from "../shared/repository-plugin-contract";
+import { subscribeLiveEvents } from "./live-events";
 
 const EMPTY: RepositoryInventorySnapshot = { revision: null, readiness: "loading", repositories: [] };
 
@@ -17,92 +18,140 @@ export function repositoryInventoryDesktopBridge() {
   return (window as Window & { pomegrDesktop?: RepositoryInventoryDesktopBridge }).pomegrDesktop;
 }
 
-export function useRepositoryInventory() {
-  const [snapshot, setSnapshot] = useState<RepositoryInventorySnapshot>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(true);
-  const revision = useRef<number | string | null>(null);
-  const inFlight = useRef<Promise<void> | null>(null);
-  const requestController = useRef<AbortController | null>(null);
-  const disposed = useRef(false);
+/** One tab-scoped repository cache. A shared read avoids duplicate shell/detail polling. */
+export class RepositoryInventoryStore {
+  private snapshot: RepositoryInventorySnapshot = EMPTY;
+  private loading = true;
+  private connected = true;
+  private listeners = new Set<() => void>();
+  private consumers = 0;
+  private pauseOwners = new Set<symbol>();
+  private timer: number | null = null;
+  private controller: AbortController | null = null;
+  private request: Promise<void> | null = null;
+  private dirty = false;
+  private reconnecting = true;
+  private generation = 0;
+  private unsubscribeEvents: (() => void) | null = null;
+  private view!: { snapshot: RepositoryInventorySnapshot; loading: boolean; connected: boolean; refresh: (force?: boolean) => Promise<void> };
 
-  const refresh = useCallback(async (force = false): Promise<void> => {
-    const current = inFlight.current;
-    if (current) {
-      await current;
-      if (!force) return;
+  constructor() { this.view = { snapshot: this.snapshot, loading: this.loading, connected: this.connected, refresh: this.refresh }; }
+  getSnapshot = () => this.view;
+  getServerSnapshot = () => this.view;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    this.consumers += 1;
+    if (this.consumers === 1 && !this.pauseOwners.size) this.start();
+    return () => {
+      this.listeners.delete(listener);
+      this.consumers = Math.max(0, this.consumers - 1);
+      if (!this.consumers) this.stop();
+    };
+  };
+  setPaused(owner: symbol, paused: boolean) {
+    const wasPaused = this.pauseOwners.size > 0;
+    if (paused) this.pauseOwners.add(owner); else this.pauseOwners.delete(owner);
+    if (wasPaused === (this.pauseOwners.size > 0)) return;
+    if (this.pauseOwners.size) this.stop(); else if (this.consumers) this.start();
+  }
+  private publish() {
+    this.view = { snapshot: this.snapshot, loading: this.loading, connected: this.connected, refresh: this.refresh };
+    for (const listener of this.listeners) listener();
+  }
+  private schedule(delay = document.hidden ? 30_000 : this.reconnecting ? 5_000 : 30_000) {
+    if (!this.consumers || this.pauseOwners.size || this.timer !== null) return;
+    this.timer = window.setTimeout(() => { this.timer = null; void this.poll(); }, delay);
+  }
+  private async poll() {
+    if (!this.consumers || this.pauseOwners.size) return;
+    await this.refresh();
+    this.schedule();
+  }
+  refresh = async (force = false): Promise<void> => {
+    if (this.request) {
+      if (force) this.dirty = true;
+      return this.request;
     }
-    if (disposed.current) return;
-    if (inFlight.current) return inFlight.current;
-    const controller = new AbortController();
-    requestController.current = controller;
-    const pending = (async () => {
+    if (!this.consumers || this.pauseOwners.size) return;
+    const generation = this.generation;
+    const controller = this.controller ?? new AbortController();
+    const query = this.snapshot.revision === null ? "" : `?revision=${encodeURIComponent(String(this.snapshot.revision))}`;
+    const request = this.request = (async () => {
       try {
-        const query = revision.current === null ? "" : `?revision=${encodeURIComponent(String(revision.current))}`;
         const response = await fetch(`/api/repositories${query}`, { cache: "no-store", signal: controller.signal });
-        if (disposed.current || controller.signal.aborted) return;
-        if (response.status === 204) { setConnected(true); return; }
+        if (controller.signal.aborted || generation !== this.generation) return;
+        if (response.status === 204) { this.connected = true; return; }
         if (!response.ok) throw new Error("unavailable");
         const next = await response.json() as RepositoryInventorySnapshot;
-        if (disposed.current || controller.signal.aborted) return;
-        if (!Array.isArray(next.repositories)) throw new Error("invalid");
-        revision.current = next.revision ?? response.headers.get("x-pomegr-revision");
-        setSnapshot(next);
-        setConnected(true);
+        if (controller.signal.aborted || generation !== this.generation || !Array.isArray(next.repositories)) return;
+        this.snapshot = next;
+        this.connected = true;
       } catch {
-        if (!disposed.current && !controller.signal.aborted) setConnected(false);
+        if (!controller.signal.aborted && generation === this.generation) this.connected = false;
       } finally {
-        if (!disposed.current && !controller.signal.aborted) setLoading(false);
-        if (requestController.current === controller) {
-          requestController.current = null;
-          inFlight.current = null;
+        if (!controller.signal.aborted && generation === this.generation) {
+          this.loading = false;
+          this.publish();
         }
       }
     })();
-    inFlight.current = pending;
-    return pending;
-  }, []);
-
-  useEffect(() => {
-    let timer: number | null = null;
-    let stopped = false;
-    disposed.current = false;
-    const schedule = (delay = document.hidden ? 30_000 : 5_000) => {
-      if (stopped || timer !== null) return;
-      timer = window.setTimeout(() => { timer = null; void poll(); }, delay);
-    };
-    const poll = async () => {
-      await refresh();
-      if (!stopped) schedule();
-    };
-    const wake = () => {
-      if (document.hidden || stopped) return;
-      if (timer !== null) window.clearTimeout(timer);
-      timer = null;
-      void poll();
-    };
-    schedule(0);
-    const events = typeof EventSource === "function" ? new EventSource("/api/events") : null;
-    events?.addEventListener("repositories", (message) => {
-      try {
-        const event = JSON.parse((message as MessageEvent<string>).data);
-        if (event.domain === "repositories" && String(event.revision) !== String(revision.current ?? "")) void refresh();
-      } catch { /* malformed notifications cannot alter state */ }
+    await request;
+    if (this.request !== request) return;
+    this.request = null;
+    if (this.dirty && this.consumers && !this.pauseOwners.size) {
+      this.dirty = false;
+      await this.refresh();
+    }
+  };
+  private start() {
+    if (typeof window === "undefined" || this.pauseOwners.size) return;
+    this.generation += 1;
+    this.controller = new AbortController();
+    this.loading = true;
+    this.publish();
+    const generation = this.generation;
+    this.unsubscribeEvents = subscribeLiveEvents((event) => {
+      if (generation !== this.generation) return;
+      if (event.type === "connection") {
+        this.reconnecting = event.state === "reconnecting";
+        if (this.timer !== null) { window.clearTimeout(this.timer); this.timer = null; this.schedule(); }
+      } else if (!document.hidden && event.domain === "repositories" && String(event.revision) !== String(this.snapshot.revision ?? "")) {
+        void this.refresh(true);
+      }
     });
-    document.addEventListener("visibilitychange", wake);
-    window.addEventListener("focus", wake);
-    return () => {
-      stopped = true;
-      disposed.current = true;
-      if (timer !== null) window.clearTimeout(timer);
-      requestController.current?.abort();
-      events?.close();
-      document.removeEventListener("visibilitychange", wake);
-      window.removeEventListener("focus", wake);
-    };
-  }, [refresh]);
+    document.addEventListener("visibilitychange", this.wake);
+    window.addEventListener("focus", this.wake);
+    // Start before a synchronous connection-state notification can replace the
+    // initial request with the reconnect fallback timer.
+    void this.poll();
+  }
+  private stop() {
+    this.generation += 1;
+    this.controller?.abort(); this.controller = null;
+    this.request = null;
+    if (this.timer !== null) window.clearTimeout(this.timer);
+    this.timer = null; this.dirty = false;
+    this.unsubscribeEvents?.(); this.unsubscribeEvents = null;
+    document.removeEventListener("visibilitychange", this.wake);
+    window.removeEventListener("focus", this.wake);
+  }
+  private wake = () => {
+    if (document.hidden || !this.consumers || this.pauseOwners.size) return;
+    if (this.timer !== null) { window.clearTimeout(this.timer); this.timer = null; }
+    void this.poll();
+  };
+}
 
-  return { snapshot, loading, connected, refresh };
+let sharedStore: RepositoryInventoryStore | null = null;
+export function getRepositoryInventoryStore() { if (!sharedStore) sharedStore = new RepositoryInventoryStore(); return sharedStore; }
+export function useRepositoryInventory() {
+  const store = getRepositoryInventoryStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+}
+export function useRepositoryInventoryPollingPause(paused: boolean) {
+  const store = getRepositoryInventoryStore();
+  const owner = useRef(Symbol("repository-inventory-pause-owner"));
+  useEffect(() => { const pauseOwner = owner.current; store.setPaused(pauseOwner, paused); return () => store.setPaused(pauseOwner, false); }, [paused, store]);
 }
 
 export async function fetchRepositoryInventoryDetail(repositoryId: string, provider: ProviderId, revisionId: string, signal?: AbortSignal) {

@@ -14,7 +14,7 @@ describe("provider status same-origin proxy", () => {
     const response = await GET(new Request("http://localhost:3003/api/provider-status?revision=6&url=https://evil.example&sessionId=private-session"));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:4317/api/provider-status?revision=6", expect.objectContaining({
-      cache: "no-store", headers: { "x-pomegr-desktop-authorization": "private-monitor-token" },
+      cache: "no-store", headers: { "accept-encoding": "identity", "x-pomegr-desktop-authorization": "private-monitor-token" },
     }));
     expect(response.headers.get("x-pomegr-revision")).toBe("7");
     expect(response.headers.get("cache-control")).toBe("no-store");

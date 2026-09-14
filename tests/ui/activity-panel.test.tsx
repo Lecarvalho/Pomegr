@@ -289,15 +289,15 @@ describe("ActivityPanel", () => {
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
       expect(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ })).toBeInTheDocument();
 
-      // Pin an older row first so the subsequent latest-row click is what resumes
-      // Activity's live polling mode.
+      // Selection does not create a background network loop; a committed
+      // history publication is the only live refresh trigger.
       fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 7, Primary agent, request #7/ }));
       fireEvent.click(within(activityPanel).getByRole("button", { name: /Tool 8, Primary agent, request #8/ }));
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
       expect(view.container.querySelector('[aria-label^="Request #8,"]')).toHaveAttribute("aria-pressed", "true");
       fetcher.mockClear();
 
-      await act(async () => { vi.advanceTimersByTime(10_000); });
+      await act(async () => { vi.advanceTimersByTime(30_000); });
       expect(fetcher.mock.calls.some(([url]) => url.includes("kind=activity") && url.includes("offset=latest") && !url.includes("requestId="))).toBe(true);
     } finally {
       vi.useRealTimers();
