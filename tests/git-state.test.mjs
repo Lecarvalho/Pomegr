@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -119,8 +119,10 @@ test("binds file paths to the Git top-level from a nested cwd and excludes custo
 
   const syncState = readGitState(nested, { forbiddenRoots: [providerPrivate] });
   const asyncState = await readGitStateAsync(nested, { forbiddenRoots: [providerPrivate] });
+  // Windows CI can supply an 8.3 temp path while Git returns its long form.
+  const canonicalRepository = await realpath(repository);
   for (const state of [syncState, asyncState]) {
-    assert.equal(state._repositoryRoot, path.normalize(repository));
+    assert.equal(state._repositoryRoot, canonicalRepository);
     assert.deepEqual(state.files, [{ status: " M", path: "allowed/visible.txt" }]);
     assert.doesNotMatch(JSON.stringify(state.files), /secret|PRIVATE_TRANSCRIPT/u);
     if (linked) assert.equal(state.files.some((file) => file.path.startsWith("escape")), false);
