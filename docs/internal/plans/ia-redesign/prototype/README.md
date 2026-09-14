@@ -1,6 +1,6 @@
 # IA redesign prototype
 
-Standalone exports of the approved design canvas (version 38, 2026-09-14) for the
+Standalone exports of the approved design canvas (version 46, 2026-09-14) for the
 [information architecture redesign plan](../../ia-redesign.md). Open any file in a
 browser; each is a full-height artboard using the dark theme values from
 `app/styles/tokens.css`. Sample data comes from one real session and invented file
@@ -18,7 +18,7 @@ Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifa
 - [2 · Session overview (L1)](Main.html)
 - [3 · Session › Agents tab (L2): roster and selected-agent pane](SessionAgents.html)
 - [5 · Session › Signals tab (L2)](SignalsTab.html)
-- [6 · Phone overview](Mobile.html)
+- [6 · Phone: Overview, Agents, agent sheet, Activities, More sheet](Mobile.html)
 - [7 · Session › Repository tab (L2)](RepositoryTab.html)
 - [8 · Repository › Files tab (file history)](RepoFiles.html)
 - [9 · Session › Resources tab (L2)](ResourcesTab.html)
@@ -82,7 +82,7 @@ Details: session facts, one-shot transcript path copy, flow score with its two i
 
 ### Phone
 
-Phone: five tabs fit without scrolling. Requests, Resources and Details sit behind More. Tab bar sticks under the KPIs.
+Phone (2026-09-14 tab set): five tabs fit 390px without scrolling: Overview, Agents, Activities, Repo, More. More is a bottom sheet holding Signals, Resources and Details; each entry is the same ?tab= URL as on desktop. Tab bar sticks under the three KPIs. Agents: the roster only, List / Grid segment (no Tree), no column header row; the Direct subagents group is one 48px line with its values (count · context · active) at the right, as today; tapping a row opens the agent inspector as a full-viewport sheet with a Back header, as the app does today (no side pane, no agent route). Context counts are regular weight in the primary text color. Activities: always the single chart on phone (no lanes, no Lanes / Single chart toggle) with the agent track and role legend under the bars, minimap, Largest strip, then the feed, with Actions by kind and Shell tasks below it; the feed shows five requests around the selection, one quiet line per request (agent, role, uncached input, time) and one per tool call (kind, target, duration); the other counts live in the request detail. Hit targets 44px.
 
 ### Storage
 
