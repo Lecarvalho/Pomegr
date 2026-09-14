@@ -536,6 +536,18 @@ No unresolved product decision blocks implementation. The latest approved rules 
 
 ### Session 1 handoff
 
+2026-09-14 · Post-acceptance runtime correction: PR #24 exposed a missing development
+transport check. The proxy returned precompressed gzip without the Workers manual-body
+option; the Cloudflare-backed dev server encoded it again and the browser received
+unparseable catalog/state bodies. `encodeBody: "manual"` now prevents the second pass.
+The actual `localhost:3003` catalog, live session dashboard/request chart and Usage limits
+loaded successfully after the fix. A real Miniflare/workerd regression is wired into
+`test:node`; removing the option reproduced the failure during test development.
+The full `npm test` (including build and 738 UI tests), `verify:fast`, and production
+gzip/identity/204 wire checks passed. The earlier Windows CI short-path assertion was
+separately fixed in `b939370`; its Windows verifier and desktop smoke passed. These are
+Session 1 corrections; no later implementation session has started.
+
 2026-09-14 · **T02 and T01 complete.** Sol owned the domain foundation and independent
 reviews; Terra owned browser transport and bounded supporting work. The coordinator
 integrated T02 before T01 and ran the final checks. All delegated models stayed within

@@ -1332,8 +1332,12 @@ Committed JSON responses use the quoted numeric revision as `ETag` and preserve
 `X-Pomegr-Revision`. The same-origin proxy requests identity encoding from the monitor,
 then may gzip the decoded JSON for a client that accepts it. It honors explicit quality
 zero and wildcard precedence, sets `Vary: Accept-Encoding` on compressed and
-uncompressed results, and never attaches a body to `204`. Bodies under 1,024 decoded
-bytes remain uncompressed. Every JSON proxy forwards a validated `If-None-Match`;
+uncompressed results, and never attaches a body to `204`. Precompressed responses set
+the Workers `encodeBody: "manual"` option so the Cloudflare-backed development runtime
+does not gzip the bytes again. Verification covers the actual Workers transport as well
+as the production Node transport; a direct `Response` unit test cannot prove wire encoding.
+Bodies under 1,024 decoded bytes remain uncompressed. Every JSON proxy forwards a
+validated `If-None-Match`;
 paired LAN forwarding preserves that header and `Accept-Encoding`, together with
 response ETag, revision, encoding and Vary. These headers do not weaken no-store or
 pairing authorization.

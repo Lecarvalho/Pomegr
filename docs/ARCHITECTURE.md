@@ -118,7 +118,9 @@ session whose derived cache was evicted after ten idle minutes queues an asynchr
 rebuild from committed L1 state and immediately returns loading readiness. It does not
 acquire a provider. Callers may send a numeric revision or ETag; unchanged responses are
 bodyless `204 No Content`. The same-origin proxy safely gzip-encodes decoded JSON for
-clients that accept it and varies every result by `Accept-Encoding`. The browser keeps
+clients that accept it and varies every result by `Accept-Encoding`. Precompressed bodies
+use Workers manual encoding to prevent a second compression pass in development.
+The browser keeps
 `no-store` semantics because server L1/L2 state, not browser storage, is authoritative.
 
 The Codex and Claude plugins share one MCP query registry and local transport. The seven

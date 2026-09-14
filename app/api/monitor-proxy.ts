@@ -97,6 +97,8 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody, accep
     const compressed = acceptsGzipEncoding(acceptEncoding) && Buffer.byteLength(text) >= 1_024;
     const body = compressed ? new Uint8Array(gzipSync(Buffer.from(text))) : text;
     return new Response(body, {
+      // Workers otherwise compress this already encoded body a second time.
+      ...(compressed ? { encodeBody: "manual" as const } : {}),
       status: response.status,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
