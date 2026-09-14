@@ -1,11 +1,11 @@
 <!doctype html>
 <html>
 <head>
-  <title>3 · Session › Agents tab (L2)</title>
+  <title>3 · Session › Agents tab (L2): roster and selected-agent pane</title>
   <meta charset="utf-8">
   </head>
 <body>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=Geist+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=Geist+Mono:wght@400&display=swap">
   <style>
     body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
     a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
@@ -51,7 +51,7 @@
     .bar { height: 6px; border-radius: 3px; background: #23272d; overflow: hidden; }
     .bar > i { display: block; height: 100%; background: #697482; }
   </style>
-<div style="width: 1440px; min-height: 1040px; display: flex; flex-direction: column; background: #111315;">
+<div style="width: 1440px; min-height: 960px; display: flex; flex-direction: column; background: #111315;">
 <div class="header">
   <div class="row" style="width: 156px; gap: 10px; font-weight: 600;"><span style="width: 24px; height: 24px; border-radius: 50%; background: #a63c32; display: inline-block;"></span>Pomegr</div>
   <div class="search" style="margin-left: auto; width: 280px;"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>Search<span class="chip" style="margin-left: auto; height: 18px;">Ctrl K</span></div>
@@ -85,7 +85,7 @@
       <div class="row muted" style="font-size: 12px; gap: 6px;"><a href="#">Sessions</a><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M6 3l5 5-5 5"></path></svg><span>Pomegr</span></div>
       <h1 class="h1">IA and progressive-disclosure audit for Pomegr UI</h1>
         <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
-        <div class="row muted" style="font-size: 12px; gap: 8px;"><span class="chip">Claude Code</span><span class="chip green"><span class="dot"></span>Live · In progress</span><span class="mono" title="5c1e7a42-9d3b-4f60-b8a7-1e2f3c4d5e6f">5c1e7a42…d5e6f</span><span class="chip"><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><circle cx="4" cy="4" r="1.6"></circle><circle cx="4" cy="12" r="1.6"></circle><circle cx="12" cy="6" r="1.6"></circle><path d="M4 5.6v4.8M12 7.6c0 3-8 1.5-8 4.4"></path></svg>main</span><span>started 1:37 p.m.</span></div>
+        <div class="row muted" style="font-size: 12px; gap: 8px;"><span class="chip">Claude Code</span><span class="chip green"><span class="dot"></span>Live · In progress</span><span class="mono" title="ba8fe758-f2b6-48cc-b991-9605551c0b8c">ba8fe758…c0b8c</span><span class="chip"><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><circle cx="4" cy="4" r="1.6"></circle><circle cx="4" cy="12" r="1.6"></circle><circle cx="12" cy="6" r="1.6"></circle><path d="M4 5.6v4.8M12 7.6c0 3-8 1.5-8 4.4"></path></svg>main</span><span>started 1:37 p.m.</span></div>
         <span class="btnQuiet"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M8 2v8M5 7l3 3 3-3M3 13h10"></path></svg>Download report</span>
       </div>
     </div>
@@ -101,73 +101,82 @@
     <div class="tabs">
       <span class="tab">Overview</span>
       <span class="tab on">Agents <span class="cnt">4</span></span>
-      <span class="tab">Activity <span class="cnt">102</span></span>
+      <span class="tab">Activities <span class="cnt">102</span></span>
       <span class="tab">Repository</span>
-      <span class="tab">Requests &amp; cache <span class="cnt">51</span></span>
+      <span class="tab">Signals <span class="cnt">6</span></span>
       <span class="tab">Resources</span>
       <span class="tab">Details</span>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <div class="search" style="width: 220px; height: 32px;">Filter agents</div>
-      <span class="seg"><span class="on">List</span><span>Tree</span><span>Grid</span></span>
-      <span class="seg"><span class="on">All</span><span>Active</span><span>Finished</span></span>
-      <span class="muted" style="font-size: 12px; margin-left: auto;">Roles: explore 3 · orchestrator 1</span>
-    </div>
 
     <div class="panel" style="display: flex; flex-direction: column;">
-      <div class="tr" style="grid-template-columns: 8px 1.6fr 1fr 90px 70px 60px 80px 24px; border-top: 0; padding: 8px 16px;">
-        <span></span><span class="th">Agent</span><span class="th">Doing now</span><span class="th">Context</span><span class="th">Wall</span><span class="th">Calls</span><span class="th">Status</span><span></span>
+      <div class="row" style="justify-content: space-between; padding: 12px 16px 10px; gap: 12px; white-space: nowrap;">
+        <div class="row" style="gap: 12px; min-width: 0;"><h2 class="h2" style="white-space: nowrap;">Agents</h2><span class="muted" style="font-size: 12px; white-space: nowrap;">4 observed · showing 4</span></div>
+        <span class="seg"><span class="on">List</span><span>Grid</span></span>
       </div>
-      <div class="tr" style="grid-template-columns: 8px 1.6fr 1fr 90px 70px 60px 80px 24px; background: #23272d;">
-        <span class="dot"></span>
-        <span><b>Primary agent</b> <span class="chip amber" style="height: 18px; margin-left: 6px;">repeat ×3</span><br><span class="muted" style="font-size: 12px;">orchestrator · claude-fable-5-1 · medium effort</span></span>
-        <span class="muted" style="font-size: 12px;">Bash · Write agents tab mockup</span>
-        <span class="mono" style="color: #bbb3d3;">93.2K</span><span class="mono">32m</span><span class="mono">16</span>
-        <span class="chip green">Active</span>
-        <svg class="i" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"></path></svg>
+      <div style="padding: 0 16px 10px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; height: 5px; border-radius: 3px; overflow: hidden; gap: 2px;"><i style="flex: 3; background: #91c5a4;"></i><i style="flex: 1; background: #697482;"></i></div>
+        <div class="row" style="justify-content: space-between; font-size: 12px;">
+          <span class="row" style="gap: 14px;"><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; display: inline-block; background: #697482;"></i>Finished <b>1</b></span><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; display: inline-block; border: 1px solid #697482;"></i>Idle <b>0</b></span><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; display: inline-block; background: #91c5a4;"></i>Active <b>3</b></span><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; display: inline-block; background: #e3b575;"></i>Needs input <b>0</b></span></span>
+          <span class="muted">Roles <span style="color: #edf0f3;">explore <b>3</b> · orchestrator <b>1</b></span></span>
+        </div>
       </div>
-      <div class="tr" style="grid-template-columns: 8px 1.6fr 1fr 90px 70px 60px 80px 24px; padding-left: 40px;">
-        <span class="dot"></span>
-        <span><b>Audit browser polling traffic</b><br><span class="muted" style="font-size: 12px;">explore · claude-sonnet-5 · child of Primary</span></span>
-        <span class="muted" style="font-size: 12px;">Read · useActivityHistory.ts</span>
-        <span class="mono" style="color: #bbb3d3;">128K</span><span class="mono">6m</span><span class="mono">41</span>
-        <span class="chip green">Active</span>
-        <svg class="i" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"></path></svg>
+      <div class="row" style="padding: 10px 16px; border-top: 1px solid #333941; gap: 8px; flex-wrap: wrap;">
+        <div class="search" style="width: 220px; height: 32px;">Filter agents</div>
+        <span class="btnSecondary">Group by workflow</span>
+        <span class="btnSecondary" style="min-width: 120px; justify-content: space-between;">Status · all<svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M4 6l4 4 4-4"></path></svg></span>
+        <span class="btnSecondary" style="min-width: 120px; justify-content: space-between;">Model · all<svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M4 6l4 4 4-4"></path></svg></span>
+        <span class="btnSecondary">Hide finished</span>
+        <span class="row muted" style="margin-left: auto; font-size: 12px; gap: 8px;">Sort<span class="btnSecondary" style="min-width: 170px; justify-content: space-between;">Creation date desc<svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M4 6l4 4 4-4"></path></svg></span></span>
       </div>
-      <div class="tr" style="grid-template-columns: 8px 1.6fr 1fr 90px 70px 60px 80px 24px; padding-left: 40px;">
-        <span class="dot"></span>
-        <span><b>Inventory sitemap and page sections</b><br><span class="muted" style="font-size: 12px;">explore · claude-sonnet-5 · child of Primary</span></span>
-        <span class="muted" style="font-size: 12px;">Grep · CommandCenterShell.tsx</span>
-        <span class="mono" style="color: #bbb3d3;">96K</span><span class="mono">3m</span><span class="mono">48</span>
-        <span class="chip green">Active</span>
-        <svg class="i" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"></path></svg>
-      </div>
-      <div class="tr" style="grid-template-columns: 8px 1.6fr 1fr 90px 70px 60px 80px 24px; padding-left: 40px;">
-        <span class="dot"></span>
-        <span><b>Map data model and correlation gaps</b><br><span class="muted" style="font-size: 12px;">explore · claude-sonnet-5 · child of Primary</span></span>
-        <span class="muted" style="font-size: 12px;">Read · monitor-contract.ts</span>
-        <span class="mono" style="color: #bbb3d3;">81K</span><span class="mono">4m</span><span class="mono">33</span>
-        <span class="chip green">Active</span>
-        <svg class="i" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"></path></svg>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 320px; border-top: 1px solid #333941;">
+        <div style="display: flex; flex-direction: column;">
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) 110px 80px 60px 80px 80px 20px; border-top: 0; padding: 8px 16px; gap: 10px;"><span></span><span class="th">Agent</span><span class="th" style="text-align: right;">Latest context</span><span class="th" style="text-align: right;">Wall time</span><span class="th" style="text-align: right;">Calls</span><span class="th" style="text-align: right;">Cache TTL</span><span class="th" style="text-align: right;">Status</span><span></span></div>
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) 110px 80px 60px 80px 80px 20px; padding: 7px 16px 7px 16px; gap: 10px; background: #23272d;"><span class="row" style="justify-content: center;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><path d="M8 2l6 6-6 6-6-6z"></path><circle cx="8" cy="8" r="1.5"></circle></svg></span><span style="min-width: 0;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">Primary agent</span><span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">orchestrator · claude-fable-5-1 · medium · 1 skill · 5 shell tasks</span></span><span class="mono" style="text-align: right; color: #bbb3d3; font-weight: 600;">93.2K</span><span class="mono" style="text-align: right;">32m</span><span class="mono" style="text-align: right;">16</span><span class="mono" style="text-align: right;">1h</span><span class="eyebrow" style="text-align: right; color: #91c5a4;">Active</span><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></div>
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) auto 20px; padding: 7px 16px; gap: 10px;"><span class="row" style="justify-content: center;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></span><span style="min-width: 0;"><span style="font-weight: 600; display: block;">Direct subagents</span><span class="muted" style="font-size: 11px; display: block;">Audit browser polling traffic and 2 more</span></span><span class="mono muted" style="font-size: 11px; text-align: right;">3 agents · 305K context · 13m wall · 122 calls · 2 active · 1 finished</span><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><circle cx="8" cy="3.5" r="1.5"></circle><circle cx="4" cy="12.5" r="1.5"></circle><circle cx="12" cy="12.5" r="1.5"></circle><path d="M8 5v3M8 8l-4 3M8 8l4 3"></path></svg></div>
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) 110px 80px 60px 80px 80px 20px; padding: 7px 16px 7px 40px; gap: 10px;"><span class="row" style="justify-content: center;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><path d="M4 3v6a2 2 0 0 0 2 2h6"></path><path d="M9 8l3 3-3 3"></path></svg></span><span style="min-width: 0;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">Audit browser polling traffic</span><span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">explore · claude-sonnet-5 · child of Primary</span></span><span class="mono" style="text-align: right; color: #bbb3d3; font-weight: 600;">128K</span><span class="mono" style="text-align: right;">6m</span><span class="mono" style="text-align: right;">41</span><span class="mono" style="text-align: right;">5m</span><span class="eyebrow" style="text-align: right; color: #91c5a4;">Active</span><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></div>
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) 110px 80px 60px 80px 80px 20px; padding: 7px 16px 7px 40px; gap: 10px;"><span class="row" style="justify-content: center;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><path d="M4 3v6a2 2 0 0 0 2 2h6"></path><path d="M9 8l3 3-3 3"></path></svg></span><span style="min-width: 0;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">Inventory sitemap and page sections</span><span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">explore · claude-sonnet-5 · child of Primary</span></span><span class="mono" style="text-align: right; color: #bbb3d3; font-weight: 600;">96K</span><span class="mono" style="text-align: right;">3m</span><span class="mono" style="text-align: right;">48</span><span class="mono" style="text-align: right;">5m</span><span class="eyebrow" style="text-align: right; color: #91c5a4;">Active</span><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></div>
+          <div class="tr" style="grid-template-columns: 24px minmax(0, 1fr) 110px 80px 60px 80px 80px 20px; padding: 7px 16px 7px 40px; gap: 10px;"><span class="row" style="justify-content: center;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><path d="M4 3v6a2 2 0 0 0 2 2h6"></path><path d="M9 8l3 3-3 3"></path></svg></span><span style="min-width: 0;"><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">Map data model and correlation gaps</span><span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">explore · claude-sonnet-5 · child of Primary</span></span><span class="mono" style="text-align: right; color: #bbb3d3; font-weight: 600;">81K</span><span class="mono" style="text-align: right;">4m</span><span class="mono" style="text-align: right;">33</span><span class="mono" style="text-align: right;">mixed</span><span class="eyebrow" style="text-align: right; color: #a8afb9;">Finished</span><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></div>
+          <div class="row muted" style="padding: 10px 16px; border-top: 1px solid #333941; font-size: 11px; justify-content: space-between;"><span>Scroll inside the roster · groups stay pinned · row click selects, chevron opens Activities filtered to the agent</span><a href="#">Expand all 4</a></div>
+        </div>
+        <div style="border-left: 1px solid #333941; display: flex; flex-direction: column;">
+          <div style="padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #333941;">
+            <span class="eyebrow">Selected agent</span>
+            <b style="font-size: 15px;">Primary agent</b>
+            <span class="row" style="gap: 6px; font-size: 12px; color: #91c5a4;"><span class="dot"></span>Active</span>
+            <span class="muted" style="font-size: 12px;">orchestrator · primary</span>
+          </div>
+          <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #333941;">
+            <div class="row" style="justify-content: space-between;"><span class="eyebrow">Lineage</span><a href="#" class="row" style="font-size: 12px; gap: 5px;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px; color: #a8afb9;"><circle cx="8" cy="3.5" r="1.5"></circle><circle cx="4" cy="12.5" r="1.5"></circle><circle cx="12" cy="12.5" r="1.5"></circle><path d="M8 5v3M8 8l-4 3M8 8l4 3"></path></svg>Open in tree</a></div>
+            <div class="row" style="font-size: 12px; justify-content: space-between;"><span class="row" style="gap: 6px;"><span class="dot"></span><b>Primary agent</b> · 3 children</span><span class="mono" style="color: #bbb3d3;">93.2K</span></div>
+          </div>
+          <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #333941;">
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Model</span><span class="mono" style="font-size: 12px;">claude-fable-5-1</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Effort</span><span class="mono" style="font-size: 12px;">medium</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Latest context</span><span class="mono" style="font-size: 12px; color: #bbb3d3;">93.2K</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Compactions</span><span class="mono" style="font-size: 12px;">0</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Wall time</span><span class="mono" style="font-size: 12px;">32m</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Tool calls</span><span class="mono" style="font-size: 12px;">16</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Shell tasks</span><span class="mono" style="font-size: 12px;">5</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Cache lifetime</span><span class="mono" style="font-size: 12px;">1h</span></div>
+          <div class="row" style="justify-content: space-between; font-size: 12px;"><span class="muted">Last request</span><span class="mono" style="font-size: 12px;">40s ago</span></div>
+          </div>
+          <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #333941;">
+            <div class="row" style="justify-content: space-between;"><span class="eyebrow">Skills</span><span class="muted" style="font-size: 11px;">1</span></div>
+            <div class="row" style="font-size: 12px; justify-content: space-between;"><span><b>trello-capture</b><br><span class="muted">Last used 1h ago</span></span><span class="mono" style="font-size: 12px;">1 use</span></div>
+          </div>
+          <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #333941;">
+            <div class="row" style="justify-content: space-between;"><span class="eyebrow">Signals</span><span class="muted" style="font-size: 11px;">1 rule · 0 agent-reported</span></div>
+            <div class="row" style="font-size: 12px; gap: 8px; align-items: flex-start;"><svg class="i" viewBox="0 0 16 16" style="color: #e3b575; width: 14px; height: 14px; margin-top: 2px;"><path d="M8 2l6 11H2z"></path><path d="M8 7v3M8 12v.5"></path></svg><span>Repeated a browser call 3 times <a href="#">Show in Signals</a></span></div>
+          </div>
+          <div style="padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px;">
+            <span class="btnSecondary" style="justify-content: space-between;">Activities for this agent<svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></span>
+            <span class="btnSecondary" style="justify-content: space-between;">claude-fable-5-1 across sessions<svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><path d="M6 3l5 5-5 5"></path></svg></span>
+            <span class="btnQuiet" style="align-self: flex-start;"><svg class="i" viewBox="0 0 16 16" style="width: 14px; height: 14px;"><rect x="5" y="5" width="8" height="8" rx="1"></rect><path d="M3 11V3h8"></path></svg>Copy transcript path</span>
+          </div>
+        </div>
       </div>
     </div>
-
-    <div class="panel" style="padding: 14px 16px; display: flex; align-items: center; gap: 24px;">
-      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="eyebrow">Selected</span><b>Primary agent</b></div>
-      <div class="row" style="gap: 18px; font-size: 13px;">
-        <span class="muted">Cache lifetime <b style="color: #edf0f3;">1h</b></span>
-        <span class="muted">Compactions <b style="color: #edf0f3;">0</b></span>
-        <span class="muted">Shell tasks <b style="color: #edf0f3;">5</b></span>
-        <span class="muted">Signals <b style="color: #e3b575;">1</b></span>
-      </div>
-      <div class="row" style="margin-left: auto; gap: 8px;">
-        <span class="btnSecondary">Model across sessions</span>
-        <span class="btnSecondary">Open agent detail<svg class="i" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"></path></svg></span>
-      </div>
-    </div>
-
-    <div class="note" style="align-self: flex-start;">One row per agent, one number per fact. Cache badges, lineage, signals and shell tasks move to the agent detail page. Same row component serves the Live agents tab on Models &amp; delegation.</div>
   </div>
 </div>
 </div>

@@ -1,6 +1,6 @@
 # IA redesign prototype
 
-Standalone exports of the approved design canvas (version 31, 2026-09-13) for the
+Standalone exports of the approved design canvas (version 38, 2026-09-14) for the
 [information architecture redesign plan](../../ia-redesign.md). Open any file in a
 browser; each is a full-height artboard using the dark theme values from
 `app/styles/tokens.css`. Sample data comes from one real session and invented file
@@ -16,17 +16,15 @@ Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifa
 - [0 · Header standard](HeaderStandard.html)
 - [1 · Proposed sitemap](Sitemap.html)
 - [2 · Session overview (L1)](Main.html)
-- [3 · Session › Agents tab (L2)](SessionAgents.html)
-- [4 · Agent detail (L3)](AgentDetail.html)
-- [5 · Session › Requests & cache tab (L2)](RequestsTab.html)
+- [3 · Session › Agents tab (L2): roster and selected-agent pane](SessionAgents.html)
+- [5 · Session › Signals tab (L2)](SignalsTab.html)
 - [6 · Phone overview](Mobile.html)
 - [7 · Session › Repository tab (L2)](RepositoryTab.html)
 - [8 · Repository › Files tab (file history)](RepoFiles.html)
 - [9 · Session › Resources tab (L2)](ResourcesTab.html)
 - [10 · Session › Details tab (L2)](DetailsTab.html)
 - [11 · Settings › Storage (T13)](SettingsStorage.html)
-- [12 · Session › Activity tab (L2)](ActivityTab.html)
-- [13 · Requests & cache opened from an Activity row](RequestsFromActivity.html) (one option under an open question in the plan, not an approved decision)
+- [12 · Session › Activities tab (L2): requests and their tool calls](ActivityTab.html)
 
 ## Canvas notes
 

@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   </head>
 <body>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=Geist+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=Geist+Mono:wght@400&display=swap">
   <style>
     body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
     a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
@@ -104,27 +104,27 @@
       <div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 0;">
         <span class="mono muted" style="padding-bottom: 8px;">/sessions/:id?tab=…</span>
         <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Agents</span><span class="chip green">Everyone</span></div>
-        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Activity</span><span class="chip green">Everyone</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Activities · requests and tool calls</span><span class="chip">Analyst</span></div>
         <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Repository</span><span class="chip green">Everyone</span></div>
-        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Requests &amp; cache</span><span class="chip amber">Expert</span></div>
+        <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Signals</span><span class="chip amber">Expert</span></div>
         <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Resources</span><span class="chip ctx">Analyst</span></div>
         <div class="tr" style="grid-template-columns: 1fr auto; padding: 8px 0;"><span>Details</span><span class="chip ctx">Analyst</span></div>
       </div>
-      <div class="note">Each tab mounts its own hook and polls only while visible. Activity and Requests already have <span class="mono">/api/session-history</span>; Cache, Resources and Details get the same treatment.</div>
+      <div class="note">Each tab mounts its own hook and polls only while visible. Activity already has <span class="mono">/api/session-history</span> for requests and tool calls; Signals, Resources and Details get the same treatment.</div>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 12px;">
-      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L3 · Agent detail</span><span class="chip ctx">Analyst</span></div>
+      <div class="row" style="justify-content: space-between;"><span class="eyebrow">L3 · Agent pane and agent-scoped Activities</span><span class="chip ctx">Analyst</span></div>
       <div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
-        <span class="mono muted">/sessions/:id/agents/:agentId</span>
+        <span class="mono muted">?tab=agents&amp;agent=:id · ?tab=activities&amp;agent=:id</span>
         <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
           <div class="row"><span class="dot"></span><span>Role, model, status, lineage</span></div>
           <div class="row"><span class="dot"></span><span>Own context, calls, wall time</span></div>
-          <div class="row"><span class="dot"></span><span>Own activity + shell tasks</span></div>
+          <div class="row"><span class="dot"></span><span>Own activity: Activities tab filtered to the agent</span></div>
           <div class="row"><span class="dot amber"></span><span>Own requests, cache lifetime, refills</span></div>
           <div class="row"><span class="dot"></span><span>Signals + insights for this agent</span></div>
         </div>
-        <div class="muted" style="font-size: 12px;">One component. Reached from the session Agents tab, from Models &amp; delegation evidence, and from an insight.</div>
+        <div class="muted" style="font-size: 12px;">No separate route (decision 2026-09-14). The Agents tab selected-agent pane answers what the agent is; the Activities tab filtered to the agent answers what it did. Deep links carry the agent id in the query.</div>
       </div>
       <div class="note">Join key already exists: <span class="mono">(sessionId, agentId)</span> on every AgentsRun. Today the link drops agentId.</div>
     </div>
@@ -134,8 +134,8 @@
     <div style="display: flex; flex-direction: column; gap: 8px;">
       <span class="eyebrow">Cross-links to add</span>
       <div style="font-size: 13px; display: flex; flex-direction: column; gap: 4px;">
-        <span>Session agent row <span class="muted">to</span> Agent detail</span>
-        <span>Agent detail <span class="muted">to</span> Models &amp; delegation, filtered to that model</span>
+        <span>Session agent row <span class="muted">to</span> Activities filtered to that agent</span>
+        <span>Agent pane <span class="muted">to</span> Models &amp; delegation, filtered to that model</span>
         <span>Insight <span class="muted">to</span> the cache event or compaction it traces to</span>
         <span>Usage limits window <span class="muted">to</span> sessions active in that window</span>
         <span>Session repo one-liner <span class="muted">to</span> Repository detail</span>
