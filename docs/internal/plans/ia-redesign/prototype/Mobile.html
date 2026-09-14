@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+  <title>6 · Phone overview</title>
+  <meta charset="utf-8">
+  </head>
+<body>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=Geist+Mono:wght@400&display=swap">
+  <style>
+    body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
+    .mono { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .panel { background: #191c20; border: 1px solid #333941; border-radius: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; font-size: 11px; font-weight: 500; color: #a8afb9; white-space: nowrap; }
+    .chip.green { color: #91c5a4; }
+    .chip.amber { color: #e3b575; }
+    .chip.brand { color: #a8afb9; }
+    .chip.ctx { color: #bbb3d3; }
+    .btnSecondary { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #edf0f3; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .btnPrimary { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid #a63c32; border-radius: 4px; background: #a63c32; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .btnQuiet { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: #a8afb9; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .seg { display: inline-flex; border: 1px solid #333941; border-radius: 4px; overflow: hidden; }
+    .seg > span { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: 500; color: #a8afb9; }
+    .seg > span + span { border-left: 1px solid #333941; }
+    .seg > span.on { background: #23272d; color: #edf0f3; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #333941; }
+    .tab { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; font-size: 13px; font-weight: 500; color: #a8afb9; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tab.on { color: #edf0f3; border-bottom-color: #a63c32; }
+    .tab .cnt { font-size: 11px; color: #a8afb9; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .kpi { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-right: 1px solid #333941; }
+    .kpi:last-child { border-right: 0; }
+    .kpi .v { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; }
+    .kpi .s { font-size: 12px; color: #a8afb9; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #91c5a4; flex: 0 0 auto; }
+    .dot.idle { background: #697482; } .dot.amber { background: #e3b575; } .dot.done { background: #bbb3d3; }
+    .th { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .tr { display: grid; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid #333941; font-size: 13px; }
+    .muted { color: #a8afb9; }
+    .h2 { font-size: 16px; font-weight: 650; line-height: 1.35; margin: 0; }
+    .h1 { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+    .note { background: transparent; border: 1px dashed #697482; color: #a8afb9; border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+    .sidebar { width: 176px; flex: 0 0 176px; border-right: 1px solid #333941; background: #191c20; padding: 20px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .navItem { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 4px; font-size: 13px; font-weight: 500; color: #a8afb9; }
+    .navItem.on { background: #23272d; color: #edf0f3; }
+    .navItem .cnt { margin-left: auto; font-size: 11px; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .header { height: 60px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid #333941; background: #191c20; }
+    .search { display: flex; align-items: center; gap: 8px; height: 34px; width: 300px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; color: #a8afb9; font-size: 13px; background: #111315; }
+    svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .bar { height: 6px; border-radius: 3px; background: #23272d; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: #697482; }
+  </style>
+<div style="width: 390px; min-height: 1380px; display: flex; flex-direction: column; background: #111315;">
+  <div class="header" style="height: 52px; padding: 0 12px; gap: 12px;">
+    <svg class="i" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"></path></svg>
+    <div class="row" style="gap: 8px; font-weight: 600;"><span style="width: 22px; height: 22px; border-radius: 50%; background: #a63c32; display: inline-block;"></span>Pomegr</div>
+    <svg class="i" viewBox="0 0 16 16" style="margin-left: auto;"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+    <svg class="i" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"></path><path d="M6.5 14h3"></path></svg>
+  </div>
+
+  <div style="padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div class="row muted" style="font-size: 12px; gap: 6px;"><a href="#">Sessions</a><svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M6 3l5 5-5 5"></path></svg><span>Pomegr</span></div>
+    <h1 class="h1" style="font-size: 20px;">IA and progressive-disclosure audit for Pomegr UI</h1>
+    <div class="row muted" style="font-size: 12px; gap: 8px; flex-wrap: wrap;"><span class="chip">Claude Code</span><span class="chip green"><span class="dot"></span>Live · In progress</span><span class="chip">main</span></div>
+  </div>
+
+  <div class="panel" style="margin: 0 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));">
+    <div class="kpi" style="padding: 12px 14px;"><span class="eyebrow">Agents</span><span class="v" style="font-size: 22px;">4</span><span class="s"><span style="color: #91c5a4;">4 active</span></span></div>
+    <div class="kpi" style="padding: 12px 14px;"><span class="eyebrow">Context</span><span class="v" style="font-size: 22px; color: #bbb3d3;">399K</span><span class="s">sum of latest</span></div>
+    <div class="kpi" style="padding: 12px 14px;"><span class="eyebrow">Calls</span><span class="v" style="font-size: 22px;">118</span><span class="s">0 repeated</span></div>
+  </div>
+
+  <div style="position: sticky; top: 0; margin-top: 14px; background: #111315; border-bottom: 1px solid #333941; display: flex; justify-content: space-between; padding: 0 6px; overflow: hidden;">
+    <span class="tab on" style="height: 44px; padding: 0 10px;">Overview</span>
+    <span class="tab" style="height: 44px; padding: 0 10px;">Agents <span class="cnt">4</span></span>
+    <span class="tab" style="height: 44px; padding: 0 10px;">Activity</span>
+    <span class="tab" style="height: 44px; padding: 0 10px;">Repo</span>
+    <span class="tab" style="height: 44px; padding: 0 10px;">More<svg class="i" viewBox="0 0 16 16" style="width: 12px; height: 12px;"><path d="M3 6l5 5 5-5"></path></svg></span>
+  </div>
+
+  <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+    <div class="panel" style="display: flex; flex-direction: column;">
+      <div class="row" style="justify-content: space-between; padding: 12px 14px 8px;"><h2 class="h2" style="font-size: 15px;">Right now</h2><a href="#" style="font-size: 12px;">All agents</a></div>
+      <div class="tr" style="grid-template-columns: 8px 1fr 56px; padding: 10px 14px; min-height: 44px;"><span class="dot"></span><span><b>Primary agent</b><br><span class="muted" style="font-size: 12px;">Bash · Write mobile mockup</span></span><span class="mono" style="color: #bbb3d3; text-align: right;">93.2K</span></div>
+      <div class="tr" style="grid-template-columns: 8px 1fr 56px; padding: 10px 14px; min-height: 44px;"><span class="dot"></span><span><b>Audit browser polling traffic</b><br><span class="muted" style="font-size: 12px;">Read · useActivityHistory.ts</span></span><span class="mono" style="color: #bbb3d3; text-align: right;">128K</span></div>
+      <div class="tr" style="grid-template-columns: 8px 1fr 56px; padding: 10px 14px; min-height: 44px;"><span class="dot"></span><span><b>Inventory sitemap and page sections</b><br><span class="muted" style="font-size: 12px;">Grep · CommandCenterShell.tsx</span></span><span class="mono" style="color: #bbb3d3; text-align: right;">96K</span></div>
+      <div class="tr" style="grid-template-columns: 8px 1fr 56px; padding: 10px 14px; min-height: 44px;"><span class="dot"></span><span><b>Map data model and correlation gaps</b><br><span class="muted" style="font-size: 12px;">Read · monitor-contract.ts</span></span><span class="mono" style="color: #bbb3d3; text-align: right;">81K</span></div>
+    </div>
+
+    <div class="panel" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+      <div class="row" style="justify-content: space-between;"><h2 class="h2" style="font-size: 15px;">Signals</h2><span class="chip">1</span></div>
+      <div class="row" style="align-items: flex-start; gap: 10px; font-size: 13px;">
+        <svg class="i" viewBox="0 0 16 16" style="color: #e3b575; margin-top: 2px;"><path d="M8 2l6 11H2z"></path><path d="M8 7v3M8 12v.5"></path></svg>
+        <span><b>Primary agent repeated a browser call 3 times</b><br><a href="#" style="font-size: 12px;">Show in agent</a></span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <div class="row" style="justify-content: space-between;"><h2 class="h2" style="font-size: 15px;">Repository</h2><a href="#" style="font-size: 12px;">Open</a></div>
+      <div class="row" style="font-size: 13px; gap: 8px;"><span class="mono">main</span><span class="chip green">Up to date</span></div>
+    </div>
+
+    <div class="panel" style="display: flex; flex-direction: column;">
+      <div class="row" style="justify-content: space-between; padding: 12px 14px 6px;"><h2 class="h2" style="font-size: 15px;">Requests</h2><a href="#" style="font-size: 12px;">Open</a></div>
+      <div class="row muted" style="padding: 0 14px 6px; font-size: 11px;">fresh tokens · last 24 of 51</div>
+      <div style="display: flex; align-items: flex-end; gap: 2px; height: 56px; padding: 0 14px 4px;"><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 27px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 24px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 8px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 10px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 18px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 13px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 21px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 6px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 8px; background: #91c5a4;"></i></div><div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%;"><i style="display: block; height: 3px; background: #91c5a4;"></i></div></div>
+      <div style="display: flex; gap: 2px; padding: 0 14px 6px;"><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #697482;"></div><div style="flex: 1 1 0; height: 5px; border-radius: 1px; background: #8ca8b3;"></div></div>
+      <div class="row" style="padding: 0 14px 12px; gap: 12px; font-size: 11px; color: #a8afb9;"><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; border-radius: 1px; background: #697482; display: inline-block;"></i>Primary</span><span class="row" style="gap: 5px;"><i style="width: 8px; height: 8px; border-radius: 1px; background: #8ca8b3; display: inline-block;"></i>explore ×3</span></div>
+    </div>
+
+    <div class="panel" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <span class="eyebrow">Progress</span>
+      <div class="row" style="justify-content: space-between; font-size: 13px;"><span>Plan tasks</span><span>3 of 5 done</span></div>
+      <div class="bar"><i style="width: 60%;"></i></div>
+      <span class="muted" style="font-size: 11px;">Agent-maintained checklist, may be stale.</span>
+    </div>
+
+    <div class="panel" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <span class="eyebrow">Work by kind · session</span>
+      <div class="row" style="font-size: 13px; gap: 12px; flex-wrap: wrap;"><span>Reading <b>59</b></span><span>Shell <b>30</b></span><span>Searching <b>19</b></span><span>Editing <b>10</b></span></div>
+    </div>
+
+    <div class="panel" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <span class="eyebrow">Cost</span>
+      <div class="row" style="justify-content: space-between; font-size: 13px;"><span>Claude Code list-rate estimate</span><span class="mono">$5.67</span></div>
+      <span class="muted" style="font-size: 11px;">Estimate, not a bill.</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
