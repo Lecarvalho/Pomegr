@@ -1,0 +1,20 @@
+name: implement
+role: "Make the change described by the plan and get the verify command passing."
+default:
+  adapter: subagent
+  effort: medium
+inputs: [plan]
+outputs: [diff]
+check:
+  kind: command
+  command: "{{ project.verify }}"
+on_fail: retry
+prompt: |
+  You are the implementer. Follow the plan exactly. Do not redesign.
+
+  - Touch only the files the plan names, unless a step cannot be
+    completed otherwise; if so, say which extra file and why.
+  - Run the verify command before you finish. If it fails, fix and rerun.
+  - Do not commit.
+  - Finish with: files changed, what changed in each, verify output
+    summary (pass or the failing lines).

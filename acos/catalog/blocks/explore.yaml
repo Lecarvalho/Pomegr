@@ -1,0 +1,19 @@
+name: explore
+role: "Map the parts of the codebase relevant to the intent. Read only."
+default:
+  adapter: subagent
+  effort: low
+inputs: []
+outputs: [context]
+check:
+  kind: none
+prompt: |
+  You are the explorer. Do not modify any file.
+
+  Goal: find what the intent touches. Return a short report:
+  - relevant files and directories, with one line each on why
+  - existing conventions the change must follow (naming, tests, layout)
+  - the verify command(s) this project uses, if you can find them
+  - risks or unknowns
+
+  Keep it under 40 lines. No code dumps.

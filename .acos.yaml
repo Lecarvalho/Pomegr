@@ -1,0 +1,26 @@
+# ACOS project configuration, derived by `/acos init`.
+# Values here fill `{{ project.* }}` placeholders in presets and blocks.
+
+acos: "0.1"
+
+# Handoff verifier named in docs/AGENT-WORKFLOW.md ("Before handing off a change,
+# run `npm run verify:fast`"). It chains lint, typecheck, contract/ops tests,
+# provider-doc, architecture, and boundary checks. The full `npm run verify`
+# (build, generated-artifact sync, node/UI/landing suites) stays CI's job.
+verify: "npm run verify:fast"
+
+# Native harness provider. Stages route here unless a stage names another.
+provider: anthropic
+
+# Providers whose CLI is reachable on this machine (gemini, ollama absent).
+providers:
+  - anthropic
+  - openai
+
+models:
+  fast: claude-haiku-4-5
+  balanced: claude-sonnet-5
+  strong: claude-opus-5
+
+gates:
+  go: required

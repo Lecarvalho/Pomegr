@@ -1,0 +1,14 @@
+name: verify
+role: "Run the project's verify command and report the result. No model needed."
+default:
+  adapter: inline
+  effort: low
+inputs: [diff]
+outputs: [verify]
+check:
+  kind: command
+  command: "{{ project.verify }}"
+on_fail: stop
+prompt: |
+  Run the verify command. Report pass or the shortest failing lines.
+  Do not attempt to fix anything.

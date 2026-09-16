@@ -1,0 +1,20 @@
+# Preset: solo
+# One model does everything in the current session. Loops on verify.
+# Cheapest, fastest. Good for small, well-understood changes.
+
+acos: "0.1"
+name: solo
+description: "Single implementer in-session, retry until verify passes."
+
+stages:
+  - block: implement
+    adapter: inline
+    effort: medium
+    on_fail: retry
+
+loop:
+  max_iterations: 3
+  on_fail: retry
+
+gates:
+  go: required
