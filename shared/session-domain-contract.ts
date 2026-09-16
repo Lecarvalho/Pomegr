@@ -45,7 +45,10 @@ export type SessionSummaryDomain = SessionDomainBase & {
   sectionReadiness: SessionDomainSectionReadiness<"core" | "agentEvidence" | "contextEvidence" | "activityEvidence" | "repository">;
   session: Pick<NonNullable<MonitorState["session"]>,
     "id" | "title" | "project" | "startedAt" | "updatedAt" | "durationMs" | "cost" | "summary" | "progress" | "pomegrPlugin"> | null;
-  metrics: Pick<MonitorState["metrics"], "agents" | "activeAgents" | "toolCalls" | "repeatedCalls">;
+  metrics: Pick<MonitorState["metrics"], "agents" | "activeAgents" | "toolCalls" | "repeatedCalls"> & {
+    idleAgents: number | null;
+    finishedAgents: number | null;
+  };
   activity: Omit<ActivityFeed, "items">;
   allAgentContext: number;
   lifecycle: {
@@ -67,6 +70,10 @@ export type SessionSummaryDomain = SessionDomainBase & {
     changedFiles: number | null;
     pullRequestCount: number | null;
     comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"] | null;
+  };
+  resourceAvailability: {
+    readiness: Readiness;
+    hasData: boolean | null;
   };
   requestSnapshots: {
     status: RequestSnapshotFeed["status"];

@@ -66,11 +66,22 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.pomegrMark\s*\{[^}]*background:\s*var\(--command-brand-text\)[^}]*mask-image:\s*var\(--pomegr-mark-image\)[^}]*mask-mode:\s*luminance/);
     expect(styles).toMatch(/\.commandHeader \.brandMark\s*\{[^}]*width:\s*var\(--command-brand-mark-size\)/);
     expect(styles).toMatch(/\.commandHeader \.brandWordmark\s*\{[^}]*color:\s*var\(--command-muted\)[^}]*font:\s*400 15px var\(--font-ui\)/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*display:\s*flex;[^}]*transform:\s*translateX\(44px\)/);
-    expect(styles).toMatch(/\.commandHeader\.isSearchOpen > \.commandSearch\s*\{[^}]*transform:\s*none;[^}]*transform \.22s cubic-bezier\(\.16, 1, \.3, 1\)/);
-    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.commandHeader > \.commandSearch\s*\{[^}]*transform:\s*none/);
-    expect(styles).toMatch(/\.commandSearch:focus-within\s*\{\s*border-color:\s*var\(--command-faint\);\s*outline:\s*2px solid var\(--focus-ring\);\s*outline-offset:\s*2px/);
-    expect(styles).toMatch(/\.commandSearch input:focus-visible\s*\{\s*outline:\s*none/);
+    expect(styles).toMatch(/\.commandPaletteTrigger\.commandQuietAction\s*\{[^}]*width:\s*280px;[^}]*height:\s*var\(--control-height\)/);
+    expect(styles).toMatch(/@media \(max-width: 1080px\)[\s\S]*?\.commandPaletteTrigger\s*\{\s*width:\s*200px/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*44px/);
+    expect(styles).toMatch(/\.commandPalette\s*\{[^}]*box-shadow:\s*var\(--command-overlay-shadow\)/);
+    expect(shellSource).not.toMatch(/hasBreadcrumb|sessionBreadcrumb/);
+    expect(commandPageSource).toMatch(/export function CommandPageHeader/);
+    expect(styles).toMatch(/\.commandPageTabs\s*\{[^}]*border-bottom:\s*1px solid var\(--command-line\)/);
+    expect(styles).toMatch(/\.commandSidebarLimits\s*\{[^}]*margin-bottom:\s*12px/);
+    expect(shellSource).toMatch(/className="commandQuietAction commandPaletteTrigger"/);
+    expect(shellSource).toMatch(/commandQuietAction commandPaletteOption/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.normal strong\s*\{\s*color:\s*var\(--command-blue\);/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.warning strong\s*\{\s*color:\s*var\(--command-amber\);/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.critical strong\s*\{\s*color:\s*var\(--command-error\);/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.normal > i > b\s*\{\s*background:\s*var\(--command-blue\);/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.warning > i > b\s*\{\s*background:\s*var\(--command-amber\);/);
+    expect(styles).toMatch(/\.commandSidebarLimit\.critical > i > b\s*\{\s*background:\s*var\(--command-error\);/);
     expect(styles).toMatch(/\.commandSessionColActivity\s*\{\s*width:\s*280px/);
     expect(styles).toMatch(/\.commandTableActivityLabel\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityColumn\s*\{\s*display:\s*none/);
@@ -131,14 +142,14 @@ describe("Pomegr visual contract", () => {
   });
 
   it("shares one official chip contract between .commandChip and .agentChip, with tones that recolor text only", () => {
-    expect(styles).toMatch(/\.commandChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--command-line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*font:\s*500 var\(--text-caption\)\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
+    expect(styles).toMatch(/\.commandChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--command-line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*background:\s*transparent;[^}]*font:\s*500 var\(--text-caption\)\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
     expect(styles).toMatch(/\.commandChip > i\s*\{[^}]*width:\s*6px;[^}]*height:\s*6px;/);
     expect(styles).toMatch(/\.commandChip\.info\s*\{\s*color:\s*var\(--command-blue\);\s*\}/);
     expect(styles).toMatch(/\.commandChip\.positive\s*\{\s*color:\s*var\(--command-green\);\s*\}/);
     expect(styles).toMatch(/\.commandChip\.warning\s*\{\s*color:\s*var\(--command-amber\);\s*\}/);
     expect(styles).toMatch(/\.commandChip\.negative\s*\{\s*color:\s*var\(--command-error\);\s*\}/);
     expect(styles).not.toMatch(/\.commandChip\.(?:info|positive|warning|negative)\s*\{[^}]*background/);
-    expect(styles).toMatch(/\.agentChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*font:\s*500 var\(--text-caption\)\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
+    expect(styles).toMatch(/\.agentChip\s*\{[^}]*min-height:\s*20px;[^}]*padding:\s*2px 7px;[^}]*border:\s*1px solid var\(--line\);[^}]*border-radius:\s*var\(--control-radius\);[^}]*background:\s*transparent;[^}]*font:\s*500 var\(--text-caption\)\/1\.3 var\(--font-ui\);[^}]*letter-spacing:\s*0;[^}]*text-transform:\s*none;/);
     expect(styles).toMatch(/\.agentSignal, \.executionTaskSignal, \.sessionSignal \{ color: var\(--muted\); \}/);
     expect(styles).not.toMatch(/\.agentSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);
     expect(styles).not.toMatch(/\.executionTaskSignal\.(?:info|positive|warning|negative)[^{]*\{[^}]*background/);

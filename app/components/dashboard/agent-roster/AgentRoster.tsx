@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, Insight, LoopPattern, PlanTask, RequestSnapshotFeed, Workflow } from "../../../../shared/monitor-contract";
+import type { AgentDomain } from "../../../../shared/session-domain-contract";
 import { agentAssignment, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, compactNumber, formatDuration } from "../../../dashboard-utils";
 import { isAgentWallTimeAdvancing, liveWallTimeMs } from "../../../formatting.mjs";
 import { useLiveNow } from "../../../hooks/LiveClockContext";
@@ -22,8 +23,10 @@ export type AgentRosterProps = {
   cacheRefills?: CacheRefillCount[]; cacheReadDrops?: CacheReadDropCount[]; contextBoundaries?: ContextHistoryBoundary[];
   requestSnapshots?: RequestSnapshotFeed; workflows?: Workflow[]; insights?: Insight[]; loops?: LoopPattern[];
   sessionId?: string; viewMode?: AgentActivityViewMode; onViewModeChange?: (mode: AgentActivityViewMode) => void;
-  selectedAgentId?: string | null; onSelectAgent?: (id: string) => void; workflowNavigation?: { id: string; request: number } | null;
+  selectedAgentId?: string | null; onSelectAgent?: (id: string | null) => void; workflowNavigation?: { id: string; request: number } | null;
   agentNavigation?: { id: string; request: number } | null;
+  /** The inspector owns only one bounded per-agent domain; roster data stays in agents. */
+  inspector?: AgentDomain | null; onOpenActivities?: (agentId: string) => void;
 };
 
 function readOpenGroups(sessionId: string): Set<string> {
@@ -57,7 +60,7 @@ function RosterGroupHeader({ group, open, onToggle, onOpenTree, agentsById }: { 
 
 export function AgentActivityPanel(props: AgentRosterProps) { return <SessionAgentRoster key={props.sessionId || "agent-activity"} {...props} />; }
 
-function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshots, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], workflows = [], insights = [], loops = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {}, selectedAgentId, onSelectAgent, workflowNavigation, agentNavigation }: AgentRosterProps) {
+function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshots, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], workflows = [], insights = [], loops = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {}, selectedAgentId, onSelectAgent, workflowNavigation, agentNavigation, inspector, onOpenActivities }: AgentRosterProps) {
   const now = useLiveNow();
   const phone = usePhoneLayout();
   const [filters, setFilters] = useState<RosterFilters>(DEFAULT_FILTERS);
@@ -74,7 +77,9 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const pendingAgentScroll = useRef(false);
   const treeOpener = useRef<HTMLElement | null>(null);
   const treeReturnId = useRef<string | null>(null);
+  const phoneInspectorOpener = useRef<HTMLElement | null>(null);
   const handledAgentNavigation = useRef<string | null>(null);
+  const handledExternalSelection = useRef<string | null>(null);
   const defaultSelection = agents.find((agent) => agent.id === "primary")?.id || agents[0]?.id || null;
   const selectionCandidate = selectedAgentId === undefined ? selection : selectedAgentId;
   const selected = selectionCandidate && agents.some((agent) => agent.id === selectionCandidate) ? selectionCandidate : defaultSelection;
@@ -108,6 +113,14 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     }
     // Selection and workflow navigation open their group once, without defeating manual collapse.
   }, [targetGroupId, sessionId]);
+  useEffect(() => {
+    if (!phone || !selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) return;
+    const selectionKey = `${sessionId}:${selectedAgentId}`;
+    if (handledExternalSelection.current === selectionKey) return;
+    handledExternalSelection.current = selectionKey;
+    // A scoped URL is an explicit inspection request on phone; no route or page handoff is needed.
+    setPhoneInspectorOpen(true);
+  }, [agents, phone, selectedAgentId, sessionId]);
   const requestedWorkflowGroup = groups.find((group) => workflowNavigation && group.id === `workflow:${workflowNavigation.id}`)?.id;
   useEffect(() => {
     if (!requestedWorkflowGroup) return;
@@ -185,6 +198,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     return () => window.cancelAnimationFrame(frame);
   }, [selected, openGroups, revealed, filters.grouped, requestedAgentRequest, viewMode]);
   const select = (id: string) => {
+    if (phone) phoneInspectorOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelection(id);
     try { window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, id); } catch { /* Local preferences are optional. */ }
     if (phone) setPhoneInspectorOpen(true);
@@ -192,7 +206,16 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   };
   const inspectorAgentId = phoneTreeInspectorId && agents.some((agent) => agent.id === phoneTreeInspectorId) ? phoneTreeInspectorId : selected;
   const inspectorSelectedAgent = agents.find((agent) => agent.id === inspectorAgentId) || null;
-  const inspectorAgent = inspectorSelectedAgent ? { ...inspectorSelectedAgent, executionTasks: inspectorSelectedAgent.executionTasks || (inspectorSelectedAgent.id === "primary" ? executionTasks : []) } : null;
+  const inspectorUsesDomain = inspector !== undefined;
+  const inspectorAgent = inspectorUsesDomain ? inspector?.agent || null : (inspectorSelectedAgent ? { ...inspectorSelectedAgent, executionTasks: inspectorSelectedAgent.executionTasks || (inspectorSelectedAgent.id === "primary" ? executionTasks : []) } : null);
+  const inspectorAgents = inspectorUsesDomain ? [...(inspector?.ancestors || []), ...(inspector?.agent ? [inspector.agent] : []), ...(inspector?.descendants || [])] : agents;
+  const inspectorWorkflows = inspectorUsesDomain ? (inspector?.workflow ? [inspector.workflow] : []) : workflows;
+  const inspectorRequests = inspectorUsesDomain ? inspector?.requestSnapshots || { status: "unavailable", items: [] } : requestSnapshots || { status: "unavailable", items: [] };
+  const inspectorRefills = inspectorUsesDomain ? inspector?.cacheEvents.possibleFullRefills || [] : cacheRefills;
+  const inspectorReadDrops = inspectorUsesDomain ? inspector?.cacheReadDrops.items || [] : cacheReadDrops;
+  const inspectorBoundaries = inspectorUsesDomain ? inspector?.contextBoundaries || [] : contextBoundaries;
+  const inspectorInsights = inspectorUsesDomain ? inspector?.insights || [] : insights;
+  const inspectorPlanTasks = inspectorUsesDomain ? inspector?.planTasks || [] : planTasks;
   const focusAgent = treeFocusId ? agents.find((agent) => agent.id === treeFocusId) || null : null;
   const activeTreeFocusId = focusAgent?.id || null;
   const openTree = (id: string) => {
@@ -237,7 +260,19 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [activeTreeFocusId, closeTree, phone]);
   const closePhoneInspector = () => {
+    const returnId = selected;
+    const opener = phoneInspectorOpener.current;
+    phoneInspectorOpener.current = null;
     setPhoneInspectorOpen(false);
+    // Controlled session selections are URL evidence links. Closing the phone sheet
+    // must clear that link so a reload does not reopen an inspector the reader closed.
+    if (selectedAgentId !== undefined) onSelectAgent?.(null);
+    // A sheet reopened from the focused tree returns focus to the tree opener below;
+    // a later frame-scheduled fallback would otherwise steal it back to the row.
+    if (!treeReturnsToSheet) window.requestAnimationFrame(() => {
+      const fallback = returnId ? (viewMode === "grid" ? tileRefs.current.get(returnId) : rowRefs.current.get(returnId)?.querySelector<HTMLButtonElement>(".rosterSelectAgent")) : null;
+      (opener?.isConnected ? opener : fallback)?.focus({ preventScroll: true });
+    });
     if (!treeReturnsToSheet) return;
     setTreeReturnsToSheet(false);
     setPhoneTreeInspectorId(null);
@@ -265,8 +300,8 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
         </div>}
       </div></div>
       {viewMode === "grid" ? <AgentGridFooter /> : <footer className="rosterFooter"><span>Scroll inside the roster · groups stay pinned</span>{filters.grouped && collapsible.length > 0 && <button type="button" className="commandTextLink" onClick={() => { saveOpen(allOpen ? new Set() : new Set(collapsible.map((group) => group.id))); setRevealed(allOpen ? new Set() : new Set(collapsible.map((group) => group.id))); }}>{allOpen ? "Collapse all" : `Expand all ${visible.length}`}</button>}</footer>}
-    </div>{!phone && <aside className="rosterInspectorPlaceholder"><AgentInspector agent={inspectorAgent} agents={agents} workflows={workflows} sessionId={sessionId} historical={historical} requestSnapshots={requestSnapshots || { status: "unavailable", items: [] }} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} insights={insights} planTasks={planTasks} onOpenTree={openTree} /></aside>}
-      {phone && phoneInspectorOpen && <AgentInspector agent={inspectorAgent} agents={agents} workflows={workflows} sessionId={sessionId} historical={historical} requestSnapshots={requestSnapshots || { status: "unavailable", items: [] }} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} insights={insights} planTasks={planTasks} presentation="sheet" onClose={closePhoneInspector} onOpenTree={openTree} />}
+    </div>{!phone && <aside className="rosterInspectorPlaceholder"><AgentInspector agent={inspectorAgent} agents={inspectorAgents} workflows={inspectorWorkflows} sessionId={sessionId} historical={historical} requestSnapshots={inspectorRequests} cacheRefills={inspectorRefills} cacheReadDrops={inspectorReadDrops} contextBoundaries={inspectorBoundaries} insights={inspectorInsights} planTasks={inspectorPlanTasks} onOpenActivities={onOpenActivities} onOpenTree={openTree} /></aside>}
+      {phone && phoneInspectorOpen && <AgentInspector agent={inspectorAgent} agents={inspectorAgents} workflows={inspectorWorkflows} sessionId={sessionId} historical={historical} requestSnapshots={inspectorRequests} cacheRefills={inspectorRefills} cacheReadDrops={inspectorReadDrops} contextBoundaries={inspectorBoundaries} insights={inspectorInsights} planTasks={inspectorPlanTasks} presentation="sheet" onClose={closePhoneInspector} onOpenActivities={onOpenActivities} onOpenTree={openTree} />}
     </div>
     </div>{activeTreeFocusId && (phone
       ? <InspectorSheet title={`Tree · ${agentDisplayName(focusAgent!)}`} subtitle="Focused tree" onClose={closeTree}>{tree}</InspectorSheet>

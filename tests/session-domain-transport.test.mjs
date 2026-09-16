@@ -98,3 +98,36 @@ test("SSE carries session-scoped domain revisions and history totals", async (co
     await reader.cancel();
   }
 });
+
+test("a startup loading domain is a 200 loading envelope, and a failed serve does not stick", async (context) => {
+  const value = { domain: "session-summary", sessionId: "claude:startup", revision: 9, readiness: "ready", observedAt: null };
+  let mode = "loading";
+  const runtime = {
+    serveSessionDomain() {
+      if (mode === "loading") return { status: "loading", revision: 0, snapshot: null };
+      if (mode === "throw") throw new Error("PRIVATE_FAILURE_DETAIL");
+      if (mode === "unavailable") return { status: "unavailable", revision: 0, snapshot: null };
+      return { status: "ready", revision: 9, snapshot: { revision: 9, serialized: JSON.stringify(value), value } };
+    },
+  };
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `${origin}/api/session-domain?sessionId=claude%3Astartup&domain=session-summary&revision=238`;
+
+  const loading = await fetch(url);
+  assert.equal(loading.status, 200, "startup loading must not surface as a 404 the proxy reports as a 503");
+  assert.deepEqual(await loading.json(), { domain: "session-summary", sessionId: "claude:startup", revision: 0, readiness: "loading", observedAt: null });
+
+  mode = "throw";
+  const failed = await fetch(url);
+  assert.equal(failed.status, 503);
+  assert.doesNotMatch(await failed.text(), /PRIVATE_FAILURE_DETAIL/u);
+  mode = "ready";
+  const recovered = await fetch(url);
+  assert.equal(recovered.status, 200, "the next GET after a failure serves the committed revision");
+  assert.deepEqual(await recovered.json(), value);
+
+  mode = "unavailable";
+  assert.equal((await fetch(url)).status, 404);
+});

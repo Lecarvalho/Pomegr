@@ -12,7 +12,7 @@ import { agentRunRoleLabel } from "./agent-presentation";
 
 function sessionHref(run: AgentsRun) {
   try {
-    return `/sessions/${encodeSessionRoute(run.sessionId)}`;
+    return `/sessions/${encodeSessionRoute(run.sessionId)}?tab=agents&agent=${encodeURIComponent(run.agentId)}`;
   } catch {
     return "/sessions";
   }

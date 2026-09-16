@@ -1,13 +1,13 @@
 # IA redesign prototype
 
-Standalone exports of the approved design canvas (version 46, 2026-09-14) for the
+Standalone exports of the approved design canvas (version 46, 2026-09-14; `Mobile` regenerated from version 50, 2026-09-15) for the
 [information architecture redesign plan](../../ia-redesign.md). Serve an artboard folder and open its `.dc.html` file in a browser (see its local README); each is a full-height artboard using the dark theme values from
 `app/styles/tokens.css`. Sample data comes from one real session and invented file
 names; treat every number as placeholder.
 
 The plan owns implementation decisions within the repository's current contracts.
 Where a drawing differs, follow the plan and the explicit overrides below.
-This documentation update does not regenerate the version-46 exports.
+Only the `Mobile` export was regenerated for version 50 (thin 32px phone call lines that expand in place); the other exports remain version 46.
 
 Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifact/eb54dd04-0c68-450d-8c04-ab4776816fd9
 
@@ -18,7 +18,7 @@ Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifa
 - [2 · Session overview (L1)](Main-html/Main.dc.html)
 - [3 · Session › Agents tab (L2): roster and selected-agent pane](SessionAgents-html/SessionAgents.dc.html)
 - [5 · Session › Signals tab (L2)](SignalsTab-html/SignalsTab.dc.html)
-- [6 · Phone: Overview, Agents, agent sheet, Activities, More sheet](Mobile-html/Mobile.dc.html)
+- [6 · Phone: Overview, Agents, agent sheet, Activities, expanded call, More sheet](Mobile-html/Mobile.dc.html)
 - [7 · Session › Repository tab (L2)](RepositoryTab-html/RepositoryTab.dc.html)
 - [8 · Repository › Files tab (file history)](RepoFiles-html/RepoFiles.dc.html)
 - [9 · Session › Resources tab (L2)](ResourcesTab-html/ResourcesTab.dc.html)
@@ -89,7 +89,7 @@ Details contains session facts, one-shot transcript path copy, cost estimate, an
 
 ### Phone
 
-Phone (2026-09-14 tab set): five tabs fit 390px without scrolling: Overview, Agents, Activities, Repo, More. More is a bottom sheet holding Signals, Resources and Details; each entry is the same ?tab= URL as on desktop. Tab bar sticks under the three KPIs. Agents: the roster only, List / Grid segment (no Tree), no column header row; the Direct subagents group is one 48px line with its values (count · context · active) at the right, as today; tapping a row opens the agent inspector as a full-viewport sheet with a Back header, as the app does today (no side pane, no agent route). Context counts are regular weight in the primary text color. Activities: always the single chart on phone (no lanes, no Lanes / Single chart toggle) with the agent track and role legend under the bars, minimap, Largest strip, then the feed, with Actions by kind and Shell tasks below it; the feed shows five requests around the selection, one quiet line per request (agent, role, uncached input, time) and one per tool call (kind, target, duration); the other counts live in the request detail. Hit targets 44px.
+Phone (2026-09-14 tab set): five tabs fit 390px without scrolling: Overview, Agents, Activities, Repo, More. More is a bottom sheet holding Signals, Resources and Details; each entry is the same ?tab= URL as on desktop. Tab bar sticks under the three KPIs. Agents: the roster only, List / Grid segment (no Tree), no column header row; the Direct subagents group is one 48px line with its values (count · context · active) at the right, as today; tapping a row opens the agent inspector as a full-viewport sheet with a Back header, as the app does today (no side pane, no agent route). Context counts are regular weight in the primary text color. Activities: always the single chart on phone (no lanes, no Lanes / Single chart toggle) with the agent track and role legend under the bars, minimap, Largest strip, then the feed, with Actions by kind and Shell tasks below it; the feed shows five requests around the selection, one quiet 44px line per request (agent, role, uncached input, time) and one thin 32px line per tool call (kind icon, target, duration; version 50). Tapping a call line still selects its request as before and additionally expands a detail block in place beneath it (kind/status chips, Kind, Wall duration, Called, Result, Agent), one open at a time, with no sheet or popover; the other request counts live in the request detail. Hit targets 44px except the 32px full-width call line, the single documented dense-list exception.
 
 ### Storage
 

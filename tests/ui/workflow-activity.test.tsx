@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Dashboard } from "../../app/Dashboard";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { AgentHistoryIndicators, cacheRefillDescription, summarizeCacheRefillOccurrences } from "../../app/components/dashboard/AgentHistoryIndicators";
 import { AgentTreeView } from "../../app/components/dashboard/agent-tree/AgentTreeView";
@@ -29,6 +28,24 @@ function treeView({ agents, cacheRefills = [], cacheReadDrops = [], contextBound
   return <LiveClockProvider running={false}><AgentTreeView agents={agents} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} historical={historical} requestSnapshots={requestSnapshots} sessionId={sessionId} workflows={workflows} /></LiveClockProvider>;
 }
 
+/*
+ * Deleted-suite disposition for the two Dashboard-mounted tests this file used to carry
+ * (see `git show HEAD~N -- tests/ui/workflow-activity.test.tsx` before the T04 integration):
+ *
+ * - "places the workflow summary card before agent activity": obsolete by design. It asserted
+ *   `.sessionSummaryCards` placement directly ahead of `.contentGrid` in the old single-page
+ *   Dashboard composition. `SessionSummaryCards.tsx` is no longer imported anywhere under
+ *   `app/` (confirmed by repository-wide search); the T04 session page replaced that card with
+ *   `SessionOverview`'s "Right now" panel and the KPI strip, and workflow context now surfaces
+ *   through `AgentsTab`. There is nothing left to port: the component and layout it described
+ *   are gone, not relocated.
+ * - "coerces a stored Tree view to List and persists the Grid choice": ported to
+ *   `tests/ui/agents-tab.test.tsx` ("coerces a stored Tree view to List and persists the Grid
+ *   choice per session"). `AgentsTab.tsx` now owns the `pomegr-agent-activity-view-<sessionId>`
+ *   preference directly (reusing the HEAD storage key and list/grid coercion) and wires it into
+ *   `AgentActivityPanel`'s controlled `viewMode`/`onViewModeChange` pair, so the List/Grid toggle
+ *   is no longer a no-op end-to-end.
+ */
 describe("workflow activity and agent tree view", () => {
   it.each(["list", "tree"] as const)("shows per-agent cache minimums in %s without inline documentation", (viewMode) => {
     const agents = [
@@ -50,35 +67,6 @@ describe("workflow activity and agent tree view", () => {
     const rowRole = viewMode === "list" ? "row" : "treeitem";
     expect(screen.getByRole(rowRole, { name: /Primary.*cache TTL ≥30m/ })).toBeInTheDocument();
     expect(screen.getByRole(rowRole, { name: /Child.*cache TTL ≥30m/ })).toBeInTheDocument();
-  });
-
-  it("places the workflow summary card before agent activity", async () => {
-    const state = dashboardState();
-    vi.spyOn(globalThis, "fetch").mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input) === "/api/sessions" ? { sessions: [] } : state), { status: 200 })));
-    const { container } = render(<Dashboard />);
-    const panel = await waitFor(() => { const element = container.querySelector(".sessionSummaryCards"); expect(element).toBeInTheDocument(); return element!; });
-    expect(panel.nextElementSibling).toBe(container.querySelector(".contentGrid"));
-    expect(panel).toHaveTextContent("quickwin-batch");
-    expect(panel.querySelector('a[href="#agent-activity"]')).toBeInTheDocument();
-    expect(container.querySelector("details.workflowActivityPanel")).not.toBeInTheDocument();
-    expect(panel.querySelector(".workflowWorkerRows, .workflowWorkerRow, .workflowWorkerGroup")).not.toBeInTheDocument();
-  });
-
-  it("coerces a stored Tree view to List and persists the Grid choice", async () => {
-    const state = dashboardState();
-    vi.spyOn(globalThis, "fetch").mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input) === "/api/sessions" ? { sessions: [] } : state), { status: 200 })));
-    const user = userEvent.setup();
-    window.localStorage.setItem("pomegr-agent-activity-view-claude:tree-preference", "tree");
-    const { container, unmount } = render(<Dashboard />);
-    await screen.findByRole("button", { name: "Grid" });
-    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "Grid" }));
-    expect(container.querySelector(".contentGrid")).toHaveAttribute("id", "agent-activity");
-    expect(container.querySelector(".agentRosterPanel")).toBeInTheDocument();
-    expect(window.localStorage.getItem("pomegr-agent-activity-view-claude:tree-preference")).toBe("grid");
-    unmount();
-    render(<Dashboard />);
-    expect((await screen.findByRole("button", { name: "Grid" })).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("lists every agent exactly once, including workflow agents, and accepts legacy missing roles", () => {

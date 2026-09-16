@@ -10,7 +10,7 @@ export const HOME_UPDATE_ID = "progressive-live-sessions-v1";
 const HOME_PREFERENCES_EVENT = "pomegr:home-preferences-change";
 const MAX_STORED_LENGTH = 16_384;
 const MAX_STORED_PINS_TO_SCAN = 256;
-const HOME_VIEW_IDS = new Set(["sessions", "agents", "usage-limits", "repositories", "dashboards"]);
+const HOME_VIEW_IDS = new Set(["sessions", "agents", "usage-limits", "repositories"]);
 
 export type HomePin = {
   kind: "session" | "project" | "view";

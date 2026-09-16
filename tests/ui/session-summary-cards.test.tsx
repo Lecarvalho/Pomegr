@@ -68,8 +68,10 @@ describe("session summary cards", () => {
     const user = userEvent.setup();
     const onShowAgent = vi.fn();
     const state = stateWith({ insights: [{ id: "warning", level: "warning", title: "Worker warning", detail: "Needs review", agentId: "worker-1" }] });
+    window.history.replaceState(null, "", "/sessions/example?tab=signals");
     render(<LiveClockProvider running={false}><SessionSummaryCards state={state} historical={false} paused={false} needsInput={false} onShowAgent={onShowAgent} /></LiveClockProvider>);
     await user.click(screen.getByRole("link", { name: "Show agent" }));
     expect(onShowAgent).toHaveBeenCalledWith("worker-1");
+    expect(window.location.hash).toBe("");
   });
 });

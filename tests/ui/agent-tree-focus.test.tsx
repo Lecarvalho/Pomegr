@@ -69,6 +69,7 @@ describe("focused agent tree integration", () => {
     expect(screen.getByRole("dialog", { name: "worker" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "worker" })).not.toBeInTheDocument());
+    await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
     expect(row).toHaveFocus();
   });
 
@@ -83,6 +84,7 @@ describe("focused agent tree integration", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: "worker" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
+    await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
     expect(opener).toHaveFocus();
   });
 

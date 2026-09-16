@@ -174,7 +174,7 @@ function base(domain, sessionId, observedAt, state, domainReadiness) {
   };
 }
 
-function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, repository, pullRequests) {
+function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, repository, pullRequests, resourcesReadiness) {
   const session = state?.session;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const sections = sectionReadiness(ready, ["core", "agentEvidence", "contextEvidence", "activityEvidence", "repository"]);
@@ -203,7 +203,9 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
     } : null,
     metrics: {
       agents: state.metrics?.agents || 0,
-      activeAgents: state.metrics?.activeAgents || 0,
+      activeAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => agent.status === "active").length : 0,
+      idleAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["idle", "waiting", "warm"].includes(agent.status)).length : null,
+      finishedAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["finished", "stopped"].includes(agent.status)).length : null,
       toolCalls: state.metrics?.toolCalls || 0,
       repeatedCalls: state.metrics?.repeatedCalls || 0,
     },
@@ -242,6 +244,10 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       changedFiles: repository?.available === true && Array.isArray(repository.files) ? repository.files.length : null,
       pullRequestCount: pullRequests?.status === "ready" && Array.isArray(pullRequests.items) ? pullRequests.items.length : null,
       comparison: fields(repository?.comparison, ["branch", "kind", "ahead", "behind", "integrated"]),
+    },
+    resourceAvailability: {
+      readiness: resourcesReadiness,
+      hasData: resourcesReadiness === "ready" ? Boolean(state.metrics?.resources?.samples?.length || state.metrics?.resources?.current) : null,
     },
     requestSnapshots: { ...requests, items: requests.items.slice(-48) },
     planTasks: list(state.planTasks, publicPlanTask),
@@ -293,7 +299,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     ? "unavailable"
     : readiness(ready.resources);
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, repository, pullRequests));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, repository, pullRequests, resourcesReadiness));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,

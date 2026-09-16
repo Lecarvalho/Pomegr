@@ -59,8 +59,8 @@ describe("Design-system reference page", () => {
 
     expect(screen.getByRole("combobox", { name: "Sample scope" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Sample scope, disabled" })).toBeDisabled();
-    expect(screen.getAllByText("Claude Code")[0]).toHaveClass("providerBadge");
-    expect(screen.getAllByText("Codex")[0]).toHaveClass("providerBadge");
+    expect(screen.getAllByText("Claude Code").find((element) => element.classList.contains("providerBadge"))).toBeDefined();
+    expect(screen.getAllByText("Codex").find((element) => element.classList.contains("providerBadge"))).toBeDefined();
     expect(screen.getByText("needs input")).toHaveClass("statusPill", "needs_input");
     expect(screen.getByRole("button", { name: /Live/, pressed: true })).toHaveClass("commandFilterChip");
     expect(screen.getByRole("region", { name: "Sample session totals" })).toHaveClass("sessionKpiStrip");

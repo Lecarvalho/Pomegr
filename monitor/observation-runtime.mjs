@@ -108,10 +108,17 @@ export function createObservationRuntime(options = {}) {
     now,
     maxSessions: options.sessionDomainMaxSessions,
     idleMs: options.sessionDomainIdleMs,
+    // Live and open catalog rows are exempt from the soft session bound, so
+    // commits for other sessions cannot displace them.
+    isProtected: (sessionId) => protectedDomainSessions().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
   });
   const pendingDomainRebuilds = new Set();
+  // sessionId -> monotonic request time of a domain-requested hydration. One
+  // queued hydration serves every domain and poll until evidence commits.
+  const pendingDomainHydrations = new Map();
+  const DOMAIN_HYDRATION_RETRY_MS = 30_000;
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();
   const pendingRepositoryAssociations = new Set();
@@ -565,15 +572,49 @@ export function createObservationRuntime(options = {}) {
     };
   }
 
+  let catalogIndexSource = null;
+  let catalogIndex = new Map();
+  let protectedCatalogIds = new Set();
+  function indexedCatalog() {
+    const sessions = observationCoordinator.catalog()?.snapshot?.value?.sessions || [];
+    if (sessions !== catalogIndexSource) {
+      catalogIndexSource = sessions;
+      catalogIndex = new Map(sessions.map((entry) => [entry.id, entry]));
+      protectedCatalogIds = new Set(sessions
+        .filter((entry) => entry.isLive || ["working", "needs_input", "open"].includes(entry.activityStatus))
+        .map((entry) => entry.id));
+    }
+    return catalogIndex;
+  }
+  function protectedDomainSessions() {
+    indexedCatalog();
+    return protectedCatalogIds;
+  }
   function domainCatalogEntry(sessionId) {
-    return (observationCoordinator.catalog()?.snapshot?.value?.sessions || []).find((entry) => entry.id === sessionId) || null;
+    return indexedCatalog().get(sessionId) || null;
+  }
+  function domainCatalogComplete() {
+    if (!observationServingActive || !observationCoordinator.catalog()?.snapshot) return false;
+    const providerReadiness = observationCoordinator.catalogReadiness?.();
+    return !providerReadiness || Object.values(providerReadiness).every((value) => value !== "loading");
   }
   function commitSessionDomains(sessionId, snapshot = observationStore.getByQualifiedId(sessionId)) {
     if (snapshot) return sessionDomains.commit(sessionId, snapshot, domainCatalogEntry(sessionId));
     const catalogEntry = domainCatalogEntry(sessionId);
-    if (!catalogEntry) return null;
+    // A hydratable row has no placeholder: it stays loading until evidence
+    // commits, and any retained projection remains last-known-good.
+    if (catalogEntry?.summaryReadiness !== "unavailable") return null;
     const provider = registry.providerForSessionId(sessionId) || registry.defaultProvider;
     return sessionDomains.commitUnavailable(sessionId, catalogEntry, provider.source, provider.capabilities);
+  }
+  function requestDomainHydration(sessionId) {
+    const at = performance.now();
+    const requestedAt = pendingDomainHydrations.get(sessionId);
+    if (requestedAt !== undefined && at - requestedAt < DOMAIN_HYDRATION_RETRY_MS) return;
+    pendingDomainHydrations.delete(sessionId);
+    pendingDomainHydrations.set(sessionId, at);
+    while (pendingDomainHydrations.size > 128) pendingDomainHydrations.delete(pendingDomainHydrations.keys().next().value);
+    observationCoordinator.session(sessionId);
   }
   function scheduleSessionDomainRebuild(sessionId) {
     if (pendingDomainRebuilds.has(sessionId)) return;
@@ -621,7 +662,10 @@ export function createObservationRuntime(options = {}) {
     unsubscribeObservation = observationCoordinator.subscribe((event) => {
       if (event.type === "session") {
         const committed = observationStore.getByQualifiedId(event.qualifiedId);
-        if (committed) commitSessionDomains(event.qualifiedId, committed);
+        if (committed) {
+          pendingDomainHydrations.delete(event.qualifiedId);
+          commitSessionDomains(event.qualifiedId, committed);
+        }
         options.onSessionCommitted?.(event.qualifiedId);
         // Provider history acquisition belongs to the background observation
         // lifecycle. Serving only reads the committed, normalized history file.
@@ -634,9 +678,10 @@ export function createObservationRuntime(options = {}) {
       if (event.type === "invalidation") commitSessionDomains(event.qualifiedId);
       if (event.type === "catalog") {
         cacheUnavailableSessionResponses();
-        for (const entry of observationCoordinator.catalog()?.snapshot?.value?.sessions || []) {
-          commitSessionDomains(entry.id);
-        }
+        // Catalog rows only change lifecycle inputs of already retained
+        // projections. Unretained rows project on demand; identical
+        // re-projections are store no-ops that neither re-revision nor evict.
+        for (const retainedId of sessionDomains.sessionIds()) commitSessionDomains(retainedId);
       }
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
       if (event.type === "session" || event.type === "catalog") {
@@ -691,6 +736,7 @@ export function createObservationRuntime(options = {}) {
     unavailableSessionResponses.clear();
     sessionDomains.clear();
     pendingDomainRebuilds.clear();
+    pendingDomainHydrations.clear();
     for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
     historyContributionRetries.clear();
     sessionHistory.stop();
@@ -748,11 +794,27 @@ export function createObservationRuntime(options = {}) {
     },
     serveSessionDomain(sessionId, domain, agentId, revision) {
       const result = sessionDomains.read(sessionId, domain, agentId, revision);
-      if (result.status !== "empty") return result;
-      if (!observationStore.getByQualifiedId(sessionId) && !domainCatalogEntry(sessionId)) {
-        return { status: "unavailable", revision: 0, snapshot: null };
+      const committed = observationStore.getByQualifiedId(sessionId);
+      const catalogEntry = domainCatalogEntry(sessionId);
+      // Without committed L1 evidence, a requested hydratable row queues the
+      // same asynchronous, pinned selection hydration as /api/state. Serving
+      // itself never acquires, parses, or normalizes provider data.
+      const hydratable = !committed && catalogEntry && catalogEntry.summaryReadiness !== "unavailable";
+      if (result.status !== "empty") {
+        if (hydratable && result.snapshot?.value?.readiness === "unavailable") requestDomainHydration(sessionId);
+        return result;
       }
-      scheduleSessionDomainRebuild(sessionId);
+      if (!committed && !catalogEntry) {
+        // Absence is only evidence once every provider catalog has published.
+        // Before then (monitor startup) the request is loading and queues the
+        // same asynchronous selection hydration; its commit publishes the
+        // revision event a browser entry recovers from.
+        if (domainCatalogComplete()) return { status: "unavailable", revision: 0, snapshot: null };
+        requestDomainHydration(sessionId);
+        return { status: "loading", revision: 0, snapshot: null };
+      }
+      if (hydratable) requestDomainHydration(sessionId);
+      else scheduleSessionDomainRebuild(sessionId);
       return { status: "loading", revision: 0, snapshot: null };
     },
     serveHome: (revision) => homeResponseCache.read(revision),

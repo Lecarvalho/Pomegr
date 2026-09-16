@@ -64,7 +64,7 @@ test("commits all seven complete domain snapshots with independent revisions", (
     assert.equal(result.snapshot.value.observedAt, OBSERVED_AT);
   }
   const summary = store.read(SESSION_ID, "session-summary").snapshot.value;
-  assert.deepEqual(Object.keys(summary).sort(), ["activity", "allAgentContext", "capabilities", "domain", "lifecycle", "metrics", "observedAt", "planTasks", "readiness", "repository", "requestSnapshots", "revision", "rightNow", "sectionReadiness", "session", "sessionId", "source", "topSignals", "view"].sort());
+  assert.deepEqual(Object.keys(summary).sort(), ["activity", "allAgentContext", "capabilities", "domain", "lifecycle", "metrics", "observedAt", "planTasks", "readiness", "repository", "requestSnapshots", "resourceAvailability", "revision", "rightNow", "sectionReadiness", "session", "sessionId", "source", "topSignals", "view"].sort());
 });
 
 test("session-summary alone carries the bounded header and Overview data", () => {
@@ -92,6 +92,8 @@ test("session-summary alone carries the bounded header and Overview data", () =>
     currentActivity: { label: "Running focused tests", observedAt: OBSERVED_AT }, tokens: { total: 20 }, lastSeen: OBSERVED_AT, updatedAt: OBSERVED_AT,
   });
   assert.equal(summary.allAgentContext, 30);
+  assert.deepEqual(summary.metrics, { agents: 2, activeAgents: 1, idleAgents: 1, finishedAgents: 0, toolCalls: 0, repeatedCalls: 0 });
+  assert.deepEqual(summary.resourceAvailability, { readiness: "ready", hasData: false });
   assert.deepEqual(summary.topSignals.map((item) => item.id), ["signal-0", "signal-1"]);
   assert.deepEqual(summary.repository.comparison, publicState.session.repository.comparison);
   assert.equal(summary.requestSnapshots.status, "ready");
@@ -142,6 +144,8 @@ test("preserves sectional and request readiness without presenting missing evide
     core: "ready", agentEvidence: "loading", contextEvidence: "unavailable", activityEvidence: "loading", repository: "ready",
   });
   assert.deepEqual(summary.requestSnapshots, { status: "unavailable", items: [] });
+  assert.equal(summary.metrics.idleAgents, null);
+  assert.equal(summary.metrics.finishedAgents, null);
   const agent = store.read(SESSION_ID, "agent", "primary").snapshot.value;
   assert.equal(agent.readiness, "loading");
   assert.deepEqual(agent.sectionReadiness, { agentEvidence: "loading", contextEvidence: "unavailable", activityEvidence: "loading" });
@@ -285,4 +289,71 @@ test("retains committed repository live evidence while future resource history s
     const serialized = store.read(SESSION_ID, domain, domain === "agent" ? "primary" : null).snapshot.serialized;
     assert.doesNotMatch(serialized, /PRIVATE_/u, domain);
   }
+});
+
+function sessionSnapshot(id, overrides = {}) {
+  return snapshot({ ...state(), session: { ...state().session, id }, ...overrides });
+}
+
+test("identical catalog-order re-commits neither advance revisions nor evict the newest or requested session", () => {
+  let clock = 0;
+  const events = [];
+  const store = createSessionDomainStore({ now: () => clock, maxSessions: 24 });
+  store.subscribe((event) => events.push(event));
+  // Catalog order is newest first, as the real catalog commits it.
+  const ids = Array.from({ length: 40 }, (_, index) => `codex:catalog-${String(index).padStart(3, "0")}`);
+  const newest = ids[0];
+  store.commit(newest, sessionSnapshot(newest));
+  assert.equal(store.read(newest, "session-summary").status, "ready");
+  const firstRevision = store.read(newest, "session-summary").revision;
+  for (let round = 0; round < 5; round += 1) {
+    events.length = 0;
+    for (const id of ids) {
+      store.commit(id, sessionSnapshot(id));
+      clock += 1;
+    }
+    const summary = store.read(newest, "session-summary");
+    assert.equal(summary.status, "ready", `round ${round}: the requested newest session is retained`);
+    assert.equal(summary.revision, firstRevision, `round ${round}: an unchanged session keeps its revision`);
+    assert.ok(store.size() <= 24);
+    if (round > 0) {
+      assert.equal(events.filter((event) => event.sessionId === newest).length, 0, "no event without a semantic change");
+    }
+  }
+  assert.deepEqual(store.commit(newest, sessionSnapshot(newest)), [], "an identical commit is a no-op");
+});
+
+test("protected live sessions survive the soft bound and revisions never move backward for a retained session", () => {
+  let clock = 0;
+  const live = "codex:live-session";
+  const store = createSessionDomainStore({ now: () => clock, maxSessions: 2, isProtected: (id) => id === live });
+  store.commit(live, sessionSnapshot(live));
+  const revisions = [store.read(live, "session-summary").revision];
+  clock += 1;
+  store.read("codex:viewed-history", "session-summary");
+  for (let index = 0; index < 10; index += 1) {
+    clock += 1;
+    store.commit(`codex:background-${index}`, sessionSnapshot(`codex:background-${index}`));
+    if (index === 4) store.commit("codex:viewed-history", sessionSnapshot("codex:viewed-history"));
+    if (index % 3 === 0) {
+      const next = state();
+      next.session = { ...next.session, id: live, title: `Live ${index}` };
+      store.commit(live, snapshot(next));
+    }
+    const result = store.read(live, "session-summary");
+    assert.equal(result.status, "ready", `commit ${index}`);
+    revisions.push(result.revision);
+  }
+  assert.deepEqual(revisions, [...revisions].sort((left, right) => left - right), "retained revisions are monotonic");
+  assert.equal(store.read("codex:viewed-history", "session-summary").status, "ready",
+    "a request recorded before commit prioritizes the later committed projection");
+  assert.ok(store.size() <= 3, "only the protected session exceeds the soft bound");
+});
+
+test("an unavailable placeholder never replaces a retained evidence projection", () => {
+  const store = createSessionDomainStore();
+  store.commit(SESSION_ID, snapshot(state()));
+  const before = store.read(SESSION_ID, "session-summary").snapshot.serialized;
+  assert.deepEqual(store.commitUnavailable(SESSION_ID, { isLive: false, activityStatus: "stopped", updatedAt: OBSERVED_AT }, "Codex", {}), []);
+  assert.equal(store.read(SESSION_ID, "session-summary").snapshot.serialized, before);
 });

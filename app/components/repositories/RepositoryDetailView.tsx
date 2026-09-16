@@ -7,7 +7,7 @@ import type { ProviderId, RepositoryProviderInventory } from "../../../shared/mo
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
 import { ProviderBadge } from "../ProviderBadge";
-import { CommandComingSoon, CommandEmpty, CommandIcon, CommandPage } from "../command-center/CommandPage";
+import { CommandComingSoon, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
 import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
@@ -137,22 +137,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
   }
 
   return <section className="commandView repositoryDetail" aria-labelledby="repository-title">
-    <header className="commandViewIntro repositoryDetailHeader">
-      <div className="repositoryDetailIdentity">
-        <span className="repositoryDetailIcon"><CommandIcon name="repositories" /></span>
-        <div className="commandPageHeading">
-          <h1 id="repository-title">{repository.displayName}</h1>
-          <div className="repositoryDetailMeta">
-            <span className="repositoryDetailCount"><strong className={repository.liveCount > 0 ? "live" : undefined}>{repository.liveCount}</strong> live</span>
-            <span aria-hidden="true">·</span>
-            <span className="repositoryDetailCount"><strong>{repository.historyCount}</strong> history</span>
-            {repository.providers.some((provider) => provider.sessionCount > 0) && <span aria-hidden="true">·</span>}
-            {repository.providers.filter((provider) => provider.sessionCount > 0).map((provider) => <ProviderBadge key={provider.provider} source={provider.source} />)}
-          </div>
-        </div>
-      </div>
-      <Link className="commandSecondaryAction" href={`/sessions?repository=${repository.id}`}>View sessions <CommandIcon name="arrow" size="small" /></Link>
-    </header>
+    <CommandPageHeader className="repositoryDetailHeader" breadcrumb={<><Link href="/repositories">Repositories</Link> <span aria-hidden="true">/</span> <span aria-current="page">{repository.displayName}</span></>} title={<><span className="repositoryDetailIcon"><CommandIcon name="repositories" /></span>{repository.displayName}</>} headingId="repository-title" meta={<div className="repositoryDetailMeta"><span className="repositoryDetailCount"><strong className={repository.liveCount > 0 ? "live" : undefined}>{repository.liveCount}</strong> live</span><span aria-hidden="true">·</span><span className="repositoryDetailCount"><strong>{repository.historyCount}</strong> history</span>{repository.providers.some((provider) => provider.sessionCount > 0) && <span aria-hidden="true">·</span>}{repository.providers.filter((provider) => provider.sessionCount > 0).map((provider) => <ProviderBadge key={provider.provider} source={provider.source} />)}</div>} actions={<Link className="commandSecondaryAction" href={`/sessions?repository=${repository.id}`}>View sessions <CommandIcon name="arrow" size="small" /></Link>} />
     <div className="commandSettingsLayout repositoryDetailLayout">
       <div className="commandSettingsNav" role="tablist" aria-label="Repository sections">
         {repositoryTabs.map(([id, label], index) => <button key={id} ref={(node) => { tabsRef.current[index] = node; }} type="button" role="tab" id={`repository-tab-${id}`} aria-controls={`repository-panel-${id}`} aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} className={`commandQuietAction${tab === id ? " active" : ""}`} onClick={() => switchTab(id)} onKeyDown={(event) => handleTabKey(event, index)}>

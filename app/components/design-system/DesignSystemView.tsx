@@ -11,6 +11,7 @@ import {
   CommandFilter,
   CommandMetric,
   CommandPage,
+  CommandPageHeader,
   CommandSearch,
   CommandSelect,
   CommandStatus,
@@ -38,6 +39,8 @@ export function DesignSystemView() {
   return <CommandPage title="Design system" description="Every control below is the real shared class or component, rendered with static sample data. Nothing on this page reads session state.">
     <ButtonsSection />
     <FormFieldsSection />
+    <ShellSection />
+    <RoleFamilySection />
     <ChipsSection />
     <Section id="repository-row" title="Repository setup row" lede="Shared settings geometry, standard chips, and independent row actions.">
       <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
@@ -202,14 +205,14 @@ function FormFieldsSection() {
 }
 
 function ChipsSection() {
-  return <Section id="chips" title="Chips and pills" lede="One chip contract covers every evidence chip: .commandChip (Command Center session badges) and .agentChip (the AgentChip component) share identical geometry — 20px min-height, a 1px --command-line/--line border, --command-panel-2/--panel-2 fill, 11px/500 sentence-case text, and an optional 6px leading dot. Tone modifiers (info, positive, warning, negative) recolor only the text and dot; the border and fill never change.">
+  return <Section id="chips" title="Chips and pills" lede="One chip contract covers every evidence chip: .commandChip (Command Center session badges) and .agentChip (the AgentChip component) share identical geometry — 20px min-height, a 1px --command-line/--line border, transparent fill, 11px/500 sentence-case text, and an optional 6px leading dot. Tone modifiers (info, positive, warning, negative) recolor only the text and dot; the border stays neutral.">
     <div className="designSystemStates">
       <Sample label="Neutral" note="Base .agentChip, rendered through the AgentChip component. With a title it becomes a tooltip trigger; as a button it opens a disclosure.">
         <AgentChip>Explore</AgentChip>
         <AgentChip title="Reported by the agent through the Pomegr MCP tool" ariaLabel="Sample reported signal">Reported signal</AgentChip>
         <AgentChip as="button" ariaLabel="Open sample disclosure" expanded={false}>2 compactions</AgentChip>
       </Sample>
-      <Sample label="With a dot" note="An optional leading 6px dot (a direct-child <i>) picks up the tone color; the chip border and fill stay the same. Command Center session badges (.commandChip, e.g. workflow status) render this form directly.">
+      <Sample label="With a dot" note="An optional leading 6px dot (a direct-child <i>) picks up the tone color; the chip border stays neutral and the fill stays transparent. Command Center session badges (.commandChip, e.g. workflow status) render this form directly.">
         <span className="commandChip"><i aria-hidden="true" />Neutral</span>
         <span className="commandChip positive"><i aria-hidden="true" />Running</span>
         <span className="commandChip warning"><i aria-hidden="true" />Blocked</span>
@@ -257,7 +260,30 @@ function ChipsSection() {
       <CommandFilter active={false} onClick={() => {}}>Needs input</CommandFilter>
       <span className="commandToolbarCount">15 sessions</span>
     </CommandToolbar>
-    <p className="designSystemNote">Filter chips (.commandFilterChip inside .commandToolbar) are 36px interactive toggles; the pressed chip takes --command-panel-3 and ink. Evidence chips (.commandChip / .agentChip) are plain labels, not buttons, even though they share the same border-and-fill language.</p>
+    <p className="designSystemNote">Filter chips (.commandFilterChip inside .commandToolbar) are 36px interactive toggles; the pressed chip takes --command-panel-3 and ink. Evidence chips (.commandChip / .agentChip) are transparent outline labels, not buttons.</p>
+  </Section>;
+}
+
+function ShellSection() {
+  return <Section id="shell" title="Page header, tabs, and sidebar limits" lede="Every route starts with CommandPageHeader: an optional breadcrumb eyebrow, title, optional meta line, and a right-aligned actions slot. Its tab slot supplies the shared one-rule tab bar. Sidebar limits are shell chrome from the account usage store, never session evidence.">
+    <div className="designSystemShellSample">
+      <CommandPageHeader breadcrumb={<><span>Repositories</span> <span aria-hidden="true">/</span> <span>pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
+    </div>
+    <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 5-hour</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · Weekly</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
+  </Section>;
+}
+
+function RoleFamilySection() {
+  return <Section id="role-families" title="Agent track role families" lede="Role tints appear only in request tracks and their legends. Orchestrator remains neutral; same-role agents share one tint.">
+    <div className="sessionRoleLegend" aria-label="Agent role family legend">
+      <span><i className="roleFamily-neutral" aria-hidden="true" />Orchestrator ×1</span>
+      <span><i className="roleFamily-reading" aria-hidden="true" />Explore ×2</span>
+      <span><i className="roleFamily-planning" aria-hidden="true" />Plan ×1</span>
+      <span><i className="roleFamily-writing" aria-hidden="true" />Builder ×3</span>
+      <span><i className="roleFamily-reviewing" aria-hidden="true" />Reviewer ×1</span>
+      <span><i className="roleFamily-generic" aria-hidden="true" />Fork ×2</span>
+      <span><i className="roleFamily-system" aria-hidden="true" />Compaction ×1</span>
+    </div>
   </Section>;
 }
 

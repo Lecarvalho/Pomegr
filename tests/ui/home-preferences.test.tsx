@@ -76,7 +76,7 @@ describe("Home preferences", () => {
       { kind: "view", id: "agents" },
       { kind: "view", id: "usage-limits" },
       { kind: "view", id: "repositories" },
-      { kind: "view", id: "dashboards" },
+      { kind: "view", id: "dashboards" }, // legacy values are discarded
     ];
     window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
       version: 1,
@@ -93,7 +93,7 @@ describe("Home preferences", () => {
 
     const view = renderHook(() => useHomePreferences());
     await waitFor(() => expect(view.result.current.ready).toBe(true));
-    expect(view.result.current.pins).toEqual(safePins.slice(0, HOME_PIN_LIMIT).map(({ kind, id }) => ({ kind, id })));
+    expect(view.result.current.pins).toEqual(safePins.filter((pin) => pin.id !== "dashboards").slice(0, HOME_PIN_LIMIT).map(({ kind, id }) => ({ kind, id })));
     expect(view.result.current.lastViewedSessionId).toBeNull();
 
     window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, "x".repeat(16_385));
@@ -134,7 +134,7 @@ describe("Home preferences", () => {
       { kind: "view" as const, id: "agents" },
       { kind: "view" as const, id: "usage-limits" },
       { kind: "view" as const, id: "repositories" },
-      { kind: "view" as const, id: "dashboards" },
+      { kind: "session" as const, id: "claude:two" },
       { kind: "session" as const, id: "codex:one" },
     ];
     act(() => existing.forEach((pin) => view.result.current.togglePin(pin)));
@@ -149,22 +149,22 @@ describe("Home preferences", () => {
     await waitFor(() => expect(view.result.current.ready).toBe(true));
 
     act(() => {
-      view.result.current.togglePin({ kind: "view", id: "dashboards" });
+      view.result.current.togglePin({ kind: "view", id: "agents" });
       view.result.current.rememberSession("codex:remembered");
     });
-    expect(view.result.current.pins).toEqual([{ kind: "view", id: "dashboards" }]);
+    expect(view.result.current.pins).toEqual([{ kind: "view", id: "agents" }]);
     expect(view.result.current.lastViewedSessionId).toBe("codex:remembered");
     expect(view.result.current.persistent).toBe(false);
     view.unmount();
 
     const remounted = renderHook(() => useHomePreferences());
     await waitFor(() => expect(remounted.result.current.ready).toBe(true));
-    expect(remounted.result.current.pins).toEqual([{ kind: "view", id: "dashboards" }]);
+    expect(remounted.result.current.pins).toEqual([{ kind: "view", id: "agents" }]);
     expect(remounted.result.current.lastViewedSessionId).toBe("codex:remembered");
     expect(setItem).toHaveBeenCalled();
 
     setItem.mockRestore();
-    act(() => remounted.result.current.togglePin({ kind: "view", id: "dashboards" }));
+    act(() => remounted.result.current.togglePin({ kind: "view", id: "agents" }));
   });
 
   it("remains usable in memory when browser storage is unavailable", async () => {
@@ -174,8 +174,8 @@ describe("Home preferences", () => {
     await waitFor(() => expect(view.result.current.ready).toBe(true));
     expect(view.result.current.persistent).toBe(false);
 
-    act(() => view.result.current.togglePin({ kind: "view", id: "dashboards" }));
-    expect(view.result.current.pins).toEqual([{ kind: "view", id: "dashboards" }]);
+    act(() => view.result.current.togglePin({ kind: "view", id: "agents" }));
+    expect(view.result.current.pins).toEqual([{ kind: "view", id: "agents" }]);
     expect(view.result.current.persistent).toBe(false);
     expect(getItem).toHaveBeenCalled();
     expect(setItem).toHaveBeenCalled();

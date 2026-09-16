@@ -203,7 +203,7 @@ describe("Sessions view", () => {
     await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 12");
     expect(visibleSessionTitles()).toEqual(["Session 12"]);
     expect(screen.queryByRole("navigation", { name: "Session pages" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("toolbar", { name: "Filters" })).getByText("1 matches")).toBeInTheDocument();
+    expect(within(screen.getByRole("toolbar", { name: "Search sessions" })).getByText("1 matches")).toBeInTheDocument();
   });
 
   it("shows normalized fallback activity with visible provenance while retaining the current mark", async () => {

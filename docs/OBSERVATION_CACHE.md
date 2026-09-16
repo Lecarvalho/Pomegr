@@ -122,9 +122,10 @@ D projects each committed session into seven independently revisioned response d
 `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and
 `details`. `agent` selects one normalized agent ID from its committed projection.
 `session-summary` alone contains the session header and Overview inputs: lifecycle,
-all-agent context, current-agent rows, two efficiency signals, a repository summary,
+readiness-qualified agent status counts, all-agent context, current-agent rows, two efficiency signals, a repository summary,
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
-kind totals, and the normalized cost estimate. `signals` owns flow and cache evidence;
+kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
+flag used only to decide whether the Resources tab can be hidden. `signals` owns flow and cache evidence;
 the other domains retain their corresponding normalized public state. The inspector
 also carries bounded selected-agent request, insight, cache and task evidence. Each
 composed domain preserves the readiness of its source sections: a ready core does not
@@ -712,7 +713,7 @@ GETs, and UI polling remain unchanged.
 | Tier | Authority and contents | Current default bound |
 | --- | --- | --- |
 | **L1 evidence cache** | Runtime-authoritative immutable normalized session evidence in monitor memory | 100-entry and 8 MiB pruning targets for unpinned entries; one entry larger than 8 MiB is rejected |
-| **L1 response cache** | Prebuilt provider-neutral JSON responses and independent revisions for cache-only serving | Session domains retain 24 sessions and evict after ten idle minutes; other response domains retain their documented bounds |
+| **L1 response cache** | Prebuilt provider-neutral JSON responses and independent revisions for cache-only serving | Session domains retain a soft bound of 24 sessions (live or open catalog rows and the most recently requested session are exempt up to 128) and evict after ten minutes without a request or semantic change; other response domains retain their documented bounds |
 | **L2 checkpoint cache** | Schema-versioned, privacy-filtered JSON used only to accelerate restart recovery | 100 entries and 16 MiB total |
 | **Frontend view state** | The latest response retained by React while refreshing | Not a source of truth and not durable |
 
@@ -1299,7 +1300,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
-| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session/catalog commits, after restore even when evidence is unchanged, and asynchronously after a known evicted session is requested |
+| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions only, and asynchronously after a known evicted session is requested |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
@@ -1350,6 +1351,28 @@ Session-domain revision clocks are monotonic per domain across sessions. A domai
 advances only when its semantic JSON changes; the observation timestamp alone does not
 advance it. Eviction retains the clock floor, so rebuilding a response cannot make an
 old client ETag appear current.
+
+Session-domain retention follows demand, not commit order. A semantically identical
+re-projection is a no-op: it neither advances a revision nor refreshes retention, so
+catalog churn cannot reorder or evict retained sessions. A catalog commit re-projects
+only sessions whose domains are already retained; other rows project when their evidence
+commits or when a request asks for them. Above the soft bound, never-requested sessions
+evict first, then the least recently used. Live or open catalog rows and the most recently
+requested session are exempt up to a hard ceiling of 128 sessions. A request recorded
+before a projection exists carries over to the first commit after rebuild or hydration.
+
+A requested catalog row without committed L1 evidence serves `loading` and queues one
+asynchronous, pinned selection hydration, the same one `/api/state` queues, until its
+evidence commits or a 30-second retry window passes. It receives no unavailable
+placeholder. Only a row whose catalog readiness is `unavailable` projects the unavailable
+placeholder, and that placeholder never replaces a retained evidence projection.
+
+Absence from the catalog is evidence only after every provider catalog has published. Until
+then, during monitor startup, a request for a session with neither committed L1 evidence nor
+a catalog row also serves `loading` and queues the same deduplicated selection hydration.
+Its commit publishes the domain revision event that a historical browser entry recovers
+from. After every provider catalog has published, such a request answers `unavailable`
+(HTTP 404, which the same-origin proxy reports as 503).
 
 Session publications allocate revisions from a store-wide monotonic sequence. Evicting
 and rebuilding a session cannot reuse a revision still held by a client and incorrectly
@@ -1685,6 +1708,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
+| Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
 | Historical session and history | Mounted queries hydrate through events and reconnect revalidation; ready queries have no periodic timer; navigation, focus and reconnect may revalidate |
 | Repository inventory | Repository events and the same 30/5/30-second fallback; shared consumers and desktop Pause do not create extra pollers |
@@ -1701,6 +1725,18 @@ last-known-good values. Focus or foreground return revalidates mounted consumers
 hidden session consumers suppress immediate event bursts and use their 30-second
 fallback. Desktop **Pause updates** pauses F subscriptions and polling, including
 repository views, and never controls backend observation.
+
+The session-domain browser store never sends a revision without the exact retained
+query body. It validates the returned session, domain, and selected normalized agent
+identity before caching. Server rendering returns an empty snapshot without retaining
+module-global query entries. Unmount aborts an active request; remount reuses only a
+complete last-known-good body. Historical entries whose last request succeeded with a
+resolved body have no periodic timer, including when their readiness is unavailable. A
+failed request or a still-loading body retries every 5 seconds (30 seconds hidden) until
+it resolves, and a failure clears the pending invalidated revision so a replayed event
+can revalidate. Events, reconnect recovery, navigation, and focus may also revalidate
+them. Hidden revision bursts remain coalesced until the hidden fallback or foreground
+return.
 
 A loading historical response cannot leave an in-flight flag set after its request
 settles: later readiness events and reconnects must be able to finish hydration.

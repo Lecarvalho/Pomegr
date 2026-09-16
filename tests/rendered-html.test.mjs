@@ -44,7 +44,7 @@ test("server-renders the personal Pomegr Home", async () => {
   assert.match(html, /Connecting/);
   assert.doesNotMatch(html, /Local monitor offline/);
   assert.doesNotMatch(html, /Read-only · normalized metadata only/);
-  assert.match(html, /Dashboards/);
+  assert.match(html, /Models &amp; delegation/);
   assert.match(html, /Usage limits/);
   assert.match(html, /Local profile/);
   assert.doesNotMatch(html, /Generate report|Flow score|Recent activity/);

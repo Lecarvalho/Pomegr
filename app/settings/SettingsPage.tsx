@@ -8,6 +8,7 @@ import { PhoneAccessControls, usePhoneAccessDesktopAvailable } from "../componen
 import { DesktopUpdateSettings, useDesktopUpdates } from "./DesktopUpdateSettings";
 import { AboutDetails } from "./AboutDetails";
 import { ProviderSettings, useProviderSettingsAvailable } from "./ProviderSettings";
+import { CommandPageHeader } from "../components/command-center/CommandPage";
 
 function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
   label: string;
@@ -75,7 +76,7 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
 
   return (
     <section className="commandView commandSettings" aria-labelledby="settings-title">
-      <header className="commandPageHeader"><div><h1 id="settings-title">Settings</h1><p>Local display and notification preferences. Monitoring remains read-only.</p></div><button className="commandSecondaryAction" type="button" onClick={resetPreferences} disabled={defaultsActive}>Restore defaults</button></header>
+      <CommandPageHeader title="Settings" headingId="settings-title" meta="Local display and notification preferences. Monitoring remains read-only." actions={<button className="commandSecondaryAction" type="button" onClick={resetPreferences} disabled={defaultsActive}>Restore defaults</button>} />
       <div className="commandSettingsLayout">
         <nav className="commandSettingsNav" aria-label="Settings sections" role="tablist">
           {sections.map(([id, label], index) => <button ref={(node) => { tabsRef.current[index] = node; }} id={`settings-tab-${id}`} aria-controls={`settings-panel-${id}`} tabIndex={section === id ? 0 : -1} key={id} type="button" role="tab" aria-selected={section === id} className={section === id ? "active" : ""} onClick={() => setSelectedSection(id)} onKeyDown={(event) => handleTabKey(event, index)}>{label}{id === "about" && updates.state?.update?.status === "ready" && <span className="commandUpdateDot" role="img" aria-label="Update ready to install" />}</button>)}

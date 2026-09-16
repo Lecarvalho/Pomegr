@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
-import { CommandSelect } from "./components/command-center/CommandPage";
+import { CommandPageHeader, CommandSelect } from "./components/command-center/CommandPage";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
@@ -21,8 +21,7 @@ import styles from "./HomeDashboard.module.css";
 type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
 const VIEWS: Destination[] = [
   { kind: "view", id: "sessions", title: "Sessions", detail: "Live and historical sessions", href: "/sessions", icon: "sessions" },
-  { kind: "view", id: "dashboards", title: "Dashboards", detail: "Built-in views", href: "/dashboards", icon: "dashboard" },
-  { kind: "view", id: "agents", title: "Agent operations", detail: "Session-level agent evidence", href: "/agents", icon: "agents" },
+  { kind: "view", id: "agents", title: "Models & delegation", detail: "Model, role, and work analysis", href: "/agents", icon: "agents" },
   { kind: "view", id: "usage-limits", title: "Usage limits", detail: "Provider account windows", href: "/usage-limits", icon: "limits" },
   { kind: "view", id: "repositories", title: "Repositories", detail: "Observed projects", href: "/repositories", icon: "repositories" },
 ];
@@ -92,10 +91,7 @@ export function HomeDashboard() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return <section className={`commandView commandHome ${styles.home}`} aria-labelledby="home-heading">
-    <header className={styles.intro}>
-      <h1 id="home-heading">Welcome to Pomegr</h1>
-      <p>Understand your coding sessions. Build on what you learn.</p>
-    </header>
+    <CommandPageHeader title="Welcome to Pomegr" headingId="home-heading" meta="Understand your coding sessions. Build on what you learn." />
 
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>

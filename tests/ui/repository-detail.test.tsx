@@ -17,7 +17,6 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
 });
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
-import { CommandCenterShell } from "../../app/components/command-center/CommandCenterShell";
 import RepositoryPage from "../../app/repositories/[repositoryId]/page";
 import RepositoriesPage from "../../app/repositories/page";
 import SessionsPage from "../../app/sessions/page";
@@ -133,15 +132,16 @@ describe("repository detail shell", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-controls", screen.getByRole("tabpanel").id);
   });
 
-  it("uses the session breadcrumb markup and current navigation on repository routes", async () => {
+  it("uses the shared page-header breadcrumb on repository routes", async () => {
     serve();
-    const { container } = render(<CommandCenterShell pathname={`/repositories/${repositoryId}`} sessions={[]} connected loading={false}><div /></CommandCenterShell>);
-    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(breadcrumb).toHaveClass("sessionBreadcrumb");
+    render(<RepositoryDetailView repositoryId={repositoryId} />);
+    const breadcrumb = screen.getByText("Repositories").closest(".commandPageBreadcrumb") as HTMLElement | null;
+    expect(breadcrumb).toBeInTheDocument();
+    if (!breadcrumb) throw new Error("Repository breadcrumb is missing");
+    expect(breadcrumb).toHaveClass("commandPageBreadcrumb");
     expect(await within(breadcrumb).findByText("Example project")).toHaveAttribute("aria-current", "page");
     expect(within(breadcrumb).getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repositories");
-    expect(container.querySelector(".commandHeader")).toHaveClass("hasBreadcrumb");
-    expect(container.querySelector('.commandNavItem[href="/repositories"]')).toHaveAttribute("aria-current", "page");
+    expect(breadcrumb.closest(".commandPageHeader")).toBeInTheDocument();
   });
 });
 
