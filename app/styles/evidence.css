@@ -834,6 +834,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .activityOtherCounts strong { font-family: var(--font-data); font-weight: 400; }
 .activityOtherCounts .activityFailures { color: var(--color-error); }
 .activityBreakdown p { margin: 16px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+/* Phone puts the request groups first, so the kind rail follows the feed behind one top rule. */
+.activityLayout.isPhone .activityBreakdown { border-right: 0; border-bottom: 0; border-top: 1px solid var(--line); }
 .activityFeed, .activityTable { min-width: 0; width: 100%; }
 .activityRequestTokens { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .activityRequestTokens .requestsActionsSwatch { margin-right: 4px; }

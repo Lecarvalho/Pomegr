@@ -198,6 +198,29 @@ describe("Activities tab", () => {
     for (const forbidden of ["request-", "call-", "SECRET_COMMAND", "SECRET_OUTPUT", "SECRET_ERROR", "msg_SECRET_PROVIDER"]) expect(html).not.toContain(forbidden);
   });
 
+  it("puts the request groups before Actions by kind and Shell tasks on phone", async () => {
+    setPhone(true);
+    fixture();
+    const feed = await ready();
+    const layout = feed.querySelector(".activityLayout")!;
+    expect(layout).toHaveClass("isPhone");
+    const [first, second] = Array.from(layout.children);
+    expect(first).toHaveClass("activityFeed");
+    expect(second).toHaveClass("activityBreakdown");
+    expect(within(first as HTMLElement).getAllByRole("article").length).toBeGreaterThan(0);
+    expect(within(second as HTMLElement).getByRole("heading", { name: "Actions by kind" })).toBeInTheDocument();
+  });
+
+  it("keeps Actions by kind before the request groups on desktop", async () => {
+    fixture();
+    const feed = await ready();
+    const layout = feed.querySelector(".activityLayout")!;
+    expect(layout).not.toHaveClass("isPhone");
+    const [first, second] = Array.from(layout.children);
+    expect(first).toHaveClass("activityBreakdown");
+    expect(second).toHaveClass("activityFeed");
+  });
+
   it("shows a group's token counts matching the fixture's snapshot values", async () => {
     fixture();
     const feed = await ready();

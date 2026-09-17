@@ -26,13 +26,14 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
         : <p className="sessionTabState" role="status">{chartUnavailable ? "Activity history is unavailable; retrying…" : "Loading activity…"}</p>}
     </section>;
   }
+  // Phone reads the request groups first and keeps the kind and shell aggregates below them; the
+  // desktop rail keeps its leading 360px column. Same components, same props, one order decision.
+  const rail = <ActivityKindRail feed={feed} selection={selection} />;
+  const list = <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} />;
   return <section className="panel activityPanel" aria-label="Activity feed" aria-busy={busy || undefined}>
     <header className="activityPanelHeader">
       <div><h2>Activity feed</h2><p>{feed.requestTotal.toLocaleString()} {feed.requestTotal === 1 ? "request" : "requests"} in this scope</p></div>
     </header>
-    <div className="activityLayout">
-      <ActivityKindRail feed={feed} selection={selection} />
-      <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} />
-    </div>
+    <div className={`activityLayout${selection.phone ? " isPhone" : ""}`}>{selection.phone ? <>{list}{rail}</> : <>{rail}{list}</>}</div>
   </section>;
 }

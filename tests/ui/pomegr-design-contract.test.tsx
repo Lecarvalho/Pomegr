@@ -19,6 +19,9 @@ const laneChartSource = readFileSync(join(requestsActionsPath, "RequestLaneChart
 const laneModelSource = readFileSync(join(requestsActionsPath, "lane-model.ts"), "utf8");
 const minimapSource = readFileSync(join(requestsActionsPath, "RequestMinimap.tsx"), "utf8");
 const requestsPanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestsActionsPanel.tsx"), "utf8");
+const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
+/** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
+const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 describe("Pomegr visual contract", () => {
   it("reuses settings row geometry and standard chips for repository setup", () => {
@@ -128,6 +131,21 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.requestsActionsMiniWindow\s*\{\s*fill:\s*color-mix\(in srgb, var\(--command-muted\) 12%, transparent\);\s*stroke:\s*var\(--command-muted\)/);
     expect(styles).not.toMatch(/\.requestsActionsMini[^{]*\{[^}]*(?:--command-brand|--brand|--session-role|--role-)/);
     expect(minimapSource).toMatch(/aria-describedby=\{interactive \? hintId : undefined\}/);
+  });
+
+  // Guards for the two documented phone Activities exceptions. They hold before parts 8-9 write the
+  // CSS, so those parts add the styles under these selectors instead of editing this test.
+  it("scopes the phone Activities brand left rule and 32px call line to their documented selectors", () => {
+    expect(designContract).toMatch(/`\.activityLayout\.isPhone \.activityTableFrame\.isSelectedRequest`/);
+    expect(designContract).toMatch(/`\.activityCallLine`\) is 32px high/);
+
+    const brandLeftRule = rules.filter(({ body }) => /border-(?:left|inline-start):[^;]*var\(--(?:command-|color-)?brand/.test(body));
+    expect(brandLeftRule.map(({ selector }) => selector).filter((selector) => !/\.activityLayout\.isPhone\b/.test(selector) || !/\.isSelectedRequest\b/.test(selector))).toEqual([]);
+
+    const denseActivityRow = rules.filter(({ selector, body }) => /\bactivity/i.test(selector) && /(?:min-)?height:\s*32px/.test(body));
+    expect(denseActivityRow.map(({ selector }) => selector).filter((selector) => !/\.activityCallLine\b/.test(selector))).toEqual([]);
+
+    expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
   });
 
   it("preserves the current activity icon animation and reduced-motion opt-out", () => {

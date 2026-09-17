@@ -217,7 +217,7 @@ Operational surfaces are flat at rest. Depth comes from charcoal/light tonal ste
 
 ## Shapes
 
-Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders are one-pixel and rectangular; avoid pills, ornamental clipping, or irregular silhouettes in the application. Touch sizing is separate from shape: default controls are 36px high, compact controls 32px, and coarse-pointer/mobile controls at least 44px.
+Controls use a restrained 4px radius. Evidence panels use a 6px radius. Borders are one-pixel and rectangular; avoid pills, ornamental clipping, or irregular silhouettes in the application. Touch sizing is separate from shape: default controls are 36px high, compact controls 32px, and coarse-pointer/mobile controls at least 44px. The one documented exception to the touch minimum is the 32px phone Activities call line; see Session Evidence.
 
 ## Components
 
@@ -290,7 +290,8 @@ desktop widths stack the rail above it. The six feed columns are Time, Agent,
 Action, Target, Duration, and Request. Linked rows use the quiet button role,
 raised tone for the selected request, and error-soft tone for failed rows.
 Request numbers use the text-link treatment; the selected request number is the
-only brand accent in the feed. Missing links and durations use an em dash in
+only brand accent in the desktop feed, which the phone composition extends with the
+scoped selected-request left rule below. Missing links and durations use an em dash in
 desktop columns; phone rows omit absent metadata and its separators.
 Rows and eight-row pages run from earliest to latest, matching Requests: page 1
 contains the first events, Previous moves earlier, and Next moves later. The feed
@@ -467,6 +468,23 @@ Compactions lane, the minimap) and a single-chart sample with the track and lege
 gutter and lane heights, collapse threshold, tint scope, and neutral minimap.
 
 Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Keep the Cache evidence disclosure after Activity, closed by default, with its saved disclosure state and event count. Requests replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
+
+#### Phone Activities feed
+
+On phone the feed puts the request groups and their range navigation first, with Actions by
+kind, Shell tasks and Failed shell runs following below them behind one rule
+(`.activityLayout.isPhone`). Desktop and compact-desktop order is unchanged: the 360px rail
+precedes the feed. Two exceptions are scoped to this phone composition alone, and
+`tests/ui/pomegr-design-contract.test.tsx` keeps each from spreading.
+
+- **Selected-request brand rule.** The selected request group carries a brand-colored left rule
+  and its call lines carry the same rule
+  (`.activityLayout.isPhone .activityTableFrame.isSelectedRequest`). This is the only
+  brand-colored left border in `app/styles/`; selection everywhere else stays on the raised tone.
+- **32px call line.** The phone call line (`.activityCallLine`) is 32px high, the single
+  documented dense-list exception to the 44px touch minimum: it is full-width, separated by 44px
+  request lines, and the line itself is its disclosure target. No other `activity` selector may
+  set a 32px row height.
 
 ## Do's and Don'ts
 
