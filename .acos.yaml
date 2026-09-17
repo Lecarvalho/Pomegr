@@ -24,3 +24,11 @@ models:
 
 gates:
   go: required
+
+# Session limits. Advisory, compose-time only: size tasks into slices, cap
+# delegation. Not checked mid-run; /acos calibrate reports overruns.
+limits:
+  orchestrator_tokens: 100000
+  worker_tokens: 300000
+  agents: 3
+  stages: 5

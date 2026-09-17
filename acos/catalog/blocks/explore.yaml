@@ -1,7 +1,7 @@
 name: explore
-role: "Map the parts of the codebase relevant to the intent. Read only."
+role: "Map the parts of the codebase relevant to the intent. Read only. Use only when the area is unknown."
 default:
-  adapter: subagent
+  adapter: inline
   effort: low
 inputs: []
 outputs: [context]

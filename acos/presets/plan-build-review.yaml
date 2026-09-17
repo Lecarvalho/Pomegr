@@ -1,26 +1,20 @@
 # Preset: plan-build-review
-# Explore (cheap), plan in-session (strong), implement in a subagent
-# (balanced, escalate to strong on failure), review in a subagent (strong).
-# Provider and model come from .acos.yaml when omitted here.
+# Plan in-session (strong), implement in-session (escalate to strong on
+# failure), review in a subagent (strong) for an independent judgement.
+# One agent total. Provider and model come from .acos.yaml when omitted.
 
 acos: "0.1"
 name: plan-build-review
-description: "Explore, plan, implement with escalation, then independent review."
+description: "Plan, implement with escalation, then independent review."
 
 stages:
-  - block: explore
-    adapter: subagent
-    effort: low
-    model: "{{ project.models.fast }}"
-
   - block: plan
     adapter: inline
     effort: high
 
   - block: implement
-    adapter: subagent
+    adapter: inline
     effort: medium
-    model: "{{ project.models.balanced }}"
     on_fail: escalate
     escalation:
       - { provider: "{{ project.provider }}", model: "{{ project.models.strong }}", effort: high }

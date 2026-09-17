@@ -12,10 +12,16 @@ The orchestrator does the work itself in the current session.
 - `provider` and `model` may be omitted; the session model is used.
 - Map `effort` to your own behaviour: `low` means minimal exploration and
   terse output, `high` and `max` mean read more before acting.
-- Tokens: not reported. Log `tokens: null`.
+- Tokens: not reported by the harness. Estimate from what you read and
+  wrote (roughly 4 characters per token) and log
+  `tokens: <n>, estimated: true`.
+- Escalation on an inline stage: if the next `escalation` entry names
+  the session model, raise effort and retry inline. If it names a
+  different model, run the retry as a `subagent` with that model, count it
+  against `limits.agents`, and log `adapter_used: subagent`.
 
-Best for: plan, verify, small implement stages, final review by the
-orchestrator.
+Best for: nearly everything. Plan, implement, verify, and review of small
+changes. This is the default adapter.
 
 ## subagent
 
@@ -35,7 +41,9 @@ Spawn one agent with the Agent tool.
   context. Include intent, scope notes, inputs, and the block prompt.
 - Ask the agent to end with a clear final report; that report is the stage
   output.
-- Tokens: not reported by the harness. Log `tokens: null`.
+- Tokens: not reported by the harness. Log `tokens: null`, or an
+  estimate marked `estimated: true` if the agent reports what it read.
+- Each spawn counts against `limits.agents`. A retry is a new spawn.
 
 Parallel stages: if two consecutive stages share no inputs/outputs
 dependency, they may be spawned in one message. Log them separately.

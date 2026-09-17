@@ -7,9 +7,9 @@ wins over anything here if they disagree.
 ## Opt-in
 
 The Workflow tool runs only on explicit user opt-in. In ACOS that opt-in
-is the GO reply on a manifest that shows `adapter: workflow`. The manifest
-is printed in full before GO, so the user has seen and approved the
-workflow. If the user changes a stage away from `workflow` before GO,
+is the GO reply on a manifest that shows `adapter: workflow`. The stage
+summary printed before GO names the adapter and the script path, so the
+user has seen and approved the workflow. If the user changes a stage away from `workflow` before GO,
 no workflow runs. Never switch a stage *to* `workflow` after GO.
 
 ## When to compile

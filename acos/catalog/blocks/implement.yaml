@@ -1,7 +1,7 @@
 name: implement
 role: "Make the change described by the plan and get the verify command passing."
 default:
-  adapter: subagent
+  adapter: inline
   effort: medium
 inputs: [plan]
 outputs: [diff]
