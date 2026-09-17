@@ -8,6 +8,8 @@ import { DottedInfoPopover } from "../DottedInfoPopover";
 import { CommandSelect } from "../command-center/CommandPage";
 import { LargestRequestsList } from "./requests-actions/LargestRequestsList";
 import { RequestBarsChart } from "./requests-actions/RequestBarsChart";
+import { buildRequestLanes } from "./requests-actions/lane-model";
+import { RequestLaneChart } from "./requests-actions/RequestLaneChart";
 import { RequestDetail } from "./requests-actions/RequestDetail";
 import { RequestMinimap } from "./requests-actions/RequestMinimap";
 import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
@@ -27,6 +29,9 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
     : null, [overview, requestHistory.total]);
   const scaleInput = scaleRows ?? rows;
   const maximum = useMemo(() => Math.max(1, scaleMax(scaleInput, mode, cacheWriteAvailable)), [scaleInput, mode, cacheWriteAvailable]);
+  const lanes = useMemo(() => buildRequestLanes(phone ? [] : rows, agents, mode, cacheWriteAvailable), [phone, rows, agents, mode, cacheWriteAvailable]);
+  const windowStart = requestHistory.enabled && !requestHistory.preview ? requestHistory.offset + start : start;
+  const chartTotal = requestHistory.enabled ? requestHistory.total : rows.length;
   const scopedAgent = agents.find((agent) => agent.id === resolvedScope);
   const scopeLabel = resolvedScope === "all" ? "All agents" : scopedAgent ? agentDisplayName(scopedAgent) : "Unknown agent";
   const chartRef = useRef<HTMLDivElement>(null);
@@ -52,8 +57,10 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
     </header>
     {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && requestHistory.status === "loading" ? "Loading request history…" : requestHistory.enabled && requestHistory.status === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
-        <p className="requestsActionsScale" aria-live="polite"><strong>0–{compactNumber(maximum)} tokens</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
-        <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={requestHistory.enabled && !requestHistory.preview ? requestHistory.offset + start : start} total={requestHistory.enabled ? requestHistory.total : rows.length} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
+        <p className="requestsActionsScale" aria-live="polite"><strong>{phone ? `0–${compactNumber(maximum)} tokens` : "Per-lane scales"}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
+        {phone
+          ? <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
+          : <RequestLaneChart lanes={lanes.lanes} laneByRequest={lanes.laneByRequest} agents={agents} rows={rows} start={start} end={end} size={size} mode={mode} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} />}
         <RequestMinimap rows={rows} overview={overview} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} interactive={!requestHistory.enabled || isCompleteRequestOverview(overview, requestHistory.total)} />
         {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />}
       </div>

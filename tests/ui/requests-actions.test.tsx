@@ -114,7 +114,8 @@ describe("RequestsActionsPanel", () => {
     const { container } = render(<HistoryLocateHarness sessionId="preload-drag" requests={[]} />);
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(phone ? 4 : 3));
     const calls = fetchPage.mock.calls.length;
-    expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+    // Lanes scale over the loaded page; only the single chart uses the whole-history overview.
+    expect(screen.getByText(phone ? "0–12M tokens" : "Per-lane scales")).toBeInTheDocument();
     if (phone) {
       const svg = chart(container);
       vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
@@ -136,7 +137,7 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 179, clientY: 20 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 0, clientY: 20 });
     expect(axisLabels(container)).toEqual(["#10", `#${size * 10}`]);
-    expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+    expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: size + 9, clientY: 20 });
     expect(axisLabels(container)).toEqual(["#110", `#${(size + 10) * 10}`]);
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 180, clientY: 20 });
@@ -445,24 +446,25 @@ describe("RequestsActionsPanel", () => {
     const labels = axisLabels(container);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(0);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
-    expect(screen.getByText("0–8,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
+    expect(screen.getByText("max 8,000")).toBeInTheDocument();
     expect(screen.getByText("Rescaled · cache reads excluded")).toBeInTheDocument();
     expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
     const freshHeight = Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"));
-    expect(freshHeight).toBeCloseTo(171.5);
+    expect(freshHeight).toBeCloseTo(84);
     const selectedBar = container.querySelector(".requestsActionsBar.isSelected .requestsActionsSegment")!;
     const selectedLabel = container.querySelector(".requestsActionsSelectedLabel")!;
     expect(Number(selectedLabel.getAttribute("x"))).toBeCloseTo(
       Number(selectedBar.getAttribute("x")) + Number(selectedBar.getAttribute("width")) / 2,
     );
-    expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(70.5);
+    expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(26);
 
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
     expect(axisLabels(container)).toEqual(labels);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(60);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
-    expect(screen.getByText("0–120K tokens")).toBeInTheDocument();
+    expect(screen.getByText("max 120K")).toBeInTheDocument();
     expect(screen.getByText("All input + output")).toBeInTheDocument();
     expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
 
@@ -471,7 +473,7 @@ describe("RequestsActionsPanel", () => {
     expect(axisLabels(container)).toEqual(labels);
     expect(Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"))).toBe(freshHeight);
     fireEvent.keyDown(screen.getByRole("slider", { name: "Request window" }), { key: "Home" });
-    expect(screen.getByText("0–8,000 tokens")).toBeInTheDocument();
+    expect(screen.getByText("max 8,000")).toBeInTheDocument();
   });
 
   it("includes output when comparing full-breakdown requests in the minimap", async () => {

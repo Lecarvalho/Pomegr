@@ -66,8 +66,9 @@ export function HistoryLocateHarness({ sessionId, requests }: { sessionId: strin
   return <><button type="button" onClick={() => selection.locate("request-10")}>Locate absent request</button><ControlledRequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed(requests)} contextBoundaries={EMPTY_BOUNDARIES} cacheWriteAvailable historical={false} selection={selection} /></>;
 }
 
-export function chart(container: HTMLElement): SVGSVGElement {
-  return container.querySelector("svg.requestsActionsChart") as SVGSVGElement;
+/** The single chart on phone, or the lanes root on desktop; both own bars, axis labels and arrow keys. */
+export function chart(container: HTMLElement): HTMLElement {
+  return container.querySelector("svg.requestsActionsChart, .requestLanes") as HTMLElement;
 }
 
 export function axisLabels(container: HTMLElement): string[] {

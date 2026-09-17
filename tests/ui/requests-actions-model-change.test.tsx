@@ -26,8 +26,8 @@ describe("model-change cache evidence", () => {
     expect(container.querySelector(".requestsActionsMiniRefill")).toBeInTheDocument();
     const label = container.querySelector(".requestsActionsRefillLabel")!;
     expect(label).toHaveTextContent("Reuse drop · model change");
-    expect(Number(label.getAttribute("x"))).toBeGreaterThanOrEqual(phone ? 34 : 56);
-    expect(Number(label.getAttribute("x")) + (label.textContent?.length ?? 0) * 6).toBeLessThanOrEqual(phone ? 330 : 1100);
+    expect(Number(label.getAttribute("x"))).toBeGreaterThanOrEqual(phone ? 34 : 8);
+    expect(Number(label.getAttribute("x")) + (label.textContent?.length ?? 0) * 6).toBeLessThanOrEqual(phone ? 330 : 1104);
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(evidence).toHaveTextContent("Cache reuse dropped across a model change");
     expect(container.querySelector(".requestsActionsRefill title")).toHaveTextContent("Cache reuse dropped across a model change");
