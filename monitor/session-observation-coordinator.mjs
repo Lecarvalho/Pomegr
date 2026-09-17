@@ -568,6 +568,31 @@ export function createSessionObservationCoordinator(options = {}) {
     return true;
   }
 
+  // A checkpoint-restored live session serves its downgraded lifecycle until fresh provider
+  // evidence commits. A viewer's request prioritizes that revalidation; the restored hydration
+  // itself is deduplicated, so repeated requests queue no additional work.
+  function prioritizeRestoredLive(qualifiedId, snapshot = store.getByQualifiedId(qualifiedId)) {
+    if (snapshot?.evidence?.historical !== false || !restoredActivitySessions.has(qualifiedId)) return false;
+    return hydrate(qualifiedId, { selected: true, restored: true });
+  }
+
+  // Queues one asynchronous hydration for a session that has neither committed evidence nor a
+  // catalog row (for example one older than the bounded provider catalog window). Returns `false`
+  // when the ID does not belong to a registered provider, `null` when nothing could be queued yet
+  // (observers not started, or stopped), and otherwise a promise resolving whether the hydration
+  // published evidence. It never acquires synchronously, and failures resolve `false`.
+  function probeUncatalogued(requestedSessionId) {
+    const parsed = typeof requestedSessionId === "string" ? parseProviderSessionId(requestedSessionId) : null;
+    if (!parsed || !registry.providers?.some((provider) => provider.id === parsed.providerId)) return false;
+    if (stopped || typeof lifecycle?.hydrate !== "function") return null;
+    qa.hydrationsQueued += 1;
+    const observer = lifecycle;
+    const workGeneration = generation;
+    return Promise.resolve()
+      .then(() => !stopped && generation === workGeneration ? observer.hydrate(requestedSessionId) : false)
+      .then((found) => Boolean(found), () => false);
+  }
+
   function refreshProjection(qualifiedId) {
     if (stopped || typeof qualifiedId !== "string" || !qualifiedId) return false;
     if (pendingSessions.has(qualifiedId)) {
@@ -629,6 +654,8 @@ export function createSessionObservationCoordinator(options = {}) {
     start,
     stop,
     hydrate,
+    prioritizeRestoredLive: (qualifiedId) => prioritizeRestoredLive(qualifiedId),
+    probeUncatalogued,
     refreshProjection,
     catalog: (revision) => catalogCache.read(revision),
     catalogReadiness: () => Object.freeze(Object.fromEntries((registry.providers || []).map((provider) => [
@@ -677,9 +704,7 @@ export function createSessionObservationCoordinator(options = {}) {
           snapshot: null,
         });
       }
-      if (snapshot.evidence?.historical === false && restoredActivitySessions.has(selectedId)) {
-        hydrate(selectedId, { selected: true, restored: true });
-      }
+      prioritizeRestoredLive(selectedId, snapshot);
       qa.cacheHits += 1;
       return Object.freeze({
         status: Number(revision) === snapshot.revision ? "unchanged" : "ready",

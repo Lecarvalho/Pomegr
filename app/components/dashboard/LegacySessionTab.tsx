@@ -14,18 +14,23 @@ import { InsightsPanel } from "./InsightsPanel";
 import { useSessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
 import type { SessionTab } from "./session-route";
 
-export function LegacySessionTab({ tab, sessionId, historical, paused, showEstimatedCost, onNavigateAgent }: { tab: Exclude<SessionTab, "overview" | "agents">; sessionId: string; historical: boolean; paused: boolean; showEstimatedCost: boolean; onNavigateAgent: (agentId: string) => void }) {
+type LegacySessionTabProps = { tab: Exclude<SessionTab, "overview" | "agents">; sessionId: string; historical: boolean; paused: boolean; showEstimatedCost: boolean; onNavigateAgent: (agentId: string) => void };
+
+// Keying the panel on sessionId makes React unmount and remount it on a session change instead of
+// reusing the instance, so `state`/`error`/refs reset to their initial values for free. That
+// replaces a separate reset effect that called setState (react-hooks/set-state-in-effect) with no
+// behavior change: the previous instance's cleanup (abort controller, clear timer, unsubscribe)
+// still runs before the fresh one mounts and issues its own revision-less request.
+export function LegacySessionTab(props: LegacySessionTabProps) {
+  return <LegacySessionTabPanel key={props.sessionId} {...props} />;
+}
+
+function LegacySessionTabPanel({ tab, sessionId, historical, paused, showEstimatedCost, onNavigateAgent }: LegacySessionTabProps) {
   const [state, setState] = useState<MonitorState | null>(null);
   const [error, setError] = useState(false);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const revision = useRef<number | string | null>(null);
   const retainedState = useRef<MonitorState | null>(null);
-  useEffect(() => {
-    revision.current = null;
-    retainedState.current = null;
-    setState(null);
-    setError(false);
-  }, [sessionId]);
   useEffect(() => {
     if (paused) return;
     const controller = new AbortController();
@@ -34,8 +39,8 @@ export function LegacySessionTab({ tab, sessionId, historical, paused, showEstim
     let refreshAfterFlight = false;
     let reconnecting = false;
     let initialConnection = true;
-    const schedule = (delay: number) => {
-      if (historical || controller.signal.aborted) return;
+    const schedule = (delay: number, options: { force?: boolean } = {}) => {
+      if ((historical && !options.force) || controller.signal.aborted) return;
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => { timer = null; void poll(); }, delay);
     };
@@ -61,6 +66,10 @@ export function LegacySessionTab({ tab, sessionId, historical, paused, showEstim
           // be treated the same as a genuinely wrong or stale response: only a body that claims a
           // *different* session is invalid.
           if (value.session === null && value.readiness?.core === "loading") {
+            // A well-formed loading placeholder is only valid for the requested session: one
+            // whose catalogIdentity names a different session is a wrong-session response, not
+            // an unresolved cold start, and must be rejected the same as a session mismatch below.
+            if (value.catalogIdentity && value.catalogIdentity.id !== sessionId) throw new Error();
             unresolved = true;
           } else {
             if (value.session?.id !== sessionId) throw new Error();
@@ -77,6 +86,13 @@ export function LegacySessionTab({ tab, sessionId, historical, paused, showEstim
         inFlight = false;
         if (controller.signal.aborted) return;
         if (refreshAfterFlight) { refreshAfterFlight = false; void poll(); return; }
+        if (historical) {
+          // A historical session has no live revision events to rely on, so an unresolved
+          // placeholder or a failed poll must retry itself; once a poll fully resolves, no
+          // further timer is scheduled. Mirrors the browser store's historical retry cadence.
+          if (unresolved || !succeeded) schedule(document.hidden ? 30_000 : 5_000, { force: true });
+          return;
+        }
         schedule(document.hidden ? 30_000 : unresolved ? 1_000 : !succeeded || reconnecting ? 5_000 : 30_000);
       }
     };

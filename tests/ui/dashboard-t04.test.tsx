@@ -6,10 +6,12 @@ const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: navigation.replace }) }));
 
 // Wraps the real AgentsTab with one extra button that invokes its `onOpenActivities` prop with
-// both `agentId` and `request` set, the way it is always invoked in production (see
-// AgentsTab.tsx). No current AgentsTab control does this with a *different* agent than the one
-// already selected, so this is the only way to exercise Dashboard.tsx's own `navigate` guard for
-// "an explicit request survives an agent change" without touching the owned AgentsTab.tsx file.
+// both `agentId` and `request` set. AgentsTab itself only ever passes `{ agentId }` (see
+// AgentsTab.tsx:69); Dashboard.tsx's own onOpenActivities wrapper is what adds `request: null`
+// before calling `navigate`. No current AgentsTab control invokes onOpenActivities with a
+// *different* agent than the one already selected, so this is the only way to exercise
+// Dashboard.tsx's own `navigate` guard for "an explicit request survives an agent change"
+// without touching the owned AgentsTab.tsx file.
 vi.mock("../../app/components/dashboard/AgentsTab", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/components/dashboard/AgentsTab")>();
   return {
@@ -77,9 +79,10 @@ describe("T04 session workspace", () => {
   });
 
   it("keeps an explicitly supplied request when the agent changes together, unlike an agent-only change", async () => {
-    // AgentsTab's onOpenActivities always passes both `agentId` and `request` together (see
-    // Dashboard.tsx), so the auto-clear guard in `navigate` must not fire when a request is
-    // explicitly present, even though it fires for an agent-only change (previous test).
+    // AgentsTab's onOpenActivities passes only `{ agentId }` (see AgentsTab.tsx:69); Dashboard.tsx
+    // adds `request: null` itself. The mocked AgentsTab above supplies an explicit request instead,
+    // so the auto-clear guard in `navigate` must not fire when a request is explicitly present,
+    // even though it fires for an agent-only change (previous test).
     mount({ tab: "agents", agent: "primary", request: "request-1", path: "app/Dashboard.tsx" });
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     await userEvent.setup().click(await screen.findByRole("button", { name: "Open secondary activities with an explicit request" }));
@@ -342,6 +345,17 @@ describe("T04 session workspace", () => {
     );
     expect(await screen.findByText("Repeated reads")).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("link", { name: "Show agent" }));
+    const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
+    expect(url).toMatch(/tab=agents/);
+    expect(url).toMatch(/agent=primary/);
+  });
+
+  it("navigates to the Agents tab with that agent selected when Overview's Efficiency signals Show agent is clicked", async () => {
+    // sessionSummaryFixture()'s default topSignals entry already carries agentId "primary"
+    // (see session-summary-test-fixture.ts), so the default fixture exercises this directly.
+    mount({ tab: "overview" });
+    expect(await screen.findByText("Repeated reads")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show agent" }));
     const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
     expect(url).toMatch(/tab=agents/);
     expect(url).toMatch(/agent=primary/);

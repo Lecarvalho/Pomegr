@@ -66,6 +66,35 @@ describe("progressive readiness (ported)", () => {
     expect(screen.queryByText("No open sessions yet.")).not.toBeInTheDocument();
   });
 
+  it("shows an honest unavailable state for a definitive 404 and does not keep retrying or claim the monitor is unreachable", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const sessionId = "claude:outside-catalog-window";
+      const fetchMock = vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(json({ domain: "session-summary", sessionId, revision: 0, readiness: "loading", observedAt: null }))
+        .mockResolvedValue(new Response(JSON.stringify({ domain: "session-summary", sessionId, revision: 0, readiness: "unavailable", observedAt: null }), { status: 404 }));
+      render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+      expect(await screen.findByRole("heading", { name: "Loading session…" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Session unavailable" })).toBeInTheDocument();
+      expect(screen.getByText("Pomegr found no recorded evidence for this session.")).toBeInTheDocument();
+      expect(screen.queryByText(/not yet reached the local monitor/u)).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      const calls = fetchMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock.mock.calls.length).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the connection notice for a transient proxy 503", async () => {
+    const sessionId = "claude:monitor-down";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ domain: "session-summary", sessionId, revision: 0, readiness: "unavailable", observedAt: null }), { status: 503 }));
+    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    expect(await screen.findByRole("heading", { name: "Session evidence unavailable" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Session unavailable" })).not.toBeInTheDocument();
+  });
+
   it("does not leave the previous session visible while a newly selected route hydrates", async () => {
     const bodies: Record<string, SessionSummaryDomain> = {
       "claude:first": { ...sessionSummaryFixture({ sessionId: "claude:first" }), session: { ...sessionSummaryFixture().session!, id: "claude:first", title: "First session" } },

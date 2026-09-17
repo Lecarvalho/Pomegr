@@ -357,8 +357,186 @@ test("a historical session requested before the startup catalog commits serves l
   assert.deepEqual(readSessions, [], "serving never acquires provider evidence synchronously");
 
   publisher.publishCatalog("codex", []);
-  await until(() => runtime.serveCatalog()?.snapshot?.value?.readiness?.catalog === "ready"
-    && runtime.serveSessionDomain("codex:absent-after-catalog", "session-summary", null, null).status === "unavailable");
-  assert.equal(runtime.serveSessionDomain("codex:absent-after-catalog", "session-summary", null, null).status, "unavailable",
-    "once every provider catalog has published, an unknown session without evidence stays unavailable");
+  assert.ok(await until(() => runtime.serveCatalog()?.snapshot?.value?.readiness?.catalog === "ready"));
+  const hydrationsBeforeAbsent = hydrations;
+  assert.equal(runtime.serveSessionDomain("codex:absent-after-catalog", "session-summary", null, null).status, "loading",
+    "a published catalog is a bounded window, so catalog absence alone does not prove the session is absent");
+  assert.ok(await until(() => runtime.serveSessionDomain("codex:absent-after-catalog", "session-summary", null, null).status === "unavailable"),
+    "once every provider catalog has published and the queued hydration finds no evidence, an unknown session is unavailable");
+  assert.equal(hydrations, hydrationsBeforeAbsent + 1, "the absence is proven by exactly one asynchronous hydration");
+  assert.deepEqual(readSessions, [], "serving never acquires provider evidence synchronously");
+});
+
+function uncataloguedRegistry({ hydrate }) {
+  const capabilities = createEmptyProviderCapabilities();
+  const provider = {
+    id: "codex", source: "Codex", capabilities,
+    homePolicy: { requestModelObservations: true, modelSelection: false, usageLimitActivity: { enabled: false } },
+  };
+  const readSessions = [];
+  const registry = {
+    providers: [provider],
+    defaultProvider: provider,
+    providerFolders: { folders: { claudeConfigDir: null, claudeProjectsDir: null, codexHome: process.cwd() } },
+    providerForSessionId: () => provider,
+    async resolveCapabilities() { return capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async readSession(id) { readSessions.push(id); return null; },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      // The session is older than the bounded catalog window: the published catalog omits it.
+      publisher.publishCatalog("codex", []);
+      return { hydrate: (id) => hydrate(id, publisher), async stop() {} };
+    },
+  };
+  return { registry, readSessions };
+}
+
+test("a session outside the provider catalog window hydrates on request instead of answering unavailable", async (context) => {
+  const historical = structuredClone(evidence);
+  historical.historical = true;
+  const hydrations = [];
+  const { registry, readSessions } = uncataloguedRegistry({
+    async hydrate(id, publisher) {
+      hydrations.push(id);
+      if (id !== sessionId) return false;
+      publisher.publishSession("codex", evidence.localId, historical);
+      return true;
+    },
+  });
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    observationStore: new SessionObservationStore(),
+    checkpointStore: false,
+    historyStore: new SessionHistoryStore(),
+    observationCommitDelayMs: 0,
+    scheduleObservation: (task, delay = 0) => setTimeout(task, delay),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(async () => runtime.stopObservation());
+  await runtime.startObservation();
+  assert.ok(await until(() => runtime.serveCatalog()?.snapshot?.value?.readiness?.catalog === "ready"));
+  const events = [];
+  const unsubscribe = runtime.subscribeRevisionEvents((event) => events.push(event));
+  context.after(unsubscribe);
+
+  const first = runtime.serveSessionDomain(sessionId, "session-summary", null, null);
+  assert.equal(first.status, "loading", "a complete catalog without this row is not proof of absence");
+  assert.equal(runtime.serveSessionDomain(sessionId, "session-summary", null, null).status, "loading");
+  assert.deepEqual(hydrations, [], "serving only queues; hydration runs asynchronously");
+  const ready = await until(() => {
+    const result = runtime.serveSessionDomain(sessionId, "session-summary", null, null);
+    return result.status === "ready" ? result : null;
+  });
+  assert.ok(ready, "the hydrated session commits and serves a ready summary");
+  assert.equal(ready.snapshot.value.session.id, sessionId);
+  assert.equal(hydrations.filter((id) => id === sessionId).length, 1, "repeated requests share one deduplicated hydration");
+  assert.ok(events.some((event) => event.domain === "session-summary" && event.sessionId === sessionId && event.revision === ready.revision),
+    "the commit publishes the revision event an open page recovers from");
+  assert.deepEqual(readSessions, [], "serving never acquires provider evidence synchronously");
+});
+
+test("an absent session is unavailable only after hydration proves it, and absent or invalid IDs queue bounded work", async (context) => {
+  const hydrations = [];
+  const { registry, readSessions } = uncataloguedRegistry({
+    hydrate(id) {
+      hydrations.push(id);
+      // Hydrations for "hang" IDs stay outstanding, to prove concurrent probes are bounded.
+      return id.startsWith("codex:hang-") ? new Promise(() => {}) : Promise.resolve(false);
+    },
+  });
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    observationStore: new SessionObservationStore(),
+    checkpointStore: false,
+    historyStore: new SessionHistoryStore(),
+    observationCommitDelayMs: 0,
+    scheduleObservation: (task, delay = 0) => setTimeout(task, delay),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(async () => runtime.stopObservation());
+  await runtime.startObservation();
+  assert.ok(await until(() => runtime.serveCatalog()?.snapshot?.value?.readiness?.catalog === "ready"));
+
+  assert.equal(runtime.serveSessionDomain("codex:gone", "session-summary", null, null).status, "loading");
+  assert.ok(await until(() => runtime.serveSessionDomain("codex:gone", "session-summary", null, null).status === "unavailable"),
+    "a hydration that publishes no evidence proves the session absent");
+  for (let index = 0; index < 20; index += 1) {
+    assert.equal(runtime.serveSessionDomain("codex:gone", "agents", null, null).status, "unavailable");
+  }
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(hydrations.filter((id) => id === "codex:gone").length, 1, "a proven absence is not re-probed on every request");
+
+  assert.equal(runtime.serveSessionDomain("claude:unregistered", "session-summary", null, null).status, "unavailable",
+    "an ID of a provider that is not registered is unavailable without queuing hydration");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(hydrations.includes("claude:unregistered"), false);
+
+  for (let round = 0; round < 3; round += 1) {
+    for (let index = 0; index < 12; index += 1) {
+      assert.equal(runtime.serveSessionDomain(`codex:hang-${index}`, "session-summary", null, null).status, "loading");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(hydrations.filter((id) => id.startsWith("codex:hang-")).length, 4,
+    "concurrently outstanding probes for uncatalogued sessions are bounded");
+  assert.deepEqual(readSessions, [], "serving never acquires provider evidence synchronously");
+});
+
+test("a session-domain request prioritizes the revalidation of a checkpoint-restored live session", async (context) => {
+  const live = structuredClone(evidence);
+  live.historical = false;
+  const hydrations = [];
+  const capabilities = createEmptyProviderCapabilities();
+  const provider = {
+    id: "codex", source: "Codex", capabilities,
+    homePolicy: { requestModelObservations: true, modelSelection: false, usageLimitActivity: { enabled: false } },
+  };
+  const registry = {
+    providers: [provider],
+    defaultProvider: provider,
+    providerFolders: { folders: { claudeConfigDir: null, claudeProjectsDir: null, codexHome: process.cwd() } },
+    providerForSessionId: () => provider,
+    async resolveCapabilities() { return capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async readSession() { throw new Error("serving must not acquire provider evidence"); },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      publisher.publishCatalog("codex", [{
+        localId: evidence.localId, title: evidence.session.title, project: evidence.session.project,
+        updatedAt: evidence.session.updatedAt, isLive: true, needsInput: false, activityStatus: "working",
+      }]);
+      // Eager live hydration is not modelled; only a prioritized request can revalidate.
+      return { hydrate(id) { hydrations.push(id); return new Promise(() => {}); }, async stop() {} };
+    },
+  };
+  const record = {
+    providerId: "codex",
+    localSessionId: evidence.localId,
+    evidence: live,
+    readiness: createSessionReadiness("ready"),
+    publicState: monitorStateFromProviderEvidence("codex", live),
+    observedAt: new Date().toISOString(),
+    source: { fingerprint: "restored-safe-fingerprint", completeOffset: 1 },
+    revision: 3,
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    observationStore: new SessionObservationStore(),
+    checkpointStore: { async load() { return { records: [record] }; }, async write() {}, stats() { return null; } },
+    historyStore: new SessionHistoryStore(),
+    observationCommitDelayMs: 0,
+    scheduleObservation: (task, delay = 0) => setTimeout(task, delay),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(async () => runtime.stopObservation());
+  await runtime.startObservation();
+  assert.ok(await until(() => runtime.serveSessionDomain(sessionId, "session-summary", null, null).status === "ready"),
+    "the restored checkpoint serves as committed evidence");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  for (let index = 0; index < 5; index += 1) runtime.serveSessionDomain(sessionId, "session-summary", null, null);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(hydrations, [sessionId], "the request queues one deduplicated restored-live revalidation");
 });

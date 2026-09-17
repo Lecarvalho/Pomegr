@@ -72,6 +72,49 @@ describe("session domain browser store", () => {
     hook.unmount();
   });
 
+  it("treats a 404 as definitively unavailable: no error, no retry timer, and a matching revision event recovers it", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 0, { readiness: "loading" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ readiness: "unavailable" }), { status: 404 }))
+      .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 4)));
+    const hook = renderHook(() => useSessionDomain({ sessionId: "claude:s1", domain: "session-summary" }, { historical: false }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(hook.result.current.data?.readiness).toBe("loading");
+    expect(hook.result.current.unavailable).toBe(false);
+    // The loading body polls at the unresolved cadence until the monitor proves absence.
+    await act(async () => { vi.advanceTimersByTime(1_000); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.unavailable).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+    // A retained loading placeholder is not evidence; it is dropped rather than shown forever.
+    expect(hook.result.current.data).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(300_000); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => { emit({ type: "revision", domain: "session-summary", sessionId: "claude:s1", revision: 4, epoch: 1 }); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.unavailable).toBe(false);
+    expect(hook.result.current.data?.revision).toBe(4);
+    hook.unmount();
+  });
+
+  it("keeps resolved last-known-good data when a later refresh answers 404, and does not poll a historical 404", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 3)))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }));
+    const hook = renderHook(() => useSessionDomain({ sessionId: "claude:s1", domain: "session-summary" }, { historical: true }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(hook.result.current.data?.revision).toBe(3);
+    await act(async () => { hook.result.current.revalidate(); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.unavailable).toBe(true);
+    expect(hook.result.current.data?.revision).toBe(3);
+    await act(async () => { vi.advanceTimersByTime(300_000); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    hook.unmount();
+  });
+
   it("revalidates a historical entry when the event for its failed revision is replayed", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 1)))
@@ -415,6 +458,40 @@ describe("session domain browser store", () => {
     expect(sessionDomainStoreDiagnosticsForTests().keys).toContain("claude:d|session-summary|");
     const before = fetchMock.mock.calls.length;
     act(() => emit({ type: "revision", domain: "session-summary", sessionId: "claude:d", revision: 2, epoch: 1 }));
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
+    unmount();
+  });
+
+  it("keeps a key-swapped session's entry registered when several consumers unmount in the same keyed navigation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input), "http://local");
+      const id = url.searchParams.get("sessionId")!;
+      const domainName = url.searchParams.get("domain")!;
+      return json(domain(domainName, id, 1, domainName === "agent" ? { agentId: url.searchParams.get("agentId") } : {}));
+    });
+    // Mirrors leaving a session's Agents tab: the page header's summary, the agents list, and the
+    // agent inspector are all mounted for session A. The keyed Dashboard for session B mounts
+    // only its summary. React runs all three of A's unsubscribe cleanups (three prune passes)
+    // before B's own subscribe effect runs.
+    function SessionA() {
+      useSessionDomain({ sessionId: "claude:a", domain: "session-summary" }, { historical: false });
+      useSessionDomain({ sessionId: "claude:a", domain: "agents" }, { historical: false });
+      useSessionDomain({ sessionId: "claude:a", domain: "agent", agentId: "primary" }, { historical: false });
+      return null;
+    }
+    function SessionB() {
+      useSessionDomain({ sessionId: "claude:b", domain: "session-summary" }, { historical: false });
+      return null;
+    }
+    const { rerender, unmount } = render(<SessionA key="claude:a" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    // Session B is not among the three most recently subscribed sessions.
+    expect(sessionDomainStoreDiagnosticsForTests().recentSessions).not.toContain("claude:b");
+    rerender(<SessionB key="claude:b" />);
+    expect(sessionDomainStoreDiagnosticsForTests().keys).toContain("claude:b|session-summary|");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("sessionId=claude%3Ab"))).toBe(true));
+    const before = fetchMock.mock.calls.length;
+    act(() => emit({ type: "revision", domain: "session-summary", sessionId: "claude:b", revision: 2, epoch: 1 }));
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
     unmount();
   });

@@ -130,6 +130,16 @@ describe("LegacySessionTab polling lifecycle", () => {
     expect(screen.getByText("Repository")).toBeInTheDocument();
   });
 
+  it("rejects a loading placeholder whose catalogIdentity names a different session", async () => {
+    const wrongSessionPlaceholder = { ...detailedState("claude:s1"), session: null, catalogIdentity: { id: "claude:other" }, readiness: readiness({
+      core: "loading", agentEvidence: "loading", contextEvidence: "loading", activityEvidence: "loading",
+      repository: "loading", resources: "loading", usageLimits: "loading",
+    }) };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(wrongSessionPlaceholder));
+    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    await waitFor(() => expect(screen.getByText("This session panel is temporarily unavailable.")).toBeInTheDocument());
+  });
+
   it("keeps the retained panel visible with an update-failed notice when a later poll fails", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.spyOn(globalThis, "fetch")
@@ -283,6 +293,58 @@ describe("LegacySessionTab polling lifecycle", () => {
     await act(async () => { resolveFirst(json(detailedState("claude:s1", { branch: "feature/first-poll-stale" }))); await flush(); });
     expect(screen.queryByText("feature/first-poll-stale")).not.toBeInTheDocument();
     expect(screen.getAllByText("feature/second-poll").length).toBeGreaterThan(0);
+  });
+});
+
+describe("LegacySessionTab historical retry cadence", () => {
+  it("retries an unresolved historical placeholder five seconds later", async () => {
+    vi.useFakeTimers();
+    const loadingPlaceholder = { ...detailedState("claude:s1"), session: null, readiness: readiness({
+      core: "loading", agentEvidence: "loading", contextEvidence: "loading", activityEvidence: "loading",
+      repository: "loading", resources: "loading", usageLimits: "loading",
+    }) };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json(loadingPlaceholder))
+      .mockResolvedValueOnce(json(detailedState("claude:s1")));
+    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    await act(async () => { await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Loading repository…")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(4_999); await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(1); await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+  });
+
+  it("retries a failed historical poll five seconds later", async () => {
+    vi.useFakeTimers();
+    const ready = detailedState("claude:s1");
+    ready.readiness = readiness();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(json(ready));
+    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    await act(async () => { await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("This session panel is temporarily unavailable.")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(4_999); await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(1); await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+  });
+
+  it("schedules no further timer once a historical poll fully resolves", async () => {
+    vi.useFakeTimers();
+    const ready = detailedState("claude:s1");
+    ready.readiness = readiness();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(ready));
+    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    await act(async () => { await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(60_000); await flush(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

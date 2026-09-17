@@ -126,6 +126,13 @@ describe("SessionTabs", () => {
     expect(within(menu).queryByRole("menuitem", { name: "Resources" })).not.toBeInTheDocument();
   });
 
+  it("gives the phone nav and its inner tablist distinct accessible names", () => {
+    mount("overview");
+    const phoneNav = document.querySelector("nav.sessionPhoneTabs") as HTMLElement;
+    const phoneTablist = document.querySelector(".sessionPhoneTablist") as HTMLElement;
+    expect(phoneNav.getAttribute("aria-label")).not.toBe(phoneTablist.getAttribute("aria-label"));
+  });
+
   it("gives each desktop tab an id and aria-controls pointing at the shared session panel", () => {
     mount("agents");
     const desktop = document.querySelector(".sessionDesktopTabs") as HTMLElement;

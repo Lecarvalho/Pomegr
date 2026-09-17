@@ -23,6 +23,12 @@ type MonitorProxyOptions = {
   unavailableBody: object;
   acceptEncoding?: string | null;
   ifNoneMatch?: string | null;
+  /**
+   * Pass a monitor 404 through as a 404 carrying `unavailableBody`, instead of the transient 503.
+   * Only for routes whose monitor 404 is a definitive answer (the session-domain route answers 404
+   * only once hydration proved the session absent). The monitor's own 404 body is never forwarded.
+   */
+  passThroughNotFound?: boolean;
 };
 
 export function acceptsGzipEncoding(value: string | null) {
@@ -69,7 +75,7 @@ function revisionHeaders(response: Response) {
   };
 }
 
-export async function proxyMonitorJson({ path, timeoutMs, unavailableBody, acceptEncoding = null, ifNoneMatch = null }: MonitorProxyOptions) {
+export async function proxyMonitorJson({ path, timeoutMs, unavailableBody, acceptEncoding = null, ifNoneMatch = null, passThroughNotFound = false }: MonitorProxyOptions) {
   try {
     const authorizationToken = process.env.POMEGR_MONITOR_TOKEN;
     const conditionalTag = proxyEtag(ifNoneMatch);
@@ -82,6 +88,12 @@ export async function proxyMonitorJson({ path, timeoutMs, unavailableBody, accep
       },
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (passThroughNotFound && response.status === 404) {
+      return Response.json(unavailableBody, {
+        status: 404,
+        headers: { "Cache-Control": "no-store", Vary: "Accept-Encoding" },
+      });
+    }
     if (!response.ok) throw new Error(`Monitor returned ${response.status}`);
     if (response.status === 204) {
       return new Response(null, {

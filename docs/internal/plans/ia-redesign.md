@@ -173,7 +173,7 @@ contracts for the UI workers. Keep the composed `/api/state` compatibility view.
 
 ### Session 2 — Navigation and session shell
 
-- [ ] Session 2 complete — T03, T04 and T05.
+- [x] Session 2 complete — T03, T04 and T05.
 
 A Terra worker owns T03's app bar, palette, page header, sidebar limits and shared
 design controls. Integrate that contract before T04. A Sol worker then owns
@@ -549,10 +549,230 @@ No unresolved product decision blocks implementation. The latest approved rules 
 
 ### Session 2 checkpoint
 
+2026-09-16 · **Session 2 complete after rounds 3 to 5.** Acceptance-r4 verdict PASS, the
+user's phone check PASS, and the full `npm test && npm run verify:fast` chain PASS on the
+round-5 tree. Session 2 is now checked in the session queue above. This entry is the current resume point for
+Session 3; the 2026-09-16 entry beneath it (stopped after round 2) and the 2026-09-14
+entries stay as history. Supplementary evidence is retained locally under
+`runs/2026-09-16-resume-ia-session-2/` (gitignored); every fact needed to resume is
+restated in this entry.
+
+**State.** Branch `claude/ia-redesign-session-2`. Session 2 work through round 3 is
+committed as `9d9bd8f` (base main `3b116ad`); two user-owned ACOS tooling commits,
+`1f91e8c` and `60621a5`, sit on top and are unrelated to Session 2. Rounds 4 and 5 are
+uncommitted in the worktree. No push occurred. `git status --short`:
+
+```
+M  app/Dashboard.tsx
+M  app/api/monitor-proxy.ts
+M  app/api/session-domain/route.ts
+M  app/components/dashboard/LegacySessionTab.tsx
+M  app/components/dashboard/SessionTabs.tsx
+M  app/session-domain-store.ts
+M  docs/AGENT-WORKFLOW.md
+M  docs/OBSERVATION_CACHE.md
+M  docs/internal/plans/ia-redesign.md
+M  monitor/observation-runtime.mjs
+M  monitor/session-observation-coordinator.mjs
+M  tests/session-domain-runtime.test.mjs
+M  tests/session-domain-transport.test.mjs
+M  tests/ui/dashboard-readiness.test.tsx
+M  tests/ui/dashboard-t04.test.tsx
+D  tests/ui/legacy-session-tab.test.tsx
+M  tests/ui/session-domain-store.test.tsx
+M  tests/ui/session-tabs.test.tsx
+?? monitor/session-domain-serving.mjs
+?? tests/ui/transitional-session-tab.test.tsx
+```
+
+**Round 3: acceptance-r2 findings resolved.**
+
+| Finding | Resolution (round 3) |
+| --- | --- |
+| N1 restart froze rejected revisions forever | Epoch-aware guard added: `app/session-domain-store.ts` per-entry `dataEpoch` compared against `currentEpoch`, guard around lines 127-136, epoch advanced on every live event; a pending rebuild keeps its fast cadence. |
+| N2 Agents List/Grid toggle a no-op, persistence deleted | `app/components/dashboard/AgentsTab.tsx` restores controlled `viewMode` and the `pomegr-agent-activity-view-<sessionId>` localStorage key; ported to `tests/ui/agents-tab.test.tsx`. Recorded as a T05 file-ownership exception. |
+| N3 browser confirmation blocked by the "defects" state | Unblocked once N1, N2 and S1 landed; `confirm-navigation-r3.md`/`reconfirm-navigation-r3.md` passed every flow. |
+| Checkpoint step 4, historical 503 stall | Monitor serves the retained loading body through an in-flight poll failure instead of dead-ending; the browser store retries. |
+| S1 literal NUL bytes in `monitor/session-domain-store.mjs` | Restored to a normal text escape at both separator sites; the file diffs as text again. |
+| S2 retained loading body hid poll errors | `app/Dashboard.tsx` now surfaces `summaryResult.error` on the loading-with-no-session branch. |
+| S3 Resources deep link redirected while still loading | `SessionTabs.tsx` redirects only once `resourceAvailability.readiness` has actually resolved. |
+| S4 unported Details assertions / report-mismatch test | Ported into the renamed `tests/ui/transitional-session-tab.test.tsx` and `tests/ui/dashboard-t04.test.tsx`. |
+| S5 no explicit-request test, no DOM privacy test | Added to `tests/ui/dashboard-t04.test.tsx`. |
+| S6 duplicated DESIGN.md paragraphs | De-duplicated. |
+| T1 checkpoint should record T06 deferral, T05 exceptions, transitional-panel list | T06 deferral and T05 exceptions were recorded in round 3; the transitional-panel list itself waited for this entry (see the list below). |
+| T2 browser-store doc lacked restart/epoch semantics | Promoted to acceptance-r3's blocker B2; resolved in round 4 (next table). |
+| T3 pending-entry leak | Fixed via `survivedPrune` in round 3, but the one-pass fix reintroduced the defect as acceptance-r3's B1; properly resolved in round 4 (next table). |
+| T4 phone `nav`/`tablist` share the label "Session sections" | Left open through round 3; resolved in round 4 with distinct "Session navigation" / "Session sections" labels. |
+| Round-1 should, Activities ignores agent/request scope | Deferred to T06 throughout; unchanged (see "Known deferral" below). |
+| Round-1 should, T05 exception for `AgentRoster.tsx` | Held; `AgentRoster.tsx` itself stayed untouched, only `AgentsTab.tsx`'s view-mode wiring is the T05 exception. |
+
+**Round 4: acceptance-r3 findings resolved.**
+
+| Finding | Resolution (round 4) |
+| --- | --- |
+| B1 detached pending entry after a multi-consumer keyed navigation | `app/session-domain-store.ts`: cleanup-time prune (`detachSubscriber`) no longer ages or consumes pending protection; only a subscribe-time pass (`touchSession`) sets `survivedPrune`; `attachSubscriber` re-registers a detached entry. The new multi-consumer test fails against the round-3 logic and passes with either half of the fix alone. |
+| B2 restart/epoch semantics undocumented | Added to `docs/OBSERVATION_CACHE.md`: a loading response never replaces a resolved body; a lower revision is rejected within one epoch; the first resolved body after an epoch change is accepted and re-arms the guard; a pending rebuild keeps its fast cadence; revision clocks restart at 0 per monitor process; a 404 for a proven-absent session is definitive. Wording nits recorded as n-a below. |
+| S-a sessions outside the 50-per-provider catalog window dead-ended on a retrying 503 | Bounded asynchronous hydration for uncatalogued IDs (4 concurrent probes, 128 records, 30 s recheck); only the session-domain route passes a genuine 404 through; the store stops retrying on 404 and recovers on a revision event, focus, reconnect, or revalidate. |
+| S-b two lint errors | Fixed: store mutations moved into module functions; `LegacySessionTab.tsx` keys its inner panel on `sessionId`. `npm run lint`: 0 errors. |
+| n1 domain GETs never prioritized restored-live re-hydration | Coordinator now triggers it, deduplicated via `restoredHydrations`. |
+| n2 no test for the Overview "Show agent" button | Added. |
+| n3 placeholder `catalogIdentity` check missing; no historical retry | Both added to `LegacySessionTab.tsx`. |
+| n4 equal revision after a restart gives 204 and a skipped event | Documented alongside B2; no ETag instance component was added. |
+| n5 restart recovery depends only on the SSE epoch | Documented, but flagged as still ownerless; assigned in this entry, see S-1(b) below. |
+| n6 untracked `tsconfig.tsbuildinfo` | Moot; absent from the worktree (see the note below). |
+| n7 wrong `AgentsTab` `onOpenActivities` comment | Corrected. |
+| T4 (carried from acceptance-r2) | Resolved; see the round-3 table above. |
+
+**acceptance-r4 verdict: PASS.** No blockers remained. Three S-1 deferrals needed owners
+before Session 2 could close; assigned here:
+
+(a) **Failure-versus-absence deferral.** A hydration probe that fails mid-read for a
+session outside the provider catalog window is still served as 404 until the 30 s
+recheck, the same as a proven-absent session; the two cases are not distinguished. Owner:
+unassigned, next provider-observer change in `monitor/providers/normalized-polling-observer.mjs`
+and `registry.mjs` (these already collapse a failure and a missing source into `false`); no
+task in the current session queue owns provider-observer internals.
+
+(b) **n5 residual.** Restart recovery depends only on the SSE epoch
+(`app/session-domain-store.ts:127`, `app/live-events.ts`); in an environment where
+`EventSource` never opens, the epoch never advances and a monitor restart reproduces the
+original N1 symptom (stale data, 1 s polling). Owner: unassigned, next change touching
+`app/live-events.ts` reconnect/epoch semantics or the store's restart guard; no queued
+Session 3-6 task owns this transport hardening directly.
+
+(c) **T05 exception unchanged.** The round-3 `AgentsTab.tsx` view-mode change remains the
+only T05 exception; round 4 touched no T05 path (`git diff 9d9bd8f` over T05 paths is
+empty).
+
+**acceptance-r4 open nits (n-a to n-e), owners assigned in this entry:**
+
+- n-a. `docs/OBSERVATION_CACHE.md` wording: a blocked SSE stream does advance the epoch
+  (`app/live-events.ts:75,90-95` fires `error` and reconnects); the "1-second cadence"
+  statement (`OBSERVATION_CACHE.md:1769-1771`) applies to live entries only, historical
+  retries stay 5 s/30 s hidden; remove the review-finding IDs "(n4)"/"(n5)" from
+  `OBSERVATION_CACHE.md:1359,1364`. Owner: Session 6 T12 closure documentation pass (or any
+  earlier session that next edits `OBSERVATION_CACHE.md`).
+- n-b. `app/session-domain-store.ts:120-123`, `app/api/monitor-proxy.ts:26-30`,
+  `app/api/session-domain/route.ts:32-33`: "404 only after hydration proved absence" is
+  overstated; an `agent` query for an agent missing from a committed record, and malformed
+  or unregistered-provider IDs, also 404 without hydration (low impact today). Owner:
+  whichever of T06b, T08 or T09 next extends `app/session-domain-store.ts`'s domain set.
+- n-c. `app/session-domain-store.ts:333`: re-registering a detached entry checks key
+  presence, not object identity; unreachable today because each query key has one
+  consumer. Owner: same as n-b.
+- n-d. `confirm-navigation-r4.md` Flow 1 (sidebar Sessions to the live session row) did not
+  exercise B1's same-commit unmount/mount trigger; B1 itself is covered by the
+  mutation-verified unit test. Owner: Session 6 T12's final regression sweep; optionally
+  repeat Agents tab straight to another session through the command palette.
+- n-e. `app/components/dashboard/LegacySessionTab.tsx:106,108`: a `reconnecting` event
+  cancels a historical legacy tab's forced retry timer without `force`, so it waits for the
+  next `connected` poll instead of retrying immediately (it still recovers). Owner: Session
+  6 T12, since `LegacySessionTab.tsx` is itself one of the transitional panels scheduled for
+  removal.
+
+**Round 5: architecture fix, no behavior change.** The first full verification (under
+round 4) failed `npm run verify:fast` at `check:architecture` with two violations that
+predated round 4: `monitor/observation-runtime.mjs` at 913 lines (cap 800), and
+`tests/ui/legacy-session-tab.test.tsx` using a legacy/versioned source filename. Fixed by
+extracting `monitor/session-domain-serving.mjs` (168 lines; `createSessionDomainServing`
+returning `commit`/`forget`/`clear`/`protectedSessionIds`/`serveSessionDomain`), which
+brought `monitor/observation-runtime.mjs` down to 780 lines, and renaming the test file to
+`tests/ui/transitional-session-tab.test.tsx` (byte-identical copy). The three path
+references in this plan and one row in `docs/AGENT-WORKFLOW.md` were updated to match. The
+orchestrator's normalized-line comparison against the pre-extraction file found only
+identifier rewiring (`observationCoordinator`→`coordinator`,
+`observationServingActive`→`isServingActive()`, `commitSessionDomains`→
+`sessionDomainServing.commit`, and similar), a split import, re-wrapped comments, the
+factory shell, and `stop()`'s reset folded into `sessionDomainServing.clear()` with the
+same three underlying clears; no logic change.
+
+**Browser and phone checks.** Desktop Chrome round 4 (`confirm-navigation-r4.md`)
+confirmed all five flows with no defects: Flow 1, keyed navigation from an Agents tab via
+the sidebar Sessions list to the live session, showed KPIs advancing within 30 s with no
+reload (Calls 196→234, all-agent context 630.5K→668.3K, wall time 21m→28m); note per nit
+n-d above that this flow went through the Sessions page rather than exercising B1's exact
+same-commit trigger. Flow 2, an unknown session ID, resolved to a definitive "Session
+unavailable" in about 10 s, with one retry 10-20 s later and then no further requests
+(confirms no indefinite 5 s poll). Flow 3, a session older than the 50-per-provider catalog
+window (identified from local file mtimes only, no content read), loaded successfully in
+about 15-20 s, well inside the 90 s bar. Flow 4, a full monitor-process restart, saw the
+monitor and web ports both answer in about 58 s, with the still-open Overview reflecting
+current data with no reload in about 60-70 s total elapsed. Flow 5, regression sanity,
+confirmed historical sessions still reach the tab bar quickly, agent/path selection
+round-trips across tab changes, and the Agents List/Grid toggle persists across reload. The
+known deferral (Activities ignoring agent/request scope) was confirmed still true, per the
+T06 deferral, not a defect.
+
+The user performed the 390px phone check in round 3 (`phone-check.md`): 6 of 6 items pass
+(tab bar reached, sticky tabs with no horizontal scroll, 44px targets, More menu
+open/focus-return, Agents List/Grid toggle). Item 2 (load time) passed but was noted as
+slow; server-log evidence for that open showed only fast 200/204 responses with no 4xx/5xx,
+so the wait is client-side (dev-mode bundle download and hydration over the LAN), not a
+server defect. Limitation: only the one live session was opened on the phone; recommend
+opening a historical session on the phone at the next manual check.
+
+**Verification (`artifacts/verify.md`).** Command `npm test && npm run verify:fast`, run
+serially from the repository root.
+
+- Iteration 1, under round 4 (2026-09-16T21:07Z): FAIL. `npm test` exit 0 (Node: 1,180
+  tests, 1,179 pass, 1 skipped, 0 fail; UI: 83 files, 808 tests pass). `npm run
+  verify:fast` exit 1 at `check:architecture` on the two violations above;
+  `check:boundaries` was not reached in this chain (it was clean in `integrate-r4`).
+- Rerun, under round 5 (2026-09-16T22:01Z): PASS. `npm test` exit 0 (build regenerated
+  plugin bundles with no tracked diffs; Node suites 38/38, 16/16, 33/35 with 2 skipped,
+  9/9, 23/23, 36/36, totalling 1,180 with 1,179 pass, 1 skipped, 0 fail; UI: 83 files, 808
+  tests pass). `npm run verify:fast` exit 0: lint 0 errors (17 pre-existing warnings);
+  typecheck, provider-contract, provider-adapters and landing typechecks clean; contract
+  and ops tests pass; provider capability documentation in sync; architecture checks
+  passed (730 source files); no dependency violations (483 modules, 1,483 dependencies).
+
+**Models used, rounds 3 to 5** (Sol/Terra harness column only; no Astra/Fable used by any
+worker or reviewer):
+
+| Stage | Round | Model | Effort | Iter. | Check |
+| --- | --- | --- | --- | --- | --- |
+| fix-monitor-r3 | 3 | opus | high | 1 | — |
+| fix-store-restart-r3 | 3 | sonnet | high | 1 | — |
+| fix-agents-view-r3 | 3 | sonnet | medium | 1 | — |
+| fix-dashboard-r3 | 3 | sonnet | high | 1 | — |
+| fix-tabs-legacy-r3 | 3 | sonnet | medium | 1 | — |
+| integrate-r3 | 3 | sonnet | medium | 1 | pass |
+| confirm-navigation-r3 | 3 | sonnet | medium | 1 | — |
+| fix-browser-defects-r3 | 3 | sonnet | high | 1 | pass |
+| reconfirm-navigation-r3 | 3 | sonnet | medium | 1 | FAIL (user: skip, no flow failed) |
+| phone-check | 3 | opus | low | 1 | pass |
+| acceptance-r3 | 3 | opus | high | 1 | FAIL |
+| fix-store-monitor-r4 | 4 | opus | high | 1 | — |
+| fix-legacy-tabs-r4 | 4 | sonnet | medium | 1 | — |
+| integrate-r4 | 4 | sonnet | medium | 1 | pass |
+| confirm-navigation-r4 | 4 | sonnet | medium | 1 | — |
+| acceptance-r4 | 4 | opus | high | 1 | PASS |
+| full-verification (1st attempt) | 4 | opus | low | 1 | FAIL (`check:architecture`) |
+| fix-architecture-r5 | 5 | sonnet | high | 1 | pass |
+| full-verification (rerun) | 5 | opus | low | 1 | PASS |
+| handoff-r5 (this entry) | 5 | sonnet | medium | 1 | — |
+
+**Session 6 must verify removal of these transitional panels**, unchanged since round 3
+(from `acceptance-r3.md`, T1 details):
+
+- Activities: `RequestsActionsPanel` and `ActivityPanel`
+- Signals: `InsightsPanel` and `CacheEvidenceDisclosure`
+- Repository: `RepositoryDisclosurePanel`
+- Resources: `ResourceUsagePanel`
+- Details: `SessionDetailsPanel`
+
+**Note.** `tsconfig.tsbuildinfo` must never be committed. It is currently absent from the
+worktree and is regenerated by builds.
+
+**Known deferral unchanged.** The Activities tab ignores agent/request scope until T06.
+
+**Next step.** Session 3 (T06 and T06b) starts only on a separate user request.
+
 2026-09-16 · **Stopped on explicit user instruction after a second independent acceptance
 failed: a handoff instead of a third round.** Its resume steps below supersede the
 2026-09-14 "Essential resume steps"; the 2026-09-14 entries stay as history. Session 2
-remains unchecked. Branch `main`, HEAD `3b116ada46ca91667e7b7378ce974bd0337770b0`. All
+remained unchecked as of this entry (superseded by the completion entry above; Session 2
+is now checked). Branch `main`, HEAD `3b116ada46ca91667e7b7378ce974bd0337770b0`. All
 changes are uncommitted; no commit or push occurred.
 
 Two independent-acceptance rounds ran against the T04 completion diff (round 1 verdict FAIL,
@@ -578,12 +798,12 @@ Fixed between rounds (round-1 blockers, now resolved and tested):
 - Legacy consumer corrections (`app/components/dashboard/LegacySessionTab.tsx`): first 204,
   last-known-good plus notice, 1s/5s/reconnect cadence, hidden/focus handling,
   `refreshAfterFlight`, session reset, late-abort non-commit are now covered by
-  `tests/ui/legacy-session-tab.test.tsx:100-268`.
+  `tests/ui/transitional-session-tab.test.tsx:100-268`.
 - Deleted-suite behavior: progressive-readiness ported to
   `tests/ui/dashboard-readiness.test.tsx:32-69`; offline-only-after-failure ported
   (`app/Dashboard.tsx:131`, `tests/ui/dashboard-t04.test.tsx:250`); repository privacy,
   recorded-state labels, sanitized Codex usage, historical Usage-limits omission and the
-  fallback details summary ported to `tests/ui/legacy-session-tab.test.tsx:271-331`.
+  fallback details summary ported to `tests/ui/transitional-session-tab.test.tsx:271-331`.
 - Tab accessibility (`app/components/dashboard/SessionTabs.tsx`): roving tabindex, `More`
   focus handling and arrow/Home/End/Escape, `aria-controls`/`aria-labelledby`, resolved and
   tested in `tests/ui/session-tabs.test.tsx:46-100`.
@@ -653,7 +873,7 @@ if source has moved):
    - Port the remaining deleted `dashboard-session-navigation` assertions that still apply
      because `SessionDetailsPanel` still renders behind the Details tab: "omits Codex usage UI
      when the provider capability is disabled", "omits current Usage and missing Loaded values
-     from a historical collapsed summary" (the new `legacy-session-tab.test.tsx:310` checks
+     from a historical collapsed summary" (the new `transitional-session-tab.test.tsx:310` checks
      only the expanded heading, not the collapsed summary), and "omits Loaded context inventory
      entirely when the selected provider does not support it". Also add the report
      session-mismatch guard test: "does not export a different session returned by a refresh"

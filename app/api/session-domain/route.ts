@@ -29,5 +29,8 @@ export async function GET(request: Request) {
     timeoutMs: 7500,
     unavailableBody: { domain, sessionId, revision: 0, readiness: "unavailable", observedAt: null },
     acceptEncoding: request.headers.get("accept-encoding"),
+    // The monitor answers 404 only after hydration proved the session absent, so the browser can
+    // show an honest unavailable state instead of retrying a transient 503 forever.
+    passThroughNotFound: true,
   });
 }

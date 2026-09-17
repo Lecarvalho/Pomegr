@@ -1350,7 +1350,19 @@ Historical session state never receives current Git state or current usage limit
 Session-domain revision clocks are monotonic per domain across sessions. A domain
 advances only when its semantic JSON changes; the observation timestamp alone does not
 advance it. Eviction retains the clock floor, so rebuilding a response cannot make an
-old client ETag appear current.
+old client ETag appear current, but only within one monitor process: revision clocks restart at
+0 in a new process, so the clock-floor guarantee does not span a restart. If the new process's
+first resolved revision for a domain happens to equal the revision a browser client retained
+from before the restart, the monitor's equality-only comparison answers `204` and skips the
+revision event; the client keeps its pre-restart content until the next semantic change advances
+the revision, and the browser store's epoch-based regression guard never applies because no body
+arrives to accept or reject (n4). Restart recovery otherwise depends on the browser store
+detecting a new live-event connection epoch; if its `EventSource` never opens, for example
+because SSE is blocked or buffered by an intermediary, the epoch never advances after a restart,
+so the new process's lower-revision resolved bodies are rejected as same-epoch regressions,
+retained pre-restart data stays visible, and the entry falls back to 1-second polling until the
+new process's revision passes the retained one (n5). A monitor-instance component in the ETag
+would remove both residual cases; none is implemented.
 
 Session-domain retention follows demand, not commit order. A semantically identical
 re-projection is a no-op: it neither advances a revision nor refreshes retention, so
@@ -1367,12 +1379,24 @@ evidence commits or a 30-second retry window passes. It receives no unavailable
 placeholder. Only a row whose catalog readiness is `unavailable` projects the unavailable
 placeholder, and that placeholder never replaces a retained evidence projection.
 
-Absence from the catalog is evidence only after every provider catalog has published. Until
-then, during monitor startup, a request for a session with neither committed L1 evidence nor
-a catalog row also serves `loading` and queues the same deduplicated selection hydration.
-Its commit publishes the domain revision event that a historical browser entry recovers
-from. After every provider catalog has published, such a request answers `unavailable`
-(HTTP 404, which the same-origin proxy reports as 503).
+Absence from the catalog is never proof that a session is absent, because provider catalogs are
+bounded windows. During monitor startup, before every provider catalog has published, a request
+for a session with neither committed L1 evidence nor a catalog row serves `loading` and queues
+the same deduplicated selection hydration. Its commit publishes the domain revision event that a
+browser entry recovers from. After every provider catalog has published, a request for such a
+session with a syntactically valid ID of a registered provider also serves `loading`, and queues
+one asynchronous probe hydration (at most four outstanding at a time, with at most 128 retained
+outcomes). A found session commits normally and publishes its domain revision event. Only after
+the probe publishes no evidence does the request answer `unavailable` (HTTP 404). A proven
+absence is re-probed at most once per 30-second retry window and keeps answering 404 meanwhile.
+An ID of an unregistered provider answers 404 without hydration. The probe cannot distinguish a
+failed acquisition from a missing source, so a transient acquisition failure also answers 404
+until it is re-probed. The session-domain proxy route passes this definitive 404 through with its
+fixed unavailable body; every other proxy route, and any monitor failure or timeout, still maps
+to 503. GETs never acquire, parse, or normalize synchronously.
+
+A session-domain request for committed evidence restored from a checkpoint as live prioritizes
+the same deduplicated restored-live revalidation that `/api/state` selection triggers.
 
 Session publications allocate revisions from a store-wide monotonic sequence. Evicting
 and rebuilding a session cannot reuse a revision still held by a client and incorrectly
@@ -1737,6 +1761,19 @@ it resolves, and a failure clears the pending invalidated revision so a replayed
 can revalidate. Events, reconnect recovery, navigation, and focus may also revalidate
 them. Hidden revision bursts remain coalesced until the hidden fallback or foreground
 return.
+
+A loading response never replaces a retained resolved body. Within one live-event
+connection epoch, a lower revision than the entry's retained revision is rejected. After an
+epoch change (a reconnect or a monitor restart), retained data stays visible while the entry
+is loading, and the first resolved body is accepted even at a lower revision than the
+retained one; accepting that body re-arms the guard for the new epoch. A declined rebuild
+(a rejected lower-revision body) keeps the 1-second retry cadence rather than falling back to
+the slower connected cadence. A 404 from the session-domain route is a definitive unavailable
+result, not a transient failure. The store drops a retained `loading` placeholder but keeps
+resolved last-known-good data, reports no error, and schedules no retry timer. Only a
+matching domain revision event, a live-event reconnect, focus or visibility, or an explicit
+revalidate re-checks it. The session page shows "Session unavailable" instead of the
+monitor-connection notice.
 
 A loading historical response cannot leave an in-flight flag set after its request
 settles: later readiness events and reconnects must be able to finish hydration.

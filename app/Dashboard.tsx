@@ -64,6 +64,10 @@ function SessionConnectionIssue({ message }: { message: string }) {
   return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session evidence unavailable" meta="Pomegr has not yet reached the local monitor for this session." /><div className="notice" role="alert"><span aria-hidden="true">!</span>{message}</div></section>;
 }
 
+function SessionUnavailable({ meta }: { meta: string }) {
+  return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session unavailable" meta={meta} /><div className="sessionTabState">Choose another session from the Sessions page.</div></section>;
+}
+
 export function Dashboard({ initialSessionId = null, initialQuery = {} }: { initialSessionId?: string | null; initialQuery?: SessionRouteQuery }) {
   const router = useRouter();
   const { sessions } = useSessionCatalog();
@@ -128,13 +132,16 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
     finally { setReportGenerating(false); }
   };
 
+  // A definitive monitor answer (its hydration found no recorded evidence for this session) is not
+  // a connection problem: show it honestly instead of "not yet reached the monitor", with no retry.
+  if (!summary && summaryResult.unavailable) return <SessionUnavailable meta="Pomegr found no recorded evidence for this session." />;
   if (!summary) return summaryResult.error ? <SessionConnectionIssue message={summaryResult.error} /> : <SessionLoading />;
   // A retained "loading" body (no session yet) is still evidence that a request once completed,
   // so a later poll failure surfaces the connection notice alongside it rather than silently
   // showing "Loading session…" forever; the next successful response clears `summaryResult.error`
   // on its own (see session-domain-store.ts), so no local retry bookkeeping is needed here either.
   if (summary.readiness === "loading" && !summary.session) return <SessionLoading error={summaryResult.error} />;
-  if (!summary.session || summary.readiness === "unavailable") return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session unavailable" meta="Pomegr has no committed summary for this session." /><div className="sessionTabState">Choose another session from the Sessions page.</div></section>;
+  if (!summary.session || summary.readiness === "unavailable") return <SessionUnavailable meta="Pomegr has no committed summary for this session." />;
 
   const status = statusPresentation(summary.lifecycle.activityStatus);
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;

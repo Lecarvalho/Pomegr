@@ -17,6 +17,12 @@ export type SessionDomainSnapshot<D extends SessionDomain> = {
   fetching: boolean;
   connected: boolean;
   error: string | null;
+  /**
+   * True after the monitor definitively answered that this exact query has no recorded evidence
+   * (HTTP 404 once hydration proved the session absent). Unlike `error`, it is not retried on a
+   * timer: a matching revision event, a reconnect, focus, or an explicit `revalidate` re-checks it.
+   */
+  unavailable: boolean;
 };
 
 type Listener = () => void;
@@ -32,7 +38,7 @@ type Entry = {
   invalidatedRevision: number | null;
   /** True from render-time creation until this entry's own `subscribe` effect runs; see `getEntry`. */
   pendingSubscription: boolean;
-  /** True once this entry has survived one `pruneUnretainedEntries` pass while still pending; see `pruneUnretainedEntries`. */
+  /** True once a subscribe-time prune pass (`touchSession`) has seen this entry still pending; see `pruneUnretainedEntries`. */
   survivedPrune: boolean;
   /** The live-event epoch active when `snapshot.data` was last accepted, or `null` before any data has been accepted. */
   dataEpoch: number | null;
@@ -99,14 +105,33 @@ async function refreshEntry(entry: Entry) {
   // so the steady-state cadence below would otherwise mistake it for "nothing left to refresh"
   // and fall back to the slow 30s poll instead of finishing the recovery quickly.
   let rebuildPending = false;
+  let definitivelyUnavailable = false;
   try {
     const response = await fetch(endpoint(entry), { cache: "no-store", signal: controller.signal });
     if (controller.signal.aborted) return;
     if (response.status === 204) {
       if (!entry.snapshot.data) throw new Error("Missing retained session evidence");
       entry.invalidatedRevision = null;
-      update(entry, { fetching: false, connected: true, error: null });
+      update(entry, { fetching: false, connected: true, error: null, unavailable: false });
       succeeded = true;
+      return;
+    }
+    if (response.status === 404) {
+      // A definitive answer, not a transient failure: the monitor answers 404 only once its own
+      // hydration proved the session absent, and the proxy passes that through for this route
+      // only. A retained "loading" placeholder is not evidence and is dropped; resolved
+      // last-known-good data is kept. No retry timer is scheduled (see `finally`).
+      entry.invalidatedRevision = null;
+      const retained = entry.snapshot.data;
+      update(entry, {
+        data: retained && retained.readiness !== "loading" ? retained : null,
+        fetching: false,
+        connected: true,
+        error: null,
+        unavailable: true,
+      });
+      succeeded = true;
+      definitivelyUnavailable = true;
       return;
     }
     if (!response.ok) throw new Error("Session evidence unavailable");
@@ -129,14 +154,14 @@ async function refreshEntry(entry: Entry) {
       && (value.readiness === "loading" || (withinSameEpoch && value.revision < retained.revision));
     if (regressesRetainedData) {
       entry.invalidatedRevision = null;
-      update(entry, { fetching: false, connected: true, error: null });
+      update(entry, { fetching: false, connected: true, error: null, unavailable: false });
       succeeded = true;
       rebuildPending = true;
       return;
     }
     entry.invalidatedRevision = null;
     entry.dataEpoch = currentEpoch;
-    update(entry, { data: value, fetching: false, connected: true, error: null });
+    update(entry, { data: value, fetching: false, connected: true, error: null, unavailable: false });
     succeeded = true;
   } catch {
     if (!controller.signal.aborted) {
@@ -145,6 +170,7 @@ async function refreshEntry(entry: Entry) {
       update(entry, {
         fetching: false,
         connected: false,
+        unavailable: false,
         error: "Session evidence is temporarily unavailable. Pomegr will retry from the last recorded state.",
       });
     }
@@ -156,6 +182,9 @@ async function refreshEntry(entry: Entry) {
       void refreshEntry(entry);
       return;
     }
+    // A definitive "unavailable" answer is re-checked only by a matching revision event, a
+    // reconnect, focus, or an explicit revalidate -- never by a polling loop against an absent session.
+    if (definitivelyUnavailable) return;
     if (!hasLiveSubscriber(entry)) {
       // Resolved historical entries have no periodic timer. A failed request, a rebuild still in
       // flight, or an unresolved body must retry, because no later revision event is guaranteed.
@@ -170,17 +199,23 @@ async function refreshEntry(entry: Entry) {
   }
 }
 
-function pruneUnretainedEntries() {
+function pruneUnretainedEntries({ subscribing }: { subscribing: boolean }) {
   const retained = new Set(recentSessions);
   for (const [key, entry] of entries) {
     if (retained.has(entry.query.sessionId) || entry.listeners.size) continue;
     // A just-created entry that has not yet reached its own subscribe effect has no listener and
-    // its session may not be registered in `recentSessions` yet, but it must survive a concurrent
-    // unmount's cleanup running first in the same commit (see `getEntry`): protect it through
-    // exactly one pass. An entry still pending on a *later* pass was abandoned before it ever
-    // subscribed (for example a discarded render) rather than mid-commit, so it is pruned here
-    // instead of lingering forever.
-    if (entry.pendingSubscription && !entry.survivedPrune) { entry.survivedPrune = true; continue; }
+    // its session may not be registered in `recentSessions` yet, but it must survive every
+    // unmount cleanup of the commit that mounts it (see `getEntry`). A keyed navigation can
+    // unmount several consumers at once (for example leaving an Agents tab), and React runs all
+    // of those cleanups before any subscribe effect of the new tree, so a cleanup pass never ages
+    // a pending entry. Only a subscribe-time pass (`touchSession`) ages it: subscribe effects run
+    // after every cleanup of their commit, so an entry still pending once a pass has aged it was
+    // abandoned before it ever subscribed (for example a discarded render), and the next pass of
+    // either kind prunes it instead of letting it linger forever.
+    if (entry.pendingSubscription && !entry.survivedPrune) {
+      if (subscribing) entry.survivedPrune = true;
+      continue;
+    }
     entry.controller?.abort();
     if (entry.timer !== null && typeof window !== "undefined") window.clearTimeout(entry.timer);
     entries.delete(key);
@@ -192,7 +227,7 @@ function touchSession(sessionId: string) {
   if (existing >= 0) recentSessions.splice(existing, 1);
   recentSessions.unshift(sessionId);
   recentSessions.splice(MAX_RETAINED_SESSIONS);
-  pruneUnretainedEntries();
+  pruneUnretainedEntries({ subscribing: true });
 }
 
 function onLiveEvent(event: LiveEvent) {
@@ -262,7 +297,7 @@ function getEntry(query: SessionDomainQuery): Entry {
   const entry: Entry = {
     key,
     query,
-    snapshot: Object.freeze({ data: null, fetching: false, connected: connectionState === "connected", error: null }),
+    snapshot: Object.freeze({ data: null, fetching: false, connected: connectionState === "connected", error: null, unavailable: false }),
     listeners: new Map(),
     controller: null,
     timer: null,
@@ -285,10 +320,40 @@ function getEntry(query: SessionDomainQuery): Entry {
   return entry;
 }
 
+// Runs from a consumer's own subscribe effect. Entry mutation lives in module functions rather than
+// inline in the hook, so the memoized render-time value stays immutable under React's hook rules.
+// It clears the render-time protection whether or not a listener attaches (enabled:false never
+// attaches one), so a disabled entry still becomes eligible for normal LRU pruning. When a listener
+// does attach to an entry that is no longer registered (for example one removed while a concurrent
+// render yielded), the entry is registered again, so a mounted consumer never holds a detached
+// entry that live events, reconnect recovery, and focus revalidation cannot reach.
+function attachSubscriber(entry: Entry, listener: Listener | null, subscription: Subscription) {
+  entry.pendingSubscription = false;
+  if (!listener) return false;
+  if (!entries.has(entry.key)) entries.set(entry.key, entry);
+  const firstSubscriber = entry.listeners.size === 0;
+  entry.listeners.set(listener, subscription);
+  touchSession(entry.query.sessionId);
+  ensureGlobalListeners();
+  return firstSubscriber;
+}
+
+function detachSubscriber(entry: Entry, listener: Listener) {
+  entry.listeners.delete(listener);
+  if (!entry.listeners.size) {
+    entry.controller?.abort();
+    entry.controller = null;
+    if (entry.timer !== null) window.clearTimeout(entry.timer);
+    entry.timer = null;
+    pruneUnretainedEntries({ subscribing: false });
+  }
+  releaseGlobalListenersIfIdle();
+}
+
 function createServerEntry(query: SessionDomainQuery): Entry {
   return {
     key: queryKey(query), query,
-    snapshot: Object.freeze({ data: null, fetching: false, connected: false, error: null }),
+    snapshot: Object.freeze({ data: null, fetching: false, connected: false, error: null, unavailable: false }),
     listeners: new Map(), controller: null, timer: null, refreshAfterFlight: false, invalidatedRevision: null,
     pendingSubscription: false, survivedPrune: false, dataEpoch: null,
   };
@@ -302,27 +367,10 @@ export function useSessionDomain<D extends SessionDomain>(query: SessionDomainQu
   const key = queryKey(query);
   const entry = useMemo(() => typeof window === "undefined" ? createServerEntry(query) : getEntry(query), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const subscribe = useCallback((listener: Listener) => {
-    // Clears the render-time protection as soon as this entry reaches its own effect, whether or
-    // not a listener actually attaches (enabled:false never attaches one), so a disabled entry
-    // still becomes eligible for normal LRU pruning instead of lingering forever.
-    entry.pendingSubscription = false;
+    const firstSubscriber = attachSubscriber(entry, enabled ? listener : null, { historical: options.historical });
     if (!enabled) return () => {};
-    const firstSubscriber = entry.listeners.size === 0;
-    entry.listeners.set(listener, { historical: options.historical });
-    touchSession(entry.query.sessionId);
-    ensureGlobalListeners();
     if (firstSubscriber) void refreshEntry(entry);
-    return () => {
-      entry.listeners.delete(listener);
-      if (!entry.listeners.size) {
-        entry.controller?.abort();
-        entry.controller = null;
-        if (entry.timer !== null) window.clearTimeout(entry.timer);
-        entry.timer = null;
-        pruneUnretainedEntries();
-      }
-      releaseGlobalListenersIfIdle();
-    };
+    return () => detachSubscriber(entry, listener);
   }, [enabled, entry, options.historical]);
   const getSnapshot = useCallback(() => entry.snapshot, [entry]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot) as unknown as SessionDomainSnapshot<D>;

@@ -106,7 +106,7 @@ export function SessionTabs({ active, summary, onSelect }: {
         {LABELS[tab]}{count(tab) === null ? null : <span>{count(tab)?.toLocaleString()}</span>}
       </button>)}
     </nav>
-    <nav className="sessionTabs sessionPhoneTabs" aria-label="Session sections">
+    <nav className="sessionTabs sessionPhoneTabs" aria-label="Session navigation">
       <div className="sessionPhoneTablist" role="tablist" aria-label="Session sections">
         {PRIMARY_PHONE_TABS.map((tab, index) => <button key={tab} id={`session-tab-phone-${tab}`} ref={(node) => { phoneButtons.current[index] = node; }} type="button" role="tab"
           aria-selected={active === tab} aria-controls={PANEL_ID} tabIndex={active === tab || (!PRIMARY_PHONE_TABS.includes(active) && index === 0) ? 0 : -1}
