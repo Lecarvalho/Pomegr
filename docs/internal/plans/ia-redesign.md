@@ -1,6 +1,6 @@
 # Information architecture redesign
 
-> Status: Session 3 in progress. Parts 1-2 of the first plan (T06 selection core and desktop Activity feed) are done, reviewed and committed. The remaining T06 and T06b work was re-planned as the 21-part `runs/2026-09-17-ia-session-3-finish`; parts 1-2 (desktop lane chart core, lane labels and band geometry) are done and committed.
+> Status: Session 3 in progress. Parts 1-2 of the first plan (T06 selection core and desktop Activity feed) are done, reviewed and committed. The remaining T06 and T06b work was re-planned as the 21-part `runs/2026-09-17-ia-session-3-finish`; parts 1-3 (desktop lane chart core, lane labels and band geometry, lane collapse and focus) are done and committed.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.

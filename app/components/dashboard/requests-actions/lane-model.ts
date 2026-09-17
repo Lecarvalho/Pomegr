@@ -1,5 +1,6 @@
-import type { Agent } from "../../../../shared/monitor-contract";
+import type { Agent, Workflow } from "../../../../shared/monitor-contract";
 import { agentTreeRows } from "../../../dashboard-utils";
+import { buildRosterGroups } from "../agent-roster/groups";
 import { scaleMax, type ChartMode, type RequestRow } from "./model";
 
 export const COMPACTION_LANE_ID = "compaction";
@@ -58,4 +59,76 @@ export function buildRequestLanes(rows: RequestRow[], agents: Agent[], mode: Cha
     };
   });
   return { lanes, laneByRequest };
+}
+
+/** More lanes than this collapse by workflow group. */
+export const LANE_COLLAPSE_THRESHOLD = 8;
+
+export type RequestLaneGroup = {
+  /** The Agents tab roster group id: `direct`, `workflow:<id>` or `workflow:unknown`. */
+  id: string;
+  title: string;
+  kind: "direct" | "workflow";
+  /** Non-compaction roster members, so the count does not change while paging. */
+  members: number;
+  /** Loaded member lanes, in lane order. */
+  lanes: RequestLane[];
+  /** Loaded rows of every member lane, in request order. */
+  rows: RequestRow[];
+  maximum: number;
+};
+
+export type RequestLaneRow =
+  | { kind: "lane"; id: string; lane: RequestLane; member: boolean }
+  | { kind: "group"; id: string; group: RequestLaneGroup }
+  | { kind: "groupHeader"; id: string; group: RequestLaneGroup };
+
+/**
+ * Orders lanes into display rows. With more than eight roster lanes and no agent scope, every
+ * non-primary roster group with two or more members becomes one collapsed row drawing all its
+ * members' requests, or a header followed by its member lanes when expanded. The primary lane,
+ * the compaction lane and agents missing from the roster never collapse. `rowByRequest` names the
+ * one row that draws each request.
+ */
+export function layoutRequestLanes(lanes: RequestLane[], agents: Agent[], workflows: Workflow[], expanded: ReadonlySet<string>, { scoped, mode, cacheWriteAvailable }: {
+  scoped: boolean; mode: ChartMode; cacheWriteAvailable: boolean;
+}): { rows: RequestLaneRow[]; rowByRequest: Map<string, string> } {
+  const agentsOnly = agents.filter((agent) => agent.role !== "compaction");
+  const rosterIds = new Set(agentsOnly.map((agent) => `agent:${agent.id}`));
+  const laneCount = rosterIds.size + (agents.length > agentsOnly.length ? 1 : 0)
+    + lanes.filter((lane) => lane.kind === "agent" && !rosterIds.has(lane.id)).length;
+  const plain = (lane: RequestLane, member = false): RequestLaneRow => ({ kind: "lane", id: lane.id, lane, member });
+  let rows: RequestLaneRow[] = lanes.map((lane) => plain(lane));
+  if (!scoped && laneCount > LANE_COLLAPSE_THRESHOLD) {
+    const placed = new Set<string>();
+    const primary = lanes.find((lane) => lane.id === "agent:primary");
+    rows = primary ? [plain(primary)] : [];
+    if (primary) placed.add(primary.id);
+    for (const roster of buildRosterGroups(agentsOnly, workflows)) {
+      if (roster.kind === "primary") continue;
+      const memberIds = new Set(roster.agents.map((agent) => `agent:${agent.id}`));
+      const members = lanes.filter((lane) => memberIds.has(lane.id) && !placed.has(lane.id));
+      members.forEach((lane) => placed.add(lane.id));
+      if (!members.length) continue;
+      if (roster.agents.length < 2) {
+        rows.push(...members.map((lane) => plain(lane)));
+        continue;
+      }
+      const groupRows = members.flatMap((lane) => lane.rows).sort((left, right) => left.ordinal - right.ordinal);
+      const group: RequestLaneGroup = {
+        id: roster.id, title: roster.title, kind: roster.kind === "direct" ? "direct" : "workflow", members: roster.agents.length,
+        lanes: members, rows: groupRows, maximum: Math.max(1, scaleMax(groupRows, mode, cacheWriteAvailable)),
+      };
+      if (expanded.has(group.id)) rows.push({ kind: "groupHeader", id: `group:${group.id}`, group }, ...members.map((lane) => plain(lane, true)));
+      else rows.push({ kind: "group", id: `group:${group.id}`, group });
+    }
+    rows.push(...lanes.filter((lane) => !placed.has(lane.id) && lane.kind === "agent").map((lane) => plain(lane)));
+    rows.push(...lanes.filter((lane) => lane.kind === "compaction").map((lane) => plain(lane)));
+  }
+  const rowByRequest = new Map<string, string>();
+  for (const row of rows) {
+    if (row.kind === "groupHeader") continue;
+    for (const request of row.kind === "group" ? row.group.rows : row.lane.rows) rowByRequest.set(request.id, row.id);
+  }
+  return { rows, rowByRequest };
 }

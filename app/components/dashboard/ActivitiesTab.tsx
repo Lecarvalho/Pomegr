@@ -47,7 +47,7 @@ function ActivitiesContent({ state, historical, paused, route, onRouteChange, on
   });
   if (!state.session) return <div className="sessionTabState">Activity evidence is unavailable.</div>;
   return <div className="sessionLegacyStack">
-    <RequestsActionsPanel agents={state.agents} requestSnapshots={tokens.requestSnapshots} contextBoundaries={tokens.contextHistory.boundaries} cacheWriteAvailable={state.capabilities.cacheWriteUsage} historical={historical} cacheEvents={tokens.cacheEvents} cacheReadDrops={tokens.cacheReadDrops} selection={selection} />
+    <RequestsActionsPanel agents={state.agents} workflows={state.workflows} requestSnapshots={tokens.requestSnapshots} contextBoundaries={tokens.contextHistory.boundaries} cacheWriteAvailable={state.capabilities.cacheWriteUsage} historical={historical} cacheEvents={tokens.cacheEvents} cacheReadDrops={tokens.cacheReadDrops} selection={selection} />
     {selection.history.enabled
       ? <ActivityFeedPanel selection={selection} feed={feed} agents={state.agents} busy={!feed.correlated || selection.pending} cacheWriteAvailable={state.capabilities.cacheWriteUsage} onOpenAgent={onOpenAgent} />
       // Paused desktop sessions stop polling the paged history endpoint: an honest unavailable

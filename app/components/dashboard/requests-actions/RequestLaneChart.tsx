@@ -1,8 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { Agent } from "../../../../shared/monitor-contract";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { Agent, Workflow } from "../../../../shared/monitor-contract";
 import { agentDisplayName, agentRoleLabel, compactNumber } from "../../../dashboard-utils";
 import { cacheEvidenceLabel } from "./cache-evidence";
-import type { RequestLane } from "./lane-model";
+import { layoutRequestLanes, type RequestLane, type RequestLaneGroup } from "./lane-model";
 import { requestMarker, type ChartMode, type RequestRow } from "./model";
 import { labeledEvidenceRow, placeAxisLabels, RequestBar } from "./RequestBarsChart";
 
@@ -26,6 +26,18 @@ function laneLabel(lane: RequestLane, agents: Agent[]): { name: string; meta: st
   }
   const agent = agents.find((candidate) => candidate.id === lane.agentId);
   return agent ? { name: agentDisplayName(agent), meta: `${agentRoleLabel(agent)} · ${agent.model}` } : { name: "Unknown agent", meta: "not in the agent roster" };
+}
+
+function groupLabel(group: RequestLaneGroup): { name: string; meta: string } {
+  const members = `${group.members} agents`;
+  return { name: group.title, meta: group.kind === "workflow" ? `workflow · ${members}` : members };
+}
+
+function LabelText({ name, meta, chevron }: { name: string; meta: string; chevron?: boolean }) {
+  return <>
+    <span className="requestLaneName">{chevron && <svg className="requestLaneChevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>}{name}</span>
+    <span className="requestLaneMeta">{meta}</span>
+  </>;
 }
 
 export type LaneBandLabel = {
@@ -75,8 +87,13 @@ export function placeLaneBandLabels(entries: { row: RequestRow; index: number }[
   return placed;
 }
 
-export function RequestLaneChart({ lanes, laneByRequest, agents, rows, start, end, size, mode, selectedId, cacheWriteAvailable, onSelect, onStep, windowStart, total }: {
-  lanes: RequestLane[]; laneByRequest: Map<string, string>; agents: Agent[];
+/**
+ * Desktop lanes. A lane name focuses its agent through the shared agent scope, so the feed and
+ * request detail never outlive a hidden bar; a group label expands or collapses a workflow group.
+ */
+export function RequestLaneChart({ lanes, agents, workflows, focusedAgentId, onFocusAgent, rows, start, end, size, mode, selectedId, cacheWriteAvailable, onSelect, onStep, windowStart, total }: {
+  lanes: RequestLane[]; agents: Agent[]; workflows: Workflow[];
+  focusedAgentId: string | null; onFocusAgent: (agentId: string | null) => void;
   rows: RequestRow[]; start: number; end: number; size: number; mode: ChartMode;
   selectedId: string | null; cacheWriteAvailable: boolean;
   onSelect: (row: RequestRow) => void; onStep: (delta: number) => void;
@@ -98,6 +115,14 @@ export function RequestLaneChart({ lanes, laneByRequest, agents, rows, start, en
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const layout = useMemo(() => layoutRequestLanes(lanes, agents, workflows, expanded, { scoped: focusedAgentId !== null, mode, cacheWriteAvailable }),
+    [lanes, agents, workflows, expanded, focusedAgentId, mode, cacheWriteAvailable]);
+  const toggleGroup = (id: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (!next.delete(id)) next.add(id);
+    return next;
+  });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusSelection = useRef(false);
@@ -114,44 +139,57 @@ export function RequestLaneChart({ lanes, laneByRequest, agents, rows, start, en
   const visibleByLane = useMemo(() => {
     const byLane = new Map<string, { row: RequestRow; index: number }[]>();
     visible.forEach((row, index) => {
-      const id = laneByRequest.get(row.id);
+      const id = layout.rowByRequest.get(row.id);
       if (!id) return;
       const entries = byLane.get(id);
       if (entries) entries.push({ row, index });
       else byLane.set(id, [{ row, index }]);
     });
     return byLane;
-  }, [visible, laneByRequest]);
+  }, [visible, layout]);
   const axisLabels = placeAxisLabels(visible, (index) => barX(index) + width / 2, true, plotWidth);
   const keyboardStep = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    // Arrow keys step bars, never from a label button, so focus does not jump out of the labels.
+    if ((event.key !== "ArrowLeft" && event.key !== "ArrowRight") || (event.target as Element).closest(".requestLaneLabel")) return;
     event.preventDefault();
     focusSelection.current = true;
     onStep(event.key === "ArrowLeft" ? -1 : 1);
   };
   return <div className="requestLanes" ref={chartRef} role="group" aria-label={`Model requests by agent, positions ${windowStart} to ${Math.min(total, windowStart + size - 1)}`} onKeyDown={keyboardStep}>
-    {lanes.map((lane) => {
-      const { band, plot } = lane.primary ? PRIMARY : SECONDARY;
+    {layout.rows.map((row) => {
+      if (row.kind === "groupHeader") {
+        const { name, meta } = groupLabel(row.group);
+        return <div key={row.id} className="requestLaneGroupHeader">
+          <button type="button" className="commandQuietAction requestLaneLabel" title={`${name} · ${meta}`} aria-label={`${name} · ${meta}`} aria-expanded="true" onClick={() => toggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>
+        </div>;
+      }
+      const lane = row.kind === "lane" ? row.lane : null;
+      const { band, plot } = lane?.primary ? PRIMARY : SECONDARY;
       const bottom = band + plot;
-      const { name, meta } = laneLabel(lane, agents);
+      const { name, meta } = row.kind === "lane" ? laneLabel(row.lane, agents) : groupLabel(row.group);
+      const maximum = row.kind === "lane" ? row.lane.maximum : row.group.maximum;
       const fullLabel = `${name} · ${meta}`;
-      const entries = visibleByLane.get(lane.id) ?? [];
-      const labeled = labeledEvidenceRow(entries.map(({ row }) => row), [hoveredId, focusedId, selectedId]);
+      let label: ReactNode = <div className="requestLaneLabel" title={fullLabel}><LabelText name={name} meta={meta} /></div>;
+      if (row.kind === "group") label = <button type="button" className="commandQuietAction requestLaneLabel" title={fullLabel} aria-label={fullLabel} aria-expanded="false" onClick={() => toggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>;
+      else if (lane && lane.agentId !== null && agents.some((agent) => agent.id === lane.agentId)) {
+        const focused = lane.agentId === focusedAgentId;
+        label = <button type="button" className="commandQuietAction requestLaneLabel" title={fullLabel} aria-label={`Focus ${fullLabel}`} aria-pressed={focused} onClick={() => onFocusAgent(focused ? null : lane.agentId)}><LabelText name={name} meta={meta} /></button>;
+      }
+      const entries = visibleByLane.get(row.id) ?? [];
+      const labeled = labeledEvidenceRow(entries.map(({ row: request }) => request), [hoveredId, focusedId, selectedId]);
       // Band text sits above the maximum's row, so it may use the full plot width.
       const bandLabels = placeLaneBandLabels(entries, { barX, width, left: 0, right: plotWidth }, selectedId, labeled);
-      return <div key={lane.id} className={`requestLane${lane.primary ? " isPrimary" : ""}`} data-lane-kind={lane.kind} role="group" aria-label={fullLabel}>
-        <div className="requestLaneLabel" title={fullLabel}>
-          <span className="requestLaneName">{name}</span>
-          <span className="requestLaneMeta">{meta}</span>
-        </div>
+      const className = `requestLane${lane?.primary ? " isPrimary" : ""}${row.kind === "lane" && row.member ? " isGroupMember" : ""}`;
+      return <div key={row.id} className={className} data-lane-kind={lane ? lane.kind : "group"} role="group" aria-label={fullLabel}>
+        {label}
         <svg className="requestLanePlot" viewBox={`0 0 ${plotWidth} ${bottom}`} width="100%" height={bottom}>
           <g className="requestsActionsAxis"><line x1={LANE_LEFT} x2={right} y1={bottom} y2={bottom} /></g>
-          <text className="requestLaneMaximum" x={plotWidth} y={band + 10} textAnchor="end">max {compactNumber(lane.maximum)}</text>
-          {entries.map(({ row, index }) => <RequestBar key={row.id} row={row} x={barX(index)} width={width} gap={GAP} top={band} bottom={bottom} right={right} band={band} marker={MARKER} labels={false}
-            maximum={lane.maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={row.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
-          {bandLabels.map((label) => {
-            const text = <text key={label.key} aria-hidden="true" className={label.kind === "selected" ? "requestsActionsSelectedLabel" : label.kind === "evidence" ? "requestsActionsRefillLabel" : undefined} x={label.x} y={band - 5} textAnchor={label.anchor}>{label.text}</text>;
-            return label.kind === "compaction" ? <g key={label.key} className="requestsActionsCompaction">{text}</g> : text;
+          <text className="requestLaneMaximum" x={plotWidth} y={band + 10} textAnchor="end">max {compactNumber(maximum)}</text>
+          {entries.map(({ row: request, index }) => <RequestBar key={request.id} row={request} x={barX(index)} width={width} gap={GAP} top={band} bottom={bottom} right={right} band={band} marker={MARKER} labels={false}
+            maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={request.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
+          {bandLabels.map((bandLabel) => {
+            const text = <text key={bandLabel.key} aria-hidden="true" className={bandLabel.kind === "selected" ? "requestsActionsSelectedLabel" : bandLabel.kind === "evidence" ? "requestsActionsRefillLabel" : undefined} x={bandLabel.x} y={band - 5} textAnchor={bandLabel.anchor}>{bandLabel.text}</text>;
+            return bandLabel.kind === "compaction" ? <g key={bandLabel.key} className="requestsActionsCompaction">{text}</g> : text;
           })}
         </svg>
       </div>;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../shared/monitor-contract";
+import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed, Workflow } from "../../../shared/monitor-contract";
 import { agentDisplayName, agentTreeRows, compactNumber } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 import { DottedInfoPopover } from "../DottedInfoPopover";
@@ -16,8 +16,10 @@ import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } 
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
 import { CacheRefillIcon } from "./CacheRefillIcon";
 
-export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvailable, selection }: {
-  agents: Agent[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
+const NO_WORKFLOWS: Workflow[] = [];
+
+export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, requestSnapshots, cacheWriteAvailable, selection }: {
+  agents: Agent[]; workflows?: Workflow[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
   cacheWriteAvailable: boolean; historical: boolean; cacheEvents?: CacheEventFeed; cacheReadDrops?: CacheReadDropFeed;
   selection: SessionRequestSelection;
 }) {
@@ -60,7 +62,7 @@ export function RequestsActionsPanel({ agents, requestSnapshots, cacheWriteAvail
         <p className="requestsActionsScale" aria-live="polite"><strong>{phone ? `0–${compactNumber(maximum)} tokens` : "Per-lane scales"}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
         {phone
           ? <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} />
-          : <RequestLaneChart lanes={lanes.lanes} laneByRequest={lanes.laneByRequest} agents={agents} rows={rows} start={start} end={end} size={size} mode={mode} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} />}
+          : <RequestLaneChart lanes={lanes.lanes} agents={agents} workflows={workflows} focusedAgentId={resolvedScope === "all" ? null : resolvedScope} onFocusAgent={(agentId) => setScope(agentId ?? "all")} rows={rows} start={start} end={end} size={size} mode={mode} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} />}
         <RequestMinimap rows={rows} overview={overview} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} interactive={!requestHistory.enabled || isCompleteRequestOverview(overview, requestHistory.total)} />
         {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />}
       </div>

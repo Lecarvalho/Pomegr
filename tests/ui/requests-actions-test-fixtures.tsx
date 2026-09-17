@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ComponentProps } from "react";
-import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed, Workflow } from "../../shared/monitor-contract";
 import type { RequestOverviewPoint } from "../../shared/session-history-contract";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
@@ -50,9 +50,10 @@ export function fullRefill(agentId: string, observedAt: string): CacheEventFeed[
   return [{ agentId, count: 1, occurrences: [{ observedAt, reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }];
 }
 
-export function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
+export function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; workflows?: Workflow[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
   return render(<RequestsActionsPanel
     agents={options.agents ?? [agent]}
+    workflows={options.workflows}
     requestSnapshots={requestFeed(items)}
     contextBoundaries={[]}
     cacheWriteAvailable={options.cacheWriteAvailable ?? true}

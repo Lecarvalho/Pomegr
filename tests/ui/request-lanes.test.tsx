@@ -17,10 +17,10 @@ import { scopedRows, type RequestRow } from "../../app/components/dashboard/requ
 import { LANE_LEFT, MAXIMUM_GUTTER, placeLaneBandLabels, type LaneBandLabel } from "../../app/components/dashboard/requests-actions/RequestLaneChart";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
-import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot } from "../../shared/monitor-contract";
+import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot, Workflow } from "../../shared/monitor-contract";
 import { historyCall, historyRequest, historyServer } from "./activities-test-server";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
-import { renderPanel, requestFeed, setPhone, snapshot } from "./requests-actions-test-fixtures";
+import { renderPanel, requestFeed, RequestsActionsPanel, setPhone, snapshot } from "./requests-actions-test-fixtures";
 
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", model: "small-model" };
 const compactA: Agent = { ...agent, id: "compact-a", parentId: "primary", label: "Compactor A", role: "compaction" };
@@ -263,7 +263,7 @@ describe("request lanes", () => {
   it("styles lanes as a 220px ellipsized label column beside the plot", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "request-lanes.css"), "utf8");
     expect(readFileSync(join(process.cwd(), "app", "globals.css"), "utf8")).toContain('@import "./styles/request-lanes.css";');
-    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/u);
+    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/u);
     for (const name of ["requestLaneName", "requestLaneMeta"]) {
       expect(styles).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*overflow:\\s*hidden;[^}]*text-overflow:\\s*ellipsis;[^}]*white-space:\\s*nowrap`, "u"));
     }
@@ -275,5 +275,156 @@ describe("request lanes", () => {
     const markup = container.querySelector(".requestLanes")!.outerHTML;
     expect(markup).not.toMatch(/request-\d/u);
     expect(markup).not.toMatch(/compact-[ab]|agent:/u);
+  });
+});
+
+const workers = Array.from({ length: 6 }, (_, index): Agent => ({ ...agent, id: `worker-${index + 1}`, parentId: "primary", label: `Worker ${index + 1}`, role: "builder", workflowId: "sweep" }));
+const directs = Array.from({ length: 3 }, (_, index): Agent => ({ ...agent, id: `direct-${index + 1}`, parentId: "primary", label: `Direct ${index + 1}`, role: "builder", workflowId: null }));
+const MANY = [agent, ...workers, ...directs, compactA];
+const WORKFLOWS: Workflow[] = [{ id: "sweep", name: "Research sweep", summary: null, status: "running", metadataStatus: "ready", startedAt: null, updatedAt: null, durationMs: 0, agentIds: workers.map((worker) => worker.id), phases: [] }];
+const COLLAPSED = ["Primary agent", "Direct subagents", "Research sweep", "Compactions"];
+
+/** Request n is issued by agent (n - 1) % count, so each cycle walks the agents in order. */
+function cycleSnapshots(agents: Agent[], cycles = 2) {
+  return Array.from({ length: agents.length * cycles }, (_, index) => snapshot(index + 1, agents[index % agents.length].id, { uncachedInputTokens: 100 * (index + 1), cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 10 }));
+}
+
+function laneNames(container: HTMLElement) {
+  return lanes(container).map((lane) => lane.querySelector(".requestLaneName")?.textContent);
+}
+
+describe("request lane collapse and focus", () => {
+  it("keeps eight lanes and collapses more than eight by workflow group, drawing each request once", () => {
+    const eight = [agent, ...workers.slice(0, 4), ...directs];
+    const { container: plain, unmount } = renderPanel(cycleSnapshots(eight), { agents: eight, workflows: WORKFLOWS });
+    expect(laneNames(plain)).toEqual(["Primary agent", "Direct 1", "Direct 2", "Direct 3", "Worker 1", "Worker 2", "Worker 3", "Worker 4"]);
+    expect(plain.querySelector('[data-lane-kind="group"]')).toBeNull();
+    unmount();
+
+    const { container } = renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    expect(laneNames(container)).toEqual(COLLAPSED);
+    const sweep = screen.getByRole("group", { name: "Research sweep · workflow · 6 agents" });
+    expect(sweep).toHaveAttribute("data-lane-kind", "group");
+    expect(screen.getByRole("group", { name: "Direct subagents · 3 agents" })).toHaveAttribute("data-lane-kind", "group");
+    expect(barNumbers(sweep)).toEqual([2, 3, 4, 5, 6, 7, 13, 14, 15, 16, 17, 18]);
+    expect(sweep.querySelector(".requestLaneMaximum")).toHaveTextContent("max 2,000");
+    const drawn = lanes(container).flatMap((lane) => barNumbers(lane));
+    expect(drawn.sort((left, right) => left - right)).toEqual(Array.from({ length: 22 }, (_, index) => index + 1));
+    expect(screen.queryByRole("group", { name: /^Worker 1 · /u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Focus Research sweep/u })).toBeNull();
+  });
+
+  it("expands and collapses a group and keeps it expanded when the loaded page changes", async () => {
+    const user = userEvent.setup();
+    const { container, rerender } = renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    await user.click(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: false }));
+    expect(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: true }).closest(".requestLaneGroupHeader")).not.toBeNull();
+    expect(laneNames(container)).toEqual(["Primary agent", "Direct subagents", ...workers.map((worker) => worker.label), "Compactions"]);
+    expect(lanes(container).filter((lane) => lane.classList.contains("isGroupMember"))).toHaveLength(6);
+    expect(barNumbers(laneNamed(container, "Worker 2"))).toEqual([3, 14]);
+    expect(lanes(container).flatMap((lane) => barNumbers(lane))).toHaveLength(22);
+
+    const nextPage = cycleSnapshots([agent, workers[0], workers[1], directs[0], compactA]);
+    rerender(<RequestsActionsPanel agents={MANY} workflows={WORKFLOWS} requestSnapshots={requestFeed(nextPage)} contextBoundaries={[]} cacheWriteAvailable historical={false} />);
+    expect(laneNames(container)).toEqual(["Primary agent", "Direct subagents", "Worker 1", "Worker 2", "Compactions"]);
+    expect(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: true })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Direct subagents · 3 agents" })).toHaveAttribute("data-lane-kind", "group");
+
+    await user.click(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: true }));
+    expect(laneNames(container)).toEqual(COLLAPSED);
+  });
+
+  it("focuses a lane through the agent scope and leaves focus again", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    expect(laneNamed(container, "Compactions").querySelector("button")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Direct subagents · 3 agents" }));
+    fireEvent.click(within(laneNamed(container, "Direct 2")).getByRole("button", { name: /^Request #20,/u }));
+
+    const focus = screen.getByRole("button", { name: /^Focus Direct 2 · builder · /u });
+    expect(focus).toHaveAttribute("aria-pressed", "false");
+    await user.click(focus);
+    expect(laneNames(container)).toEqual(["Direct 2"]);
+    expect(screen.getByLabelText("Agent scope")).toHaveValue("direct-2");
+    expect(screen.getByRole("button", { name: /^Focus Direct 2 · /u })).toHaveAttribute("aria-pressed", "true");
+    expect(laneNamed(container, "Direct 2").querySelector(".requestsActionsBar.isSelected")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Focus Direct 2 · /u }));
+    expect(screen.getByLabelText("Agent scope")).toHaveValue("all");
+    expect(laneNames(container)).toEqual(["Primary agent", "Direct 1", "Direct 2", "Direct 3", "Research sweep", "Compactions"]);
+    expect(screen.getByRole("button", { name: "Direct subagents · 3 agents", expanded: true })).toBeInTheDocument();
+  });
+
+  it("reaches label buttons by keyboard without letting arrow keys step from them", async () => {
+    const user = userEvent.setup();
+    renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    const heading = screen.getByRole("heading", { name: /^Request #\d+$/u }).textContent ?? "";
+    const group = screen.getByRole("button", { name: "Research sweep · workflow · 6 agents" });
+    expect(group.tabIndex).toBe(0);
+    group.focus();
+    await user.keyboard("{Enter}");
+    expect(group).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(group, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(group);
+    expect(screen.getByRole("heading", { name: /^Request #\d+$/u })).toHaveTextContent(heading);
+
+    const primary = screen.getByRole("button", { name: /^Focus Primary agent · /u });
+    primary.focus();
+    await user.keyboard(" ");
+    expect(screen.getByLabelText("Agent scope")).toHaveValue("primary");
+  });
+
+  it("selects and steps requests inside a collapsed group without expanding it", () => {
+    const { container } = renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    const sweep = () => screen.getByRole("group", { name: "Research sweep · workflow · 6 agents" });
+    fireEvent.click(within(sweep()).getByRole("button", { name: /^Request #6,/u }));
+    expect(screen.getByRole("heading", { name: "Request #6" })).toBeInTheDocument();
+    expect(sweep().querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6,/u));
+    expect(sweep().querySelector(".requestsActionsSelectedLabel")).toHaveTextContent("#6");
+
+    const chartGroup = screen.getByRole("group", { name: /^Model requests by agent/u });
+    fireEvent.keyDown(chartGroup, { key: "ArrowRight" });
+    expect(screen.getByRole("heading", { name: "Request #7" })).toBeInTheDocument();
+    expect(document.activeElement?.closest(".requestLane")).toBe(sweep());
+    fireEvent.keyDown(chartGroup, { key: "ArrowRight" });
+    expect(screen.getByRole("heading", { name: "Request #8" })).toBeInTheDocument();
+    expect(document.activeElement?.closest(".requestLane")).toBe(screen.getByRole("group", { name: "Direct subagents · 3 agents" }));
+    expect(laneNames(container)).toEqual(COLLAPSED);
+  });
+});
+
+describe("request lane focus in Activities", () => {
+  it("keeps the selected request, request detail and feed correlated while a lane is focused", async () => {
+    const user = userEvent.setup();
+    const sessionId = "claude:lane-focus";
+    const requests = Array.from({ length: 40 }, (_, index) => historyRequest(index + 1, (index + 1) % 2 ? "child" : "primary"));
+    const server = historyServer({ requests, calls: requests.map((request) => historyCall(`call-${request.number}`, request, "read", 1)), revision: "1", overview: true });
+    const base = createEmptyMonitorState({ connected: true });
+    const state: MonitorState = {
+      ...base,
+      agents: [agent, child],
+      session: { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), id: sessionId, title: "Session", project: "Pomegr" },
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith("/api/state")
+      ? Promise.resolve(new Response(JSON.stringify(state), { status: 200, headers: { "content-type": "application/json" } }))
+      : server.fetcher(input, init)));
+    const { container } = render(<LiveClockProvider running={false}><ActivitiesTab sessionId={sessionId} historical={false} paused={false} route={{ agent: null, request: null }} onRouteChange={vi.fn()} onOpenAgent={vi.fn()} /></LiveClockProvider>);
+    await screen.findByRole("heading", { name: "Request #40" });
+    const feed = screen.getByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(laneNames(container)).toEqual(["Primary agent", "Builder"]));
+    await user.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #37,/u }));
+    await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
+
+    await user.click(screen.getByRole("button", { name: "Focus Builder · builder · small-model" }));
+    await waitFor(() => expect(laneNames(container)).toEqual(["Builder"]));
+    expect(screen.getByRole("heading", { name: "Request #37" })).toBeInTheDocument();
+    expect(laneNamed(container, "Builder").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #37,/u));
+    await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
+    expect(within(feed).queryByRole("button", { name: /Request #38/u })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Focus Builder · builder · small-model", pressed: true }));
+    await waitFor(() => expect(laneNames(container)).toEqual(["Primary agent", "Builder"]));
+    expect(screen.getByRole("heading", { name: "Request #37" })).toBeInTheDocument();
+    await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
   });
 });
