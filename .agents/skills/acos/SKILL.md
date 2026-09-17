@@ -37,7 +37,7 @@ first, then continue.
 | `/acos run <path> [n]` | Execute an existing manifest: a manifest file, a run dir, or a plan dir plus part index (default: the first part not `done`). Show it, GO, execute. Section 4 onward. |
 | `/acos init` | Derive `.acos.yaml` from the repo. Section 7. |
 | `/acos calibrate` | Read past runs, write `acos/calibration.md`. Section 8. Run it in its own session. |
-| `/acos save-preset <name>` | Save the last executed manifest's stage shape as `acos/presets/<name>.yaml`. Section 9. |
+| `/acos save-preset <name>` | Save the last run's stage shape, drift applied, as `acos/presets/<name>.yaml`. Section 9. |
 | `/acos show` | Print the last manifest for this session, or the newest under `runs/`. |
 
 ## Economy rules
@@ -103,9 +103,10 @@ other way round.
    context included. That is the number `actual` will hold, so it is the
    number to estimate.
 3. **Learn from earlier parts.** When sizing or running a part of a plan
-   whose `plan.yaml` has `actual` on earlier parts, multiply your
-   estimates by the mean actual/estimate ratio of those parts, say so in
-   `basis`, and re-cut the part if the scaled figure breaks a limit.
+   whose `plan.yaml` has `actual` on earlier parts, scale by the mean
+   actual/estimate ratio of those parts: tokens where `actual` has them,
+   otherwise files and lines, then re-derive tokens from step 2. Say so
+   in `basis`, and re-cut the part if the scaled figure breaks a limit.
 4. **Distrust a guess that lands just under the limit.** If most parts
    estimate between 80% and 100% of a limit, you fitted the guesses to
    the limit. Recount from step 1 and cut further.
@@ -243,8 +244,11 @@ On GO:
 
 1. `manifest.yaml` is already in the run directory (written at present,
    rewritten if the user asked for changes before GO). From GO on, never
-   edit it. Start `log.yaml` next to it with the manifest id, a start
-   timestamp, and an empty `drift: []` list.
+   edit it. Start `log.yaml` next to it (shape in `SPEC.md` 2.8) with the
+   manifest id, `sessions` holding this session's id when the harness
+   exposes one (Claude Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex:
+   `codex:` + `CODEX_THREAD_ID`), a start timestamp, and an empty
+   `drift: []` list.
 2. For each stage in order:
    a. If `gate: true` or `gates.per_stage: true`, show the stage and ask
       to continue.
@@ -253,15 +257,18 @@ On GO:
       `inline`, the prompt is your own instruction; do not paste it
       anywhere.
    c. Run it through the stage's adapter (see `references/adapters.md`).
-   d. Store the result as the stage's `outputs` artifact(s) in
-      `runs/<id>/artifacts/<name>.md`. For inline stages a few lines is
-      enough: what changed, verify result.
+   d. Write the stage's `outputs` to `runs/<id>/artifacts/<name>.md`
+      only when another context reads them: a later `subagent`,
+      `workflow` or `external` stage takes them as input, a gate shows
+      them, or a later part needs them. Between inline stages the output
+      stays in your context: no plan file for your own implement, no
+      diff file. `git diff` is the diff and the log holds the check.
    e. Run the `check`. `command`: run it, exit 0 is pass. `review`: the
       stage output's first line must be `VERDICT: PASS`. `none`: pass.
    f. Append a stage record to `log.yaml`: name, iteration, adapter,
-      provider, model, effort, started, ended, tokens if the adapter
-      reports them (else your estimate, marked `estimated: true`), check
-      outcome, and the shortest decisive check output.
+      provider, model, effort, started, ended, tokens only if the adapter
+      reports them (never an estimate), check outcome, and the shortest
+      decisive check output.
    g. On fail, apply `on_fail` (stage value, else `loop.on_fail`):
       - `retry`: rerun the stage with the check output appended to the
         prompt. Stop after `max_iterations` (stage, else loop, else 3).
@@ -293,27 +300,32 @@ On GO:
    versus `actual`. Retries and escalation within the rules are not
    drift; they are just log records.
 
-## 6. Report and executed manifest
+## 6. Close the run
 
-1. Write `manifest.executed.yaml` next to `manifest.yaml`: the planned
-   manifest with `stages` as they actually ran (dropped stages removed,
-   added stages inserted, models and efforts as used), an `actual` block
-   with the same shape as `estimate` (`files` and `lines` from
-   `git diff --stat`; tokens estimated when not reported,
-   say so in `basis`), and the `drift` list from the log.
+There is no executed manifest. `manifest.yaml` plus `log.yaml` is the
+record.
+
+1. Append to `log.yaml`: `ended`, `outcome`, and `actual` with `files`
+   and `lines` from `git diff --stat` (new files included), `agents`,
+   and tokens only where adapters reported them. Leave out what was not
+   measured; never write an estimate as `actual`.
 2. If the manifest is a part, set its `status` in `plan.yaml` to `done`
-   or `failed`, and add `actual` next to its `estimate` there.
-3. End with a short report:
+   or `failed`, and copy `actual` next to its `estimate` there.
+3. If later parts build on this one, write `artifacts/handoff.md`, at
+   most 40 lines: what later parts reuse, decisions they must not undo,
+   deferred findings with the owning part index, verify result. A run
+   outside a plan, or the last part, has no handoff.
+4. End with a short report. Point at files; do not repeat them.
 
 - run id, outcome (success / failed at stage X / stopped by user)
 - one line per stage: name, iterations, model actually used, check result
 - drift, one line each, if any
-- actual tokens and agents next to the estimate, marked estimated when
-  the harness did not report them
+- actual files, lines and agents next to the estimate, tokens where reported
 - when in a plan: parts done / total, and the exact next command
   (`/acos run runs/<plan-id> <i+1>`), or "plan complete"
-- files changed, from `git status --short` or a diff summary
-- pointer to the run directory
+- files changed, from `git status --short`
+- paths worth opening: the run directory, the handoff, anything a stage
+  wrote for the user
 
 ## 7. Init: derive `.acos.yaml`
 
@@ -348,30 +360,34 @@ Run this in its own session, not during a task. Goal: make the next
 sizing and compose more accurate for this repo.
 
 1. Collect every `runs/*/` that has `manifest.yaml`. Read, per run:
-   `manifest.yaml`, `manifest.executed.yaml` if present, `log.yaml`.
-   A run without an executed manifest counts as planned only; use its
-   log for what ran.
-2. For each run, derive: intent size (files touched, from the log or
-   `git` if the artifacts say), planned versus executed stages (added,
+   `manifest.yaml` and `log.yaml`, plus `plan.yaml` for plans. A run
+   without a log counts as planned only.
+2. Fill token counts missing from a log only from measurement: if a
+   usage query for past sessions is available (a session monitor's MCP
+   tool, for example), ask it for the log's `sessions` between each
+   stage's `started` and `ended`. Otherwise leave them unknown. Never
+   read an estimate as an actual.
+3. For each run, derive: intent size (files and lines from the log's
+   `actual`), planned versus executed stages (added,
    dropped, re-ordered), models and efforts planned versus used,
    iterations per stage, adapters used and agent count, tokens estimated
    versus actual where present, runs whose actual exceeded a limit.
    Plans count too: each part directory is a run; note how many parts
    plans had, and whether parts turned out too big or too small.
-3. Look for patterns across runs, not per run: which stages get dropped,
+4. Look for patterns across runs, not per run: which stages get dropped,
    which get added, which checks get changed the same way, how far
    estimates miss, what task shape tends to need which stages. Always
    derive the per-unit figures sizing needs: tokens per file for inline
    implement, fixed cost plus tokens per file for a subagent, cost of a
    review, how often review fails first time.
-4. Write `acos/calibration.md` in the fixed shape from `SPEC.md`
+5. Write `acos/calibration.md` in the fixed shape from `SPEC.md`
    section 7: header line with run count, date range and today's date;
    sections **Shape**, **Cost**, **Recurring drift**, **Notes**. Under
    40 lines. Overwrite the previous file; if it had a **Notes** section,
    keep entries that are still true. Each Recurring drift line that
    points at a config fix (verify command, a block default, a limit)
    should name the file to change.
-5. Say where the file is, give one line per section, and stop. Do not
+6. Say where the file is, give one line per section, and stop. Do not
    change `.acos.yaml`, blocks or presets; suggest those changes in
    **Recurring drift** and let the user decide.
 
@@ -379,10 +395,11 @@ Refuse politely if fewer than two runs exist: say so and stop.
 
 ## 9. Save-preset: promote a manifest shape
 
-Take the last executed manifest from this session (or
-`runs/<newest>/manifest.executed.yaml`, falling back to `manifest.yaml`).
-Strip run-specific fields: `id`, `intent`, `part`, `scope`, `estimate`,
-`actual`, `drift`, `outputs`. Replace concrete model ids with the matching
+Take the last run from this session (or `runs/<newest>/`): its
+`manifest.yaml` with the stage drift from `log.yaml` applied (dropped
+stages removed, added ones inserted, models and efforts as used). Strip
+run-specific fields: `id`, `intent`, `part`, `scope`, `estimate`,
+`outputs`. Replace concrete model ids with the matching
 `{{ project.models.<tier> }}` placeholder when they equal a tier in
 `.acos.yaml`, and the verify command with `{{ project.verify }}`. Keep
 adapters, efforts, checks, on_fail, escalation, loop and gates. Add `name`

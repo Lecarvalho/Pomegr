@@ -190,7 +190,7 @@ The orchestrator reads `status`:
 | `ask` | show `output`, ask the user: retry (re-invoke with `resumeFromRunId` after editing the script or prompt), skip, stop |
 
 Log one stage record per stage in the segment. Token counts come from
-the workflow result if it reports them; otherwise `null`. Record
+the workflow result if it reports them; otherwise leave them out. Record
 `adapter_used: workflow` and the run id the tool returned.
 
 ## Constraints to remember

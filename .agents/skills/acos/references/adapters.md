@@ -12,9 +12,8 @@ The orchestrator does the work itself in the current session.
 - `provider` and `model` may be omitted; the session model is used.
 - Map `effort` to your own behaviour: `low` means minimal exploration and
   terse output, `high` and `max` mean read more before acting.
-- Tokens: not reported by the harness. Estimate from what you read and
-  wrote (roughly 4 characters per token) and log
-  `tokens: <n>, estimated: true`.
+- Tokens: not reported by the harness. Leave `tokens` out of the stage
+  record; do not estimate.
 - Escalation on an inline stage: if the next `escalation` entry names
   the session model, raise effort and retry inline. If it names a
   different model, run the retry as a `subagent` with that model, count it
@@ -41,8 +40,8 @@ Spawn one agent with the Agent tool.
   context. Include intent, scope notes, inputs, and the block prompt.
 - Ask the agent to end with a clear final report; that report is the stage
   output.
-- Tokens: not reported by the harness. Log `tokens: null`, or an
-  estimate marked `estimated: true` if the agent reports what it read.
+- Tokens: log the total the Agent tool result reports, if any. Never an
+  estimate.
 - Each spawn counts against `limits.agents`. A retry is a new spawn.
 
 Parallel stages: if two consecutive stages share no inputs/outputs
@@ -75,7 +74,7 @@ Run a shell command from the provider catalog.
 - Non-zero exit is a stage error, distinct from a check failure. Log the
   exit code and the last lines of stderr, then apply `on_fail`.
 - If the command is `null` for that provider, compose fails before GO.
-- Tokens: parse them if the CLI prints usage; otherwise `null`.
+- Tokens: parse them if the CLI prints usage; otherwise leave them out.
 
 Write-capable external agents (for example `codex exec`) edit the working
 tree directly. Run `git status --short` before and after to derive the
@@ -93,7 +92,8 @@ Store the shortest decisive check output in the log, not the full stream.
 
 ## Artifacts
 
-Stage outputs go to `runs/<id>/artifacts/<output-name>.md`. Later stages
-receive them inline in the prompt under a heading per input name. If an
-artifact is larger than about 400 lines, pass the file path instead and
-tell the worker to read it.
+A stage output goes to `runs/<id>/artifacts/<output-name>.md` only when
+another context reads it (SKILL.md section 5, step 2d). A delegated stage
+receives its inputs inline in the prompt under a heading per input name.
+If an input is larger than about 400 lines, pass the file path instead
+and tell the worker to read it.
