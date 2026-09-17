@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionActivityStatus } from "../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../shared/session-domain-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
+import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
 import { AgentsTab } from "./components/dashboard/AgentsTab";
 import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
@@ -108,6 +109,7 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
     router.replace(`/sessions/${encodeSessionRoute(sessionId)}${query ? `?${query}` : ""}`, { scroll: false });
   }, [initialQuery, sessionId, router]);
   const selectTab = useCallback((tab: SessionTab) => navigate({ tab }), [navigate]);
+  const navigateActivities = useCallback(({ agent, request }: { agent: string | null; request: string | null }) => navigate({ agent, request }), [navigate]);
 
   const generateReport = async () => {
     if (!summary?.session || reportGenerating) return;
@@ -157,7 +159,8 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
     <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
       {activeTab === "overview" && <SessionOverview summary={summary} query={initialQuery} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} summary={summary} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
-      {activeTab !== "overview" && activeTab !== "agents" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
+      {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} />}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
     </div>
   </section>;
 }

@@ -10,17 +10,10 @@ import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
 import { requestMarker } from "./requests-actions/model";
 import { ACTIVITY_PAGE_SIZE, useActivityHistory } from "./useActivityHistory";
+import { activityDuration } from "./activity-feed/duration";
 
 const PAGE_SIZE = ACTIVITY_PAGE_SIZE;
 type Scope = "all" | "primary" | "subagents";
-
-export function activityDuration(value: number | null) {
-  if (value === null) return "—";
-  if (value < 1_000) return `${Math.round(value)}ms`;
-  if (value < 60_000) return `${Number((value / 1_000).toFixed(1))}s`;
-  if (value < 3_600_000) return `${Number((value / 60_000).toFixed(1))}m`;
-  return `${Number((value / 3_600_000).toFixed(1))}h`;
-}
 
 function ActivityBreakdown({ activity }: { activity: ActivityFeed }) {
   const [expanded, setExpanded] = useState(false);

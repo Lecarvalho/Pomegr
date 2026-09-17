@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: Session 2 paused on user instruction; T03 and T05 are accepted, while T04 and integrated verification remain unfinished.
+> Status: Session 3 in progress; part 1 of 7 (T06 selection core) is done and reviewed, while T06 presentation, docs and acceptance and T06b remain unfinished.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Resume Session 2 (T03, T04, T05) from its checkpoint; do not start Session 3.
+> Next task or decision: Continue Session 3 with part 2 (activities-desktop-feed), `/acos run runs/2026-09-16-ia-session-3 2`, from the Session 3 checkpoint.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -546,6 +546,131 @@ No unresolved product decision blocks implementation. The latest approved rules 
 - Keep the coordinator's context small through focused task briefs and concise handoffs. Follow the ownership, dependency waves, model choices, integration/review responsibilities and verification protocol above; checkpoints must allow work to continue without repeating investigations.
 
 ## Continuation checkpoint
+
+### Session 3 checkpoint
+
+2026-09-17 · **Session 3 part 1 of 7 done: T06 selection core.** ACOS run
+`runs/2026-09-16-ia-session-3/1-activities-selection-core` (manifest, log and stage artifacts
+there). The independent Sol review passed in its second iteration. Session 3 stays unchecked.
+
+**State.** Branch `claude/ia-redesign-session-3`. Part 1 is committed as one commit on top of
+`47ebdb2`, together with this checkpoint. The ACOS run records under `runs/` are gitignored and
+stay local.
+
+**Changed files.**
+
+- New:
+  - `app/components/dashboard/ActivitiesTab.tsx`
+  - `app/components/dashboard/useTransitionalSessionState.ts` (`/api/state` polling moved
+    verbatim from `LegacySessionTab.tsx`)
+  - `app/components/dashboard/activity-feed/{useActivityFeed.ts,feed-model.ts,ActivityRequestGroups.tsx,duration.ts}`
+  - `app/components/dashboard/requests-actions/selection-viewport.ts`
+- Modified:
+  - `app/components/dashboard/requests-actions/useSessionRequestSelection.ts` (661 lines)
+  - `requests-actions/useRequestSelection.ts`
+  - `LegacySessionTab.tsx` (activities branch removed)
+  - `ActivityPanel.tsx` (imports `activityDuration` from `activity-feed/duration.ts`)
+  - `app/Dashboard.tsx` (routes `activities` to `ActivitiesTab`)
+- Tests:
+  - New: `tests/ui/{selection-viewport.test.ts,activities-selection.test.tsx,activity-feed.test.tsx,activities-tab.test.tsx,activities-test-server.ts}`
+  - Adjusted: `tests/ui/requests-actions.test.tsx`. The minimap test now expects the selection to
+    move to the nearest visible request, because the positional fallback was removed.
+  - Adjusted: `tests/ui/transitional-session-tab.test.tsx` (tab union).
+
+**Fixed interface for parts 2-4.** Parts 2-4 consume this interface and must not change the
+selection hook.
+
+- Selection owner is `useSessionRequestSelection`.
+  - New options: `route?: { agent: string | null; request: string | null }` and
+    `onRouteChange?`.
+  - It keeps all earlier return fields.
+  - It adds `mode: "follow" | "track" | "anchored"`, `selectedNumber`, `selectedIndex`,
+    `workKind`, `setWorkKind`, `historyScope`, `pending`, `previousRange()`, `nextRange()`
+    (steps of 5 in scope), `jumpToLatest()`, `moveWindow(start)` (moves the selection with the
+    window) and `locate(id, targetScope?)`.
+- `selection-viewport.ts` holds the pure rules: `advanceOnGrowth`, `transferOnViewportMove`,
+  `stepTarget`, `modeFor`, `selectionAfterCommit`.
+- Feed hook: `useActivityFeed({ enabled, query: { sessionId, scope, selected, workKind }, historyRevision })`.
+  - It returns `{ status, correlated, groups, byKind, shellTasks, requestTotal, callTotal, revision, loadMore, loadingMore, retry }`.
+  - `feed-model.ts` exports `parseActivityFeedPage`, `mergeCalls` and `targetBasename`.
+- Container: `ActivitiesTab({ sessionId, historical, paused, route, onRouteChange })`.
+  - It renders the unchanged `RequestsActionsPanel`, then the minimal
+    `ActivityRequestGroups({ selection, feed, agents, busy })`, then the legacy `ActivityPanel`.
+  - It sets `busy = !feed.correlated || selection.pending`.
+  - Part 2 replaces `ActivityRequestGroups` and deletes `ActivityPanel` (sole consumer:
+    `ActivitiesTab`).
+  - `RequestsActionsPanel` is consumed only by `ActivitiesTab`.
+
+**Invariants.**
+
+- **Growth:**
+  - Follow keeps the latest request selected.
+  - Track advances the viewport until the selected bar would leave it, then anchors that bar at
+    the left edge. The anchoring fetch completes before the page commits.
+  - Anchored keeps its viewport while totals and the minimap grow.
+- **Identity:**
+  - A refreshed page is checked by position, then by request ID.
+  - A request absent from scope jumps to latest and clears `request`.
+  - Nothing is ever clamped to a false position.
+- **Drag and minimap:** the selection moves to the nearest visible bar.
+- **Filters:** the kind filter never moves the selection or viewport; the server keeps the
+  selected header with `noMatchingCalls`. A scope change clears the kind filter.
+- **Precedence:** a user selection supersedes an in-flight refresh. A queued history event
+  flushes against the synchronously committed selection, never a stale mode.
+- **Range fetches:** the previous chart stays rendered and the feed is marked busy.
+- **StrictMode:** unmount interrupts reads and remount resumes them.
+
+**Transport and URL decisions.**
+
+- **Feed range:** the grouped feed sends `selected` with `scope`, and optionally `workKind`.
+  It never sends `from`/`to`. A scoped agent's request numbers are sparse, so a 64-number range
+  can hold fewer than five of its requests.
+- **Feed cadence:** the feed has no subscription or timer of its own. It revalidates when the
+  request page's committed revision changes, sending `revision=` so an unchanged answer returns
+  204. That page already follows the Session 1 cadence, so historical sessions fetch once per
+  query. Retry is manual.
+- **URL `request`:** accepts a stable number, resolved with one grouped lookup, or an opaque
+  request ID, which is rewritten to its number.
+  - A lookup answered "loading" retries on the next revision or on reconnect.
+  - A transient failure keeps the deep link.
+  - Only a ready response without the number degrades to latest.
+- **URL `agent`:** an unknown agent degrades to all agents.
+- **Write-back:** happens only after user actions, once per settled gesture (300 ms UI settle,
+  not polling). Follow mode writes `request` as null.
+
+**Verification.** `npm run verify:fast && npm run test:ui`, run serially by the orchestrator
+after the fix stage, passed.
+
+- `verify:fast`: lint 0 errors and 16 pre-existing warnings. Architecture and boundary checks
+  passed, with no file over 800 lines and no orphans.
+- `test:ui`: 87 files, 867 tests.
+- The full `npm test` (with the build) was not run in this part; part 7 owns it.
+
+**Review.**
+
+- Iteration 1 FAILED with three reproduced blockers:
+  - React StrictMode stranded deep-link loads.
+  - A queued history event undid a drag.
+  - A selection during a track refresh committed a page without its bar.
+- A fix stage resolved all three, plus six shoulds (including a route write per drag step) and
+  three nits.
+- Iteration 2 passed.
+
+**Deferred findings and owners.**
+
+- Part 5 (T06 docs): add an `docs/OBSERVATION_CACHE.md` cadence entry for the grouped feed
+  (revalidation on page revision, 204, manual retry, 300 ms write settle).
+- Part 2: `targetBasename` shortens prose that ends in a path ("Run tests for app/foo.test.ts"
+  becomes "foo.test.ts"). Settle the target copy with the feed design.
+- Part 7 regression sweep:
+  - Cancelling an in-flight read leaves a queued publication waiting until the next event,
+    fallback or selection (pre-existing, low impact).
+  - A held arrow key stalls when fetches are slower than key repeat (pre-existing).
+- Recorded only: the `advanceOnGrowth` follow and anchored branches are exercised only by tests,
+  kept to document the rule.
+
+**Next step.** Part 2 (activities-desktop-feed): `/acos run runs/2026-09-16-ia-session-3 2`,
+preferably in a fresh session.
 
 ### Session 2 checkpoint
 

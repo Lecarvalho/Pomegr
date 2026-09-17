@@ -578,7 +578,7 @@ describe("RequestsActionsPanel", () => {
     expect(screen.getByRole("heading", { name: "Request #49" }).closest("section")).toBeInTheDocument();
   });
 
-  it("moves the minimap window without moving the selected request", () => {
+  it("moves the minimap window and transfers a hidden selection to the nearest visible request", () => {
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     const minimap = screen.getByRole("slider", { name: "Request window" });
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 100, top: 0, bottom: 26, width: 100, height: 26, x: 0, y: 0, toJSON: () => ({}) });
@@ -590,7 +590,8 @@ describe("RequestsActionsPanel", () => {
 
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 2, clientX: 0, clientY: 10 });
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 100");
-    expect(container.querySelector(".requestsActionsDetail")).toHaveTextContent("Request #100");
+    // The window moved older, so the right-edge bar is nearest; no detail survives without its bar.
+    expect(container.querySelector(".requestsActionsDetail")).toHaveTextContent("Request #60");
   });
 
   it("canonicalizes equivalent cache timestamps and rejects invalid join keys", () => {
