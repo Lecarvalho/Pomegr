@@ -14,6 +14,7 @@ import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { Agent, MonitorState } from "../../shared/monitor-contract";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
+import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 import type { RequestSelectionRoute } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { setPhone } from "./requests-actions-test-fixtures";
@@ -209,6 +210,64 @@ describe("Activities tab", () => {
     expect(second).toHaveClass("activityBreakdown");
     expect(within(first as HTMLElement).getAllByRole("article").length).toBeGreaterThan(0);
     expect(within(second as HTMLElement).getByRole("heading", { name: "Actions by kind" })).toBeInTheDocument();
+  });
+
+  it("shows a phone request line with agent, role, uncached input and time that selects the request", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { container } = fixture();
+    const feed = await ready();
+
+    const group = within(feed).getByRole("article", { name: "Request #38" });
+    const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, uncached input 1,962,000, ${shortTime(historyRequest(38).observedAt)}, 2 calls` });
+    expect(line).toHaveTextContent(`#38Primary agent orchestrator${compactNumber(1_962_000)} in · ${shortTime(historyRequest(38).observedAt)}`);
+    // The line names the agent itself, so the desktop agent link is not repeated under it.
+    expect(within(group).queryByRole("button", { name: "Primary agent" })).toBeNull();
+
+    await user.click(line);
+    await screen.findByRole("heading", { name: "Request #38" });
+    expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #38, Primary agent,/u));
+    const selected = Array.from(feed.querySelectorAll(".activityTableFrame.isSelectedRequest"));
+    expect(selected).toEqual([group]);
+    expect(group).toHaveAttribute("data-request", "38");
+  });
+
+  it("keeps the shown request window when a tap selects a group already in it", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { server } = fixture();
+    const feed = await ready();
+    const shown = () => Array.from(feed.querySelectorAll(".activityTableFrame"), (group) => group.getAttribute("data-request"));
+    const before = shown();
+    const fetches = feedCalls(server).length;
+
+    await user.click(within(feed).getByRole("button", { name: /^Request #38, Primary agent,/u }));
+    await screen.findByRole("heading", { name: "Request #38" });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+
+    // Re-anchoring the served window on every selection would slide all five lines under the finger.
+    expect(shown()).toEqual(before);
+    expect(feedCalls(server)).toHaveLength(fetches);
+  });
+
+  it("replaces the desktop counts caveat with the phone tap caveat and its popover", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    fixture();
+    const feed = await ready();
+
+    expect(within(feed).queryByText("Local counts only.")).toBeNull();
+    expect(feed.querySelector(".activityFeedCaveat")).toHaveTextContent("Requests with their tool calls · tap a call for details · how to read this");
+    await user.click(within(feed).getByRole("button", { name: "How to read this feed" }));
+    expect(screen.getByRole("dialog", { name: "How to read this feed" })).toHaveTextContent("Request line: agent, role, uncached input, time. Tap it for the four request-local counts.");
+  });
+
+  it("keeps Previous, Next and Jump to latest as phone touch targets", async () => {
+    setPhone(true);
+    fixture();
+    const feed = await ready();
+    const nav = within(feed).getByRole("navigation", { name: "Request range" });
+    for (const name of ["Previous", "Next", "Jump to latest"]) expect(within(nav).getByRole("button", { name })).toHaveClass("commandSecondaryAction");
   });
 
   it("keeps Actions by kind before the request groups on desktop", async () => {

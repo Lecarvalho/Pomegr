@@ -857,6 +857,22 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .activityPagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .activityPagination > span { color: var(--muted); font-size: var(--text-xs); }
 .activityPagination nav { display: flex; align-items: center; gap: 4px; }
+/* Phone request line: 44px, agent and role on the left, uncached input and time on the right.
+   The line is the selection target, so the desktop six-column grid is replaced, not narrowed. */
+.activityLayout.isPhone .activityRequestLine, .activityLayout.isPhone .activityRow.activityRequestLine {
+  grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; min-height: 44px; padding: 0 12px;
+}
+.activityRequestWho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityRequestWho strong { font-weight: 600; }
+.activityRequestWho > span { color: var(--muted); }
+.activityRequestMeta { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The one brand-colored left rule in app/styles: the selected phone request group, call lines
+   included (DESIGN.md "Phone Activities feed"). */
+.activityLayout.isPhone .activityTableFrame.isSelectedRequest { border-left: 2px solid var(--brand); }
+.activityFeedCaveat { margin: 0; padding: 12px; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.activityLayout.isPhone .activityPagination { flex-direction: column; align-items: stretch; padding: 12px; }
+.activityLayout.isPhone .activityPagination nav { gap: 8px; }
+.activityLayout.isPhone .activityPagination nav > button { flex: 1; min-height: 44px; }
 @media (min-width: 641px) and (max-width: 1200px) {
   .activityLayout { grid-template-columns: minmax(0, 1fr); }
   .activityBreakdown { border-right: 0; border-bottom: 1px solid var(--line); }
