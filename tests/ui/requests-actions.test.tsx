@@ -457,7 +457,7 @@ describe("RequestsActionsPanel", () => {
     expect(Number(selectedLabel.getAttribute("x"))).toBeCloseTo(
       Number(selectedBar.getAttribute("x")) + Number(selectedBar.getAttribute("width")) / 2,
     );
-    expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(26);
+    expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(17);
 
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
@@ -626,8 +626,8 @@ describe("RequestsActionsPanel", () => {
       cacheReadDrops={{ status: "ready", items: [] }} />);
     const marker = container.querySelector(".requestsActionsRefill")!;
     expect(marker.querySelector("title")).toHaveTextContent("Possible full refill · request #2");
-    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("width", "16");
-    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("height", "16");
+    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("width", "14");
+    expect(marker.querySelector(".cacheRefillIcon")).toHaveAttribute("height", "14");
     const bar = marker.closest(".requestsActionsBar")!;
     expect(bar).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
     expect(marker).not.toHaveClass("isInferred");

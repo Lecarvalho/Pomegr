@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../app/live-events", () => ({
@@ -11,10 +13,11 @@ vi.mock("../../app/live-events", () => ({
 
 import { ActivitiesTab } from "../../app/components/dashboard/ActivitiesTab";
 import { buildRequestLanes } from "../../app/components/dashboard/requests-actions/lane-model";
-import { scopedRows } from "../../app/components/dashboard/requests-actions/model";
+import { scopedRows, type RequestRow } from "../../app/components/dashboard/requests-actions/model";
+import { LANE_LEFT, MAXIMUM_GUTTER, placeLaneBandLabels, type LaneBandLabel } from "../../app/components/dashboard/requests-actions/RequestLaneChart";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
-import type { Agent, MonitorState, RequestSnapshot } from "../../shared/monitor-contract";
+import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot } from "../../shared/monitor-contract";
 import { historyCall, historyRequest, historyServer } from "./activities-test-server";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
 import { renderPanel, requestFeed, setPhone, snapshot } from "./requests-actions-test-fixtures";
@@ -43,6 +46,31 @@ function laneNamed(container: HTMLElement, name: string) {
   const lane = lanes(container).find((candidate) => candidate.querySelector(".requestLaneName")?.textContent === name);
   if (!lane) throw new Error(`No lane named ${name}`);
   return lane;
+}
+
+function readDrop(target: RequestSnapshot): CacheReadDropFeed {
+  return { status: "ready", items: [{ agentId: target.agentId, count: 1, occurrences: [{ id: `drop-${target.id}`, observedAt: target.observedAt, previousCacheReadPercent: 90, cacheReadPercent: 5, gapMs: 1_000 }] }] };
+}
+
+/** Rows at indexes 0..n-1 with optional evidence and compaction flags, laid out 17 units apart. */
+function bandEntries(count: number, flags: Record<number, { evidence?: boolean; compaction?: boolean }>) {
+  const rows = scopedRows(requestFeed(Array.from({ length: count }, (_, index) => snapshot(index + 1))), [], "all");
+  return rows.map((row, index): { row: RequestRow; index: number } => ({ index, row: {
+    ...row,
+    compactionBefore: Boolean(flags[index]?.compaction),
+    cacheEvidence: flags[index]?.evidence ? { kind: "refill" } : undefined,
+  } }));
+}
+
+function expectClearBand(labels: LaneBandLabel[], entries: { row: RequestRow; index: number }[], right: number) {
+  const icons = entries.filter(({ row }) => row.cacheEvidence).map(({ index }) => [LANE_LEFT + 17 * index, LANE_LEFT + 17 * index + 14]);
+  for (const label of labels) {
+    expect(label.start).toBeGreaterThanOrEqual(LANE_LEFT);
+    expect(label.end).toBeLessThanOrEqual(right);
+    expect(label.end - label.start).toBeGreaterThanOrEqual(label.text.length * 6);
+    for (const [from, to] of icons) expect(label.end <= from || label.start >= to).toBe(true);
+    for (const other of labels) if (other !== label) expect(label.end <= other.start || label.start >= other.end).toBe(true);
+  }
 }
 
 function barNumbers(root: Element) {
@@ -146,6 +174,100 @@ describe("request lanes", () => {
     await screen.findByRole("heading", { name: "Request #38" });
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #38/u })).toHaveAttribute("aria-pressed", "true"));
     expect(laneNamed(container, "Primary agent").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #38,/u));
+  });
+
+  it("names each lane with its full agent, role and model in the title and accessible name", () => {
+    const longName = "Audit browser polling traffic across every provider adapter";
+    const { container } = renderPanel([...laneSnapshots(), snapshot(13, "ghost")], { agents: [agent, { ...child, label: longName }, compactA, compactB] });
+    const builder = screen.getByRole("group", { name: `${longName} · builder · small-model` });
+    expect(builder).toHaveClass("requestLane");
+    expect(builder.querySelector(".requestLaneLabel")).toHaveAttribute("title", `${longName} · builder · small-model`);
+    expect(builder.querySelector(".requestLaneName")).toHaveTextContent(longName);
+    expect(builder.querySelector(".requestLaneMeta")).toHaveTextContent("builder · small-model");
+    expect(screen.getByRole("group", { name: "Compactions · compaction · 2 agents" })).toHaveAttribute("data-lane-kind", "compaction");
+    const unknown = screen.getByRole("group", { name: "Unknown agent · not in the agent roster" });
+    expect(unknown.querySelector(".requestLaneLabel")).toHaveAttribute("title", "Unknown agent · not in the agent roster");
+    expect(lanes(container)).toHaveLength(4);
+  });
+
+  it("sizes every lane viewBox to the measured plot width and keeps band marks clear of the maximum gutter", () => {
+    vi.spyOn(SVGElement.prototype, "getBoundingClientRect").mockImplementation(function (this: SVGElement) {
+      return { width: this.classList.contains("requestLaneAxis") ? 600 : 0, height: 18, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS, cacheReadDrops: readDrop(snapshot(6, "child")) });
+    expect(lanes(container).map((lane) => lane.querySelector("svg")!.getAttribute("viewBox"))).toEqual(["0 0 600 118", "0 0 600 52", "0 0 600 52"]);
+    expect(lanes(container).map((lane) => lane.querySelector("svg")!.getAttribute("height"))).toEqual(["118", "52", "52"]);
+    expect(container.querySelector(".requestLaneAxis")).toHaveAttribute("viewBox", "0 0 600 18");
+    for (const maximum of container.querySelectorAll(".requestLaneMaximum")) expect(maximum).toHaveAttribute("x", "600");
+    for (const segment of container.querySelectorAll(".requestLanePlot .requestsActionsSegment")) {
+      expect(Number(segment.getAttribute("x")) + Number(segment.getAttribute("width"))).toBeLessThanOrEqual(600 - MAXIMUM_GUTTER + 0.001);
+    }
+
+    const icon = laneNamed(container, "Builder").querySelector(".requestsActionsRefill .cacheRefillIcon")!;
+    expect(icon).toHaveAttribute("width", "14");
+    const [, iconTop] = /translate\(([\d.]+) ([\d.]+)\)/u.exec(icon.parentElement!.getAttribute("transform")!)!.slice(1).map(Number);
+    expect(iconTop + 14).toBeLessThanOrEqual(18);
+    fireEvent.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #6,/u }));
+    const bandText = Array.from(laneNamed(container, "Builder").querySelectorAll(".requestsActionsRefillLabel, .requestsActionsSelectedLabel"));
+    expect(bandText.map((text) => text.textContent)).toEqual(["Possible refill", "#6"]);
+    for (const text of bandText) expect(Number(text.getAttribute("y"))).toBeLessThanOrEqual(18);
+  });
+
+  it("centers the selected request number over the first and last bars of a full window", () => {
+    vi.spyOn(SVGElement.prototype, "getBoundingClientRect").mockImplementation(function (this: SVGElement) {
+      return { width: this.classList.contains("requestLaneAxis") ? 600 : 0, height: 18, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    const { container } = renderPanel(Array.from({ length: 60 }, (_, index) => snapshot(index + 1, "primary", { uncachedInputTokens: 1_000 })));
+    const bars = container.querySelectorAll(".requestLanePlot .requestsActionsBar");
+    expect(bars).toHaveLength(60);
+    for (const [bar, marker] of [[bars[59], "#60"], [bars[0], "#1"]] as const) {
+      fireEvent.click(bar);
+      const segment = bar.querySelector(".requestsActionsSegment")!;
+      const label = container.querySelector(".requestsActionsSelectedLabel")!;
+      expect(label).toHaveTextContent(marker);
+      expect(label).toHaveAttribute("text-anchor", "middle");
+      expect(Number(label.getAttribute("x"))).toBeCloseTo(Number(segment.getAttribute("x")) + Number(segment.getAttribute("width")) / 2);
+    }
+  });
+
+  it("lays out band labels without overlapping each other, evidence icons or the gutter", () => {
+    const geometry = (right: number) => ({ barX: (index: number) => LANE_LEFT + 17 * index, width: 14, left: LANE_LEFT, right });
+    const spacious = bandEntries(24, { 5: { evidence: true }, 20: { compaction: true } });
+    const labels = placeLaneBandLabels(spacious, geometry(1000), spacious[5].row.id, spacious[5].row);
+    expect(labels.map((label) => [label.kind, label.anchor])).toEqual([["evidence", "start"], ["selected", "end"], ["compaction", "start"]]);
+    expectClearBand(labels, spacious, 1000);
+
+    const crowded = bandEntries(8, { 1: { evidence: true }, 2: { evidence: true, compaction: true }, 3: { evidence: true, compaction: true }, 7: { evidence: true } });
+    for (const selected of [1, 2, 7]) {
+      const placed = placeLaneBandLabels(crowded, geometry(140), crowded[selected].row.id, crowded[selected].row);
+      expect(placed.length).toBeLessThan(4);
+      expectClearBand(placed, crowded, 140);
+    }
+
+    const edge = bandEntries(12, { 11: { evidence: true } });
+    const [atEdge] = placeLaneBandLabels(edge, geometry(LANE_LEFT + 17 * 12), null, edge[11].row);
+    expect(atEdge).toMatchObject({ kind: "evidence", anchor: "end" });
+  });
+
+  it("keeps the phone single chart marker and selected label unchanged", () => {
+    setPhone(true);
+    const { container } = renderPanel([snapshot(1), snapshot(2)], { cacheReadDrops: readDrop(snapshot(2)) });
+    const icon = container.querySelector(".requestsActionsChart .requestsActionsRefill .cacheRefillIcon")!;
+    expect(icon).toHaveAttribute("width", "16");
+    expect(icon.parentElement!.getAttribute("transform")).toMatch(/ 8\)$/u);
+    fireEvent.click(screen.getByRole("button", { name: /^Request #2,/u }));
+    expect(container.querySelector(".requestsActionsChart .requestsActionsBar.isSelected .requestsActionsSelectedLabel")).toHaveTextContent("#2");
+    expect(container.querySelector(".requestLanes")).toBeNull();
+  });
+
+  it("styles lanes as a 220px ellipsized label column beside the plot", () => {
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "request-lanes.css"), "utf8");
+    expect(readFileSync(join(process.cwd(), "app", "globals.css"), "utf8")).toContain('@import "./styles/request-lanes.css";');
+    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/u);
+    for (const name of ["requestLaneName", "requestLaneMeta"]) {
+      expect(styles).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*overflow:\\s*hidden;[^}]*text-overflow:\\s*ellipsis;[^}]*white-space:\\s*nowrap`, "u"));
+    }
+    expect(styles).toMatch(/\.requestLanePlot \.requestsActionsRefill \.cacheRefillIcon\s*\{\s*width:\s*14px;\s*height:\s*14px/u);
   });
 
   it("renders no request snapshot or agent identifiers in the lane markup", () => {

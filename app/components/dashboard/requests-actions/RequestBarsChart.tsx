@@ -36,9 +36,11 @@ export function labeledEvidenceRow(rows: RequestRow[], ids: (string | null)[]) {
 /**
  * One request bar shared by the single chart and the lanes: stacked request-local segments,
  * selection, compaction boundary, and the cache-evidence marker drawn in the `band` above `top`.
+ * `marker` sizes that icon; without `labels` the caller places the compaction and selected text.
  */
-export function RequestBar({ row, x, width, gap, top, bottom, right, band, maximum, mode, cacheWriteAvailable, selected, onSelect, onHover, onFocus }: {
+export function RequestBar({ row, x, width, gap, top, bottom, right, band, marker = 16, labels = true, maximum, mode, cacheWriteAvailable, selected, onSelect, onHover, onFocus }: {
   row: RequestRow; x: number; width: number; gap: number; top: number; bottom: number; right: number; band: number;
+  marker?: number; labels?: boolean;
   maximum: number; mode: ChartMode; cacheWriteAvailable: boolean; selected: boolean;
   onSelect: (row: RequestRow) => void; onHover: (id: string | null) => void; onFocus: (id: string | null) => void;
 }) {
@@ -65,13 +67,13 @@ export function RequestBar({ row, x, width, gap, top, bottom, right, band, maxim
     <rect className="requestsActionsHit" x={x - gap / 2} y={row.cacheEvidence ? top - band : top} width={width + gap} height={bottom - top + (row.cacheEvidence ? band : 0)} />
     {stack}
     {selected && <rect className="requestsActionsSelection" x={x} y={barTop} width={width} height={Math.max(1, height(stacked))} />}
-    {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} /><text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text></g>}
+    {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} />{labels && <text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text>}</g>}
     {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind !== "refill" ? " isInferred" : ""}`}>
       <title>{cacheEvidenceLabel(row.cacheEvidence)} · request {requestMarker(row)}</title>
-      <line x1={x + width / 2} x2={x + width / 2} y1={top - band + 26} y2={bottom} />
-      <g transform={`translate(${x + width / 2 - 8} ${top - band + 2})`}><CacheRefillIcon size={16} inferred={row.cacheEvidence.kind !== "refill"} /></g>
+      <line x1={x + width / 2} x2={x + width / 2} y1={top - band + marker + 10} y2={bottom} />
+      <g transform={`translate(${x + width / 2 - marker / 2} ${top - band + 2})`}><CacheRefillIcon size={marker} inferred={row.cacheEvidence.kind !== "refill"} /></g>
     </g>}
-    {selected && <text className="requestsActionsSelectedLabel" x={x + width / 2} y={Math.max(Math.min(16, top), barTop - 8)} textAnchor="middle">{requestMarker(row)}</text>}
+    {labels && selected && <text className="requestsActionsSelectedLabel" x={x + width / 2} y={Math.max(Math.min(16, top), barTop - 8)} textAnchor="middle">{requestMarker(row)}</text>}
   </g>;
 }
 
