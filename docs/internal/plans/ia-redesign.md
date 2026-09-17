@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: Session 3 in progress; parts 1-2 of 7 (T06 selection core and desktop Activity feed) are done and reviewed, while the T06 lane chart, phone layout, docs and acceptance and T06b remain unfinished.
+> Status: Session 3 in progress. Parts 1-2 of the first plan (T06 selection core and desktop Activity feed) are done, reviewed and committed. The remaining T06 and T06b work was re-planned as the 20-part `runs/2026-09-17-ia-session-3-finish`, whose parts have not started.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Continue Session 3 with part 3 (activities-lane-chart), `/acos run runs/2026-09-16-ia-session-3 3`, from the Session 3 checkpoint.
+> Next task or decision: Continue Session 3 with the first unfinished part of `runs/2026-09-17-ia-session-3-finish` (`/acos run runs/2026-09-17-ia-session-3-finish`), from the Session 3 checkpoint. It replaces parts 3-7 of `runs/2026-09-16-ia-session-3`; do not run those.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
