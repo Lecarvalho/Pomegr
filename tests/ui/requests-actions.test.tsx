@@ -685,7 +685,7 @@ describe("RequestsActionsPanel", () => {
     expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
   });
 
-  it("keeps a tappable phone minimap without Prev/Next or the ranking rail", () => {
+  it("keeps a tappable phone minimap without Prev/Next", () => {
     setPhone(true);
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(20);
@@ -698,7 +698,6 @@ describe("RequestsActionsPanel", () => {
     expect(axisLabels(container)).toEqual(["#16", "#35"]);
     expect(screen.queryByRole("button", { name: "Prev" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Largest requests" })).not.toBeInTheDocument();
   });
 
   it("drags the phone chart in both directions across history pages and releases cancelled gestures", async () => {

@@ -27,7 +27,8 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   selection: SessionRequestSelection;
 }) {
   const [mode, setMode] = useState<ChartMode>("fresh");
-  // Desktop defaults to lanes; phone always draws the single chart. Expanded lane groups and the
+  // Desktop defaults to lanes; phone always draws the single chart with its role track, legend and
+  // Largest strip. Expanded lane groups and the
   // layout live here so switching between lanes and the single chart keeps both.
   const [layout, setLayout] = useState<ChartLayout>("lanes");
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
@@ -79,11 +80,11 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
         <p className="requestsActionsScale" aria-live="polite"><strong>{single ? `0–${compactNumber(maximum)} tokens` : <DottedInfoPopover ariaLabel="About lanes" content="Each lane has its own scale; max is its tallest request on the loaded page. Click a lane name to focus that agent across the tab, and click it again to show all agents. With more than eight lanes, workflow groups collapse; click a group name to expand it.">Per-lane scales</DottedInfoPopover>}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
         {single
           ? <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow}
-            agents={phone ? undefined : agents} onInspect={phone ? undefined : setInspectedId} />
+            agents={agents} onInspect={setInspectedId} />
           : <RequestLaneChart lanes={lanes.lanes} agents={agents} workflows={workflows} expanded={expandedGroups} onToggleGroup={toggleGroup} focusedAgentId={resolvedScope === "all" ? null : resolvedScope} onFocusAgent={(agentId) => setScope(agentId ?? "all")} rows={rows} start={start} end={end} size={size} mode={mode} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} />}
-        {!phone && single && <RequestRoleLegend rows={rows.slice(start - 1, end)} agents={agents} named={(inspectedId && rows.find((row) => row.id === inspectedId)) || selected} />}
+        {single && <RequestRoleLegend rows={rows.slice(start - 1, end)} agents={agents} named={(inspectedId && rows.find((row) => row.id === inspectedId)) || selected} />}
         <RequestMinimap rows={rows} overview={overview} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} interactive={!requestHistory.enabled || isCompleteRequestOverview(overview, requestHistory.total)} />
-        {!phone && <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />}
+        <LargestRequestsList rows={rows} scopeLabel={scopeLabel} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />
       </div>
       <div className="requestsActionsDetails">
         <RequestDetail row={selected} agent={agents.find((agent) => agent.id === selected.agentId)} count={rows.length} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />

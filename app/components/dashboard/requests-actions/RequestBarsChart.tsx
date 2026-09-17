@@ -35,6 +35,63 @@ export function labeledEvidenceRow(rows: RequestRow[], ids: (string | null)[]) {
   return ids.map((id) => rows.find((row) => row.id === id && row.cacheEvidence)).find((row) => row !== undefined);
 }
 
+export type BandLabel = {
+  key: string; kind: "selected" | "evidence" | "compaction"; text: string; x: number; anchor: "start" | "middle" | "end";
+  /** Estimated horizontal extent the label occupies. */
+  start: number; end: number;
+};
+
+const LABEL_PAD = 4;
+
+/**
+ * Lays out the text row of a band above the bars: the hovered, focused or selected cache-evidence
+ * label (right of its icon when it fits), the selected request marker, then compaction text.
+ * Evidence icons (`marker` wide) are fixed obstacles; a label that cannot clear them and earlier
+ * labels inside `[left, right]` is dropped instead of overlapping. Lanes and the phone chart use it.
+ */
+export function placeBandLabels(entries: { row: RequestRow; index: number }[], { barX, width, left, right, gap = 3, marker = 14 }: {
+  barX: (index: number) => number; width: number; left: number; right: number; gap?: number; marker?: number;
+}, selectedId: string | null, labeled: RequestRow | undefined): BandLabel[] {
+  const center = (index: number) => barX(index) + width / 2;
+  const taken = entries.filter(({ row }) => row.cacheEvidence).map(({ index }) => [center(index) - marker / 2, center(index) + marker / 2]);
+  const placed: BandLabel[] = [];
+  const place = (label: Pick<BandLabel, "key" | "kind" | "text">, charWidth: number, candidates: Pick<BandLabel, "x" | "anchor">[]) => {
+    const size = label.text.length * charWidth;
+    for (const candidate of candidates) {
+      const start = candidate.anchor === "start" ? candidate.x : candidate.anchor === "end" ? candidate.x - size : candidate.x - size / 2;
+      if (start < left || start + size > right || taken.some(([from, to]) => start < to + LABEL_PAD && start + size + LABEL_PAD > from)) continue;
+      taken.push([start, start + size]);
+      placed.push({ ...label, ...candidate, start, end: start + size });
+      return;
+    }
+  };
+  const side = marker / 2 + LABEL_PAD;
+  const evidence = labeled && entries.find(({ row }) => row === labeled);
+  if (evidence?.row.cacheEvidence) {
+    const x = center(evidence.index);
+    place({ key: "evidence", kind: "evidence", text: cacheEvidenceLabel(evidence.row.cacheEvidence, true) }, 6.5, [{ x: x + side, anchor: "start" }, { x: x - side, anchor: "end" }]);
+  }
+  const selected = entries.find(({ row }) => row.id === selectedId);
+  if (selected) {
+    const x = center(selected.index);
+    place({ key: "selected", kind: "selected", text: requestMarker(selected.row) }, 7, [{ x, anchor: "middle" }, { x: x - side, anchor: "end" }, { x: x + side, anchor: "start" }]);
+  }
+  for (const { row, index } of entries) {
+    if (!row.compactionBefore) continue;
+    const boundary = barX(index) - gap / 2;
+    place({ key: `compaction-${row.id}`, kind: "compaction", text: "compaction" }, 6, [{ x: boundary + 3, anchor: "start" }, { x: boundary - 3, anchor: "end" }]);
+  }
+  return placed;
+}
+
+/** Draws placed band labels on one baseline; decorative, since bars carry the same facts in their names. */
+export function RequestBandLabels({ labels, y }: { labels: BandLabel[]; y: number }) {
+  return <>{labels.map((label) => {
+    const text = <text key={label.key} aria-hidden="true" className={label.kind === "selected" ? "requestsActionsSelectedLabel" : label.kind === "evidence" ? "requestsActionsRefillLabel" : undefined} x={label.x} y={y} textAnchor={label.anchor}>{label.text}</text>;
+    return label.kind === "compaction" ? <g key={label.key} className="requestsActionsCompaction">{text}</g> : text;
+  })}</>;
+}
+
 /**
  * One request bar shared by the single chart and the lanes: stacked request-local segments,
  * selection, compaction boundary, and the cache-evidence marker drawn in the `band` above `top`.
@@ -119,6 +176,9 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   const labelX = labeledRow ? barCenter(visible.indexOf(labeledRow)) : left;
   const labelText = labeledRow?.cacheEvidence ? cacheEvidenceLabel(labeledRow.cacheEvidence, true) : "";
   const labelStart = Math.max(left, Math.min(labelX + 12, right - labelText.length * 6));
+  // Phone reserves a text row just above the plot top that bars never reach. Compaction, selected
+  // and evidence text share it and drop out rather than overlap on the narrow chart.
+  const bandLabels = phone ? placeBandLabels(visible.map((row, index) => ({ row, index })), { barX: (index) => left + step * index, width, left, right, gap, marker: 16 }, selectedId, labeledRow) : null;
   const keyboardStep = (event: KeyboardEvent<SVGSVGElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
@@ -131,10 +191,11 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
       <line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} />
       <text x={left - 6} y={bottom - fraction * (bottom - top) + 4} textAnchor="end">{compactNumber(maximum * fraction)}</text>
     </g>)}
-    {visible.map((row, index) => <RequestBar key={row.id} row={row} x={left + step * index} width={width} gap={gap} top={top} bottom={bottom} right={right} band={44}
+    {visible.map((row, index) => <RequestBar key={row.id} row={row} x={left + step * index} width={width} gap={gap} top={top} bottom={bottom} right={right} band={44} labels={!phone}
       agent={agents && requestAgentRole(row, agents).name} maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={row.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
     {agents && track && <RequestRoleTrack rows={visible} agents={agents} barX={(index) => left + step * index} width={width} y={bottom + track.gap} height={track.height} />}
-    {labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelStart} y={top - 43} textAnchor="start">{labelText}</text>}
+    {bandLabels && <RequestBandLabels labels={bandLabels} y={top - 6} />}
+    {!bandLabels && labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelStart} y={top - 43} textAnchor="start">{labelText}</text>}
     <g className="requestsActionsAxis">
       {axisLabels.map((label) => <text key={label.index} x={label.x} y={phone ? 192 : 266} textAnchor={label.anchor}>{label.text}</text>)}
     </g>

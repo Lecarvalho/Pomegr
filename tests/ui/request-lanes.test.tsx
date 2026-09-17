@@ -14,7 +14,8 @@ vi.mock("../../app/live-events", () => ({
 import { ActivitiesTab } from "../../app/components/dashboard/ActivitiesTab";
 import { buildRequestLanes } from "../../app/components/dashboard/requests-actions/lane-model";
 import { scopedRows, type RequestRow } from "../../app/components/dashboard/requests-actions/model";
-import { LANE_LEFT, MAXIMUM_GUTTER, placeLaneBandLabels, type LaneBandLabel } from "../../app/components/dashboard/requests-actions/RequestLaneChart";
+import { LANE_LEFT, MAXIMUM_GUTTER } from "../../app/components/dashboard/requests-actions/RequestLaneChart";
+import { placeBandLabels, type BandLabel } from "../../app/components/dashboard/requests-actions/RequestBarsChart";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot, Workflow } from "../../shared/monitor-contract";
@@ -62,7 +63,7 @@ function bandEntries(count: number, flags: Record<number, { evidence?: boolean; 
   } }));
 }
 
-function expectClearBand(labels: LaneBandLabel[], entries: { row: RequestRow; index: number }[], right: number) {
+function expectClearBand(labels: BandLabel[], entries: { row: RequestRow; index: number }[], right: number) {
   const icons = entries.filter(({ row }) => row.cacheEvidence).map(({ index }) => [LANE_LEFT + 17 * index, LANE_LEFT + 17 * index + 14]);
   for (const label of labels) {
     expect(label.start).toBeGreaterThanOrEqual(LANE_LEFT);
@@ -233,30 +234,32 @@ describe("request lanes", () => {
   it("lays out band labels without overlapping each other, evidence icons or the gutter", () => {
     const geometry = (right: number) => ({ barX: (index: number) => LANE_LEFT + 17 * index, width: 14, left: LANE_LEFT, right });
     const spacious = bandEntries(24, { 5: { evidence: true }, 20: { compaction: true } });
-    const labels = placeLaneBandLabels(spacious, geometry(1000), spacious[5].row.id, spacious[5].row);
+    const labels = placeBandLabels(spacious, geometry(1000), spacious[5].row.id, spacious[5].row);
     expect(labels.map((label) => [label.kind, label.anchor])).toEqual([["evidence", "start"], ["selected", "end"], ["compaction", "start"]]);
     expectClearBand(labels, spacious, 1000);
 
     const crowded = bandEntries(8, { 1: { evidence: true }, 2: { evidence: true, compaction: true }, 3: { evidence: true, compaction: true }, 7: { evidence: true } });
     for (const selected of [1, 2, 7]) {
-      const placed = placeLaneBandLabels(crowded, geometry(140), crowded[selected].row.id, crowded[selected].row);
+      const placed = placeBandLabels(crowded, geometry(140), crowded[selected].row.id, crowded[selected].row);
       expect(placed.length).toBeLessThan(4);
       expectClearBand(placed, crowded, 140);
     }
 
     const edge = bandEntries(12, { 11: { evidence: true } });
-    const [atEdge] = placeLaneBandLabels(edge, geometry(LANE_LEFT + 17 * 12), null, edge[11].row);
+    const [atEdge] = placeBandLabels(edge, geometry(LANE_LEFT + 17 * 12), null, edge[11].row);
     expect(atEdge).toMatchObject({ kind: "evidence", anchor: "end" });
   });
 
-  it("keeps the phone single chart marker and selected label unchanged", () => {
+  it("keeps the phone single chart marker size and draws its selected label in the band row", () => {
     setPhone(true);
-    const { container } = renderPanel([snapshot(1), snapshot(2)], { cacheReadDrops: readDrop(snapshot(2)) });
+    const rows = Array.from({ length: 6 }, (_, index) => snapshot(index + 1));
+    const { container } = renderPanel(rows, { cacheReadDrops: readDrop(rows[3]) });
     const icon = container.querySelector(".requestsActionsChart .requestsActionsRefill .cacheRefillIcon")!;
     expect(icon).toHaveAttribute("width", "16");
     expect(icon.parentElement!.getAttribute("transform")).toMatch(/ 8\)$/u);
-    fireEvent.click(screen.getByRole("button", { name: /^Request #2,/u }));
-    expect(container.querySelector(".requestsActionsChart .requestsActionsBar.isSelected .requestsActionsSelectedLabel")).toHaveTextContent("#2");
+    fireEvent.click(screen.getByRole("button", { name: /^Request #4,/u }));
+    expect(container.querySelector(".requestsActionsChart .requestsActionsBar.isSelected .requestsActionsSelectedLabel")).toBeNull();
+    expect(container.querySelector(".requestsActionsChart .requestsActionsSelectedLabel")).toHaveTextContent("#4");
     expect(container.querySelector(".requestLanes")).toBeNull();
   });
 
@@ -517,14 +520,5 @@ describe("request single chart and role track", () => {
     await user.click(screen.getByRole("button", { name: "Single chart" }));
     await user.click(screen.getByRole("button", { name: "Lanes" }));
     expect(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: true })).toBeInTheDocument();
-  });
-
-  it("offers no layout toggle or role track on phone", () => {
-    setPhone(true);
-    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
-    expect(screen.queryByRole("group", { name: "Chart layout" })).toBeNull();
-    expect(container.querySelector("svg.requestsActionsChart")).not.toBeNull();
-    expect(container.querySelector(".requestRoleSegment, .requestRoleLegend")).toBeNull();
-    expect(screen.getByRole("button", { name: /^Request #6, \d/u })).toBeInTheDocument();
   });
 });

@@ -1,10 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Agent, Workflow } from "../../../../shared/monitor-contract";
 import { agentDisplayName, agentRoleLabel, compactNumber } from "../../../dashboard-utils";
-import { cacheEvidenceLabel } from "./cache-evidence";
 import { layoutRequestLanes, type RequestLane, type RequestLaneGroup } from "./lane-model";
-import { requestMarker, type ChartMode, type RequestRow } from "./model";
-import { labeledEvidenceRow, placeAxisLabels, RequestBar } from "./RequestBarsChart";
+import type { ChartMode, RequestRow } from "./model";
+import { labeledEvidenceRow, placeAxisLabels, placeBandLabels, RequestBandLabels, RequestBar } from "./RequestBarsChart";
 
 // Every lane and the shared axis use one horizontal geometry, so a request sits at the same x
 // in whichever lane owns it and other lanes leave a gap there. The viewBox width follows the
@@ -15,7 +14,6 @@ export const LANE_LEFT = 8;
 export const MAXIMUM_GUTTER = 72;
 const GAP = 3;
 const MARKER = 14;
-const LABEL_PAD = 4;
 const PRIMARY = { band: 22, plot: 96 };
 const SECONDARY = { band: 18, plot: 34 };
 
@@ -38,53 +36,6 @@ function LabelText({ name, meta, chevron }: { name: string; meta: string; chevro
     <span className="requestLaneName">{chevron && <svg className="requestLaneChevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>}{name}</span>
     <span className="requestLaneMeta">{meta}</span>
   </>;
-}
-
-export type LaneBandLabel = {
-  key: string; kind: "selected" | "evidence" | "compaction"; text: string; x: number; anchor: "start" | "middle" | "end";
-  /** Estimated horizontal extent the label occupies. */
-  start: number; end: number;
-};
-
-/**
- * Lays out a lane band's text: the hovered, focused or selected cache-evidence label (right of
- * its icon when it fits), the selected request marker, then compaction text. Evidence icons are
- * fixed obstacles; a label that cannot clear them and earlier labels inside `[left, right]` is
- * dropped instead of overlapping.
- */
-export function placeLaneBandLabels(entries: { row: RequestRow; index: number }[], { barX, width, left, right }: {
-  barX: (index: number) => number; width: number; left: number; right: number;
-}, selectedId: string | null, labeled: RequestRow | undefined): LaneBandLabel[] {
-  const center = (index: number) => barX(index) + width / 2;
-  const taken = entries.filter(({ row }) => row.cacheEvidence).map(({ index }) => [center(index) - MARKER / 2, center(index) + MARKER / 2]);
-  const placed: LaneBandLabel[] = [];
-  const place = (label: Pick<LaneBandLabel, "key" | "kind" | "text">, charWidth: number, candidates: Pick<LaneBandLabel, "x" | "anchor">[]) => {
-    const size = label.text.length * charWidth;
-    for (const candidate of candidates) {
-      const start = candidate.anchor === "start" ? candidate.x : candidate.anchor === "end" ? candidate.x - size : candidate.x - size / 2;
-      if (start < left || start + size > right || taken.some(([from, to]) => start < to + LABEL_PAD && start + size + LABEL_PAD > from)) continue;
-      taken.push([start, start + size]);
-      placed.push({ ...label, ...candidate, start, end: start + size });
-      return;
-    }
-  };
-  const side = MARKER / 2 + LABEL_PAD;
-  const evidence = labeled && entries.find(({ row }) => row === labeled);
-  if (evidence?.row.cacheEvidence) {
-    const x = center(evidence.index);
-    place({ key: "evidence", kind: "evidence", text: cacheEvidenceLabel(evidence.row.cacheEvidence, true) }, 6.5, [{ x: x + side, anchor: "start" }, { x: x - side, anchor: "end" }]);
-  }
-  const selected = entries.find(({ row }) => row.id === selectedId);
-  if (selected) {
-    const x = center(selected.index);
-    place({ key: "selected", kind: "selected", text: requestMarker(selected.row) }, 7, [{ x, anchor: "middle" }, { x: x - side, anchor: "end" }, { x: x + side, anchor: "start" }]);
-  }
-  for (const { row, index } of entries) {
-    if (!row.compactionBefore) continue;
-    const boundary = barX(index) - GAP / 2;
-    place({ key: `compaction-${row.id}`, kind: "compaction", text: "compaction" }, 6, [{ x: boundary + 3, anchor: "start" }, { x: boundary - 3, anchor: "end" }]);
-  }
-  return placed;
 }
 
 /**
@@ -174,7 +125,7 @@ export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleG
       const entries = visibleByLane.get(row.id) ?? [];
       const labeled = labeledEvidenceRow(entries.map(({ row: request }) => request), [hoveredId, focusedId, selectedId]);
       // Band text sits above the maximum's row, so it may use the full plot width.
-      const bandLabels = placeLaneBandLabels(entries, { barX, width, left: 0, right: plotWidth }, selectedId, labeled);
+      const bandLabels = placeBandLabels(entries, { barX, width, left: 0, right: plotWidth, gap: GAP, marker: MARKER }, selectedId, labeled);
       const className = `requestLane${lane?.primary ? " isPrimary" : ""}${row.kind === "lane" && row.member ? " isGroupMember" : ""}`;
       return <div key={row.id} className={className} data-lane-kind={lane ? lane.kind : "group"} role="group" aria-label={fullLabel}>
         {label}
@@ -183,10 +134,7 @@ export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleG
           <text className="requestLaneMaximum" x={plotWidth} y={band + 10} textAnchor="end">max {compactNumber(maximum)}</text>
           {entries.map(({ row: request, index }) => <RequestBar key={request.id} row={request} x={barX(index)} width={width} gap={GAP} top={band} bottom={bottom} right={right} band={band} marker={MARKER} labels={false}
             maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={request.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
-          {bandLabels.map((bandLabel) => {
-            const text = <text key={bandLabel.key} aria-hidden="true" className={bandLabel.kind === "selected" ? "requestsActionsSelectedLabel" : bandLabel.kind === "evidence" ? "requestsActionsRefillLabel" : undefined} x={bandLabel.x} y={band - 5} textAnchor={bandLabel.anchor}>{bandLabel.text}</text>;
-            return bandLabel.kind === "compaction" ? <g key={bandLabel.key} className="requestsActionsCompaction">{text}</g> : text;
-          })}
+          <RequestBandLabels labels={bandLabels} y={band - 5} />
         </svg>
       </div>;
     })}

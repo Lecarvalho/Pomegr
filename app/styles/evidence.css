@@ -787,9 +787,10 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsLegend { grid-row: 3; }
 }
 @media (max-width: 760px) {
-  .requestsActionsLargest { display: none; }
-}
-@media (max-width: 760px) {
+  /* Phone keeps the Largest strip under the minimap: one full-width 44px row per request. */
+  .requestsActionsLargest { gap: 4px; margin: 4px -14px 0; padding: 12px 14px 0; }
+  .requestsActionsLargest > div { gap: 0; }
+  .requestsActionsPanel .requestsActionsLargestRow { min-height: 44px; }
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(100px, 130px); gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--command-line); }
   .requestsActionsHeading { max-width: none; }
   .requestsActionsHeading .sessionEyebrow { display: none; }

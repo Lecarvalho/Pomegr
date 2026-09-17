@@ -408,7 +408,8 @@ The compact detail region aligns request facts with five ranked rows:
 request number, neutral bar, and request-local value. Its heading identifies the
 scope, with a quiet button cycling uncached input (default), output, cache write,
 and total; skip cache write when unavailable. Omit repeated agent and Before
-metadata, expansion controls, and the ranking footer. Phone omits the ranking rail.
+metadata, expansion controls, and the ranking footer. Phone keeps the strip under the minimap
+with one full-width row per request at the 44px touch height.
 
 #### Request lanes and single chart
 
@@ -445,6 +446,10 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   and lowercase roles are not capitalized. The hovered or focused bar's agent, otherwise the
   selected request's agent, is named in text beside the legend (`#n`, name, role), never as SVG
   text.
+- **Phone chart.** Phone always draws the single chart with its track and legend, then the
+  minimap and the Largest strip. Compaction, selected-number, and cache-evidence text share one
+  reserved row just above the plot top, which bars never reach, placed with the lane band
+  priority and dropped rather than overlapping. Evidence icons sit above that row.
 - **Role tint scope.** In Activities, role tints appear only on `.requestRoleSegment` and the
   legend swatches. Lanes, lane labels, group rows, and the minimap use no `roleFamily-*` classes
   and no `--session-role` or `--role-*` values.
