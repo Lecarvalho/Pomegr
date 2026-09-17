@@ -324,7 +324,11 @@ record.
    caption. Open every crop and look at it before you caption it; a crop
    that does not show what its caption says is a defect in this part, not
    a deferred finding. A part with no visible surface writes none.
-5. End with a short report. Point at files; do not repeat them.
+5. Leave nothing running. A server, browser or background shell a stage
+   started is stopped before the report, and anything temporary a stage
+   wrote lives under `runs/<id>/` or the session's scratchpad, never in the
+   working tree.
+6. End with a short report. Point at files; do not repeat them.
 
 - run id, outcome (success / failed at stage X / stopped by user)
 - one line per stage: name, iterations, model actually used, check result

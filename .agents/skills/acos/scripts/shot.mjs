@@ -7,8 +7,8 @@
 // Node's own fetch and WebSocket. Chrome is tried first, then Edge; both speak
 // the same protocol.
 
-import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -151,11 +151,42 @@ const flags = parseArgs(process.argv.slice(2));
 const binary = findBrowser();
 if (!binary) die(E_NO_BROWSER, 'no Chrome or Edge found; set ACOS_CHROME to the browser binary');
 
+// A profile can stay locked by the browser's children for longer than an exit handler can
+// wait, so each run clears what earlier runs left behind rather than letting them pile up.
+const sweepStaleProfiles = () => {
+  try {
+    for (const entry of readdirSync(tmpdir())) {
+      if (!entry.startsWith('acos-shot-')) continue;
+      const stale = join(tmpdir(), entry);
+      try {
+        if (Date.now() - statSync(stale).mtimeMs < 60000) continue;   // may be a live capture
+        rmSync(stale, { recursive: true, force: true });
+      } catch { /* still locked; the next run tries again */ }
+    }
+  } catch { /* best effort */ }
+};
+
+sweepStaleProfiles();
 const profile = mkdtempSync(join(tmpdir(), 'acos-shot-'));
 let browser = null;
+const killBrowser = (child) => {
+  // On Windows child.kill() ends only the process it spawned; the browser's own children
+  // (crashpad, gpu, renderers) survive and keep the profile directory locked, so it can
+  // never be removed. taskkill /T ends the tree.
+  if (process.platform === 'win32' && child.pid) {
+    const killed = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    if (killed.status === 0) return;
+  }
+  try { child.kill(); } catch { /* already gone */ }
+};
+
 const cleanup = () => {
-  if (browser) { try { browser.kill(); } catch { /* already gone */ } browser = null; }
-  try { rmSync(profile, { recursive: true, force: true }); } catch { /* best effort */ }
+  if (browser) { killBrowser(browser); browser = null; }
+  // The browser releases its locks on the profile only once it has actually exited, a moment
+  // after it is killed, so on Windows the first remove fails with EBUSY or EPERM and a single
+  // attempt leaves the profile behind on every run. rmSync retries those codes when asked to.
+  try { rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); }
+  catch { /* best effort */ }
 };
 process.on('exit', cleanup);
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(1));
