@@ -49,6 +49,17 @@ These decide most of the manifest. Apply them before anything else.
   (review), two or more pieces are independent and worth running in
   parallel, or a large read would bloat your context more than the
   delegation round trip costs.
+- **Delegating does not save tokens.** A subagent starts cold: it
+  re-reads the repo docs and every file you already read, then runs the
+  check itself. Budget 150k worker tokens for any subagent before it
+  writes a line. Never delegate to move spend out of the orchestrator
+  budget; a part too big to implement inline is too big, cut it.
+- **Plan and implement share one context.** Both inline, or both in the
+  same subagent. A plan written in one context and implemented in
+  another pays for the same reading twice.
+- **Review once per plan, not once per part.** In a plan, parts carry no
+  review stage unless the part is risky on its own (auth, data loss,
+  public API); one review part near the end reads the whole diff.
 - **Never more agents than the work has independent parts.** Three files
   do not need ten subagents. `limits.agents` caps it; the default when
   absent is 3.
@@ -73,10 +84,33 @@ will make visible.
 
 ## 2. Size the task
 
-Read `acos/calibration.md` if present. Using it, the scope the user gave,
-and the number of files you expect to touch, estimate the whole intent:
-stages, agents, orchestrator tokens, worker tokens. Compare with `limits`
-from `.acos.yaml` (or the defaults above).
+Size in things you can count, then derive tokens from them. Never the
+other way round.
+
+1. **Count.** Files the change creates or edits (tests included), lines
+   changed, and deliverables (things the part must make true; each
+   sentence of acceptance is one). Compare with `limits.files` (default
+   8), `limits.lines` (default 400) and at most 5 deliverables. A part
+   over any of these is too big, whatever the token guess says.
+2. **Derive tokens.** Use `acos/calibration.md` Cost figures when
+   present. Otherwise these floors, which are measured, not hopeful:
+   - inline implement: 40k + 12k per file touched
+   - any subagent: 150k + 15k per file it touches
+   - review subagent: 200k
+   - a review is expected to fail once: add one fix (half the implement
+     cost) to every part that has a review stage
+   Tokens mean what the harness reports for the whole agent, re-read
+   context included. That is the number `actual` will hold, so it is the
+   number to estimate.
+3. **Learn from earlier parts.** When sizing or running a part of a plan
+   whose `plan.yaml` has `actual` on earlier parts, multiply your
+   estimates by the mean actual/estimate ratio of those parts, say so in
+   `basis`, and re-cut the part if the scaled figure breaks a limit.
+4. **Distrust a guess that lands just under the limit.** If most parts
+   estimate between 80% and 100% of a limit, you fitted the guesses to
+   the limit. Recount from step 1 and cut further.
+
+Compare with `limits` from `.acos.yaml` (or the defaults above).
 
 - Fits: one manifest. With `/acos plan`, say in one line that it fits a
   single run and no plan is needed, then compose the manifest (section
@@ -90,10 +124,10 @@ from `.acos.yaml` (or the defaults above).
 **Confirm the cut before writing anything.** Very short:
 
 ```
-Too big for one session (~<tokens> vs <limit>). Proposed cut, <n> parts:
-  1. <what>   ~<tokens>
-  2. <what>   ~<tokens>
-  3. <what>   ~<tokens>
+Too big for one session (~<files> files, ~<tokens> vs <limit>). Proposed cut, <n> parts:
+  1. <what>   ~<files> files   ~<tokens>
+  2. <what>   ~<files> files   ~<tokens>
+  3. <what>   ~<files> files   ~<tokens>
 OK to write the plan, or change the cut?
 ```
 
@@ -144,9 +178,10 @@ Each must therefore be complete on its own: intent, scope, stages,
    placeholder with no value is a compose error: say which one and stop.
 4. Generate `id`: `YYYY-MM-DD-<short-slug-of-intent>`.
 5. Fill `scope` only if the user gave hints or it is obvious. Otherwise omit.
-6. Estimate: `orchestrator_tokens`, `worker_tokens`, `agents`, tokens per
-   stage. Use `calibration.md` Cost figures when present, otherwise guess
-   from scope size. Write `basis` saying which. Add `cost` only if the
+6. Estimate: `files`, `lines`, `orchestrator_tokens`, `worker_tokens`,
+   `agents`, tokens per stage, all from sizing (section 2). Write `basis`
+   saying which figures came from `calibration.md`, which from the
+   floors, and any ratio applied from earlier parts. Add `cost` only if the
    catalog has prices for the chosen models.
 7. Copy `limits` from `.acos.yaml`; apply any per-run override the user
    gave in sizing.
@@ -164,6 +199,12 @@ For `/acos run`, first read the manifest. If it has `part.assumes`, check
 the tree matches (files exist, verify passes if it says so) and say so in
 one line; a mismatch is a question, not a blocker. If `plan.yaml` marks
 an earlier part as not `done`, say so.
+
+If earlier parts in `plan.yaml` have `actual`, re-size this part now
+(section 2, step 3). When the scaled estimate breaks a limit, say so in
+two lines and propose the split before the summary: run the first half
+now, write the second half as a new part after it. The user may say GO
+as is. This is compose time; after GO nothing is re-sized.
 
 Write `manifest.yaml` to its run directory first. Then print a summary,
 not the file:
@@ -229,6 +270,12 @@ On GO:
         last one and behave as `retry`. Log the model actually used.
       - `ask`: show the check output and ask the user: retry, skip, stop.
       - `stop`: end the run as failed.
+      A failed `review` check is handled cheaply whatever `on_fail`
+      says: fix the blockers inline (you hold the review text; add a
+      regression test per blocker), rerun the command check, and record
+      the rest as deferred findings. No fix subagent. No second review
+      unless the user asks for one or a blocker was a design error; then
+      resume the same reviewer with the blocker list only.
 3. **Drift.** When the plan turns out wrong, change course and keep going.
    Drop a stage you no longer need, add one you do, swap a model or
    effort, fix a check command. Append to `drift` in `log.yaml`:
@@ -251,7 +298,8 @@ On GO:
 1. Write `manifest.executed.yaml` next to `manifest.yaml`: the planned
    manifest with `stages` as they actually ran (dropped stages removed,
    added stages inserted, models and efforts as used), an `actual` block
-   with the same shape as `estimate` (tokens estimated when not reported,
+   with the same shape as `estimate` (`files` and `lines` from
+   `git diff --stat`; tokens estimated when not reported,
    say so in `basis`), and the `drift` list from the log.
 2. If the manifest is a part, set its `status` in `plan.yaml` to `done`
    or `failed`, and add `actual` next to its `estimate` there.
@@ -285,8 +333,9 @@ Goal: write a correct `.acos.yaml` without the user editing a template.
 4. Pick `preset`: leave unset. Ad hoc composition is the default until
    the user saves one.
 5. Set `gates.go: required`. Set `limits` to the defaults
-   (`orchestrator_tokens: 100000`, `worker_tokens: 300000`, `agents: 3`,
-   `stages: 5`) unless the user gave others.
+   (`files: 8`, `lines: 400`, `orchestrator_tokens: 100000`,
+   `worker_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
+   gave others.
 6. Write it and say what was chosen and why, one line per field. Ask
    for confirmation only if the verify command is a guess (nothing in
    the repo named it); then show just that line.
@@ -311,7 +360,10 @@ sizing and compose more accurate for this repo.
    plans had, and whether parts turned out too big or too small.
 3. Look for patterns across runs, not per run: which stages get dropped,
    which get added, which checks get changed the same way, how far
-   estimates miss, what task shape tends to need which stages.
+   estimates miss, what task shape tends to need which stages. Always
+   derive the per-unit figures sizing needs: tokens per file for inline
+   implement, fixed cost plus tokens per file for a subagent, cost of a
+   review, how often review fails first time.
 4. Write `acos/calibration.md` in the fixed shape from `SPEC.md`
    section 7: header line with run count, date range and today's date;
    sections **Shape**, **Cost**, **Recurring drift**, **Notes**. Under
