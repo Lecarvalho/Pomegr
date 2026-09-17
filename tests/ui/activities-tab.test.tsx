@@ -21,32 +21,35 @@ import { setPhone } from "./requests-actions-test-fixtures";
 const SESSION = "claude:activities";
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder" };
 
-function monitorState(): MonitorState {
+function monitorState(cacheWriteAvailable = true): MonitorState {
   const state = createEmptyMonitorState({ connected: true });
   return {
     ...state,
     agents: [agent, child],
-    capabilities: { ...state.capabilities, cacheWriteUsage: true },
+    capabilities: { ...state.capabilities, cacheWriteUsage: cacheWriteAvailable },
     session: { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), id: SESSION, title: "Session", project: "Pomegr" },
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
+  requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
+  requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
 } = {}) {
   const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1, (index + 1) % 2 ? "child" : "primary"));
   const calls = requests.flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
     : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]);
-  const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview };
+  const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
   const server = historyServer(serverState);
-  const state = monitorState();
+  const state = monitorState(cacheWriteAvailable);
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith("/api/state")
     ? Promise.resolve(new Response(JSON.stringify(state), { status: 200, headers: { "content-type": "application/json" } }))
     : server.fetcher(input, init)));
   const onRouteChange = vi.fn();
-  const view = render(<LiveClockProvider running={false}><ActivitiesTab sessionId={SESSION} historical={historical} paused={false} route={route} onRouteChange={onRouteChange} /></LiveClockProvider>, { reactStrictMode: strict });
-  return { ...view, server, serverState, onRouteChange };
+  const onOpenAgent = vi.fn();
+  const view = render(<LiveClockProvider running={false}><ActivitiesTab sessionId={SESSION} historical={historical} paused={false} route={route} onRouteChange={onRouteChange} onOpenAgent={onOpenAgent} /></LiveClockProvider>, { reactStrictMode: strict });
+  return { ...view, server, serverState, onRouteChange, onOpenAgent };
 }
 
 function feedCalls(server: ReturnType<typeof historyServer>) {
@@ -55,7 +58,7 @@ function feedCalls(server: ReturnType<typeof historyServer>) {
 
 async function ready(latest = 40) {
   await screen.findByRole("heading", { name: `Request #${latest}` });
-  const feed = screen.getByRole("region", { name: "Activity by request" });
+  const feed = screen.getByRole("region", { name: "Activity feed" });
   await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
   return feed;
 }
@@ -72,7 +75,7 @@ describe("Activities tab", () => {
 
     await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
     await screen.findByRole("heading", { name: "Request #39" });
-    feed = screen.getByRole("region", { name: "Activity by request" });
+    feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(server.of("requests").at(-1)?.get("scope")).toBe("child");
     expect(feedCalls(server).at(-1)?.get("scope")).toBe("child");
@@ -149,7 +152,7 @@ describe("Activities tab", () => {
   ])("resolves a $name deep link under StrictMode with a settled feed", async ({ request }) => {
     const { server } = fixture({ count: 130, route: { agent: null, request }, strict: true });
     expect(await screen.findByRole("heading", { name: "Request #12" })).toBeInTheDocument();
-    const feed = screen.getByRole("region", { name: "Activity by request" });
+    const feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(within(feed).getByRole("button", { name: /Request #12/u })).toHaveAttribute("aria-pressed", "true");
     expect(feedCalls(server).at(-1)?.get("selected")).toBe("12");
@@ -193,5 +196,90 @@ describe("Activities tab", () => {
     expect(feed.innerHTML).not.toContain("app/components/dashboard/deep");
     const html = container.innerHTML;
     for (const forbidden of ["request-", "call-", "SECRET_COMMAND", "SECRET_OUTPUT", "SECRET_ERROR", "msg_SECRET_PROVIDER"]) expect(html).not.toContain(forbidden);
+  });
+
+  it("shows a group's token counts matching the fixture's snapshot values", async () => {
+    fixture();
+    const feed = await ready();
+    expect(within(feed).getByRole("button", { name: "Request #40, uncached input 1,960,000, cache write 2,000, output 4,000, 2 calls" })).toBeInTheDocument();
+  });
+
+  it("opens an agent from a group's agent-name link without toggling its selection", async () => {
+    const user = userEvent.setup();
+    const { onOpenAgent } = fixture();
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #38" });
+    await user.click(within(group).getByRole("button", { name: "Primary agent" }));
+    expect(onOpenAgent).toHaveBeenCalledWith("primary");
+    expect(within(group).getByRole("button", { name: /^Request #38,/u })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("renders the rail and request-row caveats as short text that expand via DottedInfoPopover", async () => {
+    const user = userEvent.setup();
+    fixture();
+    const feed = await ready();
+    expect(within(feed).getByText("Counts, not effort or cost.")).toBeInTheDocument();
+    expect(within(feed).getByText("Local counts only.")).toBeInTheDocument();
+    await user.click(within(feed).getByRole("button", { name: "About these counts" }));
+    expect(screen.getByRole("dialog", { name: "About these counts" })).toHaveTextContent("Counts describe recorded tool calls, not effort or quality.");
+    await user.keyboard("{Escape}");
+    await user.click(within(feed).getByRole("button", { name: "About request rows" }));
+    expect(screen.getByRole("dialog", { name: "About request rows" })).toHaveTextContent("Targets show Bash descriptions and file names only.");
+  });
+
+  it("shows an explicit unavailable state instead of the request feed while the session view is paused", async () => {
+    const { rerender, onRouteChange, onOpenAgent } = fixture();
+    await ready();
+    rerender(<LiveClockProvider running={false}><ActivitiesTab sessionId={SESSION} historical={false} paused route={{ agent: null, request: null }} onRouteChange={onRouteChange} onOpenAgent={onOpenAgent} /></LiveClockProvider>);
+    const region = await screen.findByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(region).toHaveTextContent("Activity history is unavailable while this session view is paused."));
+    expect(within(region).queryByRole("article")).not.toBeInTheDocument();
+  });
+
+  function expectNoInventedZeros(region: HTMLElement) {
+    expect(region).not.toHaveTextContent("0 requests in this scope");
+    expect(region).not.toHaveTextContent("Shell tasks");
+    expect(region).not.toHaveTextContent("Failed shell runs");
+    expect(within(region).queryByRole("navigation", { name: "Request range" })).not.toBeInTheDocument();
+  }
+
+  it("shows a loading state, not invented zero counts, while the chart's first page is still loading", async () => {
+    fixture({ requestsStatus: "loading" });
+    const region = await screen.findByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(within(region).getByRole("status")).toHaveTextContent("Loading activity…"));
+    expectNoInventedZeros(region);
+  });
+
+  it("shows a chart-unavailable state, not invented zero counts, when the chart's first page fails", async () => {
+    fixture({ requestsStatus: 503 });
+    const region = await screen.findByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(within(region).getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…"));
+    expectNoInventedZeros(region);
+  });
+
+  it("shows the unavailable state with Retry, not invented zero counts, when the first feed query fails", async () => {
+    fixture({ activity: 503 });
+    await screen.findByRole("heading", { name: "Request #40" });
+    const region = await screen.findByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(within(region).getByText(/Activity feed is unavailable\./u)).toBeInTheDocument());
+    expectNoInventedZeros(region);
+    expect(within(region).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("omits a group's token counts when its request record's fields are not truly present", async () => {
+    fixture({ requestGroupOverrides: { 40: { cacheWriteTokens: -1 } } });
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #40" });
+    expect(within(group).getByRole("button", { name: "Request #40 2 calls" })).toBeInTheDocument();
+    expect(group).not.toHaveTextContent("1,960,000");
+    expect(group).not.toHaveTextContent("4,000");
+    expect(group.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
+  });
+
+  it("hides the cache-write swatch and its aria-label text when cache-write usage is unavailable", async () => {
+    fixture({ cacheWriteAvailable: false });
+    const feed = await ready();
+    expect(within(feed).getByRole("button", { name: "Request #40, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
+    expect(feed.querySelector(".requestsActionsSwatch.write")).not.toBeInTheDocument();
   });
 });

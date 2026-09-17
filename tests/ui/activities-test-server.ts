@@ -33,6 +33,11 @@ export type HistoryServerState = {
   requests: HistoryRequest[]; calls: HistoryActivity[]; revision: string; callLimit?: number; extra?: Record<string, unknown>; overview?: boolean;
   /** Grouped activity answers: a hydrating body, an HTTP status failure or a network failure. */
   activity?: "loading" | "network" | number;
+  /** Request-page (chart) answers: a hydrating body or an HTTP status failure, before any page ever loads. */
+  requestsStatus?: "loading" | number;
+  /** Per-request-number field overrides applied only to a group's own `request`, for exercising the
+   * defensive "truly absent" token-count path without disturbing the chart's own request page. */
+  requestGroupOverrides?: Record<number, Partial<HistoryRequest>>;
 };
 
 export function historyServer(state: HistoryServerState) {
@@ -44,6 +49,8 @@ export function historyServer(state: HistoryServerState) {
     const scope = params.get("scope") || "all";
     const requests = state.requests.filter((item) => matches(item.agentId, scope));
     if (params.get("kind") === "requests") {
+      if (state.requestsStatus === "loading") return json({ kind: "requests", status: "loading", revision: state.revision, total: 0, offset: 0, linkedCount: 0, items: [] });
+      if (typeof state.requestsStatus === "number") return new Response(null, { status: state.requestsStatus });
       const total = requests.length;
       const limit = Math.min(60, Number(params.get("limit")) || 60);
       let offset = params.get("offset") === "latest" ? Math.max(0, total - limit) : Math.max(0, Number(params.get("offset")) || 0);
@@ -73,7 +80,8 @@ export function historyServer(state: HistoryServerState) {
       const offset = cursor && cursor[0] === request.number ? cursor[1] : 0;
       const shown = matched.slice(offset, offset + limit);
       const remaining = matched.length - offset - shown.length;
-      return { request, calls: shown.map((call) => ({ ...call, ...state.extra })), noMatchingCalls: matched.length === 0,
+      const override = state.requestGroupOverrides?.[request.number];
+      return { request: override ? { ...request, ...override } : request, calls: shown.map((call) => ({ ...call, ...state.extra })), noMatchingCalls: matched.length === 0,
         continuation: remaining > 0 ? { cursor: `${request.number}:${offset + shown.length}`, remaining } : null };
     });
     const kinds = [...new Set(scopedCalls.map((item) => item.workKind))];

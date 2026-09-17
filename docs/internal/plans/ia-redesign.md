@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: Session 3 in progress; part 1 of 7 (T06 selection core) is done and reviewed, while T06 presentation, docs and acceptance and T06b remain unfinished.
+> Status: Session 3 in progress; parts 1-2 of 7 (T06 selection core and desktop Activity feed) are done and reviewed, while the T06 lane chart, phone layout, docs and acceptance and T06b remain unfinished.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Continue Session 3 with part 2 (activities-desktop-feed), `/acos run runs/2026-09-16-ia-session-3 2`, from the Session 3 checkpoint.
+> Next task or decision: Continue Session 3 with part 3 (activities-lane-chart), `/acos run runs/2026-09-16-ia-session-3 3`, from the Session 3 checkpoint.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -548,6 +548,141 @@ No unresolved product decision blocks implementation. The latest approved rules 
 ## Continuation checkpoint
 
 ### Session 3 checkpoint
+
+2026-09-17 · **Session 3 part 2 of 7 done: T06 desktop Activity feed.** ACOS run
+`runs/2026-09-16-ia-session-3/2-activities-desktop-feed` (manifest, log and stage artifacts
+there). The independent Sol review passed in its second iteration. Session 3 stays unchecked.
+
+**State.** Branch `claude/ia-redesign-session-3`. Part 2 is uncommitted on top of the part 1
+commit `7a519d0`. The fixed part 1 interface is unchanged: `useSessionRequestSelection.ts`,
+`useActivityFeed.ts` and `feed-model.ts` were not edited.
+
+**Changed files.**
+
+- New:
+  - `app/components/dashboard/activity-feed/ActivityFeedPanel.tsx`: the `Activity feed` section.
+    It shows one `role="status"` state when there is no feed body, then rail plus list.
+  - `activity-feed/ActivityKindRail.tsx`: Actions by kind toggles, Shell tasks, Failed shell
+    runs and the "Counts, not effort or cost." caveat popover.
+  - `activity-feed/ActivityRequestList.tsx`: request groups, nested calls and range navigation.
+    - Each group has a select button with request-local uncached input, cache write (gated on
+      `cacheWriteAvailable`) and output read from `group.request`.
+    - The agent name is a sibling `commandTextLink`; an agent missing from the roster is plain
+      text.
+    - Previous / Next / Jump to latest sit below the groups, followed by the "Local counts only."
+      caveat popover.
+- Deleted:
+  - `activity-feed/ActivityRequestGroups.tsx`
+  - `ActivityPanel.tsx`
+  - `useActivityHistory.ts`
+  - `tests/ui/activity-panel.test.tsx`
+  - `tests/ui/activity-history.test.tsx`
+- Modified:
+  - `ActivitiesTab.tsx`: renders `ActivityFeedPanel`, adds the `onOpenAgent` prop and drops the
+    dead `onRefresh` plumbing. When paused, it renders "Activity history is unavailable while
+    this session view is paused."
+  - `RequestsActionsPanel.tsx`: `LargestRequestsList` now sits directly under `RequestMinimap`
+    and is still hidden on phone.
+  - `app/Dashboard.tsx`: `onOpenAgent` calls
+    `navigate({ tab: "agents", agent, request: null })`.
+  - `app/styles/evidence.css`:
+    - The details row is single-column.
+    - The Largest strip is a wrapping band with a full-width top rule (`margin: 0 -20px`,
+      `flex: 1 1 220px` rows).
+    - The dead activity-panel rules are removed.
+- Tests:
+  - `activities-tab.test.tsx`: counts, missing counts, cache write hidden, agent link, caveats,
+    paused, preview loading, preview unavailable, and first feed failure.
+  - `activities-test-server.ts`: new `requestsStatus` and `requestGroupOverrides` switches.
+  - `dashboard-t04.test.tsx`: the explicit `request` clear.
+  - `history-publications.test.tsx`: the `useActivityHistory` test was removed.
+  - `work-kind-icons.test.tsx`: the icon tests now render `ActivityFeedPanel`. The old "System"
+    actor assertion was dropped.
+
+**Reuse for parts 3-4.**
+
+- Container and props:
+  - `ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAvailable, onOpenAgent })` is
+    the feed container.
+  - `ActivitiesTab` takes `onOpenAgent`.
+  - The agent scope control stays in the `RequestsActionsPanel` chart header and feeds
+    `selection.historyScope`.
+- Part 4 (phone) reorders the same `ActivityRequestList` and `ActivityKindRail` pieces, with
+  request groups before Actions by kind. Its call line should add the phone-only presentation to
+  these components rather than fork the feed model.
+- Body gating: the feed hides totals, shell counts and navigation until a body exists. A retained
+  body from an earlier query stays visible while a new one loads, which the correlation rule
+  allows.
+
+**Accepted artboard differences.**
+
+- The rail shows only aggregate Shell tasks and Failed shell runs counts. The feed page contract
+  has no per-task rows, and the written decision lists them as single items.
+- Request groups stay oldest to newest, matching the chart direction and the hook tests. No
+  written decision sets the order.
+- The container is named "Activity feed", matching the plan vocabulary.
+- `LargestRequestsList` row markup is unchanged; only its position and strip CSS changed.
+
+**Verification.**
+
+- After the fix stage, the orchestrator ran `npm run verify:fast && npm run test:ui` serially:
+  exit 0, with 85 files and 835 tests (two superseded test files were deleted).
+- A later one-line test isolation change passed a focused `npx vitest run
+  tests/ui/dashboard-t04.test.tsx` (20 tests).
+- The full `npm test` with the build was not run; part 7 owns it.
+
+**Review.**
+
+- Iteration 1 FAILED with one reproduced blocker. While request history was loading or
+  unavailable, or the first feed query failed, the feed showed invented zero counts and enabled
+  range navigation. The deleted panel's loading and unavailable states had no replacement.
+- A fix stage resolved it with regression tests. It also fixed:
+  - counts missing on groups outside the 60-request chart page;
+  - the missing-count and cache-write tests;
+  - the popover copy;
+  - the strip layout;
+  - dead CSS;
+  - the unknown-agent link and explicit `request` clearing.
+- Iteration 2 passed. Its should on test isolation was fixed inline.
+
+**Design consequence recorded.** Grouping by request removes activity that has no request link
+from every Activities surface: user inputs, system task notifications, and unlinked replies and
+calls. This follows the agreed "one Activity feed grouped by request" decision and is not a
+regression to fix. Docs must stop describing the deleted eight-row panel.
+
+**Deferred findings and owners.**
+
+- Part 5 (T06 docs):
+  - Rewrite `docs/METRICS.md` (activity section around lines 555-600),
+    `docs/OBSERVATION_CACHE.md` (around lines 278-295) and `DESIGN.md` "Session Evidence"
+    (around lines 287-331), which still describe the deleted panel.
+  - Record the design consequence above.
+  - This adds to the existing cadence entry for the grouped feed.
+- Part 5 (acceptance):
+  - After a scope change whose request page fails, the feed keeps the previous scope's body with
+    no status until history recovers. The chart shows the failure. This predates part 2. Suggested
+    fix: treat a retained body whose query differs from the current one as no body while
+    `selection.history.preview`.
+  - Each 5 s retry toggles the status between "Loading activity…" and "Activity history is
+    unavailable; retrying…", and so does the chart's retention note, so screen readers re-announce
+    it.
+  - Add a regression test for counts on a group outside the chart page.
+  - Visual QA:
+    - token pairs shift the calls column in the reused six-column `.activityRow` grid;
+    - the caveat paragraph is unstyled;
+    - the agent link alignment;
+    - a lone fifth Largest row stretches full width at some widths.
+- Part 4 (phone):
+  - Remaining dead selectors: `.activityHead` in a grouped selector, `.actor i` and
+    `.activityRow time` in `evidence.css`. Remove them if the phone call line does not use them.
+  - `targetBasename` still shortens prose that ends in a path ("Run tests for app/foo.test.ts"
+    becomes "foo.test.ts"). The new caveat says targets show Bash descriptions and file names, so
+    settle the helper when the ellipsized call-line target is built.
+- Part 7 regression sweep: a session paused from mount shows "Loading activities…" indefinitely.
+  This comes from `useTransitionalSessionState` and predates part 2.
+
+**Next step.** Part 3 (activities-lane-chart): `/acos run runs/2026-09-16-ia-session-3 3`,
+preferably in a fresh session. Commit part 2 first if a clean base is wanted.
 
 2026-09-17 · **Session 3 part 1 of 7 done: T06 selection core.** ACOS run
 `runs/2026-09-16-ia-session-3/1-activities-selection-core` (manifest, log and stage artifacts

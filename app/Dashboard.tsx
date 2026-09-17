@@ -159,7 +159,7 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
     <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
       {activeTab === "overview" && <SessionOverview summary={summary} query={initialQuery} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} summary={summary} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
-      {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} />}
+      {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
       {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
     </div>
   </section>;

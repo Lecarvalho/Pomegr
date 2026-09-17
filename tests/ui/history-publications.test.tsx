@@ -1,11 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { subscribeHistoryPublications } from "../../app/history-publications";
-import { useActivityHistory } from "../../app/components/dashboard/useActivityHistory";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { agent } from "./dashboard-test-fixtures";
 import { requestFeed, snapshot } from "./requests-actions-test-fixtures";
-import type { ActivityHistoryPage, RequestHistoryPage } from "../../shared/session-history-contract";
+import type { RequestHistoryPage } from "../../shared/session-history-contract";
 
 class HistoryEventSource {
   static instances: HistoryEventSource[] = [];
@@ -36,17 +35,6 @@ class HistoryEventSource {
   }
 
   close() { this.closed = true; }
-}
-
-function activityPage(total: number, revision = String(total), offset = Math.floor(Math.max(0, total - 1) / 8) * 8): ActivityHistoryPage {
-  return {
-    kind: "activity", status: "ready", revision, offset, total, linkedCount: 0,
-    items: Array.from({ length: Math.min(8, total - offset) }, (_, index) => ({
-      id: `event-${offset + index}`, timestamp: "2026-09-10T12:00:00.000Z", actor: "Primary agent", agentId: "primary",
-      tool: "Assistant replied", detail: "", workKind: "report", status: null, durationMs: null,
-      requestId: null, requestNumber: null,
-    })),
-  };
 }
 
 const subscriptions: Array<() => void> = [];
@@ -112,30 +100,6 @@ describe("history publication notifications", () => {
 
     unsubscribe();
     expect(second.closed).toBe(true);
-  });
-
-  it("refreshes Activity from the event without a timer or chart revision", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal("EventSource", HistoryEventSource);
-    let total = 8;
-    const fetcher = vi.fn(async (url: string) => {
-      const params = new URL(url, "http://localhost").searchParams;
-      const offset = params.get("offset") === "latest" ? Math.floor(Math.max(0, total - 1) / 8) * 8 : Number(params.get("offset"));
-      return { ok: true, json: async () => activityPage(total, String(total), offset) };
-    });
-    vi.stubGlobal("fetch", fetcher);
-    const { result } = renderHook(() => useActivityHistory({ enabled: true, sessionId: "claude:history-events", scope: "all", filterRequestId: null, navigation: null }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    const calls = fetcher.mock.calls.length;
-    total = 9;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
-    expect(result.current.page?.total).toBe(9);
-    expect(fetcher).toHaveBeenCalledTimes(calls + 2);
-    const afterFirst = fetcher.mock.calls.length;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
-    await act(async () => { await Promise.resolve(); });
-    expect(fetcher).toHaveBeenCalledTimes(afterFirst);
   });
 
   it("refreshes unpinned latest Requests immediately while sharing the stream", async () => {

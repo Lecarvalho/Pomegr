@@ -1,58 +1,48 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ActivityFeed, ExecutionTask } from "../../shared/monitor-contract";
+import type { ExecutionTask } from "../../shared/monitor-contract";
+import type { ActivityRequestGroup } from "../../shared/session-history-contract";
 import { ExecutionTaskRow } from "../../app/components/ExecutionTaskRow";
-import { ActivityPanel } from "../../app/components/dashboard/ActivityPanel";
+import { ActivityFeedPanel } from "../../app/components/dashboard/activity-feed/ActivityFeedPanel";
+import type { ActivityFeedView } from "../../app/components/dashboard/activity-feed/useActivityFeed";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { agent } from "./dashboard-test-fixtures";
+import { historyCall, historyRequest } from "./activities-test-server";
 
-function ActivityWithSelection({ activity, historical }: { activity: ActivityFeed; historical: boolean }) {
-  const selection = useSessionRequestSelection({ agents: [agent], requestSnapshots: { status: "ready", items: [] }, contextBoundaries: [], historical, sessionId: "work-kind-icons" });
-  return <ActivityPanel activity={activity} historical={historical} loading={false} onRefresh={() => {}} selection={selection} sessionId="work-kind-icons" />;
+function feedView(groups: ActivityRequestGroup[]): ActivityFeedView {
+  return {
+    status: "ready", correlated: true, groups, byKind: [], shellTasks: { total: 0, failed: 0 },
+    requestTotal: groups.length, callTotal: groups.reduce((sum, group) => sum + group.calls.length, 0),
+    revision: "1", loadMore: () => {}, loadingMore: null, retry: () => {},
+  };
+}
+
+function ActivityWithSelection({ groups }: { groups: ActivityRequestGroup[] }) {
+  const selection = useSessionRequestSelection({ agents: [agent], requestSnapshots: { status: "ready", items: [] }, contextBoundaries: [], historical: false, sessionId: "work-kind-icons" });
+  return <ActivityFeedPanel selection={selection} feed={feedView(groups)} agents={[agent]} busy={false} cacheWriteAvailable onOpenAgent={() => {}} />;
 }
 
 describe("work-kind icons", () => {
-  it.each([false, true])("renders reply and summary metadata in activity (historical: %s)", (historical) => {
-    const activity: ActivityFeed = {
-      items: [
-        { id: "summary", timestamp: "2026-08-28T12:04:00.000Z", actor: "System", tool: "Summary updated", workKind: "report", detail: "", status: null, durationMs: null, requestId: null },
-        { id: "reply", timestamp: "2026-08-28T12:00:00.000Z", actor: "Primary agent", tool: "Assistant replied", workKind: "report", detail: "", status: null, durationMs: null, requestId: null },
-      ],
-      total: 2,
-      toolCalls: 0,
-      byKind: [],
-      messages: 2,
-      failed: 0,
-    };
-    const { container, getByText } = render(<ActivityWithSelection activity={activity} historical={historical} />);
-    expect(getByText("Activity")).toBeInTheDocument();
+  it("renders reply and summary metadata in a request group", () => {
+    const request = historyRequest(1);
+    const calls = [
+      historyCall("call-reply", request, "report", 1, { tool: "Assistant replied", detail: "" }),
+      historyCall("call-summary", request, "report", 2, { tool: "Summary updated", detail: "" }),
+    ];
+    const group: ActivityRequestGroup = { request, calls, noMatchingCalls: false, continuation: null };
+    const { container, getByText } = render(<ActivityWithSelection groups={[group]} />);
+    expect(getByText("Activity feed")).toBeInTheDocument();
     expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Assistant replied", "Summary updated"]);
     expect([...container.querySelectorAll(".target")].map((node) => node.textContent)).toEqual(["—", "—"]);
-    expect(getByText("System")).toBeInTheDocument();
     expect(getByText("Primary agent")).toBeInTheDocument();
   });
 
   it("renders the normalized purpose in recorded activity without replacing the label", () => {
-    const activity: ActivityFeed = {
-      items: [{
-      id: "push-1",
-      timestamp: "2026-08-28T12:00:00.000Z",
-      actor: "Primary agent",
-      tool: "Shell",
-      workKind: "git_push",
-      detail: "Push branch",
-      status: null,
-      durationMs: null,
-      requestId: null,
-      }],
-      total: 1,
-      toolCalls: 0,
-      byKind: [],
-      messages: 1,
-      failed: 0,
-    };
-    const { container, getByText } = render(<ActivityWithSelection activity={activity} historical />);
+    const request = historyRequest(1);
+    const call = historyCall("call-push", request, "git_push", 1, { tool: "Shell", detail: "Push branch" });
+    const group: ActivityRequestGroup = { request, calls: [call], noMatchingCalls: false, continuation: null };
+    const { container, getByText } = render(<ActivityWithSelection groups={[group]} />);
     expect(getByText("Shell")).toBeInTheDocument();
     expect(container.querySelector('.activityAction .workKindIcon[data-work-kind="git_push"]')).toHaveAttribute("aria-hidden", "true");
   });

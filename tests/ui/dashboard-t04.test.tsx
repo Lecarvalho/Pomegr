@@ -23,6 +23,19 @@ vi.mock("../../app/components/dashboard/AgentsTab", async (importOriginal) => {
   };
 });
 
+// Wraps the real ActivitiesTab with one button that invokes its `onOpenAgent` prop directly, so
+// Dashboard.tsx's own `navigate({ tab: "agents", agent, request: null })` wiring (the explicit
+// clear, not the `navigate` auto-clear guard already covered above) is exercised without needing
+// a full session-history fixture.
+vi.mock("../../app/components/dashboard/ActivitiesTab", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/components/dashboard/ActivitiesTab")>();
+  return {
+    ...actual,
+    ActivitiesTab: (props: Parameters<typeof actual.ActivitiesTab>[0]) =>
+      <button type="button" onClick={() => props.onOpenAgent("primary")}>Open primary from Activities</button>,
+  };
+});
+
 import { Dashboard } from "../../app/Dashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
@@ -89,6 +102,15 @@ describe("T04 session workspace", () => {
     const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
     expect(url).toContain("agent=secondary");
     expect(url).toContain("request=request-9");
+  });
+
+  it("drops a stale request explicitly when an agent is opened from the Activities feed", async () => {
+    mount({ tab: "activities", agent: "primary", request: "12", path: "app/Dashboard.tsx" });
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Open primary from Activities" }));
+    const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
+    expect(url).toContain("agent=primary");
+    expect(url).not.toContain("request=");
   });
 
   it("hides Resources only after summary evidence confirms no data", async () => {
