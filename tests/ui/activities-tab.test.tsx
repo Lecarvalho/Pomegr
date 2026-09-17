@@ -16,6 +16,7 @@ import type { Agent, MonitorState } from "../../shared/monitor-contract";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
 import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
+import type { HistoryActivity } from "../../shared/session-history-contract";
 import type { RequestSelectionRoute } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { setPhone } from "./requests-actions-test-fixtures";
 
@@ -32,15 +33,18 @@ function monitorState(cacheWriteAvailable = true): MonitorState {
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
+  /** Per-call-id field overrides, for a recorded failure or a call with no target or result. */
+  callOverrides?: Record<string, Partial<HistoryActivity>>;
 } = {}) {
   const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1, (index + 1) % 2 ? "child" : "primary"));
   const calls = requests.flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
-    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]);
+    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)])
+    .map((call) => ({ ...call, ...(callOverrides?.[call.id] || {}) }));
   const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
   const server = historyServer(serverState);
   const state = monitorState(cacheWriteAvailable);
@@ -363,5 +367,108 @@ describe("Activities tab", () => {
     const feed = await ready();
     expect(within(feed).getByRole("button", { name: "Request #40, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
     expect(feed.querySelector(".requestsActionsSwatch.write")).not.toBeInTheDocument();
+  });
+  it("tints only the duration text of a failed phone call line", async () => {
+    setPhone(true);
+    const { container } = fixture({ callOverrides: { "call-40-edit": { status: "failed" } } });
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #40" });
+
+    const line = within(group).getByRole("button", { name: "Editing, file.tsx, 1.5s" });
+    expect(line).toHaveClass("activityCallLine");
+    expect(line.querySelector(".workKindIcon")).toHaveAttribute("data-work-kind", "write");
+    expect(line.querySelector(".activityCallTarget")).toHaveTextContent("file.tsx");
+    expect(line.querySelector(".activityCallDuration")).toHaveClass("attention");
+    // The row itself keeps the neutral feed tone, and the desktop grid never reaches a call line.
+    expect(line.closest("li")).not.toHaveClass("failed");
+    expect(container.querySelector(".activityCallLine.activityRow")).toBeNull();
+    expect(within(group).getByRole("button", { name: "Reading, file.tsx, 1.5s" }).querySelector(".activityCallDuration")).not.toHaveClass("attention");
+  });
+
+  it("names the tool on a phone call line the provider recorded without a target", async () => {
+    setPhone(true);
+    fixture({ callOverrides: { "call-40-read": { detail: "", durationMs: null } } });
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #40" });
+
+    // A detail-less call would otherwise leave the line blank; the tool name is what desktop prints.
+    const line = within(group).getByRole("button", { name: "Reading, Read, —" });
+    expect(line.querySelector(".activityCallTarget")).toHaveTextContent("Read");
+    expect(line.querySelector(".activityCallDuration")).toHaveClass("unavailable");
+  });
+
+  it("expands one phone call in place, selecting its request and chart bar", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { container } = fixture();
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #38" });
+    const read = within(group).getByRole("button", { name: "Reading, file.tsx, 1.5s" });
+    const edit = within(group).getByRole("button", { name: "Editing, file.tsx, 1.5s" });
+
+    await user.click(read);
+    await waitFor(() => expect(read).toHaveAttribute("aria-expanded", "true"));
+    expect(document.getElementById(read.getAttribute("aria-controls") || "")).toHaveClass("activityCallDetail");
+    // Tapping a call still moves the shared selection exactly as its request line does.
+    expect(within(group).getByRole("button", { name: /^Request #38,/u })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(container.querySelector(".requestsActionsBar.isSelected")?.getAttribute("aria-label")).toMatch(/^Request #38,/u));
+
+    await user.click(edit);
+    await waitFor(() => expect(edit).toHaveAttribute("aria-expanded", "true"));
+    expect(read).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll(".activityCallDetail")).toHaveLength(1);
+
+    await user.click(edit);
+    expect(edit).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelector(".activityCallDetail")).toBeNull();
+  });
+
+  it("collapses the expanded phone call with Escape and adds no route parameter", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { onRouteChange } = fixture();
+    const feed = await ready();
+    const line = within(within(feed).getByRole("article", { name: "Request #38" })).getByRole("button", { name: "Reading, file.tsx, 1.5s" });
+
+    await user.click(line);
+    await waitFor(() => expect(line).toHaveAttribute("aria-expanded", "true"));
+    await user.keyboard("{Escape}");
+
+    expect(line).toHaveAttribute("aria-expanded", "false");
+    expect(document.querySelector(".activityCallDetail")).toBeNull();
+    // The disclosure is view state: the route keeps the agent and request keys it always had.
+    for (const [route] of onRouteChange.mock.calls) expect(Object.keys(route).sort()).toEqual(["agent", "request"]);
+  });
+
+  it("shows only the allowed rows and recorded chips in an expanded phone call", async () => {
+    setPhone(true);
+    const user = userEvent.setup();
+    const { serverState } = fixture();
+    const feed = await ready();
+    const group = within(feed).getByRole("article", { name: "Request #39" });
+
+    await user.click(within(group).getByRole("button", { name: "Shell, Run the focused tests, 1.5s" }));
+    const detail = document.getElementById("call-detail-call-39-shell");
+    expect(detail).not.toBeNull();
+    expect(Array.from(detail!.querySelectorAll(".activityCallRow > span:first-child"), (cell) => cell.textContent)).toEqual(["Kind", "Wall duration", "Called", "Result", "Agent"]);
+    expect(Array.from(detail!.querySelectorAll(".commandChip"), (chip) => chip.textContent)).toEqual(["Shell", "Completed"]);
+    expect(detail).toHaveTextContent("Shell · Bash");
+    expect(detail).toHaveTextContent("Builder");
+    // Result is the recorded call time plus its own call-to-result duration, never a provider field.
+    const values = Array.from(detail!.querySelectorAll(".activityCallRow > span:last-child"), (cell) => cell.textContent);
+    const call = serverState.calls.find((item) => item.id === "call-39-shell")!;
+    expect(values.slice(2, 4)).toEqual([shortTime(call.timestamp), shortTime(new Date(Date.parse(call.timestamp) + 1_500).toISOString())]);
+    expect(within(detail!).queryByRole("link")).toBeNull();
+    expect(within(detail!).queryByRole("button")).toBeNull();
+  });
+
+  it("keeps desktop call rows as plain rows with no disclosure", async () => {
+    const { container } = fixture();
+    const feed = await ready();
+    const rows = Array.from(within(feed).getByRole("article", { name: "Request #40" }).querySelectorAll(".activityTable .activityRow"));
+
+    expect(container.querySelector(".activityCallLine")).toBeNull();
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.querySelector("[aria-expanded]")).toBeNull();
   });
 });

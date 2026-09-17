@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Agent } from "../../../../shared/monitor-contract";
 import type { HistoryRequest } from "../../../../shared/session-history-contract";
 import { agentDisplayName, agentRoleLabel, compactNumber, shortTime } from "../../../dashboard-utils";
@@ -7,6 +8,7 @@ import { DottedInfoPopover } from "../../DottedInfoPopover";
 import { WorkKindIcon } from "../../WorkKindIcon";
 import { WORK_LABELS } from "../../agents/agent-presentation";
 import type { SessionRequestSelection } from "../requests-actions/useSessionRequestSelection";
+import { ActivityCallLine } from "./ActivityCallLine";
 import { activityDuration } from "./duration";
 import { targetBasename } from "./feed-model";
 import type { ActivityFeedView } from "./useActivityFeed";
@@ -45,7 +47,10 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
   const total = selection.history.total;
   const index = selection.selectedIndex;
   const phone = selection.phone;
-  return <div className="activityFeed">
+  // One phone call is open at a time, held here rather than per line so opening one closes the
+  // other. It is view state only: no URL parameter, no sheet, no scroll lock.
+  const [openCall, setOpenCall] = useState<string | null>(null);
+  return <div className="activityFeed" onKeyDown={(event) => { if (event.key === "Escape" && openCall) setOpenCall(null); }}>
     {feed.status === "unavailable" && <p className="activityHistoryError" role="status">
       {feed.groups.length ? "Activity feed could not update. Showing the previous requests." : "Activity feed is unavailable."}{" "}
       <button type="button" className="commandTextLink" onClick={feed.retry}>Retry</button>
@@ -89,11 +94,20 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
           : "Unknown agent")}
         {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}
         {group.calls.length > 0 && <ul className="activityTable">
-          {group.calls.map((call) => <li key={call.id} className={`activityRow${call.status === "failed" ? " failed" : ""}`}>
-            <span className="activityAction"><WorkKindIcon kind={call.workKind} /><strong>{call.tool}</strong></span>
-            <span className="target">{call.detail ? targetBasename(call.detail) : "—"}</span>
-            <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`}>{activityDuration(call.durationMs)}</span>
-          </li>)}
+          {group.calls.map((call) => phone
+            // Tapping a call line still selects its request and chart bar exactly as a request line
+            // does; the disclosure beneath it is purely additive.
+            ? <ActivityCallLine key={call.id} call={call} agent={agents.find((item) => item.id === (call.agentId ?? group.request.agentId))} busy={busy} open={openCall === call.id}
+              onToggle={() => {
+                setOpenCall((current) => (current === call.id ? null : call.id));
+                onSelectRequest?.(group.request.number);
+                selection.locate(group.request.id, selection.scope);
+              }} />
+            : <li key={call.id} className={`activityRow${call.status === "failed" ? " failed" : ""}`}>
+              <span className="activityAction"><WorkKindIcon kind={call.workKind} /><strong>{call.tool}</strong></span>
+              <span className="target">{call.detail ? targetBasename(call.detail) : "—"}</span>
+              <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`}>{activityDuration(call.durationMs)}</span>
+            </li>)}
         </ul>}
         {group.continuation && <button type="button" className="commandTextLink" disabled={feed.loadingMore === group.request.number} onClick={() => feed.loadMore(group.request.number)}>
           {feed.loadingMore === group.request.number ? "Loading calls…" : `Show ${group.continuation.remaining.toLocaleString()} more calls`}
