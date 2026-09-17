@@ -428,3 +428,103 @@ describe("request lane focus in Activities", () => {
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
   });
 });
+
+describe("request single chart and role track", () => {
+  const segmentFamilies = (container: HTMLElement) => Array.from(container.querySelectorAll(".requestRoleSegment"), (segment) => /roleFamily-(\w+)/u.exec(segment.getAttribute("class") ?? "")?.[1]);
+
+  it("defaults desktop to lanes and switches to a single chart with one role-tinted track segment per visible request", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    expect(screen.getByRole("button", { name: "Lanes" })).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector(".requestLanes")).not.toBeNull();
+    expect(container.querySelector("svg.requestsActionsChart")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    expect(screen.getByRole("button", { name: "Single chart" })).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector(".requestLanes")).toBeNull();
+    const svg = container.querySelector("svg.requestsActionsChart")!;
+    expect(screen.queryByText("Per-lane scales")).toBeNull();
+    expect(segmentFamilies(container)).toEqual(Array.from({ length: 3 }, () => ["neutral", "writing", "system", "neutral"]).flat());
+    const bars = Array.from(svg.querySelectorAll(".requestsActionsBar"));
+    const segments = Array.from(svg.querySelectorAll(".requestRoleSegment"));
+    expect(segments.map((segment) => segment.getAttribute("x"))).toEqual(bars.map((bar) => bar.querySelector(".requestsActionsSegment")!.getAttribute("x")));
+    const barBottom = Number(bars[0].querySelector(".requestsActionsSegment.uncached")!.getAttribute("y")) + Number(bars[0].querySelector(".requestsActionsSegment.uncached")!.getAttribute("height"));
+    expect(Number(segments[0].getAttribute("y"))).toBeGreaterThan(barBottom);
+    expect(svg.querySelector(".requestRoleTrack")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("lists only the roles present in view with distinct agent counts", async () => {
+    const user = userEvent.setup();
+    renderPanel(laneSnapshots(), { agents: AGENTS });
+    expect(screen.queryByLabelText("Agent roles in view")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    const legend = screen.getByLabelText("Agent roles in view");
+    expect(Array.from(legend.children, (entry) => entry.textContent)).toEqual(["orchestrator ×1", "builder ×1", "compaction ×2"]);
+    expect(Array.from(legend.querySelectorAll("i"), (swatch) => swatch.getAttribute("class"))).toEqual(["roleFamily-neutral", "roleFamily-writing", "roleFamily-system"]);
+  });
+
+  it("names the agent of the hovered or focused bar, falling back to the selected request", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    const named = () => container.querySelector(".requestRoleNamed");
+    const builderBar = screen.getByRole("button", { name: /^Request #6, Builder, /u });
+    await user.click(screen.getByRole("button", { name: /^Request #3, Compactor A, /u }));
+    expect(named()).toHaveTextContent("#3Compactor Acompaction");
+
+    await user.hover(builderBar);
+    expect(named()).toHaveTextContent("#6Builderbuilder");
+    await user.unhover(builderBar);
+    expect(named()).toHaveTextContent("#3Compactor Acompaction");
+    fireEvent.focus(screen.getByRole("button", { name: /^Request #4, Primary agent, /u }));
+    expect(named()).toHaveTextContent("#4Primary agentorchestrator");
+  });
+
+  it("explains lane focus and group expansion in a keyboard-reachable popover", async () => {
+    const user = userEvent.setup();
+    renderPanel(laneSnapshots(), { agents: AGENTS });
+    const trigger = screen.getByRole("button", { name: "About lanes" });
+    expect(trigger.tabIndex).toBe(0);
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("dialog", { name: "About lanes" })).toHaveTextContent("Click a lane name to focus that agent across the tab, and click it again to show all agents.");
+    expect(screen.getByRole("dialog", { name: "About lanes" })).toHaveTextContent("click a group name to expand it");
+  });
+
+  it("keeps role tints out of lanes and the minimap", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    expect(container.querySelector('[class*="roleFamily-"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    const tinted = Array.from(container.querySelectorAll('[class*="roleFamily-"]'));
+    expect(tinted.length).toBeGreaterThan(0);
+    for (const element of tinted) expect(element.closest(".requestRoleTrack, .requestRoleLegend")).not.toBeNull();
+  });
+
+  it("keeps the selected request and expanded groups across a layout switch", async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    fireEvent.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #6,/u }));
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    expect(screen.getByRole("heading", { name: "Request #6" })).toBeInTheDocument();
+    expect(container.querySelector("svg.requestsActionsChart .requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6, Builder,/u));
+    await user.click(screen.getByRole("button", { name: "Lanes" }));
+    expect(laneNamed(container, "Builder").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6,/u));
+    unmount();
+
+    renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
+    await user.click(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: false }));
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    await user.click(screen.getByRole("button", { name: "Lanes" }));
+    expect(screen.getByRole("button", { name: "Research sweep · workflow · 6 agents", expanded: true })).toBeInTheDocument();
+  });
+
+  it("offers no layout toggle or role track on phone", () => {
+    setPhone(true);
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    expect(screen.queryByRole("group", { name: "Chart layout" })).toBeNull();
+    expect(container.querySelector("svg.requestsActionsChart")).not.toBeNull();
+    expect(container.querySelector(".requestRoleSegment, .requestRoleLegend")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Request #6, \d/u })).toBeInTheDocument();
+  });
+});

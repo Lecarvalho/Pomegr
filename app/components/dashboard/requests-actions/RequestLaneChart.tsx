@@ -90,9 +90,11 @@ export function placeLaneBandLabels(entries: { row: RequestRow; index: number }[
 /**
  * Desktop lanes. A lane name focuses its agent through the shared agent scope, so the feed and
  * request detail never outlive a hidden bar; a group label expands or collapses a workflow group.
+ * The expanded group ids belong to the caller, so they survive a switch to the single chart.
  */
-export function RequestLaneChart({ lanes, agents, workflows, focusedAgentId, onFocusAgent, rows, start, end, size, mode, selectedId, cacheWriteAvailable, onSelect, onStep, windowStart, total }: {
+export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleGroup, focusedAgentId, onFocusAgent, rows, start, end, size, mode, selectedId, cacheWriteAvailable, onSelect, onStep, windowStart, total }: {
   lanes: RequestLane[]; agents: Agent[]; workflows: Workflow[];
+  expanded: ReadonlySet<string>; onToggleGroup: (groupId: string) => void;
   focusedAgentId: string | null; onFocusAgent: (agentId: string | null) => void;
   rows: RequestRow[]; start: number; end: number; size: number; mode: ChartMode;
   selectedId: string | null; cacheWriteAvailable: boolean;
@@ -115,14 +117,8 @@ export function RequestLaneChart({ lanes, agents, workflows, focusedAgentId, onF
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const layout = useMemo(() => layoutRequestLanes(lanes, agents, workflows, expanded, { scoped: focusedAgentId !== null, mode, cacheWriteAvailable }),
     [lanes, agents, workflows, expanded, focusedAgentId, mode, cacheWriteAvailable]);
-  const toggleGroup = (id: string) => setExpanded((current) => {
-    const next = new Set(current);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusSelection = useRef(false);
@@ -160,7 +156,7 @@ export function RequestLaneChart({ lanes, agents, workflows, focusedAgentId, onF
       if (row.kind === "groupHeader") {
         const { name, meta } = groupLabel(row.group);
         return <div key={row.id} className="requestLaneGroupHeader">
-          <button type="button" className="commandQuietAction requestLaneLabel" title={`${name} · ${meta}`} aria-label={`${name} · ${meta}`} aria-expanded="true" onClick={() => toggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>
+          <button type="button" className="commandQuietAction requestLaneLabel" title={`${name} · ${meta}`} aria-label={`${name} · ${meta}`} aria-expanded="true" onClick={() => onToggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>
         </div>;
       }
       const lane = row.kind === "lane" ? row.lane : null;
@@ -170,7 +166,7 @@ export function RequestLaneChart({ lanes, agents, workflows, focusedAgentId, onF
       const maximum = row.kind === "lane" ? row.lane.maximum : row.group.maximum;
       const fullLabel = `${name} · ${meta}`;
       let label: ReactNode = <div className="requestLaneLabel" title={fullLabel}><LabelText name={name} meta={meta} /></div>;
-      if (row.kind === "group") label = <button type="button" className="commandQuietAction requestLaneLabel" title={fullLabel} aria-label={fullLabel} aria-expanded="false" onClick={() => toggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>;
+      if (row.kind === "group") label = <button type="button" className="commandQuietAction requestLaneLabel" title={fullLabel} aria-label={fullLabel} aria-expanded="false" onClick={() => onToggleGroup(row.group.id)}><LabelText name={name} meta={meta} chevron /></button>;
       else if (lane && lane.agentId !== null && agents.some((agent) => agent.id === lane.agentId)) {
         const focused = lane.agentId === focusedAgentId;
         label = <button type="button" className="commandQuietAction requestLaneLabel" title={fullLabel} aria-label={`Focus ${fullLabel}`} aria-pressed={focused} onClick={() => onFocusAgent(focused ? null : lane.agentId)}><LabelText name={name} meta={meta} /></button>;
