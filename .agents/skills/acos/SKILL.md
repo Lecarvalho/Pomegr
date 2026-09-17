@@ -67,6 +67,9 @@ These decide most of the manifest. Apply them before anything else.
   you understand. Add `plan` when the design is not obvious, `review`
   when the change is risky or public, `explore` only when neither you nor
   `calibration.md` knows the area.
+- **Evidence only where there is something to see.** Add `evidence` when
+  the part changes a visible surface and `.acos.yaml` has `shot`. Without
+  either, no capture stage and no try-it page.
 - **Effort matches the stage**, not the task. Planning high, mechanical
   implementation medium, checks low.
 - **Workflow adapter is rare.** Three or more independent parallel stages,
@@ -315,7 +318,13 @@ record.
    most 40 lines: what later parts reuse, decisions they must not undo,
    deferred findings with the owning part index, verify result. A run
    outside a plan, or the last part, has no handoff.
-4. End with a short report. Point at files; do not repeat them.
+4. If the part changed a visible surface, it does not close on prose:
+   write `artifacts/try-it.md` with the `evidence` block, one cropped
+   screenshot per claim a reader can check, each with a one or two line
+   caption. Open every crop and look at it before you caption it; a crop
+   that does not show what its caption says is a defect in this part, not
+   a deferred finding. A part with no visible surface writes none.
+5. End with a short report. Point at files; do not repeat them.
 
 - run id, outcome (success / failed at stage X / stopped by user)
 - one line per stage: name, iterations, model actually used, check result
@@ -324,8 +333,8 @@ record.
 - when in a plan: parts done / total, and the exact next command
   (`/acos run runs/<plan-id> <i+1>`), or "plan complete"
 - files changed, from `git status --short`
-- paths worth opening: the run directory, the handoff, anything a stage
-  wrote for the user
+- paths worth opening: the run directory, the handoff, the try-it page,
+  anything a stage wrote for the user
 
 ## 7. Init: derive `.acos.yaml`
 
@@ -337,18 +346,22 @@ Goal: write a correct `.acos.yaml` without the user editing a template.
    `*.csproj`, CLAUDE.md or README instructions. Prefer the command the
    repo's own docs tell contributors to run. If several, chain them with
    `&&` in the order lint, build, test.
-2. Detect reachable providers. Run `which`/`Get-Command` for `claude`,
+2. Set `shot`, the capture command a part's try-it page is built from:
+   `node <installed skill path>/scripts/shot.mjs` for a project with a web
+   interface, the project's own capture command for one whose interface is
+   something else, and no key at all when there is no visible surface.
+3. Detect reachable providers. Run `which`/`Get-Command` for `claude`,
    `codex`, `gemini`, `ollama`. Keep only providers whose CLI exists, plus
    the harness's native provider.
-3. Fill model tiers from `catalog/providers.yaml` for the native provider:
+4. Fill model tiers from `catalog/providers.yaml` for the native provider:
    `fast` = tier fast, `balanced` = tier balanced, `strong` = tier strong.
-4. Pick `preset`: leave unset. Ad hoc composition is the default until
+5. Pick `preset`: leave unset. Ad hoc composition is the default until
    the user saves one.
-5. Set `gates.go: required`. Set `limits` to the defaults
+6. Set `gates.go: required`. Set `limits` to the defaults
    (`files: 8`, `lines: 400`, `orchestrator_tokens: 100000`,
    `worker_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
    gave others.
-6. Write it and say what was chosen and why, one line per field. Ask
+7. Write it and say what was chosen and why, one line per field. Ask
    for confirmation only if the verify command is a guess (nothing in
    the repo named it); then show just that line.
 
