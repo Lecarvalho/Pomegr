@@ -14,6 +14,11 @@ const brandSource = readFileSync(join(process.cwd(), "app", "components", "Pomeg
 const sessionProgressSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionProgressPanel.tsx"), "utf8");
 const animatedProgressSource = readFileSync(join(process.cwd(), "app", "components", "AnimatedProgress.tsx"), "utf8");
 const commandPageSource = readFileSync(join(process.cwd(), "app", "components", "command-center", "CommandPage.tsx"), "utf8");
+const requestsActionsPath = join(process.cwd(), "app", "components", "dashboard", "requests-actions");
+const laneChartSource = readFileSync(join(requestsActionsPath, "RequestLaneChart.tsx"), "utf8");
+const laneModelSource = readFileSync(join(requestsActionsPath, "lane-model.ts"), "utf8");
+const minimapSource = readFileSync(join(requestsActionsPath, "RequestMinimap.tsx"), "utf8");
+const requestsPanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestsActionsPanel.tsx"), "utf8");
 
 describe("Pomegr visual contract", () => {
   it("reuses settings row geometry and standard chips for repository setup", () => {
@@ -97,6 +102,32 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.agentPopover\s*\{[^}]*background:\s*var\(--popover\)[^}]*box-shadow:\s*var\(--popover-shadow\)/);
     expect(styles).toMatch(/\.agentsPanel:has\(\.cacheRefillPopover\)\s*\{\s*z-index:\s*10/);
     expect(styles).toMatch(/\.tooltipPopover\s*\{[^}]*padding:\s*9px 11px[^}]*border:\s*1px solid var\(--popover-line\)[^}]*background:\s*var\(--popover\)/);
+  });
+
+  it("keeps request lanes labeled and collapsible, the minimap neutral, and role tint in the single-chart track only", () => {
+    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/);
+    expect(styles).toMatch(/\.requestLaneName\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/);
+    expect(styles).toMatch(/\.requestLaneMeta\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/);
+    expect(styles).toMatch(/\.requestLaneLabel\.commandQuietAction\[aria-pressed="true"\]\s*\{\s*background:\s*color-mix\(in srgb, var\(--command-ink\) 6%, transparent\)/);
+    expect(styles).toMatch(/\.requestLane\.isGroupMember > \.requestLaneLabel\s*\{\s*padding-left:\s*calc\(var\(--lane-label-bleed\) \+ var\(--space-4\)\)/);
+    expect(styles).toMatch(/\.requestLaneChevron\s*\{[^}]*width:\s*12px;\s*height:\s*12px/);
+    expect(styles).toMatch(/\.requestLaneMaximum\s*\{[^}]*font:\s*var\(--text-caption\) var\(--font-data\)/);
+    expect(laneChartSource).toMatch(/export const MAXIMUM_GUTTER = 72;/);
+    expect(laneChartSource).toMatch(/const PRIMARY = \{ band: 22, plot: 96 \};\s*const SECONDARY = \{ band: 18, plot: 34 \};/);
+    expect(laneChartSource).toMatch(/className="commandQuietAction requestLaneLabel"/);
+    expect(laneModelSource).toMatch(/export const LANE_COLLAPSE_THRESHOLD = 8;/);
+    expect(requestsPanelSource).toMatch(/\{!phone && <div className="commandSegmented" role="group" aria-label="Chart layout">/);
+
+    const tinted = [...styles.matchAll(/([^{}]+)\{[^}]*var\(--(?:session-role|role-)[^}]*\}/g)].map((match) => match[1].trim());
+    expect(tinted.filter((selector) => /requestLane|requestsActionsMini/.test(selector))).toEqual([]);
+    expect(styles).toMatch(/\.requestRoleSegment\s*\{\s*fill:\s*var\(--session-role, var\(--command-line-strong\)\)/);
+    expect(styles).toMatch(/\.sessionRoleLegend\.requestRoleLegend > span\s*\{\s*text-transform:\s*none/);
+    for (const source of [laneChartSource, laneModelSource, minimapSource]) expect(source).not.toMatch(/roleFamily|role-family/);
+
+    expect(styles).toMatch(/\.requestsActionsMiniBar\s*\{\s*fill:\s*var\(--command-line-strong\)/);
+    expect(styles).toMatch(/\.requestsActionsMiniWindow\s*\{\s*fill:\s*color-mix\(in srgb, var\(--command-muted\) 12%, transparent\);\s*stroke:\s*var\(--command-muted\)/);
+    expect(styles).not.toMatch(/\.requestsActionsMini[^{]*\{[^}]*(?:--command-brand|--brand|--session-role|--role-)/);
+    expect(minimapSource).toMatch(/aria-describedby=\{interactive \? hintId : undefined\}/);
   });
 
   it("preserves the current activity icon animation and reduced-motion opt-out", () => {

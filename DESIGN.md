@@ -410,6 +410,57 @@ scope, with a quiet button cycling uncached input (default), output, cache write
 and total; skip cache write when unavailable. Omit repeated agent and Before
 metadata, expansion controls, and the ranking footer. Phone omits the ranking rail.
 
+#### Request lanes and single chart
+
+Desktop Activities defaults to lanes. Two segmented groups sit in `.requestsActionsModes`:
+Chart mode (Fresh tokens / Full breakdown) and Chart layout (Lanes / Single chart). The
+layout has no URL parameter and does not render on phone, where only the single chart is drawn.
+Both layouts share request order, the window, selection, arrow-key stepping, and the minimap.
+
+- **Lanes.** One lane per agent with loaded requests, in roster order, and every request drawn
+  exactly once. Requests from compaction agents share one Compactions lane, placed last. The
+  primary lane is taller (22px band, 96px plot; other lanes 18px and 34px). Each lane prints
+  its own `max N` (caption, Geist Mono, faint) in a 72px right gutter that bars and evidence
+  icons never reach. The scale line reads Per-lane scales with a dotted info popover. Lane
+  evidence icons are 14px. Band text is placed in priority order, dropping any label that would
+  overlap rather than drawing it: the hovered, focused, or selected cache-evidence label, then
+  the selected request number, then compaction text.
+- **Labels.** A 220px column with a 1px `--command-line` right rule. The name is 12px/500 ink
+  and the meta line is caption muted (`role · model`, `compaction · N agents`, or
+  `not in the agent roster`), each ellipsized on one line. The full `name · meta` is the title
+  tooltip and the accessible name. Labels never carry role dots or role tints.
+- **Focus and collapse.** Lane names of roster agents are `.commandQuietAction.requestLaneLabel`
+  buttons that bleed 20px into the plot padding. Pressing one focuses that agent's scope across
+  the tab (`aria-pressed`, 6% ink tint), and pressing it again returns to all agents. With more
+  than eight roster lanes (roster agents plus the Compactions lane) and no focus, Direct
+  subagents and each workflow with two or more agents collapse into one group row. That row
+  draws every member request on one group maximum. Its label button (`aria-expanded`, 12px
+  chevron rotating 90°) expands the group into a header plus member lanes indented one
+  `--space-4` step. Primary and Compactions never collapse. Selecting a request inside a
+  collapsed group does not expand it.
+- **Single chart.** One whole-history scale (`0–N tokens`). Under the bars runs the role-family
+  agent track: one `.requestRoleSegment` per visible bar, 4px high after a 3px gap (3px on
+  phone). The `.sessionRoleLegend.requestRoleLegend` below lists the role labels in view,
+  ordered by family, with distinct agent counts. It keeps each label's case, so `custom: <type>`
+  and lowercase roles are not capitalized. The hovered or focused bar's agent, otherwise the
+  selected request's agent, is named in text beside the legend (`#n`, name, role), never as SVG
+  text.
+- **Role tint scope.** In Activities, role tints appear only on `.requestRoleSegment` and the
+  legend swatches. Lanes, lane labels, group rows, and the minimap use no `roleFamily-*` classes
+  and no `--session-role` or `--role-*` values.
+- **Minimap.** Neutral grey: bars use `--command-line-strong`, and the window uses a
+  `--command-muted` stroke with a 12% muted fill (the whole-history window uses
+  `--command-line-strong`). No brand or role color appears. Only cache-evidence ticks keep
+  amber, dotted when inferred. The slider's `aria-valuetext` reads `Request positions a to b
+  of n`, because positions within the scope are not request numbers. The interaction hint is
+  never rendered inline: it is the SVG title tooltip and the slider's `aria-describedby`
+  description.
+
+`/design-system` renders a static lanes sample (one expanded and one collapsed group, a
+Compactions lane, the minimap) and a single-chart sample with the track and legend.
+`tests/ui/pomegr-design-contract.test.tsx` enforces the label grid, pressed tint, member indent,
+gutter and lane heights, collapse threshold, tint scope, and neutral minimap.
+
 Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Keep the Cache evidence disclosure after Activity, closed by default, with its saved disclosure state and event count. Requests replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
 
 ## Do's and Don'ts

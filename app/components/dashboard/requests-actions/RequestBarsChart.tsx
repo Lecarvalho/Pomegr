@@ -72,7 +72,8 @@ export function RequestBar({ row, x, width, gap, top, bottom, right, band, marke
     {selected && <rect className="requestsActionsSelection" x={x} y={barTop} width={width} height={Math.max(1, height(stacked))} />}
     {row.compactionBefore && <g className="requestsActionsCompaction"><line x1={x - gap / 2} x2={x - gap / 2} y1={top} y2={bottom} />{labels && <text x={x < right - 75 ? x : x - 65} y={top - 8}>compaction</text>}</g>}
     {row.cacheEvidence && <g className={`requestsActionsRefill${row.cacheEvidence.kind !== "refill" ? " isInferred" : ""}`}>
-      <title>{cacheEvidenceLabel(row.cacheEvidence)} · request {requestMarker(row)}</title>
+      {/* One string child: React's server renderer emits an empty <title> for several children. */}
+      <title>{`${cacheEvidenceLabel(row.cacheEvidence)} · request ${requestMarker(row)}`}</title>
       <line x1={x + width / 2} x2={x + width / 2} y1={top - band + marker + 10} y2={bottom} />
       <g transform={`translate(${x + width / 2 - marker / 2} ${top - band + 2})`}><CacheRefillIcon size={marker} inferred={row.cacheEvidence.kind !== "refill"} /></g>
     </g>}

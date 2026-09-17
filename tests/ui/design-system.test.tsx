@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 const clientAccess = vi.hoisted(() => ({ mode: "unknown" as "unknown" | "local" | "lan" }));
@@ -14,7 +16,7 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Chips and pills", "Panels and dividers", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Chips and pills", "Panels and dividers", "Typography and tokens"];
 
 function source(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -68,6 +70,39 @@ describe("Design-system reference page", () => {
     expect(screen.getByText("--space-4")).toBeInTheDocument();
     expect(screen.queryByText(/Design system unavailable here/)).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders static lane and single-chart samples with a neutral, described minimap", () => {
+    render(<DesignSystemView />);
+    const lanes = screen.getByRole("region", { name: "Lane chart sample" });
+    expect(within(lanes).getByRole("button", { name: "Direct subagents · 3 agents", expanded: true })).toHaveClass("commandQuietAction", "requestLaneLabel");
+    expect(within(lanes).getByRole("button", { name: "Test sweep · workflow · 5 agents", expanded: false })).toHaveClass("commandQuietAction", "requestLaneLabel");
+    expect(within(lanes).getByRole("button", { name: "Focus Primary agent · orchestrator · large-model", pressed: false })).toBeInTheDocument();
+    expect(lanes.querySelector('.requestLane.isPrimary[data-lane-kind="agent"]')).not.toBeNull();
+    expect(lanes.querySelector('.requestLane[data-lane-kind="compaction"]')).not.toBeNull();
+    expect(lanes.querySelector('[class*="roleFamily-"]')).toBeNull();
+    const minimap = within(lanes).getByRole("slider", { name: "Request window" });
+    expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 9 to 40 of 40");
+    expect(minimap).toHaveAccessibleDescription("Drag the window, or use arrow keys, Page Up / Page Down, Home and End.");
+
+    const single = screen.getByRole("region", { name: "Single chart sample" });
+    expect(single.querySelectorAll(".requestRoleSegment")).toHaveLength(32);
+    expect(within(single).getByLabelText("Agent roles in view")).toHaveTextContent(/orchestrator ×1.*explore ×1/);
+    expect(single.querySelector(".requestRoleNamed")).toHaveTextContent(/#34.*Primary agent.*orchestrator/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("hydrates the server-rendered page, including SVG titles, without a mismatch", async () => {
+    const html = renderToString(<DesignSystemPage />);
+    expect(html).toContain(">Possible full refill · request #38</title>");
+    expect(html).not.toContain("<title></title>");
+    const container = document.body.appendChild(document.createElement("div"));
+    container.innerHTML = html;
+    const recoverable = vi.fn();
+    const root = await act(async () => hydrateRoot(container, <DesignSystemPage />, { onRecoverableError: recoverable }));
+    expect(recoverable).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    container.remove();
   });
 
   it("renders the unavailable view instead of the reference when the desktop bridge is present", () => {

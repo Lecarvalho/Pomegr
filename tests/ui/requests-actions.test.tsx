@@ -583,6 +583,8 @@ describe("RequestsActionsPanel", () => {
   it("moves the minimap window and transfers a hidden selection to the nearest visible request", () => {
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     const minimap = screen.getByRole("slider", { name: "Request window" });
+    // The interaction hint is never rendered inline: it is the tooltip and the accessible description.
+    expect(minimap).toHaveAccessibleDescription("Drag the window, or use arrow keys, Page Up / Page Down, Home and End.");
     vi.spyOn(minimap, "getBoundingClientRect").mockReturnValue({ left: 0, right: 100, top: 0, bottom: 26, width: 100, height: 26, x: 0, y: 0, toJSON: () => ({}) });
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 10 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 60, clientY: 10 });

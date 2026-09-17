@@ -733,7 +733,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsMinimap svg { height: 26px; padding-block: 9px; box-sizing: content-box; background: var(--command-panel-2); background-clip: content-box; }
 }
 .requestsActionsMiniBar { fill: var(--command-line-strong); }
-.requestsActionsMiniWindow { fill: color-mix(in srgb, var(--command-brand-text) 13%, transparent); stroke: var(--command-brand-text); stroke-width: 1; }
+/* The minimap stays neutral grey: no brand or role tint; only cache-evidence ticks keep amber. */
+.requestsActionsMiniWindow { fill: color-mix(in srgb, var(--command-muted) 12%, transparent); stroke: var(--command-muted); stroke-width: 1; }
 .requestsActionsMiniWindow.isWhole { fill: color-mix(in srgb, var(--command-line-strong) 12%, transparent); stroke: var(--command-line-strong); }
 .requestsActionsDetails { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--command-line); }
 .requestsActionsDetail { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px; }

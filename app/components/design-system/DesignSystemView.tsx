@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
+import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
+import { compactNumber } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
 import { RepositoryRow } from "../repositories/RepositoryRow";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
+import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
+import { scaleMax, type RequestRow } from "../dashboard/requests-actions/model";
+import { RequestBarsChart } from "../dashboard/requests-actions/RequestBarsChart";
+import { RequestLaneChart } from "../dashboard/requests-actions/RequestLaneChart";
+import { RequestMinimap } from "../dashboard/requests-actions/RequestMinimap";
+import { RequestRoleLegend } from "../dashboard/requests-actions/RequestRoleTrack";
 import {
   CommandEmpty,
   CommandFilter,
@@ -41,6 +49,7 @@ export function DesignSystemView() {
     <FormFieldsSection />
     <ShellSection />
     <RoleFamilySection />
+    <RequestChartsSection />
     <ChipsSection />
     <Section id="repository-row" title="Repository setup row" lede="Shared settings geometry, standard chips, and independent row actions.">
       <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
@@ -284,6 +293,107 @@ function RoleFamilySection() {
       <span><i className="roleFamily-generic" aria-hidden="true" />Fork ×2</span>
       <span><i className="roleFamily-system" aria-hidden="true" />Compaction ×1</span>
     </div>
+  </Section>;
+}
+
+// Static request-chart sample: nine roster agents plus a compaction agent, so the lane chart
+// crosses the eight-lane threshold and shows one expanded and one collapsed group.
+const SAMPLE_TIME = Date.parse("2026-08-09T12:00:00.000Z");
+const SAMPLE_WINDOW = 32;
+const SAMPLE_WORKFLOW_ID = "sample-test-sweep";
+
+function sampleAgent(id: string, label: string, role: AgentRole, workflowId: string | null = null): Agent {
+  const seen = new Date(SAMPLE_TIME).toISOString();
+  return {
+    id, parentId: id === "primary" ? null : "primary", workflowId, workflowPhaseId: null, workflowOrder: null, workflowState: workflowId ? "done" : null,
+    label, role, model: id === "primary" ? "large-model" : "small-model", effort: "medium", status: "finished", signal: null, toolCalls: 0, skills: [],
+    lastSeen: seen, startedAt: seen, updatedAt: seen, durationMs: 0, cacheLifetime: "1h", tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  };
+}
+
+const SAMPLE_AGENTS: Agent[] = [
+  sampleAgent("primary", "Primary agent", "orchestrator"),
+  sampleAgent("explore", "Map the request feed", "explore"),
+  sampleAgent("plan", "Plan lane collapse", "plan"),
+  sampleAgent("review", "Review the chart diff", "reviewer"),
+  sampleAgent("worker-1", "Lane model tests", "builder", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-2", "Label geometry tests", "builder", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-3", "Collapse tests", "tester", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-4", "Focus tests", "tester", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-5", "Minimap tests", "general-purpose", SAMPLE_WORKFLOW_ID),
+  sampleAgent("compaction", "Compaction", "compaction"),
+];
+
+const SAMPLE_WORKFLOWS: Workflow[] = [{
+  id: SAMPLE_WORKFLOW_ID, name: "Test sweep", summary: null, status: "completed", metadataStatus: "ready", startedAt: null, updatedAt: null, durationMs: 0,
+  agentIds: ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"], phases: [],
+}];
+
+// One key per request in order: p primary, e explore, l plan, r review, c compaction, 1-5 workers.
+const SAMPLE_KEYS: Record<string, string> = { p: "primary", e: "explore", l: "plan", r: "review", c: "compaction", 1: "worker-1", 2: "worker-2", 3: "worker-3", 4: "worker-4", 5: "worker-5" };
+const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p 3 4 p l p 5 1 p p c p r p e p 2 p".split(" ").map((key, index) => {
+  const agentId = SAMPLE_KEYS[key];
+  const weight = agentId === "primary" ? 6 : agentId === "compaction" ? 4 : 2;
+  const uncachedInputTokens = weight * (500 + index * 37 % 11 * 160);
+  const cacheWriteTokens = weight * (index % 5 === 0 ? 900 : 120);
+  const cacheReadTokens = weight * 3_000;
+  const outputTokens = weight * (180 + index % 7 * 70);
+  return {
+    id: `sample-request-${index + 1}`, agentId, observedAt: new Date(SAMPLE_TIME + index * 45_000).toISOString(), cacheLifetime: "1h",
+    uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, totalTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens + outputTokens,
+    precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
+    ordinal: index + 1, number: index + 1, promptTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens, freshTokens: uncachedInputTokens + cacheWriteTokens + outputTokens,
+    // The primary rows after each compaction-agent request, and one recorded refill.
+    compactionBefore: index === 16 || index === 33,
+    ...(index === 37 ? { cacheEvidence: { kind: "refill" as const } } : {}),
+  };
+});
+const SAMPLE_LANES = buildRequestLanes(SAMPLE_ROWS, SAMPLE_AGENTS, "fresh", true).lanes;
+const SAMPLE_MAXIMUM = Math.max(1, scaleMax(SAMPLE_ROWS, "fresh", true));
+const SAMPLE_PANEL_STYLE = { marginTop: "var(--space-4)" };
+function ignoreFocus() {}
+
+function RequestChartsSection() {
+  const [windowStart, setWindowStart] = useState(SAMPLE_ROWS.length - SAMPLE_WINDOW + 1);
+  const [selectedIndex, setSelectedIndex] = useState(33);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(["direct"]));
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const end = windowStart + SAMPLE_WINDOW - 1;
+  const selected = SAMPLE_ROWS[selectedIndex];
+  const selectIndex = (index: number) => {
+    const next = Math.max(0, Math.min(SAMPLE_ROWS.length - 1, index));
+    setSelectedIndex(next);
+    if (next + 1 < windowStart) setWindowStart(next + 1);
+    else if (next + 1 > end) setWindowStart(next + 2 - SAMPLE_WINDOW);
+  };
+  const moveWindow = (start: number) => {
+    setWindowStart(start);
+    setSelectedIndex((current) => Math.max(start - 1, Math.min(start + SAMPLE_WINDOW - 2, current)));
+  };
+  const toggleGroup = (groupId: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (!next.delete(groupId)) next.add(groupId);
+    return next;
+  });
+  const chart = { rows: SAMPLE_ROWS, start: windowStart, end, size: SAMPLE_WINDOW, mode: "fresh" as const, selectedId: selected.id, cacheWriteAvailable: true,
+    onSelect: (row: RequestRow) => selectIndex(row.ordinal - 1), onStep: (delta: number) => selectIndex(selectedIndex + delta), windowStart, total: SAMPLE_ROWS.length };
+  return <Section id="request-charts" title="Request charts" lede="Activities draws one lane per agent on desktop; Single chart stacks every request on one scale above the role-family agent track. Both share request order, window, selection, arrow keys, and the neutral minimap. Static data only.">
+    <section className="panel requestsActionsPanel" aria-label="Lane chart sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="requestsActionsPlot">
+        <p className="requestsActionsScale"><strong>Per-lane scales</strong><span>Rescaled · cache reads excluded</span></p>
+        <RequestLaneChart lanes={SAMPLE_LANES} agents={SAMPLE_AGENTS} workflows={SAMPLE_WORKFLOWS} expanded={expanded} onToggleGroup={toggleGroup} focusedAgentId={null} onFocusAgent={ignoreFocus} {...chart} />
+        <RequestMinimap rows={SAMPLE_ROWS} start={windowStart} end={end} mode="fresh" cacheWriteAvailable onMove={moveWindow} />
+      </div>
+    </section>
+    <p className="designSystemNote">Lanes: 220px ellipsized labels with name · role · model in the tooltip and accessible name, a per-lane max in a 72px gutter, and a taller primary lane. Beyond eight roster lanes, Direct subagents and each workflow collapse into one group row; Primary and Compactions never collapse. Lane names are quiet buttons that focus the agent across the tab (inert here). Lanes, labels, and the minimap carry no role tint; the minimap window is grey, only cache-evidence ticks stay amber, and its hint lives in the tooltip and accessible description.</p>
+    <section className="panel requestsActionsPanel" aria-label="Single chart sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="requestsActionsPlot">
+        <p className="requestsActionsScale"><strong>0–{compactNumber(SAMPLE_MAXIMUM)} tokens</strong><span>Rescaled · cache reads excluded</span></p>
+        <RequestBarsChart {...chart} maximum={SAMPLE_MAXIMUM} phone={false} onMove={moveWindow} agents={SAMPLE_AGENTS} onInspect={setInspectedId} />
+        <RequestRoleLegend rows={SAMPLE_ROWS.slice(windowStart - 1, end)} agents={SAMPLE_AGENTS} named={SAMPLE_ROWS.find((row) => row.id === inspectedId) ?? selected} />
+      </div>
+    </section>
+    <p className="designSystemNote">Single chart: one whole-history scale, a 4px role-family segment under each bar, and a legend of the roles in view with distinct agent counts. Hovering or focusing a bar names its agent beside the legend, else the selected request&apos;s agent. Phone draws only the single chart and has no layout toggle.</p>
   </Section>;
 }
 
