@@ -9,6 +9,11 @@ acos: "0.1"
 # (build, generated-artifact sync, node/UI/landing suites) stays CI's job.
 verify: "npm run verify:fast"
 
+# Captures the cropped screenshots a part's try-it page is built from;
+# substituted into {{ project.shot }}. Headless Chrome or Edge, no dependencies.
+# The dashboard must be running (`npm run dev`, http://localhost:3003).
+shot: "node .agents/skills/acos/scripts/shot.mjs"
+
 # Native harness provider. Stages route here unless a stage names another.
 provider: anthropic
 
