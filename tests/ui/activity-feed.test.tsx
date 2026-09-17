@@ -165,5 +165,10 @@ describe("feed model", () => {
     expect(targetBasename("./scripts/run all.ps1")).toBe("run all.ps1");
     expect(targetBasename("Run tests in tests/ui")).toBe("Run tests in tests/ui");
     expect(targetBasename("Bump version to v1.2 and tag release/2026")).toBe("Bump version to v1.2 and tag release/2026");
+    // A Bash description that ends in a path is still prose: only a detail whose first segment
+    // carries no whitespace is read as a path, so the description survives whole.
+    expect(targetBasename("Run tests for app/foo.test.ts")).toBe("Run tests for app/foo.test.ts");
+    expect(targetBasename("Update docs/README.md with the new flow")).toBe("Update docs/README.md with the new flow");
+    expect(targetBasename("Read tests/ui/activity-feed.test.tsx")).toBe("Read tests/ui/activity-feed.test.tsx");
   });
 });

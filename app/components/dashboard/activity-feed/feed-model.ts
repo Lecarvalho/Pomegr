@@ -70,15 +70,19 @@ export function mergeCalls(current: HistoryActivity[], next: HistoryActivity[]):
 const FILE_TOKEN = /^[^\\/]*[^\s\\/.]\.[A-Za-z][A-Za-z0-9]{0,9}$/u;
 
 /**
- * Targets show basenames only. A detail with a path separator is shortened when it has no
- * whitespace, starts like an absolute or relative path, or ends in a file-like segment (which may
- * contain spaces); other prose, such as a shell description, stays as recorded.
+ * Targets show basenames only. A detail with a path separator is shortened when it reads as one
+ * path: its first segment carries no whitespace, and it either has no whitespace at all, starts
+ * like an absolute or relative path, or ends in a file-like segment (which may contain spaces).
+ * Prose that only mentions a path keeps the whitespace in its first segment and stays as recorded,
+ * so a Bash description is never cut down to the file it names.
  */
 export function targetBasename(detail: string): string {
   const trimmed = detail.trim();
   if (!/[\\/]/u.test(trimmed)) return trimmed;
   const withoutTrailing = trimmed.replace(/[\\/]+$/u, "");
-  const last = withoutTrailing.split(/[\\/]/u).at(-1) || withoutTrailing;
-  const pathLike = !/\s/u.test(trimmed) || /^(?:[A-Za-z]:[\\/]|[\\/~.])/u.test(trimmed) || FILE_TOKEN.test(last);
+  const segments = withoutTrailing.split(/[\\/]/u);
+  const last = segments.at(-1) || withoutTrailing;
+  const pathLike = !/\s/u.test(segments[0] ?? "")
+    && (!/\s/u.test(trimmed) || /^(?:[A-Za-z]:[\\/]|[\\/~.])/u.test(trimmed) || FILE_TOKEN.test(last));
   return pathLike ? last : trimmed;
 }

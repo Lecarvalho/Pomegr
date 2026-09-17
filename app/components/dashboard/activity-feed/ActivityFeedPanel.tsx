@@ -2,6 +2,7 @@
 
 import type { Agent } from "../../../../shared/monitor-contract";
 import type { SessionRequestSelection } from "../requests-actions/useSessionRequestSelection";
+import { useStableHistoryStatus } from "../requests-actions/useStableHistoryStatus";
 import { ActivityKindRail } from "./ActivityKindRail";
 import { ActivityRequestList } from "./ActivityRequestList";
 import type { ActivityFeedView } from "./useActivityFeed";
@@ -13,13 +14,14 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
   /** Reports the request number a group line selected, so the tab can hold the shown window still. */
   onSelectRequest?: (requestNumber: number) => void;
 }) {
+  const historyStatus = useStableHistoryStatus(selection.history.status);
   // A body exists once the feed has ever answered (even with zero groups) or retains prior groups
   // through a revalidation. Anything else — the chart's own first page still loading or failed
   // (preview), or the feed's own first query still loading, idle or failed — has no real counts to
   // show yet, so request total, shell counts and paging must not render invented zeros next to them.
   const hasBody = feed.status === "ready" || feed.groups.length > 0;
   if (!hasBody) {
-    const chartUnavailable = selection.history.preview && selection.history.status === "unavailable";
+    const chartUnavailable = selection.history.preview && historyStatus === "unavailable";
     const feedUnavailable = !selection.history.preview && feed.status === "unavailable";
     return <section className="panel activityPanel" aria-label="Activity feed" aria-busy="true">
       <header className="activityPanelHeader"><div><h2>Activity feed</h2></div></header>

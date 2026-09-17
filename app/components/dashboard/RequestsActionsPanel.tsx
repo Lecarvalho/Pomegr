@@ -15,6 +15,7 @@ import { RequestMinimap } from "./requests-actions/RequestMinimap";
 import { RequestRoleLegend } from "./requests-actions/RequestRoleTrack";
 import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
+import { useStableHistoryStatus } from "./requests-actions/useStableHistoryStatus";
 import { CacheRefillIcon } from "./CacheRefillIcon";
 
 const NO_WORKFLOWS: Workflow[] = [];
@@ -35,6 +36,8 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const { selected, start, end, select, step, moveWindow, phone, size, rows, scope: resolvedScope, setScope, history: requestHistory } = selection;
   const single = phone || layout === "single";
+  // One status for every line the five-second history retry would otherwise flicker.
+  const historyStatus = useStableHistoryStatus(requestHistory.status);
   const overview = requestHistory.enabled ? requestHistory.overview : null;
   const scaleRows = useMemo(() => isCompleteRequestOverview(overview, requestHistory.total)
     ? overview.map(([uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens]) => ({ uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens }))
@@ -75,7 +78,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
       </div>
       <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>
     </header>
-    {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && requestHistory.status === "loading" ? "Loading request history…" : requestHistory.enabled && requestHistory.status === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
+    {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && historyStatus === "loading" ? "Loading request history…" : requestHistory.enabled && historyStatus === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
         <p className="requestsActionsScale" aria-live="polite"><strong>{single ? `0–${compactNumber(maximum)} tokens` : <DottedInfoPopover ariaLabel="About lanes" content="Each lane has its own scale; max is its tallest request on the loaded page. Click a lane name to focus that agent across the tab, and click it again to show all agents. With more than eight lanes, workflow groups collapse; click a group name to expand it.">Per-lane scales</DottedInfoPopover>}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
         {single
@@ -89,7 +92,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
       <div className="requestsActionsDetails">
         <RequestDetail row={selected} agent={agents.find((agent) => agent.id === selected.agentId)} count={rows.length} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onStep={step} canPrev={selected.ordinal > 1 || (requestHistory.enabled && requestHistory.hasOlder)} canNext={selected.ordinal < rows.length || (requestHistory.enabled && requestHistory.hasNewer)} />
       </div>
-      {requestHistory.preview && <p className="requestsActionsRetention">{requestHistory.status === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…"}</p>}
+      {requestHistory.preview && <p className="requestsActionsRetention">{historyStatus === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…"}</p>}
     </>}
   </section>;
 }

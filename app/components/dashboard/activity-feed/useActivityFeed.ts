@@ -28,7 +28,7 @@ export type ActivityFeedView = {
   retry: () => void;
 };
 
-type Body = { queryKey: string; historyRevision: string; page: ActivityFeedPage };
+type Body = { queryKey: string; scopeKey: string; historyRevision: string; page: ActivityFeedPage };
 type Failure = { queryKey: string; historyRevision: string; retry: number; status: "loading" | "unavailable" };
 type More = { queryKey: string; revision: string; groups: Record<number, { calls: HistoryActivity[]; continuation: ActivityRequestGroup["continuation"] }> };
 
@@ -49,6 +49,11 @@ function feedParams(query: ActivityFeedQuery) {
 export function useActivityFeed({ enabled, query, historyRevision }: { enabled: boolean; query: ActivityFeedQuery; historyRevision: string }): ActivityFeedView {
   const { sessionId, scope, selected, workKind } = query;
   const queryKey = JSON.stringify([sessionId, scope, selected, workKind]);
+  // The selected number only slides the five-group window, so a retained body still describes the
+  // right requests while the next page loads. Scope and kind change which requests exist at all,
+  // and the feed is disabled while the chart previews, so a body from another scope would sit
+  // there unlabelled until history recovered. It is dropped instead.
+  const scopeKey = JSON.stringify([sessionId, scope, workKind]);
   const [body, setBody] = useState<Body | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [more, setMore] = useState<More | null>(null);
@@ -95,16 +100,16 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
         if (!current()) return;
         if (!page || page.status !== "ready") return fail(page?.status === "loading" ? "loading" : "unavailable");
         failureRef.current = null;
-        const next = { queryKey, historyRevision, page };
+        const next = { queryKey, scopeKey, historyRevision, page };
         bodyRef.current = next;
         setBody(next);
         setFailure(null);
       })
       .catch(() => { if (current()) fail("unavailable"); });
     return () => controller.abort();
-  }, [enabled, historyRevision, queryKey, retryVersion, scope, selected, sessionId, workKind]);
+  }, [enabled, historyRevision, queryKey, retryVersion, scope, scopeKey, selected, sessionId, workKind]);
 
-  const shown = body;
+  const shown = body && body.scopeKey === scopeKey ? body : null;
   const current = shown?.queryKey === queryKey;
   const correlated = enabled && current && shown.historyRevision === historyRevision;
   const failed = failure && failure.queryKey === queryKey && failure.historyRevision === historyRevision ? failure.status : null;

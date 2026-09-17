@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,8 @@ vi.mock("../../app/live-events", () => ({
 }));
 
 import { ActivitiesTab } from "../../app/components/dashboard/ActivitiesTab";
+import { ActivityFeedPanel } from "../../app/components/dashboard/activity-feed/ActivityFeedPanel";
+import type { ActivityFeedView } from "../../app/components/dashboard/activity-feed/useActivityFeed";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { Agent, MonitorState } from "../../shared/monitor-contract";
@@ -17,7 +19,7 @@ import { agent, repositorySession } from "./dashboard-test-fixtures";
 import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 import type { HistoryActivity } from "../../shared/session-history-contract";
-import type { RequestSelectionRoute } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
+import type { RequestSelectionRoute, SessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { setPhone } from "./requests-actions-test-fixtures";
 
 const SESSION = "claude:activities";
@@ -352,6 +354,38 @@ describe("Activities tab", () => {
     expect(within(region).getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("drops the previous scope's groups instead of showing them without a status when history fails", async () => {
+    const user = userEvent.setup();
+    const { serverState } = fixture();
+    const feed = await ready();
+    expect(within(feed).getAllByRole("article")).toHaveLength(5);
+    // The chart page fails for the new scope, so the feed is disabled while the chart previews.
+    // The groups it last read belong to the old scope and must not stand in for the new one.
+    serverState.requestsStatus = 503;
+    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    const region = await screen.findByRole("region", { name: "Activity feed" });
+    await waitFor(() => expect(within(region).getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…"));
+    expect(within(region).queryByRole("article")).not.toBeInTheDocument();
+    expectNoInventedZeros(region);
+  });
+
+  it("keeps a group's request-local counts when its request sits outside the loaded chart page", async () => {
+    const { container } = fixture({ count: 130 });
+    const feed = await ready(130);
+    const minimap = screen.getByRole("slider", { name: "Request window" });
+    fireEvent.keyDown(minimap, { key: "Home" });
+    await waitFor(() => expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 130"));
+    await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
+    const number = (element: Element) => Number(/#(\d+)/u.exec(element.getAttribute("aria-label") || "")?.[1]);
+    const charted = new Set(Array.from(container.querySelectorAll(".requestsActionsBar"), number));
+    const outside = within(feed).getAllByRole("article").filter((group) => !charted.has(number(group)));
+    expect(outside.length).toBeGreaterThan(0);
+    for (const group of outside) {
+      const line = within(group).getByRole("button", { name: new RegExp(`^Request #${number(group)},`, "u") });
+      expect(line.getAttribute("aria-label")).toMatch(/^Request #\d+, uncached input [\d,]+, cache write [\d,]+, output [\d,]+, \d+ calls?$/u);
+    }
+  });
+
   it("omits a group's token counts when its request record's fields are not truly present", async () => {
     fixture({ requestGroupOverrides: { 40: { cacheWriteTokens: -1 } } });
     const feed = await ready();
@@ -470,5 +504,34 @@ describe("Activities tab", () => {
     expect(container.querySelector(".activityCallLine")).toBeNull();
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row.querySelector("[aria-expanded]")).toBeNull();
+  });
+});
+
+/** The feed's no-body branch reads only these fields, so a stub drives the status text directly. */
+function statusPanel(status: "loading" | "ready" | "unavailable") {
+  const selection = { phone: false, history: { preview: true, status } } as unknown as SessionRequestSelection;
+  const feed: ActivityFeedView = {
+    status: "idle", correlated: false, groups: [], byKind: [], shellTasks: { total: 0, failed: 0 },
+    requestTotal: 0, callTotal: 0, revision: "", loadMore: () => {}, loadingMore: null, retry: () => {},
+  };
+  return <ActivityFeedPanel selection={selection} feed={feed} agents={[]} busy cacheWriteAvailable onOpenAgent={() => {}} />;
+}
+
+describe("Activity feed status", () => {
+  it("keeps one stable status while history retries instead of re-announcing it every 5 s", () => {
+    const { rerender } = render(statusPanel("loading"));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading activity…");
+    rerender(statusPanel("unavailable"));
+    expect(screen.getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…");
+    // Every 5 s retry passes through "loading" before failing again. The announced text must not
+    // follow that swing, or a screen reader reads the same state out every five seconds.
+    rerender(statusPanel("loading"));
+    expect(screen.getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…");
+    rerender(statusPanel("unavailable"));
+    expect(screen.getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…");
+    // A page that finally arrives clears it, so the next first load announces loading again.
+    rerender(statusPanel("ready"));
+    rerender(statusPanel("loading"));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading activity…");
   });
 });
