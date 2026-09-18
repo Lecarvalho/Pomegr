@@ -286,6 +286,31 @@ describe("Activities tab", () => {
     expect(second).toHaveClass("activityFeed");
   });
 
+  it("stacks one kind row per kind with a share bar scaled against the busiest kind", async () => {
+    fixture();
+    const feed = await ready();
+    const rail = feed.querySelector(".activityBreakdown")!;
+    const group = within(rail as HTMLElement).getByRole("group", { name: "Filter calls by kind" });
+    expect(group).toHaveClass("activityKindRows");
+    const rows = Array.from(group.children) as HTMLElement[];
+    expect(rows.length).toBeGreaterThan(1);
+    const counts = rows.map((row) => Number(row.querySelector("strong")!.textContent!.replace(/,/gu, "")));
+    const busiest = Math.max(...counts);
+    expect(counts).toEqual([...counts].sort((left, right) => right - left));
+    rows.forEach((row, index) => {
+      expect(row).toHaveClass("activityKindRow");
+      expect(row.querySelectorAll("span")).toHaveLength(4);
+      expect((row.querySelector(".activityKindBar > i") as HTMLElement).style.width)
+        .toBe(`${Math.max(2, Math.round(counts[index] / busiest * 100))}%`);
+    });
+    const fills = rows.map((row) => Number.parseInt((row.querySelector(".activityKindBar > i") as HTMLElement).style.width, 10));
+    expect(Math.max(...fills)).toBe(100);
+    expect(fills.filter((fill) => fill === 100)).toHaveLength(counts.filter((count) => count === busiest).length);
+    const header = rail!.querySelector("header")!;
+    expect([...header.querySelectorAll("span")].map((label) => label.textContent)).toEqual(["count", "share", "median"]);
+    expect(rail!.querySelector(".activityKindCaveat")).toHaveTextContent("Counts, not effort or cost.");
+  });
+
   it("shows a group's token counts matching the fixture's snapshot values", async () => {
     fixture();
     const feed = await ready();

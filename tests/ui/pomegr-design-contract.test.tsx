@@ -148,6 +148,17 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
   });
 
+  // The kind header and its rows share one column template, so `count`, `share` and `median` label
+  // their own columns. A floor on the label or bar column pushes that column past the rail edge on
+  // a narrow or text-scaled phone, where the label ellipsis should absorb the loss instead.
+  it("keeps the kind rail header and rows on one shrinkable column template", () => {
+    const templates = [...styles.matchAll(/--activity-kind-columns:\s*([^;]+);/gu)].map(([, value]) => value.trim());
+    expect(templates.length).toBeGreaterThanOrEqual(3);
+    for (const template of templates) expect(template).toMatch(/^16px minmax\(0, 1fr\) minmax\(0, \d+px\)/u);
+    expect(styles).toMatch(/\.activityBreakdown header\s*\{[^}]*grid-template-columns:\s*var\(--activity-kind-columns\)/u);
+    expect(styles).toMatch(/\.activityBreakdown \.activityKindRow\s*\{[^}]*grid-template-columns:\s*var\(--activity-kind-columns\)/u);
+  });
+
   it("preserves the current activity icon animation and reduced-motion opt-out", () => {
     expect(styles).toMatch(/\.currentActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
     expect(styles).toMatch(/\.commandTableActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
