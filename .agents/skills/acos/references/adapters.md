@@ -44,8 +44,24 @@ Spawn one agent with the Agent tool.
   estimate.
 - Each spawn counts against `limits.agents`. A retry is a new spawn.
 
-Parallel stages: if two consecutive stages share no inputs/outputs
-dependency, they may be spawned in one message. Log them separately.
+Parallel stages: consecutive `subagent` stages that share no
+inputs/outputs dependency and whose `owns` are disjoint are spawned in
+one message and awaited together. Log them separately, each with its own
+`started` and `ended`. Never use a `fork` agent for a fan-out slice: it
+inherits the whole conversation, which is the cost the fan-out exists to
+avoid. A fresh `general-purpose` agent with a self-contained brief is the
+right shape.
+
+Fan-out brief: an implementer receives its own `## <stage name>` section
+of `artifacts/plan.md`, its `owns` list, the intent, the scope notes and
+the verify command. Not the other sections. Its report ends with the
+capture lines for its slice when the slice is visible; collect those from
+every implementer into the evidence stage's prompt.
+
+Background stages: an `evidence` stage is spawned with
+`run_in_background` and awaited after the handoff is written. Its report
+comes back as text only; the crops stay on disk. Open a crop yourself
+only when the verdict names it.
 
 ## workflow
 

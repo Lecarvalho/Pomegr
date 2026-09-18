@@ -1,17 +1,22 @@
 name: evidence
-role: "Show what the part changed: cropped screenshots of the running interface, captioned, in artifacts/try-it.md."
+role: "Show what the part changed: run the capture lines, look at every crop, caption it, write artifacts/try-it.md, and say whether each crop shows its claim."
 default:
-  adapter: inline
+  adapter: subagent
+  model: "{{ project.models.balanced }}"
   effort: low
 inputs: [diff]
 outputs: [try-it]
 check:
-  kind: none
+  kind: review
+  criteria: "Every crop shows what its caption claims; none is empty, cut off or of the wrong state."
+on_fail: ask
 prompt: |
-  Write `runs/<id>/artifacts/try-it.md`: what a reader does to see this
-  change, and a cropped screenshot of each claim they can check.
+  You are the evidence worker. You receive the implementer's report with
+  its capture lines, one per claim. Do not change any source file.
 
-  Capture with:
+  Make sure the interface is running at the url the lines name; when the
+  brief gives a start command, run it in the background and wait for the
+  port. Then capture each line with:
 
       {{ project.shot }} --url <url> --selector <css> --pad 8 --out runs/<id>/artifacts/shots/<name>.png
 
@@ -22,12 +27,18 @@ prompt: |
   so an element that only `--eval` creates needs no extra flag. `--width`,
   `--height` and `--dpr` size the viewport. A capture prints one line,
   `<path>  <W>x<H>  <bytes> bytes`, and exits 0; every failure prints one
-  `shot: …` line and its own exit code.
+  `shot: …` line and its own exit code (3 no browser, 5 timeout, 6 no
+  match, 7 empty box, 8 no image). Report a failing exit code with its
+  line; do not debug the page.
 
-  Then, per claim: one crop, `![alt](shots/<name>.png)`, one or two lines of
-  caption saying what the crop shows and what is different about it. Prefer
-  a crop of the one element over a full viewport the reader has to search.
+  Open every PNG and look at it. Then write `runs/<id>/artifacts/try-it.md`:
+  what a reader does to see this change, and per claim one crop,
+  `![alt](shots/<name>.png)`, with one or two lines saying what the crop
+  shows and what is different about it. Prefer a crop of the one element
+  over a full viewport the reader has to search. Do not caption a capture
+  you have not seen.
 
-  Open every PNG and look at it before you caption it. A crop that does not
-  show what its caption says is a defect in this part: recapture it or
-  change the claim. Do not caption a capture you have not seen.
+  Stop anything you started. End your report with, on the first line,
+  `VERDICT: PASS` when every crop shows what its claim says, else
+  `VERDICT: FAIL`; then one line per crop: claim, path, exit code, and
+  `shows` or what is wrong instead. No image content in the report.

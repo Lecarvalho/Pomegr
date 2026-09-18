@@ -46,17 +46,34 @@ These decide most of the manifest. Apply them before anything else.
 
 - **Default adapter is `inline`.** You do the work. Delegate a stage only
   when one of these is true: it needs a judgement independent of yours
-  (review), two or more pieces are independent and worth running in
-  parallel, or a large read would bloat your context more than the
-  delegation round trip costs.
-- **Delegating does not save tokens.** A subagent starts cold: it
-  re-reads the repo docs and every file you already read, then runs the
-  check itself. Budget 150k worker tokens for any subagent before it
-  writes a line. Never delegate to move spend out of the orchestrator
-  budget; a part too big to implement inline is too big, cut it.
-- **Plan and implement share one context.** Both inline, or both in the
-  same subagent. A plan written in one context and implemented in
-  another pays for the same reading twice.
+  (review), two or more slices are disjoint and worth running in
+  parallel (fan-out), it runs a script and looks at the result (evidence),
+  or a large read would bloat your context more than the delegation round
+  trip costs.
+- **Delegating does not save tokens; it saves your context and time.** A
+  subagent starts cold: it re-reads the repo docs and every file it
+  touches, then runs the check itself. Budget 150k worker tokens for any
+  subagent before it writes a line. What makes it pay: the worker runs on
+  a cheaper tier, its context dies when it returns, and yours is re-sent
+  every turn until the session ends. Never delegate to move spend out of
+  the orchestrator budget; a single slice too big to implement inline is
+  too big, cut it.
+- **Tier by role.** You plan, brief, judge and hand off on the session
+  model. Fan-out implementers run on `{{ project.models.balanced }}`.
+  Evidence runs on `balanced` too: it must see the crops. Review runs on
+  `strong`. A stage that is only a command runs no model. A preset or
+  `.acos.yaml` may override any of these; `calibration.md` says when a
+  tier is not holding up in this repo.
+- **Plan and implement share one context, unless it is a fan-out.** For
+  one slice: both inline, or both in the same subagent. For two or more
+  disjoint slices: you plan once and write a brief per slice; each
+  implementer reads only its brief and its slice. The second reading is
+  paid at the balanced tier, in parallel, and never lands in your context.
+- **Fan-out only where slices are real.** Two or more groups of files that
+  share nothing, each about three files or more, each fitting the file and
+  line limits alone. One group means inline. A file two groups both need
+  is owned by exactly one slice or moved into a small part that runs
+  first. `limits.agents` caps the slices.
 - **Review once per plan, not once per part.** In a plan, parts carry no
   review stage unless the part is risky on its own (auth, data loss,
   public API); one review part near the end reads the whole diff.
@@ -69,7 +86,10 @@ These decide most of the manifest. Apply them before anything else.
   `calibration.md` knows the area.
 - **Evidence only where there is something to see.** Add `evidence` when
   the part changes a visible surface and `.acos.yaml` has `shot`. Without
-  either, no capture stage and no try-it page.
+  either, no capture stage and no try-it page. When it runs, it is a
+  subagent that runs the captures, looks at every crop and captions it;
+  the pixels never enter your context, and its verdict is a check the part
+  must pass before it closes.
 - **Effort matches the stage**, not the task. Planning high, mechanical
   implementation medium, checks low.
 - **Workflow adapter is rare.** Three or more independent parallel stages,
@@ -113,6 +133,21 @@ other way round.
 4. **Distrust a guess that lands just under the limit.** If most parts
    estimate between 80% and 100% of a limit, you fitted the guesses to
    the limit. Recount from step 1 and cut further.
+5. **Group the files into slices.** Put files that import, style or test
+   each other in one group. Two or more groups that share no file, each
+   about three files or more and each within the file and line limits,
+   are slices of one fan-out part: one plan stage, one balanced-tier
+   implement stage per slice, one verify. A shared file (a stylesheet
+   every group edits, a types module) goes to one owner or becomes a
+   small part that runs before the fan-out. Its tokens: your plan and
+   briefs at the inline floor for the files you read, plus the subagent
+   floor per slice as worker tokens, plus about 60k worker tokens for
+   evidence when there is a visible surface. Your own reading of the
+   results is small; say so in `basis`.
+6. **Order the parts by what they build on.** Each part's `after` lists
+   the parts it needs in the tree. Default is the part before it. A part
+   in a subtree no other part touches waits only for the parts it truly
+   needs; the presentation says which parts may run alongside which.
 
 Compare with `limits` from `.acos.yaml` (or the defaults above).
 
@@ -153,10 +188,15 @@ estimate with `sessions: <n>`. Then present the plan, not the manifests:
 ACOS plan: <plan-id>   Parts: <n>   Sessions: <n>
 Total: ~<orchestrator tokens> orchestrator, ~<worker tokens> workers, <agents> agents
   1. <slug>   <stages>   ~<tokens>   <one-line summary>
-  2. <slug>   ...
+  2. <slug>   <stages>   ~<tokens>   <summary>   after 1
+  3. <slug>   plan, implement x3 (balanced), verify, evidence   ~<tokens>   <summary>   after 1, alongside 2
 Manifests: runs/<plan-id>/<index>-<slug>/manifest.yaml
 Next: /acos run runs/<plan-id> 1   (fresh session recommended | can run here now)
 ```
+
+`after` is printed only when it is not the part before; `alongside` names
+parts that may run in a second session at the same time. Fan-out parts
+show their slice count and tier.
 
 Then stop. Do not print any manifest. The files are on disk; say so.
 Say in one line whether you recommend running part 1 in this session or
@@ -195,14 +235,19 @@ Each must therefore be complete on its own: intent, scope, stages,
 
 Validate the result mentally against `schema/acos.schema.json`: required
 fields present, enums valid, stage names unique, every `inputs` entry
-produced by an earlier stage, estimate within limits.
+produced by an earlier stage, estimate within limits. Stages that will run
+at the same time (consecutive delegated stages with no input/output
+dependency) each carry `owns`, and no path appears in two of them; an
+overlap is a compose error, fix the cut before presenting.
 
 ## 4. Present and wait for GO
 
 For `/acos run`, first read the manifest. If it has `part.assumes`, check
 the tree matches (files exist, verify passes if it says so) and say so in
 one line; a mismatch is a question, not a blocker. If `plan.yaml` marks
-an earlier part as not `done`, say so.
+a part named in `part.after` (default: the part before) as not `done`,
+say so. Parts not in `after` may still be running elsewhere; that is
+fine.
 
 If earlier parts in `plan.yaml` have `actual`, re-size this part now
 (section 2, step 3). When the scaled estimate breaks a limit, say so in
@@ -218,14 +263,21 @@ ACOS run: <id>                      (Part <i> of <n>, plan <plan-id>   when in a
 Intent: <one line>
 Stages: <n>   Agents: <k>/<limit>   Orchestrator: ~<tokens>/<limit>   Workers: ~<tokens>
   1. <name>   <adapter>   <model or "session">   <effort>   check: <kind>   ~<tokens>
-  2. <name>   ...
+  2. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
+  3. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
+  4. <name>   ...
 Manifest: runs/<id>/manifest.yaml
 Workflow script: runs/<id>/workflow-1.js        (only if compiled)
 Reply GO to execute, or tell me what to change.
 ```
 
+`||` marks stages that run at the same time as the one above them.
+
 Then stop. Do not start any stage. Do not spawn any agent. Do not read
-files beyond what sizing and composing needed.
+files beyond what sizing and composing needed. For `/acos run` of an
+existing manifest, that means no catalog and no presets: the manifest is
+complete, and the only reads before GO are `.acos.yaml`, `calibration.md`,
+the manifest, `plan.yaml` and the previous part's handoff.
 
 Print the full YAML only if the user asks for it. Scope, prompts, loop
 rules and escalation live in the file; the summary must fit on one
@@ -258,8 +310,14 @@ On GO:
    b. Build the worker prompt: block `prompt` + stage `prompt` + intent +
       scope notes + the content of every named `inputs` artifact. For
       `inline`, the prompt is your own instruction; do not paste it
-      anywhere.
+      anywhere. A fan-out implementer gets only its own section of the
+      plan (the brief for its slice, headed by its stage name), its
+      `owns` list, and the interfaces the brief names; not the whole plan
+      and not the other slices.
    c. Run it through the stage's adapter (see `references/adapters.md`).
+      Stages marked `||` at present are spawned in one message and
+      awaited together; log each on its own. While an `evidence` stage
+      runs, write the handoff; do not wait idle.
    d. Write the stage's `outputs` to `runs/<id>/artifacts/<name>.md`
       only when another context reads them: a later `subagent`,
       `workflow` or `external` stage takes them as input, a gate shows
@@ -286,6 +344,14 @@ On GO:
       the rest as deferred findings. No fix subagent. No second review
       unless the user asks for one or a blocker was a design error; then
       resume the same reviewer with the blocker list only.
+      A failed `evidence` check is handled the same way: the verdict
+      names the crops that do not show their claim; fix inline, rerun
+      the command check, then resume the same evidence agent with only
+      those capture lines. A crop that still disagrees with its claim
+      after that is a failed part, not a deferred finding.
+      A fan-out implementer that fails its check after `max_iterations`
+      is finished inline by you: read its report and `git diff` of its
+      `owns`, not its files from scratch. Log it as drift.
 3. **Drift.** When the plan turns out wrong, change course and keep going.
    Drop a stage you no longer need, add one you do, swap a model or
    effort, fix a check command. Append to `drift` in `log.yaml`:
@@ -319,11 +385,13 @@ record.
    deferred findings with the owning part index, verify result. A run
    outside a plan, or the last part, has no handoff.
 4. If the part changed a visible surface, it does not close on prose:
-   write `artifacts/try-it.md` with the `evidence` block, one cropped
+   the `evidence` stage has written `artifacts/try-it.md`, one cropped
    screenshot per claim a reader can check, each with a one or two line
-   caption. Open every crop and look at it before you caption it; a crop
-   that does not show what its caption says is a defect in this part, not
-   a deferred finding. A part with no visible surface writes none.
+   caption, and its first line was `VERDICT: PASS`. You do not open the
+   crops yourself unless the verdict named one; the evidence agent looked
+   at every one before captioning it. A part that ends without that
+   verdict has failed, whatever the tests say. A part with no visible
+   surface writes none.
 5. Leave nothing running. A server, browser or background shell a stage
    started is stopped before the report, and anything temporary a stage
    wrote lives under `runs/<id>/` or the session's scratchpad, never in the
@@ -396,7 +464,14 @@ sizing and compose more accurate for this repo.
    estimates miss, what task shape tends to need which stages. Always
    derive the per-unit figures sizing needs: tokens per file for inline
    implement, fixed cost plus tokens per file for a subagent, cost of a
-   review, how often review fails first time.
+   review, how often review fails first time. Per tier: how often a
+   balanced-tier implementer passed its check first time, and how often
+   the orchestrator had to finish a slice; when that is worse than one in
+   three, the Shape section says to run implementers on `strong` or to
+   cut smaller slices. Wall time too: stage `started` to `ended` per
+   stage, part start to part end, and the gap from one part's end to
+   the next part's start, so the Cost section can say whether fan-out
+   and parallel parts shortened the plan and where the time went.
 5. Write `acos/calibration.md` in the fixed shape from `SPEC.md`
    section 7: header line with run count, date range and today's date;
    sections **Shape**, **Cost**, **Recurring drift**, **Notes**. Under

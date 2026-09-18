@@ -1,5 +1,5 @@
 name: plan
-role: "Turn intent plus context into an ordered, checkable implementation plan."
+role: "Turn intent plus context into an ordered, checkable implementation plan; for a fan-out, one brief per slice."
 default:
   adapter: inline
   effort: high
@@ -18,3 +18,18 @@ prompt: |
 
   Prefer the smallest change that satisfies the intent. If two designs
   are reasonable, pick one and say why in one line.
+
+  When the plan feeds more than one implementer (a fan-out), write it as
+  `artifacts/plan.md` with one section per slice, headed `## <stage name>`.
+  Each implementer receives only its own section, so each section must
+  stand alone and carry:
+  - the files it owns (the stage's `owns`), and nothing outside them
+  - every interface it shares with another slice, as a signature or a
+    selector, with which slice owns the definition
+  - the tests it writes or must keep passing, by file
+  - what "done" looks like, in checkable sentences
+  - when the slice changes a visible surface: one capture line per claim
+    (`claim | url | selector or --full | eval if needed`) for the evidence
+    stage; the implementer keeps them current in its report
+  A shared file two slices would both edit is a cut error: give it one
+  owner, or say it must be handled before the fan-out starts.

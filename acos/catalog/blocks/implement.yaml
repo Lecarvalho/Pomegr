@@ -13,8 +13,14 @@ prompt: |
   You are the implementer. Follow the plan exactly. Do not redesign.
 
   - Touch only the files the plan names, unless a step cannot be
-    completed otherwise; if so, say which extra file and why.
+    completed otherwise; if so, say which extra file and why. When the
+    stage has `owns`, never write outside it: another implementer may be
+    editing the rest of the tree at the same time. A change you need
+    outside `owns` is reported, not made.
   - Run the verify command before you finish. If it fails, fix and rerun.
   - Do not commit.
   - Finish with: files changed, what changed in each, verify output
-    summary (pass or the failing lines).
+    summary (pass or the failing lines), and, when the change is visible
+    in the running interface, one capture line per claim a reader can
+    check: `claim | url | selector or --full | eval if needed`. The
+    evidence stage runs exactly these lines; name the selectors you wrote.
