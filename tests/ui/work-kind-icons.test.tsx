@@ -31,7 +31,7 @@ describe("work-kind icons", () => {
       historyCall("call-summary", request, "report", 2, { tool: "Summary updated", detail: "" }),
     ];
     const group: ActivityRequestGroup = { request, calls, noMatchingCalls: false, continuation: null };
-    const { container, getByText } = render(<ActivityWithSelection groups={[group]} />);
+    const { container, getByText } = render(<LiveClockProvider running={false}><ActivityWithSelection groups={[group]} /></LiveClockProvider>);
     expect(getByText("Activity feed")).toBeInTheDocument();
     expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Assistant replied", "Summary updated"]);
     expect([...container.querySelectorAll(".target")].map((node) => node.textContent)).toEqual(["—", "—"]);
@@ -42,7 +42,7 @@ describe("work-kind icons", () => {
     const request = historyRequest(1);
     const call = historyCall("call-push", request, "git_push", 1, { tool: "Shell", detail: "Push branch" });
     const group: ActivityRequestGroup = { request, calls: [call], noMatchingCalls: false, continuation: null };
-    const { container, getByText } = render(<ActivityWithSelection groups={[group]} />);
+    const { container, getByText } = render(<LiveClockProvider running={false}><ActivityWithSelection groups={[group]} /></LiveClockProvider>);
     expect(getByText("Shell")).toBeInTheDocument();
     expect(container.querySelector('.activityAction .workKindIcon[data-work-kind="git_push"]')).toHaveAttribute("aria-hidden", "true");
   });

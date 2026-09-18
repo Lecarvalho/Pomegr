@@ -840,6 +840,22 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .activityKindBar i { display: block; height: 100%; background: var(--command-line-strong); }
 .activityKindRow strong { font-family: var(--font-data); font-weight: 400; text-align: right; }
 .activityKindRow > span:nth-last-child(-n+2) { text-align: right; color: var(--muted); font-size: var(--text-caption); font-family: var(--font-data); }
+/* Shell tasks: a scope count over a bounded list of the latest retained tasks. The rows reuse the
+   compact task row in its one-line `dense` form, so the rail keeps one renderer with the inspector. */
+.activityShellTasks { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.activityShellHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: var(--text-xs); }
+.activityShellHeader h3 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityShellHeader > span { color: var(--muted); font-size: var(--text-caption); font-family: var(--font-data); white-space: nowrap; }
+.activityShellTasks .executionTaskRowDense { grid-template-columns: 16px minmax(0, 1fr) auto; min-height: 26px; align-items: center; gap: 8px; padding: 0; }
+.activityShellTasks .executionTaskRowDense > div { display: flex; align-items: baseline; min-width: 0; }
+.activityShellTasks .executionTaskRowDense strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.activityShellTasks .executionTaskRowDense .executionTaskMark { height: 26px; }
+/* A failed task's mark is a chip button, so the compact rule that hides the kind icon misses it
+   through the chip label and the row grows a second line. Dense rows show the status dot only. */
+.activityShellTasks .executionTaskRowDense .executionTaskMark svg { display: none; }
+.activityShellTasks .executionTaskRowDense .executionTaskMark .agentChipLabel { place-items: center; }
+.activityShellTasks .executionTaskRowDense .executionTaskExit { padding-top: 0; }
+.activityBreakdown .activityShellEmpty, .activityBreakdown .activityShellMore { margin: 4px 0 0; font-size: var(--text-caption); }
 .activityOtherCounts { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .activityOtherCounts > div { display: flex; align-items: center; justify-content: space-between; min-height: 28px; font-size: var(--text-xs); color: var(--muted); }
 .activityOtherCounts strong { font-family: var(--font-data); font-weight: 400; }

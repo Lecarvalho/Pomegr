@@ -1,17 +1,27 @@
 "use client";
 
+import type { ExecutionTask } from "../../../../shared/monitor-contract";
 import { DottedInfoPopover } from "../../DottedInfoPopover";
+import { ExecutionTaskRow } from "../../ExecutionTaskRow";
 import { WorkKindIcon } from "../../WorkKindIcon";
 import { WORK_LABELS } from "../../agents/agent-presentation";
 import type { SessionRequestSelection } from "../requests-actions/useSessionRequestSelection";
 import { activityDuration } from "./duration";
 import type { ActivityFeedView } from "./useActivityFeed";
 
+/** The rail is a summary column, not a task list: four rows keep it shorter than the kind rows. */
+const SHOWN_TASKS = 4;
+
 /**
- * Left rail: per-kind call counters that filter the request list, plus aggregate shell counts.
- * Only bounded, browser-safe metadata renders here: kind, count, share and median wall duration.
+ * Left rail: per-kind call counters that filter the request list, the latest shell tasks, and the
+ * aggregate shell counts. Only bounded, browser-safe metadata renders here: kind, count, share and
+ * median wall duration for calls; Bash description, status, exit code and wall duration for tasks.
  */
-export function ActivityKindRail({ feed, selection }: { feed: ActivityFeedView; selection: SessionRequestSelection }) {
+export function ActivityKindRail({ feed, selection, tasks }: { feed: ActivityFeedView; selection: SessionRequestSelection; tasks: ExecutionTask[] }) {
+  // Latest first, so the running task a reader is waiting on sits at the top of a bounded list.
+  const latestTasks = [...tasks].sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt) || right.id.localeCompare(left.id));
+  const shownTasks = latestTasks.slice(0, SHOWN_TASKS);
+  const running = tasks.filter((task) => task.status === "running").length;
   const kindTotal = feed.byKind.reduce((sum, row) => sum + row.count, 0);
   const kindMax = feed.byKind.reduce((max, row) => Math.max(max, row.count), 0);
   // Busiest kind first: the bars only read as a ranking when the rows follow their own lengths.
@@ -28,10 +38,18 @@ export function ActivityKindRail({ feed, selection }: { feed: ActivityFeedView; 
         <strong>{count.toLocaleString()}</strong><span>{kindTotal ? Math.round(count / kindTotal * 100) : 0}%</span><span>{activityDuration(medianDurationMs)}</span>
       </button>)}
     </div>
+    <div className="activityShellTasks">
+      {/* The header counts the tasks this scope still retains, not the recorded shell calls the
+          Shell kind row and Failed shell runs count: two sources, so they never share one line. */}
+      <div className="activityShellHeader"><h3 className="sessionEyebrow">Shell tasks</h3>{latestTasks.length > 0 && <span>{latestTasks.length.toLocaleString()} {latestTasks.length === 1 ? "task" : "tasks"}{running ? ` · ${running} running` : ""}</span>}</div>
+      {shownTasks.length > 0
+        ? <div role="group" aria-label="Latest shell tasks">{shownTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} dense />)}</div>
+        : <p className="activityShellEmpty">No shell task details in this scope.</p>}
+      {latestTasks.length > shownTasks.length && <p className="activityShellMore">Latest {shownTasks.length} shown</p>}
+    </div>
     <div className="activityOtherCounts">
-      <div><span>Shell tasks</span><strong>{feed.shellTasks.total.toLocaleString()}</strong></div>
       <div className={feed.shellTasks.failed ? "activityFailures" : ""}><span>Failed shell runs</span><strong>{feed.shellTasks.failed.toLocaleString()}</strong></div>
     </div>
-    <p className="activityKindCaveat"><DottedInfoPopover ariaLabel="About these counts" content="Counts describe recorded tool calls, not effort or quality. Duration is wall time from call to result, including approval waits.">Counts, not effort or cost.</DottedInfoPopover></p>
+    <p className="activityKindCaveat"><DottedInfoPopover ariaLabel="About these counts" content="Counts describe recorded tool calls, not effort or quality. Duration is wall time from call to result, including approval waits. The Shell row and Failed shell runs count recorded shell calls; the shell task rows are the latest tasks this agent scope still retains, with the Bash description, status, exit code and wall duration only. Command text, output and paths stay on the monitor.">Counts, not effort or cost.</DottedInfoPopover></p>
   </div>;
 }

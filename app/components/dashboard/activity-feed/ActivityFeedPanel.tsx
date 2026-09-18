@@ -30,13 +30,25 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
         : <p className="sessionTabState" role="status">{chartUnavailable ? "Activity history is unavailable; retrying…" : "Loading activity…"}</p>}
     </section>;
   }
+  const scopeCalls = feed.byKind.reduce((sum, row) => sum + row.count, 0);
+  // Task rows describe the agent scope the feed itself is reading, so an agent selection narrows
+  // them with everything else. Their fields are already the bounded browser-safe ones.
+  const scopedAgents = selection.scope === "all" ? agents : agents.filter((candidate) => candidate.id === selection.scope);
+  const tasks = scopedAgents.flatMap((candidate) => candidate.executionTasks || []);
   // Phone reads the request groups first and keeps the kind and shell aggregates below them; the
   // desktop rail keeps its leading 360px column. Same components, same props, one order decision.
-  const rail = <ActivityKindRail feed={feed} selection={selection} />;
+  const rail = <ActivityKindRail feed={feed} selection={selection} tasks={tasks} />;
   const list = <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} onSelectRequest={onSelectRequest} />;
   return <section className="panel activityPanel" aria-label="Activity feed" aria-busy={busy || undefined}>
     <header className="activityPanelHeader">
-      <div><h2>Activity feed</h2><p>{feed.requestTotal.toLocaleString()} {feed.requestTotal === 1 ? "request" : "requests"} in this scope</p></div>
+      <div><h2>Activity feed</h2><p>{[
+        // The scope total is the kind aggregate, which counts every recorded call in the agent
+        // scope. `callTotal` counts only the five served groups, so it cannot carry "in this scope".
+        `${scopeCalls.toLocaleString()} ${scopeCalls === 1 ? "tool call" : "tool calls"} in this scope`,
+        // Omitted while the selection follows the newest request without a stable number.
+        selection.selectedNumber === null ? null : `request #${selection.selectedNumber} selected`,
+        "oldest first",
+      ].filter(Boolean).join(" · ")}</p></div>
     </header>
     <div className={`activityLayout${selection.phone ? " isPhone" : ""}`}>{selection.phone ? <>{list}{rail}</> : <>{rail}{list}</>}</div>
   </section>;

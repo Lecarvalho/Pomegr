@@ -14,8 +14,8 @@ import { ActivityFeedPanel } from "../../app/components/dashboard/activity-feed/
 import type { ActivityFeedView } from "../../app/components/dashboard/activity-feed/useActivityFeed";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
-import type { Agent, MonitorState } from "../../shared/monitor-contract";
-import { agent, repositorySession } from "./dashboard-test-fixtures";
+import type { Agent, ExecutionTask, MonitorState } from "../../shared/monitor-contract";
+import { agent, repositorySession, task } from "./dashboard-test-fixtures";
 import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 import type { HistoryActivity } from "../../shared/session-history-contract";
@@ -23,24 +23,26 @@ import type { RequestSelectionRoute, SessionRequestSelection } from "../../app/c
 import { setPhone } from "./requests-actions-test-fixtures";
 
 const SESSION = "claude:activities";
-const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder" };
+const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", executionTasks: [] };
 
-function monitorState(cacheWriteAvailable = true): MonitorState {
+function monitorState(cacheWriteAvailable = true, primaryTasks?: ExecutionTask[]): MonitorState {
   const state = createEmptyMonitorState({ connected: true });
   return {
     ...state,
-    agents: [agent, child],
+    agents: [primaryTasks ? { ...agent, executionTasks: primaryTasks } : agent, child],
     capabilities: { ...state.capabilities, cacheWriteUsage: cacheWriteAvailable },
     session: { ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), id: SESSION, title: "Session", project: "Pomegr" },
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides, primaryTasks }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
   /** Per-call-id field overrides, for a recorded failure or a call with no target or result. */
   callOverrides?: Record<string, Partial<HistoryActivity>>;
+  /** Shell tasks retained for the primary agent, which the rail lists for the matching scope. */
+  primaryTasks?: ExecutionTask[];
 } = {}) {
   const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1, (index + 1) % 2 ? "child" : "primary"));
   const calls = requests.flatMap((request) => request.agentId === "child"
@@ -49,7 +51,7 @@ function fixture({ extra, count = 40, overview = true, route = { agent: null, re
     .map((call) => ({ ...call, ...(callOverrides?.[call.id] || {}) }));
   const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
   const server = historyServer(serverState);
-  const state = monitorState(cacheWriteAvailable);
+  const state = monitorState(cacheWriteAvailable, primaryTasks);
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith("/api/state")
     ? Promise.resolve(new Response(JSON.stringify(state), { status: 200, headers: { "content-type": "application/json" } }))
     : server.fetcher(input, init)));
@@ -94,8 +96,55 @@ describe("Activities tab", () => {
     expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Request #31", "Request #33", "Request #35", "Request #37", "Request #39"]);
     for (const group of groups) expect(group).toHaveTextContent("Builder");
     const kinds = within(within(feed).getByRole("group", { name: "Filter calls by kind" })).getAllByRole("button");
-    expect(kinds.map((button) => button.textContent)).toEqual([expect.stringContaining("Shell")]);
-    expect(feed).toHaveTextContent("Shell tasks20");
+    expect(kinds.map((button) => button.textContent)).toEqual([expect.stringMatching(/^Shell.*20/u)]);
+    expect(feed).toHaveTextContent("Failed shell runs");
+  });
+
+  it("names the scope's tool call total, the selected request and the request order in the feed header", async () => {
+    const user = userEvent.setup();
+    const { container } = fixture();
+    const feed = await ready();
+    const meta = () => container.querySelector(".activityPanelHeader p")!.textContent;
+    expect(meta()).toBe("60 tool calls in this scope · request #40 selected · oldest first");
+
+    await user.click(within(feed).getByRole("button", { name: /Request #38/u }));
+    await waitFor(() => expect(meta()).toContain("request #38 selected"));
+    // The total describes the scope, so an agent selection narrows it with everything else.
+    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    await waitFor(() => expect(meta()).toMatch(/^20 tool calls in this scope/u));
+  });
+
+  it("lists the latest retained shell tasks beside the scope count and says when a scope has none", async () => {
+    const user = userEvent.setup();
+    const tasks: ExecutionTask[] = [
+      { ...task, id: "task-build", label: "Build the desktop bundle", status: "running", startedAt: "2026-08-08T12:00:30.000Z", finishedAt: null, exitCode: null },
+      { ...task, id: "task-verify", label: "Run verification", startedAt: "2026-08-08T12:00:20.000Z", finishedAt: "2026-08-08T12:00:26.000Z", exitCode: 0 },
+      { ...task, id: "task-arch", label: "Check architecture boundaries", status: "failed", startedAt: "2026-08-08T12:00:10.000Z", finishedAt: "2026-08-08T12:00:13.000Z", exitCode: 1, failureCause: "non_zero_exit" },
+      { ...task, id: "task-lint", label: "Lint the styles", startedAt: "2026-08-08T12:00:05.000Z" },
+      { ...task, id: "task-old", label: "Install dependencies", startedAt: "2026-08-08T11:59:00.000Z" },
+    ];
+    const { container } = fixture({ primaryTasks: tasks });
+    const feed = await ready();
+    const section = container.querySelector(".activityShellTasks")!;
+    // The header counts retained tasks; the recorded shell calls stay on the Shell kind row.
+    expect(within(section as HTMLElement).getByRole("heading", { name: "Shell tasks" }).parentElement).toHaveTextContent("5 tasks · 1 running");
+    const rows = within(section as HTMLElement).getByRole("group", { name: "Latest shell tasks" }).children;
+    expect(Array.from(rows, (row) => row.textContent)).toEqual([
+      expect.stringContaining("Build the desktop bundle"),
+      expect.stringContaining("Run verification"),
+      expect.stringContaining("Check architecture boundaries"),
+      expect.stringContaining("Lint the styles"),
+    ]);
+    expect(section).toHaveTextContent("Latest 4 shown");
+    expect(rows[0]).toHaveTextContent("running");
+    expect(rows[1]).toHaveTextContent("exit 0");
+    expect(rows[2]).toHaveTextContent("exit 1");
+    expect(within(section as HTMLElement).queryByText("No shell task details in this scope.")).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    await waitFor(() => expect(container.querySelector(".activityShellTasks")).toHaveTextContent("No shell task details in this scope."));
+    expect(within(container.querySelector(".activityShellTasks") as HTMLElement).queryByRole("group", { name: "Latest shell tasks" })).toBeNull();
+    expect(feed).toHaveTextContent("Failed shell runs");
   });
 
   it("filters nested calls by kind without losing the selected request header", async () => {
@@ -350,7 +399,7 @@ describe("Activities tab", () => {
   });
 
   function expectNoInventedZeros(region: HTMLElement) {
-    expect(region).not.toHaveTextContent("0 requests in this scope");
+    expect(region).not.toHaveTextContent("0 tool calls in this scope");
     expect(region).not.toHaveTextContent("Shell tasks");
     expect(region).not.toHaveTextContent("Failed shell runs");
     expect(within(region).queryByRole("navigation", { name: "Request range" })).not.toBeInTheDocument();
