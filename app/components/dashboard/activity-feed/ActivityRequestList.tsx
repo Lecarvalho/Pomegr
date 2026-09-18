@@ -61,37 +61,46 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
       const selected = group.request.id === selectedId;
       const tokens = requestTokens(group.request, cacheWriteAvailable);
       const callsText = `${group.calls.length.toLocaleString()} ${group.calls.length === 1 ? "call" : "calls"}${group.continuation ? ` of ${(group.calls.length + group.continuation.remaining).toLocaleString()}` : ""}`;
-      const ariaLabel = tokens ? `Request #${group.request.number}, uncached input ${tokens.uncachedInputTokens.toLocaleString()}`
-        + `${cacheWriteAvailable ? `, cache write ${tokens.cacheWriteTokens.toLocaleString()}` : ""}, output ${tokens.outputTokens.toLocaleString()}, ${callsText}` : undefined;
       const agentName = agent ? agentDisplayName(agent) : "Unknown agent";
       const roleLabel = agent ? agentRoleLabel(agent) : "unreported";
-      // The phone line carries the agent itself, so it also answers "which request is this" without
-      // the separate agent link a desktop group keeps below its row.
+      const selectRequest = () => { if (busy) return; onSelectRequest?.(group.request.number); selection.locate(group.request.id, selection.scope); };
+      // Both lines name their agent, so both labels open with the identity the row shows. The
+      // counts stay request-local and are never summed across requests or agents.
+      const countsLabel = tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}`
+        + `${cacheWriteAvailable ? `, cache write ${tokens.cacheWriteTokens.toLocaleString()}` : ""}, output ${tokens.outputTokens.toLocaleString()}` : "";
+      const ariaLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${countsLabel}, ${callsText}`;
+      // The phone line has no room for the counts the desktop label spells out, so it names the
+      // agent, the uncached input and the time instead.
       const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}`
         + `${tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}` : ""}, ${shortTime(group.request.observedAt)}, ${callsText}`;
       return <article className={`activityTableFrame${selected ? " isSelectedRequest" : ""}`} key={group.request.number} data-request={group.request.number} aria-label={`Request #${group.request.number}`}>
-        <button type="button" className={`commandQuietAction activityRow${phone ? " activityRequestLine" : ""}${selected ? " selected" : ""}`} aria-pressed={selected}
-          aria-label={phone ? phoneLabel : ariaLabel}
-          onClick={() => { if (busy) return; onSelectRequest?.(group.request.number); selection.locate(group.request.id, selection.scope); }} aria-disabled={busy || undefined}>
-          {phone
-            ? <>
-              <span className="requestsActionsNumber">#{group.request.number}</span>
-              <span className="activityRequestWho"><strong>{agentName}</strong> <span>{roleLabel}</span></span>
-              <span className="activityRequestMeta">{tokens ? `${compactNumber(tokens.uncachedInputTokens)} in · ` : ""}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
-            </>
-            : <>
-              <strong>Request #{group.request.number}</strong>{" "}
-              {tokens && <><span className="activityRequestTokens">
-                <i className="requestsActionsSwatch uncached" />{tokens.uncachedInputTokens.toLocaleString()}{" "}
-                {cacheWriteAvailable && <><i className="requestsActionsSwatch write" />{tokens.cacheWriteTokens.toLocaleString()}{" "}</>}
-                <i className="requestsActionsSwatch output" />{tokens.outputTokens.toLocaleString()}
-              </span>{" "}</>}
-              <span>{callsText}</span>
-            </>}
-        </button>
-        {!phone && (agent
-          ? <button type="button" className="commandTextLink" onClick={() => onOpenAgent(group.request.agentId)}>{agentDisplayName(agent)}</button>
-          : "Unknown agent")}
+        {phone
+          ? <button type="button" className={`commandQuietAction activityRow activityRequestLine${selected ? " selected" : ""}`} aria-pressed={selected}
+            aria-label={phoneLabel} onClick={selectRequest} aria-disabled={busy || undefined}>
+            <span className="requestsActionsNumber">#{group.request.number}</span>
+            <span className="activityRequestWho"><strong>{agentName}</strong> <span>{roleLabel}</span></span>
+            <span className="activityRequestMeta">{tokens ? `${compactNumber(tokens.uncachedInputTokens)} in · ` : ""}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
+          </button>
+          // The desktop line carries the agent itself, so the row is a grid container rather than
+          // one button: the select control stretches its hit area over the whole row (the roster
+          // row pattern) and the agent link sits beside it without nesting one control in another.
+          : <div className={`activityRow activityRequestRow${selected ? " selected" : ""}`}>
+            <button type="button" className="commandQuietAction activityRequestSelect" aria-pressed={selected} aria-label={ariaLabel}
+              onClick={selectRequest} aria-disabled={busy || undefined}><strong>Request #{group.request.number}</strong></button>
+            <span className="activityRequestWho">
+              {agent
+                ? <button type="button" className="commandTextLink activityRequestAgent" aria-label={`Open ${agentName} in the Agents inspector`}
+                  onClick={() => onOpenAgent(group.request.agentId)}>{agentName}</button>
+                : <strong>{agentName}</strong>}
+              <span>{roleLabel}</span>
+            </span>
+            <span className="activityRequestTokens">{tokens && <>
+              <i className="requestsActionsSwatch uncached" />{tokens.uncachedInputTokens.toLocaleString()}{" "}
+              {cacheWriteAvailable && <><i className="requestsActionsSwatch write" />{tokens.cacheWriteTokens.toLocaleString()}{" "}</>}
+              <i className="requestsActionsSwatch output" />{tokens.outputTokens.toLocaleString()}
+            </>}</span>
+            <span>{callsText}</span>
+          </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}
         {group.calls.length > 0 && <ul className="activityTable">
           {group.calls.map((call) => phone

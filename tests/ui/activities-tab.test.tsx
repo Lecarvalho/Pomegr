@@ -276,8 +276,8 @@ describe("Activities tab", () => {
     const group = within(feed).getByRole("article", { name: "Request #38" });
     const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, uncached input 1,962,000, ${shortTime(historyRequest(38).observedAt)}, 2 calls` });
     expect(line).toHaveTextContent(`#38Primary agent orchestrator${compactNumber(1_962_000)} in · ${shortTime(historyRequest(38).observedAt)}`);
-    // The line names the agent itself, so the desktop agent link is not repeated under it.
-    expect(within(group).queryByRole("button", { name: "Primary agent" })).toBeNull();
+    // The phone line names the agent as text; the desktop inspector link is not rendered at all.
+    expect(within(group).queryByRole("button", { name: "Open Primary agent in the Agents inspector" })).toBeNull();
 
     await user.click(line);
     await screen.findByRole("heading", { name: "Request #38" });
@@ -363,7 +363,7 @@ describe("Activities tab", () => {
   it("shows a group's token counts matching the fixture's snapshot values", async () => {
     fixture();
     const feed = await ready();
-    expect(within(feed).getByRole("button", { name: "Request #40, uncached input 1,960,000, cache write 2,000, output 4,000, 2 calls" })).toBeInTheDocument();
+    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, uncached input 1,960,000, cache write 2,000, output 4,000, 2 calls" })).toBeInTheDocument();
   });
 
   it("opens an agent from a group's agent-name link without toggling its selection", async () => {
@@ -371,9 +371,26 @@ describe("Activities tab", () => {
     const { onOpenAgent } = fixture();
     const feed = await ready();
     const group = within(feed).getByRole("article", { name: "Request #38" });
-    await user.click(within(group).getByRole("button", { name: "Primary agent" }));
+    await user.click(within(group).getByRole("button", { name: "Open Primary agent in the Agents inspector" }));
     expect(onOpenAgent).toHaveBeenCalledWith("primary");
     expect(within(group).getByRole("button", { name: /^Request #38,/u })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("names the agent and its role on the desktop request line itself, with no separate agent row", async () => {
+    fixture();
+    const feed = await ready();
+
+    const group = within(feed).getByRole("article", { name: "Request #38" });
+    const row = group.querySelector(".activityRequestRow");
+    expect(row).toHaveTextContent("Request #38Primary agentorchestrator");
+    // The link lives on the request line, not in a row of its own beneath it.
+    expect(row).toContainElement(within(group).getByRole("button", { name: "Open Primary agent in the Agents inspector" }));
+    expect(group.querySelector(".activityRequestRow + .commandTextLink")).toBeNull();
+
+    // A subagent's request names the subagent, never the session's primary agent.
+    const childGroup = within(feed).getByRole("article", { name: "Request #37" });
+    expect(childGroup.querySelector(".activityRequestRow")).toHaveTextContent("Request #37Builderbuilder");
+    expect(within(childGroup).getByRole("button", { name: "Open Builder in the Agents inspector" })).toBeInTheDocument();
   });
 
   it("renders the rail and request-row caveats as short text that expand via DottedInfoPopover", async () => {
@@ -456,7 +473,7 @@ describe("Activities tab", () => {
     expect(outside.length).toBeGreaterThan(0);
     for (const group of outside) {
       const line = within(group).getByRole("button", { name: new RegExp(`^Request #${number(group)},`, "u") });
-      expect(line.getAttribute("aria-label")).toMatch(/^Request #\d+, uncached input [\d,]+, cache write [\d,]+, output [\d,]+, \d+ calls?$/u);
+      expect(line.getAttribute("aria-label")).toMatch(/^Request #\d+, (?:Primary agent, orchestrator|Builder, builder), uncached input [\d,]+, cache write [\d,]+, output [\d,]+, \d+ calls?$/u);
     }
   });
 
@@ -464,7 +481,7 @@ describe("Activities tab", () => {
     fixture({ requestGroupOverrides: { 40: { cacheWriteTokens: -1 } } });
     const feed = await ready();
     const group = within(feed).getByRole("article", { name: "Request #40" });
-    expect(within(group).getByRole("button", { name: "Request #40 2 calls" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Request #40, Primary agent, orchestrator, 2 calls" })).toBeInTheDocument();
     expect(group).not.toHaveTextContent("1,960,000");
     expect(group).not.toHaveTextContent("4,000");
     expect(group.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
@@ -473,7 +490,7 @@ describe("Activities tab", () => {
   it("hides the cache-write swatch and its aria-label text when cache-write usage is unavailable", async () => {
     fixture({ cacheWriteAvailable: false });
     const feed = await ready();
-    expect(within(feed).getByRole("button", { name: "Request #40, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
+    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
     expect(feed.querySelector(".requestsActionsSwatch.write")).not.toBeInTheDocument();
   });
   it("tints only the duration text of a failed phone call line", async () => {

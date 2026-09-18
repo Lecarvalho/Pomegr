@@ -891,6 +891,24 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .activityLayout.isPhone .activityRequestLine, .activityLayout.isPhone .activityRow.activityRequestLine {
   grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; min-height: 44px; padding: 0 12px;
 }
+/* Desktop request line: the row is a grid container, not one button, so the agent link can sit
+   inside it. The select control stretches its own hit area over the whole row (the .rosterRow
+   pattern in agent-roster.css) and the link is raised above that stretch. */
+/* The request row carries the identity the call rows below it do not, so it sizes its own four
+   columns (the artboard's number, identity, counts, calls) instead of borrowing the six-column
+   call grid, where the identity cell fell to about 136px and ellipsized the agent after six
+   characters. Token widths still move the calls column; that alignment is part 14's. */
+.activityRequestRow.activityRow { position: relative; grid-template-columns: 96px minmax(0, 1fr) auto auto; }
+.activityRequestSelect.commandQuietAction { min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
+.activityRequestSelect.commandQuietAction:hover:not(:disabled), .activityRequestSelect.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); }
+.activityRequestSelect::after { content: ""; position: absolute; inset: 0; }
+.activityRequestRow:has(.activityRequestSelect:hover) { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+/* The row draws the ring for its stretched control, so the small button box does not draw a second one. */
+.activityRequestRow:has(.activityRequestSelect:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.activityRequestSelect:focus-visible { outline: none; }
+.activityRequestRow .activityRequestWho { display: flex; align-items: baseline; gap: 8px; overflow: visible; }
+.activityRequestRow .activityRequestWho > span { flex: 0 0 auto; }
+.activityRequestRow .activityRequestAgent { position: relative; z-index: 1; display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activityRequestWho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activityRequestWho strong { font-weight: 600; }
 .activityRequestWho > span { color: var(--muted); }
