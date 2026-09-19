@@ -270,28 +270,41 @@ runs/<plan-id>/<index>-<slug>/manifest.yaml     one per part
 
 `plan.yaml` holds: intent, limits, one entry per part (index, dir,
 summary, `owns`, estimate, status `planned`), total estimate with
-`sessions: <n>` and one `startup_tokens` counted per session. Then present the plan, not the manifests:
+`sessions: <n>` and one `startup_tokens` counted per session.
+
+Then present the plan, not the manifests. A table, and nothing the user
+did not ask to see:
 
 ```
-ACOS plan: <plan-id>   Parts: <n>   Sessions: <n>
-Total: ~<orchestrator tokens> orchestrator, ~<worker tokens> workers, <agents> agents
-  1. <slug>   <stages>   ~<tokens>   <one-line summary>
-  2. <slug>   <stages>   ~<tokens>   <summary>   after 1
-  3. <slug>   plan, implement x3 (balanced), verify, evidence   ~<tokens>   <summary>   after 1, alongside 2
+intent: <one line, what the whole plan makes true>
+sessions: <n>
+
+| part | summary | files | subagents | tokens |
+|------|---------|-------|-----------|--------|
+| 1 | <a few words> | 4 | 0 | ~85k |
+| 2 | <a few words> | 6 | 3 | ~240k |
+| 3 | <a few words> | 3 | 1 | ~120k |
+
 Manifests: runs/<plan-id>/<index>-<slug>/manifest.yaml
-Next: /acos run runs/<plan-id> 1   (fresh session recommended | can run here now)
+Next: /acos run runs/<plan-id> 1
 ```
 
-`after` is printed only when it is not the part before; `alongside` names
-parts that may run in a second session at the same time. Fan-out parts
-show their slice count and tier.
+The columns come straight off each part's `estimate`: `files`, `agents`,
+and `orchestrator_tokens` plus `worker_tokens` as one figure, rounded to
+thousands. Summary is a few words, not a sentence; the manifest holds the
+detail. One part per row, in run order, and no other columns.
 
-Then stop. Do not print any manifest. The files are on disk; say so.
-Say in one line whether you recommend running part 1 in this session or
-a fresh one: this session if the plan was cheap to make and part 1 is
-small, a fresh one if sizing took wide exploration or the conversation
-is already long. The user decides. If they say GO here, run part 1
-(section 4 onward) in this session.
+Below the table, two lines at most. The first only when it is true:
+which parts may run at the same time, where `after` is not simply the
+part before. The second, whether you recommend part 1 in this session or
+a fresh one — this session if the plan was cheap to make and part 1 is
+small, a fresh one if sizing took wide exploration or the conversation is
+already long. Nothing else: no stage lists, no tier names, no totals row,
+no restating what the table already says.
+
+Then stop. Do not print any manifest. The files are on disk; the
+Manifests line says where. The user decides what runs; if they say GO
+here, run part 1 (section 4 onward) in this session.
 
 The user can attach the manifests to a work item and run them any time.
 Each must therefore be complete on its own: intent, scope, stages,
@@ -371,22 +384,41 @@ Write `manifest.yaml` to its run directory first. Then print a summary,
 not the file:
 
 ```
-ACOS run: <id>                      (Part <i> of <n>, plan <plan-id>   when in a plan)
-Intent: <one line>
-Stages: <n>   Agents: <k>/<limit>   Orchestrator: ~<tokens>/<limit> (<startup> startup + <work> work)   Workers: ~<tokens>
-  1. <name>   inline   session   check: <kind>   ~<tokens>
-  2. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
-  3. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
-  4. <name>   ...
+run: <slug>                              (`part <i> of <n> — <slug>` in a plan)
+intent: <one line>
+budget: ~<tokens> of <limit>   (<startup> startup + <work> work)
+
+| stage | runs on | check | tokens |
+|-------|---------|-------|--------|
+| 1 <name> | inline | <check> | ~<tokens> |
+| 2 <name> | <model>, <effort> | <check> | ~<tokens> |
+
 Manifest: runs/<id>/manifest.yaml
-Workflow script: runs/<id>/workflow-1.js        (only if compiled)
-Reply GO to execute, or tell me what to change.
+Reply GO, or tell me what to change.
 ```
 
-`||` marks stages that run at the same time as the one above them. An
-inline stage prints `session` where a delegated one prints its model,
-and prints no effort: it runs at whatever this session runs at, and
-nothing in the manifest can change that mid-run.
+Every token figure is rounded to thousands: `~176k of 280k`, never
+`~176000/280000`. The precision is not there, and the line is read at a
+glance.
+
+Print nothing that is zero or already visible. No stage count — the table
+has rows. No agent or worker line when nothing is delegated; when
+something is, one line under budget: `agents: 3 of 3   workers: ~450k`.
+No plan id in the header: it is the first segment of the Manifest path
+directly below.
+
+`runs on` is `inline` for a stage this session does, or the model and
+effort for a delegated one — an inline stage never prints an effort,
+because it runs at whatever this session runs at and nothing in the
+manifest can change that mid-run. `check` is the check itself (`full
+verify`, `dotnet test`), not its kind; a stage with `kind: none` prints
+`—`.
+
+A `∥` after the model marks a stage that runs at the same time as the row
+above it. Those stages list their files under the table, one line each
+(`owns: <paths>`), where a long path does not stretch a column. A
+compiled workflow script gets a line there too:
+`Workflow script: runs/<id>/workflow-1.js`.
 
 Then stop. Do not start any stage. Do not spawn any agent. Do not read
 files beyond what sizing and composing needed. For `/acos run` of an
@@ -402,7 +434,8 @@ the terminal, contents in files, and a path the user can open.
 If this session already carries a lot of context (a long conversation
 before `/acos`, wide exploration while sizing), add one line recommending
 `/acos run <path>` in a fresh session instead of GO here. Judgement, not
-a rule.
+a rule. It goes between the Manifest line and the GO prompt, so the last
+line printed is the one asking for a decision.
 
 If the user asks for changes, produce a new manifest and present again.
 If `.acos.yaml` sets `gates.go: auto`, say so in the header line and
