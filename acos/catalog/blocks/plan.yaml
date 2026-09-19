@@ -2,7 +2,8 @@ name: plan
 role: "Turn intent plus context into an ordered, checkable implementation plan; for a fan-out, one brief per slice."
 default:
   adapter: inline
-  effort: high
+  # No effort: an inline stage runs at the session's. When this block is
+  # delegated instead, effort comes from the shared SKILL's Economy rules.
 inputs: [context]
 outputs: [plan]
 check:

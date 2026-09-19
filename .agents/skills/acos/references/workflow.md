@@ -1,8 +1,11 @@
 # Compiling an ACOS manifest to a Claude Code Workflow script
 
-Use this when one or more stages have `adapter: workflow`. Load the
-`workflow-authoring` skill before writing the script; its API reference
-wins over anything here if they disagree.
+This reference is Claude Code only. Use it only when the active harness is
+Claude and the active provider is Anthropic. Codex does not support Workflow:
+the runner composes equivalent independent native subagent stages instead, and
+rejects a pre-existing Codex manifest that names `adapter: workflow` before GO.
+Load the `workflow-authoring` skill before writing the script; its API
+reference wins over anything here if they disagree.
 
 ## Opt-in
 
@@ -14,7 +17,8 @@ no workflow runs. Never switch a stage *to* `workflow` after GO.
 
 ## When to compile
 
-1. Walk the stage list. Group maximal runs of consecutive stages whose
+1. Confirm the active profile is Claude/Anthropic. Then walk the stage list.
+   Group maximal runs of consecutive stages whose
    adapter is `workflow`. Each group becomes one **segment**.
 2. A stage with `gate: true`, or `gates.per_stage: true`, ends the
    segment before it. Gates need the orchestrator, not the script.

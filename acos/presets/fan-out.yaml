@@ -1,8 +1,12 @@
 # Preset: fan-out
-# Plan once in-session (strong), then one balanced-tier implementer per
-# disjoint slice, spawned together; verify the merged tree in-session;
-# evidence in a balanced subagent while the handoff is written. Review is
-# not here: in a plan it runs once near the end, over the whole diff.
+# Plan once in-session, then one balanced-tier implementer per disjoint
+# slice, spawned together; verify the merged tree in-session; evidence in a
+# balanced subagent while the handoff is written. Review is not here: in a
+# plan it runs once near the end, over the whole diff.
+#
+# This is the shape to reach for before cutting another part: a worker costs
+# its own startup on a cheaper tier and dies when it returns, while a part
+# costs a whole session's startup plus a handoff written and read.
 #
 # The two implement entries are a shape, not a count: compose one per
 # slice, each with a unique name and its own `owns`, up to limits.agents.
@@ -14,8 +18,7 @@ description: "Plan once, implement disjoint slices in parallel on the balanced t
 
 stages:
   - block: plan
-    adapter: inline
-    effort: high
+    adapter: inline          # no effort: the session's is fixed
 
   - name: implement-a
     block: implement
@@ -37,7 +40,6 @@ stages:
 
   - block: verify
     adapter: inline
-    effort: low
     on_fail: retry      # the orchestrator fixes seams between slices inline
 
   - block: evidence

@@ -11,9 +11,8 @@ for one session becomes a plan: several manifests, each sized for its own
 session. Then you do the work, mostly yourself, without stopping for
 re-approval. At the end you write down what actually ran.
 
-Full semantics: `SPEC.md` in the ACOS folder. This file is the operating
-procedure. Adapter details: `references/adapters.md`. Workflow compilation:
-`references/workflow.md`.
+This file is the operating procedure. Adapter details:
+`references/adapters.md`. Workflow compilation: `references/workflow.md`.
 
 ## 0. Locate the catalog
 
@@ -24,9 +23,33 @@ Look, in order, for:
 2. `.claude/skills/acos/catalog/` and `.claude/skills/acos/presets/` (bundled copy)
 
 Read `.acos.yaml` from the repo root if present. If the catalog is missing,
-tell the user ACOS is not installed here and point at `install.md`. Stop.
-If the catalog exists but `.acos.yaml` does not, run **init** (section 7)
-first, then continue.
+tell the user ACOS is not installed here and stop. If the catalog exists
+but `.acos.yaml` does not, run **init** (section 7) first, then continue.
+
+## 0.5 Resolve the active harness and profile
+
+Do this before sizing, composing, running, initializing, or calibrating.
+
+1. Detect the harness deterministically: use `codex` when the runtime exposes
+   `CODEX_THREAD_ID`; use `claude` when it exposes `CLAUDE_CODE_SESSION_ID`.
+   Without those identifiers, use exactly one available native delegation
+   surface: Codex `spawn_agent` plus the collaboration wait mechanism means
+   `codex`; Claude's Agent tool means `claude`. If both signals exist, conflict,
+   or neither is available, stop and ask the user which harness is executing
+   the run. Never infer it from an installed CLI or a requested model.
+2. Resolve `harnesses.<active>` from `.acos.yaml`. It supplies exactly
+   `provider`, `models.fast`, `models.balanced`, `models.strong`, and `startup`.
+   Keep `verify`, optional `shot`, `limits`, and `gates` at the shared top
+   level. The selected provider must occur in the shared `providers` list and
+   in `catalog/providers.yaml`.
+3. For a legacy config with no `harnesses` mapping only, use top-level
+   `provider`, `models`, and `startup` as the active profile. This compatibility
+   fallback belongs only in the runner; `/acos init` always writes harnesses.
+4. Substitute `{{ project.models.* }}` and resolve startup values from the
+   active profile. A manifest records `harness: <claude|codex>` and its selected
+   provider so a later session cannot silently run it through another harness.
+
+The rest of this procedure calls this resolved mapping the **active profile**.
 
 ## Subcommands
 
@@ -44,26 +67,49 @@ first, then continue.
 
 These decide most of the manifest. Apply them before anything else.
 
-- **Default adapter is `inline`.** You do the work. Delegate a stage only
-  when one of these is true: it needs a judgement independent of yours
-  (review), two or more slices are disjoint and worth running in
-  parallel (fan-out), it runs a script and looks at the result (evidence),
-  or a large read would bloat your context more than the delegation round
-  trip costs.
+- **You do not start at zero.** The active profile's `startup` says what this
+  session carries before it reads anything (system prompt, tools, MCP
+  servers, memory, skills) and what a fresh worker carries. Missing key:
+  40000 for you, 25000 for a worker, said in `basis`. Your budget for
+  the work is `limits.orchestrator_tokens` minus `startup.orchestrator`,
+  and that is the number every sizing decision below is measured
+  against.
+- **Inline is the default for work one context should hold.** You do the
+  work. Delegate a stage when it needs a judgement independent of yours
+  (review), when two or more slices are disjoint and worth running in
+  parallel (fan-out), when it runs a script and looks at the result
+  (evidence), or when what is left of your budget cannot hold the read.
+- **One more agent is cheaper than one more part.** A part costs a whole
+  session's startup, a handoff written and read, and the gap before
+  someone starts it. A worker costs its own startup, on a cheaper tier,
+  in parallel, and dies when it returns. When the counted work does not
+  fit your remaining budget, delegate inside the part first; cut a new
+  part only for a real dependency, when one session could not verify the
+  merged tree, or when even the slices together outgrow the session.
+- **Cut vertically.** A part owns whole files, and every file has one
+  owner in the whole plan. Cut along what the change does — a
+  capability, a route, a screen, through every layer it touches — never
+  along what the files are (all models, then all services, then all
+  views). A layer cut makes the next part re-read what the last one
+  read, behind a fresh session's startup each time. Unavoidable overlap
+  is allowed: one owner, `assumes` in the later part, and one line
+  saying so.
 - **Delegating does not save tokens; it saves your context and time.** A
   subagent starts cold: it re-reads the repo docs and every file it
   touches, then runs the check itself. Budget 150k worker tokens for any
-  subagent before it writes a line. What makes it pay: the worker runs on
-  a cheaper tier, its context dies when it returns, and yours is re-sent
-  every turn until the session ends. Never delegate to move spend out of
-  the orchestrator budget; a single slice too big to implement inline is
-  too big, cut it.
-- **Tier by role.** You plan, brief, judge and hand off on the session
-  model. Fan-out implementers run on `{{ project.models.balanced }}`.
-  Evidence runs on `balanced` too: it must see the crops. Review runs on
-  `strong`. A stage that is only a command runs no model. A preset or
-  `.acos.yaml` may override any of these; `calibration.md` says when a
-  tier is not holding up in this repo.
+  subagent before it writes a line, its own startup included. What makes
+  it pay: the worker runs on a cheaper tier, its context dies when it
+  returns, and yours is re-sent every turn until the session ends. Never
+  delegate to hide spend; delegate because the work is separable.
+- **Tier by role, effort only where it exists.** You plan, brief, judge
+  and hand off on the session model. Fan-out implementers run on
+  `{{ project.models.balanced }}` at medium. Evidence runs on `balanced`
+  at low: it must see the crops. Review runs on `strong` at high. A
+  stage that is only a command runs no model. Effort belongs to a
+  delegated stage only: yours is fixed for the whole session, so never
+  give an inline stage an effort and never plan as if step 1 could run
+  high and step 3 low. A preset or `.acos.yaml` may override a tier;
+  `calibration.md` says when one is not holding up in this repo.
 - **Plan and implement share one context, unless it is a fan-out.** For
   one slice: both inline, or both in the same subagent. For two or more
   disjoint slices: you plan once and write a brief per slice; each
@@ -71,9 +117,10 @@ These decide most of the manifest. Apply them before anything else.
   paid at the balanced tier, in parallel, and never lands in your context.
 - **Fan-out only where slices are real.** Two or more groups of files that
   share nothing, each about three files or more, each fitting the file and
-  line limits alone. One group means inline. A file two groups both need
-  is owned by exactly one slice or moved into a small part that runs
-  first. `limits.agents` caps the slices.
+  line limits alone. One group means inline, unless your remaining
+  budget cannot hold it: then it is one implementer, not a second part.
+  A file two groups both need is owned by exactly one slice or moved
+  into a small part that runs first. `limits.agents` caps the slices.
 - **Review once per plan, not once per part.** In a plan, parts carry no
   review stage unless the part is risky on its own (auth, data loss,
   public API); one review part near the end reads the whole diff.
@@ -83,19 +130,25 @@ These decide most of the manifest. Apply them before anything else.
 - **Fewest stages.** `implement` alone is a complete manifest for a change
   you understand. Add `plan` when the design is not obvious, `review`
   when the change is risky or public, `explore` only when neither you nor
-  `calibration.md` knows the area.
+  `calibration.md` knows the area — and delegate it when you do: it is
+  a wide read whose result is one page, the clearest case there is for a
+  worker.
 - **Evidence only where there is something to see.** Add `evidence` when
   the part changes a visible surface and `.acos.yaml` has `shot`. Without
   either, no capture stage and no try-it page. When it runs, it is a
   subagent that runs the captures, looks at every crop and captions it;
   the pixels never enter your context, and its verdict is a check the part
   must pass before it closes.
-- **Effort matches the stage**, not the task. Planning high, mechanical
-  implementation medium, checks low.
-- **Workflow adapter is rare.** Three or more independent parallel stages,
-  and the user has seen `adapter: workflow` in the manifest before GO.
+- **Effort matches the delegated stage**, not the task: a fan-out
+  implementer medium, evidence low, review high. Inline stages carry
+  none, and no model either.
+- **Workflow adapter is rare and Claude-only.** Select it only for three or
+  more independent parallel Anthropic stages on Claude after the user has
+  seen `adapter: workflow` in the manifest before GO. Codex uses its native
+  parallel subagents for the same shape.
 - **Orchestrator context is the scarce resource.** Default ceiling when
-  `limits.orchestrator_tokens` is absent: 100000.
+  `limits.orchestrator_tokens` is absent: 100000, of which the startup
+  load is already gone before you read a file.
 
 ## 1. Understand intent
 
@@ -112,63 +165,98 @@ other way round.
 
 1. **Count.** Files the change creates or edits (tests included), lines
    changed, and deliverables (things the part must make true; each
-   sentence of acceptance is one). Compare with `limits.files` (default
-   8), `limits.lines` (default 400) and at most 5 deliverables. A part
-   over any of these is too big, whatever the token guess says.
-2. **Derive tokens.** Use `acos/calibration.md` Cost figures when
+   sentence of acceptance is one). When the area is wide or unknown,
+   delegate the count to a read-only worker instead of reading the tree
+   yourself: the answer comes back as a page, and the budget the work
+   needs survives the sizing. Compare with `limits.files` (default
+   8), `limits.lines` (default 400) and at most 5 deliverables. Those
+   bound one context: an inline part, or one slice. A part that
+   fans out may total more across its slices, but no single slice may
+   break them.
+2. **Subtract the startup load.** Read the active profile's `startup`
+   (`orchestrator`, `subagent`; 40k and 25k when the key is absent).
+   Your work budget for this part is `limits.orchestrator_tokens` minus
+   `startup.orchestrator` — with the defaults, 60k, not 100k. Every
+   part of a plan pays that startup again, in its own session. Put the
+   figure in `estimate.startup_tokens` and name it in `basis`.
+3. **Derive tokens.** Use `acos/calibration.md` Cost figures when
    present. Otherwise these floors, which are measured, not hopeful:
-   - inline implement: 40k + 12k per file touched
-   - any subagent: 150k + 15k per file it touches
+   - inline implement: 40k + 12k per file touched, on top of your startup
+   - any subagent: 150k + 15k per file it touches, its own startup included
    - review subagent: 200k
    - a review is expected to fail once: add one fix (half the implement
      cost) to every part that has a review stage
    Tokens mean what the harness reports for the whole agent, re-read
    context included. That is the number `actual` will hold, so it is the
    number to estimate.
-3. **Learn from earlier parts.** When sizing or running a part of a plan
+4. **Learn from earlier parts.** When sizing or running a part of a plan
    whose `plan.yaml` has `actual` on earlier parts, scale by the mean
    actual/estimate ratio of those parts: tokens where `actual` has them,
-   otherwise files and lines, then re-derive tokens from step 2. Say so
+   otherwise files and lines, then re-derive tokens from step 3. Say so
    in `basis`, and re-cut the part if the scaled figure breaks a limit.
-4. **Distrust a guess that lands just under the limit.** If most parts
+5. **Distrust a guess that lands just under the limit.** If most parts
    estimate between 80% and 100% of a limit, you fitted the guesses to
    the limit. Recount from step 1 and cut further.
-5. **Group the files into slices.** Put files that import, style or test
-   each other in one group. Two or more groups that share no file, each
-   about three files or more and each within the file and line limits,
-   are slices of one fan-out part: one plan stage, one balanced-tier
-   implement stage per slice, one verify. A shared file (a stylesheet
-   every group edits, a types module) goes to one owner or becomes a
-   small part that runs before the fan-out. Its tokens: your plan and
-   briefs at the inline floor for the files you read, plus the subagent
-   floor per slice as worker tokens, plus about 60k worker tokens for
-   evidence when there is a visible surface. Your own reading of the
-   results is small; say so in `basis`.
-6. **Order the parts by what they build on.** Each part's `after` lists
+6. **Cut vertically, then slice.** Group the counted files by the
+   capability they serve, not by the layer they live in: the route, the
+   store, the view and the test of one behaviour belong in one part, and
+   "all the models" is not a part. Each file gets exactly one owner in
+   the whole plan; list every part's files in its `owns` entry in
+   `plan.yaml`. A file two capabilities truly share goes to the earliest
+   part that needs it, and the later part names it in `assumes` — one
+   line in the cut, so the re-read is visible and accepted rather than
+   hidden. A file under three or more parts means you cut along layers:
+   regroup before going on.
+   Then inside a part: files that import, style or test each other are
+   one group. Two or more groups that share no file, each about three
+   files or more and each within the file and line limits, are slices of
+   one fan-out part: one plan stage, one balanced-tier implement stage
+   per slice, one verify on the merged tree. One group stays inline
+   unless your remaining budget cannot hold it, and then it is one
+   implementer, not a second part. A file two slices would both edit
+   goes to one owner or is done before the fan-out. Slice tokens: your
+   plan and briefs at the inline floor for the files you read, plus the
+   subagent floor per slice as worker tokens, plus about 60k worker
+   tokens for evidence when there is a visible surface. Your own reading
+   of the results is small; say so in `basis`.
+7. **Order the parts by what they build on.** Each part's `after` lists
    the parts it needs in the tree. Default is the part before it. A part
    in a subtree no other part touches waits only for the parts it truly
    needs; the presentation says which parts may run alongside which.
 
-Compare with `limits` from `.acos.yaml` (or the defaults above).
+Compare with `limits` from `.acos.yaml` (or the defaults above), against
+the work budget from step 2, not the raw ceiling.
 
 - Fits: one manifest. With `/acos plan`, say in one line that it fits a
   single run and no plan is needed, then compose the manifest (section
   3), present it (section 4) and stop without executing. Without
   `/acos plan`, compose and present as usual.
-- Does not fit: break the intent into **parts**. Each part is a manifest
-  that fits the limits on its own and leaves the tree in a working state
-  (tests pass, nothing half-wired). Cut along natural seams: a layer, a
-  module, a user-visible step.
+- Does not fit in one context: slice it inside one part first (step 6).
+  A session that plans once and runs two or three implementers in
+  parallel does the work of several parts for one startup.
+- Does not fit in one session either: break the intent into **parts**.
+  Each part is a manifest that fits the limits on its own and leaves the
+  tree in a working state (tests pass, nothing half-wired). Cut along
+  what the change does — a capability, a route, a screen, taken through
+  every layer it touches — never along the layers themselves. Each part
+  owns its files outright; a part that only half-changes a file the next
+  part finishes is a horizontal cut wearing a vertical name.
 
 **Confirm the cut before writing anything.** Very short:
 
 ```
-Too big for one session (~<files> files, ~<tokens> vs <limit>). Proposed cut, <n> parts:
-  1. <what>   ~<files> files   ~<tokens>
-  2. <what>   ~<files> files   ~<tokens>
-  3. <what>   ~<files> files   ~<tokens>
+Too big for one session (~<files> files, ~<tokens> work vs <limit> minus <startup> startup).
+Proposed cut, <n> parts, one owner per file:
+  1. <what>   <paths it owns>   ~<files> files   ~<tokens>
+  2. <what>   <paths it owns>   ~<files> files   ~<tokens>
+  3. <what>   <paths it owns>   ~<files> files   ~<tokens>
+Shared: <path> owned by <n>, assumed by <m>   (only when a file could not be given one owner)
 OK to write the plan, or change the cut?
 ```
+
+The paths are there so the user can see the cut is vertical. If they
+read as layers (all the components in one part, all the stores in
+another), you cut wrong: regroup before asking.
 
 Wait. Apply what the user says (merge, split, reorder, drop). Only then
 compose every part's manifest (section 3, once per part), with
@@ -180,9 +268,9 @@ runs/<plan-id>/plan.yaml
 runs/<plan-id>/<index>-<slug>/manifest.yaml     one per part
 ```
 
-`plan.yaml` shape is in `SPEC.md` section 8: intent, limits, one entry
-per part (index, dir, summary, estimate, status `planned`), total
-estimate with `sessions: <n>`. Then present the plan, not the manifests:
+`plan.yaml` holds: intent, limits, one entry per part (index, dir,
+summary, `owns`, estimate, status `planned`), total estimate with
+`sessions: <n>` and one `startup_tokens` counted per session. Then present the plan, not the manifests:
 
 ```
 ACOS plan: <plan-id>   Parts: <n>   Sessions: <n>
@@ -216,29 +304,53 @@ Each must therefore be complete on its own: intent, scope, stages,
    `preset`, otherwise ad hoc from blocks per the economy rules. Leave
    `preset` out when ad hoc.
 2. For each stage, merge in this order, later wins: block defaults,
-   preset stage entry, project defaults for missing provider/model,
+   preset stage entry, active-profile defaults for missing provider/model,
    calibration adjustments, user overrides given in the request.
-3. Substitute every `{{ project.* }}` placeholder from `.acos.yaml`. A
-   placeholder with no value is a compose error: say which one and stop.
+3. Substitute every `{{ project.* }}` placeholder from the active profile
+   and shared top-level configuration. A placeholder with no value is a
+   compose error: say which one and stop.
 4. Generate `id`: `YYYY-MM-DD-<short-slug-of-intent>`.
 5. Fill `scope` only if the user gave hints or it is obvious. Otherwise omit.
-6. Estimate: `files`, `lines`, `orchestrator_tokens`, `worker_tokens`,
-   `agents`, tokens per stage, all from sizing (section 2). Write `basis`
-   saying which figures came from `calibration.md`, which from the
-   floors, and any ratio applied from earlier parts. Add `cost` only if the
+6. Estimate: `files`, `lines`, `startup_tokens`, `orchestrator_tokens`
+   (startup included), `worker_tokens`, `agents`, tokens per stage, all
+   from sizing (section 2). Write `basis` saying where the startup
+   figure came from, which figures came from `calibration.md`, which
+   from the floors, and any ratio applied from earlier parts. Add `cost` only if the
    catalog has prices for the chosen models.
 7. Copy `limits` from `.acos.yaml`; apply any per-run override the user
    gave in sizing.
-8. If any stage has `adapter: workflow`, compile the script(s) now per
-   `references/workflow.md` and write them under `runs/<id>/`. They are
-   part of what the user approves at GO.
+8. Select adapters after resolving the active profile. `inline` and
+   `subagent` are native only when their resolved provider equals the active
+   profile provider and that provider's catalog adapter names the active
+   harness as `native_harness`; otherwise use `external` for a cross-provider
+   stage or fail composition when no external command exists. Never use a
+   native adapter merely because its provider CLI is installed.
+9. `workflow` is selectable only for the Claude profile with Anthropic's
+   native Workflow entry. On Codex, do not select Workflow: compose the same
+   independent work as native `subagent` stages instead. An existing Codex
+   manifest containing Workflow is rejected before GO. When Claude selects
+   Workflow, compile scripts per `references/workflow.md` under `runs/<id>/`
+   before presentation; they are part of what the user approves at GO.
 
-Validate the result mentally against `schema/acos.schema.json`: required
-fields present, enums valid, stage names unique, every `inputs` entry
-produced by an earlier stage, estimate within limits. Stages that will run
-at the same time (consecutive delegated stages with no input/output
-dependency) each carry `owns`, and no path appears in two of them; an
-overlap is a compose error, fix the cut before presenting.
+Before presentation, validate this checklist from the parsed manifest and
+catalog:
+
+- `harness` equals the detected harness, and its provider is the active profile
+  provider listed both in `.acos.yaml` and the catalog.
+- The active profile has fast, balanced, and strong model ids; each exists in
+  that provider catalog at the matching tier. Shared `verify`, `limits`, and
+  `gates` are present; `shot` remains optional.
+- The manifest has id, intent, harness, provider, limits, estimate, and unique
+  stage names. Every input is produced by an earlier stage, every output name
+  is unique, and estimates fit the compose-time limits.
+- Inline stages carry no provider, model, or effort. Delegated native stages
+  carry a provider equal to the active provider, a catalog model, and an effort
+  accepted by that provider's effort map. External stages have a usable command.
+- A Workflow stage is Claude/Anthropic-native only. Parallel delegated stages
+  have disjoint `owns` lists and no input/output dependency; any overlap is a
+  compose error.
+
+If a stage needs a model or effort other than the session's, delegate it.
 
 ## 4. Present and wait for GO
 
@@ -250,7 +362,7 @@ say so. Parts not in `after` may still be running elsewhere; that is
 fine.
 
 If earlier parts in `plan.yaml` have `actual`, re-size this part now
-(section 2, step 3). When the scaled estimate breaks a limit, say so in
+(section 2, step 4). When the scaled estimate breaks a limit, say so in
 two lines and propose the split before the summary: run the first half
 now, write the second half as a new part after it. The user may say GO
 as is. This is compose time; after GO nothing is re-sized.
@@ -261,8 +373,8 @@ not the file:
 ```
 ACOS run: <id>                      (Part <i> of <n>, plan <plan-id>   when in a plan)
 Intent: <one line>
-Stages: <n>   Agents: <k>/<limit>   Orchestrator: ~<tokens>/<limit>   Workers: ~<tokens>
-  1. <name>   <adapter>   <model or "session">   <effort>   check: <kind>   ~<tokens>
+Stages: <n>   Agents: <k>/<limit>   Orchestrator: ~<tokens>/<limit> (<startup> startup + <work> work)   Workers: ~<tokens>
+  1. <name>   inline   session   check: <kind>   ~<tokens>
   2. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
   3. <name>   subagent   <model>   <effort>   check: <kind>   ~<tokens>   || owns <paths>
   4. <name>   ...
@@ -271,7 +383,10 @@ Workflow script: runs/<id>/workflow-1.js        (only if compiled)
 Reply GO to execute, or tell me what to change.
 ```
 
-`||` marks stages that run at the same time as the one above them.
+`||` marks stages that run at the same time as the one above them. An
+inline stage prints `session` where a delegated one prints its model,
+and prints no effort: it runs at whatever this session runs at, and
+nothing in the manifest can change that mid-run.
 
 Then stop. Do not start any stage. Do not spawn any agent. Do not read
 files beyond what sizing and composing needed. For `/acos run` of an
@@ -299,8 +414,8 @@ On GO:
 
 1. `manifest.yaml` is already in the run directory (written at present,
    rewritten if the user asked for changes before GO). From GO on, never
-   edit it. Start `log.yaml` next to it (shape in `SPEC.md` 2.8) with the
-   manifest id, `sessions` holding this session's id when the harness
+   edit it. Start `log.yaml` next to it with the manifest id,
+   `sessions` holding this session's id when the harness
    exposes one (Claude Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex:
    `codex:` + `CODEX_THREAD_ID`), a start timestamp, and an empty
    `drift: []` list.
@@ -327,15 +442,21 @@ On GO:
    e. Run the `check`. `command`: run it, exit 0 is pass. `review`: the
       stage output's first line must be `VERDICT: PASS`. `none`: pass.
    f. Append a stage record to `log.yaml`: name, iteration, adapter,
-      provider, model, effort, started, ended, tokens only if the adapter
+      provider, model, started, ended, tokens only if the adapter
       reports them (never an estimate), check outcome, and the shortest
-      decisive check output.
+      decisive check output. `effort` only for a delegated stage; for an
+      inline one record the session's model when the harness names it
+      and leave effort out.
    g. On fail, apply `on_fail` (stage value, else `loop.on_fail`):
       - `retry`: rerun the stage with the check output appended to the
         prompt. Stop after `max_iterations` (stage, else loop, else 3).
       - `escalate`: same as retry, but take the next `escalation` entry
         for provider/model/effort. When the list is exhausted, keep the
         last one and behave as `retry`. Log the model actually used.
+        From an inline stage, run the escalated retry as a subagent on
+        that model: you cannot change your own model or effort. Log
+        `adapter: subagent` on that iteration and count it against
+        `limits.agents`.
       - `ask`: show the check output and ask the user: retry, skip, stop.
       - `stop`: end the run as failed.
       A failed `review` check is handled cheaply whatever `on_fail`
@@ -424,18 +545,41 @@ Goal: write a correct `.acos.yaml` without the user editing a template.
    something else, and no key at all when there is no visible surface.
 3. Detect reachable providers. Run `which`/`Get-Command` for `claude`,
    `codex`, `gemini`, `ollama`. Keep only providers whose CLI exists, plus
-   the harness's native provider.
-4. Fill model tiers from `catalog/providers.yaml` for the native provider:
-   `fast` = tier fast, `balanced` = tier balanced, `strong` = tier strong.
+   both native harness providers. Write `harnesses.claude` and
+   `harnesses.codex`; never collapse them into a single top-level provider.
+4. Fill each harness profile from `catalog/providers.yaml`: its provider must
+   expose native inline and subagent adapters for that harness, and `fast`,
+   `balanced`, and `strong` select models at those matching catalog tiers.
 5. Pick `preset`: leave unset. Ad hoc composition is the default until
    the user saves one.
 6. Set `gates.go: required`. Set `limits` to the defaults
    (`files: 8`, `lines: 400`, `orchestrator_tokens: 100000`,
    `worker_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
    gave others.
-7. Write it and say what was chosen and why, one line per field. Ask
+7. Measure the **startup load for each harness**: what a session of this project holds
+   before it reads a line of code. Every estimate starts from it, so a
+   wrong figure is wrong on every future part.
+   - If the active harness can print its context breakdown (Claude Code:
+     `/context`), ask the user to run it in a fresh session of this repo
+     and paste the total plus the breakdown. That is a measurement; use
+     it for that harness only, and record the method.
+   - Otherwise estimate: characters divided by four over what always
+     loads — `CLAUDE.md` and the files it imports, the frontmatter
+     description of every skill the session lists, agent definitions,
+     the tool schemas of the MCP servers configured here — plus 20000
+     for the harness's own system prompt and built-in tools. Say in
+     `basis` that it is an estimate.
+   - Each profile's `startup.subagent` is the same minus what a worker does not get
+     (the conversation, usually the MCP servers, usually the skill
+     list). With nothing to measure, use 25000.
+   Write `harnesses.<name>.startup.orchestrator`, `.subagent`, and a
+   separately labelled `basis` for each harness. Tell the user the number
+   moves when the project gains an MCP server, a skill or a memory file,
+   and that `/acos init` re-run updates it.
+8. Write it and say what was chosen and why, one line per field. Ask
    for confirmation only if the verify command is a guess (nothing in
-   the repo named it); then show just that line.
+   the repo named it) or the startup load needs a `/context` paste; ask
+   both in one message, and show just those lines.
 
 Never overwrite an existing `.acos.yaml` without asking.
 
@@ -446,7 +590,9 @@ sizing and compose more accurate for this repo.
 
 1. Collect every `runs/*/` that has `manifest.yaml`. Read, per run:
    `manifest.yaml` and `log.yaml`, plus `plan.yaml` for plans. A run
-   without a log counts as planned only.
+   without a log counts as planned only. Partition results by manifest
+   `harness` (or the recorded session prefix for legacy runs); do not mix
+   Claude and Codex startup, model, or adapter measurements.
 2. Fill token counts missing from a log only from measurement: if a
    usage query for past sessions is available (a session monitor's MCP
    tool, for example), ask it for the log's `sessions` between each
@@ -454,27 +600,37 @@ sizing and compose more accurate for this repo.
    read an estimate as an actual.
 3. For each run, derive: intent size (files and lines from the log's
    `actual`), planned versus executed stages (added,
-   dropped, re-ordered), models and efforts planned versus used,
+   dropped, re-ordered), models and efforts planned versus used
+   (delegated stages only; inline ones ran at their session's),
    iterations per stage, adapters used and agent count, tokens estimated
    versus actual where present, runs whose actual exceeded a limit.
    Plans count too: each part directory is a run; note how many parts
    plans had, and whether parts turned out too big or too small.
 4. Look for patterns across runs, not per run: which stages get dropped,
    which get added, which checks get changed the same way, how far
-   estimates miss, what task shape tends to need which stages. Always
+   estimates miss, what task shape tends to need which stages. A miss of
+   about the same size on every part, in the same direction, is not
+   noise: it is `.acos.yaml` `startup` being stale or absent. Say so in
+   **Recurring drift**, with the date `startup.basis` carries, and tell
+   the user to re-run `/acos init`. Where a plan's parts overlapped on
+   files — the same path owned by two parts, or read by three — say how
+   much the re-reads cost and that the cut ran along layers. Always
    derive the per-unit figures sizing needs: tokens per file for inline
    implement, fixed cost plus tokens per file for a subagent, cost of a
    review, how often review fails first time. Per tier: how often a
    balanced-tier implementer passed its check first time, and how often
    the orchestrator had to finish a slice; when that is worse than one in
    three, the Shape section says to run implementers on `strong` or to
-   cut smaller slices. Wall time too: stage `started` to `ended` per
+   cut smaller slices. Compare a plan's parts with its fan-outs too:
+   what one more part cost in startup and handoff against what one more
+   worker cost, so the next cut knows which to reach for. Wall time too: stage `started` to `ended` per
    stage, part start to part end, and the gap from one part's end to
    the next part's start, so the Cost section can say whether fan-out
    and parallel parts shortened the plan and where the time went.
-5. Write `acos/calibration.md` in the fixed shape from `SPEC.md`
-   section 7: header line with run count, date range and today's date;
-   sections **Shape**, **Cost**, **Recurring drift**, **Notes**. Under
+5. Write `acos/calibration.md` in this fixed shape for the active harness:
+   a header that names the profile, then
+   the run count, the date range and today's date; then sections
+   **Shape**, **Cost**, **Recurring drift**, **Notes**. Under
    40 lines. Overwrite the previous file; if it had a **Notes** section,
    keep entries that are still true. Each Recurring drift line that
    points at a config fix (verify command, a block default, a limit)
@@ -492,9 +648,11 @@ Take the last run from this session (or `runs/<newest>/`): its
 stages removed, added ones inserted, models and efforts as used). Strip
 run-specific fields: `id`, `intent`, `part`, `scope`, `estimate`,
 `outputs`. Replace concrete model ids with the matching
-`{{ project.models.<tier> }}` placeholder when they equal a tier in
-`.acos.yaml`, and the verify command with `{{ project.verify }}`. Keep
-adapters, efforts, checks, on_fail, escalation, loop and gates. Add `name`
+`{{ project.models.<tier> }}` placeholder when they equal a tier in the
+active profile, and the verify command with `{{ project.verify }}`. Keep
+adapters, checks, on_fail, escalation, loop and gates, and efforts on
+delegated stages only: an inline stage in a preset carries no model and
+no effort, whatever the session it came from was running. Add `name`
 and a one-line `description` derived from the intent. Write to
 `acos/presets/<name>.yaml`. Say the path and the stage list in one line.
 
@@ -503,6 +661,11 @@ Refuse to overwrite an existing preset without asking.
 ## Rules
 
 - The GO gate is not optional. Only `.acos.yaml` can set it to `auto`.
+- Inline stages have no model and no effort. The session's are fixed for
+  its whole life; work that needs different ones is delegated, or is a
+  part the user starts in a session set up for it.
+- Every file has one owner in a plan. Cut by capability, not by layer;
+  an unavoidable second reader is stated in the cut, not hidden.
 - After GO, no re-approval. Adjust, log drift, continue. Ask only on
   `on_fail: ask` or a gate.
 - Limits and estimates act at compose time only. Nothing checks them

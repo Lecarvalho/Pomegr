@@ -1,8 +1,12 @@
 name: explore
 role: "Map the parts of the codebase relevant to the intent. Read only. Use only when the area is unknown."
 default:
-  adapter: inline
+  adapter: subagent
+  model: "{{ project.models.balanced }}"
   effort: low
+  # Delegated by default: a wide read whose result is one page. Reading the
+  # area yourself spends the orchestrator budget the work still needs, and
+  # the worker's context dies when it returns.
 inputs: []
 outputs: [context]
 check:

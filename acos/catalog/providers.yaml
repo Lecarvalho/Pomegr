@@ -4,9 +4,11 @@
 # Everything under `price` is optional and rough. It only feeds the
 # advisory estimate; it never gates execution. Edit freely.
 #
-# `invoke` describes how each adapter reaches the provider from the
-# current harness. Values:
-#   native   - the harness can run this provider directly (session or subagent)
+# `invoke` describes how each adapter reaches the provider. A native adapter
+# names the one harness where it is legal. The runner must reject native use
+# unless both this harness and the active profile's provider match.
+# Values:
+#   { native_harness: <claude|codex> } - native only in that harness
 #   <string> - a shell command template for the external adapter.
 #              The stage prompt is passed on stdin. {{model}} and
 #              {{effort}} are substituted. Exit code 0 = ran; the
@@ -20,9 +22,9 @@ providers:
   anthropic:
     label: Anthropic (Claude)
     invoke:
-      inline: native
-      subagent: native
-      workflow: native
+      inline: { native_harness: claude }
+      subagent: { native_harness: claude }
+      workflow: { native_harness: claude }
       external: "claude -p --model {{model}}"
     effort_map:            # provider-agnostic effort -> provider setting
       low: low
@@ -46,21 +48,21 @@ providers:
   openai:
     label: OpenAI
     invoke:
-      inline: null
-      subagent: null
+      inline: { native_harness: codex }
+      subagent: { native_harness: codex }
       workflow: null
-      external: "codex exec --model {{model}}"
+      external: "codex exec --model {{model}} -c model_reasoning_effort={{effort}}"
     effort_map:
       low: low
       medium: medium
       high: high
-      max: high
+      max: max
     models:
-      gpt-5.6-sol:
+      gpt-6-astra:
         tier: strong
         # price omitted on purpose; fill in if you want it in estimates
-      gpt-5:
+      gpt-5.6-terra:
         tier: balanced
         # price omitted on purpose; fill in if you want it in estimates
-      gpt-5-mini:
+      gpt-5.6-luna:
         tier: fast

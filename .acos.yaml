@@ -14,18 +14,35 @@ verify: "npm run verify:fast"
 # The dashboard must be running (`npm run dev`, http://localhost:3003).
 shot: "node .agents/skills/acos/scripts/shot.mjs"
 
-# Native harness provider. Stages route here unless a stage names another.
-provider: anthropic
-
 # Providers whose CLI is reachable on this machine (gemini, ollama absent).
 providers:
   - anthropic
   - openai
 
-models:
-  fast: claude-haiku-4-5
-  balanced: claude-sonnet-5
-  strong: claude-opus-5
+# Each harness resolves its provider, model tiers, and startup load here.
+# Shared verify, capture, limits, and gates deliberately remain top-level.
+harnesses:
+  claude:
+    provider: anthropic
+    models:
+      fast: claude-haiku-4-5
+      balanced: claude-sonnet-5
+      strong: claude-opus-5
+    startup:
+      orchestrator: 40000
+      subagent: 27000
+      basis: "estimated 2026-09-18 from Claude Code's loaded project and harness surface; no /context reading yet"
+
+  codex:
+    provider: openai
+    models:
+      fast: gpt-5.6-luna
+      balanced: gpt-5.6-terra
+      strong: gpt-6-astra
+    startup:
+      orchestrator: 46000
+      subagent: 29000
+      basis: "estimated 2026-09-19 from Codex's loaded project, tool, MCP, and skill surface; separately estimated, not measured"
 
 gates:
   go: required
@@ -33,6 +50,10 @@ gates:
 # Session limits. Advisory, compose-time only: size tasks into slices, cap
 # delegation. Not checked mid-run; /acos calibrate reports overruns.
 limits:
+  files: 8                       # per context: an inline part, or one slice of a
+                                 # fan-out. A session running three slices
+                                 # legitimately touches three times this.
+  lines: 400                     # added plus removed, same per-context meaning
   orchestrator_tokens: 100000
   worker_tokens: 300000
   agents: 3

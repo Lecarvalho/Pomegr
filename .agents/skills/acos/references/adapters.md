@@ -1,56 +1,74 @@
-# ACOS adapters for Claude Code
+# ACOS adapters for Claude Code and Codex
 
-How each `adapter` value runs a stage when the orchestrator is a Claude Code
-session. Every adapter takes a stage definition plus a built prompt, and
-returns text (the stage output) plus, when available, token counts.
+The runner resolves the active harness profile before selecting an adapter.
+Every adapter takes a stage definition plus a built prompt and returns stage
+output plus token counts only when the harness reports them. A native adapter
+is legal only when its resolved provider equals the active profile provider
+and the provider catalog names the active harness as its `native_harness`.
+Cross-provider stages always use `external`; they are never routed through a
+native adapter.
 
 ## inline
 
 The orchestrator does the work itself in the current session.
 
 - Use the session's own tools (read, edit, run commands).
-- `provider` and `model` may be omitted; the session model is used.
-- Map `effort` to your own behaviour: `low` means minimal exploration and
-  terse output, `high` and `max` mean read more before acting.
+- `provider`, `model` and `effort` are absent. The stage runs on the session's
+  model at the session's
+  reasoning effort, both fixed for the session's whole life: a manifest
+  cannot raise effort for one stage and lower it for the next, and a
+  summary that shows it is describing something no runner can do. How
+  deeply the stage works belongs in the block prompt, not in an effort
+  field.
+- The session's startup load (`harnesses.<active>.startup.orchestrator`) was
+  spent before the first stage began. It belongs in the estimate, not in
+  the stage record.
 - Tokens: not reported by the harness. Leave `tokens` out of the stage
   record; do not estimate.
-- Escalation on an inline stage: if the next `escalation` entry names
-  the session model, raise effort and retry inline. If it names a
-  different model, run the retry as a `subagent` with that model, count it
-  against `limits.agents`, and log `adapter_used: subagent`.
+- Escalation on an inline stage always delegates: run the retry as a
+  `subagent` on the `escalation` entry's model and effort — even when it
+  names the session model, since the session cannot raise its own
+  effort — count it against `limits.agents`, and log the iteration with
+  `adapter: subagent`.
 
 Best for: nearly everything. Plan, implement, verify, and review of small
 changes. This is the default adapter.
 
 ## subagent
 
-Spawn one agent with the Agent tool.
+Every worker gets a self-contained prompt with intent, scope notes, inputs,
+and its block prompt, and ends with a clear final report. Its fresh startup
+comes from `harnesses.<active>.startup.subagent`; every spawn (including a
+retry) counts against `limits.agents`. Log tokens only when reported and log
+the actual model when the harness exposes it.
 
-- `subagent_type`: `general-purpose` for implement, `Explore` for explore,
-  `Plan` for plan, `general-purpose` for review. Use a project-defined
-  agent type instead if `.acos.yaml` names one under `agents.<block>`.
-- `model`: pass the stage model through the Agent tool `model` field when
-  the harness accepts it. Map catalog ids to the harness's short names
-  (`claude-opus-5` to `opus`, `claude-sonnet-5` to `sonnet`,
-  `claude-haiku-4-5` to `haiku`). If the harness cannot select that model,
-  log the model actually used.
-- `effort`: state it in the prompt as a one-line instruction, e.g.
-  "Effort: low. Minimal exploration, terse report."
-- The prompt must be self-contained: the agent has no conversation
-  context. Include intent, scope notes, inputs, and the block prompt.
-- Ask the agent to end with a clear final report; that report is the stage
-  output.
-- Tokens: log the total the Agent tool result reports, if any. Never an
-  estimate.
-- Each spawn counts against `limits.agents`. A retry is a new spawn.
+### Claude Code
 
-Parallel stages: consecutive `subagent` stages that share no
-inputs/outputs dependency and whose `owns` are disjoint are spawned in
-one message and awaited together. Log them separately, each with its own
-`started` and `ended`. Never use a `fork` agent for a fan-out slice: it
-inherits the whole conversation, which is the cost the fan-out exists to
-avoid. A fresh `general-purpose` agent with a self-contained brief is the
-right shape.
+Spawn one agent with the Agent tool. Keep Claude's native aliases and behavior:
+
+- Use `general-purpose` for implement/review, `Explore` for explore, and
+  `Plan` for plan, unless `.acos.yaml` defines `agents.<block>`.
+- Pass the stage model through Agent's `model` field when accepted, using
+  `claude-opus-5` → `opus`, `claude-sonnet-5` → `sonnet`, and
+  `claude-haiku-4-5` → `haiku`.
+- State effort as a concise prompt instruction because the Agent tool has no
+  native effort field. If the harness reports a different model, log that one.
+
+### Codex
+
+Spawn one fresh native worker with `spawn_agent`, always using
+`fork_turns: "none"`; never inherit the orchestrator conversation or use a
+forked agent for a fan-out slice. Pass the stage `model` and `reasoning_effort`
+through the native spawn fields, not by describing them only in the prompt.
+Await completion through the collaboration wait mechanism, retaining the
+worker's final report as stage output. When the spawn/final result exposes the
+model actually used, log it; otherwise leave the actual-model field absent.
+
+Parallel stages: consecutive Codex `subagent` stages with no input/output
+dependency and disjoint `owns` lists are spawned before waiting, then awaited
+through the collaboration wait mechanism. Claude may likewise start its
+independent Agent-tool workers together and await each result. Log each stage
+with its own start and end time.
 
 Fan-out brief: an implementer receives its own `## <stage name>` section
 of `artifacts/plan.md`, its `owns` list, the intent, the scope notes and
@@ -58,24 +76,27 @@ the verify command. Not the other sections. Its report ends with the
 capture lines for its slice when the slice is visible; collect those from
 every implementer into the evidence stage's prompt.
 
-Background stages: an `evidence` stage is spawned with
-`run_in_background` and awaited after the handoff is written. Its report
-comes back as text only; the crops stay on disk. Open a crop yourself
-only when the verdict names it.
+Background stages: Claude may spawn an `evidence` Agent with
+`run_in_background`; Codex spawns it first, writes the handoff, and then
+awaits it through the collaboration wait mechanism. Its report comes back as
+text only; the crops stay on disk. Open a crop yourself only when the verdict
+names it.
 
-## workflow
+## workflow (Claude Code only)
 
-Compile the stage (or a run of consecutive `workflow` stages) into a
-Workflow tool script. Full rules and a template: `workflow.md` in this
-folder. Load the `workflow-authoring` skill before writing the script.
+Compile the stage (or a run of consecutive `workflow` stages) into a Claude
+Code Workflow tool script. Full rules and a template: `workflow.md` in this
+folder. Load the `workflow-authoring` skill before writing the script. Codex
+has no Workflow adapter: compose equivalent independent native `subagent`
+stages instead, or reject an existing manifest that requests Workflow.
 
 - Opt-in: the GO reply on a manifest that shows `adapter: workflow` is the
   user's explicit request for a workflow. Never move a stage to
   `workflow` after GO.
 - Write the script to `runs/<id>/workflow-<n>.js` before presenting the
   manifest; name the path in the header line so the user can inspect it.
-- Only native-provider models can run inside a workflow. Another provider
-  on a `workflow` stage is a compose error before GO.
+- Only Claude's Anthropic native provider can run inside a workflow. Another
+  provider or the Codex harness on a `workflow` stage is a compose error before GO.
 - Gates split the script into segments. `on_fail: ask` returns
   `status: "ask"` from the script and the orchestrator takes over.
 - Tokens: as reported by the workflow run, if any.

@@ -8,8 +8,7 @@ description: "Single implementer in-session, retry until verify passes."
 
 stages:
   - block: implement
-    adapter: inline
-    effort: medium
+    adapter: inline          # no effort: the session's is fixed
     on_fail: retry
 
 loop:
