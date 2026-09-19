@@ -19,7 +19,7 @@ export function LargestRequestsList({ rows, scopeLabel, selectedId, cacheWriteAv
     <header><h3 className="sessionEyebrow">Largest requests <span>· {scopeLabel}</span></h3>
       <button type="button" className="commandQuietAction" title="Change ranking metric" onClick={() => setSort(sorts[(sorts.indexOf(resolvedSort) + 1) % sorts.length])}>by {sortLabel}</button>
     </header>
-    <div>{largest.map((row) => {
+    <div className="requestsActionsLargestTracks">{largest.map((row) => {
       return <button type="button" key={row.id} className={`commandQuietAction requestsActionsLargestRow${selectedId === row.id ? " isSelected" : ""}`} aria-pressed={selectedId === row.id}
         aria-label={`Locate request ${requestMarker(row)}, ${row[valueKey].toLocaleString()} ${sortLabel}`} onClick={() => onSelect(row)}>
         <span className="requestsActionsNumber requestsActionsLargestLabel">{requestMarker(row)}</span>

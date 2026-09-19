@@ -168,6 +168,9 @@ describe("Activities tab", () => {
     fixture();
     const feed = await ready();
     const range = within(feed).getByRole("navigation", { name: "Request range" });
+    const pagination = feed.querySelector(".activityPagination")!;
+    expect(pagination).toHaveTextContent("#36–#40 · window #1–#40");
+    expect(Array.from(pagination.children, (child) => child.tagName)).toEqual(["SPAN", "NAV"]);
     expect(within(range).getByRole("button", { name: "Jump to latest" })).toBeDisabled();
     await user.click(within(range).getByRole("button", { name: "Previous" }));
     expect(await screen.findByRole("heading", { name: "Request #35" })).toBeInTheDocument();
@@ -393,6 +396,22 @@ describe("Activities tab", () => {
     expect(within(childGroup).getByRole("button", { name: "Open Builder in the Agents inspector" })).toBeInTheDocument();
   });
 
+  it.each([
+    { cacheWriteAvailable: true, expectedTokens: "1,960,000 2,000 4,000" },
+    { cacheWriteAvailable: false, expectedTokens: "1,960,000 4,000" },
+  ])("keeps the desktop request row's four cells aligned when cache-write availability is $cacheWriteAvailable", async ({ cacheWriteAvailable, expectedTokens }) => {
+    fixture({ cacheWriteAvailable });
+    const feed = await ready();
+    const row = within(feed).getByRole("article", { name: "Request #40" }).querySelector(".activityRequestRow.activityRow")!;
+
+    expect(Array.from(row.children)).toHaveLength(4);
+    expect(row.children[0]).toHaveTextContent("Request #40");
+    expect(row.children[1]).toHaveTextContent("Primary agentorchestrator");
+    expect(row.children[2]).toHaveTextContent(expectedTokens);
+    expect(row.children[3]).toHaveTextContent("2 calls");
+    expect(Boolean(row.querySelector(".requestsActionsSwatch.write"))).toBe(cacheWriteAvailable);
+  });
+
   it("renders the rail and request-row caveats as short text that expand via DottedInfoPopover", async () => {
     const user = userEvent.setup();
     fixture();
@@ -588,13 +607,22 @@ describe("Activities tab", () => {
   });
 
   it("keeps desktop call rows as plain rows with no disclosure", async () => {
-    const { container } = fixture();
+    const { container, serverState } = fixture();
     const feed = await ready();
     const rows = Array.from(within(feed).getByRole("article", { name: "Request #40" }).querySelectorAll(".activityTable .activityRow"));
+    const call = serverState.calls.find((item) => item.id === "call-40-read")!;
 
     expect(container.querySelector(".activityCallLine")).toBeNull();
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row.querySelector("[aria-expanded]")).toBeNull();
+    const row = rows[0];
+    expect(row).toHaveClass("activityDesktopCallRow", "activityRow");
+    expect(row.querySelector("time")).toHaveAttribute("dateTime", call.timestamp);
+    expect(row.querySelector("time")).toHaveTextContent(shortTime(call.timestamp));
+    expect(Array.from(row.children, (cell) => cell.tagName)).toEqual(["TIME", "SPAN", "SPAN", "SPAN"]);
+    expect(row.children[1]).toHaveTextContent("Read");
+    expect(row.children[2]).toHaveTextContent("file.tsx");
+    expect(row.children[3]).toHaveTextContent("1.5s");
   });
 });
 

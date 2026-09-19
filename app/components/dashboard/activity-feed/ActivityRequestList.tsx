@@ -27,6 +27,28 @@ function requestTokens(request: HistoryRequest, cacheWriteAvailable: boolean) {
   return { uncachedInputTokens, cacheWriteTokens, outputTokens };
 }
 
+/**
+ * The feed's five served headers and the chart are independently sized. Both carry stable request
+ * numbers once history has loaded, so their footer labels can be precise without turning chart
+ * positions or preview ordinals into request numbers.
+ */
+function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFeedView) {
+  const clauses: string[] = [];
+  const firstServed = feed.groups[0]?.request.number;
+  const lastServed = feed.groups.at(-1)?.request.number;
+  if (typeof firstServed === "number" && typeof lastServed === "number" && firstServed > 0 && lastServed >= firstServed) {
+    clauses.push(firstServed === lastServed ? `#${firstServed}` : `#${firstServed}–#${lastServed}`);
+  }
+  const chartRows = selection.rows.slice(selection.start - 1, selection.end);
+  const first = chartRows.find((row) => typeof row.number === "number")?.number;
+  // Keep this compatible with the dashboard's browser baseline, which predates Array#findLast.
+  const last = [...chartRows].reverse().find((row) => typeof row.number === "number")?.number;
+  if (!selection.history.preview && selection.history.status === "ready" && typeof first === "number" && typeof last === "number") {
+    clauses.push(first === last ? `window #${first}` : `window #${first}–#${last}`);
+  }
+  return clauses.join(" · ");
+}
+
 /** Artboard copy for the phone caveat: what each line holds and what it never prints. */
 const PHONE_HOW_TO_READ = <>
   Request line: agent, role, uncached input, time. Tap it for the four request-local counts.<br />
@@ -47,6 +69,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
   const total = selection.history.total;
   const index = selection.selectedIndex;
   const phone = selection.phone;
+  const rangeLabel = requestRangeLabel(selection, feed);
   // One phone call is open at a time, held here rather than per line so opening one closes the
   // other. It is view state only: no URL parameter, no sheet, no scroll lock.
   const [openCall, setOpenCall] = useState<string | null>(null);
@@ -112,7 +135,8 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
                 onSelectRequest?.(group.request.number);
                 selection.locate(group.request.id, selection.scope);
               }} />
-            : <li key={call.id} className={`activityRow${call.status === "failed" ? " failed" : ""}`}>
+            : <li key={call.id} className={`activityDesktopCallRow activityRow${call.status === "failed" ? " failed" : ""}`}>
+              <time dateTime={call.timestamp}>{shortTime(call.timestamp)}</time>
               <span className="activityAction"><WorkKindIcon kind={call.workKind} /><strong>{call.tool}</strong></span>
               <span className="target">{call.detail ? targetBasename(call.detail) : "—"}</span>
               <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`}>{activityDuration(call.durationMs)}</span>
@@ -124,6 +148,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
       </article>;
     })}
     <footer className="activityPagination">
+      {rangeLabel && <span>{rangeLabel}</span>}
       <nav aria-label="Request range">
         <button type="button" className="commandSecondaryAction" disabled={index === null || index <= 0} onClick={selection.previousRange}>Previous</button>
         <button type="button" className="commandSecondaryAction" disabled={index === null || index >= total - 1} onClick={selection.nextRange}>Next</button>

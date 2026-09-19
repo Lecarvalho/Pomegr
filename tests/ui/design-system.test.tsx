@@ -92,6 +92,19 @@ describe("Design-system reference page", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("renders the documented phone Activities exceptions from the shared selectors", () => {
+    render(<DesignSystemView />);
+    const sample = screen.getByRole("region", { name: "Phone Activities exceptions sample" });
+    const selected = within(sample).getByLabelText("Selected request #34");
+    expect(selected).toHaveClass("activityTableFrame", "isSelectedRequest");
+    expect(selected.closest(".activityLayout")).toHaveClass("activityLayout", "isPhone");
+    const callLine = within(sample).getByRole("button", { name: /Bash, verify-ui, 0\.8s/ });
+    expect(callLine).toHaveClass("activityCallLine");
+    expect(callLine.querySelector(".workKindIcon")).not.toBeNull();
+    expect(callLine.querySelector("svg.activityCallChevron path")).toHaveAttribute("d", "M6 3l5 5-5 5");
+    expect(within(sample).getByText(/Documented exceptions:/)).toBeInTheDocument();
+  });
+
   it("hydrates the server-rendered page, including SVG titles, without a mismatch", async () => {
     const html = renderToString(<DesignSystemPage />);
     expect(html).toContain(">Possible full refill · request #38</title>");

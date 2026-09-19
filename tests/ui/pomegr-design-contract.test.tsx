@@ -19,6 +19,8 @@ const laneChartSource = readFileSync(join(requestsActionsPath, "RequestLaneChart
 const laneModelSource = readFileSync(join(requestsActionsPath, "lane-model.ts"), "utf8");
 const minimapSource = readFileSync(join(requestsActionsPath, "RequestMinimap.tsx"), "utf8");
 const requestsPanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestsActionsPanel.tsx"), "utf8");
+const activityStyles = readFileSync(join(process.cwd(), "app", "styles", "activity-feed.css"), "utf8");
+const evidenceStyles = readFileSync(join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
 const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
 /** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
@@ -59,6 +61,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.requestsActionsCompaction line\s*\{[^}]*stroke-dasharray:\s*3 4/);
     expect(styles).toMatch(/\.requestsActionsBar:focus-visible \.requestsActionsHit\s*\{[^}]*stroke:\s*var\(--focus-ring\)/);
     expect(styles).toMatch(/\.requestsActionsPanel \.requestsActionsLargestRow\s*\{[^}]*grid-template-columns:\s*92px minmax\(36px, 1fr\) minmax\(4ch, max-content\)/);
+    expect(styles).toMatch(/\.requestsActionsLargest > div\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
     expect(styles).toMatch(/\.requestsActionsLargestLabel\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
     expect(layoutSource).toMatch(/<html[^>]*className=\{`\$\{inter.variable\} \$\{geistMono.variable\}`\}/);
     expect(styles).toMatch(/--control-radius:\s*4px/);
@@ -146,6 +149,10 @@ describe("Pomegr visual contract", () => {
     expect(denseActivityRow.map(({ selector }) => selector).filter((selector) => !/\.activityCallLine\b/.test(selector))).toEqual([]);
 
     expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
+    expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*96px minmax\(0, 1fr\) minmax\(12rem, 18rem\) 72px/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*96px 72px minmax\(0, 1fr\) minmax\(0, 1\.5fr\) 72px/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow > time\s*\{[^}]*grid-column:\s*2/);
+    expect(evidenceStyles).not.toMatch(/\.activity(?:Panel|Layout|CallLine|RequestRow|DesktopCallRow)\b/);
   });
 
   // The kind header and its rows share one column template, so `count`, `share` and `median` label

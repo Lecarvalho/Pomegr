@@ -1,0 +1,119 @@
+/* Activity is a session evidence panel; all colors and controls use shared roles. */
+.activityPanel { margin-bottom: 20px; overflow: hidden; min-width: 0; }
+.activityPanelHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.activityPanelHeader h2 { margin: 0; font-size: var(--text-heading); font-weight: 650; }
+.activityPanelHeader p { margin: 6px 0 0; color: var(--muted); font-size: var(--text-xs); }
+.activityLinkNote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin: 0; padding: 12px; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.activityLayout { display: grid; grid-template-columns: 360px minmax(0, 1fr); }
+.activityBreakdown { --activity-kind-columns: 16px minmax(0, 1fr) minmax(0, 56px) 2.9em 2.9em 4em; --activity-kind-gap: 8px; padding: 16px 20px; border-right: 1px solid var(--line); min-width: 0; }
+.activityBreakdown header { display: grid; grid-template-columns: var(--activity-kind-columns); align-items: baseline; gap: var(--activity-kind-gap); margin: 0 -8px 12px; padding: 0 8px; font-size: var(--text-xs); }
+.activityBreakdown h3 { grid-column: 1 / 4; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityBreakdown header > span { text-align: right; color: var(--muted); font-size: var(--text-caption); }
+.activityKindRows { display: grid; gap: 2px; margin: 0 -8px; }
+.activityBreakdown .activityKindRow { display: grid; grid-template-columns: var(--activity-kind-columns); align-items: center; gap: var(--activity-kind-gap); min-height: 34px; padding: 0 8px; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
+.activityBreakdown .activityKindRow[aria-pressed="true"] { background: var(--color-raised); }
+.activityKindRow .workKindIcon { width: 16px; height: 16px; color: var(--muted); }
+.activityKindLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityKindBar { display: block; height: 5px; background: var(--line); }
+.activityKindBar i { display: block; height: 100%; background: var(--command-line-strong); }
+.activityKindRow strong { font-family: var(--font-data); font-weight: 400; text-align: right; }
+.activityKindRow > span:nth-last-child(-n+2) { text-align: right; color: var(--muted); font-size: var(--text-caption); font-family: var(--font-data); }
+.activityShellTasks { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.activityShellHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: var(--text-xs); }
+.activityShellHeader h3 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityShellHeader > span { color: var(--muted); font-size: var(--text-caption); font-family: var(--font-data); white-space: nowrap; }
+.activityShellTasks .executionTaskRowDense { grid-template-columns: 16px minmax(0, 1fr) auto; min-height: 26px; align-items: center; gap: 8px; padding: 0; }
+.activityShellTasks .executionTaskRowDense > div { display: flex; align-items: baseline; min-width: 0; }
+.activityShellTasks .executionTaskRowDense strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.activityShellTasks .executionTaskRowDense .executionTaskMark { height: 26px; }
+.activityShellTasks .executionTaskRowDense .executionTaskMark svg { display: none; }
+.activityShellTasks .executionTaskRowDense .executionTaskMark .agentChipLabel { place-items: center; }
+.activityShellTasks .executionTaskRowDense .executionTaskExit { padding-top: 0; }
+.activityBreakdown .activityShellEmpty, .activityBreakdown .activityShellMore { margin: 4px 0 0; font-size: var(--text-caption); }
+.activityOtherCounts { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.activityOtherCounts > div { display: flex; align-items: center; justify-content: space-between; min-height: 28px; font-size: var(--text-xs); color: var(--muted); }
+.activityOtherCounts strong { font-family: var(--font-data); font-weight: 400; }
+.activityOtherCounts .activityFailures { color: var(--color-error); }
+.activityBreakdown p { margin: 16px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.activityKindCaveat { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.activityLayout.isPhone .activityBreakdown { border-right: 0; border-bottom: 0; border-top: 1px solid var(--line); }
+.activityLayout.isPhone.designSystemActivityPhoneSample { grid-template-columns: minmax(0, 1fr); }
+.activityFeed, .activityTable { min-width: 0; width: 100%; }
+.activityRequestTokens { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.activityRequestTokens .requestsActionsSwatch { margin-right: 4px; }
+.activityTableFrame { position: relative; isolation: isolate; }
+.activityHistoryError { margin: 0; padding: 12px 20px; color: var(--color-error); font-size: var(--text-xs); }
+.activityRow { display: grid; grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) 72px 56px; align-items: center; column-gap: 20px; padding: 0 20px; }
+.activityRow, .activityRow.commandQuietAction { display: grid; column-gap: 20px; padding: 0 20px; width: 100%; min-height: 43px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; }
+.activityRow:last-child { border-bottom: 0; }
+.activityRow.selected, .activityRow.commandQuietAction[aria-pressed="true"] { background: var(--color-raised); }
+.activityRow.failed, .activityRow.failed:hover, .activityRow.failed[aria-pressed="true"] { background: var(--red-soft); }
+.activityRow.failed strong { color: var(--color-error); }
+.activityRow .target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityRow .target, .activityDuration { color: var(--muted); font-family: var(--font-data); }
+.activityDuration { text-align: right; }
+.activityRow .unavailable { color: var(--color-control); }
+.activityAction { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.activityAction .workKindIcon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--muted); }
+.activityAction strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 600; }
+.activityPagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.activityPagination > span { color: var(--muted); font-size: var(--text-xs); }
+.activityPagination nav { display: flex; align-items: center; gap: 4px; }
+.activityLayout.isPhone .activityRequestLine, .activityLayout.isPhone .activityRow.activityRequestLine { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; min-height: 44px; padding: 0 12px; }
+/* The bounded token track preserves space for the final fixed calls count. */
+.activityRequestRow.activityRow { position: relative; grid-template-columns: 96px minmax(0, 1fr) minmax(12rem, 18rem) 72px; }
+/* Desktop calls align to the request indent and fixed tail without affecting phone call lines. */
+.activityDesktopCallRow.activityRow { grid-template-columns: 96px 72px minmax(0, 1fr) minmax(0, 1.5fr) 72px; }
+.activityDesktopCallRow.activityRow > time { grid-column: 2; color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.activityRequestSelect.commandQuietAction { min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
+.activityRequestSelect.commandQuietAction:hover:not(:disabled), .activityRequestSelect.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); }
+.activityRequestSelect::after { content: ""; position: absolute; inset: 0; }
+.activityRequestRow:has(.activityRequestSelect:hover) { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.activityRequestRow:has(.activityRequestSelect:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.activityRequestSelect:focus-visible { outline: none; }
+.activityRequestRow .activityRequestWho { display: flex; align-items: baseline; gap: 8px; overflow: visible; }
+.activityRequestRow .activityRequestWho > span { flex: 0 0 auto; }
+.activityRequestRow .activityRequestAgent { position: relative; z-index: 1; display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityRequestWho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityRequestWho strong { font-weight: 600; }
+.activityRequestWho > span { color: var(--muted); }
+.activityRequestMeta { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The one brand-colored left rule in app/styles: the selected phone request group, call lines included. */
+.activityLayout.isPhone .activityTableFrame.isSelectedRequest { border-left: 2px solid var(--brand); }
+/* The documented 32px dense-list exception: only the full-width phone call disclosure line. */
+.activityLayout.isPhone .activityCallLine, .activityLayout.isPhone .activityCallLine.commandQuietAction { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; width: 100%; min-height: 32px; padding: 0 12px; border: 0; border-radius: 0; text-align: left; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; }
+.activityCallLine .workKindIcon { color: var(--muted); }
+.activityCallTarget { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.activityCallDuration { color: var(--muted); font-family: var(--font-data); font-size: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activityCallDuration.attention { color: var(--amber); }
+.activityCallDuration.unavailable { color: var(--color-control); }
+.activityCallChevron { color: var(--color-control); }
+.activityCallLine.isOpen .activityCallChevron { transform: rotate(90deg); }
+.activityCallDetail { padding: 10px 12px 12px; background: var(--color-raised); }
+.activityCallChips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
+.activityCallRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; font-size: var(--text-xs); }
+.activityCallRow > span:first-child { flex: 0 0 auto; color: var(--muted); }
+.activityCallRow > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.activityFeedCaveat { margin: 0; padding: 12px; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.activityLayout.isPhone .activityPagination { flex-direction: column; align-items: stretch; padding: 12px; }
+.activityLayout.isPhone .activityPagination nav { gap: 8px; }
+.activityLayout.isPhone .activityPagination nav > button { flex: 1; min-height: 44px; }
+@media (min-width: 641px) and (max-width: 1200px) {
+  .activityLayout { grid-template-columns: minmax(0, 1fr); }
+  .activityBreakdown { border-right: 0; border-bottom: 1px solid var(--line); }
+  .activityBreakdown { --activity-kind-columns: 16px minmax(0, 1fr) minmax(0, 120px) 4em 3.4em 4.7em; }
+  .activityPanelHeader { flex-wrap: wrap; }
+}
+@media (max-width: 640px) {
+  .activityPanelHeader { padding: 16px 12px 12px; flex-direction: column; align-items: stretch; gap: 8px; }
+  .activityPanelHeader p { line-height: 1.6; }
+  .activityPanelHeader p .commandTextLink { display: inline; }
+  .activityLayout { grid-template-columns: minmax(0, 1fr); }
+  .activityBreakdown { padding: 12px 12px; border-right: 0; }
+  .activityBreakdown { --activity-kind-columns: 16px minmax(0, 1fr) minmax(0, 36px) 3.7em 3.2em 3.7em; --activity-kind-gap: 6px; }
+  .activityBreakdown .activityKindRow { min-height: 44px; }
+  .activityPagination { flex-direction: column; align-items: stretch; padding: 12px; }
+  .activityPagination nav { gap: 8px; }
+  .activityPagination nav > button { flex: 1; min-height: 44px; }
+  .activityPagination > span { text-align: center; }
+}

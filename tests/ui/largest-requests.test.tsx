@@ -54,4 +54,13 @@ describe("Largest requests metric control", () => {
     await user.click(screen.getByRole("button", { name: "by total" }));
     expect(screen.getByRole("button", { name: "by uncached input" })).toBeInTheDocument();
   });
+
+  it("keeps all five ranking rows in equal grid tracks", () => {
+    const five = [...requests, snapshot(5, "primary", { uncachedInputTokens: 100, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, totalTokens: 100 })];
+    const props = { rows: scopedRows(requestFeed(five), [], "all"), scopeLabel: "All agents", selectedId: null, cacheWriteAvailable: true, onSelect: vi.fn() };
+    const { container } = render(<LargestRequestsList {...props} />);
+    const strip = container.querySelector(".requestsActionsLargest > div");
+    expect(strip).toHaveClass("requestsActionsLargestTracks");
+    expect(within(screen.getByRole("region", { name: "Largest requests" })).getAllByRole("button", { name: /^Locate request/ })).toHaveLength(5);
+  });
 });
