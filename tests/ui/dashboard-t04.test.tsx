@@ -413,6 +413,60 @@ describe("T04 session workspace", () => {
     expect(url).toMatch(/agent=primary/);
   });
 
+  it.each([["Right now", "agents"], ["Efficiency signals", "signals"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
+    mount({ tab: "overview" });
+    const overview = await screen.findByLabelText("Session overview");
+    for (const label of ["All agents", "View signals", "View evidence", "Open repository", "Open activities"]) expect(within(overview).queryByRole("button", { name: label })).not.toBeInTheDocument();
+    await userEvent.setup().click(within(overview).getByRole("button", { name }));
+    expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(new RegExp(`tab=${tab}`));
+  });
+
+  it("draws the Overview request strip with 48 fixed slots", async () => {
+    const { container } = mount({ tab: "overview" });
+    await screen.findByRole("button", { name: "Requests" });
+    expect(screen.getByText("one bar per model request · fresh tokens · 1 so far")).toBeInTheDocument();
+    expect(screen.getByLabelText("Fresh token categories; cache reads are excluded")).toHaveTextContent("Cache writeUncached inputOutput");
+    const tracks = container.querySelector(".sessionRequestTracks")!;
+    const bars = tracks.querySelectorAll("button").length;
+    expect(bars).toBeGreaterThan(0);
+    expect(bars + tracks.querySelectorAll(".sessionRequestSlot").length).toBe(48);
+  });
+
+  it("pulses only beside an active agent's current activity", async () => {
+    const base = sessionSummaryFixture();
+    const active = mount({ tab: "overview" }, base);
+    await screen.findByText("Implementing session tabs");
+    expect(active.container.querySelectorAll(".sessionCurrentActivityMark.isCurrent")).toHaveLength(1);
+    active.unmount();
+
+    const waiting = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, status: "needs_input" }] }));
+    await screen.findByText("Implementing session tabs");
+    expect(waiting.container.querySelector(".sessionCurrentActivityMark.isCurrent")).toBeNull();
+  });
+
+  it("renders bottom panels only for evidence or readiness, with plan fallback and no sub-minute medians", async () => {
+    const base = sessionSummaryFixture();
+    const first = mount({ tab: "overview" });
+    await screen.findByRole("heading", { name: "Progress" });
+    expect(screen.getByRole("heading", { name: "Work by kind" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Cost" })).toBeInTheDocument();
+    first.unmount();
+
+    const withoutProgressOrCost = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null }, planTasks: [] }));
+    await screen.findByRole("heading", { name: "Work by kind" });
+    expect(screen.queryByRole("heading", { name: "Progress" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cost" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/median/)).not.toBeInTheDocument();
+    withoutProgressOrCost.unmount();
+
+    const withPlanFallback = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null } }));
+    expect(await screen.findByText("Plan tasks · 1 of 1 done")).toBeInTheDocument();
+    withPlanFallback.unmount();
+
+    mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null }, sectionReadiness: { ...base.sectionReadiness, activityEvidence: "unavailable" } }));
+    expect(await screen.findByText("Progress evidence unavailable.")).toBeInTheDocument();
+  });
+
   it("never renders forbidden content seeded into summary fields Overview and the header must not display", async () => {
     // These fixture fields exist on SessionSummaryDomain but neither SessionOverview nor the
     // Dashboard header ever read them for display text. Seeding each with a distinct sentinel

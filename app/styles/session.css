@@ -150,16 +150,31 @@
 .sessionOverviewEmpty, .sessionOverviewNote { margin: 0; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
 .sessionRightNow { grid-column: 1 / 5; grid-row: span 2; }
 .sessionRightNow { align-self: stretch; }
+@media (min-width: 761px) {
+  .sessionOverview[data-density="sparse"] .sessionRightNow { grid-column: 1 / -1; grid-row: auto; }
+  .sessionOverview[data-density="sparse"] :is(.sessionSignals, .sessionRepositoryOneLine) { grid-column: span 3; padding: 14px 16px; align-self: start; }
+  .sessionOverview[data-density="sparse"] :is(.sessionSignals, .sessionRepositoryOneLine) .sessionOverviewHeading { margin-bottom: 10px; }
+  .sessionOverview[data-density="sparse"] .sessionSignals li { min-height: 0; padding: 0; }
+  .sessionOverview[data-density="sparse"] .sessionSignals .sessionOverviewNote { margin-top: 2px; }
+  .sessionOverview[data-density="sparse"] .sessionRepositoryOneLine p { gap: 2px; }
+  .sessionOverview[data-density="sparse"] .sessionRightNow[data-empty="true"] { padding-block: 14px; }
+  .sessionOverview[data-density="sparse"] .sessionRightNow[data-empty="true"] .sessionOverviewHeading { margin-bottom: 8px; }
+}
 .sessionSignals, .sessionRepositoryOneLine { grid-column: 5 / 7; }
 .sessionRightNow ul, .sessionSignals ul, .sessionTransitionalList ul { margin: 0; padding: 0; display: grid; list-style: none; }
-.sessionRightNow li { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 8px minmax(120px, .7fr) minmax(140px, 1fr) auto auto; align-items: center; gap: 10px; border-top: 1px solid var(--command-line); }
+.sessionRightNow li { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 8px minmax(160px, 180px) minmax(0, 1fr) 72px 64px; align-items: center; column-gap: 12px; border-top: 1px solid var(--command-line); }
 .sessionRightNow li:first-child { border-top: 0; }
 .sessionRightNow li > span:not(.sessionAgentStatus) { min-width: 0; color: var(--command-muted); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sessionRightNow li > strong { font: 500 var(--text-sm)/1 var(--font-data); font-variant-numeric: tabular-nums; }
-.sessionRightNow li > time { color: var(--command-faint); font: 500 var(--text-caption)/1 var(--font-data); }
+.sessionRightNow li > strong { justify-self: end; font: 500 var(--text-sm)/1 var(--font-data); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.sessionRightNow li > time { justify-self: end; color: var(--command-faint); font: 500 var(--text-caption)/1 var(--font-data); text-align: right; white-space: nowrap; }
 .sessionAgentIdentity { min-width: 0; display: grid; gap: 2px; }
 .sessionAgentIdentity .commandTextLink { min-height: 0; justify-self: start; color: var(--command-ink); font-weight: 600; text-align: left; }
 .sessionAgentIdentity small { color: var(--command-faint); font-size: var(--text-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.sessionAgentActivity { min-width: 0; display: flex; align-items: center; justify-self: stretch; gap: 8px; text-align: left; }
+.sessionAgentActivityLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessionCurrentActivityMark { position: relative; width: 12px; height: 12px; flex: 0 0 12px; visibility: hidden; border: 1px dashed var(--command-faint); border-radius: 50%; }
+.sessionCurrentActivityMark.isCurrent { visibility: visible; }
+.sessionCurrentActivityMark.isCurrent::before { position: absolute; inset: 3px; border-radius: 50%; background: var(--command-muted); content: ""; animation: activityPulse 1.8s ease-in-out infinite; }
 .sessionAgentStatus, .sessionRoleLegend i { width: 7px; height: 7px; border-radius: 50%; background: var(--command-line-strong); }
 .sessionAgentStatus.status-active { background: var(--command-green); }
 .sessionAgentStatus.status-needs_input { background: var(--command-amber); }
@@ -177,16 +192,23 @@
 .sessionSignals li span { color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
 .sessionRepositoryOneLine p { margin: 0; display: grid; gap: 5px; }
 .sessionRepositoryOneLine p span { color: var(--command-muted); font-size: var(--text-sm); }
-.sessionRequestStrip { grid-column: 1 / -1; }
+.sessionRequestStrip { grid-column: 1 / -1; padding: 14px 16px; }
+.sessionRequestHeading { align-items: flex-start; margin-bottom: 8px; }
+.sessionRequestHeadingMain { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.sessionRequestSummary { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
+.sessionRequestValueLegend { flex: 0 0 auto; justify-content: flex-end; }
 .sessionRequestTracks { height: 124px; display: flex; align-items: end; gap: 3px; overflow: hidden; }
 .sessionRequestTracks .commandIconAction { width: auto; min-width: 4px; height: 100%; min-height: 44px; flex: 1 1 0; padding: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 2px; border: 0; background: transparent; }
+.sessionRequestSlot { min-width: 4px; height: 100%; flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; }
+.sessionRequestSlot .sessionRoleTrack { background: var(--command-line); }
 .sessionFreshStack { width: 100%; min-height: 3px; display: flex; flex-direction: column-reverse; overflow: hidden; border-radius: 2px 2px 0 0; }
 .sessionFreshStack > i { min-height: 1px; width: 100%; }
 .sessionRoleTrack { width: 100%; height: 3px; flex: 0 0 3px; background: var(--session-role, var(--command-line-strong)); }
 .sessionRoleLegend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 7px 16px; color: var(--command-muted); font-size: var(--text-caption); }
 .sessionRoleLegend > span { display: inline-flex; align-items: center; gap: 6px; text-transform: capitalize; }
 .sessionOverviewNote { margin-top: 9px; font-size: var(--text-caption); }
-.sessionProgressOverview, .sessionWorkOverview, .sessionCostOverview { grid-column: span 2; min-height: 140px; }
+.sessionProgressOverview, .sessionWorkOverview, .sessionCostOverview { min-width: 0; }
+.sessionOverviewBottom { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .sessionOverviewValue { display: inline-block; margin-right: 10px; color: var(--command-ink); font: 600 var(--text-title)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
 .sessionProgressOverview > span, .sessionCostOverview > span { color: var(--command-muted); font-size: var(--text-sm); }
 .sessionProgressOverview small, .sessionCostOverview small { margin-top: 10px; display: block; color: var(--command-muted); font-size: var(--text-caption); }
@@ -276,13 +298,24 @@
   .sessionProgressOverview { grid-column: 1; min-height: 0; order: 5; }
   .sessionWorkOverview { grid-column: 1; min-height: 0; order: 6; }
   .sessionCostOverview { grid-column: 1; min-height: 0; order: 7; }
-  .sessionRightNow li { grid-template-columns: 7px minmax(88px, .8fr) minmax(90px, 1fr) auto; }
+  .sessionOverviewBottom { display: contents; }
+  .sessionSignals .commandQuietAction { width: auto; }
+  .sessionRightNow li { grid-template-columns: 7px minmax(88px, 110px) minmax(0, 1fr) auto; column-gap: 8px; }
   .sessionRightNow li > time { display: none; }
   .sessionRightNow li > strong { grid-column: 4; font-weight: 400; }
   .sessionAgentIdentity .commandTextLink { min-height: 44px; }
+  .sessionAgentActivity { gap: 6px; }
+  .sessionRequestHeading { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .sessionRequestHeadingMain { width: 100%; }
+  .sessionRequestSummary { flex-basis: 100%; }
+  .sessionRequestValueLegend { justify-content: flex-start; }
   .sessionRequestTracks { height: 88px; }
   .sessionRightNow li { min-height: 44px; }
   .sessionTabState { min-height: 180px; padding: 24px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sessionCurrentActivityMark.isCurrent::before { animation: none; opacity: .7; }
 }
 
 @media (max-width: 520px) {

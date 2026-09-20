@@ -179,8 +179,10 @@ describe("Pomegr visual contract", () => {
   it("preserves the current activity icon animation and reduced-motion opt-out", () => {
     expect(styles).toMatch(/\.currentActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
     expect(styles).toMatch(/\.commandTableActivityMark::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
+    expect(styles).toMatch(/\.sessionCurrentActivityMark\.isCurrent::before\s*\{[^}]*animation:\s*activityPulse 1\.8s ease-in-out infinite/);
     expect(styles).toMatch(/@keyframes activityPulse\s*\{\s*50%\s*\{\s*transform:\s*scale\(\.55\);\s*opacity:\s*\.45/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.currentActivityMark::before,[\s\S]*?\.commandTableActivityMark::before,[\s\S]*?animation: none/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.sessionCurrentActivityMark\.isCurrent::before\s*\{\s*animation:\s*none;\s*opacity:\s*\.7/);
     expect(layoutSource).not.toMatch(/font-rokkitt|localFont/);
   });
 
