@@ -284,55 +284,41 @@ Role tint is the only exception that colors normalized agent roles. It appears o
 
 ### Session Evidence
 
-Activity follows Requests, then Cache evidence precedes session summary
-cards and the agent roster. A 360px by-kind rail precedes the feed; compact
-desktop widths stack the rail above it. The six feed columns are Time, Agent,
-Action, Target, Duration, and Request. Linked rows use the quiet button role,
-raised tone for the selected request, and error-soft tone for failed rows.
-Request numbers use the text-link treatment; the selected request number is the
-only brand accent in the desktop feed, which the phone composition extends with the
-scoped selected-request left rule below. Missing links and durations use an em dash in
-desktop columns; phone rows omit absent metadata and its separators.
-Rows and eight-row pages run from earliest to latest, matching Requests: page 1
-contains the first events, Previous moves earlier, and Next moves later. The feed
-opens on the final page and follows new arrivals there until an older request
-selection anchors it or the user browses an older page. Paging uses secondary
-Previous, numbered, and Next controls. Only one
-activity page is displayed; the current page and its two neighbors are cached.
-Request numbers are stable session labels, independent of page and agent scope.
-Selecting a request reveals its activity page; selecting a linked activity row
-loads the corresponding request window. Selection highlights linked rows without
-filtering away other events. Omit the explanatory request-link strip. Older live
-pages retain their first visible event and offer View latest
-when new events arrive. Loading preserves the last committed page.
-Foreground loading covers the feed with a neutral translucent veil, a 1px
-backdrop blur, a softly pulsing top rule, and a centered **Loading activity…**
-label on desktop and phone. Keep the page geometry and controls stable; stale
-row links cannot activate until loading completes. The status is announced
-outside the busy table. Reduced motion keeps the rule static. Routine background
-refreshes do not veil the table; failed updates retain the rows and show a retry
-explanation. Selecting a request already in a resident activity page reveals it
-immediately. This loading treatment is local to Activity.
-Selecting a visible Activity row keeps the table clear and interactive while its
-linked request details load. Already-prefetched request windows are reused by
-request identity, including windows outside the chart's current view. A newer
-selection cancels an older pending request navigation.
-On phones, two-line rows are at least 73px high including padding and divider.
-The action icon and title lead the first line, with monospace time, optional
-duration, and request number aligned right. Muted, regular-weight agent labels
-and optional targets flow together beneath the title, with square status marks
-and ellipsis for long text. Bash actions use the terminal icon and assistant
-replies use the message icon; by-kind aggregates retain their normalized kinds.
-Keep 44px touch targets and a 48px per-session breakdown disclosure closed by
-default, with its title and percentages on one line and a trailing chevron. Agent
-scope applies to the feed; by-kind totals and the other activity aggregates
-cover the full retained session feed. Activity rows and Requests
-share request selection and links. Linked assistant replies show the same
-request number and selected state as linked tool calls. The request detail shows Before and Issued
-chips in one wrapping line separated by a vertical rule. The shared evidence
-caveat lives in the existing dotted info popover on the Requests
-panel heading, with the accessible label About request links. Preview loading and retry status stays visible below the
-panel. These compositions remain panel-local.
+Activities is a grouped request feed below the Requests chart and its scoped
+Largest strip. The strip uses two equal columns; an odd fifth item remains in one
+column rather than stretching across the row. A 360px Actions by kind rail with
+Shell tasks and Failed shell runs precedes the five request groups around the
+selected request; compact desktop widths stack the rail above the groups. Groups
+contain only request-linked calls and retain their stable session request numbers.
+The range/window label appears before **Previous**, **Next**, and **Jump to
+latest**; those controls navigate committed request groups rather than numbered
+activity pages. Selecting a group, chart bar, or supported call keeps the chart,
+selected-request details, and feed correlated. A newer navigation cancels an
+older pending request window; an older selection remains anchored while live
+history grows. The selected request uses the only brand accent and the scoped
+selected-request left rule. Agent scope applies consistently to the chart, strip,
+groups, and aggregates.
+
+Foreground request-window loading keeps the last committed chart and feed visible
+under a local neutral veil and announced loading status. The chart and feed never
+mix selections, and failed or loading work retains last-known-good evidence rather
+than inventing counts. Historical sessions do not follow live appends. Request
+links are recorded associations, not token or cost attribution; activity without
+a proven request association is omitted from this grouped presentation.
+
+On phone, request-group targets remain at least 44px. A disclosed call line is
+the documented 32px exception: its icon, target, and wall duration form one
+compact line. Tapping it expands its already-bounded detail in place beneath the
+line; only one disclosure is open, Escape collapses it, and it creates no sheet,
+scroll lock, or URL state. The shared request-association caveat remains available
+from the Requests panel.
+
+Signals is a separate tab, reachable on phone through **More**, with four ordered
+sections: **Efficiency**, **Cache evidence**, **Cache lifetime**, and **Reported
+signals**. The first three show deterministic recorded evidence or explicitly
+labeled inferences; Reported signals are agent-reported updates and may be stale.
+The tab introduction says **Not a quality assessment**. Supported evidence links
+to Activities only when its recorded agent/request association is proven.
 
 Repositories use a flat, linked index of observed projects. Each row shows the
 repository name, observed provider badges, live and history session counts, last

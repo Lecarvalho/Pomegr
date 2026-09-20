@@ -21,6 +21,7 @@ const minimapSource = readFileSync(join(requestsActionsPath, "RequestMinimap.tsx
 const requestsPanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "RequestsActionsPanel.tsx"), "utf8");
 const activityStyles = readFileSync(join(process.cwd(), "app", "styles", "activity-feed.css"), "utf8");
 const evidenceStyles = readFileSync(join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
+const signalsTabStyles = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SignalsTab.module.css"), "utf8");
 const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
 /** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
@@ -37,6 +38,10 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.sessionLoadingHero|\.sessionLoadingProvider/);
     expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*22px/);
+  });
+
+  it("keeps the phone Signals title below sticky application chrome", () => {
+    expect(signalsTabStyles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.tab\s*\{[^}]*--signals-phone-sticky-offset:\s*56px;[^}]*margin-top:\s*calc\(-1 \* var\(--signals-phone-sticky-offset\)\);[^}]*padding-top:\s*var\(--signals-phone-sticky-offset\);[^}]*scroll-margin-top:\s*var\(--signals-phone-sticky-offset\)/);
   });
 
   it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {

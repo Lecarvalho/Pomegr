@@ -533,17 +533,23 @@ cache, compaction, and repetition signals and loop patterns may include a normal
 `agentId`; overlap signals have no single agent target. Links currently navigate to
 Agent activity. Signal generation rules are unchanged.
 
+The Signals tab keeps this deterministic efficiency and cache evidence separate from
+agent-reported session, agent, and task signals. Agent-reported signals may be stale
+and are not Pomegr measurements or rule results. They may link to Activities only
+when the monitor proves the associated normalized agent and request; otherwise they
+remain informative without a navigation target.
+
 ## Activity events
 
-The Activity panel follows Requests & actions and its Cache evidence disclosure.
-It browses committed normalized history, newest first, in pages of eight. The
-current and neighboring pages are prefetched; history does not end at 200 rows.
-The ordinary state response still contains a bounded summary feed. Counts
-and by-kind shares use its retained summary evidence, independently of complete
-history. Tool calls and per-kind counts exclude messages, input,
-system notifications, and failed-shell outcome duplicates. Their total matches
-the session Tool calls KPI. Agent scope changes the displayed feed only; the
-breakdown continues to use the session summary and can cover less than complete history.
+Activities presents committed history as five request groups around the selected
+stable session request number, with recorded calls nested beneath their owning
+request. Its range/window controls navigate committed request-group windows. The
+ordinary state response still retains bounded normalized summary evidence; the
+complete paged history remains independent of that summary and of provider
+acquisition during a GET. Counts, work-kind shares, and medians use retained
+normalized evidence under the selected scope. Tool calls and per-kind counts
+exclude messages, input, system notifications, and failed-shell outcome
+duplicates; their total matches the session Tool calls KPI.
 
 Each resolved duration is wall time from a recorded call to its matching result,
 including approval waits. Running, unmatched, invalid, and reversed timestamp
@@ -551,41 +557,30 @@ pairs and durations beyond 24 hours show no duration. Each kind's
 median uses resolved durations only. Failed-shell durations use the execution
 task's recorded start and finish.
 
-Claude activity links use the same opaque request-snapshot ID served with
-Requests & actions, established by a recorded tool-use link or the assistant
-reply's exact recorded request identity within its owning agent. Reply-only
-requests therefore label and highlight their Assistant replied rows too.
-Codex links rollout calls and assistant replies within one agent's recorded
-response group. A `token_usage_record` closes the group; the following
-`token_count` must confirm the same request-local token components. Legacy
-rollouts without that marker use the closing token-count event and contiguous
-output structure. User/turn boundaries, compactions, missing or mismatched usage,
-and conflicting ownership prevent links. Canonical-only events remain unlinked
-unless their normalized identity matches a proven rollout event. Request IDs are
-consistent across live and historical reads. Unmatched events remain unlinked;
-Pomegr does not infer a relationship from timestamp proximity.
-History request numbers are stable session-scoped labels, never provider IDs or
-positions recomputed for a filter. They survive paging, scope changes, and
-restart. Earlier requests discovered later receive new labels without renumbering
-existing requests. The chart loads request windows from the same normalized history, so
-older activity keeps its request number outside the bounded state summary.
-A shared selection highlights linked rows and re-windows the chart
-when an action is selected. Selecting or reselecting a request loads a page
-with its linked activity. If Activity's agent scope hides those rows, selection
-reveals All agents. Manual Activity paging never changes selection; reselecting
-the chart bar or using Show only this request reveals the selected activity.
-Live page 1 receives
-new events; later pages anchor to their first visible row while it remains
-retained. Explicit request selections pin; historical sessions never follow.
-No token value or cost is attributed to an individual action.
+Request links are exact recorded associations, never timestamp guesses. The
+grouped presentation omits unlinked user input, provider task notifications,
+replies, and calls even when supported normalized history retains those event
+types. Stable request numbers are session-scoped labels, not provider IDs or
+filter positions; they survive paging, scope changes, and restart. The request
+chart and grouped feed use the same committed history, so a selected request can
+load its matching window without fabricating a relationship. Explicit selection
+anchors live history; historical sessions never follow. No token value or cost is
+attributed to an individual action.
 All tool-call fragments of the same Claude request contribute their distinct
 recorded tool IDs and work-kind counts, even when its final fragment is text.
-The header distinguishes missing linked activity from highlighted rows; an em
-dash never represents an inferred request association. User input and system
-notifications have no request link; the panel explains the dash. Linked replies
-remain messages and never contribute to tool-call or by-kind action counts.
+Only fragments with that proven association can appear nested in the grouped
+feed. User input and system notifications have no request link and remain
+outside it. Linked replies remain messages and never contribute to tool-call or
+by-kind action counts.
 
-Activity includes tool invocations, failed shell completions, and timestamps for direct user messages or answers to an agent's structured question. A failed shell event is timestamped when execution finishes and exposes only the sanitized Bash description plus its exit code when available; commands, stdout, stderr, and tool-result content remain excluded. A user-input event's target lists only its content categories (`Text`, `Document`, and `Image`, including combinations); prompt text, answers, filenames, tool results, and synthetic subagent prompts are never returned to the browser. Outcome and user-input events do not contribute to `toolCalls`, repetition signals, or the flow score.
+Retained normalized evidence can include tool invocations, failed shell completions,
+direct user messages, structured-question answers, and provider task notifications
+under their respective privacy allowlists. That retention does not make every
+event eligible for the grouped Activities presentation. A failed shell event is
+timestamped when execution finishes and exposes only the sanitized Bash description
+plus its exit code when available; commands, stdout, stderr, and tool-result
+content remain excluded. Outcome and user-input events do not contribute to
+`toolCalls`, repetition signals, or the flow score.
 
 Claude provider-owned system task deliveries appear as `System` with `Task completed`,
 `Task failed`, or `Task stopped`, using the recorded delivery time. A matching prior
@@ -615,7 +610,8 @@ score = max(
 ```
 
 The score is a heuristic attention signal, not a quality assessment. It appears only
-inside Session details on the session page.
+in the Signals tab's deterministic **Efficiency** section, alongside its two
+inputs. It does not appear in Details.
 
 ## Plan usage
 

@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: Session 3 in progress. Parts 1-2 of the first plan (T06 selection core and desktop Activity feed) are done, reviewed and committed. The remaining T06 and T06b work was re-planned as the 21-part `runs/2026-09-17-ia-session-3-finish`; parts 1-3 (desktop lane chart core, lane labels and band geometry, lane collapse and focus) are done and committed.
+> Status: active; Sessions 1–3 are complete. Session 4 (T07 then T13) is the next unchecked implementation session.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Continue Session 3 with the first unfinished part of `runs/2026-09-17-ia-session-3-finish` (`/acos run runs/2026-09-17-ia-session-3-finish`), from the Session 3 checkpoint. It replaces parts 3-7 of `runs/2026-09-16-ia-session-3`; do not run those.
+> Next task or decision: Start Session 4 (T07 then T13) in a fresh user-requested session. First verify SQLite in the actual Electron monitor worker, then implement persistence/retention before native storage settings.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -189,7 +189,7 @@ temporary panels so Session 6 can verify their removal.
 
 ### Session 3 — Activities and Signals
 
-- [ ] Session 3 complete — T06 and T06b.
+- [x] Session 3 complete — T06 and T06b.
 
 A Sol worker owns T06's shared selection state, lane chart and grouped feed
 integration. Once its selection/range interface is fixed, that worker may delegate
@@ -548,6 +548,42 @@ No unresolved product decision blocks implementation. The latest approved rules 
 ## Continuation checkpoint
 
 ### Session 3 checkpoint
+
+2026-09-20 · **Session 3 complete — T06 Activities and T06b Signals.** ACOS run
+`runs/2026-09-19-ia-session-3-vertical-finish` completed the remaining vertical
+work and supersedes the stale 21-part finish-run reference for this checkpoint.
+Activities now keeps the request chart, five-group feed, selected details, range,
+agent scope, and phone call disclosures correlated over committed request windows.
+Signals owns the ordered Efficiency, Cache evidence, Cache lifetime, and Reported
+signals sections, with deterministic evidence kept distinct from potentially stale
+agent-reported updates. `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and
+`docs/METRICS.md` now own the enduring presentation, cache, and evidence rules.
+
+The independent review passed on its second iteration after repairing one 390px
+sticky-chrome collision. The scoped phone offset and design-contract regression keep
+the Signals eyebrow and title visible; the refreshed five-crop Signals evidence is
+`VERDICT: PASS`. Activities' five claim-level crops were already accepted. The full
+`npm test` wrapper passed, including 1,179 passing Node tests with one skipped and
+899 passing UI tests. `npm run verify:fast` passed with no errors and the 16
+pre-existing warnings; `git diff --check` passed.
+
+**Accepted visual differences.** Live request numbers, wall times, and availability
+states replace prototype sample content. The phone Signals view adds a 56px scoped
+top accommodation for the real sticky application chrome; the artboard did not model
+that overlap. These differences preserve the approved hierarchy and interaction
+contract rather than introducing a new design direction.
+
+**Reuse in Session 5.** Repository and Resources should reuse the committed-domain
+rules proven here: exact-query revisions, body retention on matching `204`,
+last-known-good presentation while loading, stale-response cancellation, honest
+unavailable states, the shared session tab/phone More navigation, and evidence links
+only when their normalized association is proven. Do not reuse Activity's 32px
+disclosure exception outside its documented phone call line.
+
+Work is uncommitted on branch `claude/ia-redesign-session-3` at base
+`f94f4a15cd0d165da56b5eae840c52ed7932762e`. Sessions 4–6 and T07–T13 remain
+unchecked; T12 still owns deletion of this plan and its prototype. Stop before
+Session 4.
 
 2026-09-17 · **Session 3 part 2 of 7 done: T06 desktop Activity feed.** ACOS run
 `runs/2026-09-16-ia-session-3/2-activities-desktop-feed` (manifest, log and stage artifacts

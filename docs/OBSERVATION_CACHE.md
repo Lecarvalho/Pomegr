@@ -84,12 +84,19 @@ F consumes the browser API and never fills or owns a backend cache.
 D derives `ActivityFeed` from the full retained normalized event set: total,
 tool-call count, message/input count, failed-shell count, and bounded WorkKind
 counts with median resolved wall durations. S serves only its newest 200 items;
-The small state feed remains a summary projection. The session Activity panel
-uses the separate paged history contract below. Totals can exceed the state
-window. No page or agent-scope action acquires provider evidence.
-Explicit request selection navigates F to a linked row's page using only that
-committed window, revealing All agents if the current Activity scope hides it.
-Background revisions preserve later-page anchors and do not trigger navigation.
+the small state feed remains a summary projection. Activities consumes the
+separate paged request-group history below: five groups around its selection,
+with calls nested only when their recorded request association validates. Totals
+can exceed the state window. No page, range, selection, or agent-scope action
+acquires provider evidence. Unlinked normalized events remain retained where
+supported but do not enter the grouped feed.
+
+Explicit request selection uses the committed exact query to align chart, request
+details, and feed. A browser sends a revision only for that exact retained query;
+a matching `204` retains its body. New range or selection queries fetch a committed
+body, preserve last-known-good bodies while loading, and cancellation or a stale
+response cannot replace a newer selection. Background revisions preserve anchored
+older selections; historical sessions never follow live additions.
 
 Activity items add only nullable `durationMs` (0–86,400,000 ms) and `requestId`
 (the opaque ID of a served request snapshot). U2 pairs recorded call/result
@@ -125,8 +132,12 @@ D projects each committed session into seven independently revisioned response d
 readiness-qualified agent status counts, all-agent context, current-agent rows, two efficiency signals, a repository summary,
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
 kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
-flag used only to decide whether the Resources tab can be hidden. `signals` owns flow and cache evidence;
-the other domains retain their corresponding normalized public state. The inspector
+flag used only to decide whether the Resources tab can be hidden. `signals` owns the
+committed Efficiency, Cache evidence, Cache lifetime, and agent-reported Reported
+signals sections. Deterministic evidence and labeled inferences remain distinct from
+agent-reported signals, which may be stale. Missing source evidence remains unavailable;
+historical and current projections remain isolated. The other domains retain their
+corresponding normalized public state. The inspector
 also carries bounded selected-agent request, insight, cache and task evidence. Each
 composed domain preserves the readiness of its source sections: a ready core does not
 make missing agent, context, activity or request evidence ready. Request-strip readiness

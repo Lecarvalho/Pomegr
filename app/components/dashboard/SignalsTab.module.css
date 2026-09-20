@@ -25,4 +25,12 @@
 :global(.signalsLifetimeList li:first-child), :global(.signalsReportedRow:first-child), :global(.signalsCacheEvidenceRow:first-child) { padding-top: 0; border-top: 0; }
 :global(.signalsLifetimeList strong) { font-family: var(--font-data); font-weight: 500; }
 :global(.signalsReportedRow p), :global(.signalsCacheEvidenceRow p) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
-@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .tab {
+    --signals-phone-sticky-offset: 56px;
+    margin-top: calc(-1 * var(--signals-phone-sticky-offset));
+    padding-top: var(--signals-phone-sticky-offset);
+    scroll-margin-top: var(--signals-phone-sticky-offset);
+  }
+  .grid { grid-template-columns: 1fr; }
+}
