@@ -86,6 +86,10 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 1080px\)[\s\S]*?\.commandPaletteTrigger\s*\{\s*width:\s*200px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*44px/);
     expect(styles).toMatch(/\.commandPalette\s*\{[^}]*box-shadow:\s*var\(--command-overlay-shadow\)/);
+    expect(styles).toMatch(/\.commandSearch:focus-within\s*\{[^}]*border-color:\s*var\(--command-ink\);[^}]*outline:\s*0/);
+    expect(styles).toMatch(/\.commandSearch input:focus-visible\s*\{[^}]*outline:\s*0/);
+    expect(styles).toMatch(/\.commandPalette > header:focus-within\s*\{[^}]*border-bottom-color:\s*var\(--command-line-strong\)/);
+    expect(styles).toMatch(/\.commandPalette > header input:focus-visible\s*\{[^}]*outline:\s*0/);
     expect(shellSource).not.toMatch(/hasBreadcrumb|sessionBreadcrumb/);
     expect(commandPageSource).toMatch(/export function CommandPageHeader/);
     expect(styles).toMatch(/\.commandPageTabs\s*\{[^}]*border-bottom:\s*1px solid var\(--command-line\)/);

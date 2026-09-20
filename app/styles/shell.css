@@ -82,7 +82,9 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandPaletteBackdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: start center; padding: min(15vh, 120px) 16px 16px; background: color-mix(in srgb, var(--command-ground) 48%, transparent); }
 .commandPalette { width: min(640px, 100%); overflow: hidden; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); }
 .commandPalette > header { min-height: 52px; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--command-line); color: var(--command-muted); }
+.commandPalette > header:focus-within { border-bottom-color: var(--command-line-strong); }
 .commandPalette > header input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--command-ink); font: 500 var(--text-base)/1.4 var(--font-ui); }
+.commandPalette > header input:focus-visible { outline: 0; }
 .commandPalette > header input::placeholder { color: var(--command-muted); opacity: 1; }
 .commandPaletteResults { max-height: min(52vh, 420px); overflow: auto; padding: 6px; }
 .commandPaletteResults > button { width: 100%; min-height: 56px; padding: 8px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 14px; align-items: center; gap: 11px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; text-align: left; }

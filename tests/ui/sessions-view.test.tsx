@@ -35,6 +35,18 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it("keeps search, scope presets, and the result count in one filter toolbar", () => {
+    render(<SessionCatalogProvider sessions={[session(1), session(2)]}><SessionsView /></SessionCatalogProvider>);
+    const toolbar = screen.getByRole("toolbar", { name: "Filter sessions" });
+    const scope = within(toolbar).getByRole("group", { name: "Session scope" });
+    expect(within(toolbar).getByRole("searchbox", { name: "Filter sessions" })).toBeInTheDocument();
+    expect(within(scope).getAllByRole("button")).toHaveLength(3);
+    expect(within(scope).getByRole("button", { name: /^All/ })).toBeInTheDocument();
+    expect(within(scope).queryByRole("button", { name: /^History/ })).not.toBeInTheDocument();
+    expect(within(toolbar).getByText("2 matches")).toBeInTheDocument();
+    expect(screen.getAllByRole("toolbar")).toHaveLength(1);
+  });
+
   it("composes repository and project filters without matching older unassociated rows", async () => {
     const repositoryId = "repo-0123456789abcdef01234567";
     const sessions = [
@@ -55,7 +67,7 @@ describe("Sessions view", () => {
     render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView initialRepositoryId="repo-0123456789abcdef01234567" /></SessionCatalogProvider>);
     expect(screen.getByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
   });
-  it("moves a confirmed closed Claude session from Live to History without claiming completion", async () => {
+  it("moves a confirmed closed Claude session from Live into All without claiming completion", async () => {
     const user = userEvent.setup();
     const open: SessionSummary = { ...session(1), id: "claude:session-1", provider: "claude", source: "Claude Code", isLive: true, activityStatus: "open", progress: null };
     const view = render(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
@@ -63,7 +75,7 @@ describe("Sessions view", () => {
     expect(screen.getByText("Open")).toBeInTheDocument();
     view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "closed" }]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^History/ }));
+    await user.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Closed")).toBeInTheDocument();
     expect(screen.queryByText(/Unknown|Complete|Stopped/)).not.toBeInTheDocument();
   });
@@ -82,8 +94,8 @@ describe("Sessions view", () => {
     expect(screen.getByText("Open")).toBeInTheDocument();
     expect(screen.queryByText("Idle")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /^History/ }));
-    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^All/ }));
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
     await user.click(screen.getByRole("button", { name: /^Live/ }));
     view.rerender(<SessionCatalogProvider sessions={[running]}><SessionsView /></SessionCatalogProvider>);
     expect(visibleSessionTitles()).toEqual(["Session 1"]);
@@ -91,7 +103,7 @@ describe("Sessions view", () => {
 
     view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "idle" }]}><SessionsView /></SessionCatalogProvider>);
     expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^History/ }));
+    await user.click(screen.getByRole("button", { name: /^All/ }));
     expect(visibleSessionTitles()).toEqual(["Session 1"]);
     expect(screen.getByText("Idle")).toBeInTheDocument();
   });
@@ -203,7 +215,7 @@ describe("Sessions view", () => {
     await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 12");
     expect(visibleSessionTitles()).toEqual(["Session 12"]);
     expect(screen.queryByRole("navigation", { name: "Session pages" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("toolbar", { name: "Search sessions" })).getByText("1 matches")).toBeInTheDocument();
+    expect(within(screen.getByRole("toolbar", { name: "Filter sessions" })).getByText("1 matches")).toBeInTheDocument();
   });
 
   it("shows normalized fallback activity with visible provenance while retaining the current mark", async () => {

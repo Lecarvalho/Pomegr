@@ -140,7 +140,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
-  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | "history" | null>(null);
+  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | null>(null);
   const [page, setPage] = useState(1);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const filter = selectedFilter ?? (liveSessionCount > 0 ? "live" : "all");
@@ -150,7 +150,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
     if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
     if (filter === "live" && !session.isLive) return false;
-    if (filter === "history" && session.isLive) return false;
     if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
     return true;
   })), [filter, project, initialRepositoryId, query, sessions]);
@@ -159,16 +158,18 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;
   const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
   const providerSettingsAvailable = useProviderSettingsAvailable();
-  const filters = <CommandToolbar label="Session filters">
-        {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
-        <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
-        <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
-        <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
-        <CommandFilter active={filter === "history"} onClick={() => updateFilter("history")} count={sessions.length - liveSessionCount}>History</CommandFilter>
-      </CommandToolbar>;
-  return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." action={filters} busy={loading && !sessions.length}>
+  return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={loading && !sessions.length}>
     <div className="commandSessionsDirectory">
-      <CommandToolbar label="Search sessions"><CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" /><span className="commandToolbarCount">{filteredSessions.length} matches</span></CommandToolbar>
+      <div className="commandSessionsToolbar"><CommandToolbar label="Filter sessions">
+        <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
+        <div className="commandSessionFilters" role="group" aria-label="Session scope">
+          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
+          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
+          <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
+          <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
+        </div>
+        <span className="commandToolbarCount" aria-live="polite">{filteredSessions.length} matches</span>
+      </CommandToolbar></div>
       <CommandTable
         caption="Observed Pomegr sessions"
         rows={filteredSessions}

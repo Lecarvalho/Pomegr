@@ -96,7 +96,16 @@
   .repositoryRowActions .repositorySetupInstructions summary { min-height: 44px; }
 }
 .commandToolbar { min-height: 48px; margin-top: 24px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); flex-wrap: wrap; }
-.commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; background: var(--command-ground); }
+.commandSearch { min-width: 0; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-muted); }
+.commandSearch:focus-within { border-color: var(--command-ink); outline: 0; }
+.commandSearch > .commandIcon { flex: 0 0 auto; }
+.commandSearch input { min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--command-ink); caret-color: var(--command-brand-text); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.commandSearch input:focus-visible { outline: 0; }
+.commandSearch input::placeholder { color: var(--command-muted); opacity: 1; }
+.commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; }
+.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, max-content) minmax(11ch, 1fr); }
+.commandSessionsToolbar .commandSearch { width: 100%; }
+.commandSessionFilters { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 /* Keep filter controls above the legacy button shape and shell font resets. */
 .commandToolbar .commandFilterChip { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; font: 500 var(--text-sm)/1.3 var(--font-ui); white-space: nowrap; }
 .commandToolbar .commandFilterChip:hover { border-color: var(--command-line-strong); background: var(--command-panel-2); color: var(--command-ink); }
@@ -106,6 +115,13 @@
   .commandToolbar .commandFilterChip, .commandToolbar .commandSearch { min-height: 44px; }
 }
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
+.commandSessionsToolbar .commandToolbarCount { width: 11ch; margin-left: 0; justify-self: end; text-align: right; }
+@media (max-width: 900px) {
+  .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(0, 1fr); }
+  .commandSessionFilters { width: 100%; max-width: 100%; }
+  .commandSessionFilters .commandFilterChip { flex: 0 0 auto; }
+  .commandSessionsToolbar .commandToolbarCount { justify-self: start; text-align: left; }
+}
 /* Official chip: shared by AgentChip (.agentChip in evidence.css) and Command Center session badges. Tone modifiers recolor text (and the optional dot) only; chips stay transparent outline labels. */
 .commandChip { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); background: transparent; font: 500 var(--text-caption)/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }
 .commandChip > i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--command-line-strong); }
