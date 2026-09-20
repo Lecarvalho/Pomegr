@@ -42,6 +42,7 @@ import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesCo
 import { resetSessionDomainStoreForTests } from "../../app/session-domain-store";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { MonitorState, SessionSummary } from "../../shared/monitor-contract";
+import type { SignalsDomain } from "../../shared/session-domain-contract";
 import { repositorySession } from "./dashboard-test-fixtures";
 import { sessionSummaryFixture } from "./session-summary-test-fixture";
 
@@ -54,8 +55,37 @@ function composedState(overrides: Partial<MonitorState> = {}): MonitorState {
   state.session = { ...repositorySession({ available: true, branch: "feature/session-tabs", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }), id: SESSION_ID, title: "Recorded implementation session", project: "Pomegr" };
   return { ...state, ...overrides };
 }
+function signalsDomain(state: MonitorState): SignalsDomain {
+  return {
+    domain: "signals",
+    sessionId: SESSION_ID,
+    revision: typeof state.revision === "number" ? state.revision : 0,
+    readiness: "ready",
+    observedAt: "2026-09-14T12:00:00.000Z",
+    sectionReadiness: { activityEvidence: "ready", contextEvidence: "ready" },
+    score: state.score,
+    flowScore: {
+      score: state.score,
+      repeatedCalls: state.metrics.repeatedCalls ?? null,
+      overlappingTargets: state.metrics.overlappingTargets ?? null,
+    },
+    insights: state.insights,
+    loops: state.loops,
+    toolPatterns: state.toolPatterns,
+    sessionSignal: state.session?.signal || null,
+    agents: state.agents.map(({ id, label, cacheLifetime, signal }) => ({ id, label, cacheLifetime, signal })),
+    cacheEvents: state.metrics.tokens.cacheEvents,
+    cacheReadDrops: state.metrics.tokens.cacheReadDrops,
+  };
+}
 function mount(query = {}, summary = sessionSummaryFixture(), state = composedState(), catalogSessions = [catalog()]) {
-  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/session-domain") ? json(summary) : String(input).startsWith("/api/state") ? json(state) : new Response(null, { status: 404 }));
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.startsWith("/api/session-domain") && url.includes("domain=signals")) return json(signalsDomain(state));
+    if (url.startsWith("/api/session-domain")) return json(summary);
+    if (url.startsWith("/api/state")) return json(state);
+    return new Response(null, { status: 404 });
+  });
   const view = render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={catalogSessions}><Dashboard initialSessionId={SESSION_ID} initialQuery={query} /></SessionCatalogProvider></DisplayPreferencesProvider>);
   return { ...view, fetchMock };
 }
@@ -366,7 +396,7 @@ describe("T04 session workspace", () => {
       composedState({ insights: [{ id: "insight-1", level: "warning", title: "Repeated reads", detail: "The same target was read repeatedly.", agentId: "primary" }] }),
     );
     expect(await screen.findByText("Repeated reads")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("link", { name: "Show agent" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show agent" }));
     const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
     expect(url).toMatch(/tab=agents/);
     expect(url).toMatch(/agent=primary/);

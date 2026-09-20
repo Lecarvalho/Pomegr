@@ -9,6 +9,7 @@ import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
 import { AgentsTab } from "./components/dashboard/AgentsTab";
 import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
+import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
@@ -160,7 +161,8 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
       {activeTab === "overview" && <SessionOverview summary={summary} query={initialQuery} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} summary={summary} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
-      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
+      {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onNavigateActivities={({ agent, request }) => navigate({ tab: "activities", agent, request })} />}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
     </div>
   </section>;
 }

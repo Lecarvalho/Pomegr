@@ -78,10 +78,10 @@ function detailedState(sessionId: string, options: {
   };
 }
 
-function tabElement(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" | "signals" }) {
+function tabElement(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
   return <LiveClockProvider running={false}><LegacySessionTab historical={false} paused={false} showEstimatedCost onNavigateAgent={noop} {...props} /></LiveClockProvider>;
 }
-function renderTab(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" | "signals" }) {
+function renderTab(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
   return render(tabElement(props));
 }
 

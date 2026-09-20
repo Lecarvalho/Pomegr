@@ -1,93 +1,58 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CacheEvent, RequestSnapshot } from "../../shared/monitor-contract";
-import { CacheEvidenceDisclosure } from "../../app/components/dashboard/CacheEvidenceDisclosure";
-import { agent } from "./dashboard-test-fixtures";
+import { describe, expect, it, vi } from "vitest";
+import type { SignalsDomain } from "../../shared/session-domain-contract";
+import { SignalsCacheEvidenceSection } from "../../app/components/dashboard/signals/SignalsCacheEvidenceSection";
+import { SignalsLifetimeSection } from "../../app/components/dashboard/signals/SignalsLifetimeSection";
 
-const snapshot: RequestSnapshot = {
-  id: "request-1",
-  agentId: "primary",
-  observedAt: "2026-08-09T12:00:00.000Z",
-  cacheLifetime: "1h",
-  uncachedInputTokens: 1_000,
-  cacheWriteTokens: 10_000,
-  cacheReadTokens: 0,
-  outputTokens: 500,
-  totalTokens: 11_500,
-  precedingWork: [],
-  precedingAssociation: null,
-  issuedWork: [],
-  issuedAssociation: null,
-};
+const agents: SignalsDomain["agents"] = [
+  { id: "primary", label: "Primary agent", cacheLifetime: "1h", signal: null },
+  { id: "worker", label: "Worker", cacheLifetime: "30m+", signal: null },
+];
+const readyEvents: SignalsDomain["cacheEvents"] = { status: "ready", items: [{ id: "event-1", agentId: "primary", kind: "refill", observedAt: "2026-09-19T12:00:00.000Z", promptInputTokens: 2_000, cacheReadPercent: 10, cacheWriteTokens: 1_000, previousCacheReadPercent: null, gapMs: null, relatedEventId: null }], possibleFullRefills: [{ agentId: "worker", count: 1, reasons: [], toolChangeAttributions: [], occurrences: [{ observedAt: "2026-09-19T13:00:00.000Z", reason: null, providerStatus: "previous_cache_entry_unavailable", cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime: "1h", elapsedMs: 3_600_000 }, messageChangeSequence: null, toolChangeAttribution: { cause: "remote_control_connected", changes: [{ tool: "ListAgents", kind: "definition_changed" }] } }] }] };
+const readyDrops: SignalsDomain["cacheReadDrops"] = { status: "ready", items: [{ agentId: "primary", count: 2, occurrences: [{ id: "drop-model", observedAt: "2026-09-19T14:00:00.000Z", previousCacheReadPercent: 90, cacheReadPercent: 5, gapMs: 1_000, kind: "model_change" }, { id: "drop-possible", observedAt: "2026-09-19T15:00:00.000Z", previousCacheReadPercent: 80, cacheReadPercent: 4, gapMs: 1_000 }] }] };
 
-function event(id: string, observedAt: string, agentId = "primary"): CacheEvent {
-  return {
-    id,
-    agentId,
-    kind: "refill",
-    observedAt,
-    promptInputTokens: 10_000,
-    cacheReadPercent: 5,
-    cacheWriteTokens: 10_000,
-    previousCacheReadPercent: null,
-    gapMs: null,
-    relatedEventId: null,
-  };
+function renderEvidence(overrides: Partial<React.ComponentProps<typeof SignalsCacheEvidenceSection>> = {}) {
+  return render(<SignalsCacheEvidenceSection agents={agents} cacheEvents={readyEvents} cacheReadDrops={readyDrops} historical={false} activityTargets={new Map([["event-1", { agent: "primary", request: "request-1" }]])} onOpenActivity={vi.fn()} {...overrides} />);
 }
 
-function renderDisclosure(overrides: Partial<React.ComponentProps<typeof CacheEvidenceDisclosure>> = {}) {
-  const events = Array.from({ length: 7 }, (_, index) => event(`event-${index}`, new Date(Date.parse("2026-08-09T12:00:00.000Z") + index * 60_000).toISOString()));
-  return render(<CacheEvidenceDisclosure
-    agents={[agent]}
-    cacheEvents={{ status: "ready", items: events, possibleFullRefills: [] }}
-    requestSnapshots={{ status: "ready", items: [snapshot] }}
-    cacheWriteAvailable
-    historical={false}
-    {...overrides}
-  />);
-}
-
-describe("cache evidence disclosure", () => {
-  afterEach(() => window.localStorage.removeItem("pomegr-disclosure-cache-evidence"));
-
-  it("starts closed and summarizes the complete event count", () => {
-    const { container } = renderDisclosure();
-    const details = container.querySelector("details.cacheEvidenceDisclosure")!;
-    expect(details).not.toHaveAttribute("open");
-    expect(details.querySelector("summary")).toHaveTextContent("Cache evidence7 events");
-  });
-
-  it("persists its open state", async () => {
-    const user = userEvent.setup();
-    const first = renderDisclosure();
-    await user.click(first.container.querySelector("summary")!);
-    expect(window.localStorage.getItem("pomegr-disclosure-cache-evidence")).toBe("true");
-    first.unmount();
-    const second = renderDisclosure();
-    expect(second.container.querySelector("details.cacheEvidenceDisclosure")).toHaveAttribute("open");
-  });
-
-  it("reveals all events through the existing expansion control", () => {
-    renderDisclosure();
-    fireEvent.click(screen.getByText("Cache evidence", { selector: ".dashboardDisclosureTitle" }));
-    const list = screen.getByRole("list");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
-    fireEvent.click(screen.getByRole("button", { name: "Show 2 earlier events" }));
-    expect(within(list).getAllByRole("listitem")).toHaveLength(7);
-  });
-
-  it("keeps unmatched events noninteractive and selects an exact normalized match", () => {
-    const onSelectSnapshot = vi.fn();
-    renderDisclosure({
-      cacheEvents: { status: "ready", items: [event("unmatched", "2026-08-09T13:00:00.000Z"), event("matched", "2026-08-09T08:00:00.000-04:00")], possibleFullRefills: [] },
-      onSelectSnapshot,
-    });
-    fireEvent.click(screen.getByText("Cache evidence", { selector: ".dashboardDisclosureTitle" }));
+describe("Signals cache evidence", () => {
+  it("presents evidence newest-first with observed, inferred, and attributed qualifications", () => {
+    renderEvidence();
     const rows = within(screen.getByRole("list")).getAllByRole("listitem");
-    const matched = within(rows[0]).getByRole("button", { name: /Locate Cache refill/ });
-    expect(within(rows[1]).queryByRole("button")).not.toBeInTheDocument();
-    fireEvent.click(matched);
-    expect(onSelectSnapshot).toHaveBeenCalledWith(snapshot);
+    expect(rows[0]).toHaveTextContent("Possible cache refill · inference");
+    expect(screen.getByText(/Provider count observed/)).toBeInTheDocument();
+    expect(screen.getByText(/Inference: 1h cache lifetime elapsed/)).toBeInTheDocument();
+    expect(screen.getByText(/Attributed: remote control connected/)).toBeInTheDocument();
+    expect(screen.getByText(/No refill, expiry, or causation claim/)).toBeInTheDocument();
+  });
+  it("opens Activities only for an explicit supported association", () => {
+    const onOpenActivity = vi.fn(); renderEvidence({ onOpenActivity });
+    fireEvent.click(screen.getByRole("button", { name: "Open in Activities" }));
+    expect(onOpenActivity).toHaveBeenCalledWith({ agent: "primary", request: "request-1" });
+    expect(screen.getAllByRole("button", { name: "Open in Activities" })).toHaveLength(1);
+  });
+  it("keeps unsupported evidence informative and noninteractive", () => {
+    renderEvidence({ activityTargets: new Map() });
+    expect(screen.queryByRole("button", { name: "Open in Activities" })).not.toBeInTheDocument();
+    expect(screen.getByText("Observed cache refill")).toBeInTheDocument();
+  });
+  it("has honest unavailable and historical-empty states", () => {
+    const { rerender } = renderEvidence({ cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] }, cacheReadDrops: { status: "unavailable", items: [] } });
+    expect(screen.getByText("Comparable cache evidence is unavailable.")).toBeInTheDocument();
+    rerender(<SignalsCacheEvidenceSection agents={agents} cacheEvents={{ status: "ready", items: [], possibleFullRefills: [] }} cacheReadDrops={{ status: "ready", items: [] }} historical activityTargets={new Map()} onOpenActivity={vi.fn()} />);
+    expect(screen.getByText("No cache evidence was recorded for this session.")).toBeInTheDocument();
+  });
+});
+
+describe("Signals cache lifetime", () => {
+  it("shows normalized lifetimes and documents the minimum without treating it as expiry", () => {
+    render(<SignalsLifetimeSection agents={agents} readiness="ready" />);
+    expect(screen.getByText("1h")).toBeInTheDocument(); expect(screen.getByText("≥30m")).toBeInTheDocument();
+    expect(screen.getByText("≥30m is a documented minimum, not a recorded expiry.")).toBeInTheDocument();
+  });
+  it("does not invent lifetimes when context evidence is unavailable", () => {
+    render(<SignalsLifetimeSection agents={agents} readiness="unavailable" />);
+    expect(screen.getAllByText("unavailable")).toHaveLength(2);
+    expect(screen.getByText("Context evidence is unavailable, so cache lifetimes are unavailable.")).toBeInTheDocument();
   });
 });
