@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
 import { compactNumber } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
+import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
 import { RepositoryRow } from "../repositories/RepositoryRow";
@@ -139,12 +140,13 @@ const BUTTON_ROLES: ButtonRole[] = [
     id: "quiet",
     name: "Quiet",
     selector: ".commandQuietAction",
-    contract: "No border, no fill, muted 12px/500, min-height 28px, padding 0 6px, gap 6px, optional 14px direct-child icon. Used for optional actions such as Download report and sort cycling.",
+    contract: "No border, no fill, muted 12px/500, min-height 28px, padding 0 6px, gap 6px, optional 14px direct-child icon. Used for optional actions such as Download report and sort cycling. Panel headings compose it as .panelHeadingLink.",
     hover: "Hover and [aria-expanded=\"true\"] tint the background with 6% ink (color-mix) and lift the text to ink; :active uses 10%.",
     activeLabel: "Expanded",
     render: ({ active, disabled }) => <>
       <button type="button" className="commandQuietAction" aria-expanded={active ? "true" : undefined} disabled={disabled}><DownloadIcon />Download report</button>
       <button type="button" className="commandQuietAction" aria-expanded={active ? "true" : undefined} disabled={disabled}>by uncached input</button>
+      <PanelHeadingLink id="design-system-panel-heading" onOpen={() => undefined}>Efficiency signals</PanelHeadingLink>
     </>,
   },
   {

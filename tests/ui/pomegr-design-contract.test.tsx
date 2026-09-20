@@ -189,6 +189,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandSegmented > button\[aria-pressed="true"\]\s*\{\s*background:\s*var\(--command-panel-2\);\s*color:\s*var\(--command-ink\)/);
     expect(styles).toMatch(/\.commandQuietAction\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*0 6px;[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*color:\s*var\(--command-muted\)/);
     expect(styles).toMatch(/\.commandQuietAction:hover:not\(:disabled\)[^{]*\{[^}]*color-mix\(in srgb, var\(--command-ink\) 6%, transparent\)/);
+    expect(styles).toMatch(/\.commandQuietAction\.panelHeadingLink\s*\{[^}]*padding:\s*0;[^}]*color:\s*var\(--command-ink\);[^}]*font:\s*inherit/);
+    expect(styles).toMatch(/\.commandQuietAction\.panelHeadingLink > svg\s*\{\s*color:\s*var\(--command-faint\)/);
     expect(styles).toMatch(/\.commandTextLink\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--command-brand-text\)[^}]*font-weight:\s*400/);
     expect(styles).toMatch(/\.commandTextLink:hover:not\(:disabled\)\s*\{\s*text-decoration:\s*underline;\s*text-underline-offset:\s*3px/);
     expect(styles).toMatch(/\.commandIconAction\s*\{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*border:\s*0/);
