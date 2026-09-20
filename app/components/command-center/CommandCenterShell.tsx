@@ -130,14 +130,13 @@ export type SidebarLimit = { provider: string; percent: number; label: string };
 
 export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: ReturnType<typeof useUsageLimits>["providers"], referenceTime: number): SidebarLimit[] {
   const after = referenceTime - 7 * 24 * 60 * 60 * 1000;
-  const activeProviders = new Set(sessions.filter((session) => {
+  const recentProviders = new Set(sessions.filter((session) => {
     const createdAt = session.createdAt ? Date.parse(session.createdAt) : NaN;
     return Number.isFinite(createdAt) && createdAt >= after;
   }).map((session) => session.provider));
   return providers.flatMap((entry) => {
-    if (!activeProviders.has(entry.provider)) return [];
-    const activeWindows = entry.usageLimits?.limits?.filter((limit) => limit.active) || [];
-    const tightest = [...activeWindows].sort((left, right) => right.percent - left.percent)[0];
+    if (!recentProviders.has(entry.provider)) return [];
+    const tightest = [...(entry.usageLimits?.limits || [])].sort((left, right) => right.percent - left.percent)[0];
     return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: tightest.window || tightest.label }] : [];
   });
 }

@@ -548,6 +548,13 @@ No unresolved product decision blocks implementation. The latest approved rules 
 
 ## Continuation checkpoint
 
+2026-09-20 · **T03 sidebar limits correction complete.** The rail now follows the
+approved one-row-per-recent-provider rule and selects each provider's
+highest-percentage available window without treating the provider's
+active-or-reached flag as a visibility gate. UI coverage includes ordinary
+unreached Claude and Codex windows; Session 4 remains the next implementation
+session.
+
 ### Session 3 checkpoint
 
 2026-09-20 · **Session 3 complete — T06 Activities and T06b Signals.** ACOS run
@@ -1352,8 +1359,9 @@ T03 behavior and ownership:
   selection, contained focus and Escape restoration. Both keyboard and pointer
   openers close other shell overlays. New buttons compose `commandQuietAction`.
 - Sidebar limits use catalog sessions created in the last seven days and the
-  tightest active provider window. Inactive-only windows are omitted. Text and
-  bar fills share the 75/85-percent severity thresholds. This is shell data,
+  highest-percentage available provider window. Ordinary unreached windows remain
+  eligible so every recently observed provider with usage data can appear. Text
+  and bar fills share the 75/85-percent severity thresholds. This is shell data,
   separate from historical session evidence.
 - `CommandViews.tsx`, `app/HomeDashboard.tsx`, `app/hooks/useHomePreferences.ts`,
   `app/components/agents/AgentsView.tsx`,

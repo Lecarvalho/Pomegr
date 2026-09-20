@@ -204,15 +204,27 @@ describe("Command Center app shell", () => {
     expect(screen.getByRole("complementary", { name: "Primary navigation" })).not.toHaveClass("isOpen");
   });
 
-  it("shows only active account windows for recently observed providers", () => {
-    const recent = [{ ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" }];
-    const providers = [{ provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
-      { id: "five-hour", label: "Five hour", window: "5 hours", percent: 74, resetsAt: null, severity: "normal", active: true },
-      { id: "seven-day", label: "Seven day", window: "7 days", percent: 85, resetsAt: null, severity: "critical", active: true },
-      { id: "inactive", label: "Inactive", window: "Inactive", percent: 99, resetsAt: null, severity: "critical", active: false },
-    ] } }] satisfies HomeProviderUsageLimits[];
-    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([{ provider: "Claude Code", percent: 85, label: "7 days" }]);
-    expect(sidebarLimitsForCatalog(recent, [{ ...providers[0], usageLimits: { ...providers[0].usageLimits, limits: [{ id: "inactive", label: "Inactive", window: "Inactive", percent: 99, resetsAt: null, severity: "critical", active: false }] } }], Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([]);
+  it("shows the tightest available window for every recently observed provider", () => {
+    const recent = [
+      { ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" },
+      { ...sessions[1], createdAt: "2026-08-24T11:59:00.000Z" },
+    ];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "five-hour", label: "Five hour", window: "5 hours", percent: 74, resetsAt: null, severity: "normal", active: true },
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 85, resetsAt: null, severity: "critical", active: false },
+      ] } },
+      { provider: "codex", source: "Codex", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "codex-primary", label: "Codex", window: "5 hours", percent: 64, resetsAt: null, severity: "normal", active: false },
+        { id: "codex-secondary", label: "Codex", window: "7 days", percent: 78, resetsAt: null, severity: "warning", active: false },
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 85, label: "7 days" },
+      { provider: "Codex", percent: 78, label: "7 days" },
+    ]);
+    expect(sidebarLimitsForCatalog(recent, [{ ...providers[1], usageLimits: { ...providers[1].usageLimits, limits: [] } }], Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([]);
   });
 
   it("keeps the desktop update offer in the persistent rail", async () => {
