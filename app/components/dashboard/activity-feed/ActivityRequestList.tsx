@@ -109,20 +109,19 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
           // row pattern) and the agent link sits beside it without nesting one control in another.
           : <div className={`activityRow activityRequestRow${selected ? " selected" : ""}`}>
             <button type="button" className="commandQuietAction activityRequestSelect" aria-pressed={selected} aria-label={ariaLabel}
-              onClick={selectRequest} aria-disabled={busy || undefined}><strong>Request #{group.request.number}</strong></button>
+              onClick={selectRequest} aria-disabled={busy || undefined}><strong className="requestsActionsNumber">#{group.request.number}</strong></button>
             <span className="activityRequestWho">
               {agent
-                ? <button type="button" className="commandTextLink activityRequestAgent" aria-label={`Open ${agentName} in the Agents inspector`}
+                ? <button type="button" className="commandQuietAction activityRequestAgent" aria-label={`Open ${agentName} in the Agents inspector`}
                   onClick={() => onOpenAgent(group.request.agentId)}>{agentName}</button>
                 : <strong>{agentName}</strong>}
               <span>{roleLabel}</span>
             </span>
             <span className="activityRequestTokens">{tokens && <>
-              <i className="requestsActionsSwatch uncached" />{tokens.uncachedInputTokens.toLocaleString()}{" "}
-              {cacheWriteAvailable && <><i className="requestsActionsSwatch write" />{tokens.cacheWriteTokens.toLocaleString()}{" "}</>}
-              <i className="requestsActionsSwatch output" />{tokens.outputTokens.toLocaleString()}
+              <span className="activityTokenValue uncached">{tokens.uncachedInputTokens.toLocaleString()}</span>
+              {cacheWriteAvailable && <span className="activityTokenValue write">{tokens.cacheWriteTokens.toLocaleString()}</span>}
+              <span className="activityTokenValue output">{tokens.outputTokens.toLocaleString()}</span>
             </>}</span>
-            <span>{callsText}</span>
           </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}
         {group.calls.length > 0 && <ul className="activityTable">
@@ -137,7 +136,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
               }} />
             : <li key={call.id} className={`activityDesktopCallRow activityRow${call.status === "failed" ? " failed" : ""}`}>
               <time dateTime={call.timestamp}>{shortTime(call.timestamp)}</time>
-              <span className="activityAction"><WorkKindIcon kind={call.workKind} /><strong>{call.tool}</strong></span>
+              <span className="activityAction"><WorkKindIcon kind={call.workKind} /><span className="activityActionLabel">{call.tool}</span></span>
               <span className="target">{call.detail ? targetBasename(call.detail) : "—"}</span>
               <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`}>{activityDuration(call.durationMs)}</span>
             </li>)}
@@ -157,6 +156,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
     </footer>
     {phone
       ? <p className="activityFeedCaveat">Requests with their tool calls · tap a call for details · <DottedInfoPopover ariaLabel="How to read this feed" content={PHONE_HOW_TO_READ}>how to read this</DottedInfoPopover></p>
-      : <p><DottedInfoPopover ariaLabel="About request rows" content="Each request's uncached input, cache write and output are request-local and never summed across requests. Tool calls nest under their request with wall duration. Targets show Bash descriptions and file names only.">Local counts only.</DottedInfoPopover></p>}
+      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Each request's uncached input, cache write and output are request-local and never summed across requests. Tool calls nest under their request with wall duration. Targets show Bash descriptions and file names only.">Request-local counts</DottedInfoPopover></p>}
   </div>;
 }

@@ -154,9 +154,10 @@ describe("Pomegr visual contract", () => {
     expect(denseActivityRow.map(({ selector }) => selector).filter((selector) => !/\.activityCallLine\b/.test(selector))).toEqual([]);
 
     expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
-    expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*96px minmax\(0, 1fr\) minmax\(12rem, 18rem\) 72px/);
-    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*96px 72px minmax\(0, 1fr\) minmax\(0, 1\.5fr\) 72px/);
-    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow > time\s*\{[^}]*grid-column:\s*2/);
+    expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*52px minmax\(0, 1fr\) max-content/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*52px max-content 132px minmax\(0, 1fr\) 72px/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow > time\s*\{[^}]*grid-column:\s*2[^}]*white-space:\s*nowrap/);
+    expect(activityStyles).toMatch(/\.activityActionLabel\s*\{[^}]*font-weight:\s*400/);
     expect(evidenceStyles).not.toMatch(/\.activity(?:Panel|Layout|CallLine|RequestRow|DesktopCallRow)\b/);
   });
 

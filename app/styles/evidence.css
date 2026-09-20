@@ -680,7 +680,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 
 /* Requests */
 .commandSessionView .requestsActionsPanel { overflow: hidden; background: var(--command-panel); border-color: var(--command-line); }
-.requestsActionsHeader { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(140px, 160px); align-items: center; gap: 16px; min-height: 52px; padding: 16px 20px; }
+.requestsActionsHeader { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 160px) auto; align-items: center; gap: 16px; min-height: 52px; padding: 12px 20px 4px; }
 .requestsActionsHeading { display: flex; flex: 0 0 auto; align-items: center; gap: 16px; white-space: nowrap; }
 .requestsActionsHeading h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.4; }
 .requestsActionsLegend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--command-muted); font-size: var(--text-caption); }
@@ -691,12 +691,14 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsSwatch.output, .requestsActionsSegment.output { background: var(--command-amber); fill: var(--command-amber); }
 .requestsActionsSwatch.read, .requestsActionsSegment.read { background: color-mix(in srgb, var(--command-line-strong) 45%, transparent); fill: color-mix(in srgb, var(--command-line-strong) 45%, transparent); }
 .requestsActionsSwatch.compaction { height: 0; border-top: 1px dashed var(--command-amber); }
-.requestsActionsScope.contextScopeControl { width: 100%; grid-template-columns: minmax(0, 1fr); padding-left: 12px; border-left: 1px solid var(--command-line); }
+.requestsActionsScope.contextScopeControl { width: 100%; grid-template-columns: minmax(0, 1fr); }
 .requestsActionsScope .commandSelect { min-width: 0; }
 .requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
 .requestsActionsPlot { padding: 0 20px 8px; scroll-margin-top: 80px; }
+.requestsActionsGuide { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding-bottom: 6px; }
 .requestsActionsScale { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; color: var(--command-muted); font-size: 12px; }
 .requestsActionsScale strong { color: var(--command-ink); font: 500 12px var(--font-data); font-variant-numeric: tabular-nums; }
+.requestsActionsGuide .requestsActionsLegend { justify-content: flex-end; margin-left: auto; }
 .requestsActionsChart { display: block; width: 100%; height: 274px; overflow: visible; }
 .requestsActionsAxis text, .requestsActionsSelectedLabel { fill: var(--command-faint); font: var(--text-caption) var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsAxis line { stroke: var(--command-panel-2); stroke-width: 1; }
@@ -775,15 +777,13 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsLargestBar i { display: block; height: 100%; background: var(--command-line-strong); }
 .requestsActionsRetention { margin: 0; padding: 8px 20px; border-top: 1px solid var(--command-line); color: var(--command-faint); font-size: var(--text-caption); }
 @media (max-width: 1200px) {
-  .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) auto minmax(120px, 160px); gap: 12px; }
-  .requestsActionsLegend { grid-column: 1 / -1; grid-row: 2; }
+  .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) auto; gap: 12px; }
 }
 @media (min-width: 761px) and (max-width: 950px) {
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(120px, 160px); }
   .requestsActionsHeading { grid-column: 1 / -1; }
-  .requestsActionsModes { grid-column: 1; grid-row: 2; justify-self: start; }
-  .requestsActionsScope { grid-column: 2; grid-row: 2; }
-  .requestsActionsLegend { grid-row: 3; }
+  .requestsActionsScope { grid-column: 1; grid-row: 2; }
+  .requestsActionsModes { grid-column: 2; grid-row: 2; justify-self: end; }
 }
 @media (max-width: 760px) {
   /* Phone keeps the Largest strip under the minimap: one full-width 44px row per request. */
@@ -795,7 +795,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsHeading .sessionEyebrow { display: none; }
   .requestsActionsScope.contextScopeControl { grid-column: 2; grid-row: 1; padding: 0; border: 0; }
   .requestsActionsModes { grid-column: 1 / -1; grid-row: 2; }
-  .requestsActionsLegend { grid-row: 3; gap: 5px 10px; }
+  .requestsActionsGuide { align-items: flex-start; }
+  .requestsActionsGuide .requestsActionsLegend { width: 100%; justify-content: flex-start; margin-left: 0; gap: 5px 10px; }
   .requestsActionsScope .commandSelect select { min-height: 44px; }
   .requestsActionsLargest > header .commandQuietAction { width: auto; }
   .requestsActionsPlot { padding: 10px 14px 12px; }

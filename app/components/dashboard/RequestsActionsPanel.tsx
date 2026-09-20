@@ -62,25 +62,27 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   return <section className="panel requestsActionsPanel" aria-label="Requests">
     <header className="requestsActionsHeader">
       <div className="requestsActionsHeading"><h2><DottedInfoPopover ariaLabel="About request links" content={<>{!requestHistory.preview && <>{requestHistory.enabled ? "Request numbers are stable labels within this session, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent), not provider ids."} </>}Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.</>}>Requests</DottedInfoPopover></h2><span className="sessionEyebrow">One bar per model request</span></div>
-      <div className="requestsActionsLegend" aria-label="Chart legend">
-        <span><i className="requestsActionsSwatch uncached" />{phone ? "Uncached" : "Uncached input"}</span>
-        {cacheWriteAvailable && <span><i className="requestsActionsSwatch write" />Cache write</span>}
-        {mode === "full" && <span><i className="requestsActionsSwatch read" />Cache read</span>}
-        <span><i className="requestsActionsSwatch output" />Output</span>
-        <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>
-        {rows.some((row) => row.cacheEvidence?.kind === "refill") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Possible full refill dotted</span>}
-        {rows.some((row) => row.cacheEvidence?.kind === "possible_refill") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Possible refill dotted</span>}
-        {rows.some((row) => row.cacheEvidence?.kind === "model_change") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Reuse drop · model change dotted</span>}
-      </div>
+      <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>
       <div className="requestsActionsModes">
         <div className="commandSegmented" role="group" aria-label="Chart mode">{([['fresh', 'Fresh tokens'], ['full', 'Full breakdown']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} key={value} onClick={() => setMode(value)}>{label}</button>)}</div>
         {!phone && <div className="commandSegmented" role="group" aria-label="Chart layout">{([['lanes', 'Lanes'], ['single', 'Single chart']] as const).map(([value, label]) => <button type="button" aria-pressed={layout === value} key={value} onClick={() => setLayout(value)}>{label}</button>)}</div>}
       </div>
-      <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>
     </header>
     {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && historyStatus === "loading" ? "Loading request history…" : requestHistory.enabled && historyStatus === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
-        <p className="requestsActionsScale" aria-live="polite"><strong>{single ? `0–${compactNumber(maximum)} tokens` : <DottedInfoPopover ariaLabel="About lanes" content="Each lane has its own scale; max is its tallest request on the loaded page. Click a lane name to focus that agent across the tab, and click it again to show all agents. With more than eight lanes, workflow groups collapse; click a group name to expand it.">Per-lane scales</DottedInfoPopover>}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
+        <div className="requestsActionsGuide">
+          <p className="requestsActionsScale" aria-live="polite"><strong>{single ? `0–${compactNumber(maximum)} tokens` : <DottedInfoPopover ariaLabel="About lanes" content="Each lane has its own scale; max is its tallest request on the loaded page. Click a lane name to focus that agent across the tab, and click it again to show all agents. With more than eight lanes, workflow groups collapse; click a group name to expand it.">Per-lane scales</DottedInfoPopover>}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
+          <div className="requestsActionsLegend" aria-label="Chart legend">
+            <span><i className="requestsActionsSwatch uncached" />{phone ? "Uncached" : "Uncached input"}</span>
+            {cacheWriteAvailable && <span><i className="requestsActionsSwatch write" />Cache write</span>}
+            {mode === "full" && <span><i className="requestsActionsSwatch read" />Cache read</span>}
+            <span><i className="requestsActionsSwatch output" />Output</span>
+            <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>
+            {rows.some((row) => row.cacheEvidence?.kind === "refill") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Possible full refill dotted</span>}
+            {rows.some((row) => row.cacheEvidence?.kind === "possible_refill") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Possible refill dotted</span>}
+            {rows.some((row) => row.cacheEvidence?.kind === "model_change") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Reuse drop · model change dotted</span>}
+          </div>
+        </div>
         {single
           ? <RequestBarsChart rows={rows} start={start} end={end} size={size} maximum={maximum} mode={mode} selectedId={selected.id} phone={phone} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow}
             agents={agents} onInspect={setInspectedId} />

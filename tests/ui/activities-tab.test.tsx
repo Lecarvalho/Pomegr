@@ -385,31 +385,42 @@ describe("Activities tab", () => {
 
     const group = within(feed).getByRole("article", { name: "Request #38" });
     const row = group.querySelector(".activityRequestRow");
-    expect(row).toHaveTextContent("Request #38Primary agentorchestrator");
+    expect(row).toHaveTextContent("#38Primary agentorchestrator");
     // The link lives on the request line, not in a row of its own beneath it.
-    expect(row).toContainElement(within(group).getByRole("button", { name: "Open Primary agent in the Agents inspector" }));
+    const agentControl = within(group).getByRole("button", { name: "Open Primary agent in the Agents inspector" });
+    expect(row).toContainElement(agentControl);
+    expect(agentControl).toHaveClass("commandQuietAction");
+    expect(agentControl).not.toHaveClass("commandTextLink");
     expect(group.querySelector(".activityRequestRow + .commandTextLink")).toBeNull();
 
     // A subagent's request names the subagent, never the session's primary agent.
     const childGroup = within(feed).getByRole("article", { name: "Request #37" });
-    expect(childGroup.querySelector(".activityRequestRow")).toHaveTextContent("Request #37Builderbuilder");
+    expect(childGroup.querySelector(".activityRequestRow")).toHaveTextContent("#37Builderbuilder");
     expect(within(childGroup).getByRole("button", { name: "Open Builder in the Agents inspector" })).toBeInTheDocument();
   });
 
   it.each([
     { cacheWriteAvailable: true, expectedTokens: "1,960,000 2,000 4,000" },
     { cacheWriteAvailable: false, expectedTokens: "1,960,000 4,000" },
-  ])("keeps the desktop request row's four cells aligned when cache-write availability is $cacheWriteAvailable", async ({ cacheWriteAvailable, expectedTokens }) => {
+  ])("keeps the desktop request row's three cells aligned when cache-write availability is $cacheWriteAvailable", async ({ cacheWriteAvailable, expectedTokens }) => {
     fixture({ cacheWriteAvailable });
     const feed = await ready();
     const row = within(feed).getByRole("article", { name: "Request #40" }).querySelector(".activityRequestRow.activityRow")!;
 
-    expect(Array.from(row.children)).toHaveLength(4);
-    expect(row.children[0]).toHaveTextContent("Request #40");
+    expect(Array.from(row.children)).toHaveLength(3);
+    expect(row.children[0]).toHaveTextContent("#40");
     expect(row.children[1]).toHaveTextContent("Primary agentorchestrator");
-    expect(row.children[2]).toHaveTextContent(expectedTokens);
-    expect(row.children[3]).toHaveTextContent("2 calls");
-    expect(Boolean(row.querySelector(".requestsActionsSwatch.write"))).toBe(cacheWriteAvailable);
+    expect(Array.from(row.querySelectorAll(".activityTokenValue"), (value) => value.textContent).join(" ")).toBe(expectedTokens);
+    expect(Boolean(row.querySelector(".activityTokenValue.write"))).toBe(cacheWriteAvailable);
+    expect(row.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
+  });
+
+  it("places the token legend beside the chart guide instead of between the request heading and controls", async () => {
+    const { container } = fixture();
+    await ready();
+
+    expect(container.querySelector(".requestsActionsHeader .requestsActionsLegend")).not.toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsGuide > .requestsActionsLegend")).toBeInTheDocument();
   });
 
   it("renders the rail and request-row caveats as short text that expand via DottedInfoPopover", async () => {
@@ -417,7 +428,8 @@ describe("Activities tab", () => {
     fixture();
     const feed = await ready();
     expect(within(feed).getByText("Counts, not effort or cost.")).toBeInTheDocument();
-    expect(within(feed).getByText("Local counts only.")).toBeInTheDocument();
+    expect(within(feed).getByText("Request-local counts")).toBeInTheDocument();
+    expect(within(feed).getByText("Request-local counts").closest(".activityFeedCaveat")).toBeInTheDocument();
     await user.click(within(feed).getByRole("button", { name: "About these counts" }));
     expect(screen.getByRole("dialog", { name: "About these counts" })).toHaveTextContent("Counts describe recorded tool calls, not effort or quality.");
     await user.keyboard("{Escape}");
@@ -506,11 +518,11 @@ describe("Activities tab", () => {
     expect(group.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
   });
 
-  it("hides the cache-write swatch and its aria-label text when cache-write usage is unavailable", async () => {
+  it("hides the cache-write token and its aria-label text when cache-write usage is unavailable", async () => {
     fixture({ cacheWriteAvailable: false });
     const feed = await ready();
     expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
-    expect(feed.querySelector(".requestsActionsSwatch.write")).not.toBeInTheDocument();
+    expect(feed.querySelector(".activityTokenValue.write")).not.toBeInTheDocument();
   });
   it("tints only the duration text of a failed phone call line", async () => {
     setPhone(true);

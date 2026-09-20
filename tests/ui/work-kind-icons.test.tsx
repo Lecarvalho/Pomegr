@@ -33,7 +33,7 @@ describe("work-kind icons", () => {
     const group: ActivityRequestGroup = { request, calls, noMatchingCalls: false, continuation: null };
     const { container, getByText } = render(<LiveClockProvider running={false}><ActivityWithSelection groups={[group]} /></LiveClockProvider>);
     expect(getByText("Activity feed")).toBeInTheDocument();
-    expect([...container.querySelectorAll(".activityAction strong")].map((node) => node.textContent)).toEqual(["Assistant replied", "Summary updated"]);
+    expect([...container.querySelectorAll(".activityActionLabel")].map((node) => node.textContent)).toEqual(["Assistant replied", "Summary updated"]);
     expect([...container.querySelectorAll(".target")].map((node) => node.textContent)).toEqual(["—", "—"]);
     expect(getByText("Primary agent")).toBeInTheDocument();
   });
