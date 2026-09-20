@@ -7,7 +7,7 @@ names; treat every number as placeholder.
 
 The plan owns implementation decisions within the repository's current contracts.
 Where a drawing differs, follow the plan and the explicit overrides below.
-Only the `Mobile` export was regenerated for version 50 (thin 32px phone call lines that expand in place); the other exports remain version 46.
+Only the `Mobile` export was regenerated for version 50 (thin 32px phone call lines that expand in place). On 2026-09-20 the `Main`, `SignalsTab`, `RepositoryTab` and `Mobile` exports were regenerated from version 53 and `OverviewSparse` was added, for the [overview sparse state and link rule plan](../../overview-sparse-and-links.md); their only drawing changes are the link treatment described under [Links](#links) and the new sparse artboard. The remaining exports are version 46.
 
 Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifact/eb54dd04-0c68-450d-8c04-ab4776816fd9
 
@@ -16,6 +16,7 @@ Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifa
 - [0 · Header standard](HeaderStandard-html/HeaderStandard.dc.html)
 - [1 · Proposed sitemap](Sitemap-html/Sitemap.dc.html)
 - [2 · Session overview (L1)](Main-html/Main.dc.html)
+- [2b · Session overview (L1): sparse state, session just started](OverviewSparse-html/OverviewSparse.dc.html)
 - [3 · Session › Agents tab (L2): roster and selected-agent pane](SessionAgents-html/SessionAgents.dc.html)
 - [5 · Session › Signals tab (L2)](SignalsTab-html/SignalsTab.dc.html)
 - [6 · Phone: Overview, Agents, agent sheet, Activities, expanded call, More sheet](Mobile-html/Mobile.dc.html)
@@ -50,6 +51,14 @@ Desktop has Lanes / Single chart; single chart includes the role-family track. P
 ### Header
 
 Session header = hero + KPI strip, identical on every tab (no collapsed variant). Overview is the first tab and holds Right now, signals, repository one-liner, request strip and progress. Nothing session-specific sits above the tab bar except the header.
+
+### Sparse overview
+
+The overview does not reserve space for evidence that does not exist yet (artboard 2b). The Requests strip always has the same number of slots as the full state, so a bar is the same width with 5 requests as with 48; unused slots show only the baseline and an empty role-track cell. With one or two agents, Right now spans the full width and sizes to its rows, with signals and repository side by side below; from three agents up the two-column layout of artboard 2 returns. A panel with no evidence is not rendered: without a progress estimate or plan tasks there is no Progress panel, and Work by kind and Cost share the row. Sub-minute medians are omitted. The latest-context meter drawn on the 2b agent row is not approved for implementation: the session summary exposes no context-window size for its Right now agents, so the app prints the latest context count only.
+
+### Links
+
+Decision 2026-09-20. A panel whose content continues on a tab uses its heading as the link (title plus a muted chevron, ink on hover) with no header-right link; a count the old link carried moves next to the title. Evidence rows are the link: the whole row opens its events in Activities and ends in a muted chevron, request numbers inside a row are plain mono ink, and a second destination is a quiet action (**Show agent**). Leaving the session for another page is a quiet action with a chevron. The brand text link stays for expanders and at most one in-content pointer per panel. On phone the heading link keeps a 44px tap box.
 
 ### Limits
 

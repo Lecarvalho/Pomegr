@@ -107,6 +107,11 @@ working checklist, not runtime authority; [DESIGN.md](../../DESIGN.md),
 [Observation cache](../OBSERVATION_CACHE.md), and [Metrics](../METRICS.md) own
 shipped behavior.
 
+The [overview sparse state and link rule plan](plans/overview-sparse-and-links.md)
+is an approved, not yet implemented UI change to the session Overview and Signals
+tabs. It reuses the redesign prototype artboards and moves its rules into
+[DESIGN.md](../../DESIGN.md) as its tasks complete.
+
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not
 make them current authority or evidence of shipped features. Active plans will

@@ -477,6 +477,7 @@ Owner: UI (`app/components/repositories/`, `app/components/dashboard/`). Artboar
 - Session Repository tab: top bar as in the artboard; commit lists removed from the session page; PR popover replaced by the chip and second line.
 - Repository page Files tab beside the existing tabs; Git tab gains the commit lists that left the session page.
 - Deep links with `path` on both sides.
+- Links follow the prototype README link rule (2026-09-20): **Git tab on repository page** and **All history on repository page** are quiet actions with a trailing chevron, not brand text links; session titles in the file history panel stay ink-colored.
 - Historical sessions: recorded branch, recorded files, PR state at last check, never the current tree. This needs the T00 checkpoint additions: today `recordedGitState` in `monitor/server.mjs` keeps only the branch and returns empty files, null comparison, empty commits, and unavailable pull requests for historical sessions. Persist files, comparison, and pull-request state at the last live check and serve them from the `repository` domain.
 - "Commits in session" is a new count. Today the repository section carries the last eight commits on HEAD regardless of session. Count commits whose committed time falls inside the session's wall-time window on the recorded branch, or drop the number from the second line.
 - Compare against both artboards.
