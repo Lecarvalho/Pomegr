@@ -9,7 +9,7 @@ outputs: [try-it]
 check:
   kind: review
   criteria: "Every crop shows what its caption claims; none is empty, cut off or of the wrong state."
-on_fail: ask
+on_fail: retry
 prompt: |
   You are the evidence worker. You receive the implementer's report with
   its capture lines, one per claim. Do not change any source file.

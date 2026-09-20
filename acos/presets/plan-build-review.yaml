@@ -24,7 +24,7 @@ stages:
     adapter: subagent
     effort: high
     model: "{{ project.models.strong }}"
-    on_fail: ask
+    on_fail: retry
 
 loop:
   max_iterations: 3

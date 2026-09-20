@@ -8,7 +8,7 @@ outputs: [review]
 check:
   kind: review
   criteria: "Diff matches the plan, no unrelated changes, no obvious defects."
-on_fail: ask
+on_fail: retry
 prompt: |
   You are the reviewer. Do not modify any file.
 

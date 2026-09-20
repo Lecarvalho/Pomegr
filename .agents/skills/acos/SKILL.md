@@ -491,6 +491,8 @@ On GO:
         `adapter: subagent` on that iteration and count it against
         `limits.agents`.
       - `ask`: show the check output and ask the user: retry, skip, stop.
+        This is opt-in only: catalog blocks and shipped presets must not
+        default to `ask`.
       - `stop`: end the run as failed.
       A failed `review` check is handled cheaply whatever `on_fail`
       says: fix the blockers inline (you hold the review text; add a

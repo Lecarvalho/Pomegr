@@ -46,7 +46,7 @@ stages:
     adapter: subagent
     model: "{{ project.models.balanced }}"
     effort: low
-    on_fail: ask
+    on_fail: retry
 
 loop:
   max_iterations: 3
