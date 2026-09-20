@@ -54,7 +54,7 @@ limits:
                                  # fan-out. A session running three slices
                                  # legitimately touches three times this.
   lines: 400                     # added plus removed, same per-context meaning
-  orchestrator_tokens: 100000
-  worker_tokens: 300000
+  orchestrator_tokens: 120000
+  worker_context_tokens: 300000
   agents: 3
   stages: 5

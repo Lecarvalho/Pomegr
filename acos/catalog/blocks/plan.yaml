@@ -3,7 +3,7 @@ role: "Turn intent plus context into an ordered, checkable implementation plan; 
 default:
   adapter: inline
   # No effort: an inline stage runs at the session's. When this block is
-  # delegated instead, effort comes from the shared SKILL's Economy rules.
+  # delegated instead, effort comes from the skill's Economy rules.
 inputs: [context]
 outputs: [plan]
 check:
@@ -20,6 +20,11 @@ prompt: |
   Prefer the smallest change that satisfies the intent. If two designs
   are reasonable, pick one and say why in one line.
 
+  If this plan part defers visible evidence to a named later part, copy
+  every visible claim, URL and capture target into `part.evidence` and
+  require a deterministic command check before this part closes. The
+  final evidence part must repeat the claims and name every part it covers.
+
   When the plan feeds more than one implementer (a fan-out), write it as
   `artifacts/plan.md` with one section per slice, headed `## <stage name>`.
   Each implementer receives only its own section, so each section must
@@ -31,6 +36,8 @@ prompt: |
   - what "done" looks like, in checkable sentences
   - when the slice changes a visible surface: one capture line per claim
     (`claim | url | selector or --full | eval if needed`) for the evidence
-    stage; the implementer keeps them current in its report
+    stage; the implementer keeps them current in its report. When evidence
+    is deferred, these exact lines also go into the handoff and the final
+    evidence part's manifest.
   A shared file two slices would both edit is a cut error: give it one
   owner, or say it must be handled before the fan-out starts.

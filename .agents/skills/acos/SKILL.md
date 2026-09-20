@@ -94,13 +94,16 @@ These decide most of the manifest. Apply them before anything else.
   read, behind a fresh session's startup each time. Unavoidable overlap
   is allowed: one owner, `assumes` in the later part, and one line
   saying so.
-- **Delegating does not save tokens; it saves your context and time.** A
+- **Delegating does not save aggregate context; it saves your lane and time.** A
   subagent starts cold: it re-reads the repo docs and every file it
   touches, then runs the check itself. Budget 150k worker tokens for any
   subagent before it writes a line, its own startup included. What makes
   it pay: the worker runs on a cheaper tier, its context dies when it
   returns, and yours is re-sent every turn until the session ends. Never
-  delegate to hide spend; delegate because the work is separable.
+  delegate to hide reserved volume; delegate because the work is separable.
+  Compare each worker with `limits.worker_context_tokens`, never the sum
+  of workers with that per-context ceiling. Only `worker_tokens_total`,
+  when present, caps aggregate worker reservations.
 - **Tier by role, effort only where it exists.** You plan, brief, judge
   and hand off on the session model. Fan-out implementers run on
   `{{ project.models.balanced }}` at medium. Evidence runs on `balanced`
@@ -138,7 +141,11 @@ These decide most of the manifest. Apply them before anything else.
   either, no capture stage and no try-it page. When it runs, it is a
   subagent that runs the captures, looks at every crop and captions it;
   the pixels never enter your context, and its verdict is a check the part
-  must pass before it closes.
+  must pass before it closes. A visible part may defer evidence to one
+  named final part only when deterministic verification passes, its
+  `part.evidence` records every claim and capture target, and the final
+  part carries all of them and names every part it covers. Evidence is
+  batched, never dropped.
 - **Effort matches the delegated stage**, not the task: a fan-out
   implementer medium, evidence low, review high. Inline stages carry
   none, and no model either.
@@ -147,7 +154,7 @@ These decide most of the manifest. Apply them before anything else.
   seen `adapter: workflow` in the manifest before GO. Codex uses its native
   parallel subagents for the same shape.
 - **Orchestrator context is the scarce resource.** Default ceiling when
-  `limits.orchestrator_tokens` is absent: 100000, of which the startup
+  `limits.orchestrator_tokens` is absent: 120000, of which the startup
   load is already gone before you read a file.
 
 ## 1. Understand intent
@@ -176,24 +183,37 @@ other way round.
 2. **Subtract the startup load.** Read the active profile's `startup`
    (`orchestrator`, `subagent`; 40k and 25k when the key is absent).
    Your work budget for this part is `limits.orchestrator_tokens` minus
-   `startup.orchestrator` — with the defaults, 60k, not 100k. Every
+   `startup.orchestrator` — with the defaults, 80k, not 120k. Every
    part of a plan pays that startup again, in its own session. Put the
-   figure in `estimate.startup_tokens` and name it in `basis`.
-3. **Derive tokens.** Use `acos/calibration.md` Cost figures when
-   present. Otherwise these floors, which are measured, not hopeful:
-   - inline implement: 40k + 12k per file touched, on top of your startup
-   - any subagent: 150k + 15k per file it touches, its own startup included
-   - review subagent: 200k
+   figure in `estimate.orchestrator.startup_tokens` and name it in `basis`.
+3. **Classify and reserve context.** Use `acos/calibration.md` Cost
+   figures when they apply. Otherwise set `calibration: fallback`,
+   `confidence: low`, and use these conservative floors:
+   - semantic inline: 40k + 12k per file touched, on top of your startup
+   - semantic worker: 150k + 15k per file touched, worker startup included
+   - mechanical inline (delete, rename-only, import cleanup, generated
+     replacement): 8k + 2k per file, on top of startup; deleted lines do
+     not increase it
+   - mechanical worker: worker startup + 10k + 3k per file
+   - command-only verification: 0 model tokens
+   - evidence worker: 60k
+   - review worker: 200k
+   - delegated-stage coordination: 10k once per part with any delegation,
+     recorded in `estimate.orchestrator.coordination_tokens`
    - a review is expected to fail once: add one fix (half the implement
      cost) to every part that has a review stage
-   Tokens mean what the harness reports for the whole agent, re-read
-   context included. That is the number `actual` will hold, so it is the
-   number to estimate.
+   Record each worker separately with its stage, work class, reservation
+   and per-worker limit. `aggregate_reserved_tokens` is their sum plus
+   the orchestrator reservation; it is context volume, not a fit value or
+   observed usage. Set `observed_tokens: null`. If project calibration
+   supplies the applicable values, use `calibration: project` and a
+   confidence justified by its sample instead.
 4. **Learn from earlier parts.** When sizing or running a part of a plan
    whose `plan.yaml` has `actual` on earlier parts, scale by the mean
-   actual/estimate ratio of those parts: tokens where `actual` has them,
-   otherwise files and lines, then re-derive tokens from step 3. Say so
-   in `basis`, and re-cut the part if the scaled figure breaks a limit.
+   measured-actual/reservation ratio for matching lanes and work classes;
+   when tokens were not measured, use files and lines, then re-derive from
+   step 3. Never copy a reservation into `actual`. Say what ratio was used
+   in `basis`, and re-cut the part if a lane breaks its own limit.
 5. **Distrust a guess that lands just under the limit.** If most parts
    estimate between 80% and 100% of a limit, you fitted the guesses to
    the limit. Recount from step 1 and cut further.
@@ -214,18 +234,21 @@ other way round.
    per slice, one verify on the merged tree. One group stays inline
    unless your remaining budget cannot hold it, and then it is one
    implementer, not a second part. A file two slices would both edit
-   goes to one owner or is done before the fan-out. Slice tokens: your
-   plan and briefs at the inline floor for the files you read, plus the
-   subagent floor per slice as worker tokens, plus about 60k worker
-   tokens for evidence when there is a visible surface. Your own reading
-   of the results is small; say so in `basis`.
+   goes to one owner or is done before the fan-out. Reserve your plan and
+   briefs in the orchestrator work lane, one semantic worker lane per
+   slice, an evidence worker lane when there is a visible surface, and
+   10k of orchestration coordination once for the part. State each lane
+   in `basis`; do not collapse them to decide fit.
 7. **Order the parts by what they build on.** Each part's `after` lists
    the parts it needs in the tree. Default is the part before it. A part
    in a subtree no other part touches waits only for the parts it truly
    needs; the presentation says which parts may run alongside which.
 
-Compare with `limits` from `.acos.yaml` (or the defaults above), against
-the work budget from step 2, not the raw ceiling.
+Compare like with like: the orchestrator reservation with
+`limits.orchestrator_tokens`, every worker reservation independently with
+`limits.worker_context_tokens`, and their sum with
+`limits.worker_tokens_total` only when that optional aggregate ceiling
+exists. Never compare aggregate reserved volume with a context limit.
 
 - Fits: one manifest. With `/acos plan`, say in one line that it fits a
   single run and no plan is needed, then compose the manifest (section
@@ -245,11 +268,11 @@ the work budget from step 2, not the raw ceiling.
 **Confirm the cut before writing anything.** Very short:
 
 ```
-Too big for one session (~<files> files, ~<tokens> work vs <limit> minus <startup> startup).
+Too big for one session (~<files> files; <lane that does not fit>: ~<reserved> / <limit>).
 Proposed cut, <n> parts, one owner per file:
-  1. <what>   <paths it owns>   ~<files> files   ~<tokens>
-  2. <what>   <paths it owns>   ~<files> files   ~<tokens>
-  3. <what>   <paths it owns>   ~<files> files   ~<tokens>
+  1. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <lane list>
+  2. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <lane list>
+  3. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <lane list>
 Shared: <path> owned by <n>, assumed by <m>   (only when a file could not be given one owner)
 OK to write the plan, or change the cut?
 ```
@@ -269,8 +292,9 @@ runs/<plan-id>/<index>-<slug>/manifest.yaml     one per part
 ```
 
 `plan.yaml` holds: intent, limits, one entry per part (index, dir,
-summary, `owns`, estimate, status `planned`), total estimate with
-`sessions: <n>` and one `startup_tokens` counted per session.
+summary, `owns`, estimate, status `planned`), and plan-wide
+`aggregate_reserved_tokens` with `sessions: <n>`. That total counts one
+orchestrator startup per session and is labelled as context volume, not fit.
 
 Then present the plan, not the manifests. A table, and nothing the user
 did not ask to see:
@@ -279,20 +303,27 @@ did not ask to see:
 intent: <one line, what the whole plan makes true>
 sessions: <n>
 
-| part | summary | files | subagents | tokens |
-|------|---------|-------|-----------|--------|
-| 1 | <a few words> | 4 | 0 | ~85k |
-| 2 | <a few words> | 6 | 3 | ~240k |
-| 3 | <a few words> | 3 | 1 | ~120k |
+| part | summary | files | orchestrator | workers |
+|------|---------|-------|--------------|---------|
+| 1 | <a few words> | 4 | ~88k / 120k | none |
+| 2 | <a few words> | 6 | ~65k / 120k | implement-a ~195k / 300k; implement-b ~195k / 300k |
+| 3 | <a few words> | 3 | ~50k / 120k | evidence ~60k / 300k |
 
 Manifests: runs/<plan-id>/<index>-<slug>/manifest.yaml
 Next: /acos run runs/<plan-id> 1
 ```
 
-The columns come straight off each part's `estimate`: `files`, `agents`,
-and `orchestrator_tokens` plus `worker_tokens` as one figure, rounded to
-thousands. Summary is a few words, not a sentence; the manifest holds the
-detail. One part per row, in run order, and no other columns.
+The columns come straight off each part's `estimate`: files, the
+orchestrator lane, and every worker lane. Never add unlike lanes into a
+column called `tokens`, and never compare their sum with a context limit.
+Summary is a few words, not a sentence; the manifest holds the detail.
+One part per row, in run order, and no other columns.
+
+After the table, when useful, one explicit volume line may appear:
+`reserved context volume: ~<aggregate> across <contexts> contexts; not
+observed usage`. When calibration is absent, add: `Conservative context
+reservation from ACOS fallback floors; actual usage is unknown until
+execution.`
 
 Below the table, two lines at most. The first only when it is true:
 which parts may run at the same time, where `after` is not simply the
@@ -324,11 +355,13 @@ Each must therefore be complete on its own: intent, scope, stages,
    compose error: say which one and stop.
 4. Generate `id`: `YYYY-MM-DD-<short-slug-of-intent>`.
 5. Fill `scope` only if the user gave hints or it is obvious. Otherwise omit.
-6. Estimate: `files`, `lines`, `startup_tokens`, `orchestrator_tokens`
-   (startup included), `worker_tokens`, `agents`, tokens per stage, all
-   from sizing (section 2). Write `basis` saying where the startup
-   figure came from, which figures came from `calibration.md`, which
-   from the floors, and any ratio applied from earlier parts. Add `cost` only if the
+6. Estimate: `files`, `lines`, `calibration`, `confidence`, the
+   orchestrator's startup/work/coordination/reserved/limit values, one
+   worker entry per delegated stage, `aggregate_reserved_tokens`,
+   `observed_tokens: null`, `agents`, and per-stage work classes and
+   reservations. Write `basis` saying where startup came from, which
+   figures came from project calibration or fallback floors, and any
+   ratio applied from earlier measured parts. Add `cost` only if the
    catalog has prices for the chosen models.
 7. Copy `limits` from `.acos.yaml`; apply any per-run override the user
    gave in sizing.
@@ -365,6 +398,13 @@ catalog:
 
 If a stage needs a model or effort other than the session's, delegate it.
 
+For deferred evidence, the earlier manifest records
+`part.evidence.deferred_to` and every claim, URL and capture target. Its
+last non-evidence stage must have a deterministic command check. The
+named final part records `covers_parts`, repeats every deferred claim and
+contains the evidence stage. A missing or changed claim is a compose
+error.
+
 ## 4. Present and wait for GO
 
 For `/acos run`, first read the manifest. If it has `part.assumes`, check
@@ -386,24 +426,28 @@ not the file:
 ```
 run: <slug>                              (`part <i> of <n> — <slug>` in a plan)
 intent: <one line>
-budget: ~<tokens> of <limit>   (<startup> startup + <work> work)
+orchestrator: ~<reserved> / <limit>   (<startup> startup + <work> work + <coordination> coordination)
+workers: <stage> ~<reserved> / <per-worker-limit>; <stage> ~<reserved> / <per-worker-limit>
 
-| stage | runs on | check | tokens |
-|-------|---------|-------|--------|
-| 1 <name> | inline | <check> | ~<tokens> |
-| 2 <name> | <model>, <effort> | <check> | ~<tokens> |
+| stage | runs on | class | check | reservation |
+|-------|---------|-------|-------|-------------|
+| 1 <name> | inline | semantic | <check> | ~<tokens> |
+| 2 <name> | <model>, <effort> | review | <check> | ~<tokens> |
+
+reserved context volume: ~<aggregate> across <contexts> contexts; not observed usage
+<fallback provenance line when calibration is absent>
 
 Manifest: runs/<id>/manifest.yaml
 Reply GO, or tell me what to change.
 ```
 
-Every token figure is rounded to thousands: `~176k of 280k`, never
+Every reservation figure is rounded to thousands: `~176k / 280k`, never
 `~176000/280000`. The precision is not there, and the line is read at a
 glance.
 
 Print nothing that is zero or already visible. No stage count — the table
-has rows. No agent or worker line when nothing is delegated; when
-something is, one line under budget: `agents: 3 of 3   workers: ~450k`.
+has rows. Omit the workers line when nothing is delegated. Never call the
+aggregate volume a budget, forecast, actual, spend, or fit result.
 No plan id in the header: it is the first segment of the Manifest path
 directly below.
 
@@ -532,8 +576,10 @@ record.
 
 1. Append to `log.yaml`: `ended`, `outcome`, and `actual` with `files`
    and `lines` from `git diff --stat` (new files included), `agents`,
-   and tokens only where adapters reported them. Leave out what was not
-   measured; never write an estimate as `actual`.
+   and an `observed` block only for token counts adapters or a usage
+   observer measured. Keep orchestrator and worker observations separate;
+   add `aggregate_tokens` only from those measurements. Leave out what was
+   not measured; never write an estimate or reservation as `actual`.
 2. If the manifest is a part, set its `status` in `plan.yaml` to `done`
    or `failed`, and copy `actual` next to its `estimate` there.
 3. If later parts build on this one, write `artifacts/handoff.md`, at
@@ -546,8 +592,12 @@ record.
    caption, and its first line was `VERDICT: PASS`. You do not open the
    crops yourself unless the verdict named one; the evidence agent looked
    at every one before captioning it. A part that ends without that
-   verdict has failed, whatever the tests say. A part with no visible
-   surface writes none.
+   verdict has failed, whatever the tests say. The only exception is an
+   approved evidence deferral: deterministic verification passed,
+   `part.evidence` carries every claim and target to its named later part,
+   and the handoff repeats them. The final evidence part cannot defer
+   again and must pass every carried claim. A part with no visible surface
+   writes none.
 5. Leave nothing running. A server, browser or background shell a stage
    started is stopped before the report, and anything temporary a stage
    wrote lives under `runs/<id>/` or the session's scratchpad, never in the
@@ -588,8 +638,8 @@ Goal: write a correct `.acos.yaml` without the user editing a template.
 5. Pick `preset`: leave unset. Ad hoc composition is the default until
    the user saves one.
 6. Set `gates.go: required`. Set `limits` to the defaults
-   (`files: 8`, `lines: 400`, `orchestrator_tokens: 100000`,
-   `worker_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
+   (`files: 8`, `lines: 400`, `orchestrator_tokens: 120000`,
+   `worker_context_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
    gave others.
 7. Measure the **startup load for each harness**: what a session of this project holds
    before it reads a line of code. Every estimate starts from it, so a
@@ -637,8 +687,9 @@ sizing and compose more accurate for this repo.
    `actual`), planned versus executed stages (added,
    dropped, re-ordered), models and efforts planned versus used
    (delegated stages only; inline ones ran at their session's),
-   iterations per stage, adapters used and agent count, tokens estimated
-   versus actual where present, runs whose actual exceeded a limit.
+   iterations per stage, adapters used and agent count, reserved versus
+   measured tokens by matching lane and work class where present, and
+   runs whose measured lane exceeded its corresponding limit.
    Plans count too: each part directory is a run; note how many parts
    plans had, and whether parts turned out too big or too small.
 4. Look for patterns across runs, not per run: which stages get dropped,
@@ -705,6 +756,10 @@ Refuse to overwrite an existing preset without asking.
   `on_fail: ask` or a gate.
 - Limits and estimates act at compose time only. Nothing checks them
   mid-run; `calibrate` does that afterwards.
+- Fit is per context lane. Aggregate reserved volume is never called
+  usage and is compared only with an explicit aggregate limit.
+- Command-only stages reserve zero model tokens. Mechanical deletions and
+  renames use the mechanical class, regardless of removed line count.
 - Scope is advisory. Warn once if a worker writes outside `scope.include`.
 - Workers do not commit. The user decides.
 - One clarifying question at most before sizing. A plan is presented, not
