@@ -421,6 +421,25 @@ describe("T04 session workspace", () => {
     expect(bars + tracks.querySelectorAll(".sessionRequestBarSlot").length).toBe(48);
   });
 
+  it("draws only the latest 24 request slots on phone", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    try {
+      const base = sessionSummaryFixture();
+      const items = Array.from({ length: 30 }, (_, index) => ({ ...base.requestSnapshots.items[0]!, id: `request-${index + 1}` }));
+      const { container } = mount({ tab: "overview" }, sessionSummaryFixture({ requestSnapshots: { status: "ready", items } }));
+      await screen.findByRole("button", { name: "Requests" });
+      expect(container.querySelector(".sessionRequestStrip .sessionRequestSummary")).toHaveTextContent("fresh tokens · last 24");
+      const tracks = container.querySelector(".sessionRequestTracks")!;
+      expect(tracks.querySelectorAll("button")).toHaveLength(24);
+      expect(tracks.querySelectorAll(".sessionRequestBarSlot")).toHaveLength(0);
+      expect(container.querySelectorAll(".sessionRequestRoleSegment")).toHaveLength(24);
+      await userEvent.setup().click(tracks.querySelector("button")!);
+      expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(/request=request-7(&|$)/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("pulses only beside an active agent's current activity", async () => {
     const base = sessionSummaryFixture();
     const active = mount({ tab: "overview" }, base);

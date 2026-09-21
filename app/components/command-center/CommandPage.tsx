@@ -2,6 +2,11 @@ import type { ComponentProps, ReactNode } from "react";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
 export { CommandIcon } from "./CommandIcon";
 
+/** Chevron between breadcrumb steps; decorative, so the steps read as a plain list. */
+export function CommandBreadcrumbSeparator() {
+  return <CommandIcon name="chevron" size="small" className="commandIcon commandBreadcrumbSeparator" />;
+}
+
 export function CommandPageHeader({ breadcrumb, title, meta, actions, tabs, headingId, className = "" }: {
   breadcrumb?: ReactNode;
   title: ReactNode;

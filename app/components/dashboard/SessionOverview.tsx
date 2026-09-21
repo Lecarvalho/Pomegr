@@ -4,12 +4,15 @@ import type { AgentRole } from "../../../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
 import { WORK_LABELS } from "../agents/agent-presentation";
 import { compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
+import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { comparisonLabel } from "./RepositoryPanel";
 import type { SessionRouteQuery } from "./session-route";
 
 const REQUEST_STRIP_SLOTS = 48;
+// Phone draws half the window so each bar stays wide enough to read and tap.
+const PHONE_REQUEST_STRIP_SLOTS = 24;
 
 function Unavailable({ readiness, label }: { readiness: "loading" | "ready" | "unavailable"; label: string }) {
   return <p className="sessionOverviewEmpty" role={readiness === "loading" ? "status" : undefined}>{readiness === "loading" ? `Loading ${label}…` : `${label} unavailable.`}</p>;
@@ -28,7 +31,8 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const agentReady = summary.sectionReadiness.agentEvidence;
   const activityReady = summary.sectionReadiness.activityEvidence;
   const repositoryReady = summary.repository.readiness;
-  const requests = summary.requestSnapshots.items;
+  const stripSlots = usePhoneLayout() ? PHONE_REQUEST_STRIP_SLOTS : REQUEST_STRIP_SLOTS;
+  const requests = summary.requestSnapshots.items.slice(-stripSlots);
   const roleCounts = new Map<AgentRole, Set<string>>();
   for (const request of requests) {
     const agents = roleCounts.get(request.agentRole) || new Set<string>();
@@ -40,8 +44,8 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const cost = showEstimatedCost && summary.capabilities.estimatedCost ? summary.session?.cost : null;
   const freshTokens = (request: (typeof requests)[number]) => request.uncachedInputTokens + request.cacheWriteTokens + request.outputTokens;
   const maximumFreshTokens = Math.max(...requests.map(freshTokens), 1);
-  const emptySlots = Math.max(0, REQUEST_STRIP_SLOTS - requests.length);
-  const requestCountLabel = requests.length >= REQUEST_STRIP_SLOTS ? `last ${REQUEST_STRIP_SLOTS}` : `${requests.length} so far`;
+  const emptySlots = Math.max(0, stripSlots - requests.length);
+  const requestCountLabel = requests.length >= stripSlots ? `last ${stripSlots}` : `${requests.length} so far`;
   const hasPlanTasks = summary.planTasks.length > 0;
   const showProgress = activityReady !== "ready" || Boolean(progress) || hasPlanTasks;
   const showWork = activityReady !== "ready" || summary.activity.byKind.length > 0;

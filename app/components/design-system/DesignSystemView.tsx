@@ -17,6 +17,7 @@ import { RequestLaneChart } from "../dashboard/requests-actions/RequestLaneChart
 import { RequestMinimap } from "../dashboard/requests-actions/RequestMinimap";
 import { RequestRoleLegend } from "../dashboard/requests-actions/RequestRoleTrack";
 import {
+  CommandBreadcrumbSeparator,
   CommandEmpty,
   CommandFilter,
   CommandMetric,
@@ -277,9 +278,9 @@ function ChipsSection() {
 }
 
 function ShellSection() {
-  return <Section id="shell" title="Page header, tabs, and sidebar limits" lede="Every route starts with CommandPageHeader: an optional breadcrumb eyebrow, title, optional meta line, and a right-aligned actions slot. Its tab slot supplies the shared one-rule tab bar. Sidebar limits are shell chrome from the account usage store, never session evidence.">
+  return <Section id="shell" title="Page header, tabs, and sidebar limits" lede="Every route starts with CommandPageHeader: an optional breadcrumb trail, title, optional meta line, and a right-aligned actions slot. Its tab slot supplies the shared one-rule tab bar. Sidebar limits are shell chrome from the account usage store, never session evidence.">
     <div className="designSystemShellSample">
-      <CommandPageHeader breadcrumb={<><span>Repositories</span> <span aria-hidden="true">/</span> <span>pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
+      <CommandPageHeader breadcrumb={<><a href="#shell">Repositories</a><CommandBreadcrumbSeparator /><span aria-current="page">pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
     </div>
     <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 5-hour</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · Weekly</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
   </Section>;

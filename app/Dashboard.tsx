@@ -13,7 +13,7 @@ import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
-import { CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
+import { CommandBreadcrumbSeparator, CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
 import type { DesktopState } from "./components/DesktopControls";
 import { ProviderBadge } from "./components/ProviderBadge";
 import { compactNumber, formatDuration, sessionListTime, stateEndpoint } from "./dashboard-utils";
@@ -151,7 +151,7 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
   const shortId = nativeId.length > 11 ? `${nativeId.slice(0, 5)}…${nativeId.slice(-5)}` : nativeId;
   const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} compact /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><span className="commandChip sessionIdChip" title={summary.session.id}>{shortId}</span>{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? sessionListTime(summary.session.startedAt) : "time unavailable"}</span></div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
-    <CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><span aria-hidden="true"> / </span><span>{summary.session.project}</span></>} title={summary.session.title} meta={meta}
+    <CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{summary.session.project}</span></>} title={summary.session.title} meta={meta}
       actions={<button type="button" className="commandQuietAction" disabled={reportGenerating} onClick={() => void generateReport()}>{reportGenerating ? "Preparing…" : "Download report"}</button>} />
     {summaryResult.error && <div className="notice" role="status"><span aria-hidden="true">!</span>{summaryResult.error}</div>}
     {reportError && <div className="notice" role="status"><span aria-hidden="true">!</span>{reportError}</div>}
