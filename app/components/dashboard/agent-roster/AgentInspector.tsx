@@ -30,6 +30,9 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
   const ownInsights = insights.filter((item) => item.agentId === agent.id);
   const hasHistory = summarizeCompactions(contextBoundaries, [agent.id]).total + summarizeCacheRefills(cacheRefills, [agent.id]) + summarizeCacheReadDrops(cacheReadDrops, [agent.id]) > 0;
   const openTree = () => onOpenTree(agent.id);
+  // The phone sheet stacks its exits as full-width chevron rows; the desktop panel keeps text links.
+  const actionClass = presentation === "sheet" ? "commandSecondaryAction inspectorActionRow" : "commandTextLink";
+  const rowChevron = presentation === "sheet" && <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
   const body = <div className={`agentInspector agentInspector-${presentation}`} key={agent.id} role="region" aria-label={`Agent inspector for ${label}`}>
     <header className="inspectorHeader">
       {presentation === "inline" && <><span className="sessionEyebrow">Selected agent</span><h3 dir="auto">{agentDisplayName(agent)}</h3></>}
@@ -55,7 +58,7 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
       {!agent.signal && ownInsights.length === 0 && !hasHistory && <p>No signals</p>}
     </section>
     <AgentInspectorDetails key={agent.id} agent={agent} planTasks={planTasks} historical={historical} presentation={presentation} section="activity" />
-    <footer className="inspectorActions">{onOpenActivities && <button type="button" className="commandTextLink" onClick={() => onOpenActivities(agent.id)}>Activities for this agent</button>}<Link className="commandTextLink" href={`/agents?model=${encodeURIComponent(agent.model)}`}>{agent.model} across sessions</Link>{agent.transcriptAvailable && <CopyTranscriptButton key={agent.id} sessionId={sessionId} agentId={agent.id} agentLabel={label} showLabel />}{presentation === "sheet" && <button type="button" onClick={openTree}>Open in tree</button>}</footer>
+    <footer className="inspectorActions">{onOpenActivities && <button type="button" className={actionClass} onClick={() => onOpenActivities(agent.id)}>Activities for this agent{rowChevron}</button>}<Link className={actionClass} href={`/agents?model=${encodeURIComponent(agent.model)}`}>{agent.model} across sessions{rowChevron}</Link>{agent.transcriptAvailable && <CopyTranscriptButton key={agent.id} sessionId={sessionId} agentId={agent.id} agentLabel={label} showLabel />}</footer>
   </div>;
   return presentation === "sheet" ? <InspectorSheet title={agentDisplayName(agent)} subtitle={`Agent ${Math.max(1, agents.findIndex((item) => item.id === agent.id) + 1)} of ${Math.max(1, agents.length)} · ${workflow?.name || (agent.id === "primary" ? "primary agent" : "direct subagent")}`} onClose={onClose} action={<button type="button" onClick={openTree} aria-label="Open in tree"><InspectorTreeGlyph /></button>}>{body}</InspectorSheet> : body;
 }
