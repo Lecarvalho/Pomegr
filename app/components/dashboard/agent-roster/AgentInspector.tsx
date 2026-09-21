@@ -30,9 +30,9 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
   const ownInsights = insights.filter((item) => item.agentId === agent.id);
   const hasHistory = summarizeCompactions(contextBoundaries, [agent.id]).total + summarizeCacheRefills(cacheRefills, [agent.id]) + summarizeCacheReadDrops(cacheReadDrops, [agent.id]) > 0;
   const openTree = () => onOpenTree(agent.id);
-  // The phone sheet stacks its exits as full-width chevron rows; the desktop panel keeps text links.
-  const actionClass = presentation === "sheet" ? "commandSecondaryAction inspectorActionRow" : "commandTextLink";
-  const rowChevron = presentation === "sheet" && <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
+  // Both presentations stack their exits as full-width chevron rows; only the phone sheet grows them to 44px.
+  const actionClass = "commandSecondaryAction inspectorActionRow";
+  const rowChevron = <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
   const body = <div className={`agentInspector agentInspector-${presentation}`} key={agent.id} role="region" aria-label={`Agent inspector for ${label}`}>
     <header className="inspectorHeader">
       {presentation === "inline" && <><span className="sessionEyebrow">Selected agent</span><h3 dir="auto">{agentDisplayName(agent)}</h3></>}
