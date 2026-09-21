@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, CacheReadDropCount, CacheRefillCount, ContextHistoryBoundary, ExecutionTask, Insight, LoopPattern, PlanTask, RequestSnapshotFeed, Workflow } from "../../../../shared/monitor-contract";
 import type { AgentDomain } from "../../../../shared/session-domain-contract";
 import { agentAssignment, agentDisplayName, agentsWithFinishedVisibility, agentTreeRows, compactNumber, formatDuration } from "../../../dashboard-utils";
@@ -8,7 +8,7 @@ import { isAgentWallTimeAdvancing, liveWallTimeMs } from "../../../formatting.mj
 import { useLiveNow } from "../../../hooks/LiveClockContext";
 import { EmptyState } from "../../EmptyState";
 import { phaseProgress } from "./workflow-phase-progress";
-import { buildRosterGroups, roleTally, sortRosterAgentsByCreationHierarchy, statusTally, type RosterGroup } from "./groups";
+import { buildRosterGroups, legendTally, roleTally, sortRosterAgentsByCreationHierarchy, statusTally, type RosterGroup, type RosterLegendStatus } from "./groups";
 import { DEFAULT_FILTERS, RosterFilterBar, type RosterFilters } from "./RosterFilters";
 import { RosterCaret, RosterRow } from "./RosterRow";
 import { AgentInspector } from "./AgentInspector";
@@ -33,12 +33,18 @@ function readOpenGroups(sessionId: string): Set<string> {
   try { const value: unknown = JSON.parse(window.localStorage.getItem(`pomegr-agent-roster-open-${sessionId}`) || "[]"); return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []); } catch { return new Set(); }
 }
 
-function RosterDistribution({ agents }: { agents: Agent[] }) {
-  const tally = statusTally(agents);
-  const statuses = Object.entries(tally).filter(([status, count]) => status !== "other" || count > 0);
+const LEGEND_LABELS: Record<RosterLegendStatus, string> = { active: "Active", idle: "Idle", needs_input: "Needs input", finished: "Finished", stopped: "Stopped", other: "Other" };
+// The phone and desktop mockups order the legend differently; stopped and other appear only when present.
+const PHONE_LEGEND_ORDER: RosterLegendStatus[] = ["active", "idle", "needs_input", "finished", "stopped", "other"];
+const DESKTOP_LEGEND_ORDER: RosterLegendStatus[] = ["finished", "idle", "active", "needs_input", "stopped", "other"];
+
+function RosterDistribution({ agents, phone }: { agents: Agent[]; phone: boolean }) {
+  const tally = legendTally(agents);
+  const statuses = (phone ? PHONE_LEGEND_ORDER : DESKTOP_LEGEND_ORDER).filter((status) => (status !== "stopped" && status !== "other") || tally[status] > 0);
+  const roles = roleTally(agents);
   return <div className="rosterDistribution">
-    <div className="rosterSegments" aria-hidden="true">{statuses.filter(([, count]) => count > 0).map(([status, count]) => <span className={`rosterSegment rosterSegment-${status}`} style={{ flex: count }} key={status} />)}</div>
-    <div className="rosterLegends"><div className="rosterStatusLegend">{statuses.map(([status, count]) => <span key={status}><i className={`rosterSegment-${status}`} />{status}<b>{count}</b></span>)}</div><div className="rosterRoleLegend"><span>Roles</span>{roleTally(agents).map(({ role, count }) => <span key={role}>{role}<b>{count}</b></span>)}</div></div>
+    <div className="rosterSegments" aria-hidden="true">{statuses.filter((status) => tally[status] > 0).map((status) => <span className={`rosterSegment rosterSegment-${status}`} style={{ flex: tally[status] }} key={status} />)}</div>
+    <div className="rosterLegends"><div className="rosterStatusLegend">{statuses.map((status) => <span key={status}><i className={`rosterSegment-${status}`} />{LEGEND_LABELS[status]}<b>{tally[status]}</b></span>)}</div>{roles.length > 0 && <div className="rosterRoleLegend">Roles <span>{roles.map(({ role, count }, index) => <Fragment key={role}>{index > 0 && " · "}<span>{role} <b>{count}</b></span></Fragment>)}</span></div>}</div>
   </div>;
 }
 
@@ -282,9 +288,9 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const tree = <AgentTreeView onBack={closeTree} agents={agents} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} focusId={activeTreeFocusId} historical={historical} insights={insights} mode="ancestors" requestSnapshots={requestSnapshots} workflows={workflows} sessionId={sessionId} />;
   const row = (agent: Agent) => <RosterRow rowRef={(element) => { if (element) rowRefs.current.set(agent.id, element); else rowRefs.current.delete(agent.id); }} key={agent.id} agent={agent} depth={depthById.get(agent.id) || 0} selected={selected === agent.id} onSelect={select} insights={insights} loops={loops} executionTasks={executionTasks} cacheRefills={cacheRefills} cacheReadDrops={cacheReadDrops} contextBoundaries={contextBoundaries} />;
   return <article className="panel agentsPanel agentRosterPanel" data-session-id={sessionId}>
-    {!activeTreeFocusId && <header className="rosterPanelHeader"><div><h2>Agent activity</h2><span>{agents.length} observed · showing {viewMode === "grid" ? visible.length : shown}</span></div><div className="commandSegmented" role="group" aria-label="Agent activity view"><button type="button" aria-pressed={viewMode === "list"} onClick={() => onViewModeChange("list")}>List</button><button type="button" aria-pressed={viewMode === "grid"} onClick={() => onViewModeChange("grid")}>Grid</button></div></header>}
+    {!activeTreeFocusId && <header className="rosterPanelHeader"><div><h2>Agents</h2><span>{agents.length} observed · showing {viewMode === "grid" ? visible.length : shown}</span></div><div className="commandSegmented" role="group" aria-label="Agent activity view"><button type="button" aria-pressed={viewMode === "list"} onClick={() => onViewModeChange("list")}>List</button><button type="button" aria-pressed={viewMode === "grid"} onClick={() => onViewModeChange("grid")}>Grid</button></div></header>}
     <div className="rosterActivitySurface" hidden={Boolean(activeTreeFocusId)}>
-    <RosterDistribution agents={agents} />
+    <RosterDistribution agents={agents} phone={phone} />
     <RosterFilterBar filters={filters} models={[...new Set(agents.map((agent) => agent.model))].sort()} onChange={changeFilters} allowGrouping={viewMode === "list"} />
     {viewMode === "grid" && <AgentGridToolbar metric={gridMetric} historical={historical} onChange={(metric) => { setGridMetric(metric); try { window.localStorage.setItem(`pomegr-agent-grid-metric-${sessionId}`, metric); } catch { /* Optional. */ } }} />}
     <div className="rosterWorkspace"><div className="rosterMain">

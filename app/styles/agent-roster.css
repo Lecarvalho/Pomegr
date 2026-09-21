@@ -1,25 +1,28 @@
 .agentRosterPanel { min-width: 0; overflow: hidden; }
-.rosterPanelHeader { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 20px; border-bottom: 1px solid var(--command-line); }
+.rosterPanelHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px 10px; }
 .rosterPanelHeader > div:first-child { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
 .rosterPanelHeader h2 { margin: 0; font: 600 16px/1.4 var(--font-ui); }
 .rosterPanelHeader span { font-size: 12px; color: var(--command-muted); }
+.rosterPanelHeader .commandSegmented { width: auto; flex: none; }
 .rosterTreePanelHeader { justify-content: flex-start; }
 .rosterTreePanelHeader > div:first-child { align-items: center; gap: 8px 16px; }
 .rosterTreeBack { min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--command-brand-text); font: 500 12px/1.4 var(--font-ui); }
 .agentRosterPanel button, .rosterFilterSheet button { cursor: pointer; }
-.rosterDistribution { display: grid; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--command-line); }
-.rosterSegments { display: flex; gap: 3px; height: 8px; }
+.rosterDistribution { display: grid; gap: 6px; padding: 0 20px 12px; border-bottom: 1px solid var(--command-line); }
+.rosterSegments { display: flex; gap: 2px; height: 5px; }
 .rosterSegment { min-width: 2px; border-radius: 2px; }
 .rosterSegment-finished { background: var(--command-line-strong); }
 .rosterSegment-idle { background: transparent; box-shadow: inset 0 0 0 1px var(--command-line-strong); }
 .rosterSegment-active { background: var(--command-green); }
+.rosterSegment-needs_input { background: var(--command-amber); }
 .rosterSegment-stopped { background: var(--red); }
 .rosterSegment-other { background: var(--command-line); }
 .rosterLegends, .rosterStatusLegend, .rosterRoleLegend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
 .rosterLegends { justify-content: space-between; }
 .rosterStatusLegend, .rosterRoleLegend { color: var(--command-muted); font-size: 11px; }
-.rosterStatusLegend > span, .rosterRoleLegend > span { display: inline-flex; align-items: center; gap: 5px; }
-.rosterStatusLegend > span { text-transform: capitalize; }
+.rosterStatusLegend > span { display: inline-flex; align-items: center; gap: 5px; }
+.rosterRoleLegend { display: block; }
+.rosterRoleLegend > span { color: var(--command-ink); }
 .rosterLegends b { color: var(--command-ink); font: 500 11px/1.4 var(--font-data); }
 .rosterStatusLegend i { width: 8px; height: 8px; border-radius: 2px; }
 .rosterFilterBar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--command-line); }
@@ -96,12 +99,15 @@
   .rosterWorkspace { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .rosterPanelHeader { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
-  .rosterPanelHeader > div:first-child { display: grid; gap: 0; }
-  .rosterPanelHeader span { font-size: 11px; }
+  .rosterPanelHeader { padding: 12px 14px 8px; gap: 10px; }
+  .rosterPanelHeader > div:first-child { flex-wrap: nowrap; gap: 8px; min-width: 0; }
+  .rosterPanelHeader h2, .rosterPanelHeader span { white-space: nowrap; }
+  .rosterPanelHeader .commandSegmented > button { flex: none; }
   .rosterTreeBack { min-height: 44px; }
-  .rosterDistribution { padding: 12px 14px; gap: 8px; }
-  .rosterRoleLegend, .rosterDesktopFilters, .rosterColumns, .rosterDesktop, .rosterDesktop.rosterMeta { display: none; }
+  .rosterDistribution { padding: 0 14px 10px; }
+  .rosterLegends { display: grid; gap: 6px; }
+  .rosterStatusLegend { gap: 6px 10px; }
+  .rosterDesktopFilters, .rosterColumns, .rosterDesktop, .rosterDesktop.rosterMeta { display: none; }
   .rosterFilterBar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 14px; }
   .rosterFilterBar input { width: 100%; height: 44px; }
   .rosterPhoneFilters { display: block; min-height: 44px !important; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, Workflow } from "../../shared/monitor-contract";
-import { buildRosterGroups, roleTally, statusTally } from "../../app/components/dashboard/agent-roster/groups";
+import { buildRosterGroups, legendTally, roleTally, statusTally } from "../../app/components/dashboard/agent-roster/groups";
 
 function agent(id: string, overrides: Partial<Agent> = {}): Agent {
   return {
@@ -94,6 +94,7 @@ describe("agent roster grouping model", () => {
     ];
 
     expect(statusTally(agents)).toEqual({ finished: 1, idle: 4, active: 1, stopped: 1, other: 1 });
+    expect(legendTally(agents)).toEqual({ active: 1, idle: 3, needs_input: 1, finished: 1, stopped: 1, other: 1 });
     expect(roleTally(agents)).toEqual([
       { role: "unknown", count: 2 },
       { role: "builder", count: 2 },

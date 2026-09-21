@@ -218,6 +218,19 @@ export function statusTally(agents: Agent[]) {
   return tally;
 }
 
+export type RosterLegendStatus = "active" | "idle" | "needs_input" | "finished" | "stopped" | "other";
+
+/** Distribution legend counts: unlike `statusTally`, needs-input agents are counted apart from idle ones. */
+export function legendTally(agents: Agent[]): Record<RosterLegendStatus, number> {
+  const tally = { active: 0, idle: 0, needs_input: 0, finished: 0, stopped: 0, other: 0 };
+  for (const agent of agents) {
+    if (agent.status === "active" || agent.status === "finished" || agent.status === "stopped" || agent.status === "needs_input") tally[agent.status] += 1;
+    else if (agent.status === "idle" || agent.status === "waiting" || agent.status === "warm") tally.idle += 1;
+    else tally.other += 1;
+  }
+  return tally;
+}
+
 export function roleTally(agents: Agent[]): Array<{ role: AgentRole; count: number }> {
   const counts = new Map<AgentRole, number>();
   for (const agent of agents) { const role = agent.role || "unknown"; counts.set(role, (counts.get(role) || 0) + 1); }
