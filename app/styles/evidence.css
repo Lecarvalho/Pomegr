@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-html { background: var(--paper); scroll-behavior: smooth; scrollbar-color: var(--line-strong) var(--paper); scrollbar-width: thin; }
+html { background: var(--paper); scroll-behavior: smooth; scrollbar-gutter: stable; scrollbar-color: var(--line-strong) var(--paper); scrollbar-width: thin; }
 body {
   margin: 0;
   background: var(--paper);
