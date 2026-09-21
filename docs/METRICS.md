@@ -533,8 +533,8 @@ cache, compaction, and repetition signals and loop patterns may include a normal
 `agentId`; overlap signals have no single agent target. Links currently navigate to
 Agent activity. Signal generation rules are unchanged.
 
-The Signals tab keeps this deterministic efficiency and cache evidence separate from
-agent-reported session, agent, and task signals. Agent-reported signals may be stale
+The Signals tab keeps deterministic efficiency evidence separate from agent-reported
+session, agent, and task signals. Agent-reported signals may be stale
 and are not Pomegr measurements or rule results. They may link to Activities only
 when the monitor proves the associated normalized agent and request; otherwise they
 remain informative without a navigation target.

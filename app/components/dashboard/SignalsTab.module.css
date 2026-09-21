@@ -1,5 +1,5 @@
 .tab { display: grid; gap: var(--space-4); }
-.intro, :global(.signalsSection), :global(.signalsLifetimeSection), :global(.signalsCacheEvidenceSection), :global(.signalsReportedSection) { border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); padding: var(--space-4); }
+.intro, :global(.signalsSection), :global(.signalsLifetimeSection), :global(.signalsReportedSection) { border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); padding: var(--space-4); }
 .intro h2 { margin: var(--space-1) 0; font-size: var(--text-heading); line-height: 1.35; }
 .intro p { margin: 0; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
@@ -18,13 +18,13 @@
 :global(.signalsInsight) { display: flex; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 :global(.signalsInsight:first-child) { padding-top: 0; border-top: 0; }
 :global(.signalsInsight-warning strong) { color: var(--command-amber); }
-:global(.signalsLifetimeSection header h2), :global(.signalsCacheEvidenceSection header h2), :global(.signalsReportedSection header h2) { margin: 0; font-size: var(--text-heading); line-height: 1.35; }
-:global(.signalsLifetimeSection header p), :global(.signalsCacheEvidenceSection header p), :global(.signalsReportedSection header p), :global(.signalsSectionNote), :global(.signalsEmptyState) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
-:global(.signalsLifetimeList), :global(.signalsReportedList), :global(.signalsCacheEvidenceList) { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
-:global(.signalsLifetimeList li), :global(.signalsReportedRow), :global(.signalsCacheEvidenceRow) { display: flex; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
-:global(.signalsLifetimeList li:first-child), :global(.signalsReportedRow:first-child), :global(.signalsCacheEvidenceRow:first-child) { padding-top: 0; border-top: 0; }
+:global(.signalsLifetimeSection header h2), :global(.signalsReportedSection header h2) { margin: 0; font-size: var(--text-heading); line-height: 1.35; }
+:global(.signalsLifetimeSection header p), :global(.signalsReportedSection header p), :global(.signalsSectionNote), :global(.signalsEmptyState) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
+:global(.signalsLifetimeList), :global(.signalsReportedList) { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+:global(.signalsLifetimeList li), :global(.signalsReportedRow) { display: flex; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
+:global(.signalsLifetimeList li:first-child), :global(.signalsReportedRow:first-child) { padding-top: 0; border-top: 0; }
 :global(.signalsLifetimeList strong) { font-family: var(--font-data); font-weight: 500; }
-:global(.signalsReportedRow p), :global(.signalsCacheEvidenceRow p) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
+:global(.signalsReportedRow p) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
 @media (max-width: 640px) {
   .tab {
     --signals-phone-sticky-offset: 56px;

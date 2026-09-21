@@ -133,8 +133,8 @@ readiness-qualified agent status counts, all-agent context, current-agent rows, 
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
 kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
 flag used only to decide whether the Resources tab can be hidden. `signals` owns the
-committed Efficiency, Cache evidence, Cache lifetime, and agent-reported Reported
-signals sections. Deterministic evidence and labeled inferences remain distinct from
+committed Efficiency, Cache lifetime, and agent-reported Reported signals sections.
+Deterministic evidence and labeled inferences remain distinct from
 agent-reported signals, which may be stale. Missing source evidence remains unavailable;
 historical and current projections remain isolated. The other domains retain their
 corresponding normalized public state. The inspector
@@ -1685,7 +1685,7 @@ valid committed repository files or current live resource samples.
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
   already at the end. Scope, mode, and selection reset on session change. The session
-  orders Requests & actions, Activity, then Cache evidence. Desktop request Prev/Next crosses
+  orders Requests & actions before Activity. Desktop request Prev/Next crosses
   committed history pages. Phone omits Prev/Next and retains a slim tappable minimap; horizontal dragging
   on the chart moves its 20-request window, with rightward drags revealing older
   requests and leftward drags revealing newer requests. Taps select bars; vertical
@@ -1712,9 +1712,7 @@ valid committed repository files or current live resource samples.
   chart and activity target; background refreshes do not repeat that navigation or
   override manual Activity paging.
   Selection still reveals linked activity without a
-  request-only presentation filter. Cache evidence is a saved, closed-by-default
-  disclosure and matches requests only by normalized
-  agent and observation timestamp. These presentation changes leave cache-only GETs,
+  request-only presentation filter. These presentation changes leave cache-only GETs,
   last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
 - The session KPI strip renders once core evidence is ready. Agent counts and status
   tallies follow agent readiness, latest context follows context readiness, and tool

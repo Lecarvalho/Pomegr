@@ -286,7 +286,7 @@ Role tint is the only exception that colors normalized agent roles. It appears o
 
 ### Session Evidence
 
-Overview and Signals follow the link rule: panel headings open their tab, a cache evidence row ends in a chevron icon action named Open in Activities, and Show agent is a quiet action. Efficiency signals appear only on the Signals tab, not on Overview. On desktop Overview uses a six-column grid: Right now spans the full width, or four columns with Work by kind beside it while at most two agents are listed; Requests takes four columns with Repository beside it; and a bottom panel (Progress, Work by kind, Cost) renders only when it has evidence or a readiness message to show. The request strip always draws 48 slots so a bar keeps its width in a new session, with a separate 6px role-track row beneath the bars. Work by kind omits medians under one minute. Repository is one wrapping line with the branch, a comparison chip toned green only for Up to date or integrated comparisons, and a muted changes/pull-request summary. Progress, Work by kind, and Cost use eyebrow headings with compact 12px/16px padding.
+Overview and Signals follow the link rule: panel headings open their tab, and Show agent is a quiet action. Efficiency signals appear only on the Signals tab, not on Overview. On desktop Overview uses a six-column grid: Right now spans the full width, or four columns with Work by kind beside it while at most two agents are listed; Requests takes four columns with Repository beside it; and a bottom panel (Progress, Work by kind, Cost) renders only when it has evidence or a readiness message to show. The request strip always draws 48 slots so a bar keeps its width in a new session, with a separate 6px role-track row beneath the bars. Work by kind omits medians under one minute. Repository is one wrapping line with the branch, a comparison chip toned green only for Up to date or integrated comparisons, and a muted changes/pull-request summary. Progress, Work by kind, and Cost use eyebrow headings with compact 12px/16px padding.
 
 Activities is a grouped request feed below the Requests chart and its scoped
 Largest strip. The strip uses two equal columns; an odd fifth item remains in one
@@ -328,12 +328,11 @@ line; only one disclosure is open, Escape collapses it, and it creates no sheet,
 scroll lock, or URL state. The shared request-association caveat remains available
 from the Requests panel.
 
-Signals is a separate tab, reachable on phone through **More**, with four ordered
-sections: **Efficiency**, **Cache evidence**, **Cache lifetime**, and **Reported
-signals**. The first three show deterministic recorded evidence or explicitly
-labeled inferences; Reported signals are agent-reported updates and may be stale.
-The tab introduction says **Not a quality assessment**. Supported evidence links
-to Activities only when its recorded agent/request association is proven.
+Signals is a separate tab, reachable on phone through **More**, with three ordered
+sections: **Efficiency**, **Cache lifetime**, and **Reported signals**. The first
+two show deterministic recorded evidence or explicitly labeled inferences;
+Reported signals are agent-reported updates and may be stale. The tab introduction
+says **Not a quality assessment**.
 
 Repositories use a flat, linked index of observed projects. Each row shows the
 repository name, observed provider badges, live and history session counts, last
@@ -474,7 +473,7 @@ Compactions lane, the minimap) and a single-chart sample with the track and lege
 `tests/ui/pomegr-design-contract.test.tsx` enforces the label grid, pressed tint, member indent,
 gutter and lane heights, collapse threshold, tint scope, and neutral minimap.
 
-Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Keep the Cache evidence disclosure after Activity, closed by default, with its saved disclosure state and event count. Requests replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
+Use Inter for panel language and controls, and Geist Mono for request counts, ordinals, timestamps, and other execution data. Phone controls are at least 44px high; the chart omits Prev/Next and retains a slim minimap. Its histogram is 26px high inside a 44px touch area, with transparent vertical padding. Tapping the minimap jumps to that part of history, and its window stays synchronized with chart swipes. When a new chart window is ready, Activity reveals linked rows for its selected request; manual Activity paging remains independent between chart navigation actions. Dragging directly on the bars moves its 20-request window: right reveals older requests and left reveals newer requests. Taps select bars, while vertical page scrolling and pinch zoom remain native. Horizontal dragging takes pointer capture after a movement threshold and suppresses selection on release; cancellation releases the gesture, and a second finger cannot replace an active drag. Keyboard bar navigation remains available. Requests replaces the former Context history and Request snapshots panels; Settings Data display retains only the API list-rate estimate toggle. Their existing meanings remain intact: context is the latest non-zero actual level carried to bucket boundaries, while request snapshots are independent request-local observations and are never carried forward, differenced, bucketed, or summed. Deterministic insights remain traceable to concrete events and are never presented as AI judgments.
 
 #### Phone Activities feed
 
