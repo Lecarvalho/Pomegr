@@ -33,8 +33,8 @@ describe("provider capability gates", () => {
     } satisfies NonNullable<MonitorState["session"]>;
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Codex" capabilities={codexCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("Codex")).toHaveClass("providerTag");
-    expect(screen.getByText("Codex").closest(".providerBadge")?.querySelector('[data-mark="openai"]')).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toHaveClass("commandChip", "providerBadge");
+    expect(screen.getByText("Codex").querySelector("svg")).not.toBeInTheDocument();
     expect(screen.getByText("Implementation is complete. Next: merge the approved pull request.")).toHaveAttribute("title", "Agent-reported session summary from the Pomegr MCP tool");
     expect(screen.getByText("Agent-reported summary")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Awaiting merge" })).toBeInTheDocument();
@@ -56,11 +56,12 @@ describe("provider capability gates", () => {
     expect(screen.queryByText(/session summary/i)).not.toBeInTheDocument();
   });
 
-  it("uses the Claude mark for Claude Code sessions", () => {
+  it("names Claude Code in a text chip without a provider logo", () => {
     const session = repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
     render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
 
-    expect(screen.getByText("Claude Code").closest(".providerBadge")?.querySelector('[data-mark="claude"]')).toBeInTheDocument();
+    expect(screen.getByText("Claude Code")).toHaveClass("commandChip", "providerBadge");
+    expect(screen.getByText("Claude Code").querySelector("svg")).not.toBeInTheDocument();
   });
 
   it("never gives an unsupported provider the Claude /context instruction", () => {

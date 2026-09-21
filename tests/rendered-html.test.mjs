@@ -70,6 +70,7 @@ test("opens the Settings About tab with privacy and legal explanations", async (
   assert.match(html, /GNU Affero General Public License version 3/);
   assert.match(html, /provided without warranty/);
   assert.match(html, /corresponding source code/);
+  assert.match(html, /not affiliated with, endorsed by, or sponsored by Anthropic or OpenAI/);
   assert.match(html, /Pomegr home/);
 });
 

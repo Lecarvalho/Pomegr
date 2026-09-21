@@ -63,7 +63,6 @@
 .repositorySectionHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; padding-bottom: 10px; color: var(--command-muted); font-size: var(--text-xs); }
 .repositorySectionHead > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .repositorySectionHead > strong { color: var(--command-ink); font-size: var(--text-sm); font-weight: 650; }
-.repositorySectionHead .providerMark { width: 14px; height: 14px; }
 .repositoryChecked { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
 .repositoryRowInfo { min-width: 0; }
 .repositoryRowTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; }
@@ -264,7 +263,6 @@
 .commandRepositoryIdentity strong { font-size: var(--text-sm); font-weight: 600; }
 .commandRepositoryIdentity small { margin-top: 3px; color: var(--command-muted); font-size: var(--text-xs); }
 .commandRepositoryProviders { min-width: 0; grid-column: 3; grid-row: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.commandRepositoryProviders .providerBadge { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); letter-spacing: 0; }
 .commandRepositorySessions { grid-column: 4; grid-row: 1; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
 .commandRepositorySessions > span { white-space: nowrap; }
 .commandRepositorySessions strong { color: var(--command-ink); font-weight: 500; }
@@ -448,7 +446,6 @@
   .commandRepositoryMeta { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
   .commandRepositorySessions { gap: 4px; }
   .commandRepositoryProviders { gap: 8px 10px; }
-  .commandRepositoryProviders .providerBadge svg { width: 12px; height: 12px; }
   .commandRepositoryMobileDot { display: inline; color: var(--command-faint); }
   .commandRepositoryArrow { grid-column: 2; }
   .commandRepositoryFilters { width: 100%; overflow-x: auto; padding: 2px; }

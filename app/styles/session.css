@@ -126,7 +126,6 @@
 /* Persistent session summary chrome and the single mounted evidence tab. */
 .commandSessionView { display: grid; gap: 18px; }
 .sessionHeaderMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--command-muted); font-size: var(--text-sm); }
-.sessionHeaderMeta .providerTag { margin: 0; }
 .sessionHeaderMeta .commandChip { gap: 6px; }
 .sessionHeaderMeta .commandChip .commandStatusText { font-size: var(--text-caption); }
 .sessionBranchChip .commandIcon { width: 13px; height: 13px; }

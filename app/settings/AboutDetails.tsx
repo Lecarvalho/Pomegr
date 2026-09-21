@@ -27,6 +27,7 @@ export function AboutDetails() {
           <a href="/legal/TRADEMARKS.txt">Trademark policy</a>
         </nav>
         <p>The <ExternalLink href="https://github.com/Lecarvalho/pomegr">corresponding source code</ExternalLink> is also available from the official repository.</p>
+        <p>Pomegr is an independent project and is not affiliated with, endorsed by, or sponsored by Anthropic or OpenAI. Anthropic, Claude, Claude Code, OpenAI, and Codex are trademarks of their respective owners; Pomegr uses these names only to identify the tools it observes.</p>
       </details>
     </div>
   );

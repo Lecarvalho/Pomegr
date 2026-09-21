@@ -242,11 +242,11 @@ function ChipsSection() {
           <AgentChip className="sessionSignal" title="A much longer agent-reported signal that needs to truncate at the shared max width">A much longer reported signal that truncates</AgentChip>
         </span>
       </Sample>
-      <Sample label="ProviderBadge" note="Provider marks stay adapter-specific content; the badge is text plus a 13px mark (10px compact).">
+      <Sample label="ProviderBadge" note="Provider names are words, never logos: an outline chip by default, plain inherited text in headings and inline metadata.">
         <ProviderBadge source="Claude Code" />
         <ProviderBadge source="Codex" />
-        <ProviderBadge source="Claude Code" compact />
-        <ProviderBadge source="Codex" compact />
+        <ProviderBadge source="Claude Code" variant="text" />
+        <ProviderBadge source="Codex" variant="text" />
       </Sample>
       <Sample label="CommandStatus" note=".commandStatusText with a .commandStatusDot: active, attention, idle, unknown.">
         <CommandStatus state="active">Working</CommandStatus>
