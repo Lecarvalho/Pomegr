@@ -700,8 +700,22 @@ export function createCodexProvider(options = {}) {
     workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
 
+  // One copy action needs one file location, so resolve it from the cached thread-metadata
+  // tree instead of reading every rollout. Only a child that tree cannot place, such as one
+  // linked solely by a parent rollout record, still needs the full session read.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
-    if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId, { historical: true });
+    if (!isSafeCodexSessionId(localSessionId) || typeof agentId !== "string" || !agentId.startsWith("agent-")) return null;
+    const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
+    if (recorded && fs.existsSync(recorded)) return recorded;
+    const metadataById = new Map((await discoveredMetadata()).map((item) => [item.localId, item]));
+    const threadId = agentId.slice("agent-".length);
+    if (isTopLevelCodexSession(metadataById.get(localSessionId)) && threadId !== localSessionId) {
+      const selectedIds = new Set([localSessionId]);
+      expandCodexSelectedMetadata(metadataById, selectedIds);
+      const rolloutFile = selectedIds.has(threadId) ? metadataById.get(threadId)?.rolloutFile : null;
+      if (rolloutFile) return rolloutFile;
+    }
+    await readSession(localSessionId, { historical: true });
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
   async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }

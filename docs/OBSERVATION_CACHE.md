@@ -1371,9 +1371,12 @@ Historical session state never receives current Git state or current usage limit
 The one-shot `/api/transcript-path` read sits outside this table because it returns one
 local file location, not a revisioned body. When observation is active and the session
 has committed L1 evidence, the monitor checks the requested agent's `transcriptAvailable`
-flag in that evidence. It then asks the adapter to locate only that agent's file, using
-the adapter's discovery rules, so a copy action never acquires, parses, or normalizes the
-session. A session without committed evidence falls back to a full compatibility read.
+flag in that evidence. It then asks the adapter to locate only that agent's file, so a
+copy action does not acquire, parse, or normalize the session. Claude locates the file in
+the session's subagent and workflow directories; Codex finds the child's rollout file in
+its cached thread-metadata tree. Two cases still use a full compatibility read: a session
+without committed evidence, and a Codex child that thread metadata cannot place because
+only a parent rollout record links it.
 
 Session-domain revision clocks are monotonic per domain across sessions. A domain
 advances only when its semantic JSON changes; the observation timestamp alone does not

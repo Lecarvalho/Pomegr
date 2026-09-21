@@ -256,20 +256,22 @@ async function syntheticProviders(context) {
     },
   ].map(JSON.stringify).join("\n")}\n`, "utf8");
   const parent = codexAppThread();
+  const codexTurnReads = [];
   const codex = createCodexProvider({
     codexHome: codexRoot,
     includeArchived: false,
     cacheMs: 0,
     appServer: {
       async listThreads() { return { data: [parent] }; },
-      async readThread({ threadId }) {
+      async readThread({ threadId, includeTurns }) {
+        if (includeTurns) codexTurnReads.push(threadId);
         if (threadId !== parent.id) throw new Error("PRIVATE_PATH_MUST_NOT_LEAK");
         return { thread: parent };
       },
     },
     rateLimitsReader: { async readRateLimits() { return rateLimitsWithPrivateFields(); } },
   });
-  return { claude, codex, transcriptPaths: { claudeChildFile, codexChildFile } };
+  return { claude, codex, codexTurnReads, transcriptPaths: { claudeChildFile, codexChildFile } };
 }
 
 test("/api/state and /api/sessions serialize only allowlisted Claude and Codex metadata", async (context) => {
@@ -568,6 +570,14 @@ test("Claude transcript paths resolve by discovery, including agents recorded af
   assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "primary"), null);
   assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "agent-missing-fixture"), null);
   assert.equal(await claude.readTranscriptPath("../claude-fixture-parent", "agent-child-fixture"), null);
+});
+
+test("Codex transcript paths resolve from thread metadata without a full session read", async (context) => {
+  const { codex, codexTurnReads, transcriptPaths } = await syntheticProviders(context);
+  assert.equal(await codex.readTranscriptPath("codex-fixture-parent", "agent-codex-fixture-child"), await realpath(transcriptPaths.codexChildFile));
+  assert.deepEqual(codexTurnReads, [], "a copy lookup never reads thread turns");
+  assert.equal(await codex.readTranscriptPath("codex-fixture-parent", "primary"), null);
+  assert.equal(await codex.readTranscriptPath("../codex-fixture-parent", "agent-codex-fixture-child"), null);
 });
 
 for (const [kind, customType] of [
