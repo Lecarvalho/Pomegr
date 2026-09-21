@@ -64,8 +64,8 @@
 .activityLayout.isPhone .activityRequestLine, .activityLayout.isPhone .activityRow.activityRequestLine { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; min-height: 44px; padding: 0 12px; }
 /* The compact request identity leaves the request-local token values flush with the row's right edge. */
 .activityRequestRow.activityRow { position: relative; grid-template-columns: 52px minmax(0, 1fr) max-content; }
-/* Desktop calls keep a fixed activity column so the target/file field starts early and owns the flexible space. */
-.activityDesktopCallRow.activityRow { grid-template-columns: 52px max-content 132px minmax(0, 1fr) 72px; }
+/* Desktop calls size the activity column from the row width, identically in every row, so long tool names fit while targets stay aligned and own the remaining space. */
+.activityDesktopCallRow.activityRow { grid-template-columns: 52px max-content clamp(132px, 32%, 300px) minmax(0, 1fr) 72px; }
 .activityDesktopCallRow.activityRow > time { grid-column: 2; color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .activityRequestSelect.commandQuietAction { min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
 .activityRequestSelect.commandQuietAction:hover:not(:disabled), .activityRequestSelect.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); }

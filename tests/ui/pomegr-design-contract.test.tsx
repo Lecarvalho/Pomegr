@@ -159,7 +159,7 @@ describe("Pomegr visual contract", () => {
 
     expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
     expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*52px minmax\(0, 1fr\) max-content/);
-    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*52px max-content 132px minmax\(0, 1fr\) 72px/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*52px max-content clamp\(132px, 32%, 300px\) minmax\(0, 1fr\) 72px/);
     expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow > time\s*\{[^}]*grid-column:\s*2[^}]*white-space:\s*nowrap/);
     expect(activityStyles).toMatch(/\.activityActionLabel\s*\{[^}]*font-weight:\s*400/);
     expect(evidenceStyles).not.toMatch(/\.activity(?:Panel|Layout|CallLine|RequestRow|DesktopCallRow)\b/);

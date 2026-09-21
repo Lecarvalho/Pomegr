@@ -135,10 +135,10 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
                 selection.locate(group.request.id, selection.scope);
               }} />
             : <li key={call.id} className={`activityDesktopCallRow activityRow${call.status === "failed" ? " failed" : ""}`}>
-              <time dateTime={call.timestamp}>{shortTime(call.timestamp)}</time>
-              <span className="activityAction"><WorkKindIcon kind={call.workKind} /><span className="activityActionLabel">{call.tool}</span></span>
-              <span className="target">{call.detail ? targetBasename(call.detail) : "—"}</span>
-              <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`}>{activityDuration(call.durationMs)}</span>
+              <time dateTime={call.timestamp} title={`Recorded ${new Date(call.timestamp).toLocaleString()}`}>{shortTime(call.timestamp)}</time>
+              <span className="activityAction" title={`${WORK_LABELS[call.workKind]}: ${call.tool}`}><WorkKindIcon kind={call.workKind} /><span className="activityActionLabel">{call.tool}</span></span>
+              <span className="target" title={call.detail ? `Target: ${targetBasename(call.detail)}` : "No target recorded"}>{call.detail ? targetBasename(call.detail) : "—"}</span>
+              <span className={`activityDuration${call.durationMs === null ? " unavailable" : ""}`} title={call.durationMs === null ? "Wall duration unavailable" : `Wall duration: ${activityDuration(call.durationMs)}`}>{activityDuration(call.durationMs)}</span>
             </li>)}
         </ul>}
         {group.continuation && <button type="button" className="commandTextLink" disabled={feed.loadingMore === group.request.number} onClick={() => feed.loadMore(group.request.number)}>
