@@ -110,10 +110,10 @@ export function SessionTabs({ active, summary, onSelect }: {
       <div className="sessionPhoneTablist" role="tablist" aria-label="Session sections">
         {PRIMARY_PHONE_TABS.map((tab, index) => <button key={tab} id={`session-tab-phone-${tab}`} ref={(node) => { phoneButtons.current[index] = node; }} type="button" role="tab"
           aria-selected={active === tab} aria-controls={PANEL_ID} tabIndex={active === tab || (!PRIMARY_PHONE_TABS.includes(active) && index === 0) ? 0 : -1}
-          onKeyDown={(event) => phoneKeyDown(event, index)} onClick={() => onSelect(tab)}>{tab === "repository" ? "Repo" : LABELS[tab]}</button>)}
+          onKeyDown={(event) => phoneKeyDown(event, index)} onClick={() => onSelect(tab)}>{tab === "repository" ? "Repo" : LABELS[tab]}{tab === "agents" && count(tab) !== null && <span>{count(tab)?.toLocaleString()}</span>}</button>)}
       </div>
       {menuTabs.length > 0 && <button ref={moreButton} id="session-tab-more" type="button" className={SECONDARY_TABS.includes(active) ? "active" : undefined}
-        aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((value) => !value)}>More</button>}
+        aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((value) => !value)}>More<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 6l5 5 5-5" /></svg></button>}
     </nav>
     {moreOpen && <div ref={moreMenu} className="sessionMoreMenu" role="menu" aria-label="More session sections">
       {menuTabs.map((tab, index) => <button className="commandQuietAction" role="menuitem" type="button" key={tab}

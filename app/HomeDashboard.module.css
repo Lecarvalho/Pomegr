@@ -228,6 +228,7 @@
   .roadmapGrid article:first-child { padding: 14px 0 0; border-inline-start: 0; border-top: 1px solid var(--command-line); }
   .roadmapGrid article:first-child { padding-top: 0; border-top: 0; }
   .home .removePin { width: 44px; height: 44px; }
+  .reportGuide { display: none; }
 }
 
 @media (max-width: 380px) {

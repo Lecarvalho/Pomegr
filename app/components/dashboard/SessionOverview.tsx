@@ -86,7 +86,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
 
     <section className="sessionOverviewPanel sessionRequestStrip" aria-labelledby="session-requests">
       <div className="sessionOverviewHeading sessionRequestHeading">
-        <div className="sessionRequestHeadingMain"><PanelHeadingLink id="session-requests" onOpen={() => onNavigate({ tab: "activities" })}>Requests</PanelHeadingLink><span className="sessionRequestSummary">one bar per model request · fresh tokens · {requestCountLabel}</span></div>
+        <div className="sessionRequestHeadingMain"><PanelHeadingLink id="session-requests" onOpen={() => onNavigate({ tab: "activities" })}>Requests</PanelHeadingLink><span className="sessionRequestSummary"><span className="sessionRequestSummaryLead">one bar per model request · </span>fresh tokens · {requestCountLabel}</span></div>
         {requests.length > 0 && <div className="requestsActionsLegend sessionRequestValueLegend" aria-label="Fresh token categories; cache reads are excluded"><span><i className="requestsActionsSwatch write" aria-hidden="true" />Cache write</span><span><i className="requestsActionsSwatch uncached" aria-hidden="true" />Uncached input</span><span><i className="requestsActionsSwatch output" aria-hidden="true" />Output</span></div>}
       </div>
       {summary.requestSnapshots.status !== "ready" ? <Unavailable readiness="unavailable" label="Request evidence" /> : requests.length === 0
@@ -114,7 +114,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
         : <p className="sessionRepositoryLine">
           <span className="sessionRepositoryLineBranch">{summary.repository.branch || "Branch unavailable"}</span>
           {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`}>{repositoryComparisonText}</span>}
-          <span className="sessionRepositoryLineMeta">{repositoryChangesLabel} · {repositoryPullRequestsLabel}</span>
+          <span className="sessionRepositoryLineMeta">{repositoryChangesLabel}<span className="sessionRepositoryPullRequests"> · {repositoryPullRequestsLabel}</span></span>
         </p>}
     </section>
 
@@ -125,7 +125,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
         <div className="sessionOverviewProgressHeadline"><strong className="sessionOverviewValue">{progress.percent}%</strong><span>{progress.phase.replaceAll("_", " ")}</span></div>
         <div className="sessionOverviewMeter"><span style={{ width: `${Math.max(0, Math.min(100, progress.percent))}%` }} /></div>
         <small>{summary.planTasks.length ? `${completedTasks}/${summary.planTasks.length} agent-maintained plan tasks · ` : "Agent-maintained estimate · "}{progress.confidence} confidence</small>
-      </> : <><span>Plan tasks · {completedTasks} of {summary.planTasks.length} done</span><div className="sessionOverviewMeter"><span style={{ width: `${Math.round(completedTasks / summary.planTasks.length * 100)}%` }} /></div><small>Agent-maintained checklist, may be stale. No agent estimate recorded.</small></>}
+      </> : <><div className="sessionProgressTasksRow"><span>Plan tasks</span><span>{completedTasks} of {summary.planTasks.length} done</span></div><div className="sessionOverviewMeter"><span style={{ width: `${Math.round(completedTasks / summary.planTasks.length * 100)}%` }} /></div><small>Agent-maintained checklist, may be stale. No agent estimate recorded.</small></>}
     </section>}
 
     {showWork && !workBeside && workSection}

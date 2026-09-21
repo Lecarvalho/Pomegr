@@ -413,7 +413,7 @@ describe("T04 session workspace", () => {
   it("draws the Overview request strip with 48 fixed slots", async () => {
     const { container } = mount({ tab: "overview" });
     await screen.findByRole("button", { name: "Requests" });
-    expect(screen.getByText("one bar per model request · fresh tokens · 1 so far")).toBeInTheDocument();
+    expect(container.querySelector(".sessionRequestStrip .sessionRequestSummary")).toHaveTextContent("one bar per model request · fresh tokens · 1 so far");
     expect(screen.getByLabelText("Fresh token categories; cache reads are excluded")).toHaveTextContent("Cache writeUncached inputOutput");
     const tracks = container.querySelector(".sessionRequestTracks")!;
     const bars = tracks.querySelectorAll("button").length;
@@ -449,7 +449,8 @@ describe("T04 session workspace", () => {
     withoutProgressOrCost.unmount();
 
     const withPlanFallback = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null } }));
-    expect(await screen.findByText("Plan tasks · 1 of 1 done")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 1 done")).toBeInTheDocument();
+    expect(withPlanFallback.container.querySelector(".sessionProgressTasksRow")).toHaveTextContent("Plan tasks1 of 1 done");
     withPlanFallback.unmount();
 
     mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null }, sectionReadiness: { ...base.sectionReadiness, activityEvidence: "unavailable" } }));
@@ -496,19 +497,19 @@ describe("T04 session workspace", () => {
     const upToDate = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 0, pullRequestCount: 0, comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 0, integrated: false } } }));
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     expect(screen.getByText("Up to date with origin/main")).toBeInTheDocument();
-    expect(screen.getByText("No local changes · 0 pull requests")).toBeInTheDocument();
+    expect(upToDate.container.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("No local changes · 0 pull requests");
     upToDate.unmount();
 
     const aheadBehind = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 1, pullRequestCount: 2, comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 1, integrated: false } } }));
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     expect(screen.getByText("2 commits ahead · 1 commit behind relative to origin/main")).toBeInTheDocument();
-    expect(screen.getByText("1 changed file · 2 pull requests")).toBeInTheDocument();
+    expect(aheadBehind.container.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("1 changed file · 2 pull requests");
     aheadBehind.unmount();
 
     mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: null, pullRequestCount: null, comparison: null } }));
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     expect(screen.queryByText(/Up to date|ahead|behind|integrated/)).not.toBeInTheDocument();
-    expect(screen.getByText("— · —")).toBeInTheDocument();
+    expect(document.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("— · —");
   });
 
   it("prints ×N in the request role legend only when more than one agent shares a role", async () => {

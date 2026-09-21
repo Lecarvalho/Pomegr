@@ -146,7 +146,7 @@ export function HomeDashboard() {
             <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
             <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
           </article>
-          <article>
+          <article className={styles.reportGuide}>
             <h3>Download a session report</h3>
             <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
             <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>
