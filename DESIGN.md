@@ -451,7 +451,9 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   selected request's agent, is named in text beside the legend (`#n`, name, role), never as SVG
   text.
 - **Phone chart.** Phone always draws the single chart with its track and legend, then the
-  minimap and the Largest strip. Compaction, selected-number, and cache-evidence text share one
+  minimap and the Largest strip. The inspected request's `#n`, agent name, and role occupy a
+  dedicated full-width row between the legend and minimap so changing requests cannot move the
+  minimap while it is being touched. Compaction, selected-number, and cache-evidence text share one
   reserved row just above the plot top, which bars never reach, placed with the lane band
   priority and dropped rather than overlapping. Evidence icons sit above that row. Its numeric
   scale recomputes from the visible window in both Fresh tokens and Full breakdown modes; the

@@ -40,6 +40,10 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*22px/);
   });
 
+  it("keeps the phone request identity on a stable row above the minimap", () => {
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.requestRoleNamed\s*\{[^}]*flex:\s*0 0 100%;[^}]*width:\s*100%/);
+  });
+
   it("keeps the phone Signals title below sticky application chrome", () => {
     expect(signalsTabStyles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.tab\s*\{[^}]*--signals-phone-sticky-offset:\s*56px;[^}]*margin-top:\s*calc\(-1 \* var\(--signals-phone-sticky-offset\)\);[^}]*padding-top:\s*var\(--signals-phone-sticky-offset\);[^}]*scroll-margin-top:\s*var\(--signals-phone-sticky-offset\)/);
   });
