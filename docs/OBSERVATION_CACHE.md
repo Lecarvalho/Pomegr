@@ -1368,6 +1368,13 @@ pairing authorization.
 
 Historical session state never receives current Git state or current usage limits.
 
+The one-shot `/api/transcript-path` read sits outside this table because it returns one
+local file location, not a revisioned body. When observation is active and the session
+has committed L1 evidence, the monitor checks the requested agent's `transcriptAvailable`
+flag in that evidence. It then asks the adapter to locate only that agent's file, using
+the adapter's discovery rules, so a copy action never acquires, parses, or normalizes the
+session. A session without committed evidence falls back to a full compatibility read.
+
 Session-domain revision clocks are monotonic per domain across sessions. A domain
 advances only when its semantic JSON changes; the observation timestamp alone does not
 advance it. Eviction retains the clock floor, so rebuilding a response cannot make an

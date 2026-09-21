@@ -552,6 +552,24 @@ test("the transcript path endpoint is one-shot, agent-scoped, and rejects browse
   assert.doesNotMatch(await deniedPath.text(), /agent-child-fixture|\.jsonl|PRIVATE/i);
 });
 
+test("Claude transcript paths resolve by discovery, including agents recorded after the last session read", async (context) => {
+  const { claude, transcriptPaths } = await syntheticProviders(context);
+  const subagents = path.dirname(transcriptPaths.claudeChildFile);
+  const workflowFile = path.join(subagents, "workflows", "wf_fixture-1", "agent-shared.jsonl");
+  // A fresh adapter has no session read to consult.
+  assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "agent-child-fixture"), transcriptPaths.claudeChildFile);
+  assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "workflow-wf_fixture-1-agent-shared"), workflowFile);
+
+  await claude.readSession("claude-fixture-parent");
+  const lateFile = path.join(subagents, "agent-late-fixture.jsonl");
+  await writeFile(lateFile, `${JSON.stringify({ type: "user", timestamp: "2026-08-10T13:00:30.000Z", message: { content: "LATE_PROMPT" } })}\n`, "utf8");
+  assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "agent-late-fixture"), lateFile);
+
+  assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "primary"), null);
+  assert.equal(await claude.readTranscriptPath("claude-fixture-parent", "agent-missing-fixture"), null);
+  assert.equal(await claude.readTranscriptPath("../claude-fixture-parent", "agent-child-fixture"), null);
+});
+
 for (const [kind, customType] of [
   ["HOSTILE_PROVIDER_KIND_MUST_NOT_LEAK/<script>", null],
   ["local:queue-runner", "queue-runner"],

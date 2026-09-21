@@ -432,11 +432,7 @@ export function createClaudeProvider(options = {}) {
     return catalog;
   }
 
-  async function readSession(localSessionId = "", readOptions = {}) {
-    for (const file of liveUsageSnapshotCache.keys()) {
-      if (!statSafe(file)) liveUsageSnapshotCache.delete(file);
-    }
-    const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
+  function selectedSessionFile(localSessionId, sessionFiles) {
     const explicitMatch = explicitSession
       && path.basename(explicitSession, ".jsonl") === localSessionId
       && fs.existsSync(explicitSession)
@@ -445,7 +441,15 @@ export function createClaudeProvider(options = {}) {
     const selectedMatch = /^[a-zA-Z0-9_-]+$/.test(localSessionId || "")
       ? sessionFiles.find(({ file }) => path.basename(file, ".jsonl") === localSessionId)?.file || null
       : null;
-    const mainFile = localSessionId ? explicitMatch || selectedMatch : liveFile;
+    return explicitMatch || selectedMatch;
+  }
+
+  async function readSession(localSessionId = "", readOptions = {}) {
+    for (const file of liveUsageSnapshotCache.keys()) {
+      if (!statSafe(file)) liveUsageSnapshotCache.delete(file);
+    }
+    const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
+    const mainFile = localSessionId ? selectedSessionFile(localSessionId, sessionFiles) : liveFile;
     if (!mainFile) return null;
     const historical = !liveFiles.has(mainFile);
     const sessionId = path.basename(mainFile, ".jsonl");
@@ -712,9 +716,18 @@ export function createClaudeProvider(options = {}) {
     };
   }
 
+  // One copy action needs one file location, so resolve it with readSession's discovery rules
+  // (primary excluded, workflow agents over ordinary files) instead of parsing every transcript.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
-    if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId);
-    return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
+    if (agentId === "primary") return null;
+    const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
+    if (recorded && statSafe(recorded)) return recorded;
+    const mainFile = selectedSessionFile(localSessionId, discoveredSessions().files);
+    if (!mainFile) return null;
+    const agentDir = path.join(path.dirname(mainFile), path.basename(mainFile, ".jsonl"), "subagents");
+    return discoverClaudeWorkflowAgents(agentDir).files.find((item) => item.id === agentId)?.file
+      || walkJsonl(agentDir, 1).find((file) => path.basename(file, ".jsonl") === agentId)
+      || null;
   }
   async function readSessionHistory(localSessionId = "") { const key = historyKey(localSessionId); const cached = key && historyCache.get(localSessionId); if (cached?.key === key) return cached.value; const value = normalizedSessionHistory("claude", localSessionId, await readSession(localSessionId, { completeHistory: true })); if (!key || historyKey(localSessionId) !== key) return { requests: [], activity: [], complete: false }; if (value.complete) historyCache.set(localSessionId, { key, value }); while (historyCache.size > 64) historyCache.delete(historyCache.keys().next().value); return value; }
 

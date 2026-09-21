@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
@@ -245,4 +246,74 @@ test("a committed registry-only catalog row serves cached unavailable detail wit
   assert.equal(transcriptReads, 0);
   await runtime.stopObservation();
   assert.equal(stopped, true);
+});
+
+test("a transcript path copy resolves from committed evidence without a session read", async (context) => {
+  let sessionReads = 0;
+  const pathReads = [];
+  const childFile = path.resolve("synthetic-transcripts", "agent-codex-fixture-child.jsonl");
+  const committedEvidence = {
+    ...evidence,
+    agents: evidence.agents.map((agent) => (agent.id === "primary" ? agent : { ...agent, transcriptAvailable: true })),
+  };
+  const provider = {
+    id: "codex",
+    source: "Codex",
+    capabilities: createEmptyProviderCapabilities(),
+    homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } },
+    async readTranscriptPath(localId, agentId) {
+      pathReads.push([localId, agentId]);
+      return agentId === "agent-codex-fixture-child" ? childFile : null;
+    },
+  };
+  const registry = {
+    providers: [provider],
+    defaultProvider: provider,
+    providerForSessionId: () => provider,
+    async resolveCapabilities() { return provider.capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async readSession() { sessionReads += 1; throw new Error("full session read"); },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      publisher.publishCatalog("codex", [{
+        localId: evidence.localId,
+        title: evidence.session.title,
+        project: evidence.session.project,
+        updatedAt: evidence.session.updatedAt,
+        isLive: true,
+        needsInput: false,
+        activityStatus: "working",
+      }]);
+      publisher.publishSession("codex", evidence.localId, committedEvidence);
+      return { async hydrate() { return true; }, async stop() {} };
+    },
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry,
+    checkpointStore: false,
+    historyStore: new SessionHistoryStore(),
+    observationCommitDelayMs: 0,
+    scheduleObservation: (task) => setTimeout(task, 0),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  await runtime.startObservation();
+  context.after(async () => runtime.stopObservation());
+  for (let attempt = 0; attempt < 50 && runtime.serveSession(`codex:${evidence.localId}`).status !== "ready"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(runtime.serveSession(`codex:${evidence.localId}`).status, "ready");
+
+  const server = createMonitorServer({ runtime });
+  const origin = await listen(server);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const query = (agentId) => new URLSearchParams({ sessionId: `codex:${evidence.localId}`, agentId });
+  const [child, primary] = await Promise.all([
+    fetch(`${origin}/api/transcript-path?${query("agent-codex-fixture-child")}`),
+    fetch(`${origin}/api/transcript-path?${query("primary")}`),
+  ]);
+  assert.deepEqual([child.status, primary.status], [200, 404]);
+  assert.deepEqual(await child.json(), { path: childFile });
+  assert.deepEqual(pathReads, [[evidence.localId, "agent-codex-fixture-child"]], "only a proven agent reaches the adapter");
+  assert.equal(sessionReads, 0, "committed evidence replaces the full session read");
 });
