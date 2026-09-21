@@ -42,7 +42,10 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   const scaleRows = useMemo(() => isCompleteRequestOverview(overview, requestHistory.total)
     ? overview.map(([uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens]) => ({ uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens }))
     : null, [overview, requestHistory.total]);
-  const scaleInput = scaleRows ?? rows;
+  // Phone bars use the requests currently visible in the viewport, matching the desktop lane
+  // behavior. Desktop single-chart mode retains its stable whole-history overview scale.
+  const visibleRows = useMemo(() => rows.slice(start - 1, end), [rows, start, end]);
+  const scaleInput = phone ? visibleRows : scaleRows ?? rows;
   const maximum = useMemo(() => Math.max(1, scaleMax(scaleInput, mode, cacheWriteAvailable)), [scaleInput, mode, cacheWriteAvailable]);
   const lanes = useMemo(() => buildRequestLanes(single ? [] : rows, agents, mode, cacheWriteAvailable), [single, rows, agents, mode, cacheWriteAvailable]);
   const toggleGroup = (groupId: string) => setExpandedGroups((current) => {

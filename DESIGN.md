@@ -441,9 +441,11 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   chevron rotating 90°) expands the group into a header plus member lanes indented one
   `--space-4` step. Primary and Compactions never collapse. Selecting a request inside a
   collapsed group does not expand it.
-- **Single chart.** One whole-history scale (`0–N tokens`). Under the bars runs the role-family
-  agent track: one `.requestRoleSegment` per visible bar, 4px high after a 3px gap (3px on
-  phone). The `.sessionRoleLegend.requestRoleLegend` below lists the role labels in view,
+- **Single chart.** On desktop, one whole-history scale (`0–N tokens`) stays stable while the
+  window moves. On phone, the scale follows the 20 requests currently visible so the bars use
+  the available plot height as the window moves. Under the bars runs the role-family agent
+  track: one `.requestRoleSegment` per visible bar, 4px high after a 3px gap (3px on phone).
+  The `.sessionRoleLegend.requestRoleLegend` below lists the role labels in view,
   ordered by family, with distinct agent counts. It keeps each label's case, so `custom: <type>`
   and lowercase roles are not capitalized. The hovered or focused bar's agent, otherwise the
   selected request's agent, is named in text beside the legend (`#n`, name, role), never as SVG
@@ -451,7 +453,9 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
 - **Phone chart.** Phone always draws the single chart with its track and legend, then the
   minimap and the Largest strip. Compaction, selected-number, and cache-evidence text share one
   reserved row just above the plot top, which bars never reach, placed with the lane band
-  priority and dropped rather than overlapping. Evidence icons sit above that row.
+  priority and dropped rather than overlapping. Evidence icons sit above that row. Its numeric
+  scale recomputes from the visible window in both Fresh tokens and Full breakdown modes; the
+  minimap retains its stable whole-history scale.
 - **Role tint scope.** In Activities, role tints appear only on `.requestRoleSegment` and the
   legend swatches. Lanes, lane labels, group rows, and the minimap use no `roleFamily-*` classes
   and no `--session-role` or `--role-*` values.

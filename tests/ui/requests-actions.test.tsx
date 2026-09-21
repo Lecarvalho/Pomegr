@@ -114,8 +114,9 @@ describe("RequestsActionsPanel", () => {
     const { container } = render(<HistoryLocateHarness sessionId="preload-drag" requests={[]} />);
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(phone ? 4 : 3));
     const calls = fetchPage.mock.calls.length;
-    // Lanes scale over the loaded page; only the single chart uses the whole-history overview.
-    expect(screen.getByText(phone ? "0–12M tokens" : "Per-lane scales")).toBeInTheDocument();
+    // Phone and desktop lanes scale over their visible requests; desktop single-chart mode uses
+    // the whole-history overview.
+    expect(screen.getByText(phone ? "0–2M tokens" : "Per-lane scales")).toBeInTheDocument();
     if (phone) {
       const svg = chart(container);
       vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
@@ -123,11 +124,13 @@ describe("RequestsActionsPanel", () => {
       const slot = (330 - 34 + 2.8) / size;
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size) * slot, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#10", "#200"]);
+      expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size - 10) * slot, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#110", "#300"]);
+      expect(screen.getByText("0–2M tokens")).toBeInTheDocument();
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: 0, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#1610", "#1800"]);
-      expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+      expect(screen.getByText("0–2M tokens")).toBeInTheDocument();
       expect(fetchPage).toHaveBeenCalledTimes(calls);
       fireEvent.pointerUp(svg, { pointerId: 1 });
       return;
