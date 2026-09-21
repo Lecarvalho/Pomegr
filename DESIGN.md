@@ -309,7 +309,8 @@ model, and exact counts. The request number is regular-weight muted data until t
 row is hovered or selected. Desktop token counts keep their chart-legend colors, print
 through `compactNumber`, and name their kind and exact value on hover; the phone line
 keeps its compact uncached input and time, and a tap opens the four exact counts. One rule separates
-request groups; a request line and its calls carry no rule between them.
+request groups; a request line and its calls carry no rule between them. Desktop request
+lines are 34px and their call rows 30px, so each request reads as the header of a compact group.
 
 Foreground request-window loading keeps the last committed chart and feed visible
 under a local neutral veil and announced loading status. The chart and feed never
