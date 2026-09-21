@@ -520,3 +520,27 @@ test("bounds resident index cache by entries and source bytes", async (t) => {
   assert.equal((await byteBounded.read("codex:two", { kind: "requests" })).status, "ready");
   assert.equal(byteParsed(), 2, "manifest over byte budget is reparsed");
 });
+
+test("retains each request's bounded recorded model and serves unsafe or legacy values as unreported", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-model-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory });
+  const recorded = { ...request("2222222222222221", "2026-09-04T00:00:00Z"), model: " claude-opus-5 " };
+  const switched = { ...request("2222222222222222", "2026-09-04T00:01:00Z"), model: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" };
+  const pathLike = { ...request("2222222222222223", "2026-09-04T00:02:00Z"), model: String.raw`C:\Users\PRIVATE_USER\model` };
+  const driveRelative = { ...request("2222222222222226", "2026-09-04T00:05:00Z"), model: "C:PRIVATE_USER" };
+  const markup = { ...request("2222222222222224", "2026-09-04T00:03:00Z"), model: "<synthetic>" };
+  const legacy = request("2222222222222225", "2026-09-04T00:04:00Z");
+  await store.publish("claude:models", { requests: [recorded, switched, pathLike, markup, legacy, driveRelative], activity: [], complete: true });
+
+  const expected = ["claude-opus-5", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", null, null, null, null];
+  for (const reader of [store, new SessionHistoryStore({ directory })]) {
+    const page = await reader.read("claude:models", { kind: "requests" });
+    assert.deepEqual(page.items.map((item) => item.model), expected);
+    const groups = await reader.read("claude:models", { kind: "activity" });
+    // Grouped Activity serves the latest five request headers.
+    assert.deepEqual(groups.requestGroups.map((group) => group.request.model), expected.slice(-5));
+  }
+  for (const name of await readdir(directory, { recursive: true })) {
+    if (name.endsWith(".json")) assert.doesNotMatch(await readFile(path.join(directory, name), "utf8"), /PRIVATE_USER|synthetic/);
+  }
+});

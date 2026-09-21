@@ -176,6 +176,16 @@ eight rows; request windows contain at most 60 (20 on phones). Agent scope,
 request lookup, request-only filtering, and an opaque event anchor operate on
 committed indexes. GETs never acquire or normalize provider records.
 
+Each request record in this surface, including a grouped request header, also carries
+`model`: the one model identifier recorded for that request, validated monitor-side as a
+bounded identifier (at most 120 letters, digits, `.`, `_`, `:`, `@`, `+`, `[`, `]`, or
+`-`, with no drive prefix, path separator, markup, prose, or control characters), or
+`null` when it is missing, synthetic, unsafe, or was committed before per-request models
+were retained. It describes that request only, not agent model history, routing, or
+service tier. The `/api/state` request-snapshot feed, cache events, cache-read drops, and
+reports still exclude request-level model identities. Older committed generations serve
+`null` until a complete replay commits a replacement revision; a GET never backfills it.
+
 Activity history additionally accepts a positive request-number `from`/`to` range
 covering at most 64 consecutive numbers, `selected`, one recognized `workKind`, and
 an opaque continuation. Range endpoints must be supplied together; reversed or

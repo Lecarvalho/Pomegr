@@ -3,8 +3,8 @@ import type { HistoryActivity, HistoryRequest } from "../../shared/session-histo
 import { snapshot } from "./requests-actions-test-fixtures";
 
 /** A request with a stable session-wide number; agent ids are normalized ids only. */
-export function historyRequest(number: number, agentId = "primary"): HistoryRequest {
-  return { ...snapshot(number, agentId), id: `request-${number}`, number };
+export function historyRequest(number: number, agentId = "primary", model: string | null = "claude-opus-5"): HistoryRequest {
+  return { ...snapshot(number, agentId), id: `request-${number}`, number, model };
 }
 
 export function historyCall(id: string, request: HistoryRequest | null, workKind: WorkKind, offsetSeconds: number, overrides: Partial<HistoryActivity> = {}): HistoryActivity {

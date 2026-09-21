@@ -301,6 +301,16 @@ history grows. The selected request uses the only brand accent and the scoped
 selected-request left rule. Agent scope applies consistently to the chart, strip,
 groups, and aggregates.
 
+A request line, desktop or phone, stays quiet by printing only what changed from the
+group above it. The agent and role appear on the page's first group and wherever the agent
+changes; the recorded model, in the data font, appears wherever it changes, including
+under an unchanged agent. Each line's accessible name still states the agent, role,
+model, and exact counts. The request number is regular-weight muted data until the
+row is hovered or selected. Desktop token counts keep their chart-legend colors, print
+through `compactNumber`, and name their kind and exact value on hover; the phone line
+keeps its compact uncached input and time, and a tap opens the four exact counts. One rule separates
+request groups; a request line and its calls carry no rule between them.
+
 Foreground request-window loading keeps the last committed chart and feed visible
 under a local neutral veil and announced loading status. The chart and feed never
 mix selections, and failed or loading work retains last-known-good evidence rather

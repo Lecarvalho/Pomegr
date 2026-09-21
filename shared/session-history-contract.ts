@@ -2,7 +2,12 @@ import type { Activity, ActivityFeed, RequestSnapshot, WorkKind } from "./monito
 
 /** Public normalized history pages; source identities and content stay private. */
 export type HistoryActivity = Activity & { agentId: string | null; requestNumber: number | null };
-export type HistoryRequest = RequestSnapshot & { number: number };
+/**
+ * `model` is the bounded model identifier recorded for this one request, or null when it was not
+ * reported (including history committed before models were retained). History pages only: the
+ * state request-snapshot feed, cache evidence and reports never carry it.
+ */
+export type HistoryRequest = RequestSnapshot & { number: number; model: string | null };
 /** One independent request per tuple, in scoped chronological order; never bucketed or summed across requests. */
 export type RequestOverviewPoint = [uncachedInput: number, cacheWrite: number, cacheRead: number, output: number];
 type HistoryPageBase = {

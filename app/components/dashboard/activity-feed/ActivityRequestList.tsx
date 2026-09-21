@@ -27,6 +27,16 @@ function requestTokens(request: HistoryRequest, cacheWriteAvailable: boolean) {
   return { uncachedInputTokens, cacheWriteTokens, outputTokens };
 }
 
+/** The desktop cells print compact counts; the hover names the count and keeps its exact value. */
+function tokenTitle(label: string, value: number) {
+  return `${label}: ${value.toLocaleString()} ${value === 1 ? "token" : "tokens"}, this request only`;
+}
+
+/** A request's recorded model, or null when the monitor reported none for it. */
+function requestModel(request: HistoryRequest) {
+  return typeof request.model === "string" && request.model ? request.model : null;
+}
+
 /**
  * The feed's five served headers and the chart are independently sized. Both carry stable request
  * numbers once history has loaded, so their footer labels can be precise without turning chart
@@ -51,7 +61,7 @@ function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFee
 
 /** Artboard copy for the phone caveat: what each line holds and what it never prints. */
 const PHONE_HOW_TO_READ = <>
-  Request line: agent, role, uncached input, time. Tap it for the four request-local counts.<br />
+  Request line: agent and role where the agent changes, model where it changes, uncached input, time. Tap it for the four request-local counts.<br />
   Call line: kind icon, target, wall duration. Tap it for kind, status, exit code and times.<br />
   Icons match Actions by kind below. Failed or running calls tint only the duration text.<br />
   Targets are Bash descriptions and file basenames only. Counts are never summed.
@@ -79,29 +89,41 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
       <button type="button" className="commandTextLink" onClick={feed.retry}>Retry</button>
     </p>}
     {feed.status === "ready" && !feed.groups.length && <p className="sessionTabState">No requests recorded in this scope.</p>}
-    {feed.groups.map((group) => {
+    {feed.groups.map((group, position) => {
       const agent = agents.find((item) => item.id === group.request.agentId);
+      // Consecutive requests from one agent repeat nothing: both the desktop and phone lines name
+      // the agent on the page's first group and wherever the agent changes, and the model wherever
+      // it changes. The accessible label still names both on every line.
+      const previous = position > 0 ? feed.groups[position - 1].request : null;
+      const model = requestModel(group.request);
+      const showAgent = !previous || previous.agentId !== group.request.agentId;
+      const showModel = model !== null && (showAgent || model !== (previous ? requestModel(previous) : null));
       const selected = group.request.id === selectedId;
       const tokens = requestTokens(group.request, cacheWriteAvailable);
       const callsText = `${group.calls.length.toLocaleString()} ${group.calls.length === 1 ? "call" : "calls"}${group.continuation ? ` of ${(group.calls.length + group.continuation.remaining).toLocaleString()}` : ""}`;
       const agentName = agent ? agentDisplayName(agent) : "Unknown agent";
       const roleLabel = agent ? agentRoleLabel(agent) : "unreported";
       const selectRequest = () => { if (busy) return; onSelectRequest?.(group.request.number); selection.locate(group.request.id, selection.scope); };
-      // Both lines name their agent, so both labels open with the identity the row shows. The
-      // counts stay request-local and are never summed across requests or agents.
+      // Both labels always open with the agent, even where the line leaves a repeated one
+      // unprinted. The counts stay request-local and are never summed across requests or agents.
       const countsLabel = tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}`
         + `${cacheWriteAvailable ? `, cache write ${tokens.cacheWriteTokens.toLocaleString()}` : ""}, output ${tokens.outputTokens.toLocaleString()}` : "";
-      const ariaLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${countsLabel}, ${callsText}`;
+      const modelLabel = model ? `, model ${model}` : "";
+      const ariaLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}${countsLabel}, ${callsText}`;
       // The phone line has no room for the counts the desktop label spells out, so it names the
-      // agent, the uncached input and the time instead.
-      const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}`
+      // agent, the model, the uncached input and the time instead.
+      const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}`
         + `${tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}` : ""}, ${shortTime(group.request.observedAt)}, ${callsText}`;
       return <article className={`activityTableFrame${selected ? " isSelectedRequest" : ""}`} key={group.request.number} data-request={group.request.number} aria-label={`Request #${group.request.number}`}>
         {phone
           ? <button type="button" className={`commandQuietAction activityRow activityRequestLine${selected ? " selected" : ""}`} aria-pressed={selected}
             aria-label={phoneLabel} onClick={selectRequest} aria-disabled={busy || undefined}>
             <span className="requestsActionsNumber">#{group.request.number}</span>
-            <span className="activityRequestWho"><strong>{agentName}</strong> <span>{roleLabel}</span></span>
+            <span className="activityRequestWho">
+              {showAgent && <><strong>{agentName}</strong> <span>{roleLabel}</span></>}
+              {showAgent && showModel && " "}
+              {showModel && <span className="activityRequestModel">{model}</span>}
+            </span>
             <span className="activityRequestMeta">{tokens ? `${compactNumber(tokens.uncachedInputTokens)} in · ` : ""}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
           </button>
           // The desktop line carries the agent itself, so the row is a grid container rather than
@@ -111,16 +133,21 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
             <button type="button" className="commandQuietAction activityRequestSelect" aria-pressed={selected} aria-label={ariaLabel}
               onClick={selectRequest} aria-disabled={busy || undefined}><strong className="requestsActionsNumber">#{group.request.number}</strong></button>
             <span className="activityRequestWho">
-              {agent
-                ? <button type="button" className="commandQuietAction activityRequestAgent" aria-label={`Open ${agentName} in the Agents inspector`}
-                  onClick={() => onOpenAgent(group.request.agentId)}>{agentName}</button>
-                : <strong>{agentName}</strong>}
-              <span>{roleLabel}</span>
+              {showAgent && <>
+                {agent
+                  ? <button type="button" className="commandQuietAction activityRequestAgent" aria-label={`Open ${agentName} in the Agents inspector`}
+                    onClick={() => onOpenAgent(group.request.agentId)}>{agentName}</button>
+                  : <strong>{agentName}</strong>}
+                <span>{roleLabel}</span>
+              </>}
+              {showModel && <span className="activityRequestModel">{model}</span>}
             </span>
-            <span className="activityRequestTokens">{tokens && <>
-              <span className="activityTokenValue uncached">{tokens.uncachedInputTokens.toLocaleString()}</span>
-              {cacheWriteAvailable && <span className="activityTokenValue write">{tokens.cacheWriteTokens.toLocaleString()}</span>}
-              <span className="activityTokenValue output">{tokens.outputTokens.toLocaleString()}</span>
+            {/* The counts sit above the select control's row-wide hit area so each can show its own
+                hover; a pointer click on them still selects the request, as anywhere else on the row. */}
+            <span className="activityRequestTokens" onClick={selectRequest}>{tokens && <>
+              <span className="activityTokenValue uncached" title={tokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
+              {cacheWriteAvailable && <span className="activityTokenValue write" title={tokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
+              <span className="activityTokenValue output" title={tokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
             </>}</span>
           </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}
@@ -156,6 +183,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
     </footer>
     {phone
       ? <p className="activityFeedCaveat">Requests with their tool calls · tap a call for details · <DottedInfoPopover ariaLabel="How to read this feed" content={PHONE_HOW_TO_READ}>how to read this</DottedInfoPopover></p>
-      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Each request's uncached input, cache write and output are request-local and never summed across requests. Tool calls nest under their request with wall duration. Targets show Bash descriptions and file names only.">Request-local counts</DottedInfoPopover></p>}
+      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Each request's uncached input, cache write and output are request-local and never summed across requests; hover a count for its exact value. The agent and the recorded model are named when they change from the request above. Tool calls nest under their request with wall duration. Targets show Bash descriptions and file names only.">Request-local counts</DottedInfoPopover></p>}
   </div>;
 }

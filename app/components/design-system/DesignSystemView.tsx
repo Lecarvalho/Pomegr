@@ -402,8 +402,8 @@ function RequestChartsSection() {
       <div className="activityLayout isPhone designSystemActivityPhoneSample">
         <div className="activityFeed">
           <article className="activityTableFrame isSelectedRequest" aria-label="Selected request #34">
-            <button type="button" className="commandQuietAction activityRow activityRequestLine" aria-pressed="true" aria-label="Request #34, Primary agent, orchestrator, uncached input 12,480, 12:34 PM, 1 call">
-              <span className="requestsActionsNumber">#34</span><span className="activityRequestWho"><strong>Primary agent</strong> <span>orchestrator</span></span><span className="activityRequestMeta">12.5k in · <time dateTime="2026-08-09T12:34:00.000Z">12:34 PM</time></span>
+            <button type="button" className="commandQuietAction activityRow activityRequestLine" aria-pressed="true" aria-label="Request #34, Primary agent, orchestrator, model claude-opus-5, uncached input 12,480, 12:34 PM, 1 call">
+              <span className="requestsActionsNumber">#34</span><span className="activityRequestWho"><strong>Primary agent</strong> <span>orchestrator</span> <span className="activityRequestModel">claude-opus-5</span></span><span className="activityRequestMeta">12.5k in · <time dateTime="2026-08-09T12:34:00.000Z">12:34 PM</time></span>
             </button>
             <ul className="activityTable"><li><button type="button" className="commandQuietAction activityCallLine" aria-expanded="false" aria-label="Bash, verify-ui, 0.8s"><WorkKindIcon kind="shell" /><span className="activityCallTarget">verify-ui</span><span className="activityCallDuration">0.8s</span><svg className="activityCallChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg></button></li></ul>
           </article>

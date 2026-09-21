@@ -43,11 +43,13 @@
 .activityTokenValue.uncached { color: var(--color-context); }
 .activityTokenValue.write { color: var(--command-green); }
 .activityTokenValue.output { color: var(--command-amber); }
-.activityTableFrame { position: relative; isolation: isolate; }
+/* One rule per request group: a request line and its calls read as one block. */
+.activityTableFrame { position: relative; isolation: isolate; border-bottom: 1px solid var(--line); }
+.activityTableFrame:last-of-type { border-bottom: 0; }
 .activityHistoryError { margin: 0; padding: 12px 20px; color: var(--color-error); font-size: var(--text-xs); }
 .activityRow { display: grid; grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) 72px 56px; align-items: center; column-gap: 20px; padding: 0 20px; }
 .activityRow, .activityRow.commandQuietAction { display: grid; column-gap: 20px; padding: 0 20px; width: 100%; min-height: 43px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; }
-.activityRow:last-child { border-bottom: 0; }
+.activityRow:last-child, .activityTableFrame .activityRow, .activityTableFrame .activityRow.commandQuietAction { border-bottom: 0; }
 .activityRow.selected, .activityRow.commandQuietAction[aria-pressed="true"] { background: var(--color-raised); }
 .activityRow.failed, .activityRow.failed:hover, .activityRow.failed[aria-pressed="true"] { background: var(--red-soft); }
 .activityRow.failed strong { color: var(--color-error); }
@@ -70,22 +72,29 @@
 /* The request identity spans the time, activity and target columns, leaving the request-local token values flush with the row's right edge. */
 .activityRequestRow.activityRow { position: relative; grid-template-columns: subgrid; }
 .activityRequestRow > .activityRequestWho { grid-column: 2 / 5; }
-.activityRequestRow > .activityRequestTokens { grid-column: 5; }
+.activityRequestRow > .activityRequestTokens { position: relative; z-index: 1; grid-column: 5; }
 .activityDesktopCallRow.activityRow { grid-template-columns: subgrid; }
 .activityDesktopCallRow.activityRow > time { grid-column: 2; color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .activityRequestSelect.commandQuietAction { justify-content: flex-start; min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
 .activityRequestSelect.commandQuietAction:hover:not(:disabled), .activityRequestSelect.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); }
 .activityRequestSelect::after { content: ""; position: absolute; inset: 0; }
-.activityRequestRow:has(.activityRequestSelect:hover) { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.activityRequestRow:has(.activityRequestSelect:hover), .activityRequestRow:has(.activityRequestTokens:hover) { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
 .activityRequestRow:has(.activityRequestSelect:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .activityRequestSelect:focus-visible { outline: none; }
+/* The request number keys the row without competing with the agent: regular weight, muted until the row is hovered or selected. */
+.activityRequestSelect .requestsActionsNumber { color: var(--muted); font-weight: 400; }
+.activityRequestRow.selected .requestsActionsNumber, .activityRequestRow:has(.activityRequestSelect:hover) .requestsActionsNumber { color: var(--color-text); }
 .activityRequestRow .activityRequestWho { display: flex; align-items: baseline; gap: 8px; overflow: visible; }
 .activityRequestRow .activityRequestWho > span { flex: 0 0 auto; }
+.activityRequestRow .activityRequestWho > .activityRequestModel { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .activityRequestRow .activityRequestAgent.commandQuietAction { position: relative; z-index: 1; display: block; min-width: 0; min-height: 0; padding: 0; overflow: hidden; background: transparent; color: var(--color-text); font-size: inherit; font-weight: 600; line-height: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .activityRequestRow .activityRequestAgent.commandQuietAction:hover:not(:disabled), .activityRequestRow .activityRequestAgent.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
 .activityRequestWho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activityRequestWho strong { font-weight: 600; }
 .activityRequestWho > span { color: var(--muted); }
+.activityRequestModel { font-family: var(--font-data); }
+.activityRequestLine .requestsActionsNumber { color: var(--muted); }
+.activityRequestLine[aria-pressed="true"] .requestsActionsNumber { color: var(--color-text); }
 .activityRequestMeta { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* The one brand-colored left rule in app/styles: the selected phone request group, call lines included. */
 .activityLayout.isPhone .activityTableFrame.isSelectedRequest { border-left: 2px solid var(--brand); }

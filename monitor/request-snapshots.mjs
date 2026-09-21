@@ -3,6 +3,10 @@ import { normalizedRequestWork } from "./request-work.mjs";
 
 const MAX_REQUEST_SNAPSHOTS_PER_AGENT = 100;
 const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed", "30m+"]);
+// A provider model identifier: letters, digits and a few separators, never a
+// path (drive-relative included), prose, markup or control text. Anything
+// else is unreported.
+const REQUEST_MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -61,12 +65,23 @@ export function normalizedRequestEvidence(agents, usageSnapshots, maximumPerAgen
     || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId));
 }
 
+/** Bounded recorded model identifier for one request, or null when unreported or unsafe. */
+export function normalizedRequestModel(value) {
+  if (typeof value !== "string") return null;
+  const model = value.trim();
+  return REQUEST_MODEL.test(model) ? model : null;
+}
+
 /**
  * Normalize independent request-local usage observations. This feed never
  * carries values forward, computes deltas, or consumes cumulative totals.
+ * Only the paged session history asks for each request's recorded model; the
+ * state feed, cache evidence and reports never carry it.
  */
-export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false } = {}) {
-  const items = normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map((item) => requestSnapshotFromEvidence(sessionId, item));
+export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false, includeModel = false } = {}) {
+  const items = normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map((item) => (includeModel
+    ? { ...requestSnapshotFromEvidence(sessionId, item), model: normalizedRequestModel(item.snapshot.model) }
+    : requestSnapshotFromEvidence(sessionId, item)));
 
   return { status: items.length > 0 ? "ready" : "unavailable", items };
 }

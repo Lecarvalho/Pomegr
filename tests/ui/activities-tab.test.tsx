@@ -35,7 +35,7 @@ function monitorState(cacheWriteAvailable = true, primaryTasks?: ExecutionTask[]
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides, primaryTasks }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides, primaryTasks, requestAgent, requestModel }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
@@ -43,8 +43,13 @@ function fixture({ extra, count = 40, overview = true, route = { agent: null, re
   callOverrides?: Record<string, Partial<HistoryActivity>>;
   /** Shell tasks retained for the primary agent, which the rail lists for the matching scope. */
   primaryTasks?: ExecutionTask[];
+  /** Per-request-number agent and recorded model; the default alternates agents on one model. */
+  requestAgent?: (number: number) => string;
+  requestModel?: (number: number) => string | null;
 } = {}) {
-  const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1, (index + 1) % 2 ? "child" : "primary"));
+  const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1,
+    requestAgent ? requestAgent(index + 1) : (index + 1) % 2 ? "child" : "primary",
+    requestModel ? requestModel(index + 1) : undefined));
   const calls = requests.flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
     : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)])
@@ -94,7 +99,9 @@ describe("Activities tab", () => {
     expect(screen.getByRole("region", { name: "Largest requests" })).toHaveTextContent("Builder");
     const groups = within(feed).getAllByRole("article");
     expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Request #31", "Request #33", "Request #35", "Request #37", "Request #39"]);
-    for (const group of groups) expect(group).toHaveTextContent("Builder");
+    // One agent in scope: the first line prints it, and every line's accessible name still names it.
+    expect(groups[0]).toHaveTextContent("Builder");
+    for (const group of groups) expect(within(group).getByRole("button", { name: /^Request #\d+, Builder, builder,/u })).toBeInTheDocument();
     const kinds = within(within(feed).getByRole("group", { name: "Filter calls by kind" })).getAllByRole("button");
     expect(kinds.map((button) => button.textContent)).toEqual([expect.stringMatching(/^Shell.*20/u)]);
     expect(feed).toHaveTextContent("Failed shell runs");
@@ -270,15 +277,15 @@ describe("Activities tab", () => {
     expect(within(second as HTMLElement).getByRole("heading", { name: "Actions by kind" })).toBeInTheDocument();
   });
 
-  it("shows a phone request line with agent, role, uncached input and time that selects the request", async () => {
+  it("shows a phone request line with agent, role, model, uncached input and time that selects the request", async () => {
     setPhone(true);
     const user = userEvent.setup();
     const { container } = fixture();
     const feed = await ready();
 
     const group = within(feed).getByRole("article", { name: "Request #38" });
-    const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, uncached input 1,962,000, ${shortTime(historyRequest(38).observedAt)}, 2 calls` });
-    expect(line).toHaveTextContent(`#38Primary agent orchestrator${compactNumber(1_962_000)} in · ${shortTime(historyRequest(38).observedAt)}`);
+    const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, model claude-opus-5, uncached input 1,962,000, ${shortTime(historyRequest(38).observedAt)}, 2 calls` });
+    expect(line).toHaveTextContent(`#38Primary agent orchestrator claude-opus-5${compactNumber(1_962_000)} in · ${shortTime(historyRequest(38).observedAt)}`);
     // The phone line names the agent as text; the desktop inspector link is not rendered at all.
     expect(within(group).queryByRole("button", { name: "Open Primary agent in the Agents inspector" })).toBeNull();
 
@@ -288,6 +295,24 @@ describe("Activities tab", () => {
     const selected = Array.from(feed.querySelectorAll(".activityTableFrame.isSelectedRequest"));
     expect(selected).toEqual([group]);
     expect(group).toHaveAttribute("data-request", "38");
+  });
+
+  it("names the agent and the recorded model on a phone line only where they change", async () => {
+    setPhone(true);
+    fixture({
+      requestAgent: (number) => number >= 38 ? "primary" : "child",
+      requestModel: (number) => number === 39 ? "claude-sonnet-5" : "claude-opus-5",
+    });
+    const feed = await ready();
+    const who = (number: number) => within(feed).getByRole("article", { name: `Request #${number}` }).querySelector<HTMLElement>(".activityRequestLine .activityRequestWho")!;
+
+    expect(who(36)).toHaveTextContent(/^Builder builder claude-opus-5$/u);
+    expect(who(37)).toHaveTextContent(/^$/u);
+    expect(who(38)).toHaveTextContent(/^Primary agent orchestrator claude-opus-5$/u);
+    expect(who(39)).toHaveTextContent(/^claude-sonnet-5$/u);
+    expect(who(40)).toHaveTextContent(/^claude-opus-5$/u);
+    // The tap target's accessible name keeps the identity the line leaves unprinted.
+    expect(within(feed).getByRole("button", { name: /^Request #37, Builder, builder, model claude-opus-5, uncached input/u })).toBeInTheDocument();
   });
 
   it("keeps the shown request window when a tap selects a group already in it", async () => {
@@ -317,7 +342,7 @@ describe("Activities tab", () => {
     expect(within(feed).queryByText("Local counts only.")).toBeNull();
     expect(feed.querySelector(".activityFeedCaveat")).toHaveTextContent("Requests with their tool calls · tap a call for details · how to read this");
     await user.click(within(feed).getByRole("button", { name: "How to read this feed" }));
-    expect(screen.getByRole("dialog", { name: "How to read this feed" })).toHaveTextContent("Request line: agent, role, uncached input, time. Tap it for the four request-local counts.");
+    expect(screen.getByRole("dialog", { name: "How to read this feed" })).toHaveTextContent("Request line: agent and role where the agent changes, model where it changes, uncached input, time. Tap it for the four request-local counts.");
   });
 
   it("keeps Previous, Next and Jump to latest as phone touch targets", async () => {
@@ -366,7 +391,41 @@ describe("Activities tab", () => {
   it("shows a group's token counts matching the fixture's snapshot values", async () => {
     fixture();
     const feed = await ready();
-    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, uncached input 1,960,000, cache write 2,000, output 4,000, 2 calls" })).toBeInTheDocument();
+    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, model claude-opus-5, uncached input 1,960,000, cache write 2,000, output 4,000, 2 calls" })).toBeInTheDocument();
+  });
+
+  it("prints compact desktop counts whose hover names the token kind and its exact value", async () => {
+    fixture();
+    const feed = await ready();
+    const row = within(feed).getByRole("article", { name: "Request #40" }).querySelector(".activityRequestRow")!;
+    const cells = Array.from(row.querySelectorAll(".activityTokenValue"));
+    expect(cells.map((cell) => cell.textContent)).toEqual([compactNumber(1_960_000), compactNumber(2_000), compactNumber(4_000)]);
+    expect(cells.map((cell) => cell.getAttribute("title"))).toEqual([
+      "Uncached input: 1,960,000 tokens, this request only",
+      "Cache write: 2,000 tokens, this request only",
+      "Output: 4,000 tokens, this request only",
+    ]);
+  });
+
+  it("names the agent and the recorded model only where they change from the request above", async () => {
+    fixture({
+      requestAgent: (number) => number >= 38 ? "primary" : "child",
+      requestModel: (number) => number === 39 ? "claude-sonnet-5" : number === 36 ? null : "claude-opus-5",
+    });
+    const feed = await ready();
+    const who = (number: number) => within(feed).getByRole("article", { name: `Request #${number}` }).querySelector<HTMLElement>(".activityRequestRow .activityRequestWho")!;
+
+    // #36 opens the page with no recorded model; #37 is the same agent, so only its new model prints.
+    expect(who(36)).toHaveTextContent(/^Builderbuilder$/u);
+    expect(who(37)).toHaveTextContent(/^claude-opus-5$/u);
+    expect(within(who(37)).queryByRole("button", { name: /Agents inspector/u })).toBeNull();
+    // An agent change reprints the agent and its model; a model switch prints the model alone.
+    expect(who(38)).toHaveTextContent(/^Primary agentorchestratorclaude-opus-5$/u);
+    expect(who(39)).toHaveTextContent(/^claude-sonnet-5$/u);
+    expect(who(40)).toHaveTextContent(/^claude-opus-5$/u);
+    // The accessible name still carries the full identity on a line that prints none of it.
+    expect(within(feed).getByRole("button", { name: /^Request #37, Builder, builder, model claude-opus-5,/u })).toBeInTheDocument();
+    expect(within(feed).getByRole("button", { name: /^Request #36, Builder, builder, uncached input/u })).toBeInTheDocument();
   });
 
   it("opens an agent from a group's agent-name link without toggling its selection", async () => {
@@ -400,8 +459,8 @@ describe("Activities tab", () => {
   });
 
   it.each([
-    { cacheWriteAvailable: true, expectedTokens: "1,960,000 2,000 4,000" },
-    { cacheWriteAvailable: false, expectedTokens: "1,960,000 4,000" },
+    { cacheWriteAvailable: true, expectedTokens: [1_960_000, 2_000, 4_000].map(compactNumber).join(" ") },
+    { cacheWriteAvailable: false, expectedTokens: [1_960_000, 4_000].map(compactNumber).join(" ") },
   ])("keeps the desktop request row's three cells aligned when cache-write availability is $cacheWriteAvailable", async ({ cacheWriteAvailable, expectedTokens }) => {
     fixture({ cacheWriteAvailable });
     const feed = await ready();
@@ -504,7 +563,7 @@ describe("Activities tab", () => {
     expect(outside.length).toBeGreaterThan(0);
     for (const group of outside) {
       const line = within(group).getByRole("button", { name: new RegExp(`^Request #${number(group)},`, "u") });
-      expect(line.getAttribute("aria-label")).toMatch(/^Request #\d+, (?:Primary agent, orchestrator|Builder, builder), uncached input [\d,]+, cache write [\d,]+, output [\d,]+, \d+ calls?$/u);
+      expect(line.getAttribute("aria-label")).toMatch(/^Request #\d+, (?:Primary agent, orchestrator|Builder, builder), model claude-opus-5, uncached input [\d,]+, cache write [\d,]+, output [\d,]+, \d+ calls?$/u);
     }
   });
 
@@ -512,7 +571,7 @@ describe("Activities tab", () => {
     fixture({ requestGroupOverrides: { 40: { cacheWriteTokens: -1 } } });
     const feed = await ready();
     const group = within(feed).getByRole("article", { name: "Request #40" });
-    expect(within(group).getByRole("button", { name: "Request #40, Primary agent, orchestrator, 2 calls" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Request #40, Primary agent, orchestrator, model claude-opus-5, 2 calls" })).toBeInTheDocument();
     expect(group).not.toHaveTextContent("1,960,000");
     expect(group).not.toHaveTextContent("4,000");
     expect(group.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
@@ -521,7 +580,7 @@ describe("Activities tab", () => {
   it("hides the cache-write token and its aria-label text when cache-write usage is unavailable", async () => {
     fixture({ cacheWriteAvailable: false });
     const feed = await ready();
-    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
+    expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, model claude-opus-5, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
     expect(feed.querySelector(".activityTokenValue.write")).not.toBeInTheDocument();
   });
   it("tints only the duration text of a failed phone call line", async () => {
