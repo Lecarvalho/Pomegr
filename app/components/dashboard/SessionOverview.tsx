@@ -2,10 +2,11 @@
 
 import type { AgentRole } from "../../../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
-import { compactNumber, formatDuration, sessionListTime, sessionRelativeTime } from "../../dashboard-utils";
+import { WORK_LABELS } from "../agents/agent-presentation";
+import { compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
 import { roleFamilyPresentation } from "../../role-family";
-import { DottedInfoPopover } from "../DottedInfoPopover";
 import { PanelHeadingLink } from "../PanelHeadingLink";
+import { comparisonLabel } from "./RepositoryPanel";
 import type { SessionRouteQuery } from "./session-route";
 
 const REQUEST_STRIP_SLOTS = 48;
@@ -46,33 +47,42 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const showWork = activityReady !== "ready" || summary.activity.byKind.length > 0;
   const showCost = Boolean(cost);
 
-  return <div className="sessionOverview" data-density={summary.rightNow.length <= 2 ? "sparse" : "full"} aria-label="Session overview">
+  const repositoryComparison = summary.repository.comparison;
+  const repositoryComparisonText = comparisonLabel(repositoryComparison);
+  const repositoryComparisonTone = repositoryComparison && (repositoryComparison.integrated || (repositoryComparison.ahead === 0 && repositoryComparison.behind === 0)) ? "positive" : undefined;
+  const repositoryChangedFiles = summary.repository.changedFiles;
+  const repositoryChangesLabel = repositoryChangedFiles === null ? "—" : repositoryChangedFiles === 0 ? "No local changes" : `${repositoryChangedFiles} changed file${repositoryChangedFiles === 1 ? "" : "s"}`;
+  const repositoryPullRequestCount = summary.repository.pullRequestCount;
+  const repositoryPullRequestsLabel = repositoryPullRequestCount === null ? "—" : `${repositoryPullRequestCount} pull request${repositoryPullRequestCount === 1 ? "" : "s"}`;
+  const sparse = summary.rightNow.length <= 2;
+  // A sparse Right now leaves most of its row empty, so Work by kind shares that row instead of the bottom one.
+  const workBeside = sparse && showWork;
+
+  const workSection = <section className="sessionOverviewPanel sessionWorkOverview" aria-labelledby="session-work">
+    <div className="sessionOverviewHeading"><h2 id="session-work" className="sessionEyebrow">Work by kind · session</h2></div>
+    {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Activity evidence" /> : summary.activity.byKind.length === 0
+      ? <p className="sessionOverviewEmpty">No classified work recorded.</p>
+      : <>
+        <div className="sessionWorkRow">{summary.activity.byKind.slice(0, 6).map((item) => <span key={item.kind}>{WORK_LABELS[item.kind]} <b>{item.count.toLocaleString()}</b>{item.medianDurationMs === null || item.medianDurationMs < 60_000 ? "" : ` · ${formatDuration(item.medianDurationMs)} median`}</span>)}</div>
+        <p className="sessionOverviewNote">Counts describe recorded tool calls, not quality.</p>
+      </>}
+  </section>;
+
+  return <div className="sessionOverview" data-density={sparse ? "sparse" : "full"} data-work={workBeside ? "beside" : undefined} aria-label="Session overview">
     <section className="sessionOverviewPanel sessionRightNow" data-empty={agentReady === "ready" && summary.rightNow.length === 0 ? "true" : undefined} aria-labelledby="session-right-now">
-      <div className="sessionOverviewHeading"><PanelHeadingLink id="session-right-now" onOpen={() => onNavigate({ tab: "agents" })}>Right now</PanelHeadingLink></div>
+      <div className="sessionOverviewHeading"><div className="sessionRequestHeadingMain"><PanelHeadingLink id="session-right-now" onOpen={() => onNavigate({ tab: "agents" })}>Right now</PanelHeadingLink><span className="sessionRequestSummary">latest action per active agent</span></div></div>
       {agentReady !== "ready" ? <Unavailable readiness={agentReady} label="Agent evidence" /> : summary.rightNow.length === 0
         ? <p className="sessionOverviewEmpty">No agent activity is currently recorded.</p>
         : <ul>{summary.rightNow.slice(0, 5).map((agent) => <li key={agent.id}>
           <span className={`sessionAgentStatus status-${agent.status}`} aria-hidden="true" />
-          <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>
+          <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>
           <span className="sessionAgentActivity"><i className={`sessionCurrentActivityMark${agent.status === "active" && agent.currentActivity ? " isCurrent" : ""}`} aria-hidden="true" /><span className="sessionAgentActivityLabel">{agent.currentActivity?.label || agent.status.replaceAll("_", " ")}</span></span>
-          <strong>{compactNumber(agent.tokens.total)}</strong>
+          <span className="sessionRightNowTokens"><span className="sessionRightNowTokensLabel">Latest context</span><strong>{compactNumber(agent.tokens.total)}</strong></span>
           <time dateTime={agent.lastSeen}>{sessionRelativeTime(agent.lastSeen)}</time>
         </li>)}</ul>}
     </section>
 
-    <section className="sessionOverviewPanel sessionSignals" aria-labelledby="session-signals">
-      <div className="sessionOverviewHeading"><PanelHeadingLink id="session-signals" onOpen={() => onNavigate({ tab: "signals" })}>Efficiency signals</PanelHeadingLink></div>
-      {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Signal evidence" /> : summary.topSignals.length === 0
-        ? <p className="sessionOverviewEmpty">No efficiency signals recorded.</p>
-        : <><ul>{summary.topSignals.map((signal) => <li key={signal.id}><strong><DottedInfoPopover ariaLabel={`About ${signal.title}`} content={signal.detail}>{signal.title}</DottedInfoPopover></strong>{signal.agentId && <button type="button" className="commandQuietAction" onClick={() => onNavigate({ tab: "agents", agent: signal.agentId! })}>Show agent</button>}</li>)}</ul><p className="sessionOverviewNote">Deterministic signals · not a quality assessment</p></>}
-    </section>
-
-    <section className="sessionOverviewPanel sessionRepositoryOneLine" aria-labelledby="session-repository">
-      <div className="sessionOverviewHeading"><PanelHeadingLink id="session-repository" onOpen={() => onNavigate({ tab: "repository" })}>Repository</PanelHeadingLink></div>
-      {repositoryReady !== "ready" ? <Unavailable readiness={repositoryReady} label="Repository evidence" /> : !summary.repository.available
-        ? <p className="sessionOverviewEmpty">No repository detected.</p>
-        : <p><strong>{summary.repository.branch || "Branch unavailable"}</strong><span>{summary.repository.changedFiles ?? "—"} changed files · {summary.repository.pullRequestCount ?? "—"} pull requests</span></p>}
-    </section>
+    {workBeside && workSection}
 
     <section className="sessionOverviewPanel sessionRequestStrip" aria-labelledby="session-requests">
       <div className="sessionOverviewHeading sessionRequestHeading">
@@ -85,34 +95,45 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
           <div className="sessionRequestTracks" aria-label="Recent request-local fresh token totals">
             {requests.map((request) => <button type="button" key={request.id} title={`${request.agentLabel}: ${freshTokens(request).toLocaleString()} fresh tokens`}
               className={`commandIconAction ${roleFamilyPresentation(request.agentRole).className}`} onClick={() => onNavigate({ tab: "activities", request: request.id })}>
-              <span className="sessionFreshStack" style={{ height: `${Math.max(12, Math.round(freshTokens(request) / maximumFreshTokens * 100))}%` }}><i className="requestsActionsSegment uncached" style={{ flex: request.uncachedInputTokens }} /><i className="requestsActionsSegment write" style={{ flex: request.cacheWriteTokens }} /><i className="requestsActionsSegment output" style={{ flex: request.outputTokens }} /></span><i className="sessionRoleTrack" />
+              <span className="sessionFreshStack" style={{ height: `${Math.max(12, Math.round(freshTokens(request) / maximumFreshTokens * 100))}%` }}><i className="requestsActionsSegment uncached" style={{ flex: request.uncachedInputTokens }} /><i className="requestsActionsSegment write" style={{ flex: request.cacheWriteTokens }} /><i className="requestsActionsSegment output" style={{ flex: request.outputTokens }} /></span>
             </button>)}
-            {Array.from({ length: emptySlots }, (_, index) => <span className="sessionRequestSlot" key={`empty-${index}`} aria-hidden="true"><i className="sessionRoleTrack" /></span>)}
+            {Array.from({ length: emptySlots }, (_, index) => <span className="sessionRequestBarSlot" key={`empty-${index}`} aria-hidden="true" />)}
           </div>
-          <div className="sessionRoleLegend" aria-label="Agent role legend">{[...roleCounts].map(([role, agents]) => <span key={role}><i className={roleFamilyPresentation(role).className} aria-hidden="true" />{roleLabel(role)} ×{agents.size}</span>)}</div>
+          <div className="sessionRequestRoleRow" aria-hidden="true">
+            {requests.map((request) => <i key={request.id} className={`sessionRequestRoleSegment ${roleFamilyPresentation(request.agentRole).className}`} />)}
+            {Array.from({ length: emptySlots }, (_, index) => <i className="sessionRequestRoleSegment isEmpty" key={`empty-role-${index}`} />)}
+          </div>
+          <div className="sessionRoleLegend" aria-label="Agent role legend"><span className="sessionEyebrow">Agent role</span>{[...roleCounts].map(([role, agents]) => <span key={role}><i className={roleFamilyPresentation(role).className} aria-hidden="true" />{roleLabel(role)}{agents.size > 1 ? ` ×${agents.size}` : ""}</span>)}</div>
         </>}
     </section>
 
-    {(showProgress || showWork || showCost) && <div className="sessionOverviewBottom">
+    <section className="sessionOverviewPanel sessionRepositoryOneLine" aria-labelledby="session-repository">
+      <div className="sessionOverviewHeading"><PanelHeadingLink id="session-repository" onOpen={() => onNavigate({ tab: "repository" })}>Repository</PanelHeadingLink></div>
+      {repositoryReady !== "ready" ? <Unavailable readiness={repositoryReady} label="Repository evidence" /> : !summary.repository.available
+        ? <p className="sessionOverviewEmpty">No repository detected.</p>
+        : <p className="sessionRepositoryLine">
+          <span className="sessionRepositoryLineBranch">{summary.repository.branch || "Branch unavailable"}</span>
+          {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`}>{repositoryComparisonText}</span>}
+          <span className="sessionRepositoryLineMeta">{repositoryChangesLabel} · {repositoryPullRequestsLabel}</span>
+        </p>}
+    </section>
+
+    {(showProgress || (showWork && !workBeside) || showCost) && <div className="sessionOverviewBottom">
     {showProgress && <section className="sessionOverviewPanel sessionProgressOverview" aria-labelledby="session-progress">
-      <div className="sessionOverviewHeading"><h2 id="session-progress">Progress</h2></div>
+      <div className="sessionOverviewHeading"><h2 id="session-progress" className="sessionEyebrow">Progress</h2></div>
       {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Progress evidence" /> : progress ? <>
-        <strong className="sessionOverviewValue">{progress.percent}%</strong><span>{progress.phase.replaceAll("_", " ")}</span>
+        <div className="sessionOverviewProgressHeadline"><strong className="sessionOverviewValue">{progress.percent}%</strong><span>{progress.phase.replaceAll("_", " ")}</span></div>
         <div className="sessionOverviewMeter"><span style={{ width: `${Math.max(0, Math.min(100, progress.percent))}%` }} /></div>
         <small>{summary.planTasks.length ? `${completedTasks}/${summary.planTasks.length} agent-maintained plan tasks · ` : "Agent-maintained estimate · "}{progress.confidence} confidence</small>
       </> : <><span>Plan tasks · {completedTasks} of {summary.planTasks.length} done</span><div className="sessionOverviewMeter"><span style={{ width: `${Math.round(completedTasks / summary.planTasks.length * 100)}%` }} /></div><small>Agent-maintained checklist, may be stale. No agent estimate recorded.</small></>}
     </section>}
 
-    {showWork && <section className="sessionOverviewPanel sessionWorkOverview" aria-labelledby="session-work">
-      <div className="sessionOverviewHeading"><h2 id="session-work">Work by kind</h2></div>
-      {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Activity evidence" /> : summary.activity.byKind.length === 0
-        ? <p className="sessionOverviewEmpty">No classified work recorded.</p>
-        : <dl>{summary.activity.byKind.slice(0, 6).map((item) => <div key={item.kind}><dt>{item.kind.replaceAll("_", " ")}</dt><dd>{item.count.toLocaleString()}{item.medianDurationMs === null || item.medianDurationMs < 60_000 ? "" : ` · ${formatDuration(item.medianDurationMs)} median`}</dd></div>)}</dl>}
-    </section>}
+    {showWork && !workBeside && workSection}
 
     {showCost && <section className="sessionOverviewPanel sessionCostOverview" aria-labelledby="session-cost">
-      <div className="sessionOverviewHeading"><h2 id="session-cost">Cost</h2></div>
-      <><strong className="sessionOverviewValue">{new Intl.NumberFormat("en-US", { style: "currency", currency: cost!.currency }).format(cost!.amount)}</strong><span>{summary.source} estimate</span><small>Estimate, not a bill · observed {sessionListTime(cost!.observedAt)}</small></>
+      <div className="sessionOverviewHeading"><h2 id="session-cost" className="sessionEyebrow">Cost</h2></div>
+      <div className="sessionCostRow"><span>{summary.source} API list-rate estimate</span><strong className="sessionCostAmount">{new Intl.NumberFormat("en-US", { style: "currency", currency: cost!.currency }).format(cost!.amount)}</strong></div>
+      <p className="sessionOverviewNote">Estimate, not a bill. Observed {sessionRelativeTime(cost!.observedAt)}.</p>
     </section>}
     </div>}
   </div>;

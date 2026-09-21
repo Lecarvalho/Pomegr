@@ -101,7 +101,7 @@ describe("T04 session workspace", () => {
     expect(screen.getByLabelText("Session totals")).toHaveTextContent("Calls");
     expect(screen.getByLabelText("Session overview")).toBeInTheDocument();
     expect(screen.getByTitle("Primary agent: 35 fresh tokens")).toBeInTheDocument();
-    expect(container.querySelector(".sessionRoleTrack")).toBeInTheDocument();
+    expect(container.querySelector(".sessionRequestRoleSegment")).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/state"))).toBe(false);
   });
 
@@ -402,18 +402,7 @@ describe("T04 session workspace", () => {
     expect(url).toMatch(/agent=primary/);
   });
 
-  it("navigates to the Agents tab with that agent selected when Overview's Efficiency signals Show agent is clicked", async () => {
-    // sessionSummaryFixture()'s default topSignals entry already carries agentId "primary"
-    // (see session-summary-test-fixture.ts), so the default fixture exercises this directly.
-    mount({ tab: "overview" });
-    expect(await screen.findByText("Repeated reads")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Show agent" }));
-    const url = String(navigation.replace.mock.calls.at(-1)?.[0]);
-    expect(url).toMatch(/tab=agents/);
-    expect(url).toMatch(/agent=primary/);
-  });
-
-  it.each([["Right now", "agents"], ["Efficiency signals", "signals"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
+  it.each([["Right now", "agents"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
     mount({ tab: "overview" });
     const overview = await screen.findByLabelText("Session overview");
     for (const label of ["All agents", "View signals", "View evidence", "Open repository", "Open activities"]) expect(within(overview).queryByRole("button", { name: label })).not.toBeInTheDocument();
@@ -429,7 +418,7 @@ describe("T04 session workspace", () => {
     const tracks = container.querySelector(".sessionRequestTracks")!;
     const bars = tracks.querySelectorAll("button").length;
     expect(bars).toBeGreaterThan(0);
-    expect(bars + tracks.querySelectorAll(".sessionRequestSlot").length).toBe(48);
+    expect(bars + tracks.querySelectorAll(".sessionRequestBarSlot").length).toBe(48);
   });
 
   it("pulses only beside an active agent's current activity", async () => {
@@ -448,12 +437,12 @@ describe("T04 session workspace", () => {
     const base = sessionSummaryFixture();
     const first = mount({ tab: "overview" });
     await screen.findByRole("heading", { name: "Progress" });
-    expect(screen.getByRole("heading", { name: "Work by kind" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Work by kind · session" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Cost" })).toBeInTheDocument();
     first.unmount();
 
     const withoutProgressOrCost = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null }, planTasks: [] }));
-    await screen.findByRole("heading", { name: "Work by kind" });
+    await screen.findByRole("heading", { name: "Work by kind · session" });
     expect(screen.queryByRole("heading", { name: "Progress" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Cost" })).not.toBeInTheDocument();
     expect(screen.queryByText(/median/)).not.toBeInTheDocument();
@@ -473,6 +462,11 @@ describe("T04 session workspace", () => {
     // and asserting none of them appear anywhere in the rendered markup (including attributes,
     // via innerHTML) is a regression guard for the privacy bounds in AGENTS.md: raw prompts,
     // responses, tool output, credentials, and local paths must never reach the browser.
+    // Note: `repository.comparison` is deliberately excluded from this sentinel set. Overview's
+    // Repository row now legitimately reads and renders `comparisonLabel(repository.comparison)`
+    // (a normalized branch-comparison sentence built from git evidence, not a local path), so
+    // `session.pomegrPlugin.version` — never read by Overview — stands in for the "local path
+    // never leaks" case instead.
     const base = sessionSummaryFixture();
     const sentinels = {
       prompt: "sentinel-prompt-2f91a7-forbidden",
@@ -482,15 +476,79 @@ describe("T04 session workspace", () => {
       localPath: "sentinel-localpath-C--Users-secret-transcript-jsonl-forbidden",
     };
     const summary = sessionSummaryFixture({
-      session: { ...base.session!, summary: { text: sentinels.prompt, observedAt: "2026-09-14T12:00:00.000Z", source: "provider" } },
+      session: {
+        ...base.session!,
+        summary: { text: sentinels.prompt, observedAt: "2026-09-14T12:00:00.000Z", source: "provider" },
+        pomegrPlugin: { status: "active", version: sentinels.localPath, policyStatus: "valid", policyVersion: 1, observedAt: "2026-09-14T12:00:00.000Z" },
+      },
       planTasks: [{ id: "task-1", subject: sentinels.response, status: "completed", blocks: [], blockedBy: [] }],
       rightNow: [{ ...base.rightNow[0]!, customType: sentinels.toolOutput }],
       requestSnapshots: { status: "ready", items: [{ ...base.requestSnapshots.items[0]!, id: sentinels.credential }] },
-      repository: { ...base.repository, comparison: { branch: sentinels.localPath, kind: "base", ahead: 0, behind: 0, integrated: false } },
     });
     const { container } = mount({}, summary);
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     const html = container.innerHTML;
     for (const value of Object.values(sentinels)) expect(html).not.toContain(value);
+  });
+
+  it("shows the repository comparison chip and changes/pull-request copy for up to date, ahead/behind, and no comparison", async () => {
+    const base = sessionSummaryFixture();
+    const upToDate = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 0, pullRequestCount: 0, comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 0, integrated: false } } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(screen.getByText("Up to date with origin/main")).toBeInTheDocument();
+    expect(screen.getByText("No local changes · 0 pull requests")).toBeInTheDocument();
+    upToDate.unmount();
+
+    const aheadBehind = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 1, pullRequestCount: 2, comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 1, integrated: false } } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(screen.getByText("2 commits ahead · 1 commit behind relative to origin/main")).toBeInTheDocument();
+    expect(screen.getByText("1 changed file · 2 pull requests")).toBeInTheDocument();
+    aheadBehind.unmount();
+
+    mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: null, pullRequestCount: null, comparison: null } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(screen.queryByText(/Up to date|ahead|behind|integrated/)).not.toBeInTheDocument();
+    expect(screen.getByText("— · —")).toBeInTheDocument();
+  });
+
+  it("prints ×N in the request role legend only when more than one agent shares a role", async () => {
+    const base = sessionSummaryFixture();
+    mount({ tab: "overview" }, sessionSummaryFixture({
+      requestSnapshots: {
+        status: "ready",
+        items: [
+          { ...base.requestSnapshots.items[0]!, id: "request-1", agentId: "primary", agentLabel: "Primary agent", agentRole: "orchestrator" },
+          { ...base.requestSnapshots.items[0]!, id: "request-2", agentId: "secondary", agentLabel: "Secondary agent", agentRole: "orchestrator" },
+        ],
+      },
+    }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    const legend = screen.getByLabelText("Agent role legend");
+    expect(legend).toHaveTextContent("orchestrator ×2");
+    expect(legend).not.toHaveTextContent("×1");
+  });
+
+  it("shows the Cost row with the source and amount, and an observed-time footnote", async () => {
+    mount({ tab: "overview" });
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
+    expect(screen.getByText("$2.50")).toBeInTheDocument();
+    expect(screen.getByText(/^Estimate, not a bill\. Observed .+\.$/)).toBeInTheDocument();
+  });
+
+  it("labels Work by kind items with WORK_LABELS text and keeps sub-minute medians omitted", async () => {
+    const base = sessionSummaryFixture();
+    mount({ tab: "overview" }, sessionSummaryFixture({ activity: { ...base.activity, byKind: [{ kind: "read", count: 8, medianDurationMs: 900 }, { kind: "write", count: 6, medianDurationMs: 90_000 }] } }));
+    const heading = await screen.findByRole("heading", { name: "Work by kind · session" });
+    const panel = heading.closest("section")!;
+    expect(panel).toHaveTextContent("Reading 8");
+    expect(panel).toHaveTextContent("Editing 6 · 1m median");
+  });
+
+  it("leaves efficiency signals to the Signals tab", async () => {
+    mount({ tab: "overview" });
+    const overview = await screen.findByLabelText("Session overview");
+    expect(within(overview).queryByRole("heading", { name: "Efficiency signals" })).not.toBeInTheDocument();
+    expect(within(overview).queryByText("Repeated reads")).not.toBeInTheDocument();
   });
 });
