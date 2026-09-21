@@ -62,12 +62,18 @@
 .activityPagination > span { color: var(--muted); font-size: var(--text-xs); }
 .activityPagination nav { display: flex; align-items: center; gap: 4px; }
 .activityLayout.isPhone .activityRequestLine, .activityLayout.isPhone .activityRow.activityRequestLine { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; min-height: 44px; padding: 0 12px; }
-/* The compact request identity leaves the request-local token values flush with the row's right edge. */
-.activityRequestRow.activityRow { position: relative; grid-template-columns: 52px minmax(0, 1fr) max-content; }
-/* Desktop calls size the activity column from the row width, identically in every row, so long tool names fit while targets stay aligned and own the remaining space. */
-.activityDesktopCallRow.activityRow { grid-template-columns: 52px max-content clamp(132px, 32%, 300px) minmax(0, 1fr) 72px; }
+/* The desktop feed is one grid that every request group, request row and call row subgrids: the ID column fits the widest request number on the page, calls indent under the agent name, the activity column fits the widest label (capped at 300px), and targets align across groups. The rows' 20px padding lands on the edge tracks. */
+.activityLayout:not(.isPhone) .activityFeed { display: grid; grid-template-columns: max-content max-content fit-content(300px) minmax(0, 1fr) minmax(72px, max-content); column-gap: 20px; }
+.activityLayout:not(.isPhone) :is(.activityFeed, .activityTableFrame, .activityTable) > * { grid-column: 1 / -1; }
+.activityLayout:not(.isPhone) .activityTableFrame, .activityLayout:not(.isPhone) .activityTable { display: grid; grid-template-columns: subgrid; }
+.activityLayout:not(.isPhone) .activityTableFrame > .commandTextLink { justify-self: start; }
+/* The request identity spans the time, activity and target columns, leaving the request-local token values flush with the row's right edge. */
+.activityRequestRow.activityRow { position: relative; grid-template-columns: subgrid; }
+.activityRequestRow > .activityRequestWho { grid-column: 2 / 5; }
+.activityRequestRow > .activityRequestTokens { grid-column: 5; }
+.activityDesktopCallRow.activityRow { grid-template-columns: subgrid; }
 .activityDesktopCallRow.activityRow > time { grid-column: 2; color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.activityRequestSelect.commandQuietAction { min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
+.activityRequestSelect.commandQuietAction { justify-content: flex-start; min-width: 0; min-height: 0; padding: 0; background: transparent; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
 .activityRequestSelect.commandQuietAction:hover:not(:disabled), .activityRequestSelect.commandQuietAction:active:not(:disabled) { background: transparent; color: var(--color-text); }
 .activityRequestSelect::after { content: ""; position: absolute; inset: 0; }
 .activityRequestRow:has(.activityRequestSelect:hover) { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }

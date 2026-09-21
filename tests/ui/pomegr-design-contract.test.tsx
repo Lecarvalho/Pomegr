@@ -158,8 +158,9 @@ describe("Pomegr visual contract", () => {
     expect(denseActivityRow.map(({ selector }) => selector).filter((selector) => !/\.activityCallLine\b/.test(selector))).toEqual([]);
 
     expect(styles).toMatch(/\.activityLayout\.isPhone \.activityBreakdown\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
-    expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*52px minmax\(0, 1fr\) max-content/);
-    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*52px max-content clamp\(132px, 32%, 300px\) minmax\(0, 1fr\) 72px/);
+    expect(activityStyles).toMatch(/\.activityLayout:not\(\.isPhone\) \.activityFeed\s*\{[^}]*grid-template-columns:\s*max-content max-content fit-content\(300px\) minmax\(0, 1fr\) minmax\(72px, max-content\)/);
+    expect(activityStyles).toMatch(/\.activityRequestRow\.activityRow\s*\{[^}]*grid-template-columns:\s*subgrid/);
+    expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow\s*\{[^}]*grid-template-columns:\s*subgrid/);
     expect(activityStyles).toMatch(/\.activityDesktopCallRow\.activityRow > time\s*\{[^}]*grid-column:\s*2[^}]*white-space:\s*nowrap/);
     expect(activityStyles).toMatch(/\.activityActionLabel\s*\{[^}]*font-weight:\s*400/);
     expect(evidenceStyles).not.toMatch(/\.activity(?:Panel|Layout|CallLine|RequestRow|DesktopCallRow)\b/);
