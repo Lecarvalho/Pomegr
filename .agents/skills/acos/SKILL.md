@@ -26,31 +26,6 @@ Read `.acos.yaml` from the repo root if present. If the catalog is missing,
 tell the user ACOS is not installed here and stop. If the catalog exists
 but `.acos.yaml` does not, run **init** (section 7) first, then continue.
 
-## 0.5 Resolve the active harness and profile
-
-Do this before sizing, composing, running, initializing, or calibrating.
-
-1. Detect the harness deterministically: use `codex` when the runtime exposes
-   `CODEX_THREAD_ID`; use `claude` when it exposes `CLAUDE_CODE_SESSION_ID`.
-   Without those identifiers, use exactly one available native delegation
-   surface: Codex `spawn_agent` plus the collaboration wait mechanism means
-   `codex`; Claude's Agent tool means `claude`. If both signals exist, conflict,
-   or neither is available, stop and ask the user which harness is executing
-   the run. Never infer it from an installed CLI or a requested model.
-2. Resolve `harnesses.<active>` from `.acos.yaml`. It supplies exactly
-   `provider`, `models.fast`, `models.balanced`, `models.strong`, and `startup`.
-   Keep `verify`, optional `shot`, `limits`, and `gates` at the shared top
-   level. The selected provider must occur in the shared `providers` list and
-   in `catalog/providers.yaml`.
-3. For a legacy config with no `harnesses` mapping only, use top-level
-   `provider`, `models`, and `startup` as the active profile. This compatibility
-   fallback belongs only in the runner; `/acos init` always writes harnesses.
-4. Substitute `{{ project.models.* }}` and resolve startup values from the
-   active profile. A manifest records `harness: <claude|codex>` and its selected
-   provider so a later session cannot silently run it through another harness.
-
-The rest of this procedure calls this resolved mapping the **active profile**.
-
 ## Subcommands
 
 | Invocation | Action |
@@ -67,7 +42,7 @@ The rest of this procedure calls this resolved mapping the **active profile**.
 
 These decide most of the manifest. Apply them before anything else.
 
-- **You do not start at zero.** The active profile's `startup` says what this
+- **You do not start at zero.** `.acos.yaml` `startup` says what this
   session carries before it reads anything (system prompt, tools, MCP
   servers, memory, skills) and what a fresh worker carries. Missing key:
   40000 for you, 25000 for a worker, said in `basis`. Your budget for
@@ -149,10 +124,8 @@ These decide most of the manifest. Apply them before anything else.
 - **Effort matches the delegated stage**, not the task: a fan-out
   implementer medium, evidence low, review high. Inline stages carry
   none, and no model either.
-- **Workflow adapter is rare and Claude-only.** Select it only for three or
-  more independent parallel Anthropic stages on Claude after the user has
-  seen `adapter: workflow` in the manifest before GO. Codex uses its native
-  parallel subagents for the same shape.
+- **Workflow adapter is rare.** Three or more independent parallel stages,
+  and the user has seen `adapter: workflow` in the manifest before GO.
 - **Orchestrator context is the scarce resource.** Default ceiling when
   `limits.orchestrator_tokens` is absent: 120000, of which the startup
   load is already gone before you read a file.
@@ -180,7 +153,7 @@ other way round.
    bound one context: an inline part, or one slice. A part that
    fans out may total more across its slices, but no single slice may
    break them.
-2. **Subtract the startup load.** Read the active profile's `startup`
+2. **Subtract the startup load.** Read `.acos.yaml` `startup`
    (`orchestrator`, `subagent`; 40k and 25k when the key is absent).
    Your work budget for this part is `limits.orchestrator_tokens` minus
    `startup.orchestrator` — with the defaults, 80k, not 120k. Every
@@ -348,11 +321,10 @@ Each must therefore be complete on its own: intent, scope, stages,
    `preset`, otherwise ad hoc from blocks per the economy rules. Leave
    `preset` out when ad hoc.
 2. For each stage, merge in this order, later wins: block defaults,
-   preset stage entry, active-profile defaults for missing provider/model,
+   preset stage entry, project defaults for missing provider/model,
    calibration adjustments, user overrides given in the request.
-3. Substitute every `{{ project.* }}` placeholder from the active profile
-   and shared top-level configuration. A placeholder with no value is a
-   compose error: say which one and stop.
+3. Substitute every `{{ project.* }}` placeholder from `.acos.yaml`. A
+   placeholder with no value is a compose error: say which one and stop.
 4. Generate `id`: `YYYY-MM-DD-<short-slug-of-intent>`.
 5. Fill `scope` only if the user gave hints or it is obvious. Otherwise omit.
 6. Estimate: `files`, `lines`, `calibration`, `confidence`, the
@@ -365,38 +337,19 @@ Each must therefore be complete on its own: intent, scope, stages,
    catalog has prices for the chosen models.
 7. Copy `limits` from `.acos.yaml`; apply any per-run override the user
    gave in sizing.
-8. Select adapters after resolving the active profile. `inline` and
-   `subagent` are native only when their resolved provider equals the active
-   profile provider and that provider's catalog adapter names the active
-   harness as `native_harness`; otherwise use `external` for a cross-provider
-   stage or fail composition when no external command exists. Never use a
-   native adapter merely because its provider CLI is installed.
-9. `workflow` is selectable only for the Claude profile with Anthropic's
-   native Workflow entry. On Codex, do not select Workflow: compose the same
-   independent work as native `subagent` stages instead. An existing Codex
-   manifest containing Workflow is rejected before GO. When Claude selects
-   Workflow, compile scripts per `references/workflow.md` under `runs/<id>/`
-   before presentation; they are part of what the user approves at GO.
+8. If any stage has `adapter: workflow`, compile the script(s) now per
+   `references/workflow.md` and write them under `runs/<id>/`. They are
+   part of what the user approves at GO.
 
-Before presentation, validate this checklist from the parsed manifest and
-catalog:
-
-- `harness` equals the detected harness, and its provider is the active profile
-  provider listed both in `.acos.yaml` and the catalog.
-- The active profile has fast, balanced, and strong model ids; each exists in
-  that provider catalog at the matching tier. Shared `verify`, `limits`, and
-  `gates` are present; `shot` remains optional.
-- The manifest has id, intent, harness, provider, limits, estimate, and unique
-  stage names. Every input is produced by an earlier stage, every output name
-  is unique, and estimates fit the compose-time limits.
-- Inline stages carry no provider, model, or effort. Delegated native stages
-  carry a provider equal to the active provider, a catalog model, and an effort
-  accepted by that provider's effort map. External stages have a usable command.
-- A Workflow stage is Claude/Anthropic-native only. Parallel delegated stages
-  have disjoint `owns` lists and no input/output dependency; any overlap is a
-  compose error.
-
-If a stage needs a model or effort other than the session's, delegate it.
+Validate the result mentally: required fields present, enums valid,
+stage names unique, every `inputs` entry produced by an earlier stage,
+estimate within limits. An inline stage
+carries no `provider`, `model` or `effort`: they are invalid there, and
+the session could not honour them anyway. If a stage needs a model or an
+effort other than the session's, delegate it. Stages that will run
+at the same time (consecutive delegated stages with no input/output
+dependency) each carry `owns`, and no path appears in two of them; an
+overlap is a compose error, fix the cut before presenting.
 
 For deferred evidence, the earlier manifest records
 `part.evidence.deferred_to` and every claim, URL and capture target. Its
@@ -630,37 +583,35 @@ Goal: write a correct `.acos.yaml` without the user editing a template.
    something else, and no key at all when there is no visible surface.
 3. Detect reachable providers. Run `which`/`Get-Command` for `claude`,
    `codex`, `gemini`, `ollama`. Keep only providers whose CLI exists, plus
-   both native harness providers. Write `harnesses.claude` and
-   `harnesses.codex`; never collapse them into a single top-level provider.
-4. Fill each harness profile from `catalog/providers.yaml`: its provider must
-   expose native inline and subagent adapters for that harness, and `fast`,
-   `balanced`, and `strong` select models at those matching catalog tiers.
+   the harness's native provider.
+4. Fill model tiers from `catalog/providers.yaml` for the native provider:
+   `fast` = tier fast, `balanced` = tier balanced, `strong` = tier strong.
 5. Pick `preset`: leave unset. Ad hoc composition is the default until
    the user saves one.
 6. Set `gates.go: required`. Set `limits` to the defaults
    (`files: 8`, `lines: 400`, `orchestrator_tokens: 120000`,
    `worker_context_tokens: 300000`, `agents: 3`, `stages: 5`) unless the user
    gave others.
-7. Measure the **startup load for each harness**: what a session of this project holds
+7. Measure the **startup load**: what a session of this project holds
    before it reads a line of code. Every estimate starts from it, so a
    wrong figure is wrong on every future part.
-   - If the active harness can print its context breakdown (Claude Code:
+   - If the harness can print its context breakdown (Claude Code:
      `/context`), ask the user to run it in a fresh session of this repo
      and paste the total plus the breakdown. That is a measurement; use
-     it for that harness only, and record the method.
+     it, and record the method.
    - Otherwise estimate: characters divided by four over what always
      loads — `CLAUDE.md` and the files it imports, the frontmatter
      description of every skill the session lists, agent definitions,
      the tool schemas of the MCP servers configured here — plus 20000
      for the harness's own system prompt and built-in tools. Say in
      `basis` that it is an estimate.
-   - Each profile's `startup.subagent` is the same minus what a worker does not get
+   - `startup.subagent` is the same minus what a worker does not get
      (the conversation, usually the MCP servers, usually the skill
      list). With nothing to measure, use 25000.
-   Write `harnesses.<name>.startup.orchestrator`, `.subagent`, and a
-   separately labelled `basis` for each harness. Tell the user the number
-   moves when the project gains an MCP server, a skill or a memory file,
-   and that `/acos init` re-run updates it.
+   Write `startup.orchestrator`, `startup.subagent` and a `basis` line
+   naming the date and the method. Tell the user the number moves when
+   the project gains an MCP server, a skill or a memory file, and that
+   `/acos init` re-run updates it.
 8. Write it and say what was chosen and why, one line per field. Ask
    for confirmation only if the verify command is a guess (nothing in
    the repo named it) or the startup load needs a `/context` paste; ask
@@ -675,9 +626,7 @@ sizing and compose more accurate for this repo.
 
 1. Collect every `runs/*/` that has `manifest.yaml`. Read, per run:
    `manifest.yaml` and `log.yaml`, plus `plan.yaml` for plans. A run
-   without a log counts as planned only. Partition results by manifest
-   `harness` (or the recorded session prefix for legacy runs); do not mix
-   Claude and Codex startup, model, or adapter measurements.
+   without a log counts as planned only.
 2. Fill token counts missing from a log only from measurement: if a
    usage query for past sessions is available (a session monitor's MCP
    tool, for example), ask it for the log's `sessions` between each
@@ -713,8 +662,7 @@ sizing and compose more accurate for this repo.
    stage, part start to part end, and the gap from one part's end to
    the next part's start, so the Cost section can say whether fan-out
    and parallel parts shortened the plan and where the time went.
-5. Write `acos/calibration.md` in this fixed shape for the active harness:
-   a header that names the profile, then
+5. Write `acos/calibration.md` in this fixed shape: a header line with
    the run count, the date range and today's date; then sections
    **Shape**, **Cost**, **Recurring drift**, **Notes**. Under
    40 lines. Overwrite the previous file; if it had a **Notes** section,
@@ -734,8 +682,8 @@ Take the last run from this session (or `runs/<newest>/`): its
 stages removed, added ones inserted, models and efforts as used). Strip
 run-specific fields: `id`, `intent`, `part`, `scope`, `estimate`,
 `outputs`. Replace concrete model ids with the matching
-`{{ project.models.<tier> }}` placeholder when they equal a tier in the
-active profile, and the verify command with `{{ project.verify }}`. Keep
+`{{ project.models.<tier> }}` placeholder when they equal a tier in
+`.acos.yaml`, and the verify command with `{{ project.verify }}`. Keep
 adapters, checks, on_fail, escalation, loop and gates, and efforts on
 delegated stages only: an inline stage in a preset carries no model and
 no effort, whatever the session it came from was running. Add `name`
