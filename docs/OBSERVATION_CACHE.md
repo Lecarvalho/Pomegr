@@ -1924,6 +1924,16 @@ running fallback with last-observed evidence, without new acquisition or changin
 retained session evidence. Failed candidates preserve the previous committed revision.
 The compatibility summary cache retains a separate last-observed fallback for the same
 reconciliation; neither fallback is added to Home, session-detail state, or reports.
+Each committed `session-summary.rightNow` row also derives an optional agent-scoped
+`activityFallback` from that row's normalized execution tasks and activity calls only.
+It uses the same fixed vocabulary, original timestamp, `current` or `last_observed`
+state, and lifecycle qualification as the session fallback, but cannot borrow another
+agent's task or call. Serving reads the already committed domain projection and never
+acquires provider evidence. F prefers a qualified provider `currentActivity`, then this
+agent-owned fallback, then normalized status. Only active provider activity or an active
+`current` fallback receives the existing current marker and shimmer; `last_observed`
+fallback text remains static. This remains bounded execution evidence, not provider
+narration or authoritative proof of current work.
 F renders the work label for last-observed work, with a static version of the activity
 icon and "Previous activity" accessible naming. Delegated and multiple-agent scope remains
 inline; primary-agent attribution and the age appear only in the popover. Qualified

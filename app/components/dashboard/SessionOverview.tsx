@@ -78,8 +78,9 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
       {agentReady !== "ready" ? <Unavailable readiness={agentReady} label="Agent evidence" /> : summary.rightNow.length === 0
         ? <p className="sessionOverviewEmpty">No agent activity is currently recorded.</p>
         : <ul>{summary.rightNow.slice(0, 5).map((agent) => {
-          const activityLabel = agent.currentActivity?.label || agent.status.replaceAll("_", " ");
-          const activityIsCurrent = agent.status === "active" && Boolean(agent.currentActivity);
+          const activityLabel = agent.currentActivity?.label || agent.activityFallback?.label || agent.status.replaceAll("_", " ");
+          const activityIsCurrent = agent.status === "active"
+            && (Boolean(agent.currentActivity) || agent.activityFallback?.state === "current");
           return <li key={agent.id}>
             <span className={`sessionAgentStatus status-${agent.status}`} aria-hidden="true" />
             <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>

@@ -60,6 +60,7 @@ export type SessionSummaryDomain = SessionDomainBase & {
   };
   rightNow: Array<Pick<Agent,
     "id" | "label" | "role" | "customType" | "model" | "status" | "currentActivity" | "lastSeen" | "updatedAt"> & {
+      activityFallback?: SessionActivityFallback | null;
       tokens: Pick<Agent["tokens"], "total">;
     }>;
   topSignals: Insight[];

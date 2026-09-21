@@ -460,6 +460,30 @@ describe("T04 session workspace", () => {
     expect(waitingLabel).not.toHaveAttribute("data-text");
   });
 
+  it("uses an agent fallback after provider activity, and leaves last observed work static", async () => {
+    const base = sessionSummaryFixture();
+    const fallback = { label: "Searching", state: "current" as const, observedAt: "2026-09-14T12:00:00.000Z", source: "execution_task" as const, actor: "primary" as const };
+    const current = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, currentActivity: null, activityFallback: fallback }] }));
+    expect(await screen.findByText("Searching")).toBeInTheDocument();
+    expect(current.container.querySelector(".sessionCurrentActivityMark")).toHaveClass("isCurrent");
+    expect(current.container.querySelector(".sessionAgentActivityLabel")).toHaveClass("currentActivityShimmer");
+    current.unmount();
+
+    const provider = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, currentActivity: { label: "Provider heading", observedAt: fallback.observedAt }, activityFallback: fallback }] }));
+    expect(await screen.findByText("Provider heading")).toBeInTheDocument();
+    expect(screen.queryByText("Searching")).not.toBeInTheDocument();
+    provider.unmount();
+
+    const previous = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, currentActivity: null, activityFallback: { ...fallback, state: "last_observed" } }] }));
+    expect(await screen.findByText("Searching")).toBeInTheDocument();
+    expect(previous.container.querySelector(".sessionCurrentActivityMark")).not.toHaveClass("isCurrent");
+    expect(previous.container.querySelector(".sessionAgentActivityLabel")).not.toHaveClass("currentActivityShimmer");
+    previous.unmount();
+
+    mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, currentActivity: null, activityFallback: null }] }));
+    expect(await screen.findByText("active")).toBeInTheDocument();
+  });
+
   it("renders bottom panels only for evidence or readiness, with plan fallback and no sub-minute medians", async () => {
     const base = sessionSummaryFixture();
     const first = mount({ tab: "overview" });

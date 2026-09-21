@@ -1,4 +1,5 @@
 import { repositoryRelativePath } from "./repository-path.mjs";
+import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
@@ -232,6 +233,10 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       model: agent.model,
       status: agent.status,
       currentActivity: agent.currentActivity || null,
+      activityFallback: projectAgentSessionActivityFallback(catalogEntry || {
+        isLive: state.view === "live",
+        activityStatus: "unknown",
+      }, agent, state.activity?.items),
       tokens: { total: agent.tokens?.total || 0 },
       lastSeen: agent.lastSeen,
       updatedAt: agent.updatedAt,

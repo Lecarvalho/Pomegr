@@ -73,6 +73,7 @@ test("session-summary alone carries the bounded header and Overview data", () =>
   publicState.session.progress = { phase: "implementing", percent: 60, confidence: "medium", reportedAt: OBSERVED_AT };
   publicState.session.repository.comparison = { branch: "origin/main", kind: "upstream", ahead: 2, behind: 0, integrated: false };
   publicState.agents[0].currentActivity = { label: "Running focused tests", observedAt: OBSERVED_AT };
+  publicState.agents[0].executionTasks = [{ id: "task-1", kind: "shell", workKind: "search", status: "running", background: false, backgroundId: null, startedAt: OBSERVED_AT, finishedAt: null, exitCode: null, failureCause: null }];
   publicState.insights = [0, 1, 2].map((index) => ({ id: `signal-${index}`, level: "info", title: `Signal ${index}`, detail: "Observed evidence" }));
   publicState.planTasks = [{ id: "task-1", subject: "Finish domains", status: "in_progress", blocks: [], blockedBy: [] }];
   publicState.activity = { items: [], total: 3, toolCalls: 3, messages: 0, failed: 0,
@@ -89,7 +90,9 @@ test("session-summary alone carries the bounded header and Overview data", () =>
   assert.deepEqual(summary.lifecycle, { isLive: true, needsInput: false, activityStatus: "working", currentActivity: null, activityFallback: null });
   assert.deepEqual(summary.rightNow[0], {
     id: "primary", label: "Primary", role: "orchestrator", customType: null, model: "test", status: "active",
-    currentActivity: { label: "Running focused tests", observedAt: OBSERVED_AT }, tokens: { total: 20 }, lastSeen: OBSERVED_AT, updatedAt: OBSERVED_AT,
+    currentActivity: { label: "Running focused tests", observedAt: OBSERVED_AT },
+    activityFallback: { label: "Searching", state: "current", observedAt: OBSERVED_AT, source: "execution_task", actor: "primary" },
+    tokens: { total: 20 }, lastSeen: OBSERVED_AT, updatedAt: OBSERVED_AT,
   });
   assert.equal(summary.allAgentContext, 30);
   assert.deepEqual(summary.metrics, { agents: 2, activeAgents: 1, idleAgents: 1, finishedAgents: 0, toolCalls: 0, repeatedCalls: 0 });
