@@ -445,11 +445,19 @@ describe("T04 session workspace", () => {
     const active = mount({ tab: "overview" }, base);
     await screen.findByText("Implementing session tabs");
     expect(active.container.querySelectorAll(".sessionCurrentActivityMark.isCurrent")).toHaveLength(1);
+    expect(active.container.querySelectorAll(".sessionAgentActivityLabel.currentActivityShimmer")).toHaveLength(1);
+    const activeLabel = active.container.querySelector(".sessionAgentActivityLabel.currentActivityShimmer");
+    expect(activeLabel).toHaveClass("currentActivityShimmer");
+    expect(activeLabel).toHaveAttribute("data-text", "Implementing session tabs");
     active.unmount();
 
     const waiting = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, status: "needs_input" }] }));
     await screen.findByText("Implementing session tabs");
     expect(waiting.container.querySelector(".sessionCurrentActivityMark.isCurrent")).toBeNull();
+    expect(waiting.container.querySelectorAll(".sessionAgentActivityLabel.currentActivityShimmer")).toHaveLength(0);
+    const waitingLabel = waiting.container.querySelector(".sessionAgentActivityLabel");
+    expect(waitingLabel).not.toHaveClass("currentActivityShimmer");
+    expect(waitingLabel).not.toHaveAttribute("data-text");
   });
 
   it("renders bottom panels only for evidence or readiness, with plan fallback and no sub-minute medians", async () => {

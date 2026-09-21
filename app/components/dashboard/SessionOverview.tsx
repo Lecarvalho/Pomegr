@@ -77,13 +77,17 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
       <div className="sessionOverviewHeading"><div className="sessionRequestHeadingMain"><PanelHeadingLink id="session-right-now" onOpen={() => onNavigate({ tab: "agents" })}>Right now</PanelHeadingLink><span className="sessionRequestSummary">latest action per active agent</span></div></div>
       {agentReady !== "ready" ? <Unavailable readiness={agentReady} label="Agent evidence" /> : summary.rightNow.length === 0
         ? <p className="sessionOverviewEmpty">No agent activity is currently recorded.</p>
-        : <ul>{summary.rightNow.slice(0, 5).map((agent) => <li key={agent.id}>
-          <span className={`sessionAgentStatus status-${agent.status}`} aria-hidden="true" />
-          <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>
-          <span className="sessionAgentActivity"><i className={`sessionCurrentActivityMark${agent.status === "active" && agent.currentActivity ? " isCurrent" : ""}`} aria-hidden="true" /><span className="sessionAgentActivityLabel">{agent.currentActivity?.label || agent.status.replaceAll("_", " ")}</span></span>
-          <span className="sessionRightNowTokens"><span className="sessionRightNowTokensLabel">Latest context</span><strong>{compactNumber(agent.tokens.total)}</strong></span>
-          <time dateTime={agent.lastSeen}>{sessionRelativeTime(agent.lastSeen)}</time>
-        </li>)}</ul>}
+        : <ul>{summary.rightNow.slice(0, 5).map((agent) => {
+          const activityLabel = agent.currentActivity?.label || agent.status.replaceAll("_", " ");
+          const activityIsCurrent = agent.status === "active" && Boolean(agent.currentActivity);
+          return <li key={agent.id}>
+            <span className={`sessionAgentStatus status-${agent.status}`} aria-hidden="true" />
+            <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>
+            <span className="sessionAgentActivity"><i className={`sessionCurrentActivityMark${activityIsCurrent ? " isCurrent" : ""}`} aria-hidden="true" /><span className={`sessionAgentActivityLabel${activityIsCurrent ? " currentActivityShimmer" : ""}`} data-text={activityIsCurrent ? activityLabel : undefined}>{activityLabel}</span></span>
+            <span className="sessionRightNowTokens"><span className="sessionRightNowTokensLabel">Latest context</span><strong>{compactNumber(agent.tokens.total)}</strong></span>
+            <time dateTime={agent.lastSeen}>{sessionRelativeTime(agent.lastSeen)}</time>
+          </li>;
+        })}</ul>}
     </section>
 
     {workBeside && workSection}

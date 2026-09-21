@@ -220,6 +220,9 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandPrimaryAction:focus-visible, .commandSecondaryAction:focus-visible, .commandQuietAction:focus-visible, .commandTextLink:focus-visible, .commandIconAction:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .commandSegmented > button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .commandPrimaryAction:disabled, .commandSecondaryAction:disabled, .commandQuietAction:disabled, .commandTextLink:disabled, .commandIconAction:disabled, .commandSegmented > button:disabled { cursor: default; opacity: .48; }
+.currentActivityShimmer { position: relative; color: var(--command-muted); }
+.currentActivityShimmer::before { position: absolute; inset: 0; content: attr(data-text); pointer-events: none; background: linear-gradient(90deg, transparent 0%, transparent 40%, var(--command-ink) 50%, transparent 60%, transparent 100%); background-size: 400% 100%; background-repeat: no-repeat; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: currentActivityTextShimmer 2000ms linear infinite; }
+@keyframes currentActivityTextShimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 .commandAttention { min-height: 48px; margin-top: 14px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid color-mix(in srgb, var(--command-amber) 48%, var(--command-line)); background: color-mix(in srgb, var(--command-amber) 8%, var(--command-panel)); }
 .commandAttention > span { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .commandAttention strong { font-size: var(--text-xs); }
@@ -378,6 +381,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 
 @media (prefers-reduced-motion: reduce) {
   .commandNotificationTray { animation: none; }
+  .currentActivityShimmer::before { animation: none; }
   .commandSidebar { transition: none; }
   .commandHeader .commandMenuButton,
   .commandHeaderTools,

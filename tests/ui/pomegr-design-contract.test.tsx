@@ -188,6 +188,10 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@keyframes activityPulse\s*\{\s*50%\s*\{\s*transform:\s*scale\(\.55\);\s*opacity:\s*\.45/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.currentActivityMark::before,[\s\S]*?\.commandTableActivityMark::before,[\s\S]*?animation: none/);
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.sessionCurrentActivityMark\.isCurrent::before\s*\{\s*animation:\s*none;\s*opacity:\s*\.7/);
+    expect(styles).toMatch(/\.currentActivityShimmer\s*\{[^}]*position:\s*relative;[^}]*color:\s*var\(--command-muted\)/);
+    expect(styles).toMatch(/\.currentActivityShimmer::before\s*\{[^}]*content:\s*attr\(data-text\);[^}]*linear-gradient\(90deg, transparent 0%, transparent 40%, var\(--command-ink\) 50%, transparent 60%, transparent 100%\);[^}]*background-size:\s*400% 100%;[^}]*background-repeat:\s*no-repeat;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*animation:\s*currentActivityTextShimmer 2000ms linear infinite/);
+    expect(styles).toMatch(/@keyframes currentActivityTextShimmer\s*\{\s*from\s*\{\s*background-position:\s*100% 0;\s*\}\s*to\s*\{\s*background-position:\s*0 0/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.currentActivityShimmer::before\s*\{\s*animation:\s*none/);
     expect(layoutSource).not.toMatch(/font-rokkitt|localFont/);
   });
 
