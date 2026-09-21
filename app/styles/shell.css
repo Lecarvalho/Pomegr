@@ -166,7 +166,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSidebarLimit.normal > i > b { background: var(--command-blue); }
 .commandSidebarLimit.warning > i > b { background: var(--command-amber); }
 .commandSidebarLimit.critical > i > b { background: var(--command-error); }
-.commandSidebarLimit:hover span { color: var(--command-ink); text-decoration: underline; text-underline-offset: 3px; }
 .commandMain { min-width: 0; grid-column: 2; grid-row: 2; padding: 32px 32px 40px; overflow: auto; background: var(--command-ground); }
 .commandView { width: min(1480px, 100%); margin: 0 auto; }
 .commandPageHeader { min-height: 60px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px 24px; }
