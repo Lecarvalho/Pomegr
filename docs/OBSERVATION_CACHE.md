@@ -1880,6 +1880,8 @@ restored, or inactive primary lifecycle produces null in the catalog, even if ch
 work. The older heading remains in retained agent evidence, not in `currentActivity`.
 For Claude Code, U2 recognizes only a bounded one-line `description` on a native
 `Bash` tool-use record and associates it privately with that exact tool-use ID. A
+turn opens on recognized user input, a system task notification, or a system-sourced
+subagent hand-back or automatic continuation; other meta records never open one. A
 matching result or recognized turn/agent terminal clears the description. Commands,
 other arguments, results, thinking, prompts, response text, attachments, arbitrary
 tool descriptions, and MCP arguments never enter this field. Parallel calls are

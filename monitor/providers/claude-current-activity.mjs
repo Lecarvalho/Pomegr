@@ -8,6 +8,9 @@ import { registryTimestamp } from "./claude-session-status.mjs";
 const CLAUDE_ACTIVITY_TOOLS = new Set(["Bash"]);
 const CLAUDE_TURN_END_REASONS = new Set(["end_turn", "stop_sequence"]);
 const CLAUDE_TURN_END_SUBTYPES = new Set(["turn_duration"]);
+// Claude opens a new turn for subagent hand-backs and automatic continuations
+// through a system-sourced meta user record; only these fixed origins qualify.
+const CLAUDE_SYSTEM_TURN_ORIGINS = new Set(["peer", "auto-continuation"]);
 const SAFE_TOOL_USE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 
 export const CLAUDE_CURRENT_ACTIVITY_MAX_LENGTH = 160;
@@ -35,12 +38,17 @@ function boundaryId(value, observedAt) {
   return toolUseId(value) || observedAt;
 }
 
-function startsUserTurn(record) {
-  return Boolean(userInputContentType(record)) || isClaudeSystemTaskNotification(record);
+function startsSystemTurn(record) {
+  return record?.type === "user" && record.isMeta === true && record.promptSource === "system"
+    && CLAUDE_SYSTEM_TURN_ORIGINS.has(record.origin?.kind);
+}
+
+function startsTurn(record) {
+  return Boolean(userInputContentType(record)) || isClaudeSystemTaskNotification(record) || startsSystemTurn(record);
 }
 
 function turnBoundary(record, observedAt) {
-  if (startsUserTurn(record)) return { kind: "start", key: `start:${boundaryId(record.uuid, observedAt)}` };
+  if (startsTurn(record)) return { kind: "start", key: `start:${boundaryId(record.uuid, observedAt)}` };
   if (record?.type === "assistant" && CLAUDE_TURN_END_REASONS.has(record.message?.stop_reason)) {
     return { kind: "end", key: `end:${boundaryId(record.uuid, observedAt)}` };
   }

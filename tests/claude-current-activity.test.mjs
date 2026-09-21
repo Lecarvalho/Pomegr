@@ -104,6 +104,35 @@ test("Claude system task delivery resumes a turn without being classified as hum
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_NOTIFICATION/);
 });
 
+test("Claude subagent hand-backs and automatic continuations resume a closed turn", () => {
+  const closed = { type: "system", subtype: "turn_duration", timestamp: "2026-09-21T19:57:22.359Z" };
+  for (const kind of ["peer", "auto-continuation"]) {
+    const state = parseClaudeCurrentActivityStateRecords([
+      closed,
+      { type: "user", uuid: `resume-${kind}`, timestamp: "2026-09-21T19:59:09.675Z", isMeta: true,
+        origin: { kind, from: "PRIVATE_SENDER_MUST_NOT_LEAK", body: "PRIVATE_HANDBACK_MUST_NOT_LEAK" },
+        promptSource: "system", message: { content: "PRIVATE_HANDBACK_MUST_NOT_LEAK" } },
+      bashCall(`resumed-${kind}`, "2026-09-21T19:59:15.957Z", "Run pricing stage check"),
+    ]);
+    assert.equal(state.turnOpen, true, kind);
+    assert.equal(state.currentActivity.label, "Run pricing stage check", kind);
+    assert.doesNotMatch(JSON.stringify(state), /PRIVATE_/);
+  }
+
+  for (const record of [
+    { isMeta: true, origin: { kind: "coordinator" }, promptSource: "system" },
+    { isMeta: true, origin: { kind: "peer" }, promptSource: null },
+  ]) {
+    const state = parseClaudeCurrentActivityStateRecords([
+      closed,
+      { type: "user", timestamp: "2026-09-21T19:59:09.675Z", message: { content: "meta" }, ...record },
+      bashCall("still-closed", "2026-09-21T19:59:15.957Z", "Unowned activity"),
+    ]);
+    assert.equal(state.turnOpen, false);
+    assert.equal(state.currentActivity, null);
+  }
+});
+
 test("Claude activity rejects malformed sources, bounds Unicode, and omits historical state", () => {
   const long = "計画🔍".repeat(100);
   const activity = parseClaudeCurrentActivityRecords([
