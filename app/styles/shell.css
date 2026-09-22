@@ -241,7 +241,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSessionConnection { display: inline-flex; align-items: center; gap: 7px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); text-transform: none; letter-spacing: 0; }
 .commandSessionBar .desktopControls > summary { min-height: 36px; border-color: var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); font-size: var(--text-xs); }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
-.commandSessionView .hero { padding-top: 32px; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 0 20px; margin-bottom: 4px; }
 .commandSettingsLayout { margin-top: 14px; display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSettingsNav { padding: 10px; border-right: 1px solid var(--command-line); }
 .commandSettingsNav button { width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; font-size: var(--text-xs); text-align: left; }
@@ -355,7 +354,6 @@ html[data-theme="dark"] body { background: var(--paper); }
   .providerSettingActions { justify-content: flex-start; }
   .providerSettingsFooter { justify-content: space-between; }
   .commandSessionBar { align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 0; }
-  .commandSessionView .hero { padding-top: 24px; }
 }
 
 @media (max-width: 520px) {

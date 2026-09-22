@@ -1,11 +1,10 @@
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import { act, fireEvent, render as renderUi, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { render as renderUi, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import type { Agent, MonitorState } from "../../shared/monitor-contract";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import { SessionKpiStrip } from "../../app/components/dashboard/SessionKpiStrip";
-import { SessionHero } from "../../app/components/dashboard/SessionHero";
-import { agent, claudeCapabilities, repositorySession } from "./dashboard-test-fixtures";
+import { agent, repositorySession } from "./dashboard-test-fixtures";
 
 function render(ui: React.ReactNode) { return renderUi(ui, { wrapper: ({ children }) => <LiveClockProvider running={false}>{children}</LiveClockProvider> }); }
 
@@ -63,83 +62,5 @@ describe("session KPI strip", () => {
     expect(screen.getByText("65%")).toHaveClass("sessionPositive");
     expect(screen.getByText("Verifying · 5–15 min · low confidence")).toBeInTheDocument();
     expect(screen.getByText("Wall time")).toBeInTheDocument();
-  });
-});
-
-describe("session hero status", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  function phoneViewport() {
-    let matches = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) })));
-    return (phone: boolean) => act(() => { matches = phone; listeners.forEach((listener) => listener()); });
-  }
-
-  it("omits the summary control and empty copy when no summary was reported", () => {
-    const resize = phoneViewport();
-    const session = { ...state().session!, title: "A long session title with an_unbroken_identifier_that_must_wrap_across_a_narrow_phone_viewport", summary: null, signal: null };
-    const { container } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(session.title);
-    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
-    expect(screen.queryByText("No provider summary was recorded for this session.")).not.toBeInTheDocument();
-    resize(false);
-    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
-    expect(screen.queryByText("No provider summary was recorded for this session.")).not.toBeInTheDocument();
-  });
-
-  it("opens the phone disclosure when a summary exists and keeps report behavior", () => {
-    phoneViewport();
-    const session: NonNullable<MonitorState["session"]> = { ...state().session!, summary: null, signal: null };
-    session.summary = { text: "Recorded provider summary", observedAt: "2026-09-05T12:00:00Z", source: "provider" };
-    const generate = vi.fn();
-    const { rerender } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
-    expect(screen.getByText("Provider summary").closest("details")).toHaveAttribute("open");
-    fireEvent.click(screen.getByRole("button", { name: "Download report" }));
-    expect(generate).toHaveBeenCalledOnce();
-    rerender(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} reportGenerating />);
-    expect(screen.getByRole("button", { name: "Preparing report…" })).toBeDisabled();
-    const heroActions = screen.getByLabelText("Session status").closest(".sessionHeroActions");
-    expect(heroActions).not.toContainElement(screen.getByRole("button", { name: "Preparing report…" }));
-  });
-
-  it("keeps a session signal visible without rendering an empty summary control", () => {
-    phoneViewport();
-    const session: NonNullable<MonitorState["session"]> = {
-      ...state().session!,
-      summary: null,
-      signal: { label: "Privacy verified", tone: "positive", reportedAt: "2026-09-05T12:00:00Z" },
-    };
-    const { container } = render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical />);
-
-    expect(container.querySelector(".sessionHeroSummary")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Privacy verified" })).toBeInTheDocument();
-  });
-
-  it("renders the quiet download-report action under the status card on desktop", () => {
-    const session = { ...state().session!, summary: null, signal: null };
-    const generate = vi.fn();
-    render(<SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical onGenerateReport={generate} />);
-    const button = screen.getByRole("button", { name: "Download report" });
-    expect(button).toHaveClass("commandQuietAction");
-    const heroActions = screen.getByLabelText("Session status").closest(".sessionHeroActions");
-    expect(heroActions).toContainElement(button);
-    fireEvent.click(button);
-    expect(generate).toHaveBeenCalledOnce();
-  });
-
-  it.each([
-    ["working", false, "Live session · In progress"],
-    ["idle", false, "Live session · Idle"],
-    ["open", false, "Live session · Open"],
-    ["stopped", false, "Live session · Stopped"],
-    ["needs_input", false, "Live session · Needs input"],
-    ["unknown", false, "Live session · Unknown"],
-    ["working", true, "Recorded session · ended"],
-  ] as const)("renders %s with historical=%s", (activityStatus, historical, label) => {
-    render(<SessionHero session={state().session} source="Claude Code" capabilities={claudeCapabilities} historical={historical} activityStatus={activityStatus} />);
-    expect(screen.getByLabelText("Session status")).toHaveTextContent(label);
-    expect(screen.queryByText("Historical snapshot")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Session status")).toHaveTextContent("Time unavailable");
   });
 });

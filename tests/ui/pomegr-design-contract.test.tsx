@@ -36,8 +36,8 @@ describe("Pomegr visual contract", () => {
   });
   it("keeps session loading titles on the shared desktop and mobile header scale", () => {
     expect(styles).not.toMatch(/\.sessionLoadingHero|\.sessionLoadingProvider/);
-    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView \.hero h1\s*\{\s*font-size:\s*22px/);
+    expect(styles).toMatch(/\.commandPageHeader h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView > \.commandPageHeader h1\s*\{\s*font-size:\s*22px/);
   });
 
   it("keeps the phone request identity on a stable row above the minimap", () => {
@@ -112,7 +112,6 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable\s*\{[^}]*min-width:\s*0;[^}]*display:\s*block;[^}]*table-layout:\s*auto/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
-    expect(styles).toMatch(/\.commandSessionView \.hero h1\s*\{[^}]*var\(--font-ui\)/);
     expect(styles).toMatch(/\.pullRequestTitle em, \.branchComparison\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip, \.commandChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
